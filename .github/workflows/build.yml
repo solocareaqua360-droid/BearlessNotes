@@ -1,0 +1,539 @@
+name: Build Bearless Notes 0.1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/build.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create Android project
+        shell: bash
+        run: |
+          set -e
+
+          mkdir -p app/src/main/java/com/bearless/notes
+          mkdir -p app/src/main/res/values
+
+          cat > settings.gradle.kts <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          rootProject.name = "BearlessNotes"
+          include(":app")
+          EOF
+
+          cat > build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application") version "8.6.1" apply false
+              id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+          }
+          EOF
+
+          cat > gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          kotlin.code.style=official
+          EOF
+
+          cat > app/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+
+          android {
+              namespace = "com.bearless.notes"
+              compileSdk = 35
+
+              defaultConfig {
+                  applicationId = "com.bearless.notes"
+                  minSdk = 26
+                  targetSdk = 35
+                  versionCode = 1
+                  versionName = "0.1"
+              }
+          }
+
+          dependencies {
+              implementation("androidx.core:core-ktx:1.15.0")
+              implementation("androidx.activity:activity-ktx:1.10.1")
+              implementation("androidx.appcompat:appcompat:1.7.0")
+              implementation("com.google.android.material:material:1.12.0")
+          }
+          EOF
+
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <application
+                  android:allowBackup="true"
+                  android:label="Bearless Notes"
+                  android:supportsRtl="true"
+                  android:theme="@style/Theme.BearlessNotes">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+
+                  </activity>
+
+              </application>
+
+          </manifest>
+          EOF
+
+          cat > app/src/main/res/values/styles.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+
+              <style name="Theme.BearlessNotes" parent="Theme.Material3.DayNight.NoActionBar">
+                  <item name="android:fontFamily">sans</item>
+                  <item name="android:windowLightStatusBar">true</item>
+              </style>
+
+          </resources>
+          EOF
+
+          cat > app/src/main/res/values/strings.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <string name="app_name">Bearless Notes</string>
+          </resources>
+          EOF
+
+          cat > app/src/main/java/com/bearless/notes/MainActivity.kt <<'EOF'
+          package com.bearless.notes
+
+          import android.os.Bundle
+          import android.text.Editable
+          import android.text.InputType
+          import android.text.TextWatcher
+          import android.view.Gravity
+          import android.view.View
+          import android.widget.Button
+          import android.widget.EditText
+          import android.widget.LinearLayout
+          import android.widget.TextView
+          import androidx.appcompat.app.AppCompatActivity
+          import org.json.JSONArray
+          import org.json.JSONObject
+
+          data class Note(
+              val id: Long,
+              var title: String,
+              var body: String,
+              var pinned: Boolean = false
+          )
+
+          class MainActivity : AppCompatActivity() {
+
+              private val prefs by lazy {
+                  getSharedPreferences("notes", MODE_PRIVATE)
+              }
+
+              private val notes = mutableListOf<Note>()
+
+              private lateinit var list: LinearLayout
+              private lateinit var search: EditText
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+
+                  loadNotes()
+                  showHome()
+              }
+
+              private fun showHome() {
+
+                  val root = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      setPadding(24, 24, 24, 24)
+                  }
+
+                  val title = TextView(this).apply {
+                      text = "Bearless Notes"
+                      textSize = 28f
+                      setPadding(0, 0, 0, 16)
+                  }
+
+                  search = EditText(this).apply {
+                      hint = "Search notes"
+                      singleLine = true
+                      inputType = InputType.TYPE_CLASS_TEXT
+                  }
+
+                  val add = Button(this).apply {
+                      text = "+ New note"
+
+                      setOnClickListener {
+                          showEditor(null)
+                      }
+                  }
+
+                  list = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                  }
+
+                  root.addView(title)
+                  root.addView(search)
+                  root.addView(add)
+
+                  root.addView(
+                      list,
+                      LinearLayout.LayoutParams(
+                          -1,
+                          0,
+                          1f
+                      )
+                  )
+
+                  setContentView(root)
+
+                  search.addTextChangedListener(object : TextWatcher {
+
+                      override fun beforeTextChanged(
+                          s: CharSequence?,
+                          start: Int,
+                          count: Int,
+                          after: Int
+                      ) {}
+
+                      override fun onTextChanged(
+                          s: CharSequence?,
+                          start: Int,
+                          before: Int,
+                          count: Int
+                      ) {
+                          renderList(s?.toString().orEmpty())
+                      }
+
+                      override fun afterTextChanged(s: Editable?) {}
+                  })
+
+                  renderList("")
+              }
+
+              private fun renderList(query: String) {
+
+                  list.removeAllViews()
+
+                  val filtered = notes
+                      .filter {
+                          query.isBlank() ||
+                          it.title.contains(query, true) ||
+                          it.body.contains(query, true)
+                      }
+                      .sortedWith(
+                          compareByDescending<Note> { it.pinned }
+                              .thenByDescending { it.id }
+                      )
+
+                  if (filtered.isEmpty()) {
+
+                      list.addView(
+                          TextView(this).apply {
+                              text =
+                                  if (notes.isEmpty()) {
+                                      "No notes yet.\nCreate your first note."
+                                  } else {
+                                      "No matching notes."
+                                  }
+
+                              textSize = 18f
+                              gravity = Gravity.CENTER
+                              setPadding(0, 80, 0, 80)
+                          }
+                      )
+
+                      return
+                  }
+
+                  filtered.forEach { note ->
+
+                      val row = LinearLayout(this).apply {
+                          orientation = LinearLayout.HORIZONTAL
+                          setPadding(12, 16, 12, 16)
+
+                          setOnClickListener {
+                              showEditor(note)
+                          }
+                      }
+
+                      val text = TextView(this).apply {
+
+                          text = buildString {
+
+                              if (note.pinned) {
+                                  append("📌 ")
+                              }
+
+                              append(
+                                  if (note.title.isBlank()) {
+                                      "Untitled"
+                                  } else {
+                                      note.title
+                                  }
+                              )
+
+                              if (note.body.isNotBlank()) {
+                                  append("\n")
+                                  append(
+                                      note.body
+                                          .take(120)
+                                          .replace("\n", " ")
+                                  )
+                              }
+                          }
+
+                          textSize = 17f
+                      }
+
+                      val pin = Button(this).apply {
+
+                          text =
+                              if (note.pinned) {
+                                  "Unpin"
+                              } else {
+                                  "Pin"
+                              }
+
+                          setOnClickListener {
+
+                              note.pinned = !note.pinned
+
+                              saveNotes()
+
+                              renderList(
+                                  search.text.toString()
+                              )
+                          }
+                      }
+
+                      row.addView(
+                          text,
+                          LinearLayout.LayoutParams(
+                              0,
+                              -2,
+                              1f
+                          )
+                      )
+
+                      row.addView(pin)
+
+                      list.addView(row)
+                  }
+              }
+
+              private fun showEditor(existing: Note?) {
+
+                  val isNew = existing == null
+
+                  val note =
+                      existing
+                          ?: Note(
+                              System.currentTimeMillis(),
+                              "",
+                              ""
+                          )
+
+                  val root = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      setPadding(24, 24, 24, 24)
+                  }
+
+                  val bar = LinearLayout(this).apply {
+                      orientation = LinearLayout.HORIZONTAL
+                  }
+
+                  val back = Button(this).apply {
+                      text = "←"
+
+                      setOnClickListener {
+                          showHome()
+                      }
+                  }
+
+                  val save = Button(this).apply {
+                      text = "Save"
+                  }
+
+                  val delete = Button(this).apply {
+                      text = "Delete"
+
+                      visibility =
+                          if (isNew) {
+                              View.GONE
+                          } else {
+                              View.VISIBLE
+                          }
+                  }
+
+                  bar.addView(back)
+                  bar.addView(save)
+                  bar.addView(delete)
+
+                  val title = EditText(this).apply {
+                      hint = "Title"
+                      setText(note.title)
+                      textSize = 24f
+                      singleLine = true
+                  }
+
+                  val body = EditText(this).apply {
+                      hint = "Write your note…"
+                      setText(note.body)
+                      gravity = Gravity.TOP
+                      minLines = 12
+
+                      inputType =
+                          InputType.TYPE_CLASS_TEXT or
+                          InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                          InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+                  }
+
+                  root.addView(bar)
+                  root.addView(title)
+
+                  root.addView(
+                      body,
+                      LinearLayout.LayoutParams(
+                          -1,
+                          0,
+                          1f
+                      )
+                  )
+
+                  setContentView(root)
+
+                  save.setOnClickListener {
+
+                      note.title = title.text.toString()
+                      note.body = body.text.toString()
+
+                      if (isNew) {
+                          notes.add(note)
+                      }
+
+                      saveNotes()
+                      showHome()
+                  }
+
+                  delete.setOnClickListener {
+
+                      notes.removeAll {
+                          it.id == note.id
+                      }
+
+                      saveNotes()
+                      showHome()
+                  }
+              }
+
+              private fun saveNotes() {
+
+                  val array = JSONArray()
+
+                  notes.forEach { note ->
+
+                      array.put(
+                          JSONObject().apply {
+                              put("id", note.id)
+                              put("title", note.title)
+                              put("body", note.body)
+                              put("pinned", note.pinned)
+                          }
+                      )
+                  }
+
+                  prefs
+                      .edit()
+                      .putString(
+                          "data",
+                          array.toString()
+                      )
+                      .apply()
+              }
+
+              private fun loadNotes() {
+
+                  notes.clear()
+
+                  val raw =
+                      prefs.getString(
+                          "data",
+                          null
+                      ) ?: return
+
+                  runCatching {
+
+                      val array = JSONArray(raw)
+
+                      for (i in 0 until array.length()) {
+
+                          val objectNote =
+                              array.getJSONObject(i)
+
+                          notes.add(
+                              Note(
+                                  id = objectNote.getLong("id"),
+                                  title = objectNote.optString("title"),
+                                  body = objectNote.optString("body"),
+                                  pinned = objectNote.optBoolean("pinned")
+                              )
+                          )
+                      }
+                  }
+              }
+          }
+          EOF
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Build APK
+        run: gradle assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BearlessNotes-0.1-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
