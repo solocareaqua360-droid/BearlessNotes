@@ -1,0 +1,173 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
+
+import { Settings, Tag, Video, WatchStatus } from "@/types";
+
+const seedTags: Tag[] = [
+  { id: "tag-dev", name: "Розробка", parentId: null, icon: "code-slash", color: "#33C2FF" },
+  { id: "tag-dev-rn", name: "React Native", parentId: "tag-dev", icon: "code-slash", color: "#33C2FF" },
+  { id: "tag-cooking", name: "Кулінарія", parentId: null, icon: "restaurant", color: "#FFB020" },
+  { id: "tag-fitness", name: "Фітнес", parentId: null, icon: "fitness", color: "#4CD97B" },
+];
+
+const seedVideos: Video[] = [
+  {
+    id: "v1",
+    url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    title: "Expo Router: навігація для React Native за 10 хвилин",
+    thumbnailUrl: "https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+    durationSec: 612,
+    source: "youtube",
+    status: "planned",
+    tagIds: ["tag-dev-rn"],
+    comment: "",
+    createdAt: Date.now() - 1000 * 60 * 60 * 3,
+  },
+  {
+    id: "v2",
+    url: "https://www.tiktok.com/@chef/video/1",
+    title: "Швидка паста карбонара за 15 хвилин",
+    thumbnailUrl: "",
+    durationSec: 58,
+    source: "tiktok",
+    status: "watched",
+    tagIds: ["tag-cooking"],
+    comment: "Спробувати на вихідних",
+    createdAt: Date.now() - 1000 * 60 * 60 * 24,
+  },
+  {
+    id: "v3",
+    url: "https://www.youtube.com/watch?v=abcd1234efg",
+    title: "Розтяжка на 20 хвилин перед сном",
+    thumbnailUrl: "",
+    durationSec: 1204,
+    source: "youtube",
+    status: "planned",
+    tagIds: ["tag-fitness"],
+    comment: "",
+    createdAt: Date.now() - 1000 * 60 * 30,
+  },
+  {
+    id: "v4",
+    url: "https://www.youtube.com/watch?v=zz11yy22xx3",
+    title: "Zustand + AsyncStorage: офлайн-перший стан застосунку",
+    thumbnailUrl: "",
+    durationSec: 845,
+    source: "youtube",
+    status: "watched",
+    tagIds: ["tag-dev", "tag-dev-rn"],
+    comment: "",
+    createdAt: Date.now() - 1000 * 60 * 60 * 48,
+  },
+];
+
+interface LibraryState {
+  videos: Video[];
+  tags: Tag[];
+  settings: Settings;
+
+  addVideo: (video: Video) => void;
+  updateVideo: (id: string, patch: Partial<Video>) => void;
+  removeVideo: (id: string) => void;
+
+  addTag: (tag: Tag) => void;
+  updateTag: (id: string, patch: Partial<Tag>) => void;
+  removeTag: (id: string, mode: "delete_videos" | "unsort_videos") => void;
+
+  updateSettings: (patch: Partial<Settings>) => void;
+}
+
+export const useLibraryStore = create<LibraryState>()(
+  persist(
+    (set, get) => ({
+      videos: seedVideos,
+      tags: seedTags,
+      settings: {
+        theme: "system",
+        openVideoMode: "in_app",
+        lastSyncedAt: null,
+        account: null,
+      },
+
+      addVideo: (video) => set((state) => ({ videos: [video, ...state.videos] })),
+
+      updateVideo: (id, patch) =>
+        set((state) => ({
+          videos: state.videos.map((v) => (v.id === id ? { ...v, ...patch } : v)),
+        })),
+
+      removeVideo: (id) =>
+        set((state) => ({ videos: state.videos.filter((v) => v.id !== id) })),
+
+      addTag: (tag) => set((state) => ({ tags: [...state.tags, tag] })),
+
+      updateTag: (id, patch) =>
+        set((state) => ({
+          tags: state.tags.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+        })),
+
+      removeTag: (id, mode) =>
+        set((state) => {
+          const descendantIds = new Set<string>([id]);
+          let changed = true;
+          while (changed) {
+            changed = false;
+            for (const t of state.tags) {
+              if (t.parentId && descendantIds.has(t.parentId) && !descendantIds.has(t.id)) {
+                descendantIds.add(t.id);
+                changed = true;
+              }
+            }
+          }
+
+          const tags = state.tags.filter((t) => !descendantIds.has(t.id));
+
+          const videos =
+            mode === "delete_videos"
+              ? state.videos.filter((v) => !v.tagIds.some((tagId) => descendantIds.has(tagId)))
+              : state.videos.map((v) => ({
+                  ...v,
+                  tagIds: v.tagIds.filter((tagId) => !descendantIds.has(tagId)),
+                }));
+
+          return { tags, videos };
+        }),
+
+      updateSettings: (patch) =>
+        set((state) => ({ settings: { ...state.settings, ...patch } })),
+    }),
+    {
+      name: "bearlessnotes-library",
+      storage: createJSONStorage(() => AsyncStorage),
+    }
+  )
+);
+
+export function filterVideos(
+  videos: Video[],
+  opts: { status?: WatchStatus | "all"; tagIds?: string[]; query?: string }
+): Video[] {
+  const { status = "all", tagIds = [], query = "" } = opts;
+  const normalizedQuery = query.trim().toLowerCase();
+
+  return videos.filter((video) => {
+    if (status !== "all" && video.status !== status) return false;
+    if (tagIds.length > 0 && !tagIds.some((id) => video.tagIds.includes(id))) return false;
+    if (normalizedQuery && !video.title.toLowerCase().includes(normalizedQuery)) return false;
+    return true;
+  });
+}
+
+export function formatDuration(totalSeconds: number): string {
+  if (!totalSeconds) return "--:--";
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = Math.floor(totalSeconds % 60);
+  const paddedSeconds = seconds.toString().padStart(2, "0");
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, "0")}:${paddedSeconds}`;
+  }
+  return `${minutes}:${paddedSeconds}`;
+}
