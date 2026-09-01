@@ -23,6 +23,10 @@ interface TagsDrawerProps {
   selectedTagIds?: string[];
   onChangeSelectedTagIds?: (ids: string[]) => void;
   onCreateTag?: () => void;
+  /** Browse mode only: jump to the default (all videos) view. */
+  onSelectInbox?: () => void;
+  /** Browse mode only: jump to videos that have no tags at all. */
+  onSelectUnsorted?: () => void;
 }
 
 function buildRows(tags: Tag[], videos: Video[], expanded: Set<string>): TagRow[] {
@@ -62,6 +66,8 @@ export function TagsDrawer({
   selectedTagIds = [],
   onChangeSelectedTagIds,
   onCreateTag,
+  onSelectInbox,
+  onSelectUnsorted,
 }: TagsDrawerProps) {
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -110,15 +116,27 @@ export function TagsDrawer({
 
           <SearchBar value={query} onChangeText={setQuery} placeholder="Пошук тегів" />
 
-          <View style={styles.specialRow}>
-            <Ionicons name="mail-unread-outline" size={16} color={colors.textSecondary} />
-            <Text style={styles.specialLabel}>Inbox</Text>
-          </View>
-          <View style={styles.specialRow}>
-            <Ionicons name="help-circle-outline" size={16} color={colors.textSecondary} />
-            <Text style={styles.specialLabel}>Невідсортоване</Text>
-            <Text style={styles.specialCount}>{unsortedCount}</Text>
-          </View>
+          {!filterMode && (
+            <>
+              <Pressable
+                style={styles.specialRow}
+                onPress={onSelectInbox}
+                disabled={!onSelectInbox}
+              >
+                <Ionicons name="mail-unread-outline" size={16} color={colors.textSecondary} />
+                <Text style={styles.specialLabel}>Inbox</Text>
+              </Pressable>
+              <Pressable
+                style={styles.specialRow}
+                onPress={onSelectUnsorted}
+                disabled={!onSelectUnsorted}
+              >
+                <Ionicons name="help-circle-outline" size={16} color={colors.textSecondary} />
+                <Text style={styles.specialLabel}>Невідсортоване</Text>
+                <Text style={styles.specialCount}>{unsortedCount}</Text>
+              </Pressable>
+            </>
+          )}
 
           <FlatList
             data={rows}

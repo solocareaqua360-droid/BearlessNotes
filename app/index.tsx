@@ -1,6 +1,7 @@
-import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { router, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
-import { FlatList, StyleSheet, Text, View } from "react-native";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { FilterPills, StatusFilter } from "@/components/FilterPills";
@@ -8,10 +9,12 @@ import { FloatingIsland } from "@/components/FloatingIsland";
 import { SearchBar } from "@/components/SearchBar";
 import { TagsDrawer } from "@/components/TagsDrawer";
 import { VideoCard } from "@/components/VideoCard";
-import { colors, spacing } from "@/constants/theme";
+import { colors, radius, spacing } from "@/constants/theme";
 import { filterVideos, useLibraryStore } from "@/store/useLibraryStore";
 
 export default function HomeScreen() {
+  const { unsorted } = useLocalSearchParams<{ unsorted?: string }>();
+
   const videos = useLibraryStore((s) => s.videos);
   const tags = useLibraryStore((s) => s.tags);
 
@@ -21,22 +24,44 @@ export default function HomeScreen() {
   const [tagsDrawerVisible, setTagsDrawerVisible] = useState(false);
   const [filterDrawerVisible, setFilterDrawerVisible] = useState(false);
   const [activeTagIds, setActiveTagIds] = useState<string[]>([]);
+  const [unsortedOnly, setUnsortedOnly] = useState(unsorted === "1");
 
   const tagsById = useMemo(() => new Map(tags.map((t) => [t.id, t])), [tags]);
 
   const filteredVideos = useMemo(
-    () => filterVideos(videos, { status, tagIds: activeTagIds, query }),
-    [videos, status, activeTagIds, query]
+    () => filterVideos(videos, { status, tagIds: activeTagIds, query, unsortedOnly }),
+    [videos, status, activeTagIds, query, unsortedOnly]
   );
+
+  const resetToAll = () => {
+    setUnsortedOnly(false);
+    setActiveTagIds([]);
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Мої відео</Text>
-        {searchVisible && (
-          <SearchBar value={query} onChangeText={setQuery} />
-        )}
+        <View style={styles.titleRow}>
+          <Text style={styles.headerTitle}>Мої відео</Text>
+          <Pressable onPress={() => router.push("/settings")} hitSlop={8}>
+            <Ionicons name="settings-outline" size={22} color={colors.textSecondary} />
+          </Pressable>
+        </View>
+
+        {searchVisible && <SearchBar value={query} onChangeText={setQuery} />}
+
         <FilterPills value={status} onChange={setStatus} />
+
+        {unsortedOnly && (
+          <View style={styles.activeFilterRow}>
+            <View style={styles.activeFilterChip}>
+              <Text style={styles.activeFilterLabel}>Невідсортоване</Text>
+              <Pressable onPress={resetToAll} hitSlop={8}>
+                <Ionicons name="close" size={14} color={colors.textPrimary} />
+              </Pressable>
+            </View>
+          </View>
+        )}
       </View>
 
       <FlatList
@@ -76,6 +101,15 @@ export default function HomeScreen() {
           setTagsDrawerVisible(false);
           router.push("/tag-editor");
         }}
+        onSelectInbox={() => {
+          resetToAll();
+          setTagsDrawerVisible(false);
+        }}
+        onSelectUnsorted={() => {
+          setUnsortedOnly(true);
+          setActiveTagIds([]);
+          setTagsDrawerVisible(false);
+        }}
       />
 
       <TagsDrawer
@@ -85,7 +119,10 @@ export default function HomeScreen() {
         videos={videos}
         filterMode
         selectedTagIds={activeTagIds}
-        onChangeSelectedTagIds={setActiveTagIds}
+        onChangeSelectedTagIds={(ids) => {
+          setUnsortedOnly(false);
+          setActiveTagIds(ids);
+        }}
       />
     </SafeAreaView>
   );
@@ -102,10 +139,32 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     gap: spacing.md,
   },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   headerTitle: {
     color: colors.textPrimary,
     fontSize: 26,
     fontWeight: "800",
+  },
+  activeFilterRow: {
+    flexDirection: "row",
+  },
+  activeFilterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.pillInactive,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+  },
+  activeFilterLabel: {
+    color: colors.textPrimary,
+    fontSize: 12,
+    fontWeight: "600",
   },
   listContent: {
     paddingHorizontal: spacing.lg,

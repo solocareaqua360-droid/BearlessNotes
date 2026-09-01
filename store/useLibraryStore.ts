@@ -4,6 +4,8 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 import { Settings, Tag, Video, WatchStatus } from "@/types";
 
+const MAX_TAG_DEPTH = 10;
+
 const seedTags: Tag[] = [
   { id: "tag-dev", name: "Розробка", parentId: null, icon: "code-slash", color: "#33C2FF" },
   { id: "tag-dev-rn", name: "React Native", parentId: "tag-dev", icon: "code-slash", color: "#33C2FF" },
@@ -72,6 +74,13 @@ interface LibraryState {
   removeVideo: (id: string) => void;
 
   addTag: (tag: Tag) => void;
+  /**
+   * Creates (or reuses) a Bear-style "Parent/Child/Grandchild" tag chain.
+   * Only the last segment gets the chosen icon/color; segments created
+   * along the way as intermediate parents get a neutral folder look.
+   * Returns the id of the final (leaf) tag.
+   */
+  addTagPath: (path: string[], leafIcon: string, leafColor: string) => string | null;
   updateTag: (id: string, patch: Partial<Tag>) => void;
   removeTag: (id: string, mode: "delete_videos" | "unsort_videos") => void;
 
@@ -101,6 +110,46 @@ export const useLibraryStore = create<LibraryState>()(
         set((state) => ({ videos: state.videos.filter((v) => v.id !== id) })),
 
       addTag: (tag) => set((state) => ({ tags: [...state.tags, tag] })),
+
+      addTagPath: (path, leafIcon, leafColor) => {
+        const segments = path.map((s) => s.trim()).filter(Boolean).slice(0, MAX_TAG_DEPTH);
+        if (segments.length === 0) return null;
+
+        let tags = get().tags;
+        let parentId: string | null = null;
+        let leafId: string | null = null;
+
+        segments.forEach((name, index) => {
+          const isLeaf = index === segments.length - 1;
+          const existing = tags.find(
+            (t) => t.parentId === parentId && t.name.toLowerCase() === name.toLowerCase()
+          );
+
+          if (existing) {
+            if (isLeaf) {
+              tags = tags.map((t) =>
+                t.id === existing.id ? { ...t, icon: leafIcon, color: leafColor } : t
+              );
+            }
+            parentId = existing.id;
+            leafId = existing.id;
+          } else {
+            const newTag: Tag = {
+              id: `tag-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              name,
+              parentId,
+              icon: isLeaf ? leafIcon : "folder",
+              color: isLeaf ? leafColor : "#8A8A94",
+            };
+            tags = [...tags, newTag];
+            parentId = newTag.id;
+            leafId = newTag.id;
+          }
+        });
+
+        set({ tags });
+        return leafId;
+      },
 
       updateTag: (id, patch) =>
         set((state) => ({
@@ -146,14 +195,18 @@ export const useLibraryStore = create<LibraryState>()(
 
 export function filterVideos(
   videos: Video[],
-  opts: { status?: WatchStatus | "all"; tagIds?: string[]; query?: string }
+  opts: { status?: WatchStatus | "all"; tagIds?: string[]; query?: string; unsortedOnly?: boolean }
 ): Video[] {
-  const { status = "all", tagIds = [], query = "" } = opts;
+  const { status = "all", tagIds = [], query = "", unsortedOnly = false } = opts;
   const normalizedQuery = query.trim().toLowerCase();
 
   return videos.filter((video) => {
     if (status !== "all" && video.status !== status) return false;
-    if (tagIds.length > 0 && !tagIds.some((id) => video.tagIds.includes(id))) return false;
+    if (unsortedOnly) {
+      if (video.tagIds.length > 0) return false;
+    } else if (tagIds.length > 0 && !tagIds.some((id) => video.tagIds.includes(id))) {
+      return false;
+    }
     if (normalizedQuery && !video.title.toLowerCase().includes(normalizedQuery)) return false;
     return true;
   });

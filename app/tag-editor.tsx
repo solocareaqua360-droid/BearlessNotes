@@ -10,7 +10,7 @@ import { useLibraryStore } from "@/store/useLibraryStore";
 export default function TagEditorScreen() {
   const { tagId } = useLocalSearchParams<{ tagId?: string }>();
   const tags = useLibraryStore((s) => s.tags);
-  const addTag = useLibraryStore((s) => s.addTag);
+  const addTagPath = useLibraryStore((s) => s.addTagPath);
   const updateTag = useLibraryStore((s) => s.updateTag);
 
   const existing = useMemo(() => tags.find((t) => t.id === tagId), [tags, tagId]);
@@ -24,13 +24,7 @@ export default function TagEditorScreen() {
     if (existing) {
       updateTag(existing.id, { name: name.trim(), icon, color });
     } else {
-      addTag({
-        id: `tag-${Date.now()}`,
-        name: name.trim(),
-        parentId: null,
-        icon,
-        color,
-      });
+      addTagPath(name.split("/"), icon, color);
     }
     router.back();
   };
@@ -54,13 +48,20 @@ export default function TagEditorScreen() {
           <View style={[styles.previewIcon, { backgroundColor: color }]}>
             <Ionicons name={icon as any} size={28} color="#fff" />
           </View>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="Назва тега"
-            placeholderTextColor={colors.textMuted}
-            style={styles.nameInput}
-          />
+          <View style={{ flex: 1, gap: spacing.xs }}>
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              placeholder="Назва тега"
+              placeholderTextColor={colors.textMuted}
+              style={styles.nameInput}
+            />
+            {!existing && (
+              <Text style={styles.hint}>
+                Для вкладеного тега використайте "/", напр. "Розробка/React Native"
+              </Text>
+            )}
+          </View>
         </View>
 
         <View style={styles.section}>
@@ -156,13 +157,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   nameInput: {
-    flex: 1,
     backgroundColor: colors.surface,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: 12,
     color: colors.textPrimary,
     fontSize: 15,
+  },
+  hint: {
+    color: colors.textMuted,
+    fontSize: 11,
   },
   section: {
     gap: spacing.md,

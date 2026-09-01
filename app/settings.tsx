@@ -87,14 +87,17 @@ export default function SettingsScreen() {
         </Section>
 
         <View style={styles.listSection}>
-          <Pressable style={styles.listRow} onPress={() => router.push("/tag-editor")}>
+          <Pressable style={styles.listRow} onPress={() => router.push("/manage-tags")}>
             <Text style={styles.listRowLabel}>Редагувати теги</Text>
             <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
           </Pressable>
-          <View style={styles.listRow}>
+          <Pressable
+            style={[styles.listRow, styles.listRowLast]}
+            onPress={() => router.push({ pathname: "/", params: { unsorted: "1" } })}
+          >
             <Text style={styles.listRowLabel}>Невідсортоване</Text>
             <Text style={styles.listRowCount}>{unsortedCount}</Text>
-          </View>
+          </Pressable>
         </View>
       </View>
     </SafeAreaView>
@@ -245,6 +248,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
+  },
+  listRowLast: {
+    borderBottomWidth: 0,
   },
   listRowLabel: {
     color: colors.textPrimary,

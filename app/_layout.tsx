@@ -18,6 +18,7 @@ export default function RootLayout() {
         <Stack.Screen name="add-video" options={{ presentation: "modal" }} />
         <Stack.Screen name="video/[id]" />
         <Stack.Screen name="settings" />
+        <Stack.Screen name="manage-tags" />
         <Stack.Screen name="tag-editor" options={{ presentation: "modal" }} />
       </Stack>
     </SafeAreaProvider>
