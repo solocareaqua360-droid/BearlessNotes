@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -10,6 +10,8 @@ import { colors, radius, spacing } from "@/constants/theme";
 import { fetchVideoMeta, VideoMeta } from "@/services/videoMeta";
 import { useLibraryStore } from "@/store/useLibraryStore";
 import { WatchStatus } from "@/types";
+
+const META_FETCH_DEBOUNCE_MS = 500;
 
 export default function AddVideoScreen() {
   const tags = useLibraryStore((s) => s.tags);
@@ -21,20 +23,29 @@ export default function AddVideoScreen() {
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const handleUrlChange = async (text: string) => {
-    setUrl(text);
-    if (text.trim().length < 8) {
+  const latestRequestUrl = useRef<string | null>(null);
+
+  useEffect(() => {
+    const trimmed = url.trim();
+    if (trimmed.length < 8) {
       setMeta(null);
+      setLoading(false);
       return;
     }
+
     setLoading(true);
-    try {
-      const result = await fetchVideoMeta(text.trim());
-      setMeta(result);
-    } finally {
-      setLoading(false);
-    }
-  };
+    const timer = setTimeout(async () => {
+      latestRequestUrl.current = trimmed;
+      const result = await fetchVideoMeta(trimmed);
+      // Ignore a response for a link the user has since changed away from.
+      if (latestRequestUrl.current === trimmed) {
+        setMeta(result);
+        setLoading(false);
+      }
+    }, META_FETCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [url]);
 
   const toggleTag = (id: string) => {
     setSelectedTagIds((prev) =>
@@ -76,7 +87,7 @@ export default function AddVideoScreen() {
       <View style={styles.content}>
         <TextInput
           value={url}
-          onChangeText={handleUrlChange}
+          onChangeText={setUrl}
           placeholder="Встав посилання на YouTube або TikTok"
           placeholderTextColor={colors.textMuted}
           style={styles.input}
