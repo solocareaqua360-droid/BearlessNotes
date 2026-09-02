@@ -1,16 +1,16 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useMemo, useState } from "react";
-import { FlatList, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { SearchBar } from "@/components/SearchBar";
 import { colors, radius, spacing } from "@/constants/theme";
 import { Tag, Video } from "@/types";
 
-interface TagRow {
+type PanelMode = "filter" | "edit";
+
+interface TreeNode {
   tag: Tag;
-  depth: number;
-  videoCount: number;
-  hasChildren: boolean;
+  children: TreeNode[];
 }
 
 interface TagsDrawerProps {
@@ -18,43 +18,29 @@ interface TagsDrawerProps {
   onClose: () => void;
   tags: Tag[];
   videos: Video[];
-  /** Filter mode: checkboxes + multi-select instead of navigation. */
-  filterMode?: boolean;
-  selectedTagIds?: string[];
-  onChangeSelectedTagIds?: (ids: string[]) => void;
-  onCreateTag?: () => void;
-  /** Browse mode only: jump to the default (all videos) view. */
-  onSelectInbox?: () => void;
-  /** Browse mode only: jump to videos that have no tags at all. */
+  selectedTagIds: string[];
+  onChangeSelectedTagIds: (ids: string[]) => void;
   onSelectUnsorted?: () => void;
+  onCreateTag: () => void;
+  onEditTag: (tagId: string) => void;
+  onReparentTag: (tagId: string) => void;
+  onDeleteTag: (tagId: string, mode: "delete_videos" | "unsort_videos") => void;
+  /** Overrides the default "Показати N відео" label, e.g. for bulk-tagging. */
+  confirmLabel?: string;
+  /** Mode to reset to each time the drawer opens. Defaults to "filter". */
+  initialMode?: PanelMode;
 }
 
-function buildRows(tags: Tag[], videos: Video[], expanded: Set<string>): TagRow[] {
+function buildTree(tags: Tag[]): TreeNode[] {
   const byParent = new Map<string | null, Tag[]>();
   for (const tag of tags) {
     const list = byParent.get(tag.parentId) ?? [];
     list.push(tag);
     byParent.set(tag.parentId, list);
   }
-
-  const countFor = (tagId: string): number =>
-    videos.filter((v) => v.tagIds.includes(tagId)).length;
-
-  const rows: TagRow[] = [];
-
-  const walk = (parentId: string | null, depth: number) => {
-    const children = byParent.get(parentId) ?? [];
-    for (const tag of children) {
-      const hasChildren = (byParent.get(tag.id) ?? []).length > 0;
-      rows.push({ tag, depth, videoCount: countFor(tag.id), hasChildren });
-      if (hasChildren && expanded.has(tag.id)) {
-        walk(tag.id, depth + 1);
-      }
-    }
-  };
-
-  walk(null, 0);
-  return rows;
+  const build = (parentId: string | null): TreeNode[] =>
+    (byParent.get(parentId) ?? []).map((tag) => ({ tag, children: build(tag.id) }));
+  return build(null);
 }
 
 export function TagsDrawer({
@@ -62,23 +48,47 @@ export function TagsDrawer({
   onClose,
   tags,
   videos,
-  filterMode = false,
-  selectedTagIds = [],
+  selectedTagIds,
   onChangeSelectedTagIds,
-  onCreateTag,
-  onSelectInbox,
   onSelectUnsorted,
+  onCreateTag,
+  onEditTag,
+  onReparentTag,
+  onDeleteTag,
+  confirmLabel,
+  initialMode = "filter",
 }: TagsDrawerProps) {
   const [query, setQuery] = useState("");
+  const [mode, setMode] = useState<PanelMode>(initialMode);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [menuTagId, setMenuTagId] = useState<string | null>(null);
 
-  const filteredTags = useMemo(() => {
-    if (!query.trim()) return tags;
-    const q = query.trim().toLowerCase();
-    return tags.filter((t) => t.name.toLowerCase().includes(q));
-  }, [tags, query]);
+  useEffect(() => {
+    if (visible) {
+      setMode(initialMode);
+      setMenuTagId(null);
+    }
+  }, [visible, initialMode]);
 
-  const rows = useMemo(() => buildRows(filteredTags, videos, expanded), [filteredTags, videos, expanded]);
+  const countFor = (tagId: string) => videos.filter((v) => v.tagIds.includes(tagId)).length;
+  const unsortedCount = videos.filter((v) => v.tagIds.length === 0).length;
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const isSearching = normalizedQuery.length > 0;
+
+  const tree = useMemo(() => buildTree(tags), [tags]);
+
+  const searchMatches = useMemo(
+    () => (isSearching ? tags.filter((t) => t.name.toLowerCase().includes(normalizedQuery)) : []),
+    [tags, isSearching, normalizedQuery]
+  );
+
+  const toggleSelected = (id: string) => {
+    const next = selectedTagIds.includes(id)
+      ? selectedTagIds.filter((tagId) => tagId !== id)
+      : [...selectedTagIds, id];
+    onChangeSelectedTagIds(next);
+  };
 
   const toggleExpand = (id: string) => {
     setExpanded((prev) => {
@@ -89,16 +99,111 @@ export function TagsDrawer({
     });
   };
 
-  const toggleSelected = (id: string) => {
-    if (!onChangeSelectedTagIds) return;
-    const next = selectedTagIds.includes(id)
-      ? selectedTagIds.filter((tagId) => tagId !== id)
-      : [...selectedTagIds, id];
-    onChangeSelectedTagIds(next);
+  const openMenuFor = (tagId: string) => {
+    setMode("edit");
+    setMenuTagId(tagId);
+  };
+
+  const closeMenu = () => setMenuTagId(null);
+
+  const handleDelete = (tag: Tag) => {
+    closeMenu();
+    Alert.alert(
+      `Видалити тег "${tag.name}"?`,
+      "Підтеги видаляться разом з ним. Що зробити з пов'язаними відео?",
+      [
+        { text: "Скасувати", style: "cancel" },
+        { text: "Перенести в невідсортоване", onPress: () => onDeleteTag(tag.id, "unsort_videos") },
+        { text: "Видалити відео", style: "destructive", onPress: () => onDeleteTag(tag.id, "delete_videos") },
+      ]
+    );
+  };
+
+  const renderRow = (tag: Tag, depth: number, hasChildren: boolean) => {
+    const isSelected = selectedTagIds.includes(tag.id);
+    const isExpanded = expanded.has(tag.id);
+    const isMenuOpen = menuTagId === tag.id;
+
+    return (
+      <View key={tag.id}>
+        <Pressable
+          style={[styles.row, { paddingLeft: spacing.md + depth * spacing.xl }]}
+          onPress={() => toggleSelected(tag.id)}
+          onLongPress={() => openMenuFor(tag.id)}
+        >
+          {hasChildren ? (
+            <Pressable onPress={() => toggleExpand(tag.id)} hitSlop={8}>
+              <Ionicons
+                name={isExpanded ? "chevron-down" : "chevron-forward"}
+                size={14}
+                color={colors.textMuted}
+              />
+            </Pressable>
+          ) : depth > 0 ? null : (
+            <View style={{ width: 14 }} />
+          )}
+
+          <View style={[styles.iconBadge, { backgroundColor: tag.color }]}>
+            <Ionicons name={tag.icon as any} size={13} color="#fff" />
+          </View>
+
+          <Text style={styles.rowLabel} numberOfLines={1}>
+            {tag.name}
+          </Text>
+
+          <Ionicons
+            name={isSelected ? "checkbox" : "square-outline"}
+            size={20}
+            color={isSelected ? colors.iconDark : colors.border}
+          />
+          <Text style={styles.rowCount}>{countFor(tag.id)}</Text>
+        </Pressable>
+
+        {isMenuOpen && (
+          <View style={styles.menu}>
+            <Pressable
+              style={styles.menuItem}
+              onPress={() => {
+                closeMenu();
+                onEditTag(tag.id);
+              }}
+            >
+              <Ionicons name="create-outline" size={16} color={colors.textPrimary} />
+              <Text style={styles.menuLabel}>Перейменувати</Text>
+            </Pressable>
+            <Pressable
+              style={styles.menuItem}
+              onPress={() => {
+                closeMenu();
+                onReparentTag(tag.id);
+              }}
+            >
+              <Ionicons name="folder-outline" size={16} color={colors.textPrimary} />
+              <Text style={[styles.menuLabel, { flex: 1 }]}>Материнська папка</Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+            </Pressable>
+            <Pressable style={styles.menuItem} onPress={() => handleDelete(tag)}>
+              <Ionicons name="trash-outline" size={16} color={colors.danger} />
+              <Text style={[styles.menuLabel, { color: colors.danger }]}>Видалити</Text>
+            </Pressable>
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  const renderNode = (node: TreeNode, depth: number): JSX.Element[] => {
+    const hasChildren = node.children.length > 0;
+    const rows = [renderRow(node.tag, depth, hasChildren)];
+    if (hasChildren && expanded.has(node.tag.id)) {
+      for (const child of node.children) {
+        rows.push(...renderNode(child, depth + 1));
+      }
+    }
+    return rows;
   };
 
   const selectedTags = tags.filter((t) => selectedTagIds.includes(t.id));
-  const unsortedCount = videos.filter((v) => v.tagIds.length === 0).length;
   const matchingVideoCount = videos.filter((v) => v.tagIds.some((id) => selectedTagIds.includes(id))).length;
 
   return (
@@ -110,75 +215,61 @@ export function TagsDrawer({
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Теги</Text>
             <Pressable onPress={onClose} hitSlop={8}>
-              <Ionicons name="close" size={22} color={colors.textSecondary} />
+              <Ionicons name="close" size={22} color={colors.textMuted} />
+            </Pressable>
+          </View>
+
+          <View style={styles.segmented}>
+            <Pressable
+              style={[styles.segment, mode === "filter" && styles.segmentActive]}
+              onPress={() => {
+                setMode("filter");
+                closeMenu();
+              }}
+            >
+              <Text style={[styles.segmentLabel, mode === "filter" && styles.segmentLabelActive]}>
+                Фільтр
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.segment, mode === "edit" && styles.segmentActive]}
+              onPress={() => setMode("edit")}
+            >
+              <Text style={[styles.segmentLabel, mode === "edit" && styles.segmentLabelActive]}>
+                Редагування
+              </Text>
             </Pressable>
           </View>
 
           <SearchBar value={query} onChangeText={setQuery} placeholder="Пошук тегів" />
 
-          {!filterMode && (
-            <>
-              <Pressable
-                style={styles.specialRow}
-                onPress={onSelectInbox}
-                disabled={!onSelectInbox}
-              >
-                <Ionicons name="mail-unread-outline" size={16} color={colors.textSecondary} />
-                <Text style={styles.specialLabel}>Inbox</Text>
-              </Pressable>
-              <Pressable
-                style={styles.specialRow}
-                onPress={onSelectUnsorted}
-                disabled={!onSelectUnsorted}
-              >
-                <Ionicons name="help-circle-outline" size={16} color={colors.textSecondary} />
-                <Text style={styles.specialLabel}>Невідсортоване</Text>
-                <Text style={styles.specialCount}>{unsortedCount}</Text>
-              </Pressable>
-            </>
+          {!isSearching && (
+            <Pressable
+              style={styles.unsortedRow}
+              onPress={onSelectUnsorted}
+              disabled={!onSelectUnsorted}
+            >
+              <Ionicons name="help-circle-outline" size={16} color={colors.textSecondary} />
+              <Text style={styles.unsortedLabel}>Невідсортоване</Text>
+              <Text style={styles.rowCount}>{unsortedCount}</Text>
+            </Pressable>
           )}
 
-          <FlatList
-            data={rows}
-            keyExtractor={(row) => row.tag.id}
-            style={styles.list}
-            contentContainerStyle={{ paddingBottom: spacing.lg }}
-            renderItem={({ item }) => {
-              const isSelected = selectedTagIds.includes(item.tag.id);
-              return (
-                <Pressable
-                  style={[styles.row, { paddingLeft: spacing.sm + item.depth * spacing.lg }]}
-                  onPress={() =>
-                    filterMode ? toggleSelected(item.tag.id) : item.hasChildren && toggleExpand(item.tag.id)
-                  }
-                >
-                  {filterMode ? (
-                    <Ionicons
-                      name={isSelected ? "checkbox" : "square-outline"}
-                      size={18}
-                      color={isSelected ? colors.accent : colors.textMuted}
-                    />
-                  ) : item.hasChildren ? (
-                    <Ionicons
-                      name={expanded.has(item.tag.id) ? "chevron-down" : "chevron-forward"}
-                      size={16}
-                      color={colors.textMuted}
-                    />
-                  ) : (
-                    <View style={{ width: 16 }} />
-                  )}
+          <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
+            {isSearching
+              ? searchMatches.map((tag) => (
+                  <View key={tag.id} style={styles.card}>
+                    {renderRow(tag, 0, false)}
+                  </View>
+                ))
+              : tree.map((node) => (
+                  <View key={node.tag.id} style={styles.card}>
+                    {renderNode(node, 0)}
+                  </View>
+                ))}
+          </ScrollView>
 
-                  <Ionicons name={item.tag.icon as any} size={16} color={item.tag.color} />
-                  <Text style={styles.rowLabel} numberOfLines={1}>
-                    {item.tag.name}
-                  </Text>
-                  <Text style={styles.rowCount}>{item.videoCount}</Text>
-                </Pressable>
-              );
-            }}
-          />
-
-          {filterMode && selectedTags.length > 0 && (
+          {selectedTags.length > 0 && (
             <View style={styles.chipsRow}>
               {selectedTags.map((tag) => (
                 <View key={tag.id} style={[styles.selectedChip, { backgroundColor: `${tag.color}26` }]}>
@@ -188,16 +279,16 @@ export function TagsDrawer({
             </View>
           )}
 
-          {filterMode ? (
-            <Pressable style={styles.primaryButton} onPress={onClose}>
-              <Text style={styles.primaryButtonLabel}>Показати {matchingVideoCount} відео</Text>
-            </Pressable>
-          ) : (
-            <Pressable style={styles.primaryButton} onPress={onCreateTag}>
-              <Ionicons name="add" size={18} color="#fff" />
-              <Text style={styles.primaryButtonLabel}>Новий тег</Text>
-            </Pressable>
-          )}
+          <Pressable style={styles.createRow} onPress={onCreateTag}>
+            <Ionicons name="add" size={16} color={colors.iconDark} />
+            <Text style={styles.createLabel}>Новий тег</Text>
+          </Pressable>
+
+          <Pressable style={styles.primaryButton} onPress={onClose}>
+            <Text style={styles.primaryButtonLabel}>
+              {confirmLabel ?? `Показати ${matchingVideoCount} відео`}
+            </Text>
+          </Pressable>
         </View>
       </View>
     </Modal>
@@ -211,12 +302,12 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.35)",
   },
   panel: {
-    width: "82%",
+    width: "84%",
     maxWidth: 340,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.background,
     paddingTop: 60,
     paddingHorizontal: spacing.lg,
     gap: spacing.md,
@@ -228,32 +319,73 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     color: colors.textPrimary,
-    fontSize: 18,
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  segmented: {
+    flexDirection: "row",
+    backgroundColor: colors.pillInactive,
+    borderRadius: radius.pill,
+    padding: 4,
+  },
+  segment: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 9,
+    borderRadius: radius.pill,
+  },
+  segmentActive: {
+    backgroundColor: colors.surface,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  segmentLabel: {
+    color: colors.textSecondary,
+    fontSize: 13,
     fontWeight: "700",
   },
-  specialRow: {
+  segmentLabelActive: {
+    color: colors.textPrimary,
+  },
+  unsortedRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    paddingVertical: 6,
+    paddingVertical: 4,
   },
-  specialLabel: {
+  unsortedLabel: {
     color: colors.textSecondary,
     fontSize: 14,
     flex: 1,
   },
-  specialCount: {
-    color: colors.textMuted,
-    fontSize: 13,
-  },
   list: {
     flex: 1,
+  },
+  listContent: {
+    gap: spacing.sm,
+    paddingBottom: spacing.md,
+  },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    overflow: "hidden",
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    paddingVertical: 10,
+    paddingVertical: 11,
+    paddingRight: spacing.md,
+  },
+  iconBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
   },
   rowLabel: {
     color: colors.textPrimary,
@@ -263,6 +395,29 @@ const styles = StyleSheet.create({
   rowCount: {
     color: colors.textMuted,
     fontSize: 12,
+    minWidth: 14,
+    textAlign: "right",
+  },
+  menu: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.background,
+    borderRadius: radius.sm,
+    overflow: "hidden",
+  },
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  menuLabel: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: "600",
   },
   chipsRow: {
     flexDirection: "row",
@@ -278,18 +433,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
-  primaryButton: {
+  createRow: {
     flexDirection: "row",
     alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: 4,
+  },
+  createLabel: {
+    color: colors.iconDark,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  primaryButton: {
+    alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.neutralActive,
     borderRadius: radius.pill,
-    paddingVertical: 12,
+    paddingVertical: 14,
     marginBottom: spacing.lg,
   },
   primaryButtonLabel: {
-    color: "#fff",
+    color: colors.textPrimary,
     fontSize: 14,
     fontWeight: "700",
   },

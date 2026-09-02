@@ -4,25 +4,18 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { colors, radius } from "@/constants/theme";
 
 interface FloatingIslandProps {
-  onTagsPress: () => void;
   onSearchPress: () => void;
   onAddPress: () => void;
-  onFiltersPress: () => void;
+  onSettingsPress: () => void;
 }
 
-export function FloatingIsland({
-  onTagsPress,
-  onSearchPress,
-  onAddPress,
-  onFiltersPress,
-}: FloatingIslandProps) {
+export function FloatingIsland({ onSearchPress, onAddPress, onSettingsPress }: FloatingIslandProps) {
   return (
     <View style={styles.wrap} pointerEvents="box-none">
       <View style={styles.island}>
-        <IslandButton icon="pricetags-outline" onPress={onTagsPress} />
         <IslandButton icon="search" onPress={onSearchPress} />
         <IslandButton icon="add" onPress={onAddPress} accent />
-        <IslandButton icon="options-outline" onPress={onFiltersPress} />
+        <IslandButton icon="options-outline" onPress={onSettingsPress} />
       </View>
     </View>
   );
@@ -43,7 +36,11 @@ function IslandButton({
       style={[styles.button, accent && styles.buttonAccent]}
       hitSlop={8}
     >
-      <Ionicons name={icon} size={accent ? 26 : 20} color={accent ? "#fff" : colors.textPrimary} />
+      <Ionicons
+        name={icon}
+        size={accent ? 26 : 20}
+        color={colors.iconDark}
+      />
     </Pressable>
   );
 }
@@ -60,12 +57,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: colors.surfaceElevated,
+    backgroundColor: colors.surface,
     borderRadius: radius.pill,
     paddingHorizontal: 10,
     paddingVertical: 10,
     shadowColor: "#000",
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.14,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
     elevation: 10,
@@ -73,14 +70,14 @@ const styles = StyleSheet.create({
   button: {
     width: 46,
     height: 46,
-    borderRadius: 23,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
   },
   buttonAccent: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: colors.accent,
+    width: 54,
+    height: 54,
+    borderRadius: radius.pill,
+    backgroundColor: colors.neutralActive,
   },
 });

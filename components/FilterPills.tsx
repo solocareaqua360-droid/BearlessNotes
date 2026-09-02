@@ -7,7 +7,7 @@ export type StatusFilter = WatchStatus | "all";
 
 const OPTIONS: { key: StatusFilter; label: string }[] = [
   { key: "all", label: "Усі" },
-  { key: "planned", label: "Планую подивитись" },
+  { key: "planned", label: "Планую" },
   { key: "watched", label: "Переглянуто" },
 ];
 
@@ -41,20 +41,20 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   pill: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
     borderRadius: radius.pill,
     backgroundColor: colors.pillInactive,
   },
   pillActive: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.neutralActive,
   },
   label: {
     color: colors.textSecondary,
-    fontSize: 13,
-    fontWeight: "600",
+    fontSize: 14,
+    fontWeight: "700",
   },
   labelActive: {
-    color: "#fff",
+    color: colors.textPrimary,
   },
 });

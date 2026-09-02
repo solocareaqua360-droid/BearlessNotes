@@ -1,11 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { StatusToggle } from "@/components/StatusToggle";
-import { TagChip } from "@/components/TagChip";
+import { TagsDrawer } from "@/components/TagsDrawer";
 import { colors, radius, spacing } from "@/constants/theme";
 import { fetchVideoMeta, VideoMeta } from "@/services/videoMeta";
 import { useLibraryStore } from "@/store/useLibraryStore";
@@ -14,16 +14,24 @@ import { WatchStatus } from "@/types";
 const META_FETCH_DEBOUNCE_MS = 500;
 
 export default function AddVideoScreen() {
+  const { sharedUrl } = useLocalSearchParams<{ sharedUrl?: string }>();
   const tags = useLibraryStore((s) => s.tags);
+  const videos = useLibraryStore((s) => s.videos);
   const addVideo = useLibraryStore((s) => s.addVideo);
+  const removeTag = useLibraryStore((s) => s.removeTag);
 
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(sharedUrl ?? "");
   const [meta, setMeta] = useState<VideoMeta | null>(null);
   const [status, setStatus] = useState<WatchStatus>("planned");
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [tagsDrawerVisible, setTagsDrawerVisible] = useState(false);
 
   const latestRequestUrl = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (sharedUrl) setUrl(sharedUrl);
+  }, [sharedUrl]);
 
   useEffect(() => {
     const trimmed = url.trim();
@@ -46,12 +54,6 @@ export default function AddVideoScreen() {
 
     return () => clearTimeout(timer);
   }, [url]);
-
-  const toggleTag = (id: string) => {
-    setSelectedTagIds((prev) =>
-      prev.includes(id) ? prev.filter((tagId) => tagId !== id) : [...prev, id]
-    );
-  };
 
   const handleSave = () => {
     if (!url.trim()) return;
@@ -115,25 +117,43 @@ export default function AddVideoScreen() {
         <StatusToggle value={status} onChange={setStatus} />
 
         <View style={styles.tagsSection}>
-          <View style={styles.tagsRow}>
-            {tags.map((tag) => {
-              const selected = selectedTagIds.includes(tag.id);
-              return (
-                <Pressable key={tag.id} onPress={() => toggleTag(tag.id)} style={selected && styles.tagSelected}>
-                  <TagChip tag={tag} />
-                </Pressable>
-              );
-            })}
-            <Pressable
-              style={styles.addTagButton}
-              onPress={() => router.push("/tag-editor")}
-            >
-              <Ionicons name="add" size={16} color={colors.textSecondary} />
-              <Text style={styles.addTagLabel}>Новий тег</Text>
-            </Pressable>
-          </View>
+          <Text style={styles.tagsSectionLabel}>Теги</Text>
+          <Pressable style={styles.tagSelector} onPress={() => setTagsDrawerVisible(true)}>
+            <Text style={styles.tagSelectorText} numberOfLines={1}>
+              {selectedTagIds.length > 0
+                ? tags
+                    .filter((t) => selectedTagIds.includes(t.id))
+                    .map((t) => t.name)
+                    .join(", ")
+                : "Обрати теги"}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color={colors.textSecondary} />
+          </Pressable>
         </View>
       </View>
+
+      <TagsDrawer
+        visible={tagsDrawerVisible}
+        onClose={() => setTagsDrawerVisible(false)}
+        tags={tags}
+        videos={videos}
+        selectedTagIds={selectedTagIds}
+        onChangeSelectedTagIds={setSelectedTagIds}
+        onCreateTag={() => {
+          setTagsDrawerVisible(false);
+          router.push("/tag-editor");
+        }}
+        onEditTag={(tagId) => {
+          setTagsDrawerVisible(false);
+          router.push(`/tag-editor?tagId=${tagId}`);
+        }}
+        onReparentTag={(tagId) => {
+          setTagsDrawerVisible(false);
+          router.push(`/tag-reparent?tagId=${tagId}`);
+        }}
+        onDeleteTag={(tagId, mode) => removeTag(tagId, mode)}
+        confirmLabel="Готово"
+      />
     </SafeAreaView>
   );
 }
@@ -160,7 +180,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   headerSave: {
-    color: colors.accent,
+    color: colors.iconDark,
     fontWeight: "700",
   },
   disabled: {
@@ -210,27 +230,23 @@ const styles = StyleSheet.create({
   tagsSection: {
     gap: spacing.sm,
   },
-  tagsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
+  tagsSectionLabel: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: "600",
   },
-  tagSelected: {
-    opacity: 1,
-  },
-  addTagButton: {
+  tagSelector: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 5,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
+    justifyContent: "space-between",
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    height: 44,
   },
-  addTagLabel: {
-    color: colors.textSecondary,
-    fontSize: 12,
-    fontWeight: "600",
+  tagSelectorText: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontSize: 14,
   },
 });

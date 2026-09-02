@@ -6,6 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { StatusToggle } from "@/components/StatusToggle";
 import { TagChip } from "@/components/TagChip";
+import { TagsDrawer } from "@/components/TagsDrawer";
 import { colors, radius, spacing } from "@/constants/theme";
 import { useLibraryStore } from "@/store/useLibraryStore";
 
@@ -14,6 +15,7 @@ export default function VideoScreen() {
   const videos = useLibraryStore((s) => s.videos);
   const tags = useLibraryStore((s) => s.tags);
   const updateVideo = useLibraryStore((s) => s.updateVideo);
+  const removeTag = useLibraryStore((s) => s.removeTag);
 
   const video = useMemo(() => videos.find((v) => v.id === id), [videos, id]);
   const videoTags = useMemo(
@@ -21,7 +23,9 @@ export default function VideoScreen() {
     [tags, video]
   );
 
-  const [comment, setComment] = useState(video?.comment ?? "");
+  const [commentDraft, setCommentDraft] = useState(video?.comment ?? "");
+  const [titleDraft, setTitleDraft] = useState(video?.title ?? "");
+  const [tagsDrawerVisible, setTagsDrawerVisible] = useState(false);
 
   if (!video) {
     return (
@@ -30,6 +34,9 @@ export default function VideoScreen() {
       </SafeAreaView>
     );
   }
+
+  const commentChanged = commentDraft !== video.comment;
+  const titleChanged = titleDraft.trim().length > 0 && titleDraft !== video.title;
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
@@ -55,7 +62,23 @@ export default function VideoScreen() {
       </View>
 
       <View style={styles.body}>
-        <Text style={styles.title}>{video.title}</Text>
+        <View style={styles.titleRow}>
+          <TextInput
+            value={titleDraft}
+            onChangeText={setTitleDraft}
+            style={styles.titleInput}
+            multiline
+          />
+          <Pressable
+            style={[styles.saveButton, !titleChanged && styles.saveButtonDisabled]}
+            disabled={!titleChanged}
+            onPress={() => updateVideo(video.id, { title: titleDraft.trim() })}
+          >
+            <Text style={[styles.saveButtonLabel, !titleChanged && styles.saveButtonLabelDisabled]}>
+              Зберегти
+            </Text>
+          </Pressable>
+        </View>
 
         <StatusToggle
           value={video.status}
@@ -66,24 +89,57 @@ export default function VideoScreen() {
           {videoTags.map((tag) => (
             <TagChip key={tag.id} tag={tag} />
           ))}
-          <Pressable style={styles.addTagButton} onPress={() => router.push("/tag-editor")}>
+          <Pressable style={styles.addTagButton} onPress={() => setTagsDrawerVisible(true)}>
             <Ionicons name="add" size={16} color={colors.textSecondary} />
             <Text style={styles.addTagLabel}>Додати тег</Text>
           </Pressable>
         </View>
 
-        <TextInput
-          value={comment}
-          onChangeText={(text) => {
-            setComment(text);
-            updateVideo(video.id, { comment: text });
-          }}
-          placeholder="Коментар…"
-          placeholderTextColor={colors.textMuted}
-          style={styles.comment}
-          multiline
-        />
+        <View>
+          <TextInput
+            value={commentDraft}
+            onChangeText={setCommentDraft}
+            placeholder="Коментар…"
+            placeholderTextColor={colors.textMuted}
+            style={styles.comment}
+            multiline
+          />
+          <Pressable
+            style={[styles.commentSaveButton, !commentChanged && styles.saveButtonDisabled]}
+            disabled={!commentChanged}
+            onPress={() => updateVideo(video.id, { comment: commentDraft })}
+          >
+            <Text
+              style={[styles.saveButtonLabel, !commentChanged && styles.saveButtonLabelDisabled]}
+            >
+              Зберегти
+            </Text>
+          </Pressable>
+        </View>
       </View>
+
+      <TagsDrawer
+        visible={tagsDrawerVisible}
+        onClose={() => setTagsDrawerVisible(false)}
+        tags={tags}
+        videos={videos}
+        selectedTagIds={video.tagIds}
+        onChangeSelectedTagIds={(ids) => updateVideo(video.id, { tagIds: ids })}
+        onCreateTag={() => {
+          setTagsDrawerVisible(false);
+          router.push("/tag-editor");
+        }}
+        onEditTag={(tagId) => {
+          setTagsDrawerVisible(false);
+          router.push(`/tag-editor?tagId=${tagId}`);
+        }}
+        onReparentTag={(tagId) => {
+          setTagsDrawerVisible(false);
+          router.push(`/tag-reparent?tagId=${tagId}`);
+        }}
+        onDeleteTag={(tagId, mode) => removeTag(tagId, mode)}
+        confirmLabel="Готово"
+      />
     </SafeAreaView>
   );
 }
@@ -139,10 +195,42 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.lg,
   },
-  title: {
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+  },
+  titleInput: {
+    flex: 1,
     color: colors.textPrimary,
     fontSize: 18,
     fontWeight: "700",
+    padding: 0,
+  },
+  saveButton: {
+    backgroundColor: colors.neutralActive,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+  },
+  commentSaveButton: {
+    alignSelf: "flex-end",
+    backgroundColor: colors.neutralActive,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    marginTop: spacing.sm,
+  },
+  saveButtonDisabled: {
+    backgroundColor: colors.pillInactive,
+  },
+  saveButtonLabel: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  saveButtonLabelDisabled: {
+    color: colors.textMuted,
   },
   tagsRow: {
     flexDirection: "row",

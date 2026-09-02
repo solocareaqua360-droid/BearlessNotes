@@ -45,7 +45,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.pillInactive,
   },
   pillActive: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.neutralActive,
   },
   label: {
     color: colors.textSecondary,
@@ -53,6 +53,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   labelActive: {
-    color: "#fff",
+    color: colors.textPrimary,
   },
 });

@@ -19,6 +19,22 @@ export default function TagEditorScreen() {
   const [icon, setIcon] = useState(existing?.icon ?? tagIconOptions[0]);
   const [color, setColor] = useState(existing?.color ?? tagPalette[0]);
 
+  const currentSegment = name.split("/").pop()?.trim().toLowerCase() ?? "";
+  const suggestions = useMemo(() => {
+    if (existing || !currentSegment) return [];
+    return tags
+      .filter(
+        (t) => t.name.toLowerCase().includes(currentSegment) && t.name.toLowerCase() !== currentSegment
+      )
+      .slice(0, 5);
+  }, [tags, currentSegment, existing]);
+
+  const applySuggestion = (tagName: string) => {
+    const segments = name.split("/");
+    segments[segments.length - 1] = tagName;
+    setName(segments.join("/") + "/");
+  };
+
   const handleSave = () => {
     if (!name.trim()) return;
     if (existing) {
@@ -48,7 +64,7 @@ export default function TagEditorScreen() {
           <View style={[styles.previewIcon, { backgroundColor: color }]}>
             <Ionicons name={icon as any} size={28} color="#fff" />
           </View>
-          <View style={{ flex: 1, gap: spacing.xs }}>
+          <View style={{ flex: 1, gap: spacing.xs, position: "relative" }}>
             <TextInput
               value={name}
               onChangeText={setName}
@@ -56,10 +72,26 @@ export default function TagEditorScreen() {
               placeholderTextColor={colors.textMuted}
               style={styles.nameInput}
             />
-            {!existing && (
+            {!existing && suggestions.length === 0 && (
               <Text style={styles.hint}>
                 Для вкладеного тега використайте "/", напр. "Розробка/React Native"
               </Text>
+            )}
+            {suggestions.length > 0 && (
+              <View style={styles.suggestions}>
+                {suggestions.map((tag) => (
+                  <Pressable
+                    key={tag.id}
+                    style={styles.suggestionRow}
+                    onPress={() => applySuggestion(tag.name)}
+                  >
+                    <View style={[styles.suggestionIcon, { backgroundColor: tag.color }]}>
+                      <Ionicons name={tag.icon as any} size={12} color="#fff" />
+                    </View>
+                    <Text style={styles.suggestionLabel}>{tag.name}</Text>
+                  </Pressable>
+                ))}
+              </View>
             )}
           </View>
         </View>
@@ -134,7 +166,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   headerDone: {
-    color: colors.accent,
+    color: colors.iconDark,
     fontWeight: "700",
   },
   disabled: {
@@ -152,7 +184,7 @@ const styles = StyleSheet.create({
   previewIcon: {
     width: 64,
     height: 64,
-    borderRadius: radius.md,
+    borderRadius: 32,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -167,6 +199,40 @@ const styles = StyleSheet.create({
   hint: {
     color: colors.textMuted,
     fontSize: 11,
+  },
+  suggestions: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: "100%",
+    marginTop: 6,
+    backgroundColor: colors.surface,
+    borderRadius: radius.sm,
+    overflow: "hidden",
+    zIndex: 10,
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  suggestionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+  },
+  suggestionIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  suggestionLabel: {
+    color: colors.textPrimary,
+    fontSize: 13,
   },
   section: {
     gap: spacing.md,

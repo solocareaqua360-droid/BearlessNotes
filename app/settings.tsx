@@ -1,8 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { TagsDrawer } from "@/components/TagsDrawer";
 import { colors, radius, spacing } from "@/constants/theme";
 import { useLibraryStore } from "@/store/useLibraryStore";
 import { OpenVideoMode, ThemePreference } from "@/types";
@@ -22,6 +24,11 @@ export default function SettingsScreen() {
   const settings = useLibraryStore((s) => s.settings);
   const updateSettings = useLibraryStore((s) => s.updateSettings);
   const videos = useLibraryStore((s) => s.videos);
+  const tags = useLibraryStore((s) => s.tags);
+  const removeTag = useLibraryStore((s) => s.removeTag);
+
+  const [tagsDrawerVisible, setTagsDrawerVisible] = useState(false);
+  const [drawerSelection, setDrawerSelection] = useState<string[]>([]);
 
   const unsortedCount = videos.filter((v) => v.tagIds.length === 0).length;
 
@@ -87,7 +94,7 @@ export default function SettingsScreen() {
         </Section>
 
         <View style={styles.listSection}>
-          <Pressable style={styles.listRow} onPress={() => router.push("/manage-tags")}>
+          <Pressable style={styles.listRow} onPress={() => setTagsDrawerVisible(true)}>
             <Text style={styles.listRowLabel}>Редагувати теги</Text>
             <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
           </Pressable>
@@ -100,6 +107,30 @@ export default function SettingsScreen() {
           </Pressable>
         </View>
       </View>
+
+      <TagsDrawer
+        visible={tagsDrawerVisible}
+        onClose={() => setTagsDrawerVisible(false)}
+        tags={tags}
+        videos={videos}
+        selectedTagIds={drawerSelection}
+        onChangeSelectedTagIds={setDrawerSelection}
+        onCreateTag={() => {
+          setTagsDrawerVisible(false);
+          router.push("/tag-editor");
+        }}
+        onEditTag={(tagId) => {
+          setTagsDrawerVisible(false);
+          router.push(`/tag-editor?tagId=${tagId}`);
+        }}
+        onReparentTag={(tagId) => {
+          setTagsDrawerVisible(false);
+          router.push(`/tag-reparent?tagId=${tagId}`);
+        }}
+        onDeleteTag={(tagId, mode) => removeTag(tagId, mode)}
+        initialMode="edit"
+        confirmLabel="Готово"
+      />
     </SafeAreaView>
   );
 }
@@ -190,7 +221,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   signOut: {
-    color: colors.accent,
+    color: colors.iconDark,
     fontSize: 13,
     fontWeight: "700",
   },
@@ -214,7 +245,7 @@ const styles = StyleSheet.create({
   },
   segmented: {
     flexDirection: "row",
-    backgroundColor: colors.surface,
+    backgroundColor: colors.pillInactive,
     borderRadius: radius.pill,
     padding: 4,
   },
@@ -225,7 +256,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   segmentActive: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.surface,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   segmentLabel: {
     color: colors.textSecondary,
@@ -233,7 +269,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   segmentLabelActive: {
-    color: "#fff",
+    color: colors.textPrimary,
   },
   listSection: {
     backgroundColor: colors.surface,
