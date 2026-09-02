@@ -6,7 +6,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "backgroundColor": "#0B0B0F",
+    "backgroundColor": "#F2F2F5",
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
@@ -15,7 +15,7 @@
     "android": {
       "package": "com.bearlessnotes.app",
       "adaptiveIcon": {
-        "backgroundColor": "#0B0B0F"
+        "backgroundColor": "#F2F2F5"
       }
     },
     "web": {
