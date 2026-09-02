@@ -175,8 +175,12 @@ dev/production-білді.
 
 ## Архітектурні рішення
 
-- **Expo SDK + TypeScript**, навігація через **Expo Router** (file-based,
+- **Expo SDK 54 + TypeScript**, навігація через **Expo Router** (file-based,
   однаково працює на iOS/Android/web).
+- **`metro.config.js`**: вимикає `resolver.unstable_enablePackageExports`
+  (Metro за замовчуванням у SDK 54 резолвить ESM-збірку деяких пакетів,
+  напр. `zustand`, для веб-платформи замість CJS/react-native — це ламає
+  статичний веб-експорт через `import.meta`, якого немає в class-скриптах).
 - **Офлайн-перший стан**: `zustand` зі збереженням у
   `AsyncStorage` (`@react-native-async-storage/async-storage`) —
   єдине джерело правди локально; хмарна синхронізація (Firebase/Supabase)
