@@ -6,8 +6,6 @@ import { supabase } from "./supabaseClient";
 
 WebBrowser.maybeCompleteAuthSession();
 
-const redirectTo = Linking.createURL("auth-callback");
-
 async function createSessionFromUrl(url: string) {
   const { params, errorCode } = QueryParams.getQueryParams(url);
   if (errorCode) throw new Error(errorCode);
@@ -21,14 +19,23 @@ async function createSessionFromUrl(url: string) {
 }
 
 export async function signInWithGoogle() {
+  // Computed at call time (not module load) and logged: in Expo Go this is
+  // an exp:// URL, not the app's own "bearlessnotes://" scheme — Supabase's
+  // Redirect URLs allowlist must include it (e.g. "exp://**") or it silently
+  // refuses to redirect back after Google auth completes.
+  const redirectTo = Linking.createURL("auth-callback");
+  console.log("[auth] redirectTo:", redirectTo);
+
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: { redirectTo, skipBrowserRedirect: true },
   });
   if (error) throw error;
   if (!data?.url) throw new Error("Supabase не повернув посилання для входу");
+  console.log("[auth] authorize url:", data.url);
 
   const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+  console.log("[auth] browser result:", result.type);
   if (result.type !== "success" || !result.url) return null;
 
   return createSessionFromUrl(result.url);
