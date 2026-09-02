@@ -183,9 +183,30 @@ dev/production-білді.
   статичний веб-експорт через `import.meta`, якого немає в class-скриптах).
 - **Офлайн-перший стан**: `zustand` зі збереженням у
   `AsyncStorage` (`@react-native-async-storage/async-storage`) —
-  єдине джерело правди локально; хмарна синхронізація (Firebase/Supabase)
-  підключається пізніше як окремий шар над тим самим стором, не змінюючи
-  публічний API стору.
+  єдине джерело правди локально.
+- **Хмарна синхронізація (Supabase)**: `services/supabaseClient.ts` —
+  клієнт з publishable-ключем (безпечний для клієнтського коду; доступ до
+  рядків обмежує RLS, не секретність ключа). `services/auth.ts` — вхід
+  через Google по OAuth-редіректу (`supabase.auth.signInWithOAuth` +
+  `expo-web-browser` + власна схема `bearlessnotes://`), не потребує
+  окремого нативного Google SDK. `services/sync.ts` — синхронізація:
+  при вході або старті застосунку з активною сесією "молодший" бік
+  повністю приймає стан "старшого" (якщо на сервері вже є дані —
+  тягнемо їх локально; якщо сервер порожній — заливаємо туди локальні
+  дані), а далі кожна зміна `videos`/`tags` у сторі (через підписку на
+  `useLibraryStore`) з дебаунсом штовхається на сервер через
+  upsert+delete-решти (`reconcileTable`) — це не повноцінне
+  розв'язання конфліктів (немає merge за `updated_at`), а модель
+  "останній відкритий пристрій виграє": розрахована на один активний
+  пристрій одночасно, чого достатньо для особистого користування.
+  Таблиці й RLS-політики — `supabase/migrations/0001_init.sql`
+  (виконати вручну в SQL Editor консолі Supabase, бо в застосунку немає
+  service-role доступу для DDL). `AuthBootstrap` у `app/_layout.tsx`
+  відновлює сесію та стартує синхронізацію при запуску застосунку.
+  Клієнт Supabase явно вимикає збереження сесії під час серверного
+  рендеру статичного веб-експорту (`typeof window === "undefined"`) —
+  інакше `expo export --platform web` падає, бо в Node-процесі немає
+  `window`, який потрібен веб-реалізації AsyncStorage.
 - **Іконки**: `@expo/vector-icons` (Ionicons).
 - Стилі — `StyleSheet.create`, без сторонніх CSS-фреймворків, щоб
   мінімізувати залежності на старті.
@@ -227,6 +248,11 @@ constants/
   theme.ts                Кольори (One UI, світла тема), розміри, типографіка
 services/
   videoMeta.ts            Отримання прев'ю/назви/тривалості через oEmbed
+  supabaseClient.ts       Клієнт Supabase (publishable key, сесія через AsyncStorage)
+  auth.ts                 Вхід/вихід через Google (Supabase Auth OAuth-редірект)
+  sync.ts                 Синхронізація videos/tags зі Supabase (pull/push/автосинк)
+supabase/
+  migrations/0001_init.sql  Таблиці videos/tags + RLS-політики (виконати вручну в Supabase)
 ```
 
 ## Команди

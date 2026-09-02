@@ -1,11 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { TagsDrawer } from "@/components/TagsDrawer";
 import { colors, radius, spacing } from "@/constants/theme";
+import { signInWithGoogle, signOutOfSupabase } from "@/services/auth";
+import { initialSyncAfterSignIn, startAutoSync, stopAutoSync } from "@/services/sync";
 import { useLibraryStore } from "@/store/useLibraryStore";
 import { OpenVideoMode, ThemePreference } from "@/types";
 
@@ -29,8 +31,40 @@ export default function SettingsScreen() {
 
   const [tagsDrawerVisible, setTagsDrawerVisible] = useState(false);
   const [drawerSelection, setDrawerSelection] = useState<string[]>([]);
+  const [signingIn, setSigningIn] = useState(false);
 
   const unsortedCount = videos.filter((v) => v.tagIds.length === 0).length;
+
+  const handleSignIn = async () => {
+    setSigningIn(true);
+    try {
+      const session = await signInWithGoogle();
+      if (!session) return;
+
+      updateSettings({
+        account: {
+          email: session.user.email ?? "",
+          avatarUrl: session.user.user_metadata?.avatar_url ?? null,
+        },
+      });
+      await initialSyncAfterSignIn(session.user.id);
+      startAutoSync(session.user.id);
+    } catch (e) {
+      Alert.alert("Не вдалося увійти", e instanceof Error ? e.message : "Спробуйте ще раз");
+    } finally {
+      setSigningIn(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    stopAutoSync();
+    updateSettings({ account: null, lastSyncedAt: null });
+    try {
+      await signOutOfSupabase();
+    } catch {
+      // Local sign-out already happened; the Supabase session will just expire.
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
@@ -47,7 +81,11 @@ export default function SettingsScreen() {
           {settings.account ? (
             <>
               <View style={styles.accountIcon}>
-                <Ionicons name="person" size={20} color={colors.textPrimary} />
+                {settings.account.avatarUrl ? (
+                  <Image source={{ uri: settings.account.avatarUrl }} style={styles.accountAvatar} />
+                ) : (
+                  <Ionicons name="person" size={20} color={colors.textPrimary} />
+                )}
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.accountEmail}>{settings.account.email}</Text>
@@ -57,22 +95,20 @@ export default function SettingsScreen() {
                     : "Ще не синхронізовано"}
                 </Text>
               </View>
-              <Pressable onPress={() => updateSettings({ account: null, lastSyncedAt: null })}>
+              <Pressable onPress={handleSignOut}>
                 <Text style={styles.signOut}>Вийти</Text>
               </Pressable>
             </>
           ) : (
-            <Pressable
-              style={styles.signInRow}
-              onPress={() =>
-                updateSettings({
-                  account: { email: "user@gmail.com", avatarUrl: null },
-                  lastSyncedAt: Date.now(),
-                })
-              }
-            >
-              <Ionicons name="logo-google" size={20} color={colors.textPrimary} />
-              <Text style={styles.signInLabel}>Увійти через Google</Text>
+            <Pressable style={styles.signInRow} onPress={handleSignIn} disabled={signingIn}>
+              {signingIn ? (
+                <ActivityIndicator size="small" color={colors.textPrimary} />
+              ) : (
+                <Ionicons name="logo-google" size={20} color={colors.textPrimary} />
+              )}
+              <Text style={styles.signInLabel}>
+                {signingIn ? "Вхід…" : "Увійти через Google"}
+              </Text>
             </Pressable>
           )}
         </View>
@@ -209,6 +245,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceElevated,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
+  },
+  accountAvatar: {
+    width: 40,
+    height: 40,
   },
   accountEmail: {
     color: colors.textPrimary,
