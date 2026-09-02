@@ -1,7 +1,18 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import { useMemo, useState } from "react";
-import { Image, Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useMemo, useRef, useState } from "react";
+import {
+  Image,
+  KeyboardAvoidingView,
+  Linking,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { StatusToggle } from "@/components/StatusToggle";
@@ -23,9 +34,12 @@ export default function VideoScreen() {
     [tags, video]
   );
 
-  const [commentDraft, setCommentDraft] = useState(video?.comment ?? "");
+  const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(video?.title ?? "");
+  const [commentEditing, setCommentEditing] = useState(false);
+  const [commentDraft, setCommentDraft] = useState(video?.comment ?? "");
   const [tagsDrawerVisible, setTagsDrawerVisible] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   if (!video) {
     return (
@@ -35,8 +49,31 @@ export default function VideoScreen() {
     );
   }
 
-  const commentChanged = commentDraft !== video.comment;
-  const titleChanged = titleDraft.trim().length > 0 && titleDraft !== video.title;
+  const startTitleEdit = () => {
+    setTitleDraft(video.title);
+    setTitleEditing(true);
+  };
+
+  const saveTitle = () => {
+    const trimmed = titleDraft.trim();
+    if (trimmed) updateVideo(video.id, { title: trimmed });
+    setTitleEditing(false);
+  };
+
+  const startCommentEdit = () => {
+    setCommentDraft(video.comment);
+    setCommentEditing(true);
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
+  };
+
+  const saveComment = () => {
+    updateVideo(video.id, { comment: commentDraft });
+    setCommentEditing(false);
+  };
+
+  const removeVideoTag = (tagId: string) => {
+    updateVideo(video.id, { tagIds: video.tagIds.filter((id) => id !== tagId) });
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
@@ -50,73 +87,99 @@ export default function VideoScreen() {
         </Pressable>
       </View>
 
-      <View style={styles.playerWrap}>
-        {video.thumbnailUrl ? (
-          <Image source={{ uri: video.thumbnailUrl }} style={styles.player} />
-        ) : (
-          <View style={[styles.player, styles.playerPlaceholder]} />
-        )}
-        <View style={styles.playButton}>
-          <Ionicons name="play" size={30} color="#fff" style={{ marginLeft: 3 }} />
-        </View>
-      </View>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
+      >
+        <ScrollView
+          ref={scrollRef}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scrollContent}
+        >
+          <View style={styles.playerWrap}>
+            {video.thumbnailUrl ? (
+              <Image source={{ uri: video.thumbnailUrl }} style={styles.player} />
+            ) : (
+              <View style={[styles.player, styles.playerPlaceholder]} />
+            )}
+            <View style={styles.playButton}>
+              <Ionicons name="play" size={30} color="#fff" style={{ marginLeft: 3 }} />
+            </View>
+          </View>
 
-      <View style={styles.body}>
-        <View style={styles.titleRow}>
-          <TextInput
-            value={titleDraft}
-            onChangeText={setTitleDraft}
-            style={styles.titleInput}
-            multiline
-          />
-          <Pressable
-            style={[styles.saveButton, !titleChanged && styles.saveButtonDisabled]}
-            disabled={!titleChanged}
-            onPress={() => updateVideo(video.id, { title: titleDraft.trim() })}
-          >
-            <Text style={[styles.saveButtonLabel, !titleChanged && styles.saveButtonLabelDisabled]}>
-              Зберегти
-            </Text>
-          </Pressable>
-        </View>
+          <View style={styles.body}>
+            <View style={styles.titleRow}>
+              {titleEditing ? (
+                <TextInput
+                  value={titleDraft}
+                  onChangeText={setTitleDraft}
+                  style={[styles.titleText, styles.titleInputActive]}
+                  multiline
+                  autoFocus
+                />
+              ) : (
+                <Text style={styles.titleText}>{video.title}</Text>
+              )}
+              <Pressable
+                style={styles.editButton}
+                onPress={titleEditing ? saveTitle : startTitleEdit}
+              >
+                {!titleEditing && <Ionicons name="pencil" size={12} color={colors.iconDark} />}
+                <Text style={styles.editButtonLabel}>
+                  {titleEditing ? "Готово" : "Редагувати"}
+                </Text>
+              </Pressable>
+            </View>
 
-        <StatusToggle
-          value={video.status}
-          onChange={(status) => updateVideo(video.id, { status })}
-        />
+            <StatusToggle
+              value={video.status}
+              onChange={(status) => updateVideo(video.id, { status })}
+            />
 
-        <View style={styles.tagsRow}>
-          {videoTags.map((tag) => (
-            <TagChip key={tag.id} tag={tag} />
-          ))}
-          <Pressable style={styles.addTagButton} onPress={() => setTagsDrawerVisible(true)}>
-            <Ionicons name="add" size={16} color={colors.textSecondary} />
-            <Text style={styles.addTagLabel}>Додати тег</Text>
-          </Pressable>
-        </View>
+            <View style={styles.tagsRow}>
+              {videoTags.map((tag) => (
+                <TagChip key={tag.id} tag={tag} onRemove={() => removeVideoTag(tag.id)} />
+              ))}
+              <Pressable style={styles.addTagButton} onPress={() => setTagsDrawerVisible(true)}>
+                <Ionicons name="add" size={16} color={colors.textSecondary} />
+                <Text style={styles.addTagLabel}>Додати тег</Text>
+              </Pressable>
+            </View>
 
-        <View>
-          <TextInput
-            value={commentDraft}
-            onChangeText={setCommentDraft}
-            placeholder="Коментар…"
-            placeholderTextColor={colors.textMuted}
-            style={styles.comment}
-            multiline
-          />
-          <Pressable
-            style={[styles.commentSaveButton, !commentChanged && styles.saveButtonDisabled]}
-            disabled={!commentChanged}
-            onPress={() => updateVideo(video.id, { comment: commentDraft })}
-          >
-            <Text
-              style={[styles.saveButtonLabel, !commentChanged && styles.saveButtonLabelDisabled]}
-            >
-              Зберегти
-            </Text>
-          </Pressable>
-        </View>
-      </View>
+            <View>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionLabel}>Коментар</Text>
+                <Pressable
+                  style={styles.editButton}
+                  onPress={commentEditing ? saveComment : startCommentEdit}
+                >
+                  {!commentEditing && <Ionicons name="pencil" size={12} color={colors.iconDark} />}
+                  <Text style={styles.editButtonLabel}>
+                    {commentEditing ? "Зберегти" : "Редагувати"}
+                  </Text>
+                </Pressable>
+              </View>
+
+              {commentEditing ? (
+                <TextInput
+                  value={commentDraft}
+                  onChangeText={setCommentDraft}
+                  placeholder="Коментар…"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.comment}
+                  multiline
+                  autoFocus
+                />
+              ) : (
+                <Text style={video.comment ? styles.commentText : styles.commentPlaceholder}>
+                  {video.comment || "Коментар відсутній"}
+                </Text>
+              )}
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       <TagsDrawer
         visible={tagsDrawerVisible}
@@ -138,6 +201,10 @@ export default function VideoScreen() {
           router.push(`/tag-reparent?tagId=${tagId}`);
         }}
         onDeleteTag={(tagId, mode) => removeTag(tagId, mode)}
+        onBulkReparentTags={(tagIds) => {
+          setTagsDrawerVisible(false);
+          router.push(`/tag-reparent?tagIds=${tagIds.join(",")}`);
+        }}
         confirmLabel="Готово"
       />
     </SafeAreaView>
@@ -148,6 +215,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  flex: {
+    flex: 1,
   },
   notFound: {
     color: colors.textSecondary,
@@ -165,6 +235,9 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 16,
     fontWeight: "700",
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   playerWrap: {
     width: "100%",
@@ -200,37 +273,29 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: spacing.sm,
   },
-  titleInput: {
+  titleText: {
     flex: 1,
     color: colors.textPrimary,
     fontSize: 18,
     fontWeight: "700",
+    lineHeight: 24,
+  },
+  titleInputActive: {
     padding: 0,
   },
-  saveButton: {
+  editButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
     backgroundColor: colors.neutralActive,
     borderRadius: radius.pill,
     paddingHorizontal: spacing.md,
     paddingVertical: 8,
   },
-  commentSaveButton: {
-    alignSelf: "flex-end",
-    backgroundColor: colors.neutralActive,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 8,
-    marginTop: spacing.sm,
-  },
-  saveButtonDisabled: {
-    backgroundColor: colors.pillInactive,
-  },
-  saveButtonLabel: {
+  editButtonLabel: {
     color: colors.textPrimary,
     fontSize: 13,
     fontWeight: "700",
-  },
-  saveButtonLabelDisabled: {
-    color: colors.textMuted,
   },
   tagsRow: {
     flexDirection: "row",
@@ -253,8 +318,37 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacing.sm,
+  },
+  sectionLabel: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  commentText: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    lineHeight: 19,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  commentPlaceholder: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontStyle: "italic",
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
   comment: {
     backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: colors.textPrimary,
     borderRadius: radius.md,
     padding: spacing.md,
     color: colors.textPrimary,

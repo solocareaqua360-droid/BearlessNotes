@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
-import { FlatList, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, FlatList, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { FilterPills, StatusFilter } from "@/components/FilterPills";
@@ -22,7 +22,8 @@ export default function HomeScreen() {
   const tags = useLibraryStore((s) => s.tags);
   const settings = useLibraryStore((s) => s.settings);
   const removeTag = useLibraryStore((s) => s.removeTag);
-  const updateVideo = useLibraryStore((s) => s.updateVideo);
+  const removeVideos = useLibraryStore((s) => s.removeVideos);
+  const setBulkTagsOnVideos = useLibraryStore((s) => s.setBulkTagsOnVideos);
 
   const [status, setStatus] = useState<StatusFilter>("all");
   const [query, setQuery] = useState("");
@@ -34,7 +35,6 @@ export default function HomeScreen() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedVideoIds, setSelectedVideoIds] = useState<string[]>([]);
   const [bulkTagDrawerVisible, setBulkTagDrawerVisible] = useState(false);
-  const [bulkTagIds, setBulkTagIds] = useState<string[]>([]);
 
   const tagsById = useMemo(() => new Map(tags.map((t) => [t.id, t])), [tags]);
 
@@ -78,16 +78,40 @@ export default function HomeScreen() {
     setSelectedVideoIds([]);
   };
 
-  const applyBulkTags = () => {
+  const bulkPresentTagIds = useMemo(() => {
+    const set = new Set<string>();
     for (const videoId of selectedVideoIds) {
       const video = videos.find((v) => v.id === videoId);
-      if (!video) continue;
-      const merged = Array.from(new Set([...video.tagIds, ...bulkTagIds]));
-      updateVideo(videoId, { tagIds: merged });
+      video?.tagIds.forEach((id) => set.add(id));
     }
-    setBulkTagDrawerVisible(false);
-    setBulkTagIds([]);
-    cancelSelection();
+    return Array.from(set);
+  }, [selectedVideoIds, videos]);
+
+  const handleBulkTagsChange = (nextIds: string[]) => {
+    const nextSet = new Set(nextIds);
+    const prevSet = new Set(bulkPresentTagIds);
+    const addTagIds = nextIds.filter((id) => !prevSet.has(id));
+    const removeTagIds = bulkPresentTagIds.filter((id) => !nextSet.has(id));
+    if (addTagIds.length === 0 && removeTagIds.length === 0) return;
+    setBulkTagsOnVideos(selectedVideoIds, addTagIds, removeTagIds);
+  };
+
+  const handleBulkDeleteVideos = () => {
+    Alert.alert(
+      `Видалити ${selectedVideoIds.length} відео?`,
+      "Цю дію не можна скасувати.",
+      [
+        { text: "Скасувати", style: "cancel" },
+        {
+          text: "Видалити",
+          style: "destructive",
+          onPress: () => {
+            removeVideos(selectedVideoIds);
+            cancelSelection();
+          },
+        },
+      ]
+    );
   };
 
   const handleClearSearch = () => setQuery("");
@@ -169,13 +193,30 @@ export default function HomeScreen() {
 
       {selectionMode ? (
         <View style={styles.selectionBar}>
-          <Pressable onPress={cancelSelection}>
-            <Text style={styles.selectionCancel}>Скасувати</Text>
-          </Pressable>
-          <Text style={styles.selectionCount}>Обрано: {selectedVideoIds.length}</Text>
-          <Pressable style={styles.selectionAddTagButton} onPress={() => setBulkTagDrawerVisible(true)}>
-            <Text style={styles.selectionAddTagLabel}>Додати тег</Text>
-          </Pressable>
+          <View style={styles.selectionTopRow}>
+            <Pressable onPress={cancelSelection}>
+              <Text style={styles.selectionCancel}>Скасувати</Text>
+            </Pressable>
+            <Text style={styles.selectionCount}>Обрано: {selectedVideoIds.length}</Text>
+          </View>
+          <View style={styles.selectionActionsRow}>
+            <Pressable
+              style={styles.selectionActionButton}
+              onPress={() => setBulkTagDrawerVisible(true)}
+            >
+              <Ionicons name="pricetag-outline" size={15} color={colors.iconDark} />
+              <Text style={styles.selectionActionLabel}>Редагувати теги</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.selectionActionButton, styles.selectionActionDanger]}
+              onPress={handleBulkDeleteVideos}
+            >
+              <Ionicons name="trash-outline" size={15} color={colors.danger} />
+              <Text style={[styles.selectionActionLabel, styles.selectionActionDangerLabel]}>
+                Видалити
+              </Text>
+            </Pressable>
+          </View>
         </View>
       ) : (
         <>
@@ -203,6 +244,7 @@ export default function HomeScreen() {
           setActiveTagIds([]);
           setTagsDrawerVisible(false);
         }}
+        unsortedSelected={unsortedOnly}
         onCreateTag={() => {
           setTagsDrawerVisible(false);
           router.push("/tag-editor");
@@ -216,20 +258,28 @@ export default function HomeScreen() {
           router.push(`/tag-reparent?tagId=${tagId}`);
         }}
         onDeleteTag={(tagId, mode) => removeTag(tagId, mode)}
+        onBulkReparentTags={(tagIds) => {
+          setTagsDrawerVisible(false);
+          router.push(`/tag-reparent?tagIds=${tagIds.join(",")}`);
+        }}
       />
 
       <TagsDrawer
         visible={bulkTagDrawerVisible}
-        onClose={applyBulkTags}
+        onClose={() => setBulkTagDrawerVisible(false)}
         tags={tags}
         videos={videos}
-        selectedTagIds={bulkTagIds}
-        onChangeSelectedTagIds={setBulkTagIds}
+        selectedTagIds={bulkPresentTagIds}
+        onChangeSelectedTagIds={handleBulkTagsChange}
         onCreateTag={() => router.push("/tag-editor")}
         onEditTag={(tagId) => router.push(`/tag-editor?tagId=${tagId}`)}
         onReparentTag={(tagId) => router.push(`/tag-reparent?tagId=${tagId}`)}
         onDeleteTag={(tagId, mode) => removeTag(tagId, mode)}
-        confirmLabel={`Застосувати до ${selectedVideoIds.length} відео`}
+        onBulkReparentTags={(tagIds) => {
+          setBulkTagDrawerVisible(false);
+          router.push(`/tag-reparent?tagIds=${tagIds.join(",")}`);
+        }}
+        confirmLabel="Готово"
       />
     </SafeAreaView>
   );
@@ -313,6 +363,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.xl,
+    gap: spacing.sm,
+  },
+  selectionTopRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -327,15 +380,29 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
   },
-  selectionAddTagButton: {
+  selectionActionsRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  selectionActionButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
     backgroundColor: colors.neutralActive,
     borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 9,
+    paddingVertical: 12,
   },
-  selectionAddTagLabel: {
+  selectionActionDanger: {
+    backgroundColor: "#FBEAE9",
+  },
+  selectionActionLabel: {
     color: colors.textPrimary,
     fontSize: 13,
     fontWeight: "700",
+  },
+  selectionActionDangerLabel: {
+    color: colors.danger,
   },
 });

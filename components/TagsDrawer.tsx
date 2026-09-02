@@ -1,12 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
-import { JSX, useEffect, useMemo, useState } from "react";
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { BlurView } from "expo-blur";
+import { JSX, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Animated, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { SearchBar } from "@/components/SearchBar";
 import { colors, radius, spacing } from "@/constants/theme";
 import { Tag, Video } from "@/types";
 
 type PanelMode = "filter" | "edit";
+
+const PANEL_TRANSLATE = 360;
 
 interface TreeNode {
   tag: Tag;
@@ -21,10 +24,15 @@ interface TagsDrawerProps {
   selectedTagIds: string[];
   onChangeSelectedTagIds: (ids: string[]) => void;
   onSelectUnsorted?: () => void;
+  /** Whether "Невідсортоване" is the currently active filter. */
+  unsortedSelected?: boolean;
   onCreateTag: () => void;
   onEditTag: (tagId: string) => void;
   onReparentTag: (tagId: string) => void;
   onDeleteTag: (tagId: string, mode: "delete_videos" | "unsort_videos") => void;
+  /** In "Редагування" mode, selecting several tags' checkboxes opens a bulk
+   * move action instead of the single-tag "Материнська папка" menu item. */
+  onBulkReparentTags?: (tagIds: string[]) => void;
   /** Overrides the default "Показати N відео" label, e.g. for bulk-tagging. */
   confirmLabel?: string;
   /** Mode to reset to each time the drawer opens. Defaults to "filter". */
@@ -51,10 +59,12 @@ export function TagsDrawer({
   selectedTagIds,
   onChangeSelectedTagIds,
   onSelectUnsorted,
+  unsortedSelected,
   onCreateTag,
   onEditTag,
   onReparentTag,
   onDeleteTag,
+  onBulkReparentTags,
   confirmLabel,
   initialMode = "filter",
 }: TagsDrawerProps) {
@@ -62,13 +72,26 @@ export function TagsDrawer({
   const [mode, setMode] = useState<PanelMode>(initialMode);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [menuTagId, setMenuTagId] = useState<string | null>(null);
+  const [bulkEditTagIds, setBulkEditTagIds] = useState<Set<string>>(new Set());
+
+  const [mounted, setMounted] = useState(visible);
+  const progress = useRef(new Animated.Value(visible ? 1 : 0)).current;
 
   useEffect(() => {
     if (visible) {
       setMode(initialMode);
       setMenuTagId(null);
+      setBulkEditTagIds(new Set());
+      setMounted(true);
+      Animated.timing(progress, { toValue: 1, duration: 260, useNativeDriver: true }).start();
+    } else {
+      Animated.timing(progress, { toValue: 0, duration: 220, useNativeDriver: true }).start(
+        ({ finished }) => {
+          if (finished) setMounted(false);
+        }
+      );
     }
-  }, [visible, initialMode]);
+  }, [visible, initialMode, progress]);
 
   const countFor = (tagId: string) => videos.filter((v) => v.tagIds.includes(tagId)).length;
   const unsortedCount = videos.filter((v) => v.tagIds.length === 0).length;
@@ -88,6 +111,15 @@ export function TagsDrawer({
       ? selectedTagIds.filter((tagId) => tagId !== id)
       : [...selectedTagIds, id];
     onChangeSelectedTagIds(next);
+  };
+
+  const toggleBulkEditSelected = (id: string) => {
+    setBulkEditTagIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const toggleExpand = (id: string) => {
@@ -119,8 +151,42 @@ export function TagsDrawer({
     );
   };
 
+  const handleBulkMove = () => {
+    const ids = Array.from(bulkEditTagIds);
+    setBulkEditTagIds(new Set());
+    onBulkReparentTags?.(ids);
+  };
+
+  const handleBulkDelete = () => {
+    const ids = Array.from(bulkEditTagIds);
+    Alert.alert(
+      `Видалити ${ids.length} тегів?`,
+      "Підтеги видаляться разом з ними. Що зробити з пов'язаними відео?",
+      [
+        { text: "Скасувати", style: "cancel" },
+        {
+          text: "Перенести в невідсортоване",
+          onPress: () => {
+            ids.forEach((id) => onDeleteTag(id, "unsort_videos"));
+            setBulkEditTagIds(new Set());
+          },
+        },
+        {
+          text: "Видалити відео",
+          style: "destructive",
+          onPress: () => {
+            ids.forEach((id) => onDeleteTag(id, "delete_videos"));
+            setBulkEditTagIds(new Set());
+          },
+        },
+      ]
+    );
+  };
+
   const renderRow = (tag: Tag, depth: number, hasChildren: boolean) => {
-    const isSelected = selectedTagIds.includes(tag.id);
+    const isFilterSelected = selectedTagIds.includes(tag.id);
+    const isBulkSelected = bulkEditTagIds.has(tag.id);
+    const isChecked = mode === "edit" ? isBulkSelected : isFilterSelected;
     const isExpanded = expanded.has(tag.id);
     const isMenuOpen = menuTagId === tag.id;
 
@@ -128,7 +194,7 @@ export function TagsDrawer({
       <View key={tag.id}>
         <Pressable
           style={[styles.row, { paddingLeft: spacing.md + depth * spacing.xl }]}
-          onPress={() => toggleSelected(tag.id)}
+          onPress={() => (mode === "edit" ? toggleBulkEditSelected(tag.id) : toggleSelected(tag.id))}
           onLongPress={() => openMenuFor(tag.id)}
         >
           {hasChildren ? (
@@ -152,9 +218,9 @@ export function TagsDrawer({
           </Text>
 
           <Ionicons
-            name={isSelected ? "checkbox" : "square-outline"}
+            name={isChecked ? "checkbox" : "square-outline"}
             size={20}
-            color={isSelected ? colors.iconDark : colors.border}
+            color={isChecked ? colors.iconDark : colors.border}
           />
           <Text style={styles.rowCount}>{countFor(tag.id)}</Text>
         </Pressable>
@@ -186,6 +252,10 @@ export function TagsDrawer({
               <Ionicons name="trash-outline" size={16} color={colors.danger} />
               <Text style={[styles.menuLabel, { color: colors.danger }]}>Видалити</Text>
             </Pressable>
+            <Pressable style={[styles.menuItem, styles.menuItemLast]} onPress={closeMenu}>
+              <Ionicons name="close-outline" size={16} color={colors.textMuted} />
+              <Text style={[styles.menuLabel, { color: colors.textMuted }]}>Скасувати</Text>
+            </Pressable>
           </View>
         )}
       </View>
@@ -205,13 +275,26 @@ export function TagsDrawer({
 
   const selectedTags = tags.filter((t) => selectedTagIds.includes(t.id));
   const matchingVideoCount = videos.filter((v) => v.tagIds.some((id) => selectedTagIds.includes(id))).length;
+  const bulkEditCount = bulkEditTagIds.size;
+  const showBulkEditBar = mode === "edit" && bulkEditCount > 0;
+
+  const translateX = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-PANEL_TRANSLATE, 0],
+  });
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <Pressable style={styles.backdrop} onPress={onClose} />
+        <Animated.View
+          style={[styles.backdrop, { opacity: progress }]}
+          pointerEvents={visible ? "auto" : "none"}
+        >
+          <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        </Animated.View>
 
-        <View style={styles.panel}>
+        <Animated.View style={[styles.panel, { transform: [{ translateX }] }]}>
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Теги</Text>
             <Pressable onPress={onClose} hitSlop={8}>
@@ -225,6 +308,7 @@ export function TagsDrawer({
               onPress={() => {
                 setMode("filter");
                 closeMenu();
+                setBulkEditTagIds(new Set());
               }}
             >
               <Text style={[styles.segmentLabel, mode === "filter" && styles.segmentLabelActive]}>
@@ -243,19 +327,31 @@ export function TagsDrawer({
 
           <SearchBar value={query} onChangeText={setQuery} placeholder="Пошук тегів" />
 
-          {!isSearching && (
-            <Pressable
-              style={styles.unsortedRow}
-              onPress={onSelectUnsorted}
-              disabled={!onSelectUnsorted}
-            >
-              <Ionicons name="help-circle-outline" size={16} color={colors.textSecondary} />
-              <Text style={styles.unsortedLabel}>Невідсортоване</Text>
-              <Text style={styles.rowCount}>{unsortedCount}</Text>
-            </Pressable>
-          )}
-
           <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
+            {!isSearching && (
+              <View style={styles.card}>
+                <Pressable
+                  style={[styles.row, { paddingLeft: spacing.md }]}
+                  onPress={onSelectUnsorted}
+                  disabled={!onSelectUnsorted}
+                >
+                  <View style={{ width: 14 }} />
+                  <View style={[styles.iconBadge, { backgroundColor: colors.neutralActive }]}>
+                    <Ionicons name="arrow-down" size={13} color={colors.iconDark} />
+                  </View>
+                  <Text style={styles.rowLabel} numberOfLines={1}>
+                    Невідсортоване
+                  </Text>
+                  <Ionicons
+                    name={unsortedSelected ? "checkbox" : "square-outline"}
+                    size={20}
+                    color={unsortedSelected ? colors.iconDark : colors.border}
+                  />
+                  <Text style={styles.rowCount}>{unsortedCount}</Text>
+                </Pressable>
+              </View>
+            )}
+
             {isSearching
               ? searchMatches.map((tag) => (
                   <View key={tag.id} style={styles.card}>
@@ -269,7 +365,7 @@ export function TagsDrawer({
                 ))}
           </ScrollView>
 
-          {selectedTags.length > 0 && (
+          {selectedTags.length > 0 && mode === "filter" && (
             <View style={styles.chipsRow}>
               {selectedTags.map((tag) => (
                 <View key={tag.id} style={[styles.selectedChip, { backgroundColor: `${tag.color}26` }]}>
@@ -279,17 +375,40 @@ export function TagsDrawer({
             </View>
           )}
 
-          <Pressable style={styles.createRow} onPress={onCreateTag}>
-            <Ionicons name="add" size={16} color={colors.iconDark} />
-            <Text style={styles.createLabel}>Новий тег</Text>
-          </Pressable>
+          {!showBulkEditBar && (
+            <Pressable style={styles.createRow} onPress={onCreateTag}>
+              <Ionicons name="add" size={16} color={colors.iconDark} />
+              <Text style={styles.createLabel}>Новий тег</Text>
+            </Pressable>
+          )}
 
-          <Pressable style={styles.primaryButton} onPress={onClose}>
-            <Text style={styles.primaryButtonLabel}>
-              {confirmLabel ?? `Показати ${matchingVideoCount} відео`}
-            </Text>
-          </Pressable>
-        </View>
+          {showBulkEditBar ? (
+            <>
+              <Text style={styles.bulkHint}>
+                Чекбокс вибирає теги для масової дії ({bulkEditCount})
+              </Text>
+              <View style={styles.bulkActionsRow}>
+                <Pressable style={styles.bulkActionButton} onPress={handleBulkMove}>
+                  <Text style={styles.bulkActionLabel}>Перенести ({bulkEditCount})</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.bulkActionButton, styles.bulkActionDanger]}
+                  onPress={handleBulkDelete}
+                >
+                  <Text style={[styles.bulkActionLabel, styles.bulkActionDangerLabel]}>
+                    Видалити ({bulkEditCount})
+                  </Text>
+                </Pressable>
+              </View>
+            </>
+          ) : (
+            <Pressable style={styles.primaryButton} onPress={onClose}>
+              <Text style={styles.primaryButtonLabel}>
+                {confirmLabel ?? `Показати ${matchingVideoCount} відео`}
+              </Text>
+            </Pressable>
+          )}
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -298,13 +417,15 @@ export function TagsDrawer({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    flexDirection: "row",
   },
   backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.35)",
+    ...StyleSheet.absoluteFillObject,
   },
   panel: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
     width: "84%",
     maxWidth: 340,
     backgroundColor: colors.background,
@@ -349,17 +470,6 @@ const styles = StyleSheet.create({
   },
   segmentLabelActive: {
     color: colors.textPrimary,
-  },
-  unsortedRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: 4,
-  },
-  unsortedLabel: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    flex: 1,
   },
   list: {
     flex: 1,
@@ -414,6 +524,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
+  menuItemLast: {
+    borderBottomWidth: 0,
+  },
   menuLabel: {
     color: colors.textPrimary,
     fontSize: 14,
@@ -443,6 +556,35 @@ const styles = StyleSheet.create({
     color: colors.iconDark,
     fontSize: 14,
     fontWeight: "700",
+  },
+  bulkHint: {
+    color: colors.textMuted,
+    fontSize: 11,
+    textAlign: "center",
+  },
+  bulkActionsRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  bulkActionButton: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.neutralActive,
+    borderRadius: radius.pill,
+    paddingVertical: 14,
+  },
+  bulkActionDanger: {
+    backgroundColor: "#FBEAE9",
+  },
+  bulkActionLabel: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  bulkActionDangerLabel: {
+    color: colors.danger,
   },
   primaryButton: {
     alignItems: "center",

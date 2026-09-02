@@ -164,6 +164,10 @@ export default function SettingsScreen() {
           router.push(`/tag-reparent?tagId=${tagId}`);
         }}
         onDeleteTag={(tagId, mode) => removeTag(tagId, mode)}
+        onBulkReparentTags={(tagIds) => {
+          setTagsDrawerVisible(false);
+          router.push(`/tag-reparent?tagIds=${tagIds.join(",")}`);
+        }}
         initialMode="edit"
         confirmLabel="Готово"
       />

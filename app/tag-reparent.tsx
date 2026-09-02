@@ -21,16 +21,21 @@ function fullPath(tag: Tag, byId: Map<string, Tag>): string {
 }
 
 export default function TagReparentScreen() {
-  const { tagId } = useLocalSearchParams<{ tagId: string }>();
+  const { tagId, tagIds: tagIdsParam } = useLocalSearchParams<{ tagId?: string; tagIds?: string }>();
   const tags = useLibraryStore((s) => s.tags);
   const updateTag = useLibraryStore((s) => s.updateTag);
 
+  const targetIds = useMemo(
+    () => (tagIdsParam ? tagIdsParam.split(",").filter(Boolean) : tagId ? [tagId] : []),
+    [tagIdsParam, tagId]
+  );
+  const isBulk = targetIds.length > 1;
+
   const byId = useMemo(() => new Map(tags.map((t) => [t.id, t])), [tags]);
-  const tag = byId.get(tagId ?? "");
+  const tag = !isBulk ? byId.get(targetIds[0] ?? "") : undefined;
 
   const excludedIds = useMemo(() => {
-    if (!tagId) return new Set<string>();
-    const ids = new Set<string>([tagId]);
+    const ids = new Set<string>(targetIds);
     let changed = true;
     while (changed) {
       changed = false;
@@ -42,7 +47,7 @@ export default function TagReparentScreen() {
       }
     }
     return ids;
-  }, [tags, tagId]);
+  }, [tags, targetIds]);
 
   const options = tags
     .filter((t) => !excludedIds.has(t.id))
@@ -50,8 +55,8 @@ export default function TagReparentScreen() {
     .sort((a, b) => a.path.localeCompare(b.path));
 
   const handleSelect = (newParentId: string | null) => {
-    if (!tagId) return;
-    updateTag(tagId, { parentId: newParentId });
+    if (targetIds.length === 0) return;
+    targetIds.forEach((id) => updateTag(id, { parentId: newParentId }));
     router.back();
   };
 
@@ -65,8 +70,10 @@ export default function TagReparentScreen() {
         <View style={{ width: 22 }} />
       </View>
 
-      {tag && (
-        <Text style={styles.subtitle}>Оберіть новий батьківський тег для "{tag.name}"</Text>
+      {isBulk ? (
+        <Text style={styles.subtitle}>Оберіть новий батьківський тег для {targetIds.length} тегів</Text>
+      ) : (
+        tag && <Text style={styles.subtitle}>Оберіть новий батьківський тег для "{tag.name}"</Text>
       )}
 
       <FlatList
@@ -77,7 +84,7 @@ export default function TagReparentScreen() {
           <Pressable
             style={styles.row}
             onPress={() => handleSelect(null)}
-            disabled={tag?.parentId == null}
+            disabled={!isBulk && tag?.parentId == null}
           >
             <Ionicons name="remove-circle-outline" size={18} color={colors.textSecondary} />
             <Text style={styles.rowLabel}>Без батьківського тега (кореневий)</Text>

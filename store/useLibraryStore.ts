@@ -72,6 +72,9 @@ interface LibraryState {
   addVideo: (video: Video) => void;
   updateVideo: (id: string, patch: Partial<Video>) => void;
   removeVideo: (id: string) => void;
+  removeVideos: (ids: string[]) => void;
+  /** Adds/removes a tag across many videos at once (bulk edit in multi-select). */
+  setBulkTagsOnVideos: (videoIds: string[], addTagIds: string[], removeTagIds: string[]) => void;
 
   addTag: (tag: Tag) => void;
   /**
@@ -108,6 +111,20 @@ export const useLibraryStore = create<LibraryState>()(
 
       removeVideo: (id) =>
         set((state) => ({ videos: state.videos.filter((v) => v.id !== id) })),
+
+      removeVideos: (ids) =>
+        set((state) => ({ videos: state.videos.filter((v) => !ids.includes(v.id)) })),
+
+      setBulkTagsOnVideos: (videoIds, addTagIds, removeTagIds) =>
+        set((state) => ({
+          videos: state.videos.map((v) => {
+            if (!videoIds.includes(v.id)) return v;
+            let tagIds = v.tagIds;
+            if (removeTagIds.length > 0) tagIds = tagIds.filter((id) => !removeTagIds.includes(id));
+            if (addTagIds.length > 0) tagIds = Array.from(new Set([...tagIds, ...addTagIds]));
+            return { ...v, tagIds };
+          }),
+        })),
 
       addTag: (tag) => set((state) => ({ tags: [...state.tags, tag] })),
 
