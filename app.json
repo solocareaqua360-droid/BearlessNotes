@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "BearlessNotes",
+    "slug": "bearlessnotes",
+    "scheme": "bearlessnotes",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#F2F2F5",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bearlessnotes.app"
+    },
+    "android": {
+      "package": "com.bearlessnotes.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#F2F2F5"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-share-intent",
+        {
+          "androidIntentFilters": ["text/*"]
+        }
+      ]
+    ]
+  }
+}
