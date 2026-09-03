@@ -28,5 +28,9 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     autoRefreshToken: !isServer,
     persistSession: !isServer,
     detectSessionInUrl: false,
+    // Pinned explicitly: the OAuth redirect is parsed by hand (see
+    // services/auth.ts / app/auth-callback.tsx) expecting tokens directly in
+    // the URL fragment, which is how the implicit flow — not PKCE — works.
+    flowType: "implicit",
   },
 });

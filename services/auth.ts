@@ -2,40 +2,66 @@ import * as QueryParams from "expo-auth-session/build/QueryParams";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 
+import { errorMessage } from "./errorMessage";
 import { supabase } from "./supabaseClient";
 
 WebBrowser.maybeCompleteAuthSession();
 
+// A release APK has no attached console — an Alert is the only diagnostic
+// channel available, so every step below labels which call actually failed
+// instead of surfacing a bare, unlabeled "{message: ...}".
 async function createSessionFromUrl(url: string) {
-  const { params, errorCode } = QueryParams.getQueryParams(url);
-  if (errorCode) throw new Error(errorCode);
+  let params: Record<string, string>;
+  try {
+    const parsed = QueryParams.getQueryParams(url);
+    if (parsed.errorCode) throw new Error(parsed.errorCode);
+    params = parsed.params;
+  } catch (e) {
+    throw new Error(`[getQueryParams] ${errorMessage(e)}`);
+  }
 
   const { access_token, refresh_token } = params;
   if (!access_token || !refresh_token) return null;
 
-  const { data, error } = await supabase.auth.setSession({ access_token, refresh_token });
-  if (error) throw error;
-  return data.session;
+  try {
+    const { data, error } = await supabase.auth.setSession({ access_token, refresh_token });
+    if (error) throw error;
+    return data.session;
+  } catch (e) {
+    throw new Error(`[setSession] ${errorMessage(e)}`);
+  }
 }
 
 export async function signInWithGoogle() {
-  // Computed at call time (not module load) and logged: in Expo Go this is
-  // an exp:// URL, not the app's own "bearlessnotes://" scheme — Supabase's
-  // Redirect URLs allowlist must include it (e.g. "exp://**") or it silently
-  // refuses to redirect back after Google auth completes.
+  // Computed at call time (not module load): in Expo Go this is an exp://
+  // URL, not the app's own "bearlessnotes://" scheme — Supabase's Redirect
+  // URLs allowlist must include it (e.g. "exp://**") or it silently refuses
+  // to redirect back after Google auth completes.
   const redirectTo = Linking.createURL("auth-callback");
-  console.log("[auth] redirectTo:", redirectTo);
 
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: { redirectTo, skipBrowserRedirect: true },
-  });
-  if (error) throw error;
-  if (!data?.url) throw new Error("Supabase не повернув посилання для входу");
-  console.log("[auth] authorize url:", data.url);
+  let authorizeUrl: string;
+  try {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo, skipBrowserRedirect: true },
+    });
+    if (error) throw error;
+    if (!data?.url) throw new Error("Supabase не повернув посилання для входу");
+    authorizeUrl = data.url;
+  } catch (e) {
+    throw new Error(`[signInWithOAuth] ${errorMessage(e)}`);
+  }
 
-  const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-  console.log("[auth] browser result:", result.type);
+  let result: WebBrowser.WebBrowserAuthSessionResult;
+  try {
+    result = await WebBrowser.openAuthSessionAsync(authorizeUrl, redirectTo);
+  } catch (e) {
+    throw new Error(`[openAuthSessionAsync] ${errorMessage(e)}`);
+  }
+
+  // A cancel/dismiss here is a normal outcome, not a failure: on Android the
+  // OAuth redirect can also land directly on app/auth-callback.tsx, which
+  // completes the session itself while this browser session just closes.
   if (result.type !== "success" || !result.url) return null;
 
   return createSessionFromUrl(result.url);
