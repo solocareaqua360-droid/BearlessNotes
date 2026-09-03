@@ -7,6 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { TagsDrawer } from "@/components/TagsDrawer";
 import { colors, radius, spacing } from "@/constants/theme";
 import { signInWithGoogle, signOutOfSupabase } from "@/services/auth";
+import { errorMessage } from "@/services/errorMessage";
 import { initialSyncAfterSignIn, startAutoSync, stopAutoSync } from "@/services/sync";
 import { useLibraryStore } from "@/store/useLibraryStore";
 import { OpenVideoMode, ThemePreference } from "@/types";
@@ -50,7 +51,7 @@ export default function SettingsScreen() {
       await initialSyncAfterSignIn(session.user.id);
       startAutoSync(session.user.id);
     } catch (e) {
-      Alert.alert("Не вдалося увійти", e instanceof Error ? e.message : "Спробуйте ще раз");
+      Alert.alert("Не вдалося увійти", errorMessage(e));
     } finally {
       setSigningIn(false);
     }

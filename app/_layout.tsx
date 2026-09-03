@@ -6,6 +6,7 @@ import { ShareIntentProvider, useShareIntentContext } from "expo-share-intent";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { colors } from "@/constants/theme";
+import { errorMessage } from "@/services/errorMessage";
 import { supabase } from "@/services/supabaseClient";
 import { pullRemoteIntoLocal, startAutoSync, stopAutoSync } from "@/services/sync";
 import { useLibraryStore } from "@/store/useLibraryStore";
@@ -46,10 +47,7 @@ function AuthBootstrap() {
         .then(() => active && updateSettings({ lastSyncedAt: Date.now() }))
         .catch((e) => {
           if (active) {
-            Alert.alert(
-              "Синхронізація не вдалася",
-              e instanceof Error ? e.message : String(e)
-            );
+            Alert.alert("Синхронізація не вдалася", errorMessage(e));
           }
         })
         .finally(() => active && startAutoSync(session.user.id));

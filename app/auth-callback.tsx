@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 import { ActivityIndicator, Alert, StyleSheet, View } from "react-native";
 
 import { colors } from "@/constants/theme";
+import { errorMessage } from "@/services/errorMessage";
 import { initialSyncAfterSignIn, startAutoSync } from "@/services/sync";
 import { supabase } from "@/services/supabaseClient";
 import { useLibraryStore } from "@/store/useLibraryStore";
@@ -48,7 +49,7 @@ export default function AuthCallbackScreen() {
           }
         }
       } catch (e) {
-        Alert.alert("Вхід не вдався", e instanceof Error ? e.message : String(e));
+        Alert.alert("Вхід не вдався", errorMessage(e));
       } finally {
         router.replace("/settings");
       }
