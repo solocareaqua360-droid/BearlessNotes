@@ -1,6 +1,7 @@
 import { router, Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
+import { Alert } from "react-native";
 import { ShareIntentProvider, useShareIntentContext } from "expo-share-intent";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -43,7 +44,14 @@ function AuthBootstrap() {
 
       pullRemoteIntoLocal(session.user.id)
         .then(() => active && updateSettings({ lastSyncedAt: Date.now() }))
-        .catch(() => {})
+        .catch((e) => {
+          if (active) {
+            Alert.alert(
+              "Синхронізація не вдалася",
+              e instanceof Error ? e.message : String(e)
+            );
+          }
+        })
         .finally(() => active && startAutoSync(session.user.id));
     });
 
