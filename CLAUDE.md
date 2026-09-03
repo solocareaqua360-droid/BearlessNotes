@@ -26,10 +26,14 @@ any other app in this account (e.g. `bookmarvideo`). Keep it that way:
 
 ## Current state
 
-`PROJECT_BRIEF.md` and `DEVELOPMENT_PLAN.md` were just added (Stage 0 of
-the plan) — no app code exists yet. Ignore `.github/workflows/build.yml`:
-it's a leftover from an earlier native-Kotlin/Gradle prototype of this app
-and no longer matches the chosen stack (React Native/Expo). It should be
-replaced or removed once the Expo project and its own CI are set up in
-Stage 0, rather than kept running against dead heredoc-generated Kotlin
-source.
+Stage 0 (`DEVELOPMENT_PLAN.md`) is in progress: the Expo (TypeScript) app
+is initialized at the repo root (`App.tsx`, `app.json`, `index.ts`,
+`package.json`) and Metro bundles cleanly. The old
+`.github/workflows/build.yml` (a leftover native-Kotlin/Gradle prototype
+that no longer matched the chosen stack) has been removed. Not done yet:
+a Firebase project (Firestore + Authentication) hasn't been created or
+wired in — that needs the user to create it in the Firebase console — and
+nobody has confirmed the app loads in Expo Go on a real device.
+
+Run locally with `npm install` then `npm start` (or `npx expo start`) and
+scan the QR code with Expo Go.
