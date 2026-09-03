@@ -87,6 +87,7 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="index" />
+          <Stack.Screen name="auth-callback" />
           <Stack.Screen name="add-video" options={{ presentation: "modal" }} />
           <Stack.Screen name="video/[id]" />
           <Stack.Screen name="settings" />
