@@ -1,60 +1,24 @@
-import * as QueryParams from "expo-auth-session/build/QueryParams";
-import * as Linking from "expo-linking";
 import { router } from "expo-router";
-import { useEffect, useRef } from "react";
-import { ActivityIndicator, Alert, StyleSheet, View } from "react-native";
+import { useEffect } from "react";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import { colors } from "@/constants/theme";
-import { errorMessage } from "@/services/errorMessage";
-import { initialSyncAfterSignIn, startAutoSync } from "@/services/sync";
-import { supabase } from "@/services/supabaseClient";
-import { useLibraryStore } from "@/store/useLibraryStore";
 
 /**
  * Expo Router treats any incoming link matching the app's scheme as a route
- * — including the Supabase OAuth redirect — so without a real screen here it
- * showed "Unmatched Route" and the session tokens in the URL were dropped.
- * This screen finishes the sign-in itself, as a reliable fallback alongside
- * (not instead of) services/auth.ts's own WebBrowser-based flow.
+ * to navigate to — including the Supabase OAuth redirect — so without a
+ * matching screen here it showed "Unmatched Route" instead. This screen's
+ * only job is to exist so that doesn't happen; it does NOT process the
+ * tokens itself. That's already done reliably by services/auth.ts's own
+ * WebBrowser.openAuthSessionAsync-based flow, which receives the exact same
+ * redirect through its own listener. Having this screen also parse and
+ * complete the session raced the two flows against each other and could
+ * leave this screen hung forever waiting on a URL that never arrived here.
  */
 export default function AuthCallbackScreen() {
-  const updateSettings = useLibraryStore((s) => s.updateSettings);
-  const url = Linking.useURL();
-  const handled = useRef(false);
-
   useEffect(() => {
-    if (!url || handled.current) return;
-    handled.current = true;
-
-    (async () => {
-      try {
-        const { params, errorCode } = QueryParams.getQueryParams(url);
-        if (errorCode) throw new Error(errorCode);
-
-        const { access_token, refresh_token } = params;
-        if (access_token && refresh_token) {
-          const { data, error } = await supabase.auth.setSession({ access_token, refresh_token });
-          if (error) throw error;
-
-          const session = data.session;
-          if (session) {
-            updateSettings({
-              account: {
-                email: session.user.email ?? "",
-                avatarUrl: session.user.user_metadata?.avatar_url ?? null,
-              },
-            });
-            await initialSyncAfterSignIn(session.user.id);
-            startAutoSync(session.user.id);
-          }
-        }
-      } catch (e) {
-        Alert.alert("Вхід не вдався", errorMessage(e));
-      } finally {
-        router.replace("/settings");
-      }
-    })();
-  }, [url, updateSettings]);
+    router.replace("/settings");
+  }, []);
 
   return (
     <View style={styles.container}>
