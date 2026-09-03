@@ -1,6 +1,7 @@
 import { useLibraryStore } from "@/store/useLibraryStore";
 import { Tag, Video } from "@/types";
 
+import { errorMessage } from "./errorMessage";
 import { supabase } from "./supabaseClient";
 
 const SYNC_DEBOUNCE_MS = 800;
@@ -67,18 +68,18 @@ async function reconcileTable(
     .from(table)
     .select("id")
     .eq("user_id", userId);
-  if (selectError) throw selectError;
+  if (selectError) throw new Error(`[reconcile:${table}:select] ${errorMessage(selectError)}`);
 
   const localIds = new Set(localRows.map((r) => r.id));
   const toDelete = (remoteRows ?? []).map((r) => r.id).filter((id) => !localIds.has(id));
 
   if (toDelete.length > 0) {
     const { error } = await supabase.from(table).delete().eq("user_id", userId).in("id", toDelete);
-    if (error) throw error;
+    if (error) throw new Error(`[reconcile:${table}:delete] ${errorMessage(error)}`);
   }
   if (localRows.length > 0) {
     const { error } = await supabase.from(table).upsert(localRows);
-    if (error) throw error;
+    if (error) throw new Error(`[reconcile:${table}:upsert] ${errorMessage(error)}`);
   }
 }
 
@@ -88,8 +89,8 @@ export async function pullRemoteIntoLocal(userId: string) {
       supabase.from("tags").select("*").eq("user_id", userId),
       supabase.from("videos").select("*").eq("user_id", userId),
     ]);
-  if (tagsError) throw tagsError;
-  if (videosError) throw videosError;
+  if (tagsError) throw new Error(`[pull:tags] ${errorMessage(tagsError)}`);
+  if (videosError) throw new Error(`[pull:videos] ${errorMessage(videosError)}`);
 
   useLibraryStore.setState({
     tags: (tagRows ?? []).map(rowToTag),
@@ -119,7 +120,7 @@ export async function initialSyncAfterSignIn(userId: string) {
     .from("videos")
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId);
-  if (error) throw error;
+  if (error) throw new Error(`[initialSync:count] ${errorMessage(error)}`);
 
   if ((count ?? 0) > 0) {
     await pullRemoteIntoLocal(userId);
