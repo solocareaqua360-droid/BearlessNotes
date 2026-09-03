@@ -26,14 +26,22 @@ any other app in this account (e.g. `bookmarvideo`). Keep it that way:
 
 ## Current state
 
-Stage 0 (`DEVELOPMENT_PLAN.md`) is in progress: the Expo (TypeScript) app
-is initialized at the repo root (`App.tsx`, `app.json`, `index.ts`,
-`package.json`) and Metro bundles cleanly. The old
-`.github/workflows/build.yml` (a leftover native-Kotlin/Gradle prototype
-that no longer matched the chosen stack) has been removed. Not done yet:
-a Firebase project (Firestore + Authentication) hasn't been created or
-wired in — that needs the user to create it in the Firebase console — and
-nobody has confirmed the app loads in Expo Go on a real device.
+Stage 0 (`DEVELOPMENT_PLAN.md`) is done. The Expo (TypeScript) app is
+initialized at the repo root, Metro bundles cleanly, and it's been
+confirmed running in Expo Go on a real Android device. The old
+`.github/workflows/build.yml` (a leftover native-Kotlin/Gradle prototype)
+has been removed.
+
+The Firebase project (`bearless-notes`, Spark plan) exists with Firestore
+(test-mode rules, region `eur3` — **rules must be locked down before real
+users touch this**, test mode is open for 30 days from creation) and
+Authentication (Email/Password) enabled. A Web app is registered in it and
+its SDK config is wired in `src/firebase.ts`, read from environment
+variables — copy `.env.example` to `.env` and fill in the real values from
+Firebase Console (Project settings → General → Your apps → Bearless Notes
+Web) before running the app; `.env` is git-ignored on purpose. `App.tsx`
+does not import `src/firebase.ts` yet — that starts in Stage 1/2 once
+there's an actual document list to back with it.
 
 Run locally with `npm install` then `npm start` (or `npx expo start`) and
 scan the QR code with Expo Go.

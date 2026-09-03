@@ -30,8 +30,13 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
+# local env files (real Firebase keys live here, never commit)
+.env
 .env*.local
+
+# native Firebase config files
+google-services.json
+GoogleService-Info.plist
 
 # typescript
 *.tsbuildinfo

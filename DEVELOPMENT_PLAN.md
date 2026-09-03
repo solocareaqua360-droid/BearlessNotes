@@ -13,9 +13,11 @@
 
 - [x] Ініціалізувати React Native проєкт (Expo — простіший старт для
       вайб-кодінгу, дозволяє тестувати через Expo Go без збірки)
-- [ ] Підключити Firebase проєкт (Spark/безкоштовний план), увімкнути
-      Firestore і Authentication — потребує ручного кроку в консолі
-      Firebase (створення проєкту через Google-акаунт користувача)
+- [x] Підключити Firebase проєкт (Spark/безкоштовний план), увімкнути
+      Firestore і Authentication — проєкт `bearless-notes` створено,
+      Firestore (test mode, регіон eur3) і Authentication (Email/Password)
+      увімкнено, Web-застосунок зареєстровано, SDK підключено в
+      `src/firebase.ts` (конфіг береться з `.env`, див. `.env.example`)
 - [x] Покласти `PROJECT_BRIEF.md` у корінь репозиторію
 - [x] **Перевірка:** застосунок запускається на телефоні через Expo Go,
       показує порожній екран — підтверджено на реальному Android-пристрої
