@@ -1,21 +1,63 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
 import './src/firebase';
+import DocumentsScreen from './src/screens/DocumentsScreen';
+import PlaceholderScreen from './src/screens/PlaceholderScreen';
+
+const Tab = createBottomTabNavigator();
 
 export default function App() {
   return (
-    <View style={styles.container}>
-      <Text>Bearless Notes</Text>
+    <NavigationContainer>
       <StatusBar style="auto" />
-    </View>
+      <Tab.Navigator
+        screenOptions={{
+          tabBarActiveTintColor: '#3B82F6',
+          tabBarInactiveTintColor: '#9CA3AF',
+        }}
+      >
+        <Tab.Screen
+          name="Документи"
+          component={DocumentsScreen}
+          options={{
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="document-text-outline" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tab.Screen
+          name="Пошук"
+          options={{
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="search-outline" size={size} color={color} />
+            ),
+          }}
+        >
+          {() => <PlaceholderScreen icon="search-outline" label="Скоро" />}
+        </Tab.Screen>
+        <Tab.Screen
+          name="Календар"
+          options={{
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="calendar-outline" size={size} color={color} />
+            ),
+          }}
+        >
+          {() => <PlaceholderScreen icon="calendar-outline" label="Скоро" />}
+        </Tab.Screen>
+        <Tab.Screen
+          name="Більше"
+          options={{
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="ellipsis-horizontal-outline" size={size} color={color} />
+            ),
+          }}
+        >
+          {() => <PlaceholderScreen icon="ellipsis-horizontal-outline" label="Скоро" />}
+        </Tab.Screen>
+      </Tab.Navigator>
+    </NavigationContainer>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
