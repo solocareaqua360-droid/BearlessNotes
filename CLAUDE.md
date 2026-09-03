@@ -1,6 +1,10 @@
 # Bearless Notes
 
-Native Android notes app (Kotlin), package `com.bearless.notes`.
+Notes app built cross-platform-first (Android now, web later) with React
+Native (Expo) and Firebase. Full product context lives in
+`PROJECT_BRIEF.md`; work through `DEVELOPMENT_PLAN.md` stage by stage
+(check off boxes as each stage's own verification step actually passes —
+don't jump ahead).
 
 ## Project isolation
 
@@ -22,8 +26,10 @@ any other app in this account (e.g. `bookmarvideo`). Keep it that way:
 
 ## Current state
 
-The Android project isn't checked into the repo as source; it's generated
-from scratch on every CI run by `.github/workflows/build.yml` (see the
-heredocs in the `Create Android project` step), which then builds a debug
-APK with Gradle. `MainActivity.kt` implements a simple local-only notes list
-(add/edit/delete/pin/search) backed by `SharedPreferences` — no backend yet.
+`PROJECT_BRIEF.md` and `DEVELOPMENT_PLAN.md` were just added (Stage 0 of
+the plan) — no app code exists yet. Ignore `.github/workflows/build.yml`:
+it's a leftover from an earlier native-Kotlin/Gradle prototype of this app
+and no longer matches the chosen stack (React Native/Expo). It should be
+replaced or removed once the Expo project and its own CI are set up in
+Stage 0, rather than kept running against dead heredoc-generated Kotlin
+source.
