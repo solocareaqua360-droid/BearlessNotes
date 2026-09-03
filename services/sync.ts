@@ -116,9 +116,12 @@ export async function pushLocalToRemote(userId: string) {
 
 /** First sign-in on a device: adopt whichever side already has data. */
 export async function initialSyncAfterSignIn(userId: string) {
+  // Deliberately not `head: true`: a HEAD response can never carry a body,
+  // so any server-side error here (expired token, RLS, etc.) would come
+  // back with an empty message and no way to tell what actually failed.
   const { count, error } = await supabase
     .from("videos")
-    .select("id", { count: "exact", head: true })
+    .select("id", { count: "exact" })
     .eq("user_id", userId);
   if (error) throw new Error(`[initialSync:count] ${errorMessage(error)}`);
 
