@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Swipeable } from 'react-native-gesture-handler';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
@@ -71,18 +72,25 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     }
   }, [blocks]);
 
-  function updateBlockText(id: string, text: string) {
-    setBlocks((prev) => prev.map((block) => (block.id === id ? { ...block, text } : block)));
-  }
-
-  function splitBlock(index: number) {
-    const created = newBlock();
+  function handleBlockChange(id: string, text: string) {
+    const newlineIndex = text.indexOf('\n');
+    if (newlineIndex === -1) {
+      setBlocks((prev) => prev.map((block) => (block.id === id ? { ...block, text } : block)));
+      return;
+    }
+    // Enter inserts a literal newline into a multiline TextInput; treat it as
+    // "split into a new block" instead of letting the newline stay in the text.
+    const before = text.slice(0, newlineIndex);
+    const after = text.slice(newlineIndex + 1);
+    const created: Block = { ...newBlock(), text: after };
     focusIdRef.current = created.id;
-    setBlocks((prev) => [
-      ...prev.slice(0, index + 1),
-      created,
-      ...prev.slice(index + 1),
-    ]);
+    setBlocks((prev) => {
+      const index = prev.findIndex((block) => block.id === id);
+      const next = [...prev];
+      next[index] = { ...next[index], text: before };
+      next.splice(index + 1, 0, created);
+      return next;
+    });
   }
 
   function deleteBlock(id: string) {
@@ -98,28 +106,32 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     setBlocks((prev) => [...prev, created]);
   }
 
-  function renderBlock({ item, drag, isActive, getIndex }: RenderItemParams<Block>) {
+  function renderBlock({ item, drag, isActive }: RenderItemParams<Block>) {
     return (
-      <View style={[styles.blockRow, isActive && styles.blockRowActive]}>
-        <Pressable onLongPress={drag} hitSlop={8} style={styles.dragHandle}>
-          <Ionicons name="reorder-two-outline" size={20} color="#9CA3AF" />
-        </Pressable>
-        <TextInput
-          ref={(ref) => {
-            inputRefs.current[item.id] = ref;
-          }}
-          value={item.text}
-          onChangeText={(text) => updateBlockText(item.id, text)}
-          onSubmitEditing={() => splitBlock(getIndex() ?? blocks.length - 1)}
-          placeholder="Пишіть тут…"
-          style={styles.blockInput}
-          returnKeyType="next"
-          blurOnSubmit={false}
-        />
-        <Pressable hitSlop={8} onPress={() => deleteBlock(item.id)} style={styles.blockDelete}>
-          <Ionicons name="close" size={18} color={DANGER} />
-        </Pressable>
-      </View>
+      <Swipeable
+        overshootRight={false}
+        renderRightActions={() => (
+          <Pressable style={styles.swipeDelete} onPress={() => deleteBlock(item.id)}>
+            <Ionicons name="trash-outline" size={20} color="#fff" />
+          </Pressable>
+        )}
+      >
+        <View style={[styles.blockRow, isActive && styles.blockRowActive]}>
+          <Pressable onLongPress={drag} hitSlop={8} style={styles.dragHandle}>
+            <Ionicons name="reorder-two-outline" size={20} color="#9CA3AF" />
+          </Pressable>
+          <TextInput
+            ref={(ref) => {
+              inputRefs.current[item.id] = ref;
+            }}
+            value={item.text}
+            onChangeText={(text) => handleBlockChange(item.id, text)}
+            placeholder="Пишіть тут…"
+            style={styles.blockInput}
+            multiline
+          />
+        </View>
+      </Swipeable>
     );
   }
 
@@ -130,7 +142,8 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
     >
       <View style={styles.header}>
         <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
@@ -213,8 +226,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 6,
   },
-  blockDelete: {
-    padding: 6,
+  swipeDelete: {
+    backgroundColor: DANGER,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 64,
+    borderRadius: 10,
+    marginVertical: 2,
   },
   addBlock: {
     flexDirection: 'row',
