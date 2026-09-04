@@ -491,15 +491,21 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   }
 
   function handleBlockChange(id: string, text: string) {
-    const newlineIndex = text.indexOf('\n');
-    if (newlineIndex === -1) {
+    // React Native's TextInput never reports whether Shift was held for
+    // Enter (Android's own bridge code discards that before it reaches JS,
+    // on any keyboard, soft or hardware) - so a single Enter has to just be
+    // a line break within the block, and creating a new block instead needs
+    // its own distinct signal: pressing Enter again on the resulting empty
+    // line, i.e. two consecutive newlines.
+    const doubleNewlineIndex = text.indexOf('\n\n');
+    if (doubleNewlineIndex === -1) {
       setBlocks((prev) => prev.map((block) => (block.id === id ? { ...block, text } : block)));
       return;
     }
-    // Enter inserts a literal newline into a multiline TextInput; treat it as
-    // "split into a new block" instead of letting the newline stay in the text.
-    const before = text.slice(0, newlineIndex);
-    const after = text.slice(newlineIndex + 1);
+    // Both newlines are consumed here - the blank line the first Enter left
+    // behind shouldn't linger in either block.
+    const before = text.slice(0, doubleNewlineIndex);
+    const after = text.slice(doubleNewlineIndex + 2);
     const created: Block = { ...newBlock(), text: after };
     focusIdRef.current = created.id;
     setBlocks((prev) => {
