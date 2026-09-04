@@ -199,6 +199,7 @@ type BlockRowProps = {
   isEditMode: boolean;
   showBoundary: boolean;
   listNumber?: number;
+  textVersion: number;
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
   onToggleSelected: (id: string) => void;
@@ -217,6 +218,7 @@ function BlockRow({
   isEditMode,
   showBoundary,
   listNumber,
+  textVersion,
   onChangeText,
   onBackspaceEmpty,
   onToggleSelected,
@@ -276,8 +278,9 @@ function BlockRow({
         // change on an already-mounted view; keying on canEditText forces
         // a clean remount so the native EditText is created with the
         // correct editable/pointerEvents state instead of getting stuck
-        // non-editable.
-        key="editable"
+        // non-editable. textVersion is folded in too - see its declaration
+        // for why (avoids a transient grow/shrink flicker on Enter-split).
+        key={`editable-${textVersion}`}
         ref={inputRef}
         value={item.text}
         onChangeText={(text) => onChangeText(item.id, text)}
@@ -380,6 +383,7 @@ type SortableBlockRowProps = {
   isDragActive: boolean;
   compressTowardOffset: number;
   listNumber?: number;
+  textVersion: number;
   onLayout: (e: LayoutChangeEvent) => void;
   onDragStart: () => void;
   onDragUpdate: (translationY: number) => void;
@@ -404,6 +408,7 @@ function SortableBlockRow({
   isDragActive,
   compressTowardOffset,
   listNumber,
+  textVersion,
   onLayout,
   onDragStart,
   onDragUpdate,
@@ -473,6 +478,7 @@ function SortableBlockRow({
             isEditMode={isEditMode}
             showBoundary={isDragActive}
             listNumber={listNumber}
+            textVersion={textVersion}
             onChangeText={onChangeText}
             onBackspaceEmpty={onBackspaceEmpty}
             onToggleSelected={onToggleSelected}
@@ -494,6 +500,7 @@ type BlockListProps = {
   selectedIds: Set<string>;
   isSelectMode: boolean;
   isEditMode: boolean;
+  textVersions: Record<string, number>;
   onToggleSelected: (id: string) => void;
   onToggleChecked: (id: string) => void;
   onChangeText: (id: string, text: string) => void;
@@ -511,6 +518,7 @@ function BlockList({
   selectedIds,
   isSelectMode,
   isEditMode,
+  textVersions,
   onToggleSelected,
   onToggleChecked,
   onChangeText,
@@ -708,6 +716,7 @@ function BlockList({
           isDragging={draggingIds?.includes(item.id) ?? false}
           isDragActive={draggingIds !== null}
           listNumber={item.type === 'numbered' ? runningNumber : undefined}
+          textVersion={textVersions[item.id] ?? 0}
           compressTowardOffset={compressOffsetFor(item.id)}
           onLayout={(e) => handleRowLayout(item.id, e)}
           onDragStart={() => handleDragStart(item.id, dragGroupFor(item.id))}
@@ -821,6 +830,21 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   const focusIdRef = useRef<string | null>(null);
   const focusToEndRef = useRef(false);
   const focusedBlockIdRef = useRef<string | null>(null);
+  // A block whose text gets truncated by splitting off a new block below it
+  // (Enter in a list item, or the paragraph double-Enter) keeps the SAME
+  // native EditText instance - Android briefly renders that EditText's own
+  // uncontrolled multi-line content (still holding the newline the user just
+  // typed) before the corrected, newline-free `value` prop reaches it a
+  // render later, growing the row by a line and then shrinking it back. That
+  // transient grow/shrink is what shows up as the screen jumping up and then
+  // back down to the edited line. Bumping this per-block counter and folding
+  // it into the TextInput's key forces a fresh EditText - mounted directly
+  // with the already-correct text - instead of updating the old one in place.
+  const textVersionsRef = useRef<Record<string, number>>({});
+
+  function bumpTextVersion(id: string) {
+    textVersionsRef.current[id] = (textVersionsRef.current[id] ?? 0) + 1;
+  }
   const inputRefs = useRef<Record<string, TextInput | null>>({});
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -1108,6 +1132,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
         }
         const created = buildBlock(generateId(), currentType, after);
         focusIdRef.current = created.id;
+        bumpTextVersion(id);
         setBlocks((prev) => {
           const index = prev.findIndex((b) => b.id === id);
           if (index === -1) return prev;
@@ -1140,6 +1165,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     const after = text.slice(doubleNewlineIndex + 2);
     const created: Block = { ...newBlock(), text: after };
     focusIdRef.current = created.id;
+    bumpTextVersion(id);
     setBlocks((prev) => {
       const index = prev.findIndex((block) => block.id === id);
       const next = [...prev];
@@ -1468,6 +1494,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           selectedIds={selectedIds}
           isSelectMode={isSelectMode}
           isEditMode={isEditMode}
+          textVersions={textVersionsRef.current}
           onToggleSelected={toggleSelected}
           onToggleChecked={toggleChecked}
           onChangeText={handleBlockChange}
