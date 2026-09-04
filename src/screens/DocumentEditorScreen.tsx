@@ -33,8 +33,10 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const focusIdRef = useRef<string | null>(null);
   const inputRefs = useRef<Record<string, TextInput | null>>({});
+  const swipeableRefs = useRef<Record<string, Swipeable | null>>({});
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -93,11 +95,24 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     });
   }
 
-  function deleteBlock(id: string) {
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function deleteSelectedBlocks() {
     setBlocks((prev) => {
-      const next = prev.filter((block) => block.id !== id);
+      const next = prev.filter((block) => !selectedIds.has(block.id));
       return next.length > 0 ? next : [newBlock()];
     });
+    setSelectedIds(new Set());
   }
 
   function addBlockAtEnd() {
@@ -107,16 +122,24 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   }
 
   function renderBlock({ item, drag, isActive }: RenderItemParams<Block>) {
+    const isSelected = selectedIds.has(item.id);
     return (
       <Swipeable
+        ref={(ref) => {
+          swipeableRefs.current[item.id] = ref;
+        }}
         overshootRight={false}
         renderRightActions={() => (
-          <Pressable style={styles.swipeDelete} onPress={() => deleteBlock(item.id)}>
-            <Ionicons name="trash-outline" size={20} color="#fff" />
-          </Pressable>
+          <View style={styles.swipeSelectIndicator}>
+            <Ionicons name="checkmark" size={20} color="#fff" />
+          </View>
         )}
+        onSwipeableWillOpen={() => {
+          toggleSelected(item.id);
+          swipeableRefs.current[item.id]?.close();
+        }}
       >
-        <View style={[styles.blockRow, isActive && styles.blockRowActive]}>
+        <View style={[styles.blockRow, (isActive || isSelected) && styles.blockRowSelected]}>
           <Pressable onLongPress={drag} hitSlop={8} style={styles.dragHandle}>
             <Ionicons name="reorder-two-outline" size={20} color="#9CA3AF" />
           </Pressable>
@@ -130,6 +153,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
             style={styles.blockInput}
             multiline
           />
+          {isSelected && <View style={styles.selectedDot} />}
         </View>
       </Swipeable>
     );
@@ -170,10 +194,17 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
         contentContainerStyle={styles.blockList}
       />
 
-      <Pressable style={styles.addBlock} onPress={addBlockAtEnd}>
-        <Ionicons name="add" size={18} color={ACCENT} />
-        <Text style={styles.addBlockLabel}>Додати блок</Text>
-      </Pressable>
+      {selectedIds.size > 0 ? (
+        <Pressable style={styles.deleteSelected} onPress={deleteSelectedBlocks}>
+          <Ionicons name="trash-outline" size={18} color={DANGER} />
+          <Text style={styles.deleteSelectedLabel}>Видалити ({selectedIds.size})</Text>
+        </Pressable>
+      ) : (
+        <Pressable style={styles.addBlock} onPress={addBlockAtEnd}>
+          <Ionicons name="add" size={18} color={ACCENT} />
+          <Text style={styles.addBlockLabel}>Додати блок</Text>
+        </Pressable>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -213,8 +244,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: 10,
   },
-  blockRowActive: {
-    backgroundColor: '#F3F4F6',
+  blockRowSelected: {
+    backgroundColor: '#EFF6FF',
   },
   dragHandle: {
     padding: 6,
@@ -226,8 +257,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 6,
   },
-  swipeDelete: {
-    backgroundColor: DANGER,
+  selectedDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: ACCENT,
+    marginLeft: 8,
+  },
+  swipeSelectIndicator: {
+    backgroundColor: ACCENT,
     justifyContent: 'center',
     alignItems: 'center',
     width: 64,
@@ -244,5 +282,17 @@ const styles = StyleSheet.create({
   addBlockLabel: {
     fontSize: 15,
     color: ACCENT,
+  },
+  deleteSelected: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+  },
+  deleteSelectedLabel: {
+    fontSize: 15,
+    color: DANGER,
   },
 });
