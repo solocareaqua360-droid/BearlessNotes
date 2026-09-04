@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import {
   Dimensions,
+  Image,
   Keyboard,
   LayoutAnimation,
   LayoutChangeEvent,
@@ -13,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 // react-native-gesture-handler's own ScrollView (not the core RN one) so it
 // shares the same touch arena as our rows' Pan gestures - otherwise a swipe
 // starting on a block (its TextInput especially) never reaches the
@@ -28,7 +30,7 @@ import Animated, {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Block } from '../types';
+import { Block, BlockType } from '../types';
 import { RootStackParamList } from '../navigation';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -169,8 +171,9 @@ function FormattedText({ segments, defaultColor }: { segments: TextSegment[]; de
 }
 
 // Content of a single block: a leading icon (a drag handle normally, or a
-// checkbox while select mode is on) and the text field. Dragging is handled
-// by the wrapping SortableBlockRow below, not in here.
+// checkbox while select mode is on) and the block's own content, which
+// varies by type (see below). Dragging is handled by the wrapping
+// SortableBlockRow below, not in here.
 type BlockRowProps = {
   item: Block;
   isSelected: boolean;
@@ -180,6 +183,7 @@ type BlockRowProps = {
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
   onToggleSelected: (id: string) => void;
+  onToggleChecked: (id: string) => void;
   onFocus: (id: string) => void;
   onSelectionChange: (id: string, start: number, end: number) => void;
   inputRef: (ref: TextInput | null) => void;
@@ -194,6 +198,7 @@ function BlockRow({
   onChangeText,
   onBackspaceEmpty,
   onToggleSelected,
+  onToggleChecked,
   onFocus,
   onSelectionChange,
   inputRef,
@@ -206,49 +211,87 @@ function BlockRow({
   // TextInput to compete with, a swipe anywhere reaches the ScrollView
   // just like it already did over the icon column.
   const canEditText = isEditMode && !isSelectMode;
+  const type = item.type ?? 'paragraph';
+
+  let content: ReactNode;
+  if (type === 'divider') {
+    content = <View style={styles.dividerLine} />;
+  } else if (type === 'image') {
+    content = item.imageUri ? (
+      <Image source={{ uri: item.imageUri }} style={styles.blockImage} resizeMode="cover" />
+    ) : (
+      <Text style={styles.blockPlaceholder}>Немає зображення</Text>
+    );
+  } else {
+    const textField = canEditText ? (
+      <TextInput
+        // Android's TextInput doesn't reliably pick up a dynamic `editable`
+        // change on an already-mounted view; keying on canEditText forces
+        // a clean remount so the native EditText is created with the
+        // correct editable/pointerEvents state instead of getting stuck
+        // non-editable.
+        key="editable"
+        ref={inputRef}
+        value={item.text}
+        onChangeText={(text) => onChangeText(item.id, text)}
+        onFocus={() => onFocus(item.id)}
+        onSelectionChange={({ nativeEvent }) =>
+          onSelectionChange(item.id, nativeEvent.selection.start, nativeEvent.selection.end)
+        }
+        onKeyPress={({ nativeEvent }) => {
+          if (nativeEvent.key === 'Backspace' && item.text === '') {
+            onBackspaceEmpty(item.id);
+          }
+        }}
+        placeholder={type === 'checkbox' ? 'Завдання…' : 'Пишіть тут… ("/" для меню)'}
+        style={[styles.blockInput, item.checked && styles.checkedText]}
+        multiline
+      />
+    ) : (
+      // Outside edit mode, formatting markers (**bold** etc.) are parsed
+      // into styled runs instead of showing as raw text - and a plain
+      // Text has no touch handling of its own to fight the ScrollView.
+      <View key="locked" style={styles.blockInput} pointerEvents="none">
+        <Text style={[styles.blockDisplayText, item.checked && styles.checkedText]}>
+          {item.text ? (
+            <FormattedText segments={parseFormattedText(item.text)} defaultColor="#111827" />
+          ) : (
+            <Text style={styles.blockPlaceholder}>Пишіть тут…</Text>
+          )}
+        </Text>
+      </View>
+    );
+
+    if (type === 'bulleted') {
+      content = (
+        <View style={styles.prefixedRow}>
+          <Text style={styles.bulletMark}>•</Text>
+          {textField}
+        </View>
+      );
+    } else if (type === 'checkbox') {
+      content = (
+        <View style={styles.prefixedRow}>
+          <Pressable hitSlop={8} onPress={() => onToggleChecked(item.id)}>
+            <Ionicons
+              name={item.checked ? 'checkbox' : 'square-outline'}
+              size={20}
+              color={item.checked ? ACCENT : '#9CA3AF'}
+            />
+          </Pressable>
+          {textField}
+        </View>
+      );
+    } else {
+      content = textField;
+    }
+  }
 
   return (
     <View
       style={[styles.blockRow, isSelected && styles.blockRowSelected, showBoundary && styles.blockRowBoundary]}
     >
-      {canEditText ? (
-        <TextInput
-          // Android's TextInput doesn't reliably pick up a dynamic `editable`
-          // change on an already-mounted view; keying on canEditText forces
-          // a clean remount so the native EditText is created with the
-          // correct editable/pointerEvents state instead of getting stuck
-          // non-editable.
-          key="editable"
-          ref={inputRef}
-          value={item.text}
-          onChangeText={(text) => onChangeText(item.id, text)}
-          onFocus={() => onFocus(item.id)}
-          onSelectionChange={({ nativeEvent }) =>
-            onSelectionChange(item.id, nativeEvent.selection.start, nativeEvent.selection.end)
-          }
-          onKeyPress={({ nativeEvent }) => {
-            if (nativeEvent.key === 'Backspace' && item.text === '') {
-              onBackspaceEmpty(item.id);
-            }
-          }}
-          placeholder="Пишіть тут…"
-          style={styles.blockInput}
-          multiline
-        />
-      ) : (
-        // Outside edit mode, formatting markers (**bold** etc.) are parsed
-        // into styled runs instead of showing as raw text - and a plain
-        // Text has no touch handling of its own to fight the ScrollView.
-        <View key="locked" style={styles.blockInput} pointerEvents="none">
-          <Text style={styles.blockDisplayText}>
-            {item.text ? (
-              <FormattedText segments={parseFormattedText(item.text)} defaultColor="#111827" />
-            ) : (
-              <Text style={styles.blockPlaceholder}>Пишіть тут…</Text>
-            )}
-          </Text>
-        </View>
-      )}
+      {content}
       {/* On the right, under the header's select-mode toggle (also on the
           right) so the two read as one control. */}
       <Pressable
@@ -294,6 +337,7 @@ type SortableBlockRowProps = {
   onDragUpdate: (translationY: number) => void;
   onDragEnd: () => void;
   onToggleSelected: (id: string) => void;
+  onToggleChecked: (id: string) => void;
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
   onFocus: (id: string) => void;
@@ -314,6 +358,7 @@ function SortableBlockRow({
   onDragUpdate,
   onDragEnd,
   onToggleSelected,
+  onToggleChecked,
   onChangeText,
   onBackspaceEmpty,
   onFocus,
@@ -377,6 +422,7 @@ function SortableBlockRow({
             onChangeText={onChangeText}
             onBackspaceEmpty={onBackspaceEmpty}
             onToggleSelected={onToggleSelected}
+            onToggleChecked={onToggleChecked}
             onFocus={onFocus}
             onSelectionChange={onSelectionChange}
             inputRef={inputRef}
@@ -393,6 +439,7 @@ type BlockListProps = {
   isSelectMode: boolean;
   isEditMode: boolean;
   onToggleSelected: (id: string) => void;
+  onToggleChecked: (id: string) => void;
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
   onFocus: (id: string) => void;
@@ -407,6 +454,7 @@ function BlockList({
   isSelectMode,
   isEditMode,
   onToggleSelected,
+  onToggleChecked,
   onChangeText,
   onBackspaceEmpty,
   onFocus,
@@ -597,6 +645,7 @@ function BlockList({
           }
           onDragEnd={() => handleDragEnd(dragGroupFor(item.id))}
           onToggleSelected={onToggleSelected}
+          onToggleChecked={onToggleChecked}
           onChangeText={onChangeText}
           onBackspaceEmpty={onBackspaceEmpty}
           onFocus={onFocus}
@@ -629,6 +678,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   const [activeSelection, setActiveSelection] = useState<{ blockId: string; start: number; end: number } | null>(
     null
   );
+  const [slashMenuBlockId, setSlashMenuBlockId] = useState<string | null>(null);
   const focusIdRef = useRef<string | null>(null);
   const focusToEndRef = useRef(false);
   const focusedBlockIdRef = useRef<string | null>(null);
@@ -889,6 +939,14 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
 
   function handleBlockChange(id: string, text: string) {
     snapshotForTyping();
+    // Typing "/" as the very first character of an empty block opens the
+    // quick-add menu; typing anything else (including deleting back to
+    // empty) closes it again if it was open for this block.
+    if (text === '/') {
+      setSlashMenuBlockId(id);
+    } else if (slashMenuBlockId === id) {
+      setSlashMenuBlockId(null);
+    }
     // React Native's TextInput never reports whether Shift was held for
     // Enter (Android's own bridge code discards that before it reaches JS,
     // on any keyboard, soft or hardware) - so a single Enter has to just be
@@ -938,6 +996,72 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
         next.delete(id);
       } else {
         next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleChecked(id: string) {
+    snapshotBeforeChange();
+    setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, checked: !b.checked } : b)));
+  }
+
+  // Converts the block that triggered the "/" menu into the chosen type.
+  // Divider blocks hold no text, so there's nothing left to type into them -
+  // a fresh empty paragraph is inserted right after (only if one doesn't
+  // already follow) and gets focus, so the user can keep writing without an
+  // extra tap. List/checkbox blocks keep editing the same block instead,
+  // since their whole point is typing a label into them.
+  function convertBlockType(id: string, type: BlockType) {
+    snapshotBeforeChange();
+    setSlashMenuBlockId(null);
+    if (type === 'divider') {
+      setBlocks((prev) => {
+        const index = prev.findIndex((b) => b.id === id);
+        if (index === -1) return prev;
+        const next = [...prev];
+        next[index] = { id, text: '', type: 'divider' };
+        if (index === next.length - 1) {
+          const trailing = newBlock();
+          next.splice(index + 1, 0, trailing);
+          focusIdRef.current = trailing.id;
+        } else {
+          focusIdRef.current = next[index + 1].id;
+        }
+        return next;
+      });
+    } else {
+      focusIdRef.current = id;
+      setBlocks((prev) =>
+        prev.map((b) =>
+          b.id === id ? { ...b, type, text: '', checked: type === 'checkbox' ? false : undefined } : b
+        )
+      );
+    }
+  }
+
+  async function pickImageForBlock(id: string) {
+    setSlashMenuBlockId(null);
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.7,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const uri = result.assets[0].uri;
+    snapshotBeforeChange();
+    setBlocks((prev) => {
+      const index = prev.findIndex((b) => b.id === id);
+      if (index === -1) return prev;
+      const next = [...prev];
+      next[index] = { id, text: '', type: 'image', imageUri: uri };
+      if (index === next.length - 1) {
+        const trailing = newBlock();
+        next.splice(index + 1, 0, trailing);
+        focusIdRef.current = trailing.id;
+      } else {
+        focusIdRef.current = next[index + 1].id;
       }
       return next;
     });
@@ -1032,7 +1156,46 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
         </View>
       </View>
 
-      {activeSelection && (
+      {slashMenuBlockId && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.formatToolbar}
+          contentContainerStyle={styles.formatToolbarContent}
+          keyboardShouldPersistTaps="always"
+        >
+          <Pressable
+            style={styles.slashMenuItem}
+            hitSlop={6}
+            onPress={() => convertBlockType(slashMenuBlockId, 'bulleted')}
+          >
+            <Ionicons name="list-outline" size={20} color="#111827" />
+            <Text style={styles.slashMenuLabel}>Список</Text>
+          </Pressable>
+          <Pressable
+            style={styles.slashMenuItem}
+            hitSlop={6}
+            onPress={() => convertBlockType(slashMenuBlockId, 'checkbox')}
+          >
+            <Ionicons name="checkbox-outline" size={20} color="#111827" />
+            <Text style={styles.slashMenuLabel}>Чекбокс</Text>
+          </Pressable>
+          <Pressable
+            style={styles.slashMenuItem}
+            hitSlop={6}
+            onPress={() => convertBlockType(slashMenuBlockId, 'divider')}
+          >
+            <Ionicons name="remove-outline" size={20} color="#111827" />
+            <Text style={styles.slashMenuLabel}>Лінія</Text>
+          </Pressable>
+          <Pressable style={styles.slashMenuItem} hitSlop={6} onPress={() => pickImageForBlock(slashMenuBlockId)}>
+            <Ionicons name="image-outline" size={20} color="#111827" />
+            <Text style={styles.slashMenuLabel}>Зображення</Text>
+          </Pressable>
+        </ScrollView>
+      )}
+
+      {!slashMenuBlockId && activeSelection && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -1094,6 +1257,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           isSelectMode={isSelectMode}
           isEditMode={isEditMode}
           onToggleSelected={toggleSelected}
+          onToggleChecked={toggleChecked}
           onChangeText={handleBlockChange}
           onBackspaceEmpty={handleBackspaceOnEmpty}
           onFocus={handleBlockFocus}
@@ -1224,6 +1388,43 @@ const styles = StyleSheet.create({
   },
   blockPlaceholder: {
     color: '#9CA3AF',
+  },
+  checkedText: {
+    textDecorationLine: 'line-through',
+    opacity: 0.5,
+  },
+  prefixedRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  bulletMark: {
+    fontSize: 18,
+    color: '#111827',
+    paddingLeft: 4,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 12,
+    marginHorizontal: 4,
+  },
+  blockImage: {
+    flex: 1,
+    height: 180,
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
+  },
+  slashMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  slashMenuLabel: {
+    fontSize: 15,
+    color: '#111827',
   },
   dropLine: {
     position: 'absolute',
