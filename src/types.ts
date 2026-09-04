@@ -1,4 +1,4 @@
-export type BlockType = 'paragraph' | 'bulleted' | 'checkbox' | 'divider' | 'image';
+export type BlockType = 'paragraph' | 'bulleted' | 'numbered' | 'checkbox' | 'divider' | 'image';
 
 export interface Block {
   id: string;

@@ -5,6 +5,7 @@ import {
   Keyboard,
   LayoutAnimation,
   LayoutChangeEvent,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -15,6 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 // react-native-gesture-handler's own ScrollView (not the core RN one) so it
 // shares the same touch arena as our rows' Pan gestures - otherwise a swipe
 // starting on a block (its TextInput especially) never reaches the
@@ -47,9 +49,25 @@ const DRAG_LONG_PRESS_MS = 350;
 const TEXT_COLORS = ['#111827', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
 const HIGHLIGHT_COLORS = ['#FEF08A', '#BBF7D0', '#BFDBFE', '#FBCFE8', '#E9D5FF'];
 
-function newBlock(): Block {
-  return { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, text: '' };
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
+
+// Firestore rejects `undefined` anywhere in a document, so every block is
+// built through this one place instead of ad-hoc object literals scattered
+// around - it never sets a field it doesn't need (checked only exists on
+// checkbox blocks) rather than setting that field to undefined.
+function buildBlock(id: string, type: BlockType, text: string): Block {
+  const block: Block = { id, text, type };
+  if (type === 'checkbox') block.checked = false;
+  return block;
+}
+
+function newBlock(): Block {
+  return buildBlock(generateId(), 'paragraph', '');
+}
+
+const LIST_TYPES: BlockType[] = ['bulleted', 'numbered', 'checkbox'];
 
 // Inline formatting is stored as plain markers inside the block's own text
 // (**bold**, *italic*, __underline__, ~~strikethrough~~, {c:#hex}color{/c},
@@ -180,12 +198,14 @@ type BlockRowProps = {
   isSelectMode: boolean;
   isEditMode: boolean;
   showBoundary: boolean;
+  listNumber?: number;
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
   onToggleSelected: (id: string) => void;
   onToggleChecked: (id: string) => void;
   onFocus: (id: string) => void;
   onSelectionChange: (id: string, start: number, end: number) => void;
+  onOpenImage: (uri: string) => void;
   inputRef: (ref: TextInput | null) => void;
 };
 
@@ -195,12 +215,14 @@ function BlockRow({
   isSelectMode,
   isEditMode,
   showBoundary,
+  listNumber,
   onChangeText,
   onBackspaceEmpty,
   onToggleSelected,
   onToggleChecked,
   onFocus,
   onSelectionChange,
+  onOpenImage,
   inputRef,
 }: BlockRowProps) {
   // Outside edit mode (or while selecting), the text field is completely
@@ -217,8 +239,17 @@ function BlockRow({
   if (type === 'divider') {
     content = <View style={styles.dividerLine} />;
   } else if (type === 'image') {
+    // 'contain' (not 'cover') keeps the photo's real proportions - any
+    // leftover space in the fixed-height box shows the box's own pale gray
+    // background instead of cropping or stretching the image.
     content = item.imageUri ? (
-      <Image source={{ uri: item.imageUri }} style={styles.blockImage} resizeMode="cover" />
+      <Pressable
+        disabled={isSelectMode}
+        onPress={() => onOpenImage(item.imageUri!)}
+        style={styles.blockImageWrap}
+      >
+        <Image source={{ uri: item.imageUri }} style={styles.blockImage} resizeMode="contain" />
+      </Pressable>
     ) : (
       <Text style={styles.blockPlaceholder}>Немає зображення</Text>
     );
@@ -262,10 +293,10 @@ function BlockRow({
       </View>
     );
 
-    if (type === 'bulleted') {
+    if (type === 'bulleted' || type === 'numbered') {
       content = (
         <View style={styles.prefixedRow}>
-          <Text style={styles.bulletMark}>•</Text>
+          <Text style={styles.bulletMark}>{type === 'numbered' ? `${listNumber ?? 1}.` : '•'}</Text>
           {textField}
         </View>
       );
@@ -332,6 +363,7 @@ type SortableBlockRowProps = {
   isDragging: boolean;
   isDragActive: boolean;
   compressTowardOffset: number;
+  listNumber?: number;
   onLayout: (e: LayoutChangeEvent) => void;
   onDragStart: () => void;
   onDragUpdate: (translationY: number) => void;
@@ -342,6 +374,7 @@ type SortableBlockRowProps = {
   onBackspaceEmpty: (id: string) => void;
   onFocus: (id: string) => void;
   onSelectionChange: (id: string, start: number, end: number) => void;
+  onOpenImage: (uri: string) => void;
   inputRef: (ref: TextInput | null) => void;
 };
 
@@ -353,6 +386,7 @@ function SortableBlockRow({
   isDragging,
   isDragActive,
   compressTowardOffset,
+  listNumber,
   onLayout,
   onDragStart,
   onDragUpdate,
@@ -363,6 +397,7 @@ function SortableBlockRow({
   onBackspaceEmpty,
   onFocus,
   onSelectionChange,
+  onOpenImage,
   inputRef,
 }: SortableBlockRowProps) {
   // This gesture's whole job is JS-side (finding the nearest gap, updating
@@ -419,12 +454,14 @@ function SortableBlockRow({
             isSelectMode={isSelectMode}
             isEditMode={isEditMode}
             showBoundary={isDragActive}
+            listNumber={listNumber}
             onChangeText={onChangeText}
             onBackspaceEmpty={onBackspaceEmpty}
             onToggleSelected={onToggleSelected}
             onToggleChecked={onToggleChecked}
             onFocus={onFocus}
             onSelectionChange={onSelectionChange}
+            onOpenImage={onOpenImage}
             inputRef={inputRef}
           />
         </Animated.View>
@@ -444,6 +481,7 @@ type BlockListProps = {
   onBackspaceEmpty: (id: string) => void;
   onFocus: (id: string) => void;
   onSelectionChange: (id: string, start: number, end: number) => void;
+  onOpenImage: (uri: string) => void;
   onInputRef: (id: string, ref: TextInput | null) => void;
 };
 
@@ -459,6 +497,7 @@ function BlockList({
   onBackspaceEmpty,
   onFocus,
   onSelectionChange,
+  onOpenImage,
   onInputRef,
 }: BlockListProps) {
   const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
@@ -626,9 +665,19 @@ function BlockList({
     right: 8 + dropLineInset.value,
   }));
 
+  // Numbering restarts after any non-numbered block breaks the run, like a
+  // real numbered list rather than a permanently incrementing counter.
+  let runningNumber = 0;
+
   return (
     <View style={styles.blockListContainer}>
-      {blocks.map((item) => (
+      {blocks.map((item, index) => {
+        if (item.type === 'numbered') {
+          runningNumber = index > 0 && blocks[index - 1].type === 'numbered' ? runningNumber + 1 : 1;
+        } else {
+          runningNumber = 0;
+        }
+        return (
         <SortableBlockRow
           key={item.id}
           item={item}
@@ -637,6 +686,7 @@ function BlockList({
           isEditMode={isEditMode}
           isDragging={draggingIds?.includes(item.id) ?? false}
           isDragActive={draggingIds !== null}
+          listNumber={item.type === 'numbered' ? runningNumber : undefined}
           compressTowardOffset={compressOffsetFor(item.id)}
           onLayout={(e) => handleRowLayout(item.id, e)}
           onDragStart={() => handleDragStart(item.id, dragGroupFor(item.id))}
@@ -650,13 +700,79 @@ function BlockList({
           onBackspaceEmpty={onBackspaceEmpty}
           onFocus={onFocus}
           onSelectionChange={onSelectionChange}
+          onOpenImage={onOpenImage}
           inputRef={(ref) => onInputRef(item.id, ref)}
         />
-      ))}
+        );
+      })}
 
       {draggingIds && insertIndex !== null && (
         <Animated.View pointerEvents="none" style={[styles.dropLine, dropLineStyle]} />
       )}
+    </View>
+  );
+}
+
+// Full-screen viewer opened by tapping an image block - pinch to zoom in,
+// drag around once zoomed, pinching back below 1x snaps back to the
+// original fit. Hand-built on the same gesture-handler/reanimated stack
+// already used everywhere else in this screen rather than adding a
+// dedicated image-viewer dependency for this one feature.
+function ZoomableImageViewer({ uri, onClose }: { uri: string; onClose: () => void }) {
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const savedTranslateX = useSharedValue(0);
+  const savedTranslateY = useSharedValue(0);
+
+  const pinchGesture = Gesture.Pinch()
+    .onUpdate((e) => {
+      scale.value = Math.max(1, savedScale.value * e.scale);
+    })
+    .onEnd(() => {
+      savedScale.value = scale.value;
+      if (scale.value <= 1) {
+        scale.value = withTiming(1);
+        translateX.value = withTiming(0);
+        translateY.value = withTiming(0);
+        savedTranslateX.value = 0;
+        savedTranslateY.value = 0;
+        savedScale.value = 1;
+      }
+    });
+
+  const panGesture = Gesture.Pan()
+    .onUpdate((e) => {
+      if (savedScale.value <= 1) return;
+      translateX.value = savedTranslateX.value + e.translationX;
+      translateY.value = savedTranslateY.value + e.translationY;
+    })
+    .onEnd(() => {
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+    });
+
+  const gesture = Gesture.Simultaneous(pinchGesture, panGesture);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { scale: scale.value },
+    ],
+  }));
+
+  return (
+    <View style={styles.viewerBackdrop}>
+      <Pressable style={styles.viewerCloseButton} hitSlop={12} onPress={onClose}>
+        <Ionicons name="close" size={28} color="#fff" />
+      </Pressable>
+      <GestureDetector gesture={gesture}>
+        <Animated.View style={[styles.viewerImageWrap, animatedStyle]}>
+          <Image source={{ uri }} style={styles.viewerImage} resizeMode="contain" />
+        </Animated.View>
+      </GestureDetector>
     </View>
   );
 }
@@ -679,6 +795,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     null
   );
   const [slashMenuBlockId, setSlashMenuBlockId] = useState<string | null>(null);
+  const [viewerImageUri, setViewerImageUri] = useState<string | null>(null);
   const focusIdRef = useRef<string | null>(null);
   const focusToEndRef = useRef(false);
   const focusedBlockIdRef = useRef<string | null>(null);
@@ -947,12 +1064,45 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     } else if (slashMenuBlockId === id) {
       setSlashMenuBlockId(null);
     }
+    const currentType = blocks.find((b) => b.id === id)?.type ?? 'paragraph';
+
+    // List items (bulleted/numbered/checkbox) continue the list on a
+    // single Enter instead of needing a second one - typing a whole
+    // sentence per item would be tedious otherwise. Pressing Enter on an
+    // already-empty item exits the list instead of adding another blank
+    // one, matching how most list editors behave.
+    if (LIST_TYPES.includes(currentType)) {
+      const newlineIndex = text.indexOf('\n');
+      if (newlineIndex !== -1) {
+        const before = text.slice(0, newlineIndex);
+        const after = text.slice(newlineIndex + 1);
+        if (before === '') {
+          setBlocks((prev) => prev.map((b) => (b.id === id ? buildBlock(b.id, 'paragraph', after) : b)));
+          return;
+        }
+        const created = buildBlock(generateId(), currentType, after);
+        focusIdRef.current = created.id;
+        setBlocks((prev) => {
+          const index = prev.findIndex((b) => b.id === id);
+          if (index === -1) return prev;
+          const next = [...prev];
+          next[index] = { ...next[index], text: before };
+          next.splice(index + 1, 0, created);
+          return next;
+        });
+        return;
+      }
+      setBlocks((prev) => prev.map((block) => (block.id === id ? { ...block, text } : block)));
+      return;
+    }
+
     // React Native's TextInput never reports whether Shift was held for
     // Enter (Android's own bridge code discards that before it reaches JS,
-    // on any keyboard, soft or hardware) - so a single Enter has to just be
-    // a line break within the block, and creating a new block instead needs
-    // its own distinct signal: pressing Enter again on the resulting empty
-    // line, i.e. two consecutive newlines.
+    // on any keyboard, soft or hardware) - so for a plain paragraph, a
+    // single Enter has to just be a line break within the block, and
+    // creating a new block instead needs its own distinct signal: pressing
+    // Enter again on the resulting empty line, i.e. two consecutive
+    // newlines.
     const doubleNewlineIndex = text.indexOf('\n\n');
     if (doubleNewlineIndex === -1) {
       setBlocks((prev) => prev.map((block) => (block.id === id ? { ...block, text } : block)));
@@ -1020,7 +1170,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
         const index = prev.findIndex((b) => b.id === id);
         if (index === -1) return prev;
         const next = [...prev];
-        next[index] = { id, text: '', type: 'divider' };
+        next[index] = buildBlock(id, 'divider', '');
         if (index === next.length - 1) {
           const trailing = newBlock();
           next.splice(index + 1, 0, trailing);
@@ -1031,20 +1181,30 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
         return next;
       });
     } else {
-      // Firestore rejects `undefined` anywhere in a document, so the new
-      // block object is built fresh (dropping any stale checked/imageUri
-      // from whatever type it used to be) rather than spread-and-overwrite,
-      // which would leave an explicit `checked: undefined` for a
-      // non-checkbox type.
       focusIdRef.current = id;
-      setBlocks((prev) =>
-        prev.map((b): Block => {
-          if (b.id !== id) return b;
-          const converted: Block = { id: b.id, text: '', type };
-          if (type === 'checkbox') converted.checked = false;
-          return converted;
-        })
-      );
+      setBlocks((prev) => prev.map((b) => (b.id === id ? buildBlock(id, type, '') : b)));
+    }
+  }
+
+  // Longest side capped at 1600px (skipped if already smaller) and
+  // re-compressed to a moderate JPEG quality, so a multi-megabyte photo
+  // straight from a modern phone camera doesn't get stored at full size in
+  // every document. Falls back to the picker's own output if manipulation
+  // fails for any reason - a slightly larger image beats losing the pick.
+  async function compressPickedImage(uri: string, width: number, height: number): Promise<string> {
+    const MAX_DIMENSION = 1600;
+    try {
+      const longest = Math.max(width, height);
+      let context = ImageManipulator.manipulate(uri);
+      if (longest > MAX_DIMENSION) {
+        const scale = MAX_DIMENSION / longest;
+        context = context.resize({ width: Math.round(width * scale), height: Math.round(height * scale) });
+      }
+      const rendered = await context.renderAsync();
+      const saved = await rendered.saveAsync({ compress: 0.7, format: SaveFormat.JPEG });
+      return saved.uri;
+    } catch {
+      return uri;
     }
   }
 
@@ -1054,16 +1214,17 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     if (!permission.granted) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      quality: 0.7,
+      quality: 1,
     });
     if (result.canceled || !result.assets[0]) return;
-    const uri = result.assets[0].uri;
+    const asset = result.assets[0];
+    const uri = await compressPickedImage(asset.uri, asset.width, asset.height);
     snapshotBeforeChange();
     setBlocks((prev) => {
       const index = prev.findIndex((b) => b.id === id);
       if (index === -1) return prev;
       const next = [...prev];
-      next[index] = { id, text: '', type: 'image', imageUri: uri };
+      next[index] = { ...buildBlock(id, 'image', ''), imageUri: uri };
       if (index === next.length - 1) {
         const trailing = newBlock();
         next.splice(index + 1, 0, trailing);
@@ -1183,6 +1344,14 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           <Pressable
             style={styles.slashMenuItem}
             hitSlop={6}
+            onPress={() => convertBlockType(slashMenuBlockId, 'numbered')}
+          >
+            <Ionicons name="list-outline" size={20} color="#111827" />
+            <Text style={styles.slashMenuLabel}>Нумерований список</Text>
+          </Pressable>
+          <Pressable
+            style={styles.slashMenuItem}
+            hitSlop={6}
             onPress={() => convertBlockType(slashMenuBlockId, 'checkbox')}
           >
             <Ionicons name="checkbox-outline" size={20} color="#111827" />
@@ -1270,6 +1439,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           onBackspaceEmpty={handleBackspaceOnEmpty}
           onFocus={handleBlockFocus}
           onSelectionChange={handleBlockSelectionChange}
+          onOpenImage={setViewerImageUri}
           onInputRef={(id, ref) => {
             inputRefs.current[id] = ref;
           }}
@@ -1287,6 +1457,17 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           </Pressable>
         )}
       </ScrollView>
+
+      {viewerImageUri && (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={() => setViewerImageUri(null)}
+        >
+          <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />
+        </Modal>
+      )}
     </View>
   );
 }
@@ -1419,11 +1600,39 @@ const styles = StyleSheet.create({
     marginVertical: 12,
     marginHorizontal: 4,
   },
-  blockImage: {
+  blockImageWrap: {
     flex: 1,
     height: 180,
     borderRadius: 10,
     backgroundColor: '#F3F4F6',
+    overflow: 'hidden',
+  },
+  blockImage: {
+    width: '100%',
+    height: '100%',
+  },
+  viewerBackdrop: {
+    flex: 1,
+    backgroundColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewerCloseButton: {
+    position: 'absolute',
+    top: 48,
+    right: 20,
+    zIndex: 1,
+    padding: 8,
+  },
+  viewerImageWrap: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewerImage: {
+    width: '100%',
+    height: '100%',
   },
   slashMenuItem: {
     flexDirection: 'row',
