@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  KeyboardAvoidingView,
+  Dimensions,
+  Keyboard,
   LayoutAnimation,
   LayoutChangeEvent,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -13,7 +15,13 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -44,6 +52,7 @@ type BlockRowProps = {
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
   onToggleSelected: (id: string) => void;
+  onFocus: (id: string) => void;
   inputRef: (ref: TextInput | null) => void;
 };
 
@@ -55,12 +64,30 @@ function BlockRow({
   onChangeText,
   onBackspaceEmpty,
   onToggleSelected,
+  onFocus,
   inputRef,
 }: BlockRowProps) {
   return (
     <View
       style={[styles.blockRow, isSelected && styles.blockRowSelected, showBoundary && styles.blockRowBoundary]}
     >
+      <TextInput
+        ref={inputRef}
+        value={item.text}
+        editable={!isSelectMode}
+        onChangeText={(text) => onChangeText(item.id, text)}
+        onFocus={() => onFocus(item.id)}
+        onKeyPress={({ nativeEvent }) => {
+          if (nativeEvent.key === 'Backspace' && item.text === '') {
+            onBackspaceEmpty(item.id);
+          }
+        }}
+        placeholder="Пишіть тут…"
+        style={styles.blockInput}
+        multiline
+      />
+      {/* On the right, under the header's select-mode toggle (also on the
+          right) so the two read as one control. */}
       <Pressable
         hitSlop={8}
         disabled={!isSelectMode}
@@ -73,20 +100,6 @@ function BlockRow({
           color={isSelected ? ACCENT : '#9CA3AF'}
         />
       </Pressable>
-      <TextInput
-        ref={inputRef}
-        value={item.text}
-        editable={!isSelectMode}
-        onChangeText={(text) => onChangeText(item.id, text)}
-        onKeyPress={({ nativeEvent }) => {
-          if (nativeEvent.key === 'Backspace' && item.text === '') {
-            onBackspaceEmpty(item.id);
-          }
-        }}
-        placeholder="Пишіть тут…"
-        style={styles.blockInput}
-        multiline
-      />
     </View>
   );
 }
@@ -118,6 +131,7 @@ type SortableBlockRowProps = {
   onToggleSelected: (id: string) => void;
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
+  onFocus: (id: string) => void;
   inputRef: (ref: TextInput | null) => void;
 };
 
@@ -134,6 +148,7 @@ function SortableBlockRow({
   onToggleSelected,
   onChangeText,
   onBackspaceEmpty,
+  onFocus,
   inputRef,
 }: SortableBlockRowProps) {
   // This gesture's whole job is JS-side (finding the nearest gap, updating
@@ -166,6 +181,7 @@ function SortableBlockRow({
             onChangeText={onChangeText}
             onBackspaceEmpty={onBackspaceEmpty}
             onToggleSelected={onToggleSelected}
+            onFocus={onFocus}
             inputRef={inputRef}
           />
         </View>
@@ -181,6 +197,7 @@ type BlockListProps = {
   onToggleSelected: (id: string) => void;
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
+  onFocus: (id: string) => void;
   onInputRef: (id: string, ref: TextInput | null) => void;
 };
 
@@ -192,12 +209,17 @@ function BlockList({
   onToggleSelected,
   onChangeText,
   onBackspaceEmpty,
+  onFocus,
   onInputRef,
 }: BlockListProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [insertIndex, setInsertIndexState] = useState<number | null>(null);
   const insertIndexRef = useRef<number | null>(null);
   const dropLineY = useSharedValue(0);
+  // Extra horizontal inset applied to the drop line while it's actively
+  // being dragged between gaps (making it "trохи коротшою" / a bit
+  // shorter); it eases back to 0 (full width) as part of the final settle.
+  const dropLineInset = useSharedValue(0);
   const rowLayouts = useRef<Record<string, { y: number; height: number }>>({});
   const blocksRef = useRef(blocks);
   blocksRef.current = blocks;
@@ -254,6 +276,7 @@ function BlockList({
     if (layout) {
       dropLineY.value = gapYFor(currentIndex);
     }
+    dropLineInset.value = withTiming(14, { duration: 150 });
   }
 
   function handleDragUpdate(id: string, translationY: number) {
@@ -265,7 +288,9 @@ function BlockList({
       setInsertIndex(targetIndex);
       // overshootClamping stops it swinging past the target and settling
       // back - the "rocking like a boat" feeling - while keeping the same
-      // eased, springy deceleration on the way there.
+      // eased, springy deceleration on the way there. The little bounce the
+      // user actually wants only happens once, at the very end of the drag
+      // (see handleDragEnd), not on every one of these mid-drag snaps.
       dropLineY.value = withSpring(gapYFor(targetIndex), {
         damping: 26,
         stiffness: 260,
@@ -274,7 +299,7 @@ function BlockList({
     }
   }
 
-  function handleDragEnd(id: string) {
+  function commitReorder(id: string) {
     const targetIndex = insertIndexRef.current;
     const list = blocksRef.current;
     const currentIndex = list.findIndex((b) => b.id === id);
@@ -295,8 +320,26 @@ function BlockList({
     setInsertIndex(null);
   }
 
+  function handleDragEnd(id: string) {
+    dropLineInset.value = withTiming(0, { duration: 200 });
+    // A synthetic velocity makes the spring overshoot its target and settle
+    // back even though it's often already resting there (no natural
+    // distance left to travel) - a small, deliberate "landing" bounce that
+    // only plays once, here, instead of on every mid-drag snap above.
+    const targetIndex = insertIndexRef.current;
+    dropLineY.value = withSpring(
+      gapYFor(targetIndex ?? 0),
+      { damping: 12, stiffness: 300, velocity: 260 },
+      (finished) => {
+        if (finished) runOnJS(commitReorder)(id);
+      }
+    );
+  }
+
   const dropLineStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: dropLineY.value - 2 }],
+    left: 8 + dropLineInset.value,
+    right: 8 + dropLineInset.value,
   }));
 
   return (
@@ -316,6 +359,7 @@ function BlockList({
           onToggleSelected={onToggleSelected}
           onChangeText={onChangeText}
           onBackspaceEmpty={onBackspaceEmpty}
+          onFocus={onFocus}
           inputRef={(ref) => onInputRef(item.id, ref)}
         />
       ))}
@@ -337,10 +381,14 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSelectMode, setIsSelectMode] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const focusIdRef = useRef<string | null>(null);
   const focusToEndRef = useRef(false);
+  const focusedBlockIdRef = useRef<string | null>(null);
   const inputRefs = useRef<Record<string, TextInput | null>>({});
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollOffsetRef = useRef(0);
 
   useEffect(() => {
     (async () => {
@@ -384,6 +432,43 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     }
     focusIdRef.current = null;
   }, [blocks]);
+
+  // Expo Go's own manifest isn't affected by app.json's
+  // android.softwareKeyboardLayoutMode, so the keyboard never resizes the
+  // window here the way a real build's adjustResize would - the screen has
+  // to track the keyboard itself and scroll the focused block above it.
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+      scrollFocusedBlockIntoView(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function scrollFocusedBlockIntoView(currentKeyboardHeight: number) {
+    const id = focusedBlockIdRef.current;
+    const input = id ? inputRefs.current[id] : null;
+    if (!input) return;
+    input.measure((_x, _y, _width, height, _pageX, pageY) => {
+      const visibleBottom = Dimensions.get('window').height - currentKeyboardHeight;
+      const overflow = pageY + height - visibleBottom + 24;
+      if (overflow > 0) {
+        scrollViewRef.current?.scrollTo({ y: scrollOffsetRef.current + overflow, animated: true });
+      }
+    });
+  }
+
+  function handleBlockFocus(id: string) {
+    focusedBlockIdRef.current = id;
+    if (keyboardHeight > 0) {
+      scrollFocusedBlockIntoView(keyboardHeight);
+    }
+  }
 
   function handleBlockChange(id: string, text: string) {
     const newlineIndex = text.indexOf('\n');
@@ -456,66 +541,69 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior="padding"
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
+    <View style={styles.container}>
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={22} color="#111827" />
-          </Pressable>
-          {/* Sits above the per-block checkboxes' column so the two read as
-              one control, not an unrelated icon on the other side of the screen. */}
-          <Pressable hitSlop={8} onPress={toggleSelectMode}>
-            <Ionicons
-              name={isSelectMode ? 'close' : 'checkmark-circle-outline'}
-              size={22}
-              color="#111827"
-            />
-          </Pressable>
-        </View>
+        <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={22} color="#111827" />
+        </Pressable>
         <Text style={styles.headerStatus}>
           {saveStatus === 'saving' ? 'Збереження…' : 'Збережено'}
         </Text>
-        <View style={styles.headerRightSpacer} />
+        <Pressable hitSlop={8} onPress={toggleSelectMode}>
+          <Ionicons
+            name={isSelectMode ? 'close' : 'checkmark-circle-outline'}
+            size={22}
+            color="#111827"
+          />
+        </Pressable>
       </View>
 
-      <TextInput
-        value={title}
-        onChangeText={setTitle}
-        placeholder="Без назви"
-        style={styles.titleInput}
-      />
-
-      <Text style={styles.debugCount}>ДІАГНОСТИКА: блоків у стані = {blocks.length}</Text>
-
-      <BlockList
-        blocks={blocks}
-        onReorder={setBlocks}
-        selectedIds={selectedIds}
-        isSelectMode={isSelectMode}
-        onToggleSelected={toggleSelected}
-        onChangeText={handleBlockChange}
-        onBackspaceEmpty={handleBackspaceOnEmpty}
-        onInputRef={(id, ref) => {
-          inputRefs.current[id] = ref;
+      <ScrollView
+        ref={scrollViewRef}
+        style={styles.scrollArea}
+        contentContainerStyle={{ paddingBottom: keyboardHeight + 40 }}
+        keyboardShouldPersistTaps="handled"
+        onScroll={(e) => {
+          scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
         }}
-      />
+        scrollEventThrottle={16}
+      >
+        <TextInput
+          value={title}
+          onChangeText={setTitle}
+          placeholder="Без назви"
+          style={styles.titleInput}
+        />
 
-      {selectedIds.size > 0 ? (
-        <Pressable style={styles.deleteSelected} onPress={deleteSelectedBlocks}>
-          <Ionicons name="trash-outline" size={18} color={DANGER} />
-          <Text style={styles.deleteSelectedLabel}>Видалити ({selectedIds.size})</Text>
-        </Pressable>
-      ) : (
-        <Pressable style={styles.addBlock} onPress={addBlockAtEnd}>
-          <Ionicons name="add" size={18} color={ACCENT} />
-          <Text style={styles.addBlockLabel}>Додати блок</Text>
-        </Pressable>
-      )}
-    </KeyboardAvoidingView>
+        <Text style={styles.debugCount}>ДІАГНОСТИКА: блоків у стані = {blocks.length}</Text>
+
+        <BlockList
+          blocks={blocks}
+          onReorder={setBlocks}
+          selectedIds={selectedIds}
+          isSelectMode={isSelectMode}
+          onToggleSelected={toggleSelected}
+          onChangeText={handleBlockChange}
+          onBackspaceEmpty={handleBackspaceOnEmpty}
+          onFocus={handleBlockFocus}
+          onInputRef={(id, ref) => {
+            inputRefs.current[id] = ref;
+          }}
+        />
+
+        {selectedIds.size > 0 ? (
+          <Pressable style={styles.deleteSelected} onPress={deleteSelectedBlocks}>
+            <Ionicons name="trash-outline" size={18} color={DANGER} />
+            <Text style={styles.deleteSelectedLabel}>Видалити ({selectedIds.size})</Text>
+          </Pressable>
+        ) : (
+          <Pressable style={styles.addBlock} onPress={addBlockAtEnd}>
+            <Ionicons name="add" size={18} color={ACCENT} />
+            <Text style={styles.addBlockLabel}>Додати блок</Text>
+          </Pressable>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -532,17 +620,12 @@ const styles = StyleSheet.create({
     paddingTop: 56,
     paddingBottom: 12,
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  headerRightSpacer: {
-    width: 58,
-  },
   headerStatus: {
     fontSize: 13,
     color: '#9CA3AF',
+  },
+  scrollArea: {
+    flex: 1,
   },
   debugCount: {
     fontSize: 13,
