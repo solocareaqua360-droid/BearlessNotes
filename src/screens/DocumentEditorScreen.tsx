@@ -40,8 +40,132 @@ const DANGER = '#EF4444';
 const AUTOSAVE_DELAY_MS = 600;
 const DRAG_LONG_PRESS_MS = 350;
 
+// Small fixed palette rather than a full color picker - enough variety for
+// notes without the complexity of a hue/saturation UI.
+const TEXT_COLORS = ['#111827', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
+const HIGHLIGHT_COLORS = ['#FEF08A', '#BBF7D0', '#BFDBFE', '#FBCFE8', '#E9D5FF'];
+
 function newBlock(): Block {
   return { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, text: '' };
+}
+
+// Inline formatting is stored as plain markers inside the block's own text
+// (**bold**, *italic*, __underline__, ~~strikethrough~~, {c:#hex}color{/c},
+// {h:#hex}highlight{/h}) rather than a separate rich-text model - Android's
+// TextInput can't render live bold-while-typing inside an editable field
+// regardless of data model, so there was nothing to gain from a heavier
+// representation. Markers are visible as-is while a block is being edited
+// (see BlockRow) and parsed into styled <Text> runs otherwise.
+const COLOR_OPEN = /^\{c:(#[0-9A-Fa-f]{6})\}/;
+const HIGHLIGHT_OPEN = /^\{h:(#[0-9A-Fa-f]{6})\}/;
+const COLOR_CLOSE = '{/c}';
+const HIGHLIGHT_CLOSE = '{/h}';
+
+type TextStyle = {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+  color?: string;
+  highlight?: string;
+};
+
+type TextSegment = TextStyle & { text: string };
+
+function parseFormattedText(text: string): TextSegment[] {
+  const segments: TextSegment[] = [];
+  parseFormattedInto(text, {}, segments);
+  return segments;
+}
+
+function parseFormattedInto(text: string, style: TextStyle, out: TextSegment[]) {
+  let i = 0;
+  let plainStart = 0;
+  const flushPlain = (end: number) => {
+    if (end > plainStart) out.push({ text: text.slice(plainStart, end), ...style });
+  };
+  while (i < text.length) {
+    const rest = text.slice(i);
+    let consumed = 0;
+    if (rest.startsWith('**')) {
+      const close = rest.indexOf('**', 2);
+      if (close !== -1) {
+        flushPlain(i);
+        parseFormattedInto(rest.slice(2, close), { ...style, bold: true }, out);
+        consumed = close + 2;
+      }
+    } else if (rest.startsWith('__')) {
+      const close = rest.indexOf('__', 2);
+      if (close !== -1) {
+        flushPlain(i);
+        parseFormattedInto(rest.slice(2, close), { ...style, underline: true }, out);
+        consumed = close + 2;
+      }
+    } else if (rest.startsWith('~~')) {
+      const close = rest.indexOf('~~', 2);
+      if (close !== -1) {
+        flushPlain(i);
+        parseFormattedInto(rest.slice(2, close), { ...style, strikethrough: true }, out);
+        consumed = close + 2;
+      }
+    } else if (rest.startsWith('*')) {
+      const close = rest.indexOf('*', 1);
+      if (close !== -1) {
+        flushPlain(i);
+        parseFormattedInto(rest.slice(1, close), { ...style, italic: true }, out);
+        consumed = close + 1;
+      }
+    } else if (COLOR_OPEN.test(rest)) {
+      const m = rest.match(COLOR_OPEN)!;
+      const close = rest.indexOf(COLOR_CLOSE, m[0].length);
+      if (close !== -1) {
+        flushPlain(i);
+        parseFormattedInto(rest.slice(m[0].length, close), { ...style, color: m[1] }, out);
+        consumed = close + COLOR_CLOSE.length;
+      }
+    } else if (HIGHLIGHT_OPEN.test(rest)) {
+      const m = rest.match(HIGHLIGHT_OPEN)!;
+      const close = rest.indexOf(HIGHLIGHT_CLOSE, m[0].length);
+      if (close !== -1) {
+        flushPlain(i);
+        parseFormattedInto(rest.slice(m[0].length, close), { ...style, highlight: m[1] }, out);
+        consumed = close + HIGHLIGHT_CLOSE.length;
+      }
+    }
+    if (consumed > 0) {
+      i += consumed;
+      plainStart = i;
+    } else {
+      i++;
+    }
+  }
+  flushPlain(text.length);
+}
+
+function FormattedText({ segments, defaultColor }: { segments: TextSegment[]; defaultColor: string }) {
+  return (
+    <>
+      {segments.map((seg, i) => {
+        const decorations = [seg.underline && 'underline', seg.strikethrough && 'line-through']
+          .filter(Boolean)
+          .join(' ');
+        return (
+          <Text
+            key={i}
+            style={{
+              fontWeight: seg.bold ? '700' : '400',
+              fontStyle: seg.italic ? 'italic' : 'normal',
+              textDecorationLine: (decorations || 'none') as 'none' | 'underline' | 'line-through',
+              color: seg.color ?? defaultColor,
+              backgroundColor: seg.highlight,
+            }}
+          >
+            {seg.text}
+          </Text>
+        );
+      })}
+    </>
+  );
 }
 
 // Content of a single block: a leading icon (a drag handle normally, or a
@@ -57,6 +181,7 @@ type BlockRowProps = {
   onBackspaceEmpty: (id: string) => void;
   onToggleSelected: (id: string) => void;
   onFocus: (id: string) => void;
+  onSelectionChange: (id: string, start: number, end: number) => void;
   inputRef: (ref: TextInput | null) => void;
 };
 
@@ -70,6 +195,7 @@ function BlockRow({
   onBackspaceEmpty,
   onToggleSelected,
   onFocus,
+  onSelectionChange,
   inputRef,
 }: BlockRowProps) {
   // Outside edit mode (or while selecting), the text field is completely
@@ -85,27 +211,44 @@ function BlockRow({
     <View
       style={[styles.blockRow, isSelected && styles.blockRowSelected, showBoundary && styles.blockRowBoundary]}
     >
-      <TextInput
-        // Android's TextInput doesn't reliably pick up a dynamic `editable`
-        // change on an already-mounted view; keying on canEditText forces a
-        // clean remount so the native EditText is created with the correct
-        // editable/pointerEvents state instead of getting stuck non-editable.
-        key={canEditText ? 'editable' : 'locked'}
-        ref={inputRef}
-        value={item.text}
-        editable={canEditText}
-        pointerEvents={canEditText ? 'auto' : 'none'}
-        onChangeText={(text) => onChangeText(item.id, text)}
-        onFocus={() => onFocus(item.id)}
-        onKeyPress={({ nativeEvent }) => {
-          if (nativeEvent.key === 'Backspace' && item.text === '') {
-            onBackspaceEmpty(item.id);
+      {canEditText ? (
+        <TextInput
+          // Android's TextInput doesn't reliably pick up a dynamic `editable`
+          // change on an already-mounted view; keying on canEditText forces
+          // a clean remount so the native EditText is created with the
+          // correct editable/pointerEvents state instead of getting stuck
+          // non-editable.
+          key="editable"
+          ref={inputRef}
+          value={item.text}
+          onChangeText={(text) => onChangeText(item.id, text)}
+          onFocus={() => onFocus(item.id)}
+          onSelectionChange={({ nativeEvent }) =>
+            onSelectionChange(item.id, nativeEvent.selection.start, nativeEvent.selection.end)
           }
-        }}
-        placeholder="Пишіть тут…"
-        style={styles.blockInput}
-        multiline
-      />
+          onKeyPress={({ nativeEvent }) => {
+            if (nativeEvent.key === 'Backspace' && item.text === '') {
+              onBackspaceEmpty(item.id);
+            }
+          }}
+          placeholder="Пишіть тут…"
+          style={styles.blockInput}
+          multiline
+        />
+      ) : (
+        // Outside edit mode, formatting markers (**bold** etc.) are parsed
+        // into styled runs instead of showing as raw text - and a plain
+        // Text has no touch handling of its own to fight the ScrollView.
+        <View key="locked" style={styles.blockInput} pointerEvents="none">
+          <Text style={styles.blockDisplayText}>
+            {item.text ? (
+              <FormattedText segments={parseFormattedText(item.text)} defaultColor="#111827" />
+            ) : (
+              <Text style={styles.blockPlaceholder}>Пишіть тут…</Text>
+            )}
+          </Text>
+        </View>
+      )}
       {/* On the right, under the header's select-mode toggle (also on the
           right) so the two read as one control. */}
       <Pressable
@@ -154,6 +297,7 @@ type SortableBlockRowProps = {
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
   onFocus: (id: string) => void;
+  onSelectionChange: (id: string, start: number, end: number) => void;
   inputRef: (ref: TextInput | null) => void;
 };
 
@@ -173,6 +317,7 @@ function SortableBlockRow({
   onChangeText,
   onBackspaceEmpty,
   onFocus,
+  onSelectionChange,
   inputRef,
 }: SortableBlockRowProps) {
   // This gesture's whole job is JS-side (finding the nearest gap, updating
@@ -233,6 +378,7 @@ function SortableBlockRow({
             onBackspaceEmpty={onBackspaceEmpty}
             onToggleSelected={onToggleSelected}
             onFocus={onFocus}
+            onSelectionChange={onSelectionChange}
             inputRef={inputRef}
           />
         </Animated.View>
@@ -250,6 +396,7 @@ type BlockListProps = {
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
   onFocus: (id: string) => void;
+  onSelectionChange: (id: string, start: number, end: number) => void;
   onInputRef: (id: string, ref: TextInput | null) => void;
 };
 
@@ -263,6 +410,7 @@ function BlockList({
   onChangeText,
   onBackspaceEmpty,
   onFocus,
+  onSelectionChange,
   onInputRef,
 }: BlockListProps) {
   const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
@@ -452,6 +600,7 @@ function BlockList({
           onChangeText={onChangeText}
           onBackspaceEmpty={onBackspaceEmpty}
           onFocus={onFocus}
+          onSelectionChange={onSelectionChange}
           inputRef={(ref) => onInputRef(item.id, ref)}
         />
       ))}
@@ -477,6 +626,9 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  const [activeSelection, setActiveSelection] = useState<{ blockId: string; start: number; end: number } | null>(
+    null
+  );
   const focusIdRef = useRef<string | null>(null);
   const focusToEndRef = useRef(false);
   const focusedBlockIdRef = useRef<string | null>(null);
@@ -586,6 +738,12 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     }
   }
 
+  // Drives the formatting toolbar: it only shows for a real (non-empty)
+  // selection, since there's nothing to apply Bold/Italic/etc. to otherwise.
+  function handleBlockSelectionChange(id: string, start: number, end: number) {
+    setActiveSelection(start === end ? null : { blockId: id, start, end });
+  }
+
   const UNDO_HISTORY_LIMIT = 50;
   const TYPING_BURST_MS = 800;
 
@@ -642,6 +800,91 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   function handleTitleChange(text: string) {
     snapshotForTyping();
     setTitle(text);
+  }
+
+  // Wraps (or unwraps, if already exactly wrapped) the active selection
+  // with a marker pair, then restores the selection over the same text so
+  // repeated taps toggle cleanly and the user can keep applying more
+  // formats to the same range.
+  function applyMarkerToSelection(open: string, close: string) {
+    const sel = activeSelection;
+    if (!sel) return;
+    const block = blocks.find((b) => b.id === sel.blockId);
+    if (!block) return;
+    const before = block.text.slice(0, sel.start);
+    const selected = block.text.slice(sel.start, sel.end);
+    const after = block.text.slice(sel.end);
+    // A single '*' (italic) also matches the tail of '**' (bold), so a
+    // plain endsWith/startsWith would misfire "already italic" on text
+    // that's actually bold-wrapped. Require the boundary to be exactly
+    // this marker, not a longer one that happens to contain it.
+    const isExactBoundary =
+      open === '*'
+        ? before.endsWith('*') && !before.endsWith('**') && after.startsWith('*') && !after.startsWith('**')
+        : before.endsWith(open) && after.startsWith(close);
+    let newText: string;
+    let newStart: number;
+    if (isExactBoundary) {
+      newText = before.slice(0, -open.length) + selected + after.slice(close.length);
+      newStart = sel.start - open.length;
+    } else {
+      newText = before + open + selected + close + after;
+      newStart = sel.start + open.length;
+    }
+    const newEnd = newStart + selected.length;
+    snapshotBeforeChange();
+    setBlocks((prev) => prev.map((b) => (b.id === sel.blockId ? { ...b, text: newText } : b)));
+    setActiveSelection({ blockId: sel.blockId, start: newStart, end: newEnd });
+    requestAnimationFrame(() => {
+      inputRefs.current[sel.blockId]?.setSelection(newStart, newEnd);
+    });
+  }
+
+  // Color/highlight need their own version since the "already applied"
+  // check has to match any hex value, not one fixed marker, and re-tapping
+  // a different swatch should replace the color rather than nest a second
+  // tag around the first.
+  function applyColorToSelection(kind: 'c' | 'h', hex: string) {
+    const sel = activeSelection;
+    if (!sel) return;
+    const block = blocks.find((b) => b.id === sel.blockId);
+    if (!block) return;
+    const openPattern = kind === 'c' ? COLOR_OPEN : HIGHLIGHT_OPEN;
+    const closeTag = kind === 'c' ? COLOR_CLOSE : HIGHLIGHT_CLOSE;
+    const before = block.text.slice(0, sel.start);
+    const selected = block.text.slice(sel.start, sel.end);
+    const after = block.text.slice(sel.end);
+    // openPattern is anchored to the start of a string (^...) for matching
+    // an upcoming tag while parsing; here we need "ends with", so the
+    // leading ^ has to be dropped before anchoring to the end instead.
+    const existingOpenMatch = before.match(new RegExp(openPattern.source.replace(/^\^/, '') + '$'));
+    const hasExistingClose = after.startsWith(closeTag);
+    let newText: string;
+    let newStart: number;
+    if (existingOpenMatch && hasExistingClose) {
+      const existingHex = existingOpenMatch[1];
+      if (existingHex.toLowerCase() === hex.toLowerCase()) {
+        // Same color already applied - remove it.
+        newText = before.slice(0, -existingOpenMatch[0].length) + selected + after.slice(closeTag.length);
+        newStart = sel.start - existingOpenMatch[0].length;
+      } else {
+        // Different color - swap the hex value in place, tag lengths match.
+        const newOpen = `{${kind}:${hex}}`;
+        newText = before.slice(0, -existingOpenMatch[0].length) + newOpen + selected + after;
+        newStart = sel.start - existingOpenMatch[0].length + newOpen.length;
+      }
+    } else {
+      const openTag = `{${kind}:${hex}}`;
+      newText = before + openTag + selected + closeTag + after;
+      newStart = sel.start + openTag.length;
+    }
+    const newEnd = newStart + selected.length;
+    snapshotBeforeChange();
+    setBlocks((prev) => prev.map((b) => (b.id === sel.blockId ? { ...b, text: newText } : b)));
+    setActiveSelection({ blockId: sel.blockId, start: newStart, end: newEnd });
+    requestAnimationFrame(() => {
+      inputRefs.current[sel.blockId]?.setSelection(newStart, newEnd);
+    });
   }
 
   function handleBlockChange(id: string, text: string) {
@@ -724,6 +967,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     if (isEditMode) {
       Keyboard.dismiss();
       setIsEditMode(false);
+      setActiveSelection(null);
       return;
     }
     setIsEditMode(true);
@@ -788,6 +1032,41 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
         </View>
       </View>
 
+      {activeSelection && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.formatToolbar}
+          contentContainerStyle={styles.formatToolbarContent}
+          keyboardShouldPersistTaps="always"
+        >
+          <Pressable hitSlop={6} onPress={() => applyMarkerToSelection('**', '**')}>
+            <Text style={[styles.formatButtonLabel, { fontWeight: '700' }]}>Ж</Text>
+          </Pressable>
+          <Pressable hitSlop={6} onPress={() => applyMarkerToSelection('*', '*')}>
+            <Text style={[styles.formatButtonLabel, { fontStyle: 'italic' }]}>К</Text>
+          </Pressable>
+          <Pressable hitSlop={6} onPress={() => applyMarkerToSelection('__', '__')}>
+            <Text style={[styles.formatButtonLabel, { textDecorationLine: 'underline' }]}>П</Text>
+          </Pressable>
+          <Pressable hitSlop={6} onPress={() => applyMarkerToSelection('~~', '~~')}>
+            <Text style={[styles.formatButtonLabel, { textDecorationLine: 'line-through' }]}>С</Text>
+          </Pressable>
+          <View style={styles.formatDivider} />
+          {TEXT_COLORS.map((color) => (
+            <Pressable key={color} hitSlop={6} onPress={() => applyColorToSelection('c', color)}>
+              <View style={[styles.colorSwatch, { backgroundColor: color }]} />
+            </Pressable>
+          ))}
+          <View style={styles.formatDivider} />
+          {HIGHLIGHT_COLORS.map((color) => (
+            <Pressable key={color} hitSlop={6} onPress={() => applyColorToSelection('h', color)}>
+              <View style={[styles.colorSwatch, styles.highlightSwatch, { backgroundColor: color }]} />
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
+
       <ScrollView
         ref={scrollViewRef}
         style={styles.scrollArea}
@@ -818,6 +1097,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           onChangeText={handleBlockChange}
           onBackspaceEmpty={handleBackspaceOnEmpty}
           onFocus={handleBlockFocus}
+          onSelectionChange={handleBlockSelectionChange}
           onInputRef={(id, ref) => {
             inputRefs.current[id] = ref;
           }}
@@ -869,6 +1149,38 @@ const styles = StyleSheet.create({
   scrollArea: {
     flex: 1,
   },
+  formatToolbar: {
+    flexGrow: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  formatToolbarContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  formatButtonLabel: {
+    fontSize: 17,
+    color: '#111827',
+    minWidth: 20,
+    textAlign: 'center',
+  },
+  formatDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: '#E5E7EB',
+  },
+  colorSwatch: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+  },
+  highlightSwatch: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
   titleInput: {
     fontSize: 24,
     fontWeight: '600',
@@ -905,6 +1217,13 @@ const styles = StyleSheet.create({
     color: '#111827',
     paddingHorizontal: 8,
     paddingVertical: 6,
+  },
+  blockDisplayText: {
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  blockPlaceholder: {
+    color: '#9CA3AF',
   },
   dropLine: {
     position: 'absolute',
