@@ -51,6 +51,7 @@ type BlockRowProps = {
   item: Block;
   isSelected: boolean;
   isSelectMode: boolean;
+  isEditMode: boolean;
   showBoundary: boolean;
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
@@ -63,6 +64,7 @@ function BlockRow({
   item,
   isSelected,
   isSelectMode,
+  isEditMode,
   showBoundary,
   onChangeText,
   onBackspaceEmpty,
@@ -70,6 +72,15 @@ function BlockRow({
   onFocus,
   inputRef,
 }: BlockRowProps) {
+  // Outside edit mode (or while selecting), the text field is completely
+  // inert to touch (pointerEvents: 'none') rather than merely
+  // non-editable - a TextInput that can still receive touches keeps
+  // claiming them for cursor placement even when non-editable, which is
+  // exactly what was blocking swipe-to-scroll over blocks. With no
+  // TextInput to compete with, a swipe anywhere reaches the ScrollView
+  // just like it already did over the icon column.
+  const canEditText = isEditMode && !isSelectMode;
+
   return (
     <View
       style={[styles.blockRow, isSelected && styles.blockRowSelected, showBoundary && styles.blockRowBoundary]}
@@ -77,7 +88,8 @@ function BlockRow({
       <TextInput
         ref={inputRef}
         value={item.text}
-        editable={!isSelectMode}
+        editable={canEditText}
+        pointerEvents={canEditText ? 'auto' : 'none'}
         onChangeText={(text) => onChangeText(item.id, text)}
         onFocus={() => onFocus(item.id)}
         onKeyPress={({ nativeEvent }) => {
@@ -125,6 +137,7 @@ type SortableBlockRowProps = {
   item: Block;
   isSelected: boolean;
   isSelectMode: boolean;
+  isEditMode: boolean;
   isDragging: boolean;
   isDragActive: boolean;
   onLayout: (e: LayoutChangeEvent) => void;
@@ -142,6 +155,7 @@ function SortableBlockRow({
   item,
   isSelected,
   isSelectMode,
+  isEditMode,
   isDragging,
   isDragActive,
   onLayout,
@@ -180,6 +194,7 @@ function SortableBlockRow({
             item={item}
             isSelected={isSelected}
             isSelectMode={isSelectMode}
+            isEditMode={isEditMode}
             showBoundary={isDragActive}
             onChangeText={onChangeText}
             onBackspaceEmpty={onBackspaceEmpty}
@@ -197,6 +212,7 @@ type BlockListProps = {
   onReorder: (blocks: Block[]) => void;
   selectedIds: Set<string>;
   isSelectMode: boolean;
+  isEditMode: boolean;
   onToggleSelected: (id: string) => void;
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
@@ -209,6 +225,7 @@ function BlockList({
   onReorder,
   selectedIds,
   isSelectMode,
+  isEditMode,
   onToggleSelected,
   onChangeText,
   onBackspaceEmpty,
@@ -353,6 +370,7 @@ function BlockList({
           item={item}
           isSelected={selectedIds.has(item.id)}
           isSelectMode={isSelectMode}
+          isEditMode={isEditMode}
           isDragging={draggingId === item.id}
           isDragActive={draggingId !== null}
           onLayout={(e) => handleRowLayout(item.id, e)}
@@ -384,6 +402,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSelectMode, setIsSelectMode] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const focusIdRef = useRef<string | null>(null);
   const focusToEndRef = useRef(false);
@@ -556,9 +575,31 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     setSelectedIds(new Set());
   }
 
+  // Outside edit mode a block's TextInput is pointerEvents: 'none' (see
+  // BlockRow) so scrolling can reach through it - which means there's no
+  // per-block tap to "start editing here"; the pencil button is the only
+  // way in, and it always resumes at the end of the last block, cursor and
+  // all, like continuing a line you were already writing.
+  function toggleEditMode() {
+    if (isEditMode) {
+      Keyboard.dismiss();
+      setIsEditMode(false);
+      return;
+    }
+    setIsEditMode(true);
+    if (blocks.length === 0) return;
+    const last = blocks[blocks.length - 1];
+    requestAnimationFrame(() => {
+      const input = inputRefs.current[last.id];
+      input?.focus();
+      input?.setSelection(last.text.length, last.text.length);
+    });
+  }
+
   function addBlockAtEnd() {
     const created = newBlock();
     focusIdRef.current = created.id;
+    setIsEditMode(true);
     setBlocks((prev) => [...prev, created]);
   }
 
@@ -575,13 +616,22 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
         <Text style={styles.headerStatus}>
           {saveStatus === 'saving' ? 'Збереження…' : 'Збережено'}
         </Text>
-        <Pressable hitSlop={8} onPress={toggleSelectMode}>
-          <Ionicons
-            name={isSelectMode ? 'close' : 'checkmark-circle-outline'}
-            size={22}
-            color="#111827"
-          />
-        </Pressable>
+        <View style={styles.headerRight}>
+          <Pressable hitSlop={8} onPress={toggleEditMode}>
+            <Ionicons
+              name={isEditMode ? 'checkmark-outline' : 'create-outline'}
+              size={22}
+              color={isEditMode ? ACCENT : '#111827'}
+            />
+          </Pressable>
+          <Pressable hitSlop={8} onPress={toggleSelectMode}>
+            <Ionicons
+              name={isSelectMode ? 'close' : 'ellipse-outline'}
+              size={22}
+              color="#111827"
+            />
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView
@@ -597,6 +647,8 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
         <TextInput
           value={title}
           onChangeText={setTitle}
+          editable={isEditMode}
+          pointerEvents={isEditMode ? 'auto' : 'none'}
           placeholder="Без назви"
           style={styles.titleInput}
         />
@@ -608,6 +660,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           onReorder={setBlocks}
           selectedIds={selectedIds}
           isSelectMode={isSelectMode}
+          isEditMode={isEditMode}
           onToggleSelected={toggleSelected}
           onChangeText={handleBlockChange}
           onBackspaceEmpty={handleBackspaceOnEmpty}
@@ -649,6 +702,11 @@ const styles = StyleSheet.create({
   headerStatus: {
     fontSize: 13,
     color: '#9CA3AF',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
   },
   scrollArea: {
     flex: 1,
