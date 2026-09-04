@@ -50,30 +50,14 @@ function BlockRow({
   onToggleSelected,
   inputRef,
 }: BlockRowProps) {
-  const swipeRef = useRef<SwipeableItemImperativeRef>(null);
-
+  // DIAGNOSTIC: SwipeableItem temporarily removed to isolate whether
+  // DraggableFlatList itself renders correctly with our reanimated 4
+  // setup, independent of any nested GestureDetector.
   return (
-    <SwipeableItem
-      ref={swipeRef}
-      item={item}
-      snapPointsLeft={[SWIPE_SNAP_POINT]}
-      renderUnderlayLeft={() => (
-        <View style={styles.swipeSelectIndicator}>
-          <Ionicons name="checkmark" size={20} color="#fff" />
-        </View>
-      )}
-      onChange={({ openDirection }) => {
-        if (openDirection !== OpenDirection.NONE) {
-          onToggleSelected(item.id);
-          swipeRef.current?.close();
-        }
-      }}
-    >
-      {/* Long-press anywhere on the row (per DraggableFlatList's documented
-          "drag anywhere" pattern) starts the drag; short taps still reach
-          the TextInput underneath for normal editing. */}
+    <>
       <Pressable
         onLongPress={drag}
+        onPress={() => onToggleSelected(item.id)}
         style={[styles.blockRow, (isActive || isSelected) && styles.blockRowSelected]}
       >
         <View style={styles.dragHandle}>
@@ -97,7 +81,7 @@ function BlockRow({
           multiline
         />
       </Pressable>
-    </SwipeableItem>
+    </>
   );
 }
 
