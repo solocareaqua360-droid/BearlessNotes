@@ -40,6 +40,7 @@ type BlockRowProps = {
   item: Block;
   isSelected: boolean;
   isSelectMode: boolean;
+  showBoundary: boolean;
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
   onToggleSelected: (id: string) => void;
@@ -50,13 +51,16 @@ function BlockRow({
   item,
   isSelected,
   isSelectMode,
+  showBoundary,
   onChangeText,
   onBackspaceEmpty,
   onToggleSelected,
   inputRef,
 }: BlockRowProps) {
   return (
-    <View style={[styles.blockRow, isSelected && styles.blockRowSelected]}>
+    <View
+      style={[styles.blockRow, isSelected && styles.blockRowSelected, showBoundary && styles.blockRowBoundary]}
+    >
       <Pressable
         hitSlop={8}
         disabled={!isSelectMode}
@@ -65,7 +69,7 @@ function BlockRow({
       >
         <Ionicons
           name={isSelectMode ? (isSelected ? 'checkbox' : 'square-outline') : 'reorder-two-outline'}
-          size={20}
+          size={isSelectMode ? 26 : 20}
           color={isSelected ? ACCENT : '#9CA3AF'}
         />
       </Pressable>
@@ -106,6 +110,7 @@ type SortableBlockRowProps = {
   isSelected: boolean;
   isSelectMode: boolean;
   isDragging: boolean;
+  isDragActive: boolean;
   onLayout: (e: LayoutChangeEvent) => void;
   onDragStart: () => void;
   onDragUpdate: (translationY: number) => void;
@@ -121,6 +126,7 @@ function SortableBlockRow({
   isSelected,
   isSelectMode,
   isDragging,
+  isDragActive,
   onLayout,
   onDragStart,
   onDragUpdate,
@@ -156,6 +162,7 @@ function SortableBlockRow({
             item={item}
             isSelected={isSelected}
             isSelectMode={isSelectMode}
+            showBoundary={isDragActive}
             onChangeText={onChangeText}
             onBackspaceEmpty={onBackspaceEmpty}
             onToggleSelected={onToggleSelected}
@@ -256,7 +263,14 @@ function BlockList({
     const targetIndex = computeInsertIndex(currentY);
     if (targetIndex !== insertIndexRef.current) {
       setInsertIndex(targetIndex);
-      dropLineY.value = withSpring(gapYFor(targetIndex), { damping: 22, stiffness: 220 });
+      // overshootClamping stops it swinging past the target and settling
+      // back - the "rocking like a boat" feeling - while keeping the same
+      // eased, springy deceleration on the way there.
+      dropLineY.value = withSpring(gapYFor(targetIndex), {
+        damping: 26,
+        stiffness: 260,
+        overshootClamping: true,
+      });
     }
   }
 
@@ -294,6 +308,7 @@ function BlockList({
           isSelected={selectedIds.has(item.id)}
           isSelectMode={isSelectMode}
           isDragging={draggingId === item.id}
+          isDragActive={draggingId !== null}
           onLayout={(e) => handleRowLayout(item.id, e)}
           onDragStart={() => handleDragStart(item.id)}
           onDragUpdate={(translationY) => handleDragUpdate(item.id, translationY)}
@@ -447,19 +462,24 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       <View style={styles.header}>
-        <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={22} color="#111827" />
-        </Pressable>
+        <View style={styles.headerLeft}>
+          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={22} color="#111827" />
+          </Pressable>
+          {/* Sits above the per-block checkboxes' column so the two read as
+              one control, not an unrelated icon on the other side of the screen. */}
+          <Pressable hitSlop={8} onPress={toggleSelectMode}>
+            <Ionicons
+              name={isSelectMode ? 'close' : 'checkmark-circle-outline'}
+              size={22}
+              color="#111827"
+            />
+          </Pressable>
+        </View>
         <Text style={styles.headerStatus}>
           {saveStatus === 'saving' ? 'Збереження…' : 'Збережено'}
         </Text>
-        <Pressable hitSlop={8} onPress={toggleSelectMode}>
-          <Ionicons
-            name={isSelectMode ? 'close' : 'checkmark-circle-outline'}
-            size={22}
-            color="#111827"
-          />
-        </Pressable>
+        <View style={styles.headerRightSpacer} />
       </View>
 
       <TextInput
@@ -512,6 +532,14 @@ const styles = StyleSheet.create({
     paddingTop: 56,
     paddingBottom: 12,
   },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  headerRightSpacer: {
+    width: 58,
+  },
   headerStatus: {
     fontSize: 13,
     color: '#9CA3AF',
@@ -540,10 +568,15 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 8,
     borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'transparent',
     backgroundColor: '#fff',
   },
   blockRowSelected: {
     backgroundColor: '#EFF6FF',
+  },
+  blockRowBoundary: {
+    borderColor: '#E5E7EB',
   },
   dragHandle: {
     padding: 6,
