@@ -6,7 +6,6 @@ import {
   LayoutChangeEvent,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -14,7 +13,11 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+// react-native-gesture-handler's own ScrollView (not the core RN one) so it
+// shares the same touch arena as our rows' Pan gestures - otherwise a swipe
+// starting on a block (its TextInput especially) never reaches the
+// ScrollView's own scroll recognition and only the icon column can scroll.
+import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -440,15 +443,32 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
       setKeyboardHeight(e.endCoordinates.height);
-      scrollFocusedBlockIntoView(e.endCoordinates.height);
+      scheduleScrollAdjust(e.endCoordinates.height);
     });
     const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
     return () => {
       showSub.remove();
       hideSub.remove();
+      if (scrollAdjustTimeoutRef.current) clearTimeout(scrollAdjustTimeoutRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Moving focus between blocks (e.g. Enter creating a new one) can fire
+  // keyboardDidShow again even though the keyboard never really left the
+  // screen, and the new block's own layout hasn't settled yet at the exact
+  // moment it's focused. Debouncing collapses those into a single
+  // measurement taken once things are quiet, instead of an early (wrong)
+  // scroll immediately followed by a corrective one - the visible
+  // "jumps up then down" the user saw.
+  const scrollAdjustTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function scheduleScrollAdjust(currentKeyboardHeight: number) {
+    if (scrollAdjustTimeoutRef.current) clearTimeout(scrollAdjustTimeoutRef.current);
+    scrollAdjustTimeoutRef.current = setTimeout(() => {
+      scrollFocusedBlockIntoView(currentKeyboardHeight);
+    }, 60);
+  }
 
   function scrollFocusedBlockIntoView(currentKeyboardHeight: number) {
     const id = focusedBlockIdRef.current;
@@ -466,7 +486,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   function handleBlockFocus(id: string) {
     focusedBlockIdRef.current = id;
     if (keyboardHeight > 0) {
-      scrollFocusedBlockIntoView(keyboardHeight);
+      scheduleScrollAdjust(keyboardHeight);
     }
   }
 
