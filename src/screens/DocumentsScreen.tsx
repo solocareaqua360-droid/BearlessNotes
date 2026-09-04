@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -8,10 +8,21 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+} from 'firebase/firestore';
+import { db } from '../firebase';
 import { DocumentItem } from '../types';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
+const documentsCollection = collection(db, 'documents');
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleString('uk-UA', {
@@ -25,12 +36,21 @@ function formatDate(timestamp: number): string {
 export default function DocumentsScreen() {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
 
+  useEffect(() => {
+    const documentsQuery = query(documentsCollection, orderBy('updatedAt', 'desc'));
+    return onSnapshot(documentsQuery, (snapshot) => {
+      setDocuments(
+        snapshot.docs.map((docSnapshot) => ({
+          id: docSnapshot.id,
+          title: docSnapshot.data().title,
+          updatedAt: docSnapshot.data().updatedAt,
+        }))
+      );
+    });
+  }, []);
+
   function createDocument() {
-    const now = Date.now();
-    setDocuments((prev) => [
-      { id: String(now), title: 'Без назви', updatedAt: now },
-      ...prev,
-    ]);
+    addDoc(documentsCollection, { title: 'Без назви', updatedAt: Date.now() });
   }
 
   function deleteDocument(id: string) {
@@ -39,7 +59,7 @@ export default function DocumentsScreen() {
       {
         text: 'Видалити',
         style: 'destructive',
-        onPress: () => setDocuments((prev) => prev.filter((doc) => doc.id !== id)),
+        onPress: () => deleteDoc(doc(db, 'documents', id)),
       },
     ]);
   }
