@@ -475,6 +475,8 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
   const focusIdRef = useRef<string | null>(null);
   const focusToEndRef = useRef(false);
   const focusedBlockIdRef = useRef<string | null>(null);
@@ -482,6 +484,10 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const scrollOffsetRef = useRef(0);
+  const undoStackRef = useRef<{ title: string; blocks: Block[] }[]>([]);
+  const redoStackRef = useRef<{ title: string; blocks: Block[] }[]>([]);
+  const isTypingBurstRef = useRef(false);
+  const typingBurstTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -580,7 +586,66 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     }
   }
 
+  const UNDO_HISTORY_LIMIT = 50;
+  const TYPING_BURST_MS = 800;
+
+  // Captures the state as it was right BEFORE a discrete, structural
+  // change (add/delete/reorder a block) - each of these is its own undo
+  // step. Also ends any in-progress typing burst, so unrelated typing
+  // before and after a structural edit never gets merged into one step.
+  function snapshotBeforeChange() {
+    undoStackRef.current.push({ title, blocks });
+    if (undoStackRef.current.length > UNDO_HISTORY_LIMIT) undoStackRef.current.shift();
+    redoStackRef.current = [];
+    isTypingBurstRef.current = false;
+    setCanUndo(true);
+    setCanRedo(false);
+  }
+
+  // Typing a whole sentence one keystroke at a time shouldn't be one undo
+  // step per character - only the FIRST change since the last pause gets
+  // snapshotted; a timer marks the burst over after a short quiet spell,
+  // so the next keystroke (in this block or another) starts a fresh one.
+  function snapshotForTyping() {
+    if (!isTypingBurstRef.current) {
+      snapshotBeforeChange();
+      isTypingBurstRef.current = true;
+    }
+    if (typingBurstTimeoutRef.current) clearTimeout(typingBurstTimeoutRef.current);
+    typingBurstTimeoutRef.current = setTimeout(() => {
+      isTypingBurstRef.current = false;
+    }, TYPING_BURST_MS);
+  }
+
+  function undo() {
+    const previous = undoStackRef.current.pop();
+    if (!previous) return;
+    redoStackRef.current.push({ title, blocks });
+    isTypingBurstRef.current = false;
+    setTitle(previous.title);
+    setBlocks(previous.blocks);
+    setCanUndo(undoStackRef.current.length > 0);
+    setCanRedo(true);
+  }
+
+  function redo() {
+    const next = redoStackRef.current.pop();
+    if (!next) return;
+    undoStackRef.current.push({ title, blocks });
+    isTypingBurstRef.current = false;
+    setTitle(next.title);
+    setBlocks(next.blocks);
+    setCanRedo(redoStackRef.current.length > 0);
+    setCanUndo(true);
+  }
+
+  function handleTitleChange(text: string) {
+    snapshotForTyping();
+    setTitle(text);
+  }
+
   function handleBlockChange(id: string, text: string) {
+    snapshotForTyping();
     // React Native's TextInput never reports whether Shift was held for
     // Enter (Android's own bridge code discards that before it reaches JS,
     // on any keyboard, soft or hardware) - so a single Enter has to just be
@@ -608,14 +673,17 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   }
 
   function handleBackspaceOnEmpty(id: string) {
+    const index = blocks.findIndex((block) => block.id === id);
+    if (index <= 0) return;
+    snapshotBeforeChange();
     setBlocks((prev) => {
-      const index = prev.findIndex((block) => block.id === id);
-      if (index <= 0) return prev;
-      const previous = prev[index - 1];
+      const prevIndex = prev.findIndex((block) => block.id === id);
+      if (prevIndex <= 0) return prev;
+      const previous = prev[prevIndex - 1];
       focusIdRef.current = previous.id;
       focusToEndRef.current = true;
       const next = [...prev];
-      next.splice(index, 1);
+      next.splice(prevIndex, 1);
       return next;
     });
   }
@@ -633,6 +701,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   }
 
   function deleteSelectedBlocks() {
+    snapshotBeforeChange();
     setBlocks((prev) => {
       const next = prev.filter((block) => !selectedIds.has(block.id));
       return next.length > 0 ? next : [newBlock()];
@@ -668,10 +737,16 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   }
 
   function addBlockAtEnd() {
+    snapshotBeforeChange();
     const created = newBlock();
     focusIdRef.current = created.id;
     setIsEditMode(true);
     setBlocks((prev) => [...prev, created]);
+  }
+
+  function handleReorderBlocks(next: Block[]) {
+    snapshotBeforeChange();
+    setBlocks(next);
   }
 
   if (!isLoaded) {
@@ -681,9 +756,17 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={22} color="#111827" />
-        </Pressable>
+        <View style={styles.headerLeft}>
+          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={22} color="#111827" />
+          </Pressable>
+          <Pressable hitSlop={8} onPress={undo} disabled={!canUndo}>
+            <Ionicons name="arrow-undo-outline" size={22} color={canUndo ? '#111827' : '#D1D5DB'} />
+          </Pressable>
+          <Pressable hitSlop={8} onPress={redo} disabled={!canRedo}>
+            <Ionicons name="arrow-redo-outline" size={22} color={canRedo ? '#111827' : '#D1D5DB'} />
+          </Pressable>
+        </View>
         <Text style={styles.headerStatus}>
           {saveStatus === 'saving' ? 'Збереження…' : 'Збережено'}
         </Text>
@@ -718,7 +801,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
         <TextInput
           key={isEditMode ? 'editable' : 'locked'}
           value={title}
-          onChangeText={setTitle}
+          onChangeText={handleTitleChange}
           editable={isEditMode}
           pointerEvents={isEditMode ? 'auto' : 'none'}
           placeholder="Без назви"
@@ -727,7 +810,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
 
         <BlockList
           blocks={blocks}
-          onReorder={setBlocks}
+          onReorder={handleReorderBlocks}
           selectedIds={selectedIds}
           isSelectMode={isSelectMode}
           isEditMode={isEditMode}
@@ -772,6 +855,11 @@ const styles = StyleSheet.create({
   headerStatus: {
     fontSize: 13,
     color: '#9CA3AF',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
   },
   headerRight: {
     flexDirection: 'row',
