@@ -266,6 +266,8 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
         style={styles.titleInput}
       />
 
+      <Text style={styles.debugCount}>ДІАГНОСТИКА: блоків у стані = {blocks.length}</Text>
+
       <DraggableFlatList
         data={blocks}
         keyExtractor={(item) => item.id}
@@ -307,6 +309,13 @@ const styles = StyleSheet.create({
   headerStatus: {
     fontSize: 13,
     color: '#9CA3AF',
+  },
+  debugCount: {
+    fontSize: 13,
+    color: '#fff',
+    backgroundColor: DANGER,
+    paddingHorizontal: 20,
+    paddingVertical: 4,
   },
   titleInput: {
     fontSize: 24,
