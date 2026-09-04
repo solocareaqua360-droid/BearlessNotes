@@ -16,10 +16,6 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import SwipeableItem, {
-  OpenDirection,
-  SwipeableItemImperativeRef,
-} from 'react-native-swipeable-item';
 import { db } from '../firebase';
 import { Block } from '../types';
 import { RootStackParamList } from '../navigation';
@@ -31,38 +27,27 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
 const AUTOSAVE_DELAY_MS = 600;
-const SWIPE_SNAP_POINT = 64;
 const DRAG_LONG_PRESS_MS = 350;
+const SWIPE_SELECT_THRESHOLD = 60;
 
 function newBlock(): Block {
   return { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, text: '' };
 }
 
-// Content of a single block: title icon (shows a checkmark when selected),
-// the text field, and a swipe-left-to-select underlay. Dragging is handled
-// by the wrapping component below, not in here.
+// Content of a single block: title icon (shows a checkmark when selected)
+// and the text field. Dragging and swipe-to-select are both handled by the
+// wrapping SortableBlockRow below, not in here.
 type BlockRowProps = {
   item: Block;
   isSelected: boolean;
   isPreview?: boolean;
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
-  onToggleSelected: (id: string) => void;
   inputRef: (ref: TextInput | null) => void;
 };
 
-function BlockRow({
-  item,
-  isSelected,
-  isPreview,
-  onChangeText,
-  onBackspaceEmpty,
-  onToggleSelected,
-  inputRef,
-}: BlockRowProps) {
-  const swipeRef = useRef<SwipeableItemImperativeRef>(null);
-
-  const content = (
+function BlockRow({ item, isSelected, isPreview, onChangeText, onBackspaceEmpty, inputRef }: BlockRowProps) {
+  return (
     <View style={[styles.blockRow, isSelected && styles.blockRowSelected]}>
       <View style={styles.dragHandle}>
         <Ionicons
@@ -87,43 +72,99 @@ function BlockRow({
       />
     </View>
   );
-
-  if (isPreview) {
-    // The floating clone shown while dragging doesn't need swipe-to-select.
-    return content;
-  }
-
-  return (
-    <SwipeableItem
-      ref={swipeRef}
-      item={item}
-      snapPointsLeft={[SWIPE_SNAP_POINT]}
-      renderUnderlayLeft={() => (
-        <View style={styles.swipeSelectIndicator}>
-          <Ionicons name="checkmark" size={20} color="#fff" />
-        </View>
-      )}
-      onChange={({ openDirection }) => {
-        if (openDirection !== OpenDirection.NONE) {
-          onToggleSelected(item.id);
-          swipeRef.current?.close();
-        }
-      }}
-    >
-      {content}
-    </SwipeableItem>
-  );
 }
 
-// react-native-draggable-flatlist has open, unresolved bugs with
-// react-native-reanimated v4 (rows silently render at zero height) - see
-// https://github.com/computerjazz/react-native-draggable-flatlist/issues/600
-// So drag-to-reorder is hand-built here directly on gesture-handler +
-// reanimated: a plain View per block (no virtualization, fine for a
-// single document's block count), each row's position measured via
-// onLayout, and a long-press-then-pan gesture that reorders the
-// underlying array live (with LayoutAnimation smoothing the other rows
-// sliding out of the way) while a floating clone follows the finger.
+// react-native-draggable-flatlist AND react-native-swipeable-item both
+// have the same underlying assumption: they render their content inside a
+// `flex: 1` view expecting a parent with an already-known fixed height
+// (like a standard FlatList row). Our blocks have variable-height text, so
+// nothing here ever gives them that fixed height, and `flex: 1` inside an
+// auto-height parent collapses to 0 - blocks existed in state but were
+// invisible. So both drag-to-reorder AND swipe-to-select are hand-built
+// directly on gesture-handler + reanimated: a plain View per block (no
+// virtualization, fine for a single document's block count), each row's
+// position measured via onLayout, a long-press-then-pan gesture that
+// reorders the underlying array live (with LayoutAnimation smoothing the
+// other rows sliding out of the way) while a floating clone follows the
+// finger, raced against a quick horizontal pan that toggles selection.
+type SortableBlockRowProps = {
+  item: Block;
+  isSelected: boolean;
+  isDragging: boolean;
+  onLayout: (e: LayoutChangeEvent) => void;
+  onDragStart: () => void;
+  onDragUpdate: (translationY: number) => void;
+  onDragEnd: () => void;
+  onToggleSelected: (id: string) => void;
+  onChangeText: (id: string, text: string) => void;
+  onBackspaceEmpty: (id: string) => void;
+  inputRef: (ref: TextInput | null) => void;
+};
+
+function SortableBlockRow({
+  item,
+  isSelected,
+  isDragging,
+  onLayout,
+  onDragStart,
+  onDragUpdate,
+  onDragEnd,
+  onToggleSelected,
+  onChangeText,
+  onBackspaceEmpty,
+  inputRef,
+}: SortableBlockRowProps) {
+  const swipeX = useSharedValue(0);
+
+  const dragGesture = Gesture.Pan()
+    .activateAfterLongPress(DRAG_LONG_PRESS_MS)
+    .runOnJS(true)
+    .onStart(() => onDragStart())
+    .onUpdate((e) => onDragUpdate(e.translationY))
+    .onEnd(() => onDragEnd());
+
+  // Requires a clear horizontal intent (15px) before activating, and gives
+  // up immediately on vertical intent (10px), so it never fights the drag
+  // gesture above or the row's own vertical text-scrolling.
+  const swipeGesture = Gesture.Pan()
+    .activeOffsetX([-15, 15])
+    .failOffsetY([-10, 10])
+    .runOnJS(true)
+    .onUpdate((e) => {
+      swipeX.value = Math.min(0, e.translationX);
+    })
+    .onEnd((e) => {
+      if (e.translationX < -SWIPE_SELECT_THRESHOLD) {
+        onToggleSelected(item.id);
+      }
+      swipeX.value = withTiming(0, { duration: 150 });
+    });
+
+  const gesture = Gesture.Race(dragGesture, swipeGesture);
+
+  const swipeStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: swipeX.value }],
+  }));
+
+  return (
+    <View style={styles.rowShell} onLayout={onLayout}>
+      <View style={styles.swipeUnderlay}>
+        <Ionicons name="checkmark" size={20} color="#fff" />
+      </View>
+      <GestureDetector gesture={gesture}>
+        <Animated.View style={[{ opacity: isDragging ? 0 : 1 }, swipeStyle]}>
+          <BlockRow
+            item={item}
+            isSelected={isSelected}
+            onChangeText={onChangeText}
+            onBackspaceEmpty={onBackspaceEmpty}
+            inputRef={inputRef}
+          />
+        </Animated.View>
+      </GestureDetector>
+    </View>
+  );
+}
 type BlockListProps = {
   blocks: Block[];
   onReorder: (blocks: Block[]) => void;
@@ -181,22 +222,19 @@ function BlockList({
     }
   }
 
-  function makeDragGesture(id: string) {
-    return Gesture.Pan()
-      .activateAfterLongPress(DRAG_LONG_PRESS_MS)
-      .runOnJS(true)
-      .onStart(() => {
-        dragY.value = 0;
-        setDraggingId(id);
-      })
-      .onUpdate((e) => {
-        dragY.value = e.translationY;
-        maybeReorder(id, e.translationY);
-      })
-      .onEnd(() => {
-        dragY.value = withTiming(0, { duration: 150 });
-        setDraggingId(null);
-      });
+  function handleDragStart(id: string) {
+    dragY.value = 0;
+    setDraggingId(id);
+  }
+
+  function handleDragUpdate(id: string, translationY: number) {
+    dragY.value = translationY;
+    maybeReorder(id, translationY);
+  }
+
+  function handleDragEnd() {
+    dragY.value = withTiming(0, { duration: 150 });
+    setDraggingId(null);
   }
 
   const floatingStyle = useAnimatedStyle(() => ({
@@ -209,20 +247,20 @@ function BlockList({
   return (
     <View style={styles.blockListContainer}>
       {blocks.map((item) => (
-        <View key={item.id} onLayout={(e) => handleRowLayout(item.id, e)}>
-          <GestureDetector gesture={makeDragGesture(item.id)}>
-            <View style={{ opacity: draggingId === item.id ? 0 : 1 }}>
-              <BlockRow
-                item={item}
-                isSelected={selectedIds.has(item.id)}
-                onChangeText={onChangeText}
-                onBackspaceEmpty={onBackspaceEmpty}
-                onToggleSelected={onToggleSelected}
-                inputRef={(ref) => onInputRef(item.id, ref)}
-              />
-            </View>
-          </GestureDetector>
-        </View>
+        <SortableBlockRow
+          key={item.id}
+          item={item}
+          isSelected={selectedIds.has(item.id)}
+          isDragging={draggingId === item.id}
+          onLayout={(e) => handleRowLayout(item.id, e)}
+          onDragStart={() => handleDragStart(item.id)}
+          onDragUpdate={(translationY) => handleDragUpdate(item.id, translationY)}
+          onDragEnd={handleDragEnd}
+          onToggleSelected={onToggleSelected}
+          onChangeText={onChangeText}
+          onBackspaceEmpty={onBackspaceEmpty}
+          inputRef={(ref) => onInputRef(item.id, ref)}
+        />
       ))}
 
       {draggingBlock && draggingLayout && (
@@ -240,7 +278,6 @@ function BlockList({
             isPreview
             onChangeText={() => {}}
             onBackspaceEmpty={() => {}}
-            onToggleSelected={() => {}}
             inputRef={() => {}}
           />
         </Animated.View>
@@ -478,12 +515,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 6,
   },
-  swipeSelectIndicator: {
-    flex: 1,
+  rowShell: {
+    // Deliberately no explicit height here - the underlay below is
+    // absolutely positioned and fills whatever height the foreground row
+    // (in normal flow) ends up with, so it never forces a `flex: 1`
+    // collapse the way the swipeable-item library's own layout did.
+  },
+  swipeUnderlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: ACCENT,
     justifyContent: 'center',
-    alignItems: 'flex-start',
-    paddingLeft: 22,
+    alignItems: 'flex-end',
+    paddingRight: 22,
     borderRadius: 10,
   },
   floatingRow: {
