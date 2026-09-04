@@ -72,6 +72,7 @@ function BlockRow({
       <TextInput
         ref={inputRef}
         value={item.text}
+        editable={!isSelectMode}
         onChangeText={(text) => onChangeText(item.id, text)}
         onKeyPress={({ nativeEvent }) => {
           if (nativeEvent.key === 'Backspace' && item.text === '') {
