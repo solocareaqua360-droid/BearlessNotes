@@ -145,6 +145,7 @@ type SortableBlockRowProps = {
   isEditMode: boolean;
   isDragging: boolean;
   isDragActive: boolean;
+  compressTowardOffset: number;
   onLayout: (e: LayoutChangeEvent) => void;
   onDragStart: () => void;
   onDragUpdate: (translationY: number) => void;
@@ -163,6 +164,7 @@ function SortableBlockRow({
   isEditMode,
   isDragging,
   isDragActive,
+  compressTowardOffset,
   onLayout,
   onDragStart,
   onDragUpdate,
@@ -201,13 +203,20 @@ function SortableBlockRow({
   // one of several in a multi-select bulk move - eases toward faded and
   // squashed while the gesture is in progress, echoing the "being pulled
   // into the drop line" idea, and eases back once it's released.
+  // compressTowardOffset (0 for the anchor itself) also slides each of the
+  // OTHER selected rows toward the anchor's center as it shrinks, so a
+  // multi-select group visibly converges on the block that was actually
+  // long-pressed instead of each row just collapsing into its own middle.
   const compress = useSharedValue(0);
   useEffect(() => {
     compress.value = withTiming(isDragging ? 1 : 0, { duration: 150 });
   }, [isDragging]);
   const compressStyle = useAnimatedStyle(() => ({
     opacity: 1 - compress.value * 0.65,
-    transform: [{ scaleY: 1 - compress.value * 0.8 }],
+    transform: [
+      { translateY: compressTowardOffset * compress.value },
+      { scaleY: 1 - compress.value * 0.8 },
+    ],
   }));
 
   return (
@@ -257,6 +266,10 @@ function BlockList({
   onInputRef,
 }: BlockListProps) {
   const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
+  // The block actually long-pressed to start the drag - the rest of a
+  // multi-select group should visually collapse toward this one, not each
+  // toward its own separate center.
+  const [dragAnchorId, setDragAnchorId] = useState<string | null>(null);
   const [insertIndex, setInsertIndexState] = useState<number | null>(null);
   const insertIndexRef = useRef<number | null>(null);
   const dropLineY = useSharedValue(0);
@@ -328,6 +341,7 @@ function BlockList({
 
   function handleDragStart(anchorId: string, ids: string[]) {
     setDraggingIds(ids);
+    setDragAnchorId(anchorId);
     const layout = rowLayouts.current[anchorId];
     const draggingSet = new Set(ids);
     const currentIndex = layout
@@ -375,7 +389,22 @@ function BlockList({
       }
     }
     setDraggingIds(null);
+    setDragAnchorId(null);
     setInsertIndex(null);
+  }
+
+  // How far (in px) this row needs to travel to visually converge on the
+  // anchor row's center - 0 for the anchor itself, and 0 for anything not
+  // currently part of the drag. Layouts are stable during a drag (nothing
+  // moves until release), so this stays constant for the gesture's duration.
+  function compressOffsetFor(id: string): number {
+    if (!dragAnchorId || !draggingIds?.includes(id)) return 0;
+    const anchorLayout = rowLayouts.current[dragAnchorId];
+    const thisLayout = rowLayouts.current[id];
+    if (!anchorLayout || !thisLayout) return 0;
+    const anchorCenter = anchorLayout.y + anchorLayout.height / 2;
+    const thisCenter = thisLayout.y + thisLayout.height / 2;
+    return anchorCenter - thisCenter;
   }
 
   function handleDragEnd(ids: string[]) {
@@ -412,6 +441,7 @@ function BlockList({
           isEditMode={isEditMode}
           isDragging={draggingIds?.includes(item.id) ?? false}
           isDragActive={draggingIds !== null}
+          compressTowardOffset={compressOffsetFor(item.id)}
           onLayout={(e) => handleRowLayout(item.id, e)}
           onDragStart={() => handleDragStart(item.id, dragGroupFor(item.id))}
           onDragUpdate={(translationY) =>
