@@ -13,7 +13,13 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, {
+  runOnJS,
+  SharedValue,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -91,6 +97,7 @@ type SortableBlockRowProps = {
   item: Block;
   isSelected: boolean;
   isDragging: boolean;
+  dragY: SharedValue<number>;
   onLayout: (e: LayoutChangeEvent) => void;
   onDragStart: () => void;
   onDragUpdate: (translationY: number) => void;
@@ -105,6 +112,7 @@ function SortableBlockRow({
   item,
   isSelected,
   isDragging,
+  dragY,
   onLayout,
   onDragStart,
   onDragUpdate,
@@ -116,12 +124,24 @@ function SortableBlockRow({
 }: SortableBlockRowProps) {
   const swipeX = useSharedValue(0);
 
+  // No `.runOnJS(true)` here on purpose: these run as UI-thread worklets so
+  // the drag/swipe visuals stay smooth at 60fps. `runOnJS(...)` below is
+  // used only for the specific calls that must touch JS state (reordering
+  // the array, toggling selection) - not for every touch-move update.
   const dragGesture = Gesture.Pan()
     .activateAfterLongPress(DRAG_LONG_PRESS_MS)
-    .runOnJS(true)
-    .onStart(() => onDragStart())
-    .onUpdate((e) => onDragUpdate(e.translationY))
-    .onEnd(() => onDragEnd());
+    .onStart(() => {
+      dragY.value = 0;
+      runOnJS(onDragStart)();
+    })
+    .onUpdate((e) => {
+      dragY.value = e.translationY;
+      runOnJS(onDragUpdate)(e.translationY);
+    })
+    .onEnd(() => {
+      dragY.value = withTiming(0, { duration: 150 });
+      runOnJS(onDragEnd)();
+    });
 
   // Requires a clear horizontal intent (15px) before activating, and gives
   // up immediately on vertical intent (10px), so it never fights the drag
@@ -129,18 +149,22 @@ function SortableBlockRow({
   const swipeGesture = Gesture.Pan()
     .activeOffsetX([-15, 15])
     .failOffsetY([-10, 10])
-    .runOnJS(true)
     .onUpdate((e) => {
       swipeX.value = Math.min(0, e.translationX);
     })
     .onEnd((e) => {
       if (e.translationX < -SWIPE_SELECT_THRESHOLD) {
-        onToggleSelected(item.id);
+        runOnJS(onToggleSelected)(item.id);
       }
       swipeX.value = withTiming(0, { duration: 150 });
     });
 
-  const gesture = Gesture.Race(dragGesture, swipeGesture);
+  // TextInput has its own native touch handling (cursor placement, text
+  // selection) that otherwise wins the race for any touch starting on the
+  // text itself. Gesture.Native() + Simultaneous tells gesture-handler to
+  // let our gesture and the TextInput's own handling run at the same time
+  // instead of waiting for one to fail before trying the other.
+  const gesture = Gesture.Simultaneous(Gesture.Race(dragGesture, swipeGesture), Gesture.Native());
 
   const swipeStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: swipeX.value }],
@@ -222,18 +246,18 @@ function BlockList({
     }
   }
 
+  // dragY itself is now written directly from the UI-thread worklet inside
+  // SortableBlockRow's gesture (for smooth 60fps motion); these JS-side
+  // handlers only need to touch React state and the reorder logic.
   function handleDragStart(id: string) {
-    dragY.value = 0;
     setDraggingId(id);
   }
 
   function handleDragUpdate(id: string, translationY: number) {
-    dragY.value = translationY;
     maybeReorder(id, translationY);
   }
 
   function handleDragEnd() {
-    dragY.value = withTiming(0, { duration: 150 });
     setDraggingId(null);
   }
 
@@ -252,6 +276,7 @@ function BlockList({
           item={item}
           isSelected={selectedIds.has(item.id)}
           isDragging={draggingId === item.id}
+          dragY={dragY}
           onLayout={(e) => handleRowLayout(item.id, e)}
           onDragStart={() => handleDragStart(item.id)}
           onDragUpdate={(translationY) => handleDragUpdate(item.id, translationY)}
