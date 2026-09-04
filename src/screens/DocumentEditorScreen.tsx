@@ -86,6 +86,11 @@ function BlockRow({
       style={[styles.blockRow, isSelected && styles.blockRowSelected, showBoundary && styles.blockRowBoundary]}
     >
       <TextInput
+        // Android's TextInput doesn't reliably pick up a dynamic `editable`
+        // change on an already-mounted view; keying on canEditText forces a
+        // clean remount so the native EditText is created with the correct
+        // editable/pointerEvents state instead of getting stuck non-editable.
+        key={canEditText ? 'editable' : 'locked'}
         ref={inputRef}
         value={item.text}
         editable={canEditText}
@@ -183,8 +188,14 @@ function SortableBlockRow({
   // selection) that otherwise wins the race for any touch starting on the
   // text itself. Gesture.Native() + Simultaneous tells gesture-handler to
   // let our gesture and the TextInput's own handling run at the same time
-  // instead of waiting for one to fail before trying the other.
-  const gesture = Gesture.Simultaneous(dragGesture, Gesture.Native());
+  // instead of waiting for one to fail before trying the other. This
+  // operates below React Native's own pointerEvents, so it has to be left
+  // out of the composition entirely outside edit mode - otherwise it keeps
+  // deferring to the text field's native touch handling even though that
+  // field is pointerEvents: 'none', which is exactly what was still
+  // blocking the ScrollView from ever seeing a swipe over a block.
+  const canEditText = isEditMode && !isSelectMode;
+  const gesture = canEditText ? Gesture.Simultaneous(dragGesture, Gesture.Native()) : dragGesture;
 
   return (
     <View onLayout={onLayout}>
@@ -645,6 +656,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
         scrollEventThrottle={16}
       >
         <TextInput
+          key={isEditMode ? 'editable' : 'locked'}
           value={title}
           onChangeText={setTitle}
           editable={isEditMode}
