@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -23,6 +23,86 @@ const AUTOSAVE_DELAY_MS = 600;
 
 function newBlock(): Block {
   return { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, text: '' };
+}
+
+type BlockRowProps = {
+  item: Block;
+  drag: () => void;
+  isActive: boolean;
+  isSelected: boolean;
+  onChangeText: (id: string, text: string) => void;
+  onBackspaceEmpty: (id: string) => void;
+  onToggleSelected: (id: string) => void;
+  inputRef: (ref: TextInput | null) => void;
+};
+
+function BlockRow({
+  item,
+  drag,
+  isActive,
+  isSelected,
+  onChangeText,
+  onBackspaceEmpty,
+  onToggleSelected,
+  inputRef,
+}: BlockRowProps) {
+  // Gesture-handler expects a gesture object to stay the same across
+  // renders. We build it exactly once per row and read the latest
+  // callbacks/id through a ref, instead of rebuilding the gesture (and
+  // its dependent callbacks) on every render - recreating it every time
+  // the list re-renders (e.g. when a block is added) was destabilizing
+  // gesture-handler's touch handling for the whole screen.
+  const latestRef = useRef({ drag, onToggleSelected, itemId: item.id });
+  latestRef.current = { drag, onToggleSelected, itemId: item.id };
+
+  const rowGesture = useMemo(() => {
+    const selectGesture = Gesture.Pan()
+      .activeOffsetX([-15, 15])
+      .failOffsetY([-10, 10])
+      .runOnJS(true)
+      .onEnd((event) => {
+        if (event.translationX < -40) {
+          latestRef.current.onToggleSelected(latestRef.current.itemId);
+        }
+      });
+
+    const dragGesture = Gesture.LongPress()
+      .minDuration(350)
+      .runOnJS(true)
+      .onStart(() => {
+        latestRef.current.drag();
+      });
+
+    return Gesture.Race(selectGesture, dragGesture);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <GestureDetector gesture={rowGesture}>
+      <View style={[styles.blockRow, (isActive || isSelected) && styles.blockRowSelected]}>
+        <View style={styles.dragHandle}>
+          <Ionicons
+            name={isSelected ? 'checkmark-circle' : 'reorder-two-outline'}
+            size={20}
+            color={isSelected ? ACCENT : '#9CA3AF'}
+          />
+        </View>
+        <TextInput
+          ref={inputRef}
+          value={item.text}
+          onChangeText={(text) => onChangeText(item.id, text)}
+          onKeyPress={({ nativeEvent }) => {
+            if (nativeEvent.key === 'Backspace' && item.text === '') {
+              onBackspaceEmpty(item.id);
+            }
+          }}
+          placeholder="Пишіть тут…"
+          style={styles.blockInput}
+          multiline
+        />
+      </View>
+    </GestureDetector>
+  );
 }
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Editor'>;
@@ -143,58 +223,19 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   }
 
   function renderBlock({ item, drag, isActive }: RenderItemParams<Block>) {
-    const isSelected = selectedIds.has(item.id);
-
-    // A swipe (real horizontal movement) toggles selection; a sustained
-    // press with little movement starts the drag. Race lets whichever
-    // condition is met first win, so both gestures can start anywhere on
-    // the block - including over the text - without a dedicated handle.
-    const selectGesture = Gesture.Pan()
-      .activeOffsetX([-15, 15])
-      .failOffsetY([-10, 10])
-      .runOnJS(true)
-      .onEnd((event) => {
-        if (event.translationX < -40) {
-          toggleSelected(item.id);
-        }
-      });
-
-    const dragGesture = Gesture.LongPress()
-      .minDuration(350)
-      .runOnJS(true)
-      .onStart(() => {
-        drag();
-      });
-
-    const rowGesture = Gesture.Race(selectGesture, dragGesture);
-
     return (
-      <GestureDetector gesture={rowGesture}>
-        <View style={[styles.blockRow, (isActive || isSelected) && styles.blockRowSelected]}>
-          <View style={styles.dragHandle}>
-            <Ionicons
-              name={isSelected ? 'checkmark-circle' : 'reorder-two-outline'}
-              size={20}
-              color={isSelected ? ACCENT : '#9CA3AF'}
-            />
-          </View>
-          <TextInput
-            ref={(ref) => {
-              inputRefs.current[item.id] = ref;
-            }}
-            value={item.text}
-            onChangeText={(text) => handleBlockChange(item.id, text)}
-            onKeyPress={({ nativeEvent }) => {
-              if (nativeEvent.key === 'Backspace' && item.text === '') {
-                handleBackspaceOnEmpty(item.id);
-              }
-            }}
-            placeholder="Пишіть тут…"
-            style={styles.blockInput}
-            multiline
-          />
-        </View>
-      </GestureDetector>
+      <BlockRow
+        item={item}
+        drag={drag}
+        isActive={isActive}
+        isSelected={selectedIds.has(item.id)}
+        onChangeText={handleBlockChange}
+        onBackspaceEmpty={handleBackspaceOnEmpty}
+        onToggleSelected={toggleSelected}
+        inputRef={(ref) => {
+          inputRefs.current[item.id] = ref;
+        }}
+      />
     );
   }
 
