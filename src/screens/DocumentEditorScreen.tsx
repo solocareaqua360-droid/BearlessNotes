@@ -197,10 +197,23 @@ function SortableBlockRow({
   const canEditText = isEditMode && !isSelectMode;
   const gesture = canEditText ? Gesture.Simultaneous(dragGesture, Gesture.Native()) : dragGesture;
 
+  // Every row currently being dragged - whether it's the one lone block or
+  // one of several in a multi-select bulk move - eases toward faded and
+  // squashed while the gesture is in progress, echoing the "being pulled
+  // into the drop line" idea, and eases back once it's released.
+  const compress = useSharedValue(0);
+  useEffect(() => {
+    compress.value = withTiming(isDragging ? 1 : 0, { duration: 150 });
+  }, [isDragging]);
+  const compressStyle = useAnimatedStyle(() => ({
+    opacity: 1 - compress.value * 0.65,
+    transform: [{ scaleY: 1 - compress.value * 0.8 }],
+  }));
+
   return (
     <View onLayout={onLayout}>
       <GestureDetector gesture={gesture}>
-        <View style={{ opacity: isDragging ? 0.5 : 1 }}>
+        <Animated.View style={compressStyle}>
           <BlockRow
             item={item}
             isSelected={isSelected}
@@ -213,7 +226,7 @@ function SortableBlockRow({
             onFocus={onFocus}
             inputRef={inputRef}
           />
-        </View>
+        </Animated.View>
       </GestureDetector>
     </View>
   );
@@ -243,7 +256,7 @@ function BlockList({
   onFocus,
   onInputRef,
 }: BlockListProps) {
-  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
   const [insertIndex, setInsertIndexState] = useState<number | null>(null);
   const insertIndexRef = useRef<number | null>(null);
   const dropLineY = useSharedValue(0);
@@ -267,54 +280,70 @@ function BlockList({
     };
   }
 
-  // Y position of the "gap" before the block currently at `index` (or after
-  // the last block, if index is past the end) - where the drop-line sits.
-  function gapYFor(index: number): number {
-    const list = blocksRef.current;
-    if (list.length === 0) return 0;
-    if (index <= 0) return rowLayouts.current[list[0].id]?.y ?? 0;
-    if (index >= list.length) {
-      const last = list[list.length - 1];
+  // Y position of the "gap" before the block that would sit at `index`
+  // within the list of NON-dragged blocks (or after the last one, if index
+  // is past the end) - where the drop-line sits. Dragged blocks (a single
+  // one, or a whole multi-select group) never move during the gesture, so
+  // this always reads straight from their last measured, still-accurate
+  // layout.
+  function gapYFor(index: number, draggingSet: Set<string>): number {
+    const remaining = blocksRef.current.filter((b) => !draggingSet.has(b.id));
+    if (remaining.length === 0) return 0;
+    if (index <= 0) return rowLayouts.current[remaining[0].id]?.y ?? 0;
+    if (index >= remaining.length) {
+      const last = remaining[remaining.length - 1];
       const rl = rowLayouts.current[last.id];
       return rl ? rl.y + rl.height : 0;
     }
-    return rowLayouts.current[list[index].id]?.y ?? 0;
+    return rowLayouts.current[remaining[index].id]?.y ?? 0;
   }
 
-  // How many blocks (including the dragged one, at its original spot) have
-  // their midpoint above this Y - i.e. where the dragged block would land
-  // if dropped now, counted against the list as it currently sits (nothing
-  // is actually reordered until the gesture ends).
-  function computeInsertIndex(currentY: number): number {
+  // How many non-dragged blocks have their midpoint above this Y - i.e.
+  // where the dragged block(s) would land among the OTHER blocks if
+  // dropped now. Nothing is actually reordered until the gesture ends.
+  function computeInsertIndex(currentY: number, draggingSet: Set<string>): number {
     const list = blocksRef.current;
     let index = 0;
     for (let i = 0; i < list.length; i++) {
+      if (draggingSet.has(list[i].id)) continue;
       const rl = rowLayouts.current[list[i].id];
       if (!rl) continue;
       if (currentY > rl.y + rl.height / 2) {
-        index = i + 1;
+        index++;
       }
     }
     return index;
   }
 
-  function handleDragStart(id: string) {
-    setDraggingId(id);
-    const layout = rowLayouts.current[id];
-    const list = blocksRef.current;
-    const currentIndex = list.findIndex((b) => b.id === id);
-    setInsertIndex(currentIndex);
-    if (layout) {
-      dropLineY.value = gapYFor(currentIndex);
+  // A long-press on a block that's part of a multi-selection (2+ selected)
+  // drags the whole selected group together, in their existing relative
+  // order; otherwise it's just that one block, same as before select mode
+  // and bulk move existed.
+  function dragGroupFor(anchorId: string): string[] {
+    if (isSelectMode && selectedIds.has(anchorId) && selectedIds.size > 1) {
+      return blocksRef.current.filter((b) => selectedIds.has(b.id)).map((b) => b.id);
     }
+    return [anchorId];
+  }
+
+  function handleDragStart(anchorId: string, ids: string[]) {
+    setDraggingIds(ids);
+    const layout = rowLayouts.current[anchorId];
+    const draggingSet = new Set(ids);
+    const currentIndex = layout
+      ? computeInsertIndex(layout.y + layout.height / 2, draggingSet)
+      : 0;
+    setInsertIndex(currentIndex);
+    dropLineY.value = gapYFor(currentIndex, draggingSet);
     dropLineInset.value = withTiming(14, { duration: 150 });
   }
 
-  function handleDragUpdate(id: string, translationY: number) {
-    const layout = rowLayouts.current[id];
+  function handleDragUpdate(anchorId: string, ids: string[], translationY: number) {
+    const layout = rowLayouts.current[anchorId];
     if (!layout) return;
+    const draggingSet = new Set(ids);
     const currentY = layout.y + translationY + layout.height / 2;
-    const targetIndex = computeInsertIndex(currentY);
+    const targetIndex = computeInsertIndex(currentY, draggingSet);
     if (targetIndex !== insertIndexRef.current) {
       setInsertIndex(targetIndex);
       // overshootClamping stops it swinging past the target and settling
@@ -322,7 +351,7 @@ function BlockList({
       // eased, springy deceleration on the way there. The little bounce the
       // user actually wants only happens once, at the very end of the drag
       // (see handleDragEnd), not on every one of these mid-drag snaps.
-      dropLineY.value = withSpring(gapYFor(targetIndex), {
+      dropLineY.value = withSpring(gapYFor(targetIndex, draggingSet), {
         damping: 26,
         stiffness: 260,
         overshootClamping: true,
@@ -330,39 +359,38 @@ function BlockList({
     }
   }
 
-  function commitReorder(id: string) {
+  function commitReorder(ids: string[]) {
     const targetIndex = insertIndexRef.current;
     const list = blocksRef.current;
-    const currentIndex = list.findIndex((b) => b.id === id);
-    if (targetIndex !== null && currentIndex !== -1) {
-      // targetIndex was computed against the list with the dragged item
-      // still in its original slot, so inserting after that slot needs a
-      // -1 adjustment once the item is actually removed from it.
-      const spliceIndex = targetIndex > currentIndex ? targetIndex - 1 : targetIndex;
-      if (spliceIndex !== currentIndex) {
+    if (targetIndex !== null) {
+      const draggingSet = new Set(ids);
+      const draggedBlocks = list.filter((b) => draggingSet.has(b.id));
+      const remaining = list.filter((b) => !draggingSet.has(b.id));
+      const next = [...remaining];
+      next.splice(targetIndex, 0, ...draggedBlocks);
+      const changed = next.some((b, i) => b.id !== list[i]?.id);
+      if (changed) {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        const next = [...list];
-        const [moved] = next.splice(currentIndex, 1);
-        next.splice(spliceIndex, 0, moved);
         onReorder(next);
       }
     }
-    setDraggingId(null);
+    setDraggingIds(null);
     setInsertIndex(null);
   }
 
-  function handleDragEnd(id: string) {
+  function handleDragEnd(ids: string[]) {
     dropLineInset.value = withTiming(0, { duration: 200 });
     // A synthetic velocity makes the spring overshoot its target and settle
     // back even though it's often already resting there (no natural
     // distance left to travel) - a small, deliberate "landing" bounce that
     // only plays once, here, instead of on every mid-drag snap above.
     const targetIndex = insertIndexRef.current;
+    const draggingSet = new Set(ids);
     dropLineY.value = withSpring(
-      gapYFor(targetIndex ?? 0),
+      gapYFor(targetIndex ?? 0, draggingSet),
       { damping: 12, stiffness: 300, velocity: 260 },
       (finished) => {
-        if (finished) runOnJS(commitReorder)(id);
+        if (finished) runOnJS(commitReorder)(ids);
       }
     );
   }
@@ -382,12 +410,14 @@ function BlockList({
           isSelected={selectedIds.has(item.id)}
           isSelectMode={isSelectMode}
           isEditMode={isEditMode}
-          isDragging={draggingId === item.id}
-          isDragActive={draggingId !== null}
+          isDragging={draggingIds?.includes(item.id) ?? false}
+          isDragActive={draggingIds !== null}
           onLayout={(e) => handleRowLayout(item.id, e)}
-          onDragStart={() => handleDragStart(item.id)}
-          onDragUpdate={(translationY) => handleDragUpdate(item.id, translationY)}
-          onDragEnd={() => handleDragEnd(item.id)}
+          onDragStart={() => handleDragStart(item.id, dragGroupFor(item.id))}
+          onDragUpdate={(translationY) =>
+            handleDragUpdate(item.id, dragGroupFor(item.id), translationY)
+          }
+          onDragEnd={() => handleDragEnd(dragGroupFor(item.id))}
           onToggleSelected={onToggleSelected}
           onChangeText={onChangeText}
           onBackspaceEmpty={onBackspaceEmpty}
@@ -396,7 +426,7 @@ function BlockList({
         />
       ))}
 
-      {draggingId && insertIndex !== null && (
+      {draggingIds && insertIndex !== null && (
         <Animated.View pointerEvents="none" style={[styles.dropLine, dropLineStyle]} />
       )}
     </View>
