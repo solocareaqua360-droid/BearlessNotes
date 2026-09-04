@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  FlatList,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -10,9 +9,13 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
+import SwipeableItem, {
+  OpenDirection,
+  SwipeableItemImperativeRef,
+} from 'react-native-swipeable-item';
 import { db } from '../firebase';
 import { Block } from '../types';
 import { RootStackParamList } from '../navigation';
@@ -20,6 +23,7 @@ import { RootStackParamList } from '../navigation';
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
 const AUTOSAVE_DELAY_MS = 600;
+const SWIPE_SNAP_POINT = 64;
 
 function newBlock(): Block {
   return { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, text: '' };
@@ -46,40 +50,32 @@ function BlockRow({
   onToggleSelected,
   inputRef,
 }: BlockRowProps) {
-  // Gesture-handler expects a gesture object to stay the same across
-  // renders. We build it exactly once per row and read the latest
-  // callbacks/id through a ref, instead of rebuilding the gesture (and
-  // its dependent callbacks) on every render - recreating it every time
-  // the list re-renders (e.g. when a block is added) was destabilizing
-  // gesture-handler's touch handling for the whole screen.
-  const latestRef = useRef({ drag, onToggleSelected, itemId: item.id });
-  latestRef.current = { drag, onToggleSelected, itemId: item.id };
-
-  const rowGesture = useMemo(() => {
-    const selectGesture = Gesture.Pan()
-      .activeOffsetX([-15, 15])
-      .failOffsetY([-10, 10])
-      .runOnJS(true)
-      .onEnd((event) => {
-        if (event.translationX < -40) {
-          latestRef.current.onToggleSelected(latestRef.current.itemId);
-        }
-      });
-
-    const dragGesture = Gesture.LongPress()
-      .minDuration(350)
-      .runOnJS(true)
-      .onStart(() => {
-        latestRef.current.drag();
-      });
-
-    return Gesture.Race(selectGesture, dragGesture);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const swipeRef = useRef<SwipeableItemImperativeRef>(null);
 
   return (
-    <GestureDetector gesture={rowGesture}>
-      <View style={[styles.blockRow, (isActive || isSelected) && styles.blockRowSelected]}>
+    <SwipeableItem
+      ref={swipeRef}
+      item={item}
+      snapPointsLeft={[SWIPE_SNAP_POINT]}
+      renderUnderlayLeft={() => (
+        <View style={styles.swipeSelectIndicator}>
+          <Ionicons name="checkmark" size={20} color="#fff" />
+        </View>
+      )}
+      onChange={({ openDirection }) => {
+        if (openDirection !== OpenDirection.NONE) {
+          onToggleSelected(item.id);
+          swipeRef.current?.close();
+        }
+      }}
+    >
+      {/* Long-press anywhere on the row (per DraggableFlatList's documented
+          "drag anywhere" pattern) starts the drag; short taps still reach
+          the TextInput underneath for normal editing. */}
+      <Pressable
+        onLongPress={drag}
+        style={[styles.blockRow, (isActive || isSelected) && styles.blockRowSelected]}
+      >
         <View style={styles.dragHandle}>
           <Ionicons
             name={isSelected ? 'checkmark-circle' : 'reorder-two-outline'}
@@ -100,8 +96,8 @@ function BlockRow({
           style={styles.blockInput}
           multiline
         />
-      </View>
-    </GestureDetector>
+      </Pressable>
+    </SwipeableItem>
   );
 }
 
@@ -222,12 +218,12 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     setBlocks((prev) => [...prev, created]);
   }
 
-  function renderBlock({ item }: { item: Block }) {
+  function renderBlock({ item, drag, isActive }: RenderItemParams<Block>) {
     return (
       <BlockRow
         item={item}
-        drag={() => {}}
-        isActive={false}
+        drag={drag}
+        isActive={isActive}
         isSelected={selectedIds.has(item.id)}
         onChangeText={handleBlockChange}
         onBackspaceEmpty={handleBackspaceOnEmpty}
@@ -268,13 +264,15 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
 
       <Text style={styles.debugCount}>ДІАГНОСТИКА: блоків у стані = {blocks.length}</Text>
 
-      <FlatList
+      <DraggableFlatList
         data={blocks}
         keyExtractor={(item) => item.id}
         renderItem={renderBlock}
+        onDragEnd={({ data }) => setBlocks(data)}
         style={styles.blockListContainer}
         contentContainerStyle={styles.blockList}
         keyboardShouldPersistTaps="handled"
+        activationDistance={20}
       />
 
       {selectedIds.size > 0 ? (
@@ -336,6 +334,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 8,
     borderRadius: 10,
+    backgroundColor: '#fff',
   },
   blockRowSelected: {
     backgroundColor: '#EFF6FF',
@@ -349,6 +348,14 @@ const styles = StyleSheet.create({
     color: '#111827',
     paddingHorizontal: 8,
     paddingVertical: 6,
+  },
+  swipeSelectIndicator: {
+    flex: 1,
+    backgroundColor: ACCENT,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    paddingLeft: 22,
+    borderRadius: 10,
   },
   addBlock: {
     flexDirection: 'row',
