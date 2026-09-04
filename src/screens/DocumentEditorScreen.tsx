@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  FlatList,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -12,7 +13,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 import { db } from '../firebase';
 import { Block } from '../types';
 import { RootStackParamList } from '../navigation';
@@ -222,12 +222,12 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     setBlocks((prev) => [...prev, created]);
   }
 
-  function renderBlock({ item, drag, isActive }: RenderItemParams<Block>) {
+  function renderBlock({ item }: { item: Block }) {
     return (
       <BlockRow
         item={item}
-        drag={drag}
-        isActive={isActive}
+        drag={() => {}}
+        isActive={false}
         isSelected={selectedIds.has(item.id)}
         onChangeText={handleBlockChange}
         onBackspaceEmpty={handleBackspaceOnEmpty}
@@ -268,11 +268,10 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
 
       <Text style={styles.debugCount}>ДІАГНОСТИКА: блоків у стані = {blocks.length}</Text>
 
-      <DraggableFlatList
+      <FlatList
         data={blocks}
         keyExtractor={(item) => item.id}
         renderItem={renderBlock}
-        onDragEnd={({ data }) => setBlocks(data)}
         style={styles.blockListContainer}
         contentContainerStyle={styles.blockList}
         keyboardShouldPersistTaps="handled"
