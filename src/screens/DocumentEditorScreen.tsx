@@ -1031,11 +1031,19 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
         return next;
       });
     } else {
+      // Firestore rejects `undefined` anywhere in a document, so the new
+      // block object is built fresh (dropping any stale checked/imageUri
+      // from whatever type it used to be) rather than spread-and-overwrite,
+      // which would leave an explicit `checked: undefined` for a
+      // non-checkbox type.
       focusIdRef.current = id;
       setBlocks((prev) =>
-        prev.map((b) =>
-          b.id === id ? { ...b, type, text: '', checked: type === 'checkbox' ? false : undefined } : b
-        )
+        prev.map((b): Block => {
+          if (b.id !== id) return b;
+          const converted: Block = { id: b.id, text: '', type };
+          if (type === 'checkbox') converted.checked = false;
+          return converted;
+        })
       );
     }
   }
