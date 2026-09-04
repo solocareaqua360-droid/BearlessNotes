@@ -9,6 +9,8 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   addDoc,
   collection,
@@ -20,6 +22,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { DocumentItem } from '../types';
+import { RootStackParamList } from '../navigation';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -35,6 +38,7 @@ function formatDate(timestamp: number): string {
 }
 
 export default function DocumentsScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -52,8 +56,13 @@ export default function DocumentsScreen() {
     });
   }, []);
 
-  function createDocument() {
-    addDoc(documentsCollection, { title: 'Без назви', updatedAt: Date.now() });
+  async function createDocument() {
+    const newDoc = await addDoc(documentsCollection, {
+      title: 'Без назви',
+      updatedAt: Date.now(),
+      blocks: [],
+    });
+    navigation.navigate('Editor', { documentId: newDoc.id });
   }
 
   function deleteDocument(id: string) {
@@ -98,7 +107,10 @@ export default function DocumentsScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         renderItem={({ item }) => (
-          <View style={styles.row}>
+          <Pressable
+            style={styles.row}
+            onPress={() => navigation.navigate('Editor', { documentId: item.id })}
+          >
             <View style={styles.rowIcon}>
               <Ionicons name="document-text-outline" size={18} color={ACCENT} />
             </View>
@@ -113,7 +125,7 @@ export default function DocumentsScreen() {
             >
               <Ionicons name="trash-outline" size={20} color={DANGER} />
             </Pressable>
-          </View>
+          </Pressable>
         )}
       />
       <Pressable style={styles.fab} onPress={createDocument}>
