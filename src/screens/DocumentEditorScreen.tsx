@@ -1,17 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
+  LayoutAnimation,
+  LayoutChangeEvent,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
+  UIManager,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 import SwipeableItem, {
   OpenDirection,
   SwipeableItemImperativeRef,
@@ -20,20 +24,27 @@ import { db } from '../firebase';
 import { Block } from '../types';
 import { RootStackParamList } from '../navigation';
 
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
 const AUTOSAVE_DELAY_MS = 600;
 const SWIPE_SNAP_POINT = 64;
+const DRAG_LONG_PRESS_MS = 350;
 
 function newBlock(): Block {
   return { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, text: '' };
 }
 
+// Content of a single block: title icon (shows a checkmark when selected),
+// the text field, and a swipe-left-to-select underlay. Dragging is handled
+// by the wrapping component below, not in here.
 type BlockRowProps = {
   item: Block;
-  drag: () => void;
-  isActive: boolean;
   isSelected: boolean;
+  isPreview?: boolean;
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
   onToggleSelected: (id: string) => void;
@@ -42,46 +53,199 @@ type BlockRowProps = {
 
 function BlockRow({
   item,
-  drag,
-  isActive,
   isSelected,
+  isPreview,
   onChangeText,
   onBackspaceEmpty,
   onToggleSelected,
   inputRef,
 }: BlockRowProps) {
-  // DIAGNOSTIC: SwipeableItem temporarily removed to isolate whether
-  // DraggableFlatList itself renders correctly with our reanimated 4
-  // setup, independent of any nested GestureDetector.
-  return (
-    <>
-      <Pressable
-        onLongPress={drag}
-        onPress={() => onToggleSelected(item.id)}
-        style={[styles.blockRow, (isActive || isSelected) && styles.blockRowSelected]}
-      >
-        <View style={styles.dragHandle}>
-          <Ionicons
-            name={isSelected ? 'checkmark-circle' : 'reorder-two-outline'}
-            size={20}
-            color={isSelected ? ACCENT : '#9CA3AF'}
-          />
-        </View>
-        <TextInput
-          ref={inputRef}
-          value={item.text}
-          onChangeText={(text) => onChangeText(item.id, text)}
-          onKeyPress={({ nativeEvent }) => {
-            if (nativeEvent.key === 'Backspace' && item.text === '') {
-              onBackspaceEmpty(item.id);
-            }
-          }}
-          placeholder="Пишіть тут…"
-          style={styles.blockInput}
-          multiline
+  const swipeRef = useRef<SwipeableItemImperativeRef>(null);
+
+  const content = (
+    <View style={[styles.blockRow, isSelected && styles.blockRowSelected]}>
+      <View style={styles.dragHandle}>
+        <Ionicons
+          name={isSelected ? 'checkmark-circle' : 'reorder-two-outline'}
+          size={20}
+          color={isSelected ? ACCENT : '#9CA3AF'}
         />
-      </Pressable>
-    </>
+      </View>
+      <TextInput
+        ref={inputRef}
+        value={item.text}
+        editable={!isPreview}
+        onChangeText={(text) => onChangeText(item.id, text)}
+        onKeyPress={({ nativeEvent }) => {
+          if (nativeEvent.key === 'Backspace' && item.text === '') {
+            onBackspaceEmpty(item.id);
+          }
+        }}
+        placeholder="Пишіть тут…"
+        style={styles.blockInput}
+        multiline
+      />
+    </View>
+  );
+
+  if (isPreview) {
+    // The floating clone shown while dragging doesn't need swipe-to-select.
+    return content;
+  }
+
+  return (
+    <SwipeableItem
+      ref={swipeRef}
+      item={item}
+      snapPointsLeft={[SWIPE_SNAP_POINT]}
+      renderUnderlayLeft={() => (
+        <View style={styles.swipeSelectIndicator}>
+          <Ionicons name="checkmark" size={20} color="#fff" />
+        </View>
+      )}
+      onChange={({ openDirection }) => {
+        if (openDirection !== OpenDirection.NONE) {
+          onToggleSelected(item.id);
+          swipeRef.current?.close();
+        }
+      }}
+    >
+      {content}
+    </SwipeableItem>
+  );
+}
+
+// react-native-draggable-flatlist has open, unresolved bugs with
+// react-native-reanimated v4 (rows silently render at zero height) - see
+// https://github.com/computerjazz/react-native-draggable-flatlist/issues/600
+// So drag-to-reorder is hand-built here directly on gesture-handler +
+// reanimated: a plain View per block (no virtualization, fine for a
+// single document's block count), each row's position measured via
+// onLayout, and a long-press-then-pan gesture that reorders the
+// underlying array live (with LayoutAnimation smoothing the other rows
+// sliding out of the way) while a floating clone follows the finger.
+type BlockListProps = {
+  blocks: Block[];
+  onReorder: (blocks: Block[]) => void;
+  selectedIds: Set<string>;
+  onToggleSelected: (id: string) => void;
+  onChangeText: (id: string, text: string) => void;
+  onBackspaceEmpty: (id: string) => void;
+  onInputRef: (id: string, ref: TextInput | null) => void;
+};
+
+function BlockList({
+  blocks,
+  onReorder,
+  selectedIds,
+  onToggleSelected,
+  onChangeText,
+  onBackspaceEmpty,
+  onInputRef,
+}: BlockListProps) {
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const dragY = useSharedValue(0);
+  const rowLayouts = useRef<Record<string, { y: number; height: number }>>({});
+  const blocksRef = useRef(blocks);
+  blocksRef.current = blocks;
+
+  function handleRowLayout(id: string, e: LayoutChangeEvent) {
+    rowLayouts.current[id] = {
+      y: e.nativeEvent.layout.y,
+      height: e.nativeEvent.layout.height,
+    };
+  }
+
+  function maybeReorder(id: string, translationY: number) {
+    const layout = rowLayouts.current[id];
+    if (!layout) return;
+    const currentCenter = layout.y + translationY + layout.height / 2;
+    const list = blocksRef.current;
+    const currentIndex = list.findIndex((b) => b.id === id);
+    if (currentIndex === -1) return;
+    let targetIndex = currentIndex;
+    for (let i = 0; i < list.length; i++) {
+      const rl = rowLayouts.current[list[i].id];
+      if (!rl) continue;
+      if (currentCenter >= rl.y && currentCenter < rl.y + rl.height) {
+        targetIndex = i;
+        break;
+      }
+    }
+    if (targetIndex !== currentIndex) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      const next = [...list];
+      const [moved] = next.splice(currentIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      onReorder(next);
+    }
+  }
+
+  function makeDragGesture(id: string) {
+    return Gesture.Pan()
+      .activateAfterLongPress(DRAG_LONG_PRESS_MS)
+      .runOnJS(true)
+      .onStart(() => {
+        dragY.value = 0;
+        setDraggingId(id);
+      })
+      .onUpdate((e) => {
+        dragY.value = e.translationY;
+        maybeReorder(id, e.translationY);
+      })
+      .onEnd(() => {
+        dragY.value = withTiming(0, { duration: 150 });
+        setDraggingId(null);
+      });
+  }
+
+  const floatingStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: dragY.value }],
+  }));
+
+  const draggingLayout = draggingId ? rowLayouts.current[draggingId] : null;
+  const draggingBlock = draggingId ? blocks.find((b) => b.id === draggingId) : null;
+
+  return (
+    <View style={styles.blockListContainer}>
+      {blocks.map((item) => (
+        <View key={item.id} onLayout={(e) => handleRowLayout(item.id, e)}>
+          <GestureDetector gesture={makeDragGesture(item.id)}>
+            <View style={{ opacity: draggingId === item.id ? 0 : 1 }}>
+              <BlockRow
+                item={item}
+                isSelected={selectedIds.has(item.id)}
+                onChangeText={onChangeText}
+                onBackspaceEmpty={onBackspaceEmpty}
+                onToggleSelected={onToggleSelected}
+                inputRef={(ref) => onInputRef(item.id, ref)}
+              />
+            </View>
+          </GestureDetector>
+        </View>
+      ))}
+
+      {draggingBlock && draggingLayout && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.floatingRow,
+            { top: draggingLayout.y, height: draggingLayout.height },
+            floatingStyle,
+          ]}
+        >
+          <BlockRow
+            item={draggingBlock}
+            isSelected={selectedIds.has(draggingBlock.id)}
+            isPreview
+            onChangeText={() => {}}
+            onBackspaceEmpty={() => {}}
+            onToggleSelected={() => {}}
+            inputRef={() => {}}
+          />
+        </Animated.View>
+      )}
+    </View>
   );
 }
 
@@ -202,23 +366,6 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     setBlocks((prev) => [...prev, created]);
   }
 
-  function renderBlock({ item, drag, isActive }: RenderItemParams<Block>) {
-    return (
-      <BlockRow
-        item={item}
-        drag={drag}
-        isActive={isActive}
-        isSelected={selectedIds.has(item.id)}
-        onChangeText={handleBlockChange}
-        onBackspaceEmpty={handleBackspaceOnEmpty}
-        onToggleSelected={toggleSelected}
-        inputRef={(ref) => {
-          inputRefs.current[item.id] = ref;
-        }}
-      />
-    );
-  }
-
   if (!isLoaded) {
     return <View style={styles.container} />;
   }
@@ -248,15 +395,16 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
 
       <Text style={styles.debugCount}>ДІАГНОСТИКА: блоків у стані = {blocks.length}</Text>
 
-      <DraggableFlatList
-        data={blocks}
-        keyExtractor={(item) => item.id}
-        renderItem={renderBlock}
-        onDragEnd={({ data }) => setBlocks(data)}
-        style={styles.blockListContainer}
-        contentContainerStyle={styles.blockList}
-        keyboardShouldPersistTaps="handled"
-        activationDistance={20}
+      <BlockList
+        blocks={blocks}
+        onReorder={setBlocks}
+        selectedIds={selectedIds}
+        onToggleSelected={toggleSelected}
+        onChangeText={handleBlockChange}
+        onBackspaceEmpty={handleBackspaceOnEmpty}
+        onInputRef={(id, ref) => {
+          inputRefs.current[id] = ref;
+        }}
       />
 
       {selectedIds.size > 0 ? (
@@ -306,9 +454,6 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   blockListContainer: {
-    flex: 1,
-  },
-  blockList: {
     paddingHorizontal: 12,
     paddingBottom: 16,
   },
@@ -340,6 +485,17 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     paddingLeft: 22,
     borderRadius: 10,
+  },
+  floatingRow: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    zIndex: 100,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
   },
   addBlock: {
     flexDirection: 'row',
