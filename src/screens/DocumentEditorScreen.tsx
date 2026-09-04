@@ -725,8 +725,6 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           style={styles.titleInput}
         />
 
-        <Text style={styles.debugCount}>ДІАГНОСТИКА: блоків у стані = {blocks.length}</Text>
-
         <BlockList
           blocks={blocks}
           onReorder={setBlocks}
@@ -782,13 +780,6 @@ const styles = StyleSheet.create({
   },
   scrollArea: {
     flex: 1,
-  },
-  debugCount: {
-    fontSize: 13,
-    color: '#fff',
-    backgroundColor: DANGER,
-    paddingHorizontal: 20,
-    paddingVertical: 4,
   },
   titleInput: {
     fontSize: 24,

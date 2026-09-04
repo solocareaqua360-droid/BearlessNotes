@@ -26,22 +26,42 @@ any other app in this account (e.g. `bookmarvideo`). Keep it that way:
 
 ## Current state
 
-Stage 0 (`DEVELOPMENT_PLAN.md`) is done. The Expo (TypeScript) app is
-initialized at the repo root, Metro bundles cleanly, and it's been
-confirmed running in Expo Go on a real Android device. The old
-`.github/workflows/build.yml` (a leftover native-Kotlin/Gradle prototype)
-has been removed.
+Stages 0–3 (`DEVELOPMENT_PLAN.md`) are done and confirmed on a real
+Android device via Expo Go. Stage 4 (undo/redo, text formatting, "/"
+quick-add menu, image blocks) is next and not yet started.
 
-The Firebase project (`bearless-notes`, Spark plan) exists with Firestore
+The Firebase project (`bearless-notes`, Spark plan) has Firestore
 (test-mode rules, region `eur3` — **rules must be locked down before real
 users touch this**, test mode is open for 30 days from creation) and
-Authentication (Email/Password) enabled. A Web app is registered in it and
-its SDK config is wired in `src/firebase.ts`, read from environment
-variables — copy `.env.example` to `.env` and fill in the real values from
-Firebase Console (Project settings → General → Your apps → Bearless Notes
-Web) before running the app; `.env` is git-ignored on purpose. `App.tsx`
-does not import `src/firebase.ts` yet — that starts in Stage 1/2 once
-there's an actual document list to back with it.
+Authentication (Email/Password) enabled. Its SDK config is wired in
+`src/firebase.ts`, read from environment variables — copy `.env.example`
+to `.env` and fill in the real values from Firebase Console (Project
+settings → General → Your apps → Bearless Notes Web) before running the
+app; `.env` is git-ignored on purpose. `DocumentsScreen.tsx` and
+`DocumentEditorScreen.tsx` both read/write Firestore directly
+(`onSnapshot`/`addDoc`/`deleteDoc`/`updateDoc`, no local-only state).
+
+The document editor (`src/screens/DocumentEditorScreen.tsx`) is a
+hand-rolled block editor — no third-party list/drag/swipe library, all
+built directly on `react-native-gesture-handler` + `react-native-reanimated`
+after `react-native-draggable-flatlist` and `react-native-swipeable-item`
+both turned out to be incompatible with reanimated v4 for variable-height
+rows. Notable pieces: single or multi-block drag-to-reorder via a
+snapping "drop-line" indicator (nothing else moves or reorders until the
+finger lifts); a select-mode toggle with per-block checkboxes for
+deletion; an edit-mode toggle (pencil icon) that switches each block's
+`TextInput` between fully inert (`pointerEvents: 'none'`, so swipes
+scroll the screen from anywhere) and editable — needed because Android
+has no reliable way to let a `TextInput` and a scroll gesture share a
+touch; and double-Enter to create a new block (single Enter is a plain
+line break — Android's React Native bridge discards Shift-key state
+before it reaches JS, confirmed directly in RN's own source, so
+Shift+Enter is not achievable here).
 
 Run locally with `npm install` then `npm start` (or `npx expo start`) and
-scan the QR code with Expo Go.
+scan the QR code with Expo Go. After pulling changes that touch
+`package.json`, watch for `package-lock.json` drift between platforms
+(macOS laptop vs. this session's Linux sandbox) causing `git pull` to
+refuse to merge — `git restore package-lock.json` before pulling is the
+usual fix, since the local diff is just platform-specific lockfile noise,
+not real changes.
