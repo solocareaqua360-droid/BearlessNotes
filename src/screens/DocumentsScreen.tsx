@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Pressable,
@@ -35,6 +36,7 @@ function formatDate(timestamp: number): string {
 
 export default function DocumentsScreen() {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const documentsQuery = query(documentsCollection, orderBy('updatedAt', 'desc'));
@@ -46,6 +48,7 @@ export default function DocumentsScreen() {
           updatedAt: docSnapshot.data().updatedAt,
         }))
       );
+      setIsLoading(false);
     });
   }, []);
 
@@ -62,6 +65,14 @@ export default function DocumentsScreen() {
         onPress: () => deleteDoc(doc(db, 'documents', id)),
       },
     ]);
+  }
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.emptyState]}>
+        <ActivityIndicator color={ACCENT} />
+      </View>
+    );
   }
 
   if (documents.length === 0) {
