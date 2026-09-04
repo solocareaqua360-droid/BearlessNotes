@@ -9,7 +9,6 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Swipeable } from 'react-native-gesture-handler';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
@@ -35,8 +34,8 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const focusIdRef = useRef<string | null>(null);
+  const focusToEndRef = useRef(false);
   const inputRefs = useRef<Record<string, TextInput | null>>({});
-  const swipeableRefs = useRef<Record<string, Swipeable | null>>({});
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -68,10 +67,18 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   }, [title, blocks, isLoaded]);
 
   useEffect(() => {
-    if (focusIdRef.current) {
-      inputRefs.current[focusIdRef.current]?.focus();
-      focusIdRef.current = null;
+    const id = focusIdRef.current;
+    if (!id) return;
+    const input = inputRefs.current[id];
+    input?.focus();
+    if (focusToEndRef.current) {
+      const block = blocks.find((b) => b.id === id);
+      if (block) {
+        input?.setSelection(block.text.length, block.text.length);
+      }
+      focusToEndRef.current = false;
     }
+    focusIdRef.current = null;
   }, [blocks]);
 
   function handleBlockChange(id: string, text: string) {
@@ -91,6 +98,19 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
       const next = [...prev];
       next[index] = { ...next[index], text: before };
       next.splice(index + 1, 0, created);
+      return next;
+    });
+  }
+
+  function handleBackspaceOnEmpty(id: string) {
+    setBlocks((prev) => {
+      const index = prev.findIndex((block) => block.id === id);
+      if (index <= 0) return prev;
+      const previous = prev[index - 1];
+      focusIdRef.current = previous.id;
+      focusToEndRef.current = true;
+      const next = [...prev];
+      next.splice(index, 1);
       return next;
     });
   }
@@ -124,38 +144,37 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   function renderBlock({ item, drag, isActive }: RenderItemParams<Block>) {
     const isSelected = selectedIds.has(item.id);
     return (
-      <Swipeable
-        ref={(ref) => {
-          swipeableRefs.current[item.id] = ref;
-        }}
-        overshootRight={false}
-        renderRightActions={() => (
-          <View style={styles.swipeSelectIndicator}>
-            <Ionicons name="checkmark" size={20} color="#fff" />
-          </View>
-        )}
-        onSwipeableWillOpen={() => {
-          toggleSelected(item.id);
-          swipeableRefs.current[item.id]?.close();
-        }}
-      >
-        <View style={[styles.blockRow, (isActive || isSelected) && styles.blockRowSelected]}>
-          <Pressable onLongPress={drag} hitSlop={8} style={styles.dragHandle}>
-            <Ionicons name="reorder-two-outline" size={20} color="#9CA3AF" />
-          </Pressable>
-          <TextInput
-            ref={(ref) => {
-              inputRefs.current[item.id] = ref;
-            }}
-            value={item.text}
-            onChangeText={(text) => handleBlockChange(item.id, text)}
-            placeholder="Пишіть тут…"
-            style={styles.blockInput}
-            multiline
+      <View style={[styles.blockRow, (isActive || isSelected) && styles.blockRowSelected]}>
+        <Pressable
+          onPress={() => toggleSelected(item.id)}
+          onLongPress={drag}
+          hitSlop={8}
+          style={styles.dragHandle}
+        >
+          <Ionicons
+            name={isSelected ? 'checkmark-circle' : 'reorder-two-outline'}
+            size={20}
+            color={isSelected ? ACCENT : '#9CA3AF'}
           />
-          {isSelected && <View style={styles.selectedDot} />}
-        </View>
-      </Swipeable>
+        </Pressable>
+        <TextInput
+          ref={(ref) => {
+            inputRefs.current[item.id] = ref;
+          }}
+          value={item.text}
+          onChangeText={(text) => handleBlockChange(item.id, text)}
+          onKeyPress={({ nativeEvent }) => {
+            if (nativeEvent.key === 'Backspace' && item.text === '') {
+              handleBackspaceOnEmpty(item.id);
+            }
+          }}
+          placeholder="Пишіть тут…"
+          style={styles.blockInput}
+          multiline
+          autoCorrect={false}
+          spellCheck={false}
+        />
+      </View>
     );
   }
 
@@ -166,8 +185,8 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+      behavior="padding"
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       <View style={styles.header}>
         <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
@@ -191,7 +210,9 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
         keyExtractor={(item) => item.id}
         renderItem={renderBlock}
         onDragEnd={({ data }) => setBlocks(data)}
+        style={styles.blockListContainer}
         contentContainerStyle={styles.blockList}
+        keyboardShouldPersistTaps="handled"
       />
 
       {selectedIds.size > 0 ? (
@@ -233,6 +254,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 12,
   },
+  blockListContainer: {
+    flex: 1,
+  },
   blockList: {
     paddingHorizontal: 12,
     paddingBottom: 16,
@@ -256,21 +280,6 @@ const styles = StyleSheet.create({
     color: '#111827',
     paddingHorizontal: 8,
     paddingVertical: 6,
-  },
-  selectedDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: ACCENT,
-    marginLeft: 8,
-  },
-  swipeSelectIndicator: {
-    backgroundColor: ACCENT,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 64,
-    borderRadius: 10,
-    marginVertical: 2,
   },
   addBlock: {
     flexDirection: 'row',
