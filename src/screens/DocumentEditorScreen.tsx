@@ -21,7 +21,7 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 // shares the same touch arena as our rows' Pan gestures - otherwise a swipe
 // starting on a block (its TextInput especially) never reaches the
 // ScrollView's own scroll recognition and only the icon column can scroll.
-import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -206,6 +206,7 @@ type BlockRowProps = {
   onFocus: (id: string) => void;
   onSelectionChange: (id: string, start: number, end: number) => void;
   onOpenImage: (uri: string) => void;
+  onToggleImageFit: (id: string) => void;
   inputRef: (ref: TextInput | null) => void;
 };
 
@@ -223,6 +224,7 @@ function BlockRow({
   onFocus,
   onSelectionChange,
   onOpenImage,
+  onToggleImageFit,
   inputRef,
 }: BlockRowProps) {
   // Outside edit mode (or while selecting), the text field is completely
@@ -239,17 +241,31 @@ function BlockRow({
   if (type === 'divider') {
     content = <View style={styles.dividerLine} />;
   } else if (type === 'image') {
-    // 'contain' (not 'cover') keeps the photo's real proportions - any
-    // leftover space in the fixed-height box shows the box's own pale gray
-    // background instead of cropping or stretching the image.
+    // 'contain' keeps the photo's real proportions, with any leftover space
+    // in the fixed-height box showing the box's own pale gray background
+    // instead of cropping the image; 'cover' fills the box entirely,
+    // cropping whatever doesn't fit. The small corner button switches
+    // between the two per image.
+    const fit = item.imageFit ?? 'contain';
     content = item.imageUri ? (
-      <Pressable
-        disabled={isSelectMode}
-        onPress={() => onOpenImage(item.imageUri!)}
-        style={styles.blockImageWrap}
-      >
-        <Image source={{ uri: item.imageUri }} style={styles.blockImage} resizeMode="contain" />
-      </Pressable>
+      <View style={styles.blockImageWrap}>
+        <Pressable
+          disabled={isSelectMode}
+          onPress={() => onOpenImage(item.imageUri!)}
+          style={styles.blockImageTap}
+        >
+          <Image source={{ uri: item.imageUri }} style={styles.blockImage} resizeMode={fit} />
+        </Pressable>
+        {!isSelectMode && (
+          <Pressable
+            hitSlop={8}
+            style={styles.imageFitToggle}
+            onPress={() => onToggleImageFit(item.id)}
+          >
+            <Ionicons name={fit === 'contain' ? 'crop-outline' : 'contract-outline'} size={16} color="#fff" />
+          </Pressable>
+        )}
+      </View>
     ) : (
       <Text style={styles.blockPlaceholder}>Немає зображення</Text>
     );
@@ -375,6 +391,7 @@ type SortableBlockRowProps = {
   onFocus: (id: string) => void;
   onSelectionChange: (id: string, start: number, end: number) => void;
   onOpenImage: (uri: string) => void;
+  onToggleImageFit: (id: string) => void;
   inputRef: (ref: TextInput | null) => void;
 };
 
@@ -398,6 +415,7 @@ function SortableBlockRow({
   onFocus,
   onSelectionChange,
   onOpenImage,
+  onToggleImageFit,
   inputRef,
 }: SortableBlockRowProps) {
   // This gesture's whole job is JS-side (finding the nearest gap, updating
@@ -462,6 +480,7 @@ function SortableBlockRow({
             onFocus={onFocus}
             onSelectionChange={onSelectionChange}
             onOpenImage={onOpenImage}
+            onToggleImageFit={onToggleImageFit}
             inputRef={inputRef}
           />
         </Animated.View>
@@ -482,6 +501,7 @@ type BlockListProps = {
   onFocus: (id: string) => void;
   onSelectionChange: (id: string, start: number, end: number) => void;
   onOpenImage: (uri: string) => void;
+  onToggleImageFit: (id: string) => void;
   onInputRef: (id: string, ref: TextInput | null) => void;
 };
 
@@ -498,6 +518,7 @@ function BlockList({
   onFocus,
   onSelectionChange,
   onOpenImage,
+  onToggleImageFit,
   onInputRef,
 }: BlockListProps) {
   const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
@@ -701,6 +722,7 @@ function BlockList({
           onFocus={onFocus}
           onSelectionChange={onSelectionChange}
           onOpenImage={onOpenImage}
+          onToggleImageFit={onToggleImageFit}
           inputRef={(ref) => onInputRef(item.id, ref)}
         />
         );
@@ -875,14 +897,18 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   // moment it's focused. Debouncing collapses those into a single
   // measurement taken once things are quiet, instead of an early (wrong)
   // scroll immediately followed by a corrective one - the visible
-  // "jumps up then down" the user saw.
+  // "jumps up then down" the user saw. Single-Enter now creates a new list
+  // item on every press (not just double-Enter), so this focus-swap blip
+  // happens far more often; 60ms wasn't always longer than the gap between
+  // the focus-driven call and the keyboard-driven one, so both could still
+  // fire as two separate scrolls. 180ms comfortably covers that gap.
   const scrollAdjustTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function scheduleScrollAdjust(currentKeyboardHeight: number) {
     if (scrollAdjustTimeoutRef.current) clearTimeout(scrollAdjustTimeoutRef.current);
     scrollAdjustTimeoutRef.current = setTimeout(() => {
       scrollFocusedBlockIntoView(currentKeyboardHeight);
-    }, 60);
+    }, 180);
   }
 
   function scrollFocusedBlockIntoView(currentKeyboardHeight: number) {
@@ -1154,6 +1180,15 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   function toggleChecked(id: string) {
     snapshotBeforeChange();
     setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, checked: !b.checked } : b)));
+  }
+
+  function toggleImageFit(id: string) {
+    snapshotBeforeChange();
+    setBlocks((prev) =>
+      prev.map((b) =>
+        b.id === id ? { ...b, imageFit: (b.imageFit ?? 'contain') === 'contain' ? 'cover' : 'contain' } : b
+      )
+    );
   }
 
   // Converts the block that triggered the "/" menu into the chosen type.
@@ -1440,6 +1475,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           onFocus={handleBlockFocus}
           onSelectionChange={handleBlockSelectionChange}
           onOpenImage={setViewerImageUri}
+          onToggleImageFit={toggleImageFit}
           onInputRef={(id, ref) => {
             inputRefs.current[id] = ref;
           }}
@@ -1465,7 +1501,13 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           animationType="fade"
           onRequestClose={() => setViewerImageUri(null)}
         >
-          <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />
+          {/* RN's Modal renders into its own native window on Android, outside the
+              app-level GestureHandlerRootView in App.tsx - gesture-handler
+              gestures need their own root re-declared inside it or pinch/pan
+              here silently do nothing. */}
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />
+          </GestureHandlerRootView>
         </Modal>
       )}
     </View>
@@ -1610,6 +1652,17 @@ const styles = StyleSheet.create({
   blockImage: {
     width: '100%',
     height: '100%',
+  },
+  blockImageTap: {
+    flex: 1,
+  },
+  imageFitToggle: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 12,
+    padding: 5,
   },
   viewerBackdrop: {
     flex: 1,

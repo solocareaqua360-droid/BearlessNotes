@@ -8,6 +8,10 @@ export interface Block {
   type?: BlockType;
   checked?: boolean; // 'checkbox' blocks only
   imageUri?: string; // 'image' blocks only
+  // 'image' blocks only. Absent means 'contain' (real proportions, pale
+  // gray letterboxing) - keeps images saved before this setting existed
+  // displaying the same as they already did.
+  imageFit?: 'contain' | 'cover';
 }
 
 export interface DocumentItem {
