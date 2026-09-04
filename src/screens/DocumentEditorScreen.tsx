@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
@@ -143,38 +144,57 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
 
   function renderBlock({ item, drag, isActive }: RenderItemParams<Block>) {
     const isSelected = selectedIds.has(item.id);
+
+    // A swipe (real horizontal movement) toggles selection; a sustained
+    // press with little movement starts the drag. Race lets whichever
+    // condition is met first win, so both gestures can start anywhere on
+    // the block - including over the text - without a dedicated handle.
+    const selectGesture = Gesture.Pan()
+      .activeOffsetX([-15, 15])
+      .failOffsetY([-10, 10])
+      .runOnJS(true)
+      .onEnd((event) => {
+        if (event.translationX < -40) {
+          toggleSelected(item.id);
+        }
+      });
+
+    const dragGesture = Gesture.LongPress()
+      .minDuration(350)
+      .runOnJS(true)
+      .onStart(() => {
+        drag();
+      });
+
+    const rowGesture = Gesture.Race(selectGesture, dragGesture);
+
     return (
-      <View style={[styles.blockRow, (isActive || isSelected) && styles.blockRowSelected]}>
-        <Pressable
-          onPress={() => toggleSelected(item.id)}
-          onLongPress={drag}
-          hitSlop={8}
-          style={styles.dragHandle}
-        >
-          <Ionicons
-            name={isSelected ? 'checkmark-circle' : 'reorder-two-outline'}
-            size={20}
-            color={isSelected ? ACCENT : '#9CA3AF'}
+      <GestureDetector gesture={rowGesture}>
+        <View style={[styles.blockRow, (isActive || isSelected) && styles.blockRowSelected]}>
+          <View style={styles.dragHandle}>
+            <Ionicons
+              name={isSelected ? 'checkmark-circle' : 'reorder-two-outline'}
+              size={20}
+              color={isSelected ? ACCENT : '#9CA3AF'}
+            />
+          </View>
+          <TextInput
+            ref={(ref) => {
+              inputRefs.current[item.id] = ref;
+            }}
+            value={item.text}
+            onChangeText={(text) => handleBlockChange(item.id, text)}
+            onKeyPress={({ nativeEvent }) => {
+              if (nativeEvent.key === 'Backspace' && item.text === '') {
+                handleBackspaceOnEmpty(item.id);
+              }
+            }}
+            placeholder="Пишіть тут…"
+            style={styles.blockInput}
+            multiline
           />
-        </Pressable>
-        <TextInput
-          ref={(ref) => {
-            inputRefs.current[item.id] = ref;
-          }}
-          value={item.text}
-          onChangeText={(text) => handleBlockChange(item.id, text)}
-          onKeyPress={({ nativeEvent }) => {
-            if (nativeEvent.key === 'Backspace' && item.text === '') {
-              handleBackspaceOnEmpty(item.id);
-            }
-          }}
-          placeholder="Пишіть тут…"
-          style={styles.blockInput}
-          multiline
-          autoCorrect={false}
-          spellCheck={false}
-        />
-      </View>
+        </View>
+      </GestureDetector>
     );
   }
 
