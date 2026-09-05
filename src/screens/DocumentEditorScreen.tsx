@@ -206,16 +206,69 @@ async function fetchLinkPreview(url: string): Promise<LinkPreview> {
   return { siteName: hostnameOf(url) };
 }
 
-// The same URL pasted into two different documents should land on ONE
-// record in the `links` collection (see syncLinksForDocument), not two -
-// deriving the doc id from the URL itself (rather than the block's own id)
-// is what makes that merge happen automatically. A 32-bit hash is plenty
-// for a personal notes app's link count; a doc id can't hold an arbitrary
-// URL anyway (length/character limits).
+// Sharing the SAME YouTube/TikTok video twice from the app's own Share sheet
+// produces a different URL each time (a fresh si=/_r= tracking param, or
+// youtu.be/<id> one time and youtube.com/watch?v=<id> the next) - hashing
+// the raw string would treat those as different links. Canonicalizing to a
+// stable identity string first (an exact video id for YouTube/TikTok,
+// tracking params stripped for everything else) is what actually makes
+// in-practice duplicates merge onto one record.
+const LINK_TRACKING_PARAMS = [
+  'si',
+  'feature',
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_term',
+  'utm_content',
+  'fbclid',
+  'gclid',
+  'ref',
+  'ref_src',
+  '_r',
+  '_t',
+  'is_from_webapp',
+  'sender_device',
+  'is_copy_url',
+];
+
+function canonicalUrlForDedup(url: string): string {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, '').replace(/^m\./, '');
+    if (host === 'youtu.be') {
+      const id = u.pathname.slice(1).split('/')[0];
+      if (id) return `youtube:${id}`;
+    }
+    if (host === 'youtube.com') {
+      const id = u.searchParams.get('v');
+      if (id) return `youtube:${id}`;
+    }
+    if (host === 'tiktok.com' || host.endsWith('.tiktok.com')) {
+      const match = u.pathname.match(/\/video\/(\d+)/);
+      if (match) return `tiktok:${match[1]}`;
+    }
+    LINK_TRACKING_PARAMS.forEach((p) => u.searchParams.delete(p));
+    const query = u.searchParams.toString();
+    const path = u.pathname.replace(/\/+$/, '');
+    return `${host}${path}${query ? `?${query}` : ''}`;
+  } catch {
+    return url.trim();
+  }
+}
+
+// The same URL (once canonicalized above) pasted into two different
+// documents should land on ONE record in the `links` collection (see
+// syncLinksForDocument), not two - deriving the doc id from the URL itself
+// (rather than the block's own id) is what makes that merge happen
+// automatically. A 32-bit hash is plenty for a personal notes app's link
+// count; a doc id can't hold an arbitrary URL anyway (length/character
+// limits).
 function linkDocId(url: string): string {
+  const canonical = canonicalUrlForDedup(url);
   let hash = 5381;
-  for (let i = 0; i < url.length; i++) {
-    hash = (hash * 33) ^ url.charCodeAt(i);
+  for (let i = 0; i < canonical.length; i++) {
+    hash = (hash * 33) ^ canonical.charCodeAt(i);
   }
   return `link-${(hash >>> 0).toString(36)}`;
 }
@@ -1265,6 +1318,18 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
       setTitle(data?.title ?? '');
       const loadedBlocks: Block[] = data?.blocks ?? [];
       setBlocks(loadedBlocks.length > 0 ? loadedBlocks : [newBlock()]);
+      // Seed the "what does this document currently mirror" trackers from
+      // the blocks as loaded, not an empty set - otherwise a link/task
+      // removed before the very first debounced sync ever runs (e.g.
+      // deleting a block within the first ~600ms of opening the document)
+      // would never be recognized as a removal, leaving a stale mirror
+      // entry that keeps pointing at this document forever.
+      knownTaskBlockIdsRef.current = new Set(
+        loadedBlocks.filter((b) => (b.type ?? 'paragraph') === 'checkbox' && b.text.trim() !== '').map((b) => b.id)
+      );
+      knownLinkIdsRef.current = new Set(
+        loadedBlocks.filter((b) => (b.type ?? 'paragraph') === 'link' && b.linkUrl).map((b) => linkDocId(b.linkUrl!))
+      );
       setIsLoaded(true);
     })();
   }, [documentId]);
