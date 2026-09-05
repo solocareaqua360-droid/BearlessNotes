@@ -1,5 +1,17 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Linking,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
@@ -15,13 +27,17 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+// One record per unique URL (see DocumentEditorScreen's linkDocId/
+// syncLinksForDocument) - documentIds lists every document that currently
+// has a card for this link, derived from the record's own `usedInDocuments`
+// map rather than one record per insertion.
 type LinkItem = {
   id: string;
   url: string;
   title?: string;
   imageUrl?: string;
   siteName?: string;
-  documentId: string;
+  documentIds: string[];
 };
 
 type LinkCategory = 'video' | 'geo' | 'other';
@@ -76,19 +92,28 @@ export default function LinksScreen({ route, navigation }: Props) {
   const info = CATEGORY_INFO[category];
   const [links, setLinks] = useState<LinkItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [renamingLink, setRenamingLink] = useState<LinkItem | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [documentPicker, setDocumentPicker] = useState<{
+    link: LinkItem;
+    documents: { id: string; title: string }[];
+  } | null>(null);
 
   useEffect(() => {
     const linksQuery = query(linksCollection, orderBy('updatedAt', 'desc'));
     return onSnapshot(linksQuery, (snapshot) => {
       setLinks(
-        snapshot.docs.map((docSnapshot) => ({
-          id: docSnapshot.id,
-          url: docSnapshot.data().url,
-          title: docSnapshot.data().title,
-          imageUrl: docSnapshot.data().imageUrl,
-          siteName: docSnapshot.data().siteName,
-          documentId: docSnapshot.data().documentId,
-        }))
+        snapshot.docs.map((docSnapshot) => {
+          const data = docSnapshot.data();
+          return {
+            id: docSnapshot.id,
+            url: data.url,
+            title: data.title,
+            imageUrl: data.imageUrl,
+            siteName: data.siteName,
+            documentIds: Object.keys(data.usedInDocuments ?? {}),
+          };
+        })
       );
       setIsLoading(false);
     });
@@ -100,13 +125,81 @@ export default function LinksScreen({ route, navigation }: Props) {
     navigation.navigate('Placeholder', { icon: 'options-outline', label: 'Скоро' });
   }
 
-  // A link isn't a separate record referenced from multiple documents yet
-  // (see the "next steps" note in DocumentEditorScreen's syncLinksForDocument -
-  // duplicate detection/merge is a later step) - it IS the card, in exactly
-  // the one document it was inserted into, same as how a "справа" task
-  // mirrors its one checkbox block.
+  function openLinkUrl(url: string) {
+    Linking.openURL(url).catch(() => {});
+  }
+
+  // The document icon jumps straight to the one document a link is used in,
+  // or - when it's inserted in several - shows a picker to choose which.
+  async function openDocumentIcon(link: LinkItem) {
+    if (link.documentIds.length === 0) return;
+    if (link.documentIds.length === 1) {
+      navigation.navigate('Editor', { documentId: link.documentIds[0] });
+      return;
+    }
+    const documents = await Promise.all(
+      link.documentIds.map(async (id) => {
+        const snapshot = await getDoc(doc(db, 'documents', id));
+        return { id, title: (snapshot.data()?.title as string) || 'Без назви' };
+      })
+    );
+    setDocumentPicker({ link, documents });
+  }
+
+  function pickDocument(documentId: string) {
+    setDocumentPicker(null);
+    navigation.navigate('Editor', { documentId });
+  }
+
+  function openRename(link: LinkItem) {
+    setRenamingLink(link);
+    setRenameValue(link.title ?? '');
+  }
+
+  function cancelRename() {
+    setRenamingLink(null);
+    setRenameValue('');
+  }
+
+  // A rename is always available, not just at first creation - it updates
+  // the shared record AND every card that already shows the old name
+  // (matched by URL, since a document could hold more than one block for
+  // the same link), the same two-way-sync pattern tasks already use for
+  // project/today changes.
+  async function confirmRename() {
+    const link = renamingLink;
+    const title = renameValue.trim();
+    if (!link || !title) return;
+    setRenamingLink(null);
+    setRenameValue('');
+    await updateDoc(doc(db, 'links', link.id), { title });
+    await Promise.all(
+      link.documentIds.map(async (docId) => {
+        const documentRef = doc(db, 'documents', docId);
+        const snapshot = await getDoc(documentRef);
+        const data = snapshot.data();
+        if (!data) return;
+        const blocks: Block[] = data.blocks ?? [];
+        let changed = false;
+        const updatedBlocks = blocks.map((b) => {
+          if ((b.type ?? 'paragraph') === 'link' && b.linkUrl === link.url) {
+            changed = true;
+            return { ...b, linkTitle: title };
+          }
+          return b;
+        });
+        if (changed) await updateDoc(documentRef, { blocks: updatedBlocks });
+      })
+    );
+  }
+
   function confirmDeleteLink(link: LinkItem) {
-    Alert.alert('Видалити посилання?', 'Картка також зникне з документа, де її вставлено.', [
+    const count = link.documentIds.length;
+    const message =
+      count > 1
+        ? `Картка також зникне з ${count} документів, де її вставлено.`
+        : 'Картка також зникне з документа, де її вставлено.';
+    Alert.alert('Видалити посилання?', message, [
       { text: 'Скасувати', style: 'cancel' },
       { text: 'Видалити', style: 'destructive', onPress: () => deleteLink(link) },
     ]);
@@ -114,25 +207,29 @@ export default function LinksScreen({ route, navigation }: Props) {
 
   async function deleteLink(link: LinkItem) {
     deleteDoc(doc(db, 'links', link.id));
-    const documentRef = doc(db, 'documents', link.documentId);
-    const snapshot = await getDoc(documentRef);
-    const data = snapshot.data();
-    if (!data) return;
-    const blocks: Block[] = data.blocks ?? [];
-    const remaining = blocks.filter((b) => b.id !== link.id);
-    updateDoc(documentRef, {
-      blocks: remaining.length > 0 ? remaining : [{ id: generateId(), text: '' }],
-    });
+    await Promise.all(
+      link.documentIds.map(async (docId) => {
+        const documentRef = doc(db, 'documents', docId);
+        const snapshot = await getDoc(documentRef);
+        const data = snapshot.data();
+        if (!data) return;
+        const blocks: Block[] = data.blocks ?? [];
+        const remaining = blocks.filter((b) => !((b.type ?? 'paragraph') === 'link' && b.linkUrl === link.url));
+        if (remaining.length !== blocks.length) {
+          updateDoc(documentRef, {
+            blocks: remaining.length > 0 ? remaining : [{ id: generateId(), text: '' }],
+          });
+        }
+      })
+    );
   }
 
   function renderLinkRow(item: LinkItem) {
     const itemInfo = CATEGORY_INFO[categoryOf(item)];
+    const docCount = item.documentIds.length;
     return (
       <View key={item.id} style={styles.row}>
-        <Pressable
-          style={styles.rowTap}
-          onPress={() => navigation.navigate('Editor', { documentId: item.documentId })}
-        >
+        <Pressable style={styles.rowTap} onPress={() => openLinkUrl(item.url)}>
           {item.imageUrl ? (
             <Image source={{ uri: item.imageUrl }} style={styles.thumb} resizeMode="cover" />
           ) : (
@@ -151,13 +248,27 @@ export default function LinksScreen({ route, navigation }: Props) {
               <View style={styles.tagChip}>
                 <Text style={styles.tagChipLabel}>Теги (скоро)</Text>
               </View>
-              <Text style={styles.docCount}>1 документ</Text>
             </View>
           </View>
         </Pressable>
-        <Pressable hitSlop={8} onPress={() => confirmDeleteLink(item)} style={styles.rowDelete}>
-          <Ionicons name="trash-outline" size={18} color={DANGER} />
-        </Pressable>
+        <View style={styles.rowActions}>
+          <Pressable hitSlop={8} onPress={() => openRename(item)} style={styles.rowActionButton}>
+            <Ionicons name="pencil-outline" size={16} color="#9CA3AF" />
+          </Pressable>
+          <Pressable hitSlop={8} onPress={() => openDocumentIcon(item)} style={styles.rowDocButtonWrap}>
+            <View style={styles.rowDocButton}>
+              <Ionicons name="document-text-outline" size={16} color={ACCENT} />
+            </View>
+            {docCount > 1 && (
+              <View style={styles.rowDocBadge}>
+                <Text style={styles.rowDocBadgeLabel}>{docCount}</Text>
+              </View>
+            )}
+          </Pressable>
+          <Pressable hitSlop={8} onPress={() => confirmDeleteLink(item)} style={styles.rowActionButton}>
+            <Ionicons name="trash-outline" size={16} color={DANGER} />
+          </Pressable>
+        </View>
       </View>
     );
   }
@@ -195,6 +306,58 @@ export default function LinksScreen({ route, navigation }: Props) {
       ) : (
         <ScrollView contentContainerStyle={styles.list}>{filteredLinks.map(renderLinkRow)}</ScrollView>
       )}
+
+      <Modal visible={renamingLink !== null} transparent animationType="fade" onRequestClose={cancelRename}>
+        <View style={styles.renamePromptBackdrop}>
+          <View style={styles.renamePromptCard}>
+            <Text style={styles.renamePromptTitle}>Назва посилання</Text>
+            <TextInput
+              autoFocus
+              value={renameValue}
+              onChangeText={setRenameValue}
+              placeholder="Назва"
+              style={styles.renamePromptInput}
+            />
+            <View style={styles.renamePromptButtons}>
+              <Pressable style={styles.renamePromptCancelButton} onPress={cancelRename}>
+                <Text style={styles.renamePromptCancelLabel}>Скасувати</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.renamePromptSaveButton, !renameValue.trim() && styles.renamePromptSaveButtonDisabled]}
+                disabled={!renameValue.trim()}
+                onPress={confirmRename}
+              >
+                <Text style={styles.renamePromptSaveLabel}>Зберегти</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={documentPicker !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDocumentPicker(null)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setDocumentPicker(null)}>
+          <Pressable style={styles.modalSheet} onPress={() => {}}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Де вставлено це посилання</Text>
+            {documentPicker?.documents.map((d) => (
+              <Pressable key={d.id} style={styles.modalRow} onPress={() => pickDocument(d.id)}>
+                <View style={styles.modalDocIcon}>
+                  <Ionicons name="document-text-outline" size={16} color={ACCENT} />
+                </View>
+                <Text style={styles.modalRowText} numberOfLines={1}>
+                  {d.title}
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
+              </Pressable>
+            ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -258,7 +421,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 10,
+    gap: 6,
     backgroundColor: '#F9FAFB',
     borderRadius: 14,
     padding: 10,
@@ -315,11 +478,143 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#9CA3AF',
   },
-  docCount: {
-    fontSize: 11,
-    color: '#9CA3AF',
+  rowActions: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 2,
   },
-  rowDelete: {
-    padding: 4,
+  rowActionButton: {
+    padding: 6,
+  },
+  rowDocButtonWrap: {
+    position: 'relative',
+  },
+  rowDocButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowDocBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: ACCENT,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  rowDocBadgeLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  renamePromptBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  renamePromptCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    gap: 12,
+  },
+  renamePromptTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  renamePromptInput: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: '#111827',
+  },
+  renamePromptButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+    marginTop: 4,
+  },
+  renamePromptCancelButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  renamePromptCancelLabel: {
+    fontSize: 15,
+    color: '#6B7280',
+  },
+  renamePromptSaveButton: {
+    backgroundColor: ACCENT,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+  },
+  renamePromptSaveButtonDisabled: {
+    backgroundColor: '#BFDBFE',
+  },
+  renamePromptSaveLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(17,24,39,0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 28,
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  modalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  modalDocIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalRowText: {
+    fontSize: 16,
+    color: '#111827',
+    flex: 1,
   },
 });

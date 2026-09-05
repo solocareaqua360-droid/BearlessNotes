@@ -40,7 +40,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { deleteDoc, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { deleteDoc, deleteField, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Block, BlockType } from '../types';
 import { RootStackParamList } from '../navigation';
@@ -204,6 +204,20 @@ async function fetchLinkPreview(url: string): Promise<LinkPreview> {
   const og = await fetchOpenGraphPreview(url);
   if (og) return { ...og, siteName: og.siteName ?? hostnameOf(url) };
   return { siteName: hostnameOf(url) };
+}
+
+// The same URL pasted into two different documents should land on ONE
+// record in the `links` collection (see syncLinksForDocument), not two -
+// deriving the doc id from the URL itself (rather than the block's own id)
+// is what makes that merge happen automatically. A 32-bit hash is plenty
+// for a personal notes app's link count; a doc id can't hold an arbitrary
+// URL anyway (length/character limits).
+function linkDocId(url: string): string {
+  let hash = 5381;
+  for (let i = 0; i < url.length; i++) {
+    hash = (hash * 33) ^ url.charCodeAt(i);
+  }
+  return `link-${(hash >>> 0).toString(36)}`;
 }
 
 // Asks once (via Android's Storage Access Framework) which folder to save
@@ -390,6 +404,7 @@ type BlockRowProps = {
   onOpenFile: (id: string) => void;
   onDownloadFile: (id: string) => void;
   onOpenLink: (url: string) => void;
+  onOpenLinkDatabase: (block: Block) => void;
   inputRef: (ref: TextInput | null) => void;
 };
 
@@ -413,6 +428,7 @@ function BlockRow({
   onOpenFile,
   onDownloadFile,
   onOpenLink,
+  onOpenLinkDatabase,
   inputRef,
 }: BlockRowProps) {
   // Outside edit mode (or while selecting), the text field is completely
@@ -517,57 +533,90 @@ function BlockRow({
     // Three visual variants (matching the approved mockup): a big-thumbnail
     // YouTube/TikTok card with a play badge, a smaller side-thumbnail
     // generic card, and a compact icon-only card when there's no preview
-    // image (geo links, or any fetch that came back empty).
+    // image (geo links, or any fetch that came back empty). Each variant is
+    // an outer View holding two SIBLING Pressables (not one nested inside
+    // the other, same trick as the image block's corner buttons) - the main
+    // one opens the URL, the small "database" icon jumps to this link's
+    // entry in its Links database screen instead.
     const url = item.linkUrl ?? item.text;
     const isVideo = (item.linkSiteName ?? '').includes('YouTube') || (item.linkSiteName ?? '').includes('TikTok');
     const isGeo = item.linkSiteName === 'Геоточка';
     if (isVideo && item.linkImageUrl) {
       content = (
-        <Pressable disabled={isSelectMode} onPress={() => onOpenLink(url)} style={styles.linkCardVideo}>
-          <View style={styles.linkVideoThumbWrap}>
-            <Image source={{ uri: item.linkImageUrl }} style={styles.linkVideoThumb} resizeMode="cover" />
-            <View style={styles.linkPlayBadge}>
-              <Ionicons name="play" size={18} color="#fff" />
+        <View style={styles.linkCardVideo}>
+          <Pressable disabled={isSelectMode} onPress={() => onOpenLink(url)}>
+            <View style={styles.linkVideoThumbWrap}>
+              <Image source={{ uri: item.linkImageUrl }} style={styles.linkVideoThumb} resizeMode="cover" />
+              <View style={styles.linkPlayBadge}>
+                <Ionicons name="play" size={18} color="#fff" />
+              </View>
             </View>
-          </View>
-          <View style={styles.linkCardBody}>
-            <Text style={styles.linkCardTitle} numberOfLines={2}>
-              {item.linkTitle || url}
-            </Text>
-            {!!item.linkSiteName && (
-              <Text style={styles.linkCardCaption} numberOfLines={1}>
-                {item.linkSiteName}
+            <View style={styles.linkCardBody}>
+              <Text style={styles.linkCardTitle} numberOfLines={2}>
+                {item.linkTitle || url}
               </Text>
-            )}
-          </View>
-        </Pressable>
+              {!!item.linkSiteName && (
+                <Text style={styles.linkCardCaption} numberOfLines={1}>
+                  {item.linkSiteName}
+                </Text>
+              )}
+            </View>
+          </Pressable>
+          {!isSelectMode && (
+            <Pressable
+              hitSlop={6}
+              style={styles.linkDbButtonVideo}
+              onPress={() => onOpenLinkDatabase(item)}
+            >
+              <Ionicons name="server-outline" size={14} color="#fff" />
+            </Pressable>
+          )}
+        </View>
       );
     } else if (item.linkImageUrl) {
       content = (
-        <Pressable disabled={isSelectMode} onPress={() => onOpenLink(url)} style={styles.linkCardGeneric}>
-          <Image source={{ uri: item.linkImageUrl }} style={styles.linkGenericThumb} resizeMode="cover" />
-          <View style={styles.linkCardBody}>
-            <Text style={styles.linkCardTitle} numberOfLines={2}>
-              {item.linkTitle || url}
-            </Text>
-            {!!item.linkSiteName && (
-              <Text style={styles.linkCardCaption} numberOfLines={1}>
-                {item.linkSiteName}
+        <View style={styles.linkCardGeneric}>
+          <Pressable disabled={isSelectMode} onPress={() => onOpenLink(url)} style={styles.linkCardGenericTap}>
+            <Image source={{ uri: item.linkImageUrl }} style={styles.linkGenericThumb} resizeMode="cover" />
+            <View style={[styles.linkCardBody, styles.linkCardBodyWithDbButton]}>
+              <Text style={styles.linkCardTitle} numberOfLines={2}>
+                {item.linkTitle || url}
               </Text>
-            )}
-          </View>
-        </Pressable>
+              {!!item.linkSiteName && (
+                <Text style={styles.linkCardCaption} numberOfLines={1}>
+                  {item.linkSiteName}
+                </Text>
+              )}
+            </View>
+          </Pressable>
+          {!isSelectMode && (
+            <Pressable
+              hitSlop={6}
+              style={styles.linkDbButtonGeneric}
+              onPress={() => onOpenLinkDatabase(item)}
+            >
+              <Ionicons name="server-outline" size={14} color="#6B7280" />
+            </Pressable>
+          )}
+        </View>
       );
     } else {
       content = (
-        <Pressable disabled={isSelectMode} onPress={() => onOpenLink(url)} style={styles.linkCardCompact}>
-          <View style={[styles.linkCompactIcon, isGeo && styles.linkCompactIconGeo]}>
-            <Ionicons name={isGeo ? 'location-outline' : 'link-outline'} size={18} color={isGeo ? '#16A34A' : ACCENT} />
-          </View>
-          <Text style={styles.linkCompactText} numberOfLines={1}>
-            {item.linkTitle || item.linkSiteName || url}
-          </Text>
-        </Pressable>
+        <View style={styles.linkCardCompact}>
+          <Pressable disabled={isSelectMode} onPress={() => onOpenLink(url)} style={styles.linkCardCompactTap}>
+            <View style={[styles.linkCompactIcon, isGeo && styles.linkCompactIconGeo]}>
+              <Ionicons name={isGeo ? 'location-outline' : 'link-outline'} size={18} color={isGeo ? '#16A34A' : ACCENT} />
+            </View>
+            <Text style={styles.linkCompactText} numberOfLines={1}>
+              {item.linkTitle || item.linkSiteName || url}
+            </Text>
+          </Pressable>
+          {!isSelectMode && (
+            <Pressable hitSlop={6} onPress={() => onOpenLinkDatabase(item)} style={styles.linkDbButtonCompact}>
+              <Ionicons name="server-outline" size={16} color="#9CA3AF" />
+            </Pressable>
+          )}
+        </View>
       );
     }
   } else {
@@ -699,6 +748,7 @@ type SortableBlockRowProps = {
   onOpenFile: (id: string) => void;
   onDownloadFile: (id: string) => void;
   onOpenLink: (url: string) => void;
+  onOpenLinkDatabase: (block: Block) => void;
   inputRef: (ref: TextInput | null) => void;
 };
 
@@ -728,6 +778,7 @@ function SortableBlockRow({
   onOpenFile,
   onDownloadFile,
   onOpenLink,
+  onOpenLinkDatabase,
   inputRef,
 }: SortableBlockRowProps) {
   // This gesture's whole job is JS-side (finding the nearest gap, updating
@@ -798,6 +849,7 @@ function SortableBlockRow({
             onOpenFile={onOpenFile}
             onDownloadFile={onDownloadFile}
             onOpenLink={onOpenLink}
+            onOpenLinkDatabase={onOpenLinkDatabase}
             inputRef={inputRef}
           />
         </Animated.View>
@@ -824,6 +876,7 @@ type BlockListProps = {
   onOpenFile: (id: string) => void;
   onDownloadFile: (id: string) => void;
   onOpenLink: (url: string) => void;
+  onOpenLinkDatabase: (block: Block) => void;
   onInputRef: (id: string, ref: TextInput | null) => void;
 };
 
@@ -846,6 +899,7 @@ function BlockList({
   onOpenFile,
   onDownloadFile,
   onOpenLink,
+  onOpenLinkDatabase,
   onInputRef,
 }: BlockListProps) {
   const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
@@ -1055,6 +1109,7 @@ function BlockList({
           onOpenFile={onOpenFile}
           onDownloadFile={onDownloadFile}
           onOpenLink={onOpenLink}
+          onOpenLinkDatabase={onOpenLinkDatabase}
           inputRef={(ref) => onInputRef(item.id, ref)}
         />
         );
@@ -1256,30 +1311,62 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
 
   // 'link' blocks (see convertUrlToLinkBlock) are database objects by
   // default too, same as checkboxes - mirrored into a top-level `links`
-  // collection so a future cross-document "Посилання" list can query them,
-  // exactly parallel to syncTasksForDocument above.
-  const knownLinkBlockIdsRef = useRef<Set<string>>(new Set());
+  // collection so a future cross-document "Посилання" list can query them.
+  // Unlike tasks, a link record is keyed by the URL itself (linkDocId), not
+  // the block id - the same link pasted into two documents has to land on
+  // ONE record with both documents listed, not two separate "duplicate"
+  // entries. `usedInDocuments` is a map of documentId -> true; each
+  // document only ever touches its OWN key in that map (via a nested-object
+  // merge, or a dotted-path delete), so two documents syncing at once can
+  // never clobber each other's membership.
+  const knownLinkIdsRef = useRef<Set<string>>(new Set());
 
   function syncLinksForDocument(currentBlocks: Block[]) {
     const linkBlocks = currentBlocks.filter((b) => (b.type ?? 'paragraph') === 'link' && b.linkUrl);
-    const currentIds = new Set(linkBlocks.map((b) => b.id));
+    const linkIdsInThisDoc = new Set<string>();
+    const representativeBlock = new Map<string, Block>();
     linkBlocks.forEach((b) => {
-      const linkDoc: Record<string, unknown> = {
-        url: b.linkUrl,
-        documentId,
-        updatedAt: Date.now(),
-      };
-      if (b.linkTitle) linkDoc.title = b.linkTitle;
-      if (b.linkImageUrl) linkDoc.imageUrl = b.linkImageUrl;
-      if (b.linkSiteName) linkDoc.siteName = b.linkSiteName;
-      setDoc(doc(db, 'links', b.id), linkDoc);
+      const linkId = linkDocId(b.linkUrl!);
+      linkIdsInThisDoc.add(linkId);
+      // Two blocks in this same document could share a URL - only one of
+      // them needs to seed the record's shared preview fields.
+      if (!representativeBlock.has(linkId)) representativeBlock.set(linkId, b);
     });
-    knownLinkBlockIdsRef.current.forEach((id) => {
-      if (!currentIds.has(id)) {
-        deleteDoc(doc(db, 'links', id));
+    linkIdsInThisDoc.forEach((linkId) => {
+      const b = representativeBlock.get(linkId)!;
+      const linkDocData: Record<string, unknown> = {
+        url: b.linkUrl,
+        updatedAt: Date.now(),
+        usedInDocuments: { [documentId]: true },
+      };
+      if (b.linkTitle) linkDocData.title = b.linkTitle;
+      if (b.linkImageUrl) linkDocData.imageUrl = b.linkImageUrl;
+      if (b.linkSiteName) linkDocData.siteName = b.linkSiteName;
+      setDoc(doc(db, 'links', linkId), linkDocData, { merge: true });
+    });
+    knownLinkIdsRef.current.forEach((linkId) => {
+      if (!linkIdsInThisDoc.has(linkId)) {
+        removeDocumentFromLink(linkId);
       }
     });
-    knownLinkBlockIdsRef.current = currentIds;
+    knownLinkIdsRef.current = linkIdsInThisDoc;
+  }
+
+  // This document no longer has any block for this link - clear just this
+  // document's own flag (other documents may still reference it), and if
+  // that was the last one, delete the now-unused record entirely instead of
+  // leaving an orphaned, invisible entry in Firestore.
+  async function removeDocumentFromLink(linkId: string) {
+    try {
+      await updateDoc(doc(db, 'links', linkId), { [`usedInDocuments.${documentId}`]: deleteField() });
+      const snapshot = await getDoc(doc(db, 'links', linkId));
+      const remaining = (snapshot.data()?.usedInDocuments ?? {}) as Record<string, boolean>;
+      if (Object.keys(remaining).length === 0) {
+        await deleteDoc(doc(db, 'links', linkId));
+      }
+    } catch {
+      // Already gone - most likely deleted directly from the Links screen.
+    }
   }
 
   useEffect(() => {
@@ -1670,6 +1757,21 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
       // Nothing sensible to show if the URL can't be opened (no handling
       // app, malformed URL, etc.) - silently doing nothing beats a crash.
     }
+  }
+
+  // The small "database" icon on a link card jumps to that link's own
+  // category screen (see LinksScreen's identical categorization) rather
+  // than opening the URL - the two live on the exact same card, so their
+  // tap targets have to stay clearly separate.
+  function openLinkDatabase(block: Block) {
+    const siteName = block.linkSiteName ?? '';
+    const category =
+      siteName.includes('YouTube') || siteName.includes('TikTok')
+        ? 'video'
+        : siteName === 'Геоточка'
+          ? 'geo'
+          : 'other';
+    navigation.navigate('Links', { category });
   }
 
   function handleBackspaceOnEmpty(id: string) {
@@ -2069,6 +2171,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           onOpenFile={openFileBlock}
           onDownloadFile={downloadFileBlock}
           onOpenLink={openLinkBlock}
+          onOpenLinkDatabase={openLinkDatabase}
           onInputRef={(id, ref) => {
             inputRefs.current[id] = ref;
           }}
@@ -2346,6 +2449,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F3F4F6',
     overflow: 'hidden',
+    position: 'relative',
+  },
+  linkDbButtonVideo: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   linkVideoThumbWrap: {
     width: '100%',
@@ -2369,11 +2484,25 @@ const styles = StyleSheet.create({
   },
   linkCardGeneric: {
     flex: 1,
-    flexDirection: 'row',
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#F3F4F6',
     overflow: 'hidden',
+    position: 'relative',
+  },
+  linkCardGenericTap: {
+    flexDirection: 'row',
+  },
+  linkDbButtonGeneric: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundColor: 'rgba(243,244,246,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   linkGenericThumb: {
     width: 80,
@@ -2386,6 +2515,9 @@ const styles = StyleSheet.create({
     padding: 12,
     justifyContent: 'center',
     gap: 4,
+  },
+  linkCardBodyWithDbButton: {
+    paddingRight: 40,
   },
   linkCardTitle: {
     fontSize: 15,
@@ -2400,11 +2532,20 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
     borderRadius: 12,
     backgroundColor: '#F9FAFB',
     paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
+  },
+  linkCardCompactTap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingLeft: 4,
+  },
+  linkDbButtonCompact: {
+    padding: 6,
   },
   linkCompactIcon: {
     width: 32,
