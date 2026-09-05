@@ -83,4 +83,9 @@ export interface DocumentItem {
   updatedAt: number;
   blocks?: Block[];
   tagIds?: string[];
+  // Present only on a daily-note document created from the Calendar screen
+  // ("YYYY-MM-DD", local time) - DocumentsScreen and SearchScreen both
+  // exclude any document carrying this field, so daily notes never leak
+  // into the regular document list.
+  calendarDate?: string;
 }

@@ -39,7 +39,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { deleteDoc, deleteField, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Block, BlockType, Tag } from '../types';
@@ -1175,10 +1175,30 @@ function BlockList({
   );
 }
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Editor'>;
+// Embedded mode (CalendarScreen) mounts this same component inline, below
+// its own date header, instead of pushing it as a stack screen - see
+// CalendarScreen's own comment on why the daily-note editor is the exact
+// same block editor as a regular document rather than a separate one.
+// `extraFields` is merged into every autosave write (CalendarScreen passes
+// `{ calendarDate }` so a daily note's document carries that field from its
+// very first save, without this screen needing to know what a calendar day
+// is); `navigation` still has to be the real navigation prop from the
+// embedding screen (not a stub) since Links/Photos/Files/Placeholder are
+// all pushed from inside here exactly as from a normal document.
+type Props =
+  | NativeStackScreenProps<RootStackParamList, 'Editor'>
+  | {
+      embedded: true;
+      documentId: string;
+      navigation: NativeStackNavigationProp<RootStackParamList>;
+      extraFields?: Record<string, unknown>;
+    };
 
-export default function DocumentEditorScreen({ route, navigation }: Props) {
-  const { documentId } = route.params;
+export default function DocumentEditorScreen(props: Props) {
+  const embedded = 'embedded' in props;
+  const documentId = 'embedded' in props ? props.documentId : props.route.params.documentId;
+  const navigation = props.navigation;
+  const extraFields = 'embedded' in props ? (props.extraFields ?? {}) : {};
   const [title, setTitle] = useState('');
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [tagIds, setTagIds] = useState<string[]>([]);
@@ -1441,11 +1461,17 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     setSaveStatus('saving');
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
-      updateDoc(doc(db, 'documents', documentId), {
-        title,
-        blocks,
-        updatedAt: Date.now(),
-      }).then(() => setSaveStatus('saved'));
+      // setDoc+merge rather than updateDoc - a daily note's document (see
+      // `embedded`/`extraFields` above) doesn't exist in Firestore yet the
+      // first time this fires, and updateDoc would reject a write to a
+      // missing document. Harmless for a regular document, which already
+      // exists by the time this screen opens (created by DocumentsScreen's
+      // own "+" before navigating here).
+      setDoc(
+        doc(db, 'documents', documentId),
+        { title, blocks, updatedAt: Date.now(), ...extraFields },
+        { merge: true }
+      ).then(() => setSaveStatus('saved'));
       syncTasksForDocument(blocks);
       syncLinksForDocument(blocks);
       syncPhotosForDocument(blocks);
@@ -2133,6 +2159,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
 
   return (
     <View style={styles.container}>
+      {!embedded && (
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
@@ -2164,6 +2191,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           </Pressable>
         </View>
       </View>
+      )}
 
       {slashMenuBlockId && (
         <ScrollView
@@ -2254,13 +2282,14 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
       <ScrollView
         ref={scrollViewRef}
         style={styles.scrollArea}
-        contentContainerStyle={{ paddingBottom: keyboardHeight + 40 }}
+        contentContainerStyle={[embedded && styles.scrollAreaEmbedded, { paddingBottom: keyboardHeight + 40 }]}
         keyboardShouldPersistTaps="handled"
         onScroll={(e) => {
           scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
         }}
         scrollEventThrottle={16}
       >
+        {!embedded && (
         <TextInput
           key={isEditMode ? 'editable' : 'locked'}
           value={title}
@@ -2270,6 +2299,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           placeholder="Без назви"
           style={styles.titleInput}
         />
+        )}
 
         <DocumentTagsBlock
           tagIds={tagIds}
@@ -2318,7 +2348,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
         )}
       </ScrollView>
 
-      <Pressable style={styles.editModeFab} onPress={toggleEditMode}>
+      <Pressable style={[styles.editModeFab, embedded && styles.editModeFabEmbedded]} onPress={toggleEditMode}>
         <Ionicons name={isEditMode ? 'checkmark-outline' : 'create-outline'} size={24} color="#fff" />
       </Pressable>
 
@@ -2470,8 +2500,20 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 4,
   },
+  // Embedded (CalendarScreen): the floating island + tags-drawer button
+  // stay on screen the whole time (unlike the normal full-screen editor,
+  // pushed over the whole Tab.Navigator, where nothing else is visible) -
+  // raised to clear them instead of overlapping.
+  editModeFabEmbedded: {
+    bottom: 100,
+  },
   scrollArea: {
     flex: 1,
+  },
+  // Embedded (CalendarScreen): no header eating the top, so the tags block
+  // needs its own top breathing room instead of the title input providing it.
+  scrollAreaEmbedded: {
+    paddingTop: 4,
   },
   formatToolbar: {
     flexGrow: 0,

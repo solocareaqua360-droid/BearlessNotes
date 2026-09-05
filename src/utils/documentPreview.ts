@@ -78,6 +78,19 @@ export function findBodyMatch(blocks: Block[] | undefined, query: string): TextM
   return null;
 }
 
+// Whether a document (in practice, a daily note - see CalendarScreen) has
+// any real content, as opposed to just the single blank paragraph every
+// document gets seeded with on first load. Used by the "only filled days"
+// filter, which must not count a day merely opened and never typed in.
+export function hasNoteContent(title: string, blocks: Block[] | undefined): boolean {
+  if (title.trim() !== '') return true;
+  return (blocks ?? []).some((b) => {
+    if ((b.text ?? '').trim() !== '') return true;
+    const type = b.type ?? 'paragraph';
+    return type === 'image' || type === 'file' || type === 'link' || type === 'divider';
+  });
+}
+
 export function documentMatchesQuery(title: string, blocks: Block[] | undefined, query: string): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return false;

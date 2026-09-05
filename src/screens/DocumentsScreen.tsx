@@ -43,13 +43,17 @@ export default function DocumentsScreen() {
     const documentsQuery = query(documentsCollection, orderBy('updatedAt', 'desc'));
     return onSnapshot(documentsQuery, (snapshot) => {
       setDocuments(
-        snapshot.docs.map((docSnapshot) => ({
-          id: docSnapshot.id,
-          title: docSnapshot.data().title,
-          updatedAt: docSnapshot.data().updatedAt,
-          tagIds: docSnapshot.data().tagIds ?? [],
-          blocks: docSnapshot.data().blocks ?? [],
-        }))
+        snapshot.docs
+          // Daily notes (CalendarScreen) live in this same collection but
+          // belong to the calendar, not this list.
+          .filter((docSnapshot) => !docSnapshot.data().calendarDate)
+          .map((docSnapshot) => ({
+            id: docSnapshot.id,
+            title: docSnapshot.data().title,
+            updatedAt: docSnapshot.data().updatedAt,
+            tagIds: docSnapshot.data().tagIds ?? [],
+            blocks: docSnapshot.data().blocks ?? [],
+          }))
       );
       setIsLoading(false);
     });

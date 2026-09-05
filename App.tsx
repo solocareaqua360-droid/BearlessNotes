@@ -5,6 +5,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import './src/firebase';
 import DocumentsScreen from './src/screens/DocumentsScreen';
+import CalendarScreen from './src/screens/CalendarScreen';
 import PlaceholderScreen from './src/screens/PlaceholderScreen';
 import DatabasesScreen from './src/screens/DatabasesScreen';
 import TasksScreen from './src/screens/TasksScreen';
@@ -28,7 +29,7 @@ function Tabs() {
   return (
     <Tab.Navigator screenOptions={{ headerShown: false }} tabBar={(props) => <FloatingIslandTabBar {...props} />}>
       <Tab.Screen name="Документи" component={DocumentsScreen} />
-      <Tab.Screen name="Календар">{() => <PlaceholderScreen icon="calendar-outline" label="Скоро" />}</Tab.Screen>
+      <Tab.Screen name="Календар" component={CalendarScreen} />
       <Tab.Screen name="Більше" component={DatabasesScreen} />
     </Tab.Navigator>
   );

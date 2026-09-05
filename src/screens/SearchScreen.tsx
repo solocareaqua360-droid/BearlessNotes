@@ -26,12 +26,16 @@ export default function SearchScreen() {
     const documentsQuery = query(documentsCollection, orderBy('updatedAt', 'desc'));
     return onSnapshot(documentsQuery, (snapshot) => {
       setDocuments(
-        snapshot.docs.map((docSnapshot) => ({
-          id: docSnapshot.id,
-          title: docSnapshot.data().title,
-          updatedAt: docSnapshot.data().updatedAt,
-          blocks: docSnapshot.data().blocks ?? [],
-        }))
+        snapshot.docs
+          // Daily notes (CalendarScreen) live in this same collection but
+          // aren't part of this document search.
+          .filter((docSnapshot) => !docSnapshot.data().calendarDate)
+          .map((docSnapshot) => ({
+            id: docSnapshot.id,
+            title: docSnapshot.data().title,
+            updatedAt: docSnapshot.data().updatedAt,
+            blocks: docSnapshot.data().blocks ?? [],
+          }))
       );
     });
   }, []);
