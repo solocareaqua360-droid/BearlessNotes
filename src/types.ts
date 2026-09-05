@@ -1,4 +1,4 @@
-export type BlockType = 'paragraph' | 'bulleted' | 'numbered' | 'checkbox' | 'divider' | 'image' | 'file';
+export type BlockType = 'paragraph' | 'bulleted' | 'numbered' | 'checkbox' | 'divider' | 'image' | 'file' | 'link';
 
 export interface Block {
   id: string;
@@ -24,6 +24,15 @@ export interface Block {
   // YYYY-MM-DD of the day it was marked "Сьогодні" - a mismatch with the
   // current date means "not today" without needing an active daily reset.
   todayMarkedDate?: string;
+  // 'link' blocks only - a paragraph containing a bare URL auto-converts
+  // into one of these. text holds the original URL. Preview fields are
+  // best-effort (fetched once at conversion time) and absent when nothing
+  // could be fetched, in which case the block renders as a compact
+  // icon-only card instead of erroring or staying plain text.
+  linkUrl?: string;
+  linkTitle?: string;
+  linkImageUrl?: string;
+  linkSiteName?: string;
 }
 
 export interface Project {

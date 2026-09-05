@@ -5,6 +5,7 @@ import {
   Keyboard,
   LayoutAnimation,
   LayoutChangeEvent,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -91,6 +92,118 @@ function fileIconColorFor(name?: string): string {
   if (ext === 'doc' || ext === 'docx') return '#2563EB';
   if (ext === 'xls' || ext === 'xlsx') return '#16A34A';
   return '#6B7280';
+}
+
+// A bare URL on its own paragraph auto-converts into a 'link' block (see
+// scheduleLinkConversion) carrying whatever preview this can fetch for free -
+// no image is ever downloaded/stored, only a remote URL loaded live by
+// <Image>, so a broken/expired preview at worst shows nothing rather than
+// costing storage. Every branch degrades to {siteName: hostname} on failure
+// so the block always has something to show instead of erroring.
+type LinkPreview = { title?: string; imageUrl?: string; siteName?: string };
+
+function isMapsUrl(url: string): boolean {
+  return /google\.[^/]+\/maps|goo\.gl\/maps|maps\.app\.goo\.gl/i.test(url);
+}
+function isYouTubeUrl(url: string): boolean {
+  return /(youtube\.com\/watch|youtu\.be\/)/i.test(url);
+}
+function isTikTokUrl(url: string): boolean {
+  return /tiktok\.com\//i.test(url);
+}
+
+// Google Maps' own "Share" button embeds the place name right in the URL
+// path (/maps/place/<name>/...) - reading it back out is free and needs no
+// network call. A raw coordinates-only link (no /place/ segment) has no name
+// to recover this way; reverse geocoding it would need a paid-tier Google
+// API, so that case is left to fall back to a generic "Геоточка" label.
+function extractMapsPlaceName(url: string): string | null {
+  try {
+    const match = new URL(url).pathname.match(/\/maps\/place\/([^/]+)/);
+    return match ? decodeURIComponent(match[1].replace(/\+/g, ' ')) : null;
+  } catch {
+    return null;
+  }
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
+async function fetchOEmbed(oembedUrl: string): Promise<LinkPreview | null> {
+  try {
+    const res = await fetch(oembedUrl);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const preview: LinkPreview = {};
+    if (data.title) preview.title = data.title;
+    if (data.thumbnail_url) preview.imageUrl = data.thumbnail_url;
+    if (data.author_name) preview.siteName = data.author_name;
+    return preview;
+  } catch {
+    return null;
+  }
+}
+
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+function extractMetaTag(html: string, property: string): string | null {
+  const patterns = [
+    new RegExp(`<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']*)["']`, 'i'),
+    new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["']${property}["']`, 'i'),
+  ];
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    if (match) return decodeHtmlEntities(match[1]);
+  }
+  return null;
+}
+
+async function fetchOpenGraphPreview(url: string): Promise<LinkPreview | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const html = await res.text();
+    const preview: LinkPreview = {};
+    const title = extractMetaTag(html, 'og:title');
+    const image = extractMetaTag(html, 'og:image');
+    const siteName = extractMetaTag(html, 'og:site_name');
+    if (title) preview.title = title;
+    if (image) preview.imageUrl = image;
+    if (siteName) preview.siteName = siteName;
+    return Object.keys(preview).length > 0 ? preview : null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchLinkPreview(url: string): Promise<LinkPreview> {
+  if (isMapsUrl(url)) {
+    const placeName = extractMapsPlaceName(url);
+    return placeName ? { title: placeName, siteName: 'Геоточка' } : { siteName: 'Геоточка' };
+  }
+  if (isYouTubeUrl(url)) {
+    const oembed = await fetchOEmbed(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
+    if (oembed) return { ...oembed, siteName: oembed.siteName ? `${oembed.siteName} · YouTube` : 'YouTube' };
+  }
+  if (isTikTokUrl(url)) {
+    const oembed = await fetchOEmbed(`https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`);
+    if (oembed) return { ...oembed, siteName: oembed.siteName ? `${oembed.siteName} · TikTok` : 'TikTok' };
+  }
+  const og = await fetchOpenGraphPreview(url);
+  if (og) return { ...og, siteName: og.siteName ?? hostnameOf(url) };
+  return { siteName: hostnameOf(url) };
 }
 
 // Asks once (via Android's Storage Access Framework) which folder to save
@@ -276,6 +389,7 @@ type BlockRowProps = {
   onDownloadImage: (uri: string) => void;
   onOpenFile: (id: string) => void;
   onDownloadFile: (id: string) => void;
+  onOpenLink: (url: string) => void;
   inputRef: (ref: TextInput | null) => void;
 };
 
@@ -298,6 +412,7 @@ function BlockRow({
   onDownloadImage,
   onOpenFile,
   onDownloadFile,
+  onOpenLink,
   inputRef,
 }: BlockRowProps) {
   // Outside edit mode (or while selecting), the text field is completely
@@ -398,6 +513,63 @@ function BlockRow({
         )}
       </View>
     );
+  } else if (type === 'link') {
+    // Three visual variants (matching the approved mockup): a big-thumbnail
+    // YouTube/TikTok card with a play badge, a smaller side-thumbnail
+    // generic card, and a compact icon-only card when there's no preview
+    // image (geo links, or any fetch that came back empty).
+    const url = item.linkUrl ?? item.text;
+    const isVideo = (item.linkSiteName ?? '').includes('YouTube') || (item.linkSiteName ?? '').includes('TikTok');
+    const isGeo = item.linkSiteName === 'Геоточка';
+    if (isVideo && item.linkImageUrl) {
+      content = (
+        <Pressable disabled={isSelectMode} onPress={() => onOpenLink(url)} style={styles.linkCardVideo}>
+          <View style={styles.linkVideoThumbWrap}>
+            <Image source={{ uri: item.linkImageUrl }} style={styles.linkVideoThumb} resizeMode="cover" />
+            <View style={styles.linkPlayBadge}>
+              <Ionicons name="play" size={18} color="#fff" />
+            </View>
+          </View>
+          <View style={styles.linkCardBody}>
+            <Text style={styles.linkCardTitle} numberOfLines={2}>
+              {item.linkTitle || url}
+            </Text>
+            {!!item.linkSiteName && (
+              <Text style={styles.linkCardCaption} numberOfLines={1}>
+                {item.linkSiteName}
+              </Text>
+            )}
+          </View>
+        </Pressable>
+      );
+    } else if (item.linkImageUrl) {
+      content = (
+        <Pressable disabled={isSelectMode} onPress={() => onOpenLink(url)} style={styles.linkCardGeneric}>
+          <Image source={{ uri: item.linkImageUrl }} style={styles.linkGenericThumb} resizeMode="cover" />
+          <View style={styles.linkCardBody}>
+            <Text style={styles.linkCardTitle} numberOfLines={2}>
+              {item.linkTitle || url}
+            </Text>
+            {!!item.linkSiteName && (
+              <Text style={styles.linkCardCaption} numberOfLines={1}>
+                {item.linkSiteName}
+              </Text>
+            )}
+          </View>
+        </Pressable>
+      );
+    } else {
+      content = (
+        <Pressable disabled={isSelectMode} onPress={() => onOpenLink(url)} style={styles.linkCardCompact}>
+          <View style={[styles.linkCompactIcon, isGeo && styles.linkCompactIconGeo]}>
+            <Ionicons name={isGeo ? 'location-outline' : 'link-outline'} size={18} color={isGeo ? '#16A34A' : ACCENT} />
+          </View>
+          <Text style={styles.linkCompactText} numberOfLines={1}>
+            {item.linkTitle || item.linkSiteName || url}
+          </Text>
+        </Pressable>
+      );
+    }
   } else {
     const textField = canEditText ? (
       <TextInput
@@ -526,6 +698,7 @@ type SortableBlockRowProps = {
   onDownloadImage: (uri: string) => void;
   onOpenFile: (id: string) => void;
   onDownloadFile: (id: string) => void;
+  onOpenLink: (url: string) => void;
   inputRef: (ref: TextInput | null) => void;
 };
 
@@ -554,6 +727,7 @@ function SortableBlockRow({
   onDownloadImage,
   onOpenFile,
   onDownloadFile,
+  onOpenLink,
   inputRef,
 }: SortableBlockRowProps) {
   // This gesture's whole job is JS-side (finding the nearest gap, updating
@@ -623,6 +797,7 @@ function SortableBlockRow({
             onDownloadImage={onDownloadImage}
             onOpenFile={onOpenFile}
             onDownloadFile={onDownloadFile}
+            onOpenLink={onOpenLink}
             inputRef={inputRef}
           />
         </Animated.View>
@@ -648,6 +823,7 @@ type BlockListProps = {
   onDownloadImage: (uri: string) => void;
   onOpenFile: (id: string) => void;
   onDownloadFile: (id: string) => void;
+  onOpenLink: (url: string) => void;
   onInputRef: (id: string, ref: TextInput | null) => void;
 };
 
@@ -669,6 +845,7 @@ function BlockList({
   onDownloadImage,
   onOpenFile,
   onDownloadFile,
+  onOpenLink,
   onInputRef,
 }: BlockListProps) {
   const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
@@ -877,6 +1054,7 @@ function BlockList({
           onDownloadImage={onDownloadImage}
           onOpenFile={onOpenFile}
           onDownloadFile={onDownloadFile}
+          onOpenLink={onOpenLink}
           inputRef={(ref) => onInputRef(item.id, ref)}
         />
         );
@@ -998,6 +1176,18 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   const redoStackRef = useRef<{ title: string; blocks: Block[] }[]>([]);
   const isTypingBurstRef = useRef(false);
   const typingBurstTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Debounces the bare-URL-to-link-card conversion so it fires once typing
+  // pauses rather than on every keystroke, and lets a still-in-flight timer
+  // for a block be cancelled if the text changes again (or stops being a
+  // bare URL) before it fires.
+  const linkConversionTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const isMountedRef = useRef(true);
+  useEffect(
+    () => () => {
+      isMountedRef.current = false;
+    },
+    []
+  );
 
   useEffect(() => {
     (async () => {
@@ -1050,6 +1240,34 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     knownTaskBlockIdsRef.current = currentIds;
   }
 
+  // 'link' blocks (see convertUrlToLinkBlock) are database objects by
+  // default too, same as checkboxes - mirrored into a top-level `links`
+  // collection so a future cross-document "Посилання" list can query them,
+  // exactly parallel to syncTasksForDocument above.
+  const knownLinkBlockIdsRef = useRef<Set<string>>(new Set());
+
+  function syncLinksForDocument(currentBlocks: Block[]) {
+    const linkBlocks = currentBlocks.filter((b) => (b.type ?? 'paragraph') === 'link' && b.linkUrl);
+    const currentIds = new Set(linkBlocks.map((b) => b.id));
+    linkBlocks.forEach((b) => {
+      const linkDoc: Record<string, unknown> = {
+        url: b.linkUrl,
+        documentId,
+        updatedAt: Date.now(),
+      };
+      if (b.linkTitle) linkDoc.title = b.linkTitle;
+      if (b.linkImageUrl) linkDoc.imageUrl = b.linkImageUrl;
+      if (b.linkSiteName) linkDoc.siteName = b.linkSiteName;
+      setDoc(doc(db, 'links', b.id), linkDoc);
+    });
+    knownLinkBlockIdsRef.current.forEach((id) => {
+      if (!currentIds.has(id)) {
+        deleteDoc(doc(db, 'links', id));
+      }
+    });
+    knownLinkBlockIdsRef.current = currentIds;
+  }
+
   useEffect(() => {
     if (!isLoaded) return;
     setSaveStatus('saving');
@@ -1061,6 +1279,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
         updatedAt: Date.now(),
       }).then(() => setSaveStatus('saved'));
       syncTasksForDocument(blocks);
+      syncLinksForDocument(blocks);
     }, AUTOSAVE_DELAY_MS);
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -1343,6 +1562,21 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     const doubleNewlineIndex = text.indexOf('\n\n');
     if (doubleNewlineIndex === -1) {
       setBlocks((prev) => prev.map((block) => (block.id === id ? { ...block, text } : block)));
+      // A paragraph whose ENTIRE trimmed text is a bare URL auto-converts to
+      // a link card once typing/pasting settles (see convertUrlToLinkBlock) -
+      // debounced so a URL that's still being typed/edited doesn't fire mid-
+      // keystroke, and cancelled outright as soon as the text stops matching.
+      const trimmed = text.trim();
+      if (currentType === 'paragraph' && /^https?:\/\/\S+$/i.test(trimmed)) {
+        if (linkConversionTimeoutsRef.current[id]) clearTimeout(linkConversionTimeoutsRef.current[id]);
+        linkConversionTimeoutsRef.current[id] = setTimeout(() => {
+          delete linkConversionTimeoutsRef.current[id];
+          convertUrlToLinkBlock(id, trimmed);
+        }, 800);
+      } else if (linkConversionTimeoutsRef.current[id]) {
+        clearTimeout(linkConversionTimeoutsRef.current[id]);
+        delete linkConversionTimeoutsRef.current[id];
+      }
       return;
     }
     // Both newlines are consumed here - the blank line the first Enter left
@@ -1359,6 +1593,37 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
       next.splice(index + 1, 0, created);
       return next;
     });
+  }
+
+  async function convertUrlToLinkBlock(id: string, url: string) {
+    const preview = await fetchLinkPreview(url);
+    if (!isMountedRef.current) return;
+    setBlocks((prev) => {
+      const block = prev.find((b) => b.id === id);
+      // The block may have been deleted, retyped into something else, or
+      // converted to a different type while the preview was still fetching -
+      // in any of those cases this stale result should just be dropped.
+      if (!block || (block.type ?? 'paragraph') !== 'paragraph' || block.text.trim() !== url) {
+        return prev;
+      }
+      return prev.map((b) => {
+        if (b.id !== id) return b;
+        const linkBlock: Block = { ...buildBlock(id, 'link', url), linkUrl: url };
+        if (preview.title) linkBlock.linkTitle = preview.title;
+        if (preview.imageUrl) linkBlock.linkImageUrl = preview.imageUrl;
+        if (preview.siteName) linkBlock.linkSiteName = preview.siteName;
+        return linkBlock;
+      });
+    });
+  }
+
+  async function openLinkBlock(url: string) {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      // Nothing sensible to show if the URL can't be opened (no handling
+      // app, malformed URL, etc.) - silently doing nothing beats a crash.
+    }
   }
 
   function handleBackspaceOnEmpty(id: string) {
@@ -1757,6 +2022,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           onDownloadImage={downloadImageBlock}
           onOpenFile={openFileBlock}
           onDownloadFile={downloadFileBlock}
+          onOpenLink={openLinkBlock}
           onInputRef={(id, ref) => {
             inputRefs.current[id] = ref;
           }}
@@ -1992,6 +2258,88 @@ const styles = StyleSheet.create({
   },
   fileCacheBadgeMissing: {
     backgroundColor: '#DC2626',
+  },
+  linkCardVideo: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    overflow: 'hidden',
+  },
+  linkVideoThumbWrap: {
+    width: '100%',
+    height: 140,
+    backgroundColor: '#111827',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  linkVideoThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  linkPlayBadge: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  linkCardGeneric: {
+    flex: 1,
+    flexDirection: 'row',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    overflow: 'hidden',
+  },
+  linkGenericThumb: {
+    width: 80,
+    height: 80,
+    backgroundColor: '#F3F4F6',
+  },
+  linkCardBody: {
+    flex: 1,
+    minWidth: 0,
+    padding: 12,
+    justifyContent: 'center',
+    gap: 4,
+  },
+  linkCardTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  linkCardCaption: {
+    fontSize: 12,
+    color: '#9CA3AF',
+  },
+  linkCardCompact: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 12,
+    backgroundColor: '#F9FAFB',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  linkCompactIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: 'rgba(59,130,246,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  linkCompactIconGeo: {
+    backgroundColor: 'rgba(22,163,74,0.12)',
+  },
+  linkCompactText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#111827',
   },
   viewerBackdrop: {
     flex: 1,
