@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import './src/firebase';
 import DocumentsScreen from './src/screens/DocumentsScreen';
 import PlaceholderScreen from './src/screens/PlaceholderScreen';
+import DatabasesScreen from './src/screens/DatabasesScreen';
 import TasksScreen from './src/screens/TasksScreen';
 import DocumentEditorScreen from './src/screens/DocumentEditorScreen';
 import { RootStackParamList } from './src/navigation';
@@ -53,7 +54,7 @@ function Tabs() {
       </Tab.Screen>
       <Tab.Screen
         name="Більше"
-        component={TasksScreen}
+        component={DatabasesScreen}
         options={{
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="ellipsis-horizontal-outline" size={size} color={color} />
@@ -72,6 +73,10 @@ export default function App() {
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="Tabs" component={Tabs} />
           <Stack.Screen name="Editor" component={DocumentEditorScreen} />
+          <Stack.Screen name="Tasks" component={TasksScreen} />
+          <Stack.Screen name="Placeholder">
+            {({ route }) => <PlaceholderScreen icon={route.params.icon} label={route.params.label} />}
+          </Stack.Screen>
         </Stack.Navigator>
       </NavigationContainer>
     </GestureHandlerRootView>
