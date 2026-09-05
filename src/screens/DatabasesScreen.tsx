@@ -16,19 +16,21 @@ type Tile = {
   // each opens the same screen pre-filtered to its own slice instead of a
   // "Скоро" placeholder.
   linkCategory?: 'video' | 'geo' | 'other';
+  // Set for tiles with their own dedicated (paramless) screen.
+  route?: 'Photos' | 'Files';
 };
 
-// "Справи" and the link-backed tiles below are real, working databases so
-// far (see TasksScreen/LinksScreen) - the rest are placeholders per
-// PROJECT_BRIEF.md's object model (нагадування, зображення/файли as their
-// own queryable types) and get filled in one at a time, the same way each
-// of the above went from "just a block" to a real cross-document list.
+// "Справи", the link-backed tiles, "Фото" and "Файли" are real, working
+// databases so far (see TasksScreen/LinksScreen/PhotosScreen/FilesScreen) -
+// only "нагадування" from PROJECT_BRIEF.md's default-types list is still a
+// placeholder, filled in the same way each of the above went from "just a
+// block" to a real cross-document list.
 const GRID_TILES: Tile[] = [
   { key: 'geo', label: 'Геоточки', icon: 'location-outline', color: '#16A34A', linkCategory: 'geo' },
   { key: 'links', label: 'Посилання', icon: 'link-outline', color: '#3B82F6', linkCategory: 'other' },
-  { key: 'photos', label: 'Фото', icon: 'image-outline', color: '#EC4899' },
+  { key: 'photos', label: 'Фото', icon: 'image-outline', color: '#EC4899', route: 'Photos' },
   { key: 'video', label: 'YouTube / TikTok', icon: 'videocam-outline', color: '#EF4444', linkCategory: 'video' },
-  { key: 'files', label: 'Файли', icon: 'document-outline', color: '#8B5CF6' },
+  { key: 'files', label: 'Файли', icon: 'document-outline', color: '#8B5CF6', route: 'Files' },
 ];
 
 export default function DatabasesScreen() {
@@ -50,11 +52,15 @@ export default function DatabasesScreen() {
             <Pressable
               key={tile.key}
               style={styles.tile}
-              onPress={() =>
-                tile.linkCategory
-                  ? navigation.navigate('Links', { category: tile.linkCategory })
-                  : navigation.navigate('Placeholder', { icon: tile.icon, label: 'Скоро' })
-              }
+              onPress={() => {
+                if (tile.linkCategory) {
+                  navigation.navigate('Links', { category: tile.linkCategory });
+                } else if (tile.route) {
+                  navigation.navigate(tile.route);
+                } else {
+                  navigation.navigate('Placeholder', { icon: tile.icon, label: 'Скоро' });
+                }
+              }}
             >
               <View style={[styles.tileIcon, { backgroundColor: `${tile.color}1A` }]}>
                 <Ionicons name={tile.icon} size={20} color={tile.color} />

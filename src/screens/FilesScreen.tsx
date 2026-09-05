@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import * as Sharing from 'expo-sharing';
 import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Block } from '../types';
@@ -11,97 +13,59 @@ import DocumentPickerModal, { PickableDocument } from '../components/DocumentPic
 import UndoToast from '../components/UndoToast';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 
-const ACCENT = '#3B82F6';
+const ACCENT = '#8B5CF6';
 const DANGER = '#EF4444';
-const linksCollection = collection(db, 'links');
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-// One record per unique URL (see DocumentEditorScreen's linkDocId/
-// syncLinksForDocument) - documentIds lists every document that currently
-// has a card for this link, derived from the record's own `usedInDocuments`
-// map rather than one record per insertion.
-type LinkItem = {
+type FileItem = {
   id: string;
-  url: string;
+  fileUri: string;
+  fileName: string;
+  mimeType?: string;
   title?: string;
-  imageUrl?: string;
-  siteName?: string;
   documentIds: string[];
 };
 
-type LinkCategory = 'video' | 'geo' | 'other';
-
-// Matches the exact siteName values fetchLinkPreview stamps on conversion
-// (see DocumentEditorScreen) - the one `links` collection holds every kind
-// of link, and this is what splits it back into three separate-looking
-// databases without needing three separate collections.
-function categoryOf(link: LinkItem): LinkCategory {
-  const siteName = link.siteName ?? '';
-  if (siteName.includes('YouTube') || siteName.includes('TikTok')) return 'video';
-  if (siteName === 'Геоточка') return 'geo';
-  return 'other';
+// Same tinting-by-extension used on the file block itself in
+// DocumentEditorScreen - kept as its own small copy here rather than shared,
+// since the two versions have nothing else in common.
+function fileIconFor(name: string): 'document-text-outline' | 'document-outline' {
+  return name.toLowerCase().endsWith('.pdf') ? 'document-text-outline' : 'document-outline';
 }
 
-const CATEGORY_INFO: Record<
-  LinkCategory,
-  { title: string; icon: keyof typeof Ionicons.glyphMap; color: string; emptyHint: string }
-> = {
-  video: {
-    title: 'YouTube / TikTok',
-    icon: 'videocam-outline',
-    color: '#EF4444',
-    emptyHint: "Вставте посилання на YouTube або TikTok окремим абзацом у документі - картка з'явиться тут сама",
-  },
-  geo: {
-    title: 'Геоточки',
-    icon: 'location-outline',
-    color: '#16A34A',
-    emptyHint: "Вставте посилання на місце з Google Maps окремим абзацом у документі - воно з'явиться тут само",
-  },
-  other: {
-    title: 'Посилання',
-    icon: 'link-outline',
-    color: ACCENT,
-    emptyHint: "Вставте посилання окремим абзацом у будь-якому документі - картка з'явиться тут сама",
-  },
-};
-
-function hostnameOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return url;
-  }
+function fileIconColorFor(name: string): string {
+  const ext = name.toLowerCase().split('.').pop();
+  if (ext === 'pdf') return '#DC2626';
+  if (ext === 'doc' || ext === 'docx') return '#2563EB';
+  if (ext === 'xls' || ext === 'xlsx') return '#16A34A';
+  return '#6B7280';
 }
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Links'>;
-
-export default function LinksScreen({ route, navigation }: Props) {
-  const { category } = route.params;
-  const info = CATEGORY_INFO[category];
-  const [links, setLinks] = useState<LinkItem[]>([]);
+export default function FilesScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const [files, setFiles] = useState<FileItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [renamingLink, setRenamingLink] = useState<LinkItem | null>(null);
-  const [documentPicker, setDocumentPicker] = useState<{ link: LinkItem; documents: PickableDocument[] } | null>(
+  const [renamingFile, setRenamingFile] = useState<FileItem | null>(null);
+  const [documentPicker, setDocumentPicker] = useState<{ file: FileItem; documents: PickableDocument[] } | null>(
     null
   );
-  const { filterPending, requestDelete, undo, toast } = usePendingDelete<LinkItem>();
+  const { filterPending, requestDelete, undo, toast } = usePendingDelete<FileItem>();
 
   useEffect(() => {
-    const linksQuery = query(linksCollection, orderBy('updatedAt', 'desc'));
-    return onSnapshot(linksQuery, (snapshot) => {
-      setLinks(
+    const filesQuery = query(collection(db, 'files'), orderBy('updatedAt', 'desc'));
+    return onSnapshot(filesQuery, (snapshot) => {
+      setFiles(
         snapshot.docs.map((docSnapshot) => {
           const data = docSnapshot.data();
           return {
             id: docSnapshot.id,
-            url: data.url,
+            fileUri: data.fileUri,
+            fileName: data.fileName,
+            mimeType: data.mimeType,
             title: data.title,
-            imageUrl: data.imageUrl,
-            siteName: data.siteName,
             documentIds: Object.keys(data.usedInDocuments ?? {}),
           };
         })
@@ -110,31 +74,31 @@ export default function LinksScreen({ route, navigation }: Props) {
     });
   }, []);
 
-  const filteredLinks = filterPending(links.filter((link) => categoryOf(link) === category));
+  const displayedFiles = filterPending(files);
 
   function openSortOrFilter() {
     navigation.navigate('Placeholder', { icon: 'options-outline', label: 'Скоро' });
   }
 
-  function openLinkUrl(url: string) {
-    Linking.openURL(url).catch(() => {});
+  async function openFile(file: FileItem) {
+    const available = await Sharing.isAvailableAsync();
+    if (!available) return;
+    await Sharing.shareAsync(file.fileUri, { mimeType: file.mimeType, dialogTitle: file.fileName });
   }
 
-  // The document icon jumps straight to the one document a link is used in,
-  // or - when it's inserted in several - shows a picker to choose which.
-  async function openDocumentIcon(link: LinkItem) {
-    if (link.documentIds.length === 0) return;
-    if (link.documentIds.length === 1) {
-      navigation.navigate('Editor', { documentId: link.documentIds[0] });
+  async function openDocumentIcon(file: FileItem) {
+    if (file.documentIds.length === 0) return;
+    if (file.documentIds.length === 1) {
+      navigation.navigate('Editor', { documentId: file.documentIds[0] });
       return;
     }
     const documents = await Promise.all(
-      link.documentIds.map(async (id) => {
+      file.documentIds.map(async (id) => {
         const snapshot = await getDoc(doc(db, 'documents', id));
         return { id, title: (snapshot.data()?.title as string) || 'Без назви' };
       })
     );
-    setDocumentPicker({ link, documents });
+    setDocumentPicker({ file, documents });
   }
 
   function pickDocument(documentId: string) {
@@ -142,16 +106,14 @@ export default function LinksScreen({ route, navigation }: Props) {
     navigation.navigate('Editor', { documentId });
   }
 
-  // A rename is always available, not just at first creation - it updates
-  // the shared record AND every card that already shows the old name
-  // (matched by URL, since a document could hold more than one block for
-  // the same link), the same two-way-sync pattern tasks already use for
-  // project/today changes.
-  async function renameLink(link: LinkItem, title: string) {
-    setRenamingLink(null);
-    await updateDoc(doc(db, 'links', link.id), { title });
+  // Rename overrides the display title only - the actual attached file and
+  // its original fileName are untouched. Propagates into every document
+  // block that shows this file, same two-way-sync pattern as links.
+  async function renameFile(file: FileItem, title: string) {
+    setRenamingFile(null);
+    await updateDoc(doc(db, 'files', file.id), { title });
     await Promise.all(
-      link.documentIds.map(async (docId) => {
+      file.documentIds.map(async (docId) => {
         const documentRef = doc(db, 'documents', docId);
         const snapshot = await getDoc(documentRef);
         const data = snapshot.data();
@@ -159,9 +121,9 @@ export default function LinksScreen({ route, navigation }: Props) {
         const blocks: Block[] = data.blocks ?? [];
         let changed = false;
         const updatedBlocks = blocks.map((b) => {
-          if ((b.type ?? 'paragraph') === 'link' && b.linkUrl === link.url) {
+          if (b.id === file.id && (b.type ?? 'paragraph') === 'file') {
             changed = true;
-            return { ...b, linkTitle: title };
+            return { ...b, fileTitle: title };
           }
           return b;
         });
@@ -170,20 +132,20 @@ export default function LinksScreen({ route, navigation }: Props) {
     );
   }
 
-  function confirmDeleteLink(link: LinkItem) {
-    requestDelete(link, 'Посилання видалено', () => deleteLink(link));
+  function confirmDeleteFile(file: FileItem) {
+    requestDelete(file, 'Файл видалено', () => deleteFile(file));
   }
 
-  async function deleteLink(link: LinkItem) {
-    deleteDoc(doc(db, 'links', link.id));
+  async function deleteFile(file: FileItem) {
+    deleteDoc(doc(db, 'files', file.id));
     await Promise.all(
-      link.documentIds.map(async (docId) => {
+      file.documentIds.map(async (docId) => {
         const documentRef = doc(db, 'documents', docId);
         const snapshot = await getDoc(documentRef);
         const data = snapshot.data();
         if (!data) return;
         const blocks: Block[] = data.blocks ?? [];
-        const remaining = blocks.filter((b) => !((b.type ?? 'paragraph') === 'link' && b.linkUrl === link.url));
+        const remaining = blocks.filter((b) => b.id !== file.id);
         if (remaining.length !== blocks.length) {
           updateDoc(documentRef, {
             blocks: remaining.length > 0 ? remaining : [{ id: generateId(), text: '' }],
@@ -193,25 +155,17 @@ export default function LinksScreen({ route, navigation }: Props) {
     );
   }
 
-  function renderLinkRow(item: LinkItem) {
-    const itemInfo = CATEGORY_INFO[categoryOf(item)];
+  function renderFileRow(item: FileItem) {
     const docCount = item.documentIds.length;
     return (
       <View key={item.id} style={styles.row}>
-        <Pressable style={styles.rowTap} onPress={() => openLinkUrl(item.url)}>
-          {item.imageUrl ? (
-            <Image source={{ uri: item.imageUrl }} style={styles.thumb} resizeMode="cover" />
-          ) : (
-            <View style={[styles.thumbIcon, { backgroundColor: `${itemInfo.color}1A` }]}>
-              <Ionicons name={itemInfo.icon} size={20} color={itemInfo.color} />
-            </View>
-          )}
+        <Pressable style={styles.rowTap} onPress={() => openFile(item)}>
+          <View style={[styles.thumbIcon, { backgroundColor: `${fileIconColorFor(item.fileName)}1A` }]}>
+            <Ionicons name={fileIconFor(item.fileName)} size={20} color={fileIconColorFor(item.fileName)} />
+          </View>
           <View style={styles.rowBody}>
             <Text style={styles.rowTitle} numberOfLines={2}>
-              {item.title || hostnameOf(item.url)}
-            </Text>
-            <Text style={styles.rowCaption} numberOfLines={1}>
-              {item.siteName ?? hostnameOf(item.url)}
+              {item.title || item.fileName}
             </Text>
             <View style={styles.rowMeta}>
               <View style={styles.tagChip}>
@@ -221,7 +175,7 @@ export default function LinksScreen({ route, navigation }: Props) {
           </View>
         </Pressable>
         <View style={styles.rowActions}>
-          <Pressable hitSlop={8} onPress={() => setRenamingLink(item)} style={styles.rowActionButton}>
+          <Pressable hitSlop={8} onPress={() => setRenamingFile(item)} style={styles.rowActionButton}>
             <Ionicons name="pencil-outline" size={16} color="#9CA3AF" />
           </Pressable>
           <Pressable hitSlop={8} onPress={() => openDocumentIcon(item)} style={styles.rowDocButtonWrap}>
@@ -234,7 +188,7 @@ export default function LinksScreen({ route, navigation }: Props) {
               </View>
             )}
           </Pressable>
-          <Pressable hitSlop={8} onPress={() => confirmDeleteLink(item)} style={styles.rowActionButton}>
+          <Pressable hitSlop={8} onPress={() => confirmDeleteFile(item)} style={styles.rowActionButton}>
             <Ionicons name="trash-outline" size={16} color={DANGER} />
           </Pressable>
         </View>
@@ -253,7 +207,7 @@ export default function LinksScreen({ route, navigation }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <Text style={styles.header}>{info.title}</Text>
+        <Text style={styles.header}>Файли</Text>
         <View style={styles.headerIcons}>
           <Pressable hitSlop={8} onPress={openSortOrFilter}>
             <Ionicons name="swap-vertical-outline" size={20} color="#6B7280" />
@@ -264,31 +218,33 @@ export default function LinksScreen({ route, navigation }: Props) {
         </View>
       </View>
 
-      {filteredLinks.length === 0 ? (
+      {displayedFiles.length === 0 ? (
         <View style={styles.emptyState}>
-          <View style={[styles.emptyIcon, { backgroundColor: `${info.color}1A` }]}>
-            <Ionicons name={info.icon} size={32} color={info.color} />
+          <View style={styles.emptyIcon}>
+            <Ionicons name="document-outline" size={32} color={ACCENT} />
           </View>
-          <Text style={styles.emptyLabel}>Ще немає збережених посилань</Text>
-          <Text style={styles.emptyHint}>{info.emptyHint}</Text>
+          <Text style={styles.emptyLabel}>Ще немає файлів</Text>
+          <Text style={styles.emptyHint}>
+            Прикріпіть файл як блок у будь-якому документі - він з'явиться тут сам
+          </Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.list}>{filteredLinks.map(renderLinkRow)}</ScrollView>
+        <ScrollView contentContainerStyle={styles.list}>{displayedFiles.map(renderFileRow)}</ScrollView>
       )}
 
       <RenamePrompt
-        visible={renamingLink !== null}
-        title="Назва посилання"
-        initialValue={renamingLink?.title ?? ''}
-        onCancel={() => setRenamingLink(null)}
+        visible={renamingFile !== null}
+        title="Назва файлу"
+        initialValue={renamingFile?.title ?? renamingFile?.fileName ?? ''}
+        onCancel={() => setRenamingFile(null)}
         onSave={(title) => {
-          if (renamingLink) renameLink(renamingLink, title);
+          if (renamingFile) renameFile(renamingFile, title);
         }}
       />
 
       <DocumentPickerModal
         visible={documentPicker !== null}
-        subtitle={documentPicker?.link.title || (documentPicker ? hostnameOf(documentPicker.link.url) : undefined)}
+        subtitle={documentPicker?.file.title || documentPicker?.file.fileName}
         documents={documentPicker?.documents ?? []}
         onPick={pickDocument}
         onClose={() => setDocumentPicker(null)}
@@ -309,9 +265,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    // 56, not 16 - this screen has no native header (headerShown: false on
-    // the stack), so its own top padding is what clears the status bar,
-    // matching TasksScreen/DocumentEditorScreen for the same reason.
     paddingTop: 56,
     paddingBottom: 8,
   },
@@ -334,7 +287,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 20,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: '#EDE9FE',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -368,17 +321,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
   },
-  thumb: {
-    width: 56,
-    height: 56,
-    borderRadius: 10,
-    backgroundColor: '#E5E7EB',
-  },
   thumbIcon: {
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: 'rgba(59,130,246,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -386,15 +332,12 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     gap: 4,
+    justifyContent: 'center',
   },
   rowTitle: {
     fontSize: 15,
     fontWeight: '600',
     color: '#111827',
-  },
-  rowCaption: {
-    fontSize: 12,
-    color: '#9CA3AF',
   },
   rowMeta: {
     flexDirection: 'row',
@@ -430,7 +373,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 9,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: '#F5F3FF',
     alignItems: 'center',
     justifyContent: 'center',
   },

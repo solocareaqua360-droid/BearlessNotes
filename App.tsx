@@ -10,6 +10,8 @@ import PlaceholderScreen from './src/screens/PlaceholderScreen';
 import DatabasesScreen from './src/screens/DatabasesScreen';
 import TasksScreen from './src/screens/TasksScreen';
 import LinksScreen from './src/screens/LinksScreen';
+import PhotosScreen from './src/screens/PhotosScreen';
+import FilesScreen from './src/screens/FilesScreen';
 import DocumentEditorScreen from './src/screens/DocumentEditorScreen';
 import { RootStackParamList } from './src/navigation';
 
@@ -76,6 +78,8 @@ export default function App() {
           <Stack.Screen name="Editor" component={DocumentEditorScreen} />
           <Stack.Screen name="Tasks" component={TasksScreen} />
           <Stack.Screen name="Links" component={LinksScreen} />
+          <Stack.Screen name="Photos" component={PhotosScreen} />
+          <Stack.Screen name="Files" component={FilesScreen} />
           <Stack.Screen name="Placeholder">
             {({ route }) => <PlaceholderScreen icon={route.params.icon} label={route.params.label} />}
           </Stack.Screen>

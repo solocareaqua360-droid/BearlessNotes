@@ -8,5 +8,7 @@ export type RootStackParamList = {
   // (see DocumentEditorScreen's fetchLinkPreview) - this param is what
   // splits LinksScreen's one query into three separate-looking databases.
   Links: { category: 'video' | 'geo' | 'other' };
+  Photos: undefined;
+  Files: undefined;
   Placeholder: { icon: keyof typeof Ionicons.glyphMap; label: string };
 };

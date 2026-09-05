@@ -44,6 +44,8 @@ import { deleteDoc, deleteField, doc, getDoc, setDoc, updateDoc } from 'firebase
 import { db } from '../firebase';
 import { Block, BlockType } from '../types';
 import { RootStackParamList } from '../navigation';
+import ZoomableImageViewer from '../components/ZoomableImageViewer';
+import RenamePrompt from '../components/RenamePrompt';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -451,9 +453,8 @@ type BlockRowProps = {
   onToggleChecked: (id: string) => void;
   onFocus: (id: string) => void;
   onSelectionChange: (id: string, start: number, end: number) => void;
-  onOpenImage: (uri: string) => void;
+  onOpenImage: (id: string) => void;
   onToggleImageFit: (id: string) => void;
-  onDownloadImage: (uri: string) => void;
   onOpenFile: (id: string) => void;
   onDownloadFile: (id: string) => void;
   onOpenLink: (url: string) => void;
@@ -477,7 +478,6 @@ function BlockRow({
   onSelectionChange,
   onOpenImage,
   onToggleImageFit,
-  onDownloadImage,
   onOpenFile,
   onDownloadFile,
   onOpenLink,
@@ -525,28 +525,19 @@ function BlockRow({
       <View style={styles.blockImageWrap}>
         <Pressable
           disabled={isSelectMode}
-          onPress={() => onOpenImage(item.imageUri!)}
+          onPress={() => onOpenImage(item.id)}
           style={styles.blockImageTap}
         >
           <Image source={{ uri: item.imageUri }} style={styles.blockImage} resizeMode={fit} />
         </Pressable>
         {!isSelectMode && (
-          <>
-            <Pressable
-              hitSlop={8}
-              style={styles.imageFitToggle}
-              onPress={() => onToggleImageFit(item.id)}
-            >
-              <Ionicons name={fit === 'contain' ? 'crop-outline' : 'contract-outline'} size={16} color="#fff" />
-            </Pressable>
-            <Pressable
-              hitSlop={8}
-              style={styles.imageDownloadButton}
-              onPress={() => onDownloadImage(item.imageUri!)}
-            >
-              <Ionicons name="download-outline" size={16} color="#fff" />
-            </Pressable>
-          </>
+          <Pressable
+            hitSlop={8}
+            style={styles.imageFitToggle}
+            onPress={() => onToggleImageFit(item.id)}
+          >
+            <Ionicons name={fit === 'contain' ? 'crop-outline' : 'contract-outline'} size={16} color="#fff" />
+          </Pressable>
         )}
       </View>
     ) : (
@@ -795,9 +786,8 @@ type SortableBlockRowProps = {
   onBackspaceEmpty: (id: string) => void;
   onFocus: (id: string) => void;
   onSelectionChange: (id: string, start: number, end: number) => void;
-  onOpenImage: (uri: string) => void;
+  onOpenImage: (id: string) => void;
   onToggleImageFit: (id: string) => void;
-  onDownloadImage: (uri: string) => void;
   onOpenFile: (id: string) => void;
   onDownloadFile: (id: string) => void;
   onOpenLink: (url: string) => void;
@@ -827,7 +817,6 @@ function SortableBlockRow({
   onSelectionChange,
   onOpenImage,
   onToggleImageFit,
-  onDownloadImage,
   onOpenFile,
   onDownloadFile,
   onOpenLink,
@@ -898,7 +887,6 @@ function SortableBlockRow({
             onSelectionChange={onSelectionChange}
             onOpenImage={onOpenImage}
             onToggleImageFit={onToggleImageFit}
-            onDownloadImage={onDownloadImage}
             onOpenFile={onOpenFile}
             onDownloadFile={onDownloadFile}
             onOpenLink={onOpenLink}
@@ -923,9 +911,8 @@ type BlockListProps = {
   onBackspaceEmpty: (id: string) => void;
   onFocus: (id: string) => void;
   onSelectionChange: (id: string, start: number, end: number) => void;
-  onOpenImage: (uri: string) => void;
+  onOpenImage: (id: string) => void;
   onToggleImageFit: (id: string) => void;
-  onDownloadImage: (uri: string) => void;
   onOpenFile: (id: string) => void;
   onDownloadFile: (id: string) => void;
   onOpenLink: (url: string) => void;
@@ -948,7 +935,6 @@ function BlockList({
   onSelectionChange,
   onOpenImage,
   onToggleImageFit,
-  onDownloadImage,
   onOpenFile,
   onDownloadFile,
   onOpenLink,
@@ -1158,7 +1144,6 @@ function BlockList({
           onSelectionChange={onSelectionChange}
           onOpenImage={onOpenImage}
           onToggleImageFit={onToggleImageFit}
-          onDownloadImage={onDownloadImage}
           onOpenFile={onOpenFile}
           onDownloadFile={onDownloadFile}
           onOpenLink={onOpenLink}
@@ -1171,70 +1156,6 @@ function BlockList({
       {draggingIds && insertIndex !== null && (
         <Animated.View pointerEvents="none" style={[styles.dropLine, dropLineStyle]} />
       )}
-    </View>
-  );
-}
-
-// Full-screen viewer opened by tapping an image block - pinch to zoom in,
-// drag around once zoomed, pinching back below 1x snaps back to the
-// original fit. Hand-built on the same gesture-handler/reanimated stack
-// already used everywhere else in this screen rather than adding a
-// dedicated image-viewer dependency for this one feature.
-function ZoomableImageViewer({ uri, onClose }: { uri: string; onClose: () => void }) {
-  const scale = useSharedValue(1);
-  const savedScale = useSharedValue(1);
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const savedTranslateX = useSharedValue(0);
-  const savedTranslateY = useSharedValue(0);
-
-  const pinchGesture = Gesture.Pinch()
-    .onUpdate((e) => {
-      scale.value = Math.max(1, savedScale.value * e.scale);
-    })
-    .onEnd(() => {
-      savedScale.value = scale.value;
-      if (scale.value <= 1) {
-        scale.value = withTiming(1);
-        translateX.value = withTiming(0);
-        translateY.value = withTiming(0);
-        savedTranslateX.value = 0;
-        savedTranslateY.value = 0;
-        savedScale.value = 1;
-      }
-    });
-
-  const panGesture = Gesture.Pan()
-    .onUpdate((e) => {
-      if (savedScale.value <= 1) return;
-      translateX.value = savedTranslateX.value + e.translationX;
-      translateY.value = savedTranslateY.value + e.translationY;
-    })
-    .onEnd(() => {
-      savedTranslateX.value = translateX.value;
-      savedTranslateY.value = translateY.value;
-    });
-
-  const gesture = Gesture.Simultaneous(pinchGesture, panGesture);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-      { scale: scale.value },
-    ],
-  }));
-
-  return (
-    <View style={styles.viewerBackdrop}>
-      <Pressable style={styles.viewerCloseButton} hitSlop={12} onPress={onClose}>
-        <Ionicons name="close" size={28} color="#fff" />
-      </Pressable>
-      <GestureDetector gesture={gesture}>
-        <Animated.View style={[styles.viewerImageWrap, animatedStyle]}>
-          <Image source={{ uri }} style={styles.viewerImage} resizeMode="contain" />
-        </Animated.View>
-      </GestureDetector>
     </View>
   );
 }
@@ -1257,7 +1178,8 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     null
   );
   const [slashMenuBlockId, setSlashMenuBlockId] = useState<string | null>(null);
-  const [viewerImageUri, setViewerImageUri] = useState<string | null>(null);
+  const [viewerImageId, setViewerImageId] = useState<string | null>(null);
+  const [imageRenameId, setImageRenameId] = useState<string | null>(null);
   const focusIdRef = useRef<string | null>(null);
   const focusToEndRef = useRef(false);
   const focusedBlockIdRef = useRef<string | null>(null);
@@ -1329,6 +1251,12 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
       );
       knownLinkIdsRef.current = new Set(
         loadedBlocks.filter((b) => (b.type ?? 'paragraph') === 'link' && b.linkUrl).map((b) => linkDocId(b.linkUrl!))
+      );
+      knownPhotoBlockIdsRef.current = new Set(
+        loadedBlocks.filter((b) => (b.type ?? 'paragraph') === 'image' && b.imageUri).map((b) => b.id)
+      );
+      knownFileBlockIdsRef.current = new Set(
+        loadedBlocks.filter((b) => (b.type ?? 'paragraph') === 'file' && b.fileUri).map((b) => b.id)
       );
       setIsLoaded(true);
     })();
@@ -1411,27 +1339,83 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     });
     knownLinkIdsRef.current.forEach((linkId) => {
       if (!linkIdsInThisDoc.has(linkId)) {
-        removeDocumentFromLink(linkId);
+        removeDocumentUsage('links', linkId);
       }
     });
     knownLinkIdsRef.current = linkIdsInThisDoc;
   }
 
-  // This document no longer has any block for this link - clear just this
+  // This document no longer has any block for this record - clear just this
   // document's own flag (other documents may still reference it), and if
   // that was the last one, delete the now-unused record entirely instead of
-  // leaving an orphaned, invisible entry in Firestore.
-  async function removeDocumentFromLink(linkId: string) {
+  // leaving an orphaned, invisible entry in Firestore. Shared by links,
+  // photos, and files - they all use the same `usedInDocuments` map shape.
+  async function removeDocumentUsage(collectionName: string, recordId: string) {
     try {
-      await updateDoc(doc(db, 'links', linkId), { [`usedInDocuments.${documentId}`]: deleteField() });
-      const snapshot = await getDoc(doc(db, 'links', linkId));
+      await updateDoc(doc(db, collectionName, recordId), { [`usedInDocuments.${documentId}`]: deleteField() });
+      const snapshot = await getDoc(doc(db, collectionName, recordId));
       const remaining = (snapshot.data()?.usedInDocuments ?? {}) as Record<string, boolean>;
       if (Object.keys(remaining).length === 0) {
-        await deleteDoc(doc(db, 'links', linkId));
+        await deleteDoc(doc(db, collectionName, recordId));
       }
     } catch {
-      // Already gone - most likely deleted directly from the Links screen.
+      // Already gone - most likely deleted directly from that database screen.
     }
+  }
+
+  // 'image' and 'file' blocks are database objects too, mirrored the same
+  // way as links - but unlike links, there's no meaningful "same content" to
+  // deduplicate on (every attach is its own local device file, even if
+  // visually identical), so these stay keyed by the block's own id, same as
+  // tasks. They still use the `usedInDocuments` map shape (in practice
+  // always exactly one key today) rather than a single documentId field, so
+  // the document-picker UI keeps working unchanged once a future "insert an
+  // existing photo/file into another document" feature adds a second one.
+  const knownPhotoBlockIdsRef = useRef<Set<string>>(new Set());
+
+  function syncPhotosForDocument(currentBlocks: Block[]) {
+    const photoBlocks = currentBlocks.filter((b) => (b.type ?? 'paragraph') === 'image' && b.imageUri);
+    const currentIds = new Set(photoBlocks.map((b) => b.id));
+    photoBlocks.forEach((b) => {
+      const photoDoc: Record<string, unknown> = {
+        imageUri: b.imageUri,
+        updatedAt: Date.now(),
+        usedInDocuments: { [documentId]: true },
+      };
+      if (b.imageTitle) photoDoc.title = b.imageTitle;
+      if (b.imageFit) photoDoc.imageFit = b.imageFit;
+      setDoc(doc(db, 'photos', b.id), photoDoc, { merge: true });
+    });
+    knownPhotoBlockIdsRef.current.forEach((id) => {
+      if (!currentIds.has(id)) {
+        removeDocumentUsage('photos', id);
+      }
+    });
+    knownPhotoBlockIdsRef.current = currentIds;
+  }
+
+  const knownFileBlockIdsRef = useRef<Set<string>>(new Set());
+
+  function syncFilesForDocument(currentBlocks: Block[]) {
+    const fileBlocks = currentBlocks.filter((b) => (b.type ?? 'paragraph') === 'file' && b.fileUri);
+    const currentIds = new Set(fileBlocks.map((b) => b.id));
+    fileBlocks.forEach((b) => {
+      const fileDoc: Record<string, unknown> = {
+        fileUri: b.fileUri,
+        fileName: b.fileName,
+        updatedAt: Date.now(),
+        usedInDocuments: { [documentId]: true },
+      };
+      if (b.mimeType) fileDoc.mimeType = b.mimeType;
+      if (b.fileTitle) fileDoc.title = b.fileTitle;
+      setDoc(doc(db, 'files', b.id), fileDoc, { merge: true });
+    });
+    knownFileBlockIdsRef.current.forEach((id) => {
+      if (!currentIds.has(id)) {
+        removeDocumentUsage('files', id);
+      }
+    });
+    knownFileBlockIdsRef.current = currentIds;
   }
 
   useEffect(() => {
@@ -1446,6 +1430,8 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
       }).then(() => setSaveStatus('saved'));
       syncTasksForDocument(blocks);
       syncLinksForDocument(blocks);
+      syncPhotosForDocument(blocks);
+      syncFilesForDocument(blocks);
     }, AUTOSAVE_DELAY_MS);
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -2072,6 +2058,37 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     setBlocks(next);
   }
 
+  async function shareImageBlock(uri: string) {
+    try {
+      const available = await Sharing.isAvailableAsync();
+      if (!available) return;
+      await Sharing.shareAsync(uri);
+    } catch {
+      // No sharing app available or the user backed out - nothing to do.
+    }
+  }
+
+  function renameImageBlock(id: string, title: string) {
+    snapshotBeforeChange();
+    setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, imageTitle: title } : b)));
+  }
+
+  // A shortcut for the same thing select-mode's own delete already does -
+  // opened from the full-screen viewer instead of selecting the block first.
+  // No separate undo-toast here: the existing undo/redo (header arrows)
+  // already covers reverting this, same as any other block deletion.
+  function deleteImageBlockFromViewer(id: string) {
+    snapshotBeforeChange();
+    setBlocks((prev) => {
+      const next = prev.filter((b) => b.id !== id);
+      return next.length > 0 ? next : [newBlock()];
+    });
+    setViewerImageId(null);
+  }
+
+  const viewerBlock = viewerImageId ? blocks.find((b) => b.id === viewerImageId) : null;
+  const imageRenameBlock = imageRenameId ? blocks.find((b) => b.id === imageRenameId) : null;
+
   if (!isLoaded) {
     return <View style={styles.container} />;
   }
@@ -2230,9 +2247,8 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           onBackspaceEmpty={handleBackspaceOnEmpty}
           onFocus={handleBlockFocus}
           onSelectionChange={handleBlockSelectionChange}
-          onOpenImage={setViewerImageUri}
+          onOpenImage={setViewerImageId}
           onToggleImageFit={toggleImageFit}
-          onDownloadImage={downloadImageBlock}
           onOpenFile={openFileBlock}
           onDownloadFile={downloadFileBlock}
           onOpenLink={openLinkBlock}
@@ -2255,22 +2271,63 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
         )}
       </ScrollView>
 
-      {viewerImageUri && (
+      {viewerBlock?.imageUri && (
         <Modal
           visible
           transparent
           animationType="fade"
-          onRequestClose={() => setViewerImageUri(null)}
+          onRequestClose={() => setViewerImageId(null)}
         >
           {/* RN's Modal renders into its own native window on Android, outside the
               app-level GestureHandlerRootView in App.tsx - gesture-handler
               gestures need their own root re-declared inside it or pinch/pan
               here silently do nothing. */}
           <GestureHandlerRootView style={{ flex: 1 }}>
-            <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />
+            <ZoomableImageViewer
+              uri={viewerBlock.imageUri}
+              onClose={() => setViewerImageId(null)}
+              actions={[
+                {
+                  key: 'rename',
+                  icon: 'pencil-outline',
+                  label: 'Назва',
+                  onPress: () => setImageRenameId(viewerBlock.id),
+                },
+                {
+                  key: 'share',
+                  icon: 'share-social-outline',
+                  label: 'Поділитись',
+                  onPress: () => shareImageBlock(viewerBlock.imageUri!),
+                },
+                {
+                  key: 'download',
+                  icon: 'download-outline',
+                  label: 'Завантажити',
+                  onPress: () => downloadImageBlock(viewerBlock.imageUri!),
+                },
+                {
+                  key: 'delete',
+                  icon: 'trash-outline',
+                  label: 'Видалити',
+                  color: '#F87171',
+                  onPress: () => deleteImageBlockFromViewer(viewerBlock.id),
+                },
+              ]}
+            />
           </GestureHandlerRootView>
         </Modal>
       )}
+
+      <RenamePrompt
+        visible={imageRenameId !== null}
+        title="Назва фото"
+        initialValue={imageRenameBlock?.imageTitle ?? ''}
+        onCancel={() => setImageRenameId(null)}
+        onSave={(title) => {
+          if (imageRenameId) renameImageBlock(imageRenameId, title);
+          setImageRenameId(null);
+        }}
+      />
 
       {linkTitlePrompt && (
         <Modal visible transparent animationType="fade" onRequestClose={cancelLinkTitlePrompt}>
@@ -2456,14 +2513,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 6,
     right: 6,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    borderRadius: 12,
-    padding: 5,
-  },
-  imageDownloadButton: {
-    position: 'absolute',
-    top: 6,
-    left: 6,
     backgroundColor: 'rgba(0,0,0,0.45)',
     borderRadius: 12,
     padding: 5,
@@ -2689,29 +2738,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#fff',
-  },
-  viewerBackdrop: {
-    flex: 1,
-    backgroundColor: '#000',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  viewerCloseButton: {
-    position: 'absolute',
-    top: 48,
-    right: 20,
-    zIndex: 1,
-    padding: 8,
-  },
-  viewerImageWrap: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  viewerImage: {
-    width: '100%',
-    height: '100%',
   },
   slashMenuItem: {
     flexDirection: 'row',

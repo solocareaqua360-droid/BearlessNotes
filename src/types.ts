@@ -12,12 +12,19 @@ export interface Block {
   // gray letterboxing) - keeps images saved before this setting existed
   // displaying the same as they already did.
   imageFit?: 'contain' | 'cover';
+  // 'image' blocks only - a user-given name, always renamable (see
+  // PhotosScreen). Absent until the user names it; the photo grid falls
+  // back to a generic "Без назви" label, never the raw local file path.
+  imageTitle?: string;
   // 'file' blocks only. The URI is a local device path (the file picker's
   // own cache copy) - there's no cloud upload yet, so a file block only
   // opens correctly on the device it was attached from.
   fileUri?: string;
   fileName?: string;
   mimeType?: string;
+  // 'file' blocks only - an optional rename that overrides fileName for
+  // display (see FilesScreen) without touching the actual attached file.
+  fileTitle?: string;
   // 'checkbox' blocks only - standard properties of the "справа" object
   // type (hardcoded, unlike a future user-defined type's properties).
   projectId?: string; // references a doc in the 'projects' collection
