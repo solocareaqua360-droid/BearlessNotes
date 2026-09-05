@@ -501,7 +501,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 16,
+    // 56, not 16 - this screen has no native header (headerShown: false on
+    // the stack), so its own top padding is what clears the status bar,
+    // matching DocumentEditorScreen's header for the same reason.
+    paddingTop: 56,
     paddingBottom: 8,
   },
   header: {
