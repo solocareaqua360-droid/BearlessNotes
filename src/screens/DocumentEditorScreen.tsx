@@ -42,10 +42,12 @@ import Animated, {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { deleteDoc, deleteField, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Block, BlockType } from '../types';
+import { Block, BlockType, Tag } from '../types';
 import { RootStackParamList } from '../navigation';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import RenamePrompt from '../components/RenamePrompt';
+import DocumentTagsBlock from '../components/DocumentTagsBlock';
+import { useTags } from '../hooks/useTags';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -1179,6 +1181,8 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   const { documentId } = route.params;
   const [title, setTitle] = useState('');
   const [blocks, setBlocks] = useState<Block[]>([]);
+  const [tagIds, setTagIds] = useState<string[]>([]);
+  const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
   const [isLoaded, setIsLoaded] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -1251,6 +1255,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
       const snapshot = await getDoc(doc(db, 'documents', documentId));
       const data = snapshot.data();
       setTitle(data?.title ?? '');
+      setTagIds(data?.tagIds ?? []);
       const loadedBlocks: Block[] = data?.blocks ?? [];
       setBlocks(loadedBlocks.length > 0 ? loadedBlocks : [newBlock()]);
       // Seed the "what does this document currently mirror" trackers from
@@ -1587,6 +1592,26 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   function handleTitleChange(text: string) {
     snapshotForTyping();
     setTitle(text);
+  }
+
+  // tagIds isn't part of the title/blocks autosave cycle - each of these
+  // writes straight to Firestore via useTags (which also updates the tag
+  // doc's own usedIn/types), then mirrors the result into local state since
+  // this screen loads the document once with getDoc rather than a live
+  // onSnapshot listener.
+  async function handleAttachTag(tag: Tag) {
+    setTagIds((prev) => (prev.includes(tag.id) ? prev : [...prev, tag.id]));
+    await attachTag(tag, 'document', documentId, 'documents');
+  }
+
+  async function handleDetachTag(tag: Tag) {
+    setTagIds((prev) => prev.filter((id) => id !== tag.id));
+    await detachTag(tag, 'document', documentId, 'documents');
+  }
+
+  async function handleCreateAndAttachTag(path: string, icon: string, color: string) {
+    const newId = await createAndAttachTag(path, icon, color, 'document', documentId, 'documents');
+    setTagIds((prev) => [...prev, newId]);
   }
 
   // Wraps (or unwraps, if already exactly wrapped) the active selection
@@ -2245,6 +2270,15 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           pointerEvents={isEditMode ? 'auto' : 'none'}
           placeholder="Без назви"
           style={styles.titleInput}
+        />
+
+        <DocumentTagsBlock
+          tagIds={tagIds}
+          tags={tags}
+          onAttach={handleAttachTag}
+          onDetach={handleDetachTag}
+          onCreateAndAttach={handleCreateAndAttachTag}
+          onRenameTag={renameTag}
         />
 
         <BlockList

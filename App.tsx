@@ -12,6 +12,9 @@ import TasksScreen from './src/screens/TasksScreen';
 import LinksScreen from './src/screens/LinksScreen';
 import PhotosScreen from './src/screens/PhotosScreen';
 import FilesScreen from './src/screens/FilesScreen';
+import TagManageScreen from './src/screens/TagManageScreen';
+import TagItemsScreen from './src/screens/TagItemsScreen';
+import SearchScreen from './src/screens/SearchScreen';
 import DocumentEditorScreen from './src/screens/DocumentEditorScreen';
 import { RootStackParamList } from './src/navigation';
 
@@ -37,14 +40,13 @@ function Tabs() {
       />
       <Tab.Screen
         name="Пошук"
+        component={SearchScreen}
         options={{
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="search-outline" size={size} color={color} />
           ),
         }}
-      >
-        {() => <PlaceholderScreen icon="search-outline" label="Скоро" />}
-      </Tab.Screen>
+      />
       <Tab.Screen
         name="Календар"
         options={{
@@ -80,6 +82,8 @@ export default function App() {
           <Stack.Screen name="Links" component={LinksScreen} />
           <Stack.Screen name="Photos" component={PhotosScreen} />
           <Stack.Screen name="Files" component={FilesScreen} />
+          <Stack.Screen name="Tags" component={TagManageScreen} />
+          <Stack.Screen name="TagItems" component={TagItemsScreen} />
           <Stack.Screen name="Placeholder">
             {({ route }) => <PlaceholderScreen icon={route.params.icon} label={route.params.label} />}
           </Stack.Screen>

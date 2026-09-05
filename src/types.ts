@@ -51,7 +51,14 @@ export interface Project {
 // A database-object kind a tag can be attached to. Used both as the second
 // half of a `usedIn` key ("file:abc123") and as an entry in a tag's
 // cumulative `types` list.
-export type TaggableKind = 'file' | 'photo' | 'link';
+//
+// The 'link' kind is split into 'link-video'/'link-geo'/'link-other' even
+// though all three live in the one `links` Firestore collection (see
+// LinksScreen's categoryOf) - a video's tags and a geo point's tags are
+// different vocabularies in practice, so useTags.isTagAllowedForKind keeps
+// their suggestion pools from mixing, unlike file/photo/link which freely
+// cross-tag by design.
+export type TaggableKind = 'file' | 'photo' | 'link-video' | 'link-geo' | 'link-other' | 'document';
 
 export interface Tag {
   id: string;
@@ -75,4 +82,5 @@ export interface DocumentItem {
   title: string;
   updatedAt: number;
   blocks?: Block[];
+  tagIds?: string[];
 }

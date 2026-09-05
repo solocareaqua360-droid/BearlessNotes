@@ -10,5 +10,7 @@ export type RootStackParamList = {
   Links: { category: 'video' | 'geo' | 'other' };
   Photos: undefined;
   Files: undefined;
+  Tags: undefined;
+  TagItems: { tagId: string };
   Placeholder: { icon: keyof typeof Ionicons.glyphMap; label: string };
 };

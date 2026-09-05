@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Block } from '../types';
+import { Block, TaggableKind } from '../types';
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
@@ -73,6 +73,15 @@ const CATEGORY_INFO: Record<
   },
 };
 
+// Video/geo/"other" tags must not mix (see the TaggableKind comment in
+// types.ts) even though all three categories share the one `links` doc
+// shape - each maps to its own TaggableKind for tagging purposes.
+const TAG_KIND_BY_CATEGORY: Record<LinkCategory, TaggableKind> = {
+  video: 'link-video',
+  geo: 'link-geo',
+  other: 'link-other',
+};
+
 function hostnameOf(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, '');
@@ -86,6 +95,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Links'>;
 export default function LinksScreen({ route, navigation }: Props) {
   const { category } = route.params;
   const info = CATEGORY_INFO[category];
+  const tagKind = TAG_KIND_BY_CATEGORY[category];
   const [links, setLinks] = useState<LinkItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [renamingLink, setRenamingLink] = useState<LinkItem | null>(null);
@@ -187,7 +197,7 @@ export default function LinksScreen({ route, navigation }: Props) {
     await Promise.all(
       link.tagIds.map((tagId) => {
         const tag = tags.find((t) => t.id === tagId);
-        return tag ? detachTagFromDeletedItem(tag, 'link', link.id) : Promise.resolve();
+        return tag ? detachTagFromDeletedItem(tag, tagKind, link.id) : Promise.resolve();
       })
     );
     await Promise.all(
@@ -311,13 +321,13 @@ export default function LinksScreen({ route, navigation }: Props) {
 
       <TagPicker
         visible={tagPickerLink !== null}
-        kind="link"
+        kind={tagKind}
         tags={tags}
         selectedTagIds={tagPickerLink?.tagIds ?? []}
-        onAttach={(tag) => tagPickerLink && attachTag(tag, 'link', tagPickerLink.id, 'links')}
-        onDetach={(tag) => tagPickerLink && detachTag(tag, 'link', tagPickerLink.id, 'links')}
+        onAttach={(tag) => tagPickerLink && attachTag(tag, tagKind, tagPickerLink.id, 'links')}
+        onDetach={(tag) => tagPickerLink && detachTag(tag, tagKind, tagPickerLink.id, 'links')}
         onCreateAndAttach={(path, icon, color) =>
-          tagPickerLink && createAndAttachTag(path, icon, color, 'link', tagPickerLink.id, 'links')
+          tagPickerLink && createAndAttachTag(path, icon, color, tagKind, tagPickerLink.id, 'links')
         }
         onRenameTag={renameTag}
         onClose={() => setTagPickerForId(null)}

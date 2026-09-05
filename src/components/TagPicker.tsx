@@ -3,6 +3,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 
 import { Ionicons } from '@expo/vector-icons';
 import { Tag, TaggableKind } from '../types';
 import { TAG_COLORS, TAG_ICONS } from '../constants/tags';
+import { isTagAllowedForKind } from '../hooks/useTags';
 import RenamePrompt from './RenamePrompt';
 
 const ACCENT = '#3B82F6';
@@ -10,7 +11,10 @@ const ACCENT = '#3B82F6';
 const KIND_LABELS: Record<TaggableKind, string> = {
   file: 'Файли',
   photo: 'Фото',
-  link: 'Посилання',
+  'link-video': 'Відео',
+  'link-geo': 'Геоточки',
+  'link-other': 'Посилання',
+  document: 'Документи',
 };
 
 type Props = {
@@ -23,6 +27,11 @@ type Props = {
   onCreateAndAttach: (path: string, icon: string, color: string) => void;
   onRenameTag: (tag: Tag, newPath: string) => void;
   onClose: () => void;
+  // Opens the sheet straight into the create form (DocumentTagsBlock's own
+  // inline search has no popup of its own, so "create tag" there reuses
+  // just this sub-view rather than duplicating the icon/color grid).
+  initialMode?: 'list' | 'create';
+  initialPath?: string;
 };
 
 // Bottom-sheet tag picker for a single database item (Files/Photos/Links
@@ -39,6 +48,8 @@ export default function TagPicker({
   onCreateAndAttach,
   onRenameTag,
   onClose,
+  initialMode = 'list',
+  initialPath = '',
 }: Props) {
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<'list' | 'create'>('list');
@@ -51,12 +62,28 @@ export default function TagPicker({
   useEffect(() => {
     if (visible) {
       setQuery('');
-      setMode('list');
+      if (initialMode === 'create') {
+        setCreatingPath(initialPath);
+        setIconQuery('');
+        setSelectedIcon(TAG_ICONS[0]);
+        setSelectedColor(TAG_COLORS[0]);
+        setMode('create');
+      } else {
+        setMode('list');
+      }
     }
+    // initialMode/initialPath are read once when the sheet opens, not
+    // tracked live - re-running this on their identity would reset the
+    // in-progress create form on every keystroke of the caller's own state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   const needle = query.trim().toLowerCase();
-  const matches = needle.length === 0 ? tags : tags.filter((tag) => tag.path.toLowerCase().includes(needle));
+  const visibleTags = tags.filter((tag) => isTagAllowedForKind(tag, kind));
+  const matches = needle.length === 0 ? visibleTags : visibleTags.filter((tag) => tag.path.toLowerCase().includes(needle));
+  // Checked against the FULL tag list (not just what's visible for this
+  // kind) so a name already used by a hidden, cross-kind tag can't be
+  // duplicated - it just stays unavailable here, same as being filtered out.
   const hasExactMatch = tags.some((tag) => tag.path.toLowerCase() === needle);
   const canCreate = needle.length >= 2 && !hasExactMatch;
 

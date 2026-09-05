@@ -17,7 +17,7 @@ type Tile = {
   // "Скоро" placeholder.
   linkCategory?: 'video' | 'geo' | 'other';
   // Set for tiles with their own dedicated (paramless) screen.
-  route?: 'Photos' | 'Files';
+  route?: 'Photos' | 'Files' | 'Tags';
 };
 
 // "Справи", the link-backed tiles, "Фото" and "Файли" are real, working
@@ -31,6 +31,7 @@ const GRID_TILES: Tile[] = [
   { key: 'photos', label: 'Фото', icon: 'image-outline', color: '#EC4899', route: 'Photos' },
   { key: 'video', label: 'YouTube / TikTok', icon: 'videocam-outline', color: '#EF4444', linkCategory: 'video' },
   { key: 'files', label: 'Файли', icon: 'document-outline', color: '#8B5CF6', route: 'Files' },
+  { key: 'tags', label: 'Теги', icon: 'pricetag-outline', color: '#EAB308', route: 'Tags' },
 ];
 
 export default function DatabasesScreen() {

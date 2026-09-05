@@ -16,6 +16,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
@@ -23,6 +24,7 @@ import {
 import { db } from '../firebase';
 import { DocumentItem } from '../types';
 import { RootStackParamList } from '../navigation';
+import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -41,6 +43,7 @@ export default function DocumentsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const { tags } = useTags();
 
   useEffect(() => {
     const documentsQuery = query(documentsCollection, orderBy('updatedAt', 'desc'));
@@ -71,9 +74,21 @@ export default function DocumentsScreen() {
       {
         text: 'Видалити',
         style: 'destructive',
-        onPress: () => deleteDoc(doc(db, 'documents', id)),
+        onPress: () => confirmDeleteDocument(id),
       },
     ]);
+  }
+
+  async function confirmDeleteDocument(id: string) {
+    const snapshot = await getDoc(doc(db, 'documents', id));
+    const docTagIds: string[] = snapshot.data()?.tagIds ?? [];
+    deleteDoc(doc(db, 'documents', id));
+    await Promise.all(
+      docTagIds.map((tagId) => {
+        const tag = tags.find((t) => t.id === tagId);
+        return tag ? detachTagFromDeletedItem(tag, 'document', id) : Promise.resolve();
+      })
+    );
   }
 
   if (isLoading) {

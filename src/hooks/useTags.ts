@@ -20,6 +20,37 @@ function usedInKey(kind: TaggableKind, itemId: string): string {
   return `${kind}:${itemId}`;
 }
 
+// Kinds whose tag pools must not mix even though file/photo/link freely
+// cross-tag - see the TaggableKind comment in types.ts.
+const MUTUALLY_EXCLUSIVE_KINDS: TaggableKind[] = ['link-video', 'link-geo', 'link-other'];
+
+// The Firestore collection each kind's items live in - video/geo/"other"
+// links all share the one `links` collection (see LinksScreen's
+// categoryOf), so this is a many-to-one map, not a 1:1 rename.
+export const ITEMS_COLLECTION_BY_KIND: Record<TaggableKind, string> = {
+  file: 'files',
+  photo: 'photos',
+  'link-video': 'links',
+  'link-geo': 'links',
+  'link-other': 'links',
+  document: 'documents',
+};
+
+export function parseUsedInKey(key: string): { kind: TaggableKind; itemId: string } {
+  const separatorIndex = key.indexOf(':');
+  return { kind: key.slice(0, separatorIndex) as TaggableKind, itemId: key.slice(separatorIndex + 1) };
+}
+
+// Whether a tag should be offered/attachable for an item of this kind - the
+// picker calls this to filter its suggestion list. A tag already used on a
+// *different* mutually-exclusive kind (e.g. a video-only tag, for a geo
+// item) is hidden; everything else (including a brand-new tag, or one
+// shared with file/photo) is allowed.
+export function isTagAllowedForKind(tag: Tag, kind: TaggableKind): boolean {
+  if (!MUTUALLY_EXCLUSIVE_KINDS.includes(kind)) return true;
+  return !tag.types.some((t) => t !== kind && MUTUALLY_EXCLUSIVE_KINDS.includes(t));
+}
+
 // Shared across every screen that can carry tags (Files/Photos/Links so
 // far). A tag exists only while at least one item still has it: attaching
 // is the only way a tag gets created (see createAndAttachTag), and
@@ -118,7 +149,32 @@ export function useTags() {
     await batch.commit();
   }
 
-  return { tags, isLoading, findMatches, findExactPath, attachTag, createAndAttachTag, detachTag, renameTag };
+  // Explicit delete from TagManageScreen - strips the tag off every item
+  // that currently carries it (not just one), then removes the tag doc
+  // itself. Distinct from detachTag, which only ever removes one usage and
+  // deletes the tag as a side effect of that usage being the last one.
+  async function deleteTagCompletely(tag: Tag) {
+    const batch = writeBatch(db);
+    Object.keys(tag.usedIn).forEach((key) => {
+      const { kind, itemId } = parseUsedInKey(key);
+      const itemsCollection = ITEMS_COLLECTION_BY_KIND[kind];
+      if (itemsCollection) batch.update(doc(db, itemsCollection, itemId), { tagIds: arrayRemove(tag.id) });
+    });
+    batch.delete(doc(db, 'tags', tag.id));
+    await batch.commit();
+  }
+
+  return {
+    tags,
+    isLoading,
+    findMatches,
+    findExactPath,
+    attachTag,
+    createAndAttachTag,
+    detachTag,
+    renameTag,
+    deleteTagCompletely,
+  };
 }
 
 // A tag's detach also has to run when the item carrying it is deleted
