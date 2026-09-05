@@ -1,11 +1,24 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
+  addDoc,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   onSnapshot,
@@ -14,15 +27,26 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Block } from '../types';
+import { Block, Project } from '../types';
 import { RootStackParamList } from '../navigation';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
+const NO_PROJECT_KEY = '__none__';
+const PROJECT_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
 const tasksCollection = collection(db, 'tasks');
+const projectsCollection = collection(db, 'projects');
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+// A mismatch with today's date means "not today" without needing an active
+// daily reset anywhere - the star just stops rendering filled once the
+// stored date is no longer today's, whenever that's next checked.
+function todayDateString(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 type Task = {
@@ -30,12 +54,19 @@ type Task = {
   text: string;
   checked: boolean;
   documentId: string;
+  projectId?: string;
+  todayMarkedDate?: string;
 };
 
 export default function TasksScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [groupByProject, setGroupByProject] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [pickerTaskId, setPickerTaskId] = useState<string | null>(null);
+  const [newProjectName, setNewProjectName] = useState('');
 
   useEffect(() => {
     // Sorted by checked client-side (a stable sort, so it just regroups
@@ -49,6 +80,8 @@ export default function TasksScreen() {
         text: docSnapshot.data().text,
         checked: docSnapshot.data().checked,
         documentId: docSnapshot.data().documentId,
+        projectId: docSnapshot.data().projectId,
+        todayMarkedDate: docSnapshot.data().todayMarkedDate,
       }));
       loaded.sort((a, b) => Number(a.checked) - Number(b.checked));
       setTasks(loaded);
@@ -56,9 +89,57 @@ export default function TasksScreen() {
     });
   }, []);
 
+  useEffect(() => {
+    const projectsQuery = query(projectsCollection, orderBy('name'));
+    return onSnapshot(projectsQuery, (snapshot) => {
+      setProjects(
+        snapshot.docs.map((docSnapshot) => ({
+          id: docSnapshot.id,
+          name: docSnapshot.data().name,
+          color: docSnapshot.data().color,
+        }))
+      );
+    });
+  }, []);
+
+  const projectsById = useMemo(() => {
+    const map: Record<string, Project> = {};
+    projects.forEach((p) => {
+      map[p.id] = p;
+    });
+    return map;
+  }, [projects]);
+
+  // A task whose projectId no longer resolves to a real project (the
+  // project was deleted) falls back to the "Без проекту" bucket here too,
+  // rather than needing every affected task rewritten the moment a project
+  // is deleted.
+  const groups = useMemo(() => {
+    if (!groupByProject) return [];
+    const byKey = new Map<string, { key: string; project: Project | null; tasks: Task[] }>();
+    tasks.forEach((t) => {
+      const project = t.projectId ? projectsById[t.projectId] : undefined;
+      const key = project ? project.id : NO_PROJECT_KEY;
+      if (!byKey.has(key)) byKey.set(key, { key, project: project ?? null, tasks: [] });
+      byKey.get(key)!.tasks.push(t);
+    });
+    return Array.from(byKey.values())
+      .map((g) => ({
+        key: g.key,
+        project: g.project,
+        unfinished: g.tasks.filter((t) => !t.checked),
+        completed: g.tasks.filter((t) => t.checked),
+      }))
+      .sort((a, b) => {
+        if (!a.project) return 1;
+        if (!b.project) return -1;
+        return a.project.name.localeCompare(b.project.name);
+      });
+  }, [groupByProject, tasks, projectsById]);
+
   // The task doc is a mirror (see DocumentEditorScreen's syncTasksForDocument) -
   // the block inside the source document's own `blocks` array field is the
-  // real record, so toggling here has to update both, not just this mirror.
+  // real record, so every change here has to update both, not just this mirror.
   async function toggleTask(task: Task) {
     const newChecked = !task.checked;
     updateDoc(doc(db, 'tasks', task.id), { checked: newChecked });
@@ -69,6 +150,77 @@ export default function TasksScreen() {
     const blocks: Block[] = data.blocks ?? [];
     const updatedBlocks = blocks.map((b) => (b.id === task.id ? { ...b, checked: newChecked } : b));
     updateDoc(documentRef, { blocks: updatedBlocks });
+  }
+
+  async function toggleToday(task: Task) {
+    const isToday = task.todayMarkedDate === todayDateString();
+    const newValue = isToday ? null : todayDateString();
+    updateDoc(doc(db, 'tasks', task.id), { todayMarkedDate: newValue ?? deleteField() });
+    const documentRef = doc(db, 'documents', task.documentId);
+    const snapshot = await getDoc(documentRef);
+    const data = snapshot.data();
+    if (!data) return;
+    const blocks: Block[] = data.blocks ?? [];
+    const updatedBlocks = blocks.map((b) => {
+      if (b.id !== task.id) return b;
+      if (newValue) return { ...b, todayMarkedDate: newValue };
+      const { todayMarkedDate: _drop, ...rest } = b;
+      return rest;
+    });
+    updateDoc(documentRef, { blocks: updatedBlocks });
+  }
+
+  function openProjectPicker(taskId: string) {
+    setNewProjectName('');
+    setPickerTaskId(taskId);
+  }
+
+  async function assignProject(projectId: string | null) {
+    const taskId = pickerTaskId;
+    const task = tasks.find((t) => t.id === taskId);
+    setPickerTaskId(null);
+    if (!task) return;
+    updateDoc(doc(db, 'tasks', task.id), { projectId: projectId ?? deleteField() });
+    const documentRef = doc(db, 'documents', task.documentId);
+    const snapshot = await getDoc(documentRef);
+    const data = snapshot.data();
+    if (!data) return;
+    const blocks: Block[] = data.blocks ?? [];
+    const updatedBlocks = blocks.map((b) => {
+      if (b.id !== task.id) return b;
+      if (projectId) return { ...b, projectId };
+      const { projectId: _drop, ...rest } = b;
+      return rest;
+    });
+    updateDoc(documentRef, { blocks: updatedBlocks });
+  }
+
+  async function addProject() {
+    const name = newProjectName.trim();
+    if (!name) return;
+    const color = PROJECT_COLORS[projects.length % PROJECT_COLORS.length];
+    await addDoc(projectsCollection, { name, color });
+    setNewProjectName('');
+  }
+
+  function confirmDeleteProject(project: Project) {
+    Alert.alert(
+      'Видалити проект?',
+      `Справи з проектом "${project.name}" стануть без проекту.`,
+      [
+        { text: 'Скасувати', style: 'cancel' },
+        { text: 'Видалити', style: 'destructive', onPress: () => deleteDoc(doc(db, 'projects', project.id)) },
+      ]
+    );
+  }
+
+  function toggleGroupExpanded(key: string) {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   }
 
   // A task isn't a separate record referenced from multiple documents like
@@ -94,6 +246,48 @@ export default function TasksScreen() {
     updateDoc(documentRef, {
       blocks: remaining.length > 0 ? remaining : [{ id: generateId(), text: '' }],
     });
+  }
+
+  function renderTaskRow(item: Task) {
+    const project = item.projectId ? projectsById[item.projectId] : undefined;
+    const isToday = item.todayMarkedDate === todayDateString();
+    return (
+      <View key={item.id} style={styles.row}>
+        <Pressable hitSlop={8} onPress={() => toggleTask(item)}>
+          <Ionicons
+            name={item.checked ? 'checkbox' : 'square-outline'}
+            size={22}
+            color={item.checked ? ACCENT : '#9CA3AF'}
+          />
+        </Pressable>
+        <Pressable
+          style={styles.rowTextTap}
+          onPress={() => navigation.navigate('Editor', { documentId: item.documentId })}
+        >
+          <Text style={[styles.rowText, item.checked && styles.rowTextChecked]} numberOfLines={2}>
+            {item.text}
+          </Text>
+          <Pressable onPress={() => openProjectPicker(item.id)}>
+            <View
+              style={[
+                styles.chip,
+                project ? { backgroundColor: `${project.color}1A` } : styles.chipEmpty,
+              ]}
+            >
+              <Text style={[styles.chipText, { color: project ? project.color : '#9CA3AF' }]}>
+                {project ? project.name : 'Без проекту'}
+              </Text>
+            </View>
+          </Pressable>
+        </Pressable>
+        <Pressable hitSlop={8} onPress={() => toggleToday(item)}>
+          <Ionicons name={isToday ? 'star' : 'star-outline'} size={20} color={isToday ? '#F59E0B' : '#9CA3AF'} />
+        </Pressable>
+        <Pressable hitSlop={8} onPress={() => confirmDeleteTask(item)} style={styles.rowDelete}>
+          <Ionicons name="trash-outline" size={20} color={DANGER} />
+        </Pressable>
+      </View>
+    );
   }
 
   if (isLoading) {
@@ -122,34 +316,91 @@ export default function TasksScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Справи</Text>
-      <FlatList
-        data={tasks}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
-        renderItem={({ item }) => (
-          <View style={styles.row}>
-            <Pressable hitSlop={8} onPress={() => toggleTask(item)}>
-              <Ionicons
-                name={item.checked ? 'checkbox' : 'square-outline'}
-                size={22}
-                color={item.checked ? ACCENT : '#9CA3AF'}
+      <View style={styles.headerRow}>
+        <Text style={styles.header}>Справи</Text>
+        <Pressable style={styles.groupToggle} onPress={() => setGroupByProject((v) => !v)}>
+          <Ionicons name="albums-outline" size={18} color={groupByProject ? ACCENT : '#6B7280'} />
+          <Text style={[styles.groupToggleLabel, groupByProject && { color: ACCENT }]}>Групувати</Text>
+        </Pressable>
+      </View>
+
+      {groupByProject ? (
+        <ScrollView contentContainerStyle={styles.list}>
+          {groups.map((group) => (
+            <View key={group.key} style={styles.group}>
+              <View style={styles.groupHeader}>
+                <View style={[styles.groupDot, { backgroundColor: group.project?.color ?? '#9CA3AF' }]} />
+                <Text style={[styles.groupTitle, { color: group.project?.color ?? '#9CA3AF' }]}>
+                  {group.project ? group.project.name.toUpperCase() : 'БЕЗ ПРОЕКТУ'}
+                </Text>
+              </View>
+              {group.unfinished.map((task) => renderTaskRow(task))}
+              {group.completed.length > 0 && (
+                <>
+                  <Pressable style={styles.collapseToggle} onPress={() => toggleGroupExpanded(group.key)}>
+                    <Ionicons
+                      name={expandedGroups.has(group.key) ? 'chevron-down' : 'chevron-forward'}
+                      size={16}
+                      color="#9CA3AF"
+                    />
+                    <Text style={styles.collapseLabel}>Завершені ({group.completed.length})</Text>
+                  </Pressable>
+                  {expandedGroups.has(group.key) && group.completed.map((task) => renderTaskRow(task))}
+                </>
+              )}
+            </View>
+          ))}
+        </ScrollView>
+      ) : (
+        <FlatList
+          data={tasks}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.list}
+          renderItem={({ item }) => renderTaskRow(item)}
+        />
+      )}
+
+      <Modal visible={pickerTaskId !== null} transparent animationType="fade" onRequestClose={() => setPickerTaskId(null)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setPickerTaskId(null)}>
+          <Pressable style={styles.modalSheet} onPress={() => {}}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Оберіть проект</Text>
+
+            <Pressable style={styles.modalRow} onPress={() => assignProject(null)}>
+              <View style={[styles.modalDot, { backgroundColor: '#9CA3AF' }]} />
+              <Text style={styles.modalRowText}>Без проекту</Text>
+            </Pressable>
+
+            {projects.map((p) => (
+              <View key={p.id} style={styles.modalRow}>
+                <Pressable style={styles.modalRowTap} onPress={() => assignProject(p.id)}>
+                  <View style={[styles.modalDot, { backgroundColor: p.color }]} />
+                  <Text style={styles.modalRowText}>{p.name}</Text>
+                </Pressable>
+                <Pressable hitSlop={8} onPress={() => confirmDeleteProject(p)}>
+                  <Ionicons name="close" size={16} color="#9CA3AF" />
+                </Pressable>
+              </View>
+            ))}
+
+            <View style={styles.modalDivider} />
+
+            <View style={styles.modalAddRow}>
+              <TextInput
+                style={styles.modalInput}
+                value={newProjectName}
+                onChangeText={setNewProjectName}
+                placeholder="Новий проект"
+                onSubmitEditing={addProject}
+                returnKeyType="done"
               />
-            </Pressable>
-            <Pressable
-              style={styles.rowTextTap}
-              onPress={() => navigation.navigate('Editor', { documentId: item.documentId })}
-            >
-              <Text style={[styles.rowText, item.checked && styles.rowTextChecked]} numberOfLines={2}>
-                {item.text}
-              </Text>
-            </Pressable>
-            <Pressable hitSlop={8} onPress={() => confirmDeleteTask(item)} style={styles.rowDelete}>
-              <Ionicons name="trash-outline" size={20} color={DANGER} />
-            </Pressable>
-          </View>
-        )}
-      />
+              <Pressable hitSlop={8} onPress={addProject}>
+                <Ionicons name="add-circle" size={26} color={ACCENT} />
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -159,13 +410,27 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
   header: {
     fontSize: 22,
     fontWeight: '700',
     color: '#111827',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 8,
+  },
+  groupToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  groupToggleLabel: {
+    fontSize: 14,
+    color: '#6B7280',
   },
   emptyState: {
     flex: 1,
@@ -195,6 +460,38 @@ const styles = StyleSheet.create({
   list: {
     paddingVertical: 8,
   },
+  group: {
+    marginBottom: 8,
+  },
+  groupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  groupDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  groupTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  collapseToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  collapseLabel: {
+    fontSize: 14,
+    color: '#9CA3AF',
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -204,6 +501,7 @@ const styles = StyleSheet.create({
   },
   rowTextTap: {
     flex: 1,
+    gap: 5,
   },
   rowText: {
     fontSize: 16,
@@ -213,7 +511,89 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     opacity: 0.5,
   },
+  chip: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  chipEmpty: {
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#D1D5DB',
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
   rowDelete: {
     padding: 4,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(17,24,39,0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 28,
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  modalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  modalRowTap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  modalDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  modalRowText: {
+    fontSize: 16,
+    color: '#111827',
+    flexGrow: 1,
+  },
+  modalDivider: {
+    height: 1,
+    backgroundColor: '#F3F4F6',
+    marginVertical: 4,
+  },
+  modalAddRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingTop: 8,
+  },
+  modalInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#111827',
+    paddingVertical: 6,
   },
 });

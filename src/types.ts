@@ -18,6 +18,18 @@ export interface Block {
   fileUri?: string;
   fileName?: string;
   mimeType?: string;
+  // 'checkbox' blocks only - standard properties of the "справа" object
+  // type (hardcoded, unlike a future user-defined type's properties).
+  projectId?: string; // references a doc in the 'projects' collection
+  // YYYY-MM-DD of the day it was marked "Сьогодні" - a mismatch with the
+  // current date means "not today" without needing an active daily reset.
+  todayMarkedDate?: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  color: string;
 }
 
 export interface DocumentItem {

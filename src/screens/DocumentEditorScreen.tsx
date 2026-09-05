@@ -1028,12 +1028,19 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     );
     const currentIds = new Set(taskBlocks.map((b) => b.id));
     taskBlocks.forEach((b) => {
-      setDoc(doc(db, 'tasks', b.id), {
+      const taskDoc: Record<string, unknown> = {
         text: b.text,
         checked: !!b.checked,
         documentId,
         updatedAt: Date.now(),
-      });
+      };
+      // setDoc below replaces the whole document, so simply not including
+      // these when the block doesn't have them is what clears a removed
+      // project/today assignment from the mirror - no explicit field
+      // deletion needed.
+      if (b.projectId) taskDoc.projectId = b.projectId;
+      if (b.todayMarkedDate) taskDoc.todayMarkedDate = b.todayMarkedDate;
+      setDoc(doc(db, 'tasks', b.id), taskDoc);
     });
     knownTaskBlockIdsRef.current.forEach((id) => {
       if (!currentIds.has(id)) {
