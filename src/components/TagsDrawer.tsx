@@ -115,6 +115,14 @@ type Props = {
 // from here. Closing otherwise is a tap anywhere on the dimmed backdrop.
 export default function TagsDrawer({ tags, activeFilter, onSelectFilter }: Props) {
   const [isOpen, setIsOpen] = useState(false);
+  // The backdrop+panel live inside a real Modal (a separate Android window,
+  // always painted above the whole activity - including the floating
+  // island, which sits in an entirely different branch of the component
+  // tree from this drawer and so could never be out-stacked by elevation/
+  // zIndex alone, no matter how high). Kept mounted a beat after isOpen
+  // flips false so the closing animation below gets to finish before the
+  // Modal actually unmounts, instead of yanking the drawer away instantly.
+  const [isRendered, setIsRendered] = useState(false);
   const [mode, setMode] = useState<'tree' | 'tiles'>('tree');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
@@ -137,6 +145,7 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter }: Props
   }, []);
 
   useEffect(() => {
+    if (isOpen) setIsRendered(true);
     openAmount.value = withTiming(isOpen ? DRAWER_WIDTH : 0, {
       duration: 260,
       easing: Easing.out(Easing.cubic),
@@ -145,6 +154,10 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter }: Props
       duration: isOpen ? 520 : 260,
       easing: Easing.out(Easing.quad),
     });
+    if (!isOpen) {
+      const timeout = setTimeout(() => setIsRendered(false), 260);
+      return () => clearTimeout(timeout);
+    }
   }, [isOpen, openAmount, dimAmount]);
 
   const tree = useMemo(() => buildTree(tags), [tags]);
@@ -190,11 +203,18 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter }: Props
 
   return (
     <>
-      <Animated.View style={[styles.backdrop, backdropStyle]} pointerEvents={isOpen ? 'auto' : 'none'}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsOpen(false)} />
-      </Animated.View>
+      <Modal
+        visible={isRendered}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={() => setIsOpen(false)}
+      >
+        <Animated.View style={[styles.backdrop, backdropStyle]} pointerEvents={isOpen ? 'auto' : 'none'}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsOpen(false)} />
+        </Animated.View>
 
-      <Animated.View style={[styles.panel, { width: DRAWER_WIDTH }, panelStyle]}>
+        <Animated.View style={[styles.panel, { width: DRAWER_WIDTH }, panelStyle]}>
         <Text style={styles.title}>Теги</Text>
 
         <View style={styles.segmented}>
@@ -246,7 +266,8 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter }: Props
             </Pressable>
           </ScrollView>
         )}
-      </Animated.View>
+        </Animated.View>
+      </Modal>
 
       {!isOpen && (
         <Pressable style={styles.openButton} onPress={() => setIsOpen(true)}>
@@ -284,11 +305,6 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     backgroundColor: 'rgba(17,24,39,0.35)',
-    // Above FloatingIslandTabBar's own elevation (6) so the drawer - and
-    // the dimming behind it - covers the floating island instead of
-    // sitting under it.
-    elevation: 15,
-    zIndex: 15,
   },
   panel: {
     position: 'absolute',
@@ -303,8 +319,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 20,
     shadowOffset: { width: 4, height: 0 },
-    elevation: 16,
-    zIndex: 16,
+    elevation: 8,
   },
   title: {
     fontSize: 19,
