@@ -39,7 +39,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Block, BlockType } from '../types';
 import { RootStackParamList } from '../navigation';
@@ -1010,6 +1010,39 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     })();
   }, [documentId]);
 
+  // Checkbox blocks with text are database objects by default - no explicit
+  // "convert to object" step, per PROJECT_BRIEF.md's object model. Every
+  // checkbox block with non-empty text gets a mirrored doc in the `tasks`
+  // collection (keyed by the block's own id); an emptied checkbox, one
+  // converted away from checkbox, or a deleted block all show up the same
+  // way here - simply missing from the current pass - and get their task
+  // doc removed. Blocks live inside each document's own `blocks` array
+  // field, which Firestore can't query across documents directly, so this
+  // mirror is what a future cross-document "Справи" list will actually read
+  // from.
+  const knownTaskBlockIdsRef = useRef<Set<string>>(new Set());
+
+  function syncTasksForDocument(currentBlocks: Block[]) {
+    const taskBlocks = currentBlocks.filter(
+      (b) => (b.type ?? 'paragraph') === 'checkbox' && b.text.trim() !== ''
+    );
+    const currentIds = new Set(taskBlocks.map((b) => b.id));
+    taskBlocks.forEach((b) => {
+      setDoc(doc(db, 'tasks', b.id), {
+        text: b.text,
+        checked: !!b.checked,
+        documentId,
+        updatedAt: Date.now(),
+      });
+    });
+    knownTaskBlockIdsRef.current.forEach((id) => {
+      if (!currentIds.has(id)) {
+        deleteDoc(doc(db, 'tasks', id));
+      }
+    });
+    knownTaskBlockIdsRef.current = currentIds;
+  }
+
   useEffect(() => {
     if (!isLoaded) return;
     setSaveStatus('saving');
@@ -1020,6 +1053,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
         blocks,
         updatedAt: Date.now(),
       }).then(() => setSaveStatus('saved'));
+      syncTasksForDocument(blocks);
     }, AUTOSAVE_DELAY_MS);
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
