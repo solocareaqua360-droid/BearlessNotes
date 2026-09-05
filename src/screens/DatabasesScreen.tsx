@@ -11,19 +11,23 @@ type Tile = {
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
+  // Set only for the three tiles backed by the one `links` mirror collection
+  // (see DocumentEditorScreen's fetchLinkPreview / LinksScreen's categoryOf) -
+  // each opens the same screen pre-filtered to its own slice instead of a
+  // "Скоро" placeholder.
+  linkCategory?: 'video' | 'geo' | 'other';
 };
 
-// "Справи" and "Посилання" are real, working databases so far (see
-// TasksScreen/LinksScreen) - the rest are placeholders per PROJECT_BRIEF.md's
-// object model (нагадування, зображення/файли as their own queryable types,
-// plus geo points as a variant of links) and get filled in one at a time,
-// the same way each of the above went from "just a block" to a real
-// cross-document list.
+// "Справи" and the link-backed tiles below are real, working databases so
+// far (see TasksScreen/LinksScreen) - the rest are placeholders per
+// PROJECT_BRIEF.md's object model (нагадування, зображення/файли as their
+// own queryable types) and get filled in one at a time, the same way each
+// of the above went from "just a block" to a real cross-document list.
 const GRID_TILES: Tile[] = [
-  { key: 'geo', label: 'Геоточки', icon: 'location-outline', color: '#16A34A' },
-  { key: 'links', label: 'Посилання', icon: 'link-outline', color: '#3B82F6' },
+  { key: 'geo', label: 'Геоточки', icon: 'location-outline', color: '#16A34A', linkCategory: 'geo' },
+  { key: 'links', label: 'Посилання', icon: 'link-outline', color: '#3B82F6', linkCategory: 'other' },
   { key: 'photos', label: 'Фото', icon: 'image-outline', color: '#EC4899' },
-  { key: 'video', label: 'YouTube / TikTok', icon: 'videocam-outline', color: '#EF4444' },
+  { key: 'video', label: 'YouTube / TikTok', icon: 'videocam-outline', color: '#EF4444', linkCategory: 'video' },
   { key: 'files', label: 'Файли', icon: 'document-outline', color: '#8B5CF6' },
 ];
 
@@ -47,15 +51,8 @@ export default function DatabasesScreen() {
               key={tile.key}
               style={styles.tile}
               onPress={() =>
-                // Гео-точки та YouTube/TikTok-посилання are 'link' blocks
-                // under the hood too (see DocumentEditorScreen's
-                // fetchLinkPreview) and already land in the same `links`
-                // mirror collection LinksScreen reads from - so all three
-                // tiles open that one real screen, not separate "Скоро"
-                // placeholders, until they're worth splitting apart (e.g.
-                // once sort/filter can tell them apart for the user).
-                tile.key === 'links' || tile.key === 'geo' || tile.key === 'video'
-                  ? navigation.navigate('Links')
+                tile.linkCategory
+                  ? navigation.navigate('Links', { category: tile.linkCategory })
                   : navigation.navigate('Placeholder', { icon: tile.icon, label: 'Скоро' })
               }
             >

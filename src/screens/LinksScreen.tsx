@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Block } from '../types';
@@ -25,6 +24,43 @@ type LinkItem = {
   documentId: string;
 };
 
+type LinkCategory = 'video' | 'geo' | 'other';
+
+// Matches the exact siteName values fetchLinkPreview stamps on conversion
+// (see DocumentEditorScreen) - the one `links` collection holds every kind
+// of link, and this is what splits it back into three separate-looking
+// databases without needing three separate collections.
+function categoryOf(link: LinkItem): LinkCategory {
+  const siteName = link.siteName ?? '';
+  if (siteName.includes('YouTube') || siteName.includes('TikTok')) return 'video';
+  if (siteName === 'Геоточка') return 'geo';
+  return 'other';
+}
+
+const CATEGORY_INFO: Record<
+  LinkCategory,
+  { title: string; icon: keyof typeof Ionicons.glyphMap; color: string; emptyHint: string }
+> = {
+  video: {
+    title: 'YouTube / TikTok',
+    icon: 'videocam-outline',
+    color: '#EF4444',
+    emptyHint: "Вставте посилання на YouTube або TikTok окремим абзацом у документі - картка з'явиться тут сама",
+  },
+  geo: {
+    title: 'Геоточки',
+    icon: 'location-outline',
+    color: '#16A34A',
+    emptyHint: "Вставте посилання на місце з Google Maps окремим абзацом у документі - воно з'явиться тут само",
+  },
+  other: {
+    title: 'Посилання',
+    icon: 'link-outline',
+    color: ACCENT,
+    emptyHint: "Вставте посилання окремим абзацом у будь-якому документі - картка з'явиться тут сама",
+  },
+};
+
 function hostnameOf(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, '');
@@ -33,8 +69,11 @@ function hostnameOf(url: string): string {
   }
 }
 
-export default function LinksScreen() {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+type Props = NativeStackScreenProps<RootStackParamList, 'Links'>;
+
+export default function LinksScreen({ route, navigation }: Props) {
+  const { category } = route.params;
+  const info = CATEGORY_INFO[category];
   const [links, setLinks] = useState<LinkItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -54,6 +93,8 @@ export default function LinksScreen() {
       setIsLoading(false);
     });
   }, []);
+
+  const filteredLinks = links.filter((link) => categoryOf(link) === category);
 
   function openSortOrFilter() {
     navigation.navigate('Placeholder', { icon: 'options-outline', label: 'Скоро' });
@@ -85,7 +126,7 @@ export default function LinksScreen() {
   }
 
   function renderLinkRow(item: LinkItem) {
-    const isGeo = item.siteName === 'Геоточка';
+    const itemInfo = CATEGORY_INFO[categoryOf(item)];
     return (
       <View key={item.id} style={styles.row}>
         <Pressable
@@ -95,8 +136,8 @@ export default function LinksScreen() {
           {item.imageUrl ? (
             <Image source={{ uri: item.imageUrl }} style={styles.thumb} resizeMode="cover" />
           ) : (
-            <View style={[styles.thumbIcon, isGeo && styles.thumbIconGeo]}>
-              <Ionicons name={isGeo ? 'location-outline' : 'link-outline'} size={20} color={isGeo ? '#16A34A' : ACCENT} />
+            <View style={[styles.thumbIcon, { backgroundColor: `${itemInfo.color}1A` }]}>
+              <Ionicons name={itemInfo.icon} size={20} color={itemInfo.color} />
             </View>
           )}
           <View style={styles.rowBody}>
@@ -132,7 +173,7 @@ export default function LinksScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <Text style={styles.header}>Посилання</Text>
+        <Text style={styles.header}>{info.title}</Text>
         <View style={styles.headerIcons}>
           <Pressable hitSlop={8} onPress={openSortOrFilter}>
             <Ionicons name="swap-vertical-outline" size={20} color="#6B7280" />
@@ -143,18 +184,16 @@ export default function LinksScreen() {
         </View>
       </View>
 
-      {links.length === 0 ? (
+      {filteredLinks.length === 0 ? (
         <View style={styles.emptyState}>
-          <View style={styles.emptyIcon}>
-            <Ionicons name="link-outline" size={32} color={ACCENT} />
+          <View style={[styles.emptyIcon, { backgroundColor: `${info.color}1A` }]}>
+            <Ionicons name={info.icon} size={32} color={info.color} />
           </View>
           <Text style={styles.emptyLabel}>Ще немає збережених посилань</Text>
-          <Text style={styles.emptyHint}>
-            Вставте посилання окремим абзацом у будь-якому документі - картка з'явиться тут сама
-          </Text>
+          <Text style={styles.emptyHint}>{info.emptyHint}</Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.list}>{links.map(renderLinkRow)}</ScrollView>
+        <ScrollView contentContainerStyle={styles.list}>{filteredLinks.map(renderLinkRow)}</ScrollView>
       )}
     </View>
   );
@@ -242,9 +281,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(59,130,246,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  thumbIconGeo: {
-    backgroundColor: 'rgba(22,163,74,0.12)',
   },
   rowBody: {
     flex: 1,
