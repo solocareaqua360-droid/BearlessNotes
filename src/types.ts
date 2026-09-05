@@ -1,4 +1,4 @@
-export type BlockType = 'paragraph' | 'bulleted' | 'numbered' | 'checkbox' | 'divider' | 'image';
+export type BlockType = 'paragraph' | 'bulleted' | 'numbered' | 'checkbox' | 'divider' | 'image' | 'file';
 
 export interface Block {
   id: string;
@@ -12,6 +12,12 @@ export interface Block {
   // gray letterboxing) - keeps images saved before this setting existed
   // displaying the same as they already did.
   imageFit?: 'contain' | 'cover';
+  // 'file' blocks only. The URI is a local device path (the file picker's
+  // own cache copy) - there's no cloud upload yet, so a file block only
+  // opens correctly on the device it was attached from.
+  fileUri?: string;
+  fileName?: string;
+  mimeType?: string;
 }
 
 export interface DocumentItem {

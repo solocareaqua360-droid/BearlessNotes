@@ -17,6 +17,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import * as DocumentPicker from 'expo-document-picker';
+import * as Sharing from 'expo-sharing';
 // react-native-gesture-handler's own ScrollView (not the core RN one) so it
 // shares the same touch arena as our rows' Pan gestures - otherwise a swipe
 // starting on a block (its TextInput especially) never reaches the
@@ -68,6 +70,20 @@ function newBlock(): Block {
 }
 
 const LIST_TYPES: BlockType[] = ['bulleted', 'numbered', 'checkbox'];
+
+// A generic document icon, tinted per extension so a PDF/Word/Excel
+// attachment is recognizable at a glance without needing per-brand icons.
+function fileIconFor(name?: string): 'document-text-outline' | 'document-outline' {
+  return (name ?? '').toLowerCase().endsWith('.pdf') ? 'document-text-outline' : 'document-outline';
+}
+
+function fileIconColorFor(name?: string): string {
+  const ext = (name ?? '').toLowerCase().split('.').pop();
+  if (ext === 'pdf') return '#DC2626';
+  if (ext === 'doc' || ext === 'docx') return '#2563EB';
+  if (ext === 'xls' || ext === 'xlsx') return '#16A34A';
+  return '#6B7280';
+}
 
 // Inline formatting is stored as plain markers inside the block's own text
 // (**bold**, *italic*, __underline__, ~~strikethrough~~, {c:#hex}color{/c},
@@ -208,6 +224,7 @@ type BlockRowProps = {
   onSelectionChange: (id: string, start: number, end: number) => void;
   onOpenImage: (uri: string) => void;
   onToggleImageFit: (id: string) => void;
+  onOpenFile: (id: string) => void;
   inputRef: (ref: TextInput | null) => void;
 };
 
@@ -227,6 +244,7 @@ function BlockRow({
   onSelectionChange,
   onOpenImage,
   onToggleImageFit,
+  onOpenFile,
   inputRef,
 }: BlockRowProps) {
   // Outside edit mode (or while selecting), the text field is completely
@@ -270,6 +288,22 @@ function BlockRow({
       </View>
     ) : (
       <Text style={styles.blockPlaceholder}>Немає зображення</Text>
+    );
+  } else if (type === 'file') {
+    // No cloud upload yet - the URI is the file picker's own local cache
+    // copy, so opening it (via the OS's "open with" sheet) works instantly
+    // and offline on this device, but the block won't resolve on another one.
+    content = (
+      <Pressable
+        disabled={isSelectMode}
+        onPress={() => onOpenFile(item.id)}
+        style={styles.fileBlockRow}
+      >
+        <Ionicons name={fileIconFor(item.fileName)} size={22} color={fileIconColorFor(item.fileName)} />
+        <Text style={styles.fileBlockName} numberOfLines={1}>
+          {item.fileName ?? 'Файл'}
+        </Text>
+      </Pressable>
     );
   } else {
     const textField = canEditText ? (
@@ -396,6 +430,7 @@ type SortableBlockRowProps = {
   onSelectionChange: (id: string, start: number, end: number) => void;
   onOpenImage: (uri: string) => void;
   onToggleImageFit: (id: string) => void;
+  onOpenFile: (id: string) => void;
   inputRef: (ref: TextInput | null) => void;
 };
 
@@ -421,6 +456,7 @@ function SortableBlockRow({
   onSelectionChange,
   onOpenImage,
   onToggleImageFit,
+  onOpenFile,
   inputRef,
 }: SortableBlockRowProps) {
   // This gesture's whole job is JS-side (finding the nearest gap, updating
@@ -487,6 +523,7 @@ function SortableBlockRow({
             onSelectionChange={onSelectionChange}
             onOpenImage={onOpenImage}
             onToggleImageFit={onToggleImageFit}
+            onOpenFile={onOpenFile}
             inputRef={inputRef}
           />
         </Animated.View>
@@ -509,6 +546,7 @@ type BlockListProps = {
   onSelectionChange: (id: string, start: number, end: number) => void;
   onOpenImage: (uri: string) => void;
   onToggleImageFit: (id: string) => void;
+  onOpenFile: (id: string) => void;
   onInputRef: (id: string, ref: TextInput | null) => void;
 };
 
@@ -527,6 +565,7 @@ function BlockList({
   onSelectionChange,
   onOpenImage,
   onToggleImageFit,
+  onOpenFile,
   onInputRef,
 }: BlockListProps) {
   const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
@@ -732,6 +771,7 @@ function BlockList({
           onSelectionChange={onSelectionChange}
           onOpenImage={onOpenImage}
           onToggleImageFit={onToggleImageFit}
+          onOpenFile={onOpenFile}
           inputRef={(ref) => onInputRef(item.id, ref)}
         />
         );
@@ -1297,6 +1337,44 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     });
   }
 
+  // No cloud upload yet - the picker's own cache copy (copyToCacheDirectory
+  // defaults to true) is what gets stored and later opened, so this only
+  // works on the device the file was attached from.
+  async function pickFileForBlock(id: string) {
+    setSlashMenuBlockId(null);
+    const result = await DocumentPicker.getDocumentAsync({ type: '*/*' });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    snapshotBeforeChange();
+    setBlocks((prev) => {
+      const index = prev.findIndex((b) => b.id === id);
+      if (index === -1) return prev;
+      const next = [...prev];
+      const fileBlock: Block = { ...buildBlock(id, 'file', ''), fileUri: asset.uri, fileName: asset.name };
+      if (asset.mimeType) fileBlock.mimeType = asset.mimeType;
+      next[index] = fileBlock;
+      if (index === next.length - 1) {
+        const trailing = newBlock();
+        next.splice(index + 1, 0, trailing);
+        focusIdRef.current = trailing.id;
+      } else {
+        focusIdRef.current = next[index + 1].id;
+      }
+      return next;
+    });
+  }
+
+  async function openFileBlock(id: string) {
+    const block = blocks.find((b) => b.id === id);
+    if (!block?.fileUri) return;
+    const available = await Sharing.isAvailableAsync();
+    if (!available) return;
+    await Sharing.shareAsync(block.fileUri, {
+      mimeType: block.mimeType,
+      dialogTitle: block.fileName,
+    });
+  }
+
   function deleteSelectedBlocks() {
     snapshotBeforeChange();
     setBlocks((prev) => {
@@ -1430,6 +1508,10 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
             <Ionicons name="image-outline" size={20} color="#111827" />
             <Text style={styles.slashMenuLabel}>Зображення</Text>
           </Pressable>
+          <Pressable style={styles.slashMenuItem} hitSlop={6} onPress={() => pickFileForBlock(slashMenuBlockId)}>
+            <Ionicons name="document-outline" size={20} color="#111827" />
+            <Text style={styles.slashMenuLabel}>Файл</Text>
+          </Pressable>
         </ScrollView>
       )}
 
@@ -1503,6 +1585,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           onSelectionChange={handleBlockSelectionChange}
           onOpenImage={setViewerImageUri}
           onToggleImageFit={toggleImageFit}
+          onOpenFile={openFileBlock}
           onInputRef={(id, ref) => {
             inputRefs.current[id] = ref;
           }}
@@ -1690,6 +1773,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.45)',
     borderRadius: 12,
     padding: 5,
+  },
+  fileBlockRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
+  },
+  fileBlockName: {
+    flex: 1,
+    fontSize: 15,
+    color: '#111827',
   },
   viewerBackdrop: {
     flex: 1,
