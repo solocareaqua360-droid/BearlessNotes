@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -7,13 +7,16 @@ import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebase';
 import { DocumentItem } from '../types';
 import { RootStackParamList } from '../navigation';
+import DocumentCard from '../components/DocumentCard';
+import { documentMatchesQuery, extractPreview, findBodyMatch, findTitleMatch } from '../utils/documentPreview';
 
-const ACCENT = '#3B82F6';
 const documentsCollection = collection(db, 'documents');
 
 // Pushed as its own stack screen from the search icon on DocumentsScreen -
-// searches document titles only (see SearchScreenFull.dc.html). Tag
-// browsing lives in the pull-out TagsDrawer now, not here.
+// searches document titles AND body text, highlighting the matched
+// fragment (title match takes priority; otherwise the first body snippet
+// containing the match is shown, Bear-style). Tag browsing lives in the
+// pull-out TagsDrawer now, not here.
 export default function SearchScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
@@ -27,13 +30,14 @@ export default function SearchScreen() {
           id: docSnapshot.id,
           title: docSnapshot.data().title,
           updatedAt: docSnapshot.data().updatedAt,
+          blocks: docSnapshot.data().blocks ?? [],
         }))
       );
     });
   }, []);
 
-  const needle = query_.trim().toLowerCase();
-  const matches = needle.length === 0 ? [] : documents.filter((d) => (d.title ?? '').toLowerCase().includes(needle));
+  const needle = query_.trim();
+  const matches = needle.length === 0 ? [] : documents.filter((d) => documentMatchesQuery(d.title ?? '', d.blocks, needle));
 
   return (
     <View style={styles.container}>
@@ -56,16 +60,23 @@ export default function SearchScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.list}>
-        {matches.map((item) => (
-          <Pressable key={item.id} style={styles.row} onPress={() => navigation.navigate('Editor', { documentId: item.id })}>
-            <View style={styles.rowIcon}>
-              <Ionicons name="document-text-outline" size={18} color={ACCENT} />
-            </View>
-            <Text style={styles.rowTitle} numberOfLines={1}>
-              {item.title || 'Без назви'}
-            </Text>
-          </Pressable>
-        ))}
+        {matches.map((item) => {
+          const titleMatch = findTitleMatch(item.title ?? '', needle);
+          const bodyMatch = titleMatch ? null : findBodyMatch(item.blocks, needle);
+          const { imageUri, previewText } = extractPreview(item.blocks);
+          return (
+            <DocumentCard
+              key={item.id}
+              title={item.title}
+              updatedAt={item.updatedAt}
+              imageUri={imageUri}
+              previewText={previewText}
+              titleMatch={titleMatch}
+              bodyMatch={bodyMatch}
+              onPress={() => navigation.navigate('Editor', { documentId: item.id })}
+            />
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -98,25 +109,6 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   list: {
-    paddingHorizontal: 20,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  rowIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 9,
-    backgroundColor: '#EFF6FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  rowTitle: {
-    flex: 1,
-    fontSize: 16,
-    color: '#111827',
+    paddingHorizontal: 0,
   },
 });

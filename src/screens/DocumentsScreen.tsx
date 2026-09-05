@@ -26,19 +26,11 @@ import { DocumentItem } from '../types';
 import { RootStackParamList } from '../navigation';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 import TagsDrawer, { DocumentTagFilter } from '../components/TagsDrawer';
+import DocumentCard from '../components/DocumentCard';
+import { extractPreview } from '../utils/documentPreview';
 
 const ACCENT = '#3B82F6';
-const DANGER = '#EF4444';
 const documentsCollection = collection(db, 'documents');
-
-function formatDate(timestamp: number): string {
-  return new Date(timestamp).toLocaleString('uk-UA', {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 export default function DocumentsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -56,6 +48,7 @@ export default function DocumentsScreen() {
           title: docSnapshot.data().title,
           updatedAt: docSnapshot.data().updatedAt,
           tagIds: docSnapshot.data().tagIds ?? [],
+          blocks: docSnapshot.data().blocks ?? [],
         }))
       );
       setIsLoading(false);
@@ -160,27 +153,19 @@ export default function DocumentsScreen() {
           data={displayedDocuments}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
-            <Pressable
-              style={styles.row}
-              onPress={() => navigation.navigate('Editor', { documentId: item.id })}
-            >
-              <View style={styles.rowIcon}>
-                <Ionicons name="document-text-outline" size={18} color={ACCENT} />
-              </View>
-              <View style={styles.rowText}>
-                <Text style={styles.rowTitle}>{item.title}</Text>
-                <Text style={styles.rowDate}>{formatDate(item.updatedAt)}</Text>
-              </View>
-              <Pressable
-                hitSlop={8}
-                onPress={() => deleteDocument(item.id)}
-                style={styles.rowDelete}
-              >
-                <Ionicons name="trash-outline" size={20} color={DANGER} />
-              </Pressable>
-            </Pressable>
-          )}
+          renderItem={({ item }) => {
+            const { imageUri, previewText } = extractPreview(item.blocks);
+            return (
+              <DocumentCard
+                title={item.title}
+                updatedAt={item.updatedAt}
+                imageUri={imageUri}
+                previewText={previewText}
+                onPress={() => navigation.navigate('Editor', { documentId: item.id })}
+                onDelete={() => deleteDocument(item.id)}
+              />
+            );
+          }}
         />
       )}
 
@@ -277,36 +262,6 @@ const styles = StyleSheet.create({
   list: {
     paddingVertical: 8,
     paddingBottom: 120,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-  },
-  rowIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 9,
-    backgroundColor: '#EFF6FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  rowText: {
-    flex: 1,
-  },
-  rowTitle: {
-    fontSize: 16,
-    color: '#111827',
-  },
-  rowDate: {
-    fontSize: 13,
-    color: '#9CA3AF',
-    marginTop: 2,
-  },
-  rowDelete: {
-    padding: 4,
   },
   fab: {
     position: 'absolute',
