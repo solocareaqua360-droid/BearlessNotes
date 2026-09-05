@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { BlurView } from 'expo-blur';
+import Animated, {
+  Easing,
+  Extrapolation,
+  interpolate,
+  useAnimatedProps,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { arrayRemove, arrayUnion, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Tag } from '../types';
@@ -10,6 +18,11 @@ import { Tag } from '../types';
 const ACCENT = '#3B82F6';
 const pinnedTagsDoc = doc(db, 'settings', 'pinnedTags');
 const DRAWER_WIDTH = Math.round(Dimensions.get('window').width * (2 / 3));
+// Matches FloatingIslandTabBar's own height (8px padding + 48px buttons) -
+// the open button is a standalone circle the same size as the island.
+const OPEN_BUTTON_SIZE = 64;
+
+const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
 
 export type DocumentTagFilter = { type: 'tag'; tag: Tag } | { type: 'untagged' };
 
@@ -105,24 +118,27 @@ type Props = {
   onSelectFilter: (filter: DocumentTagFilter) => void;
 };
 
-// A left-edge drag handle (shaped like half the bottom island - see
-// FloatingIslandTabBar) that pulls out a Bear-style tag sidebar, 2/3 of the
-// screen wide, over a dimmed rest of the screen. Picking a tag or "Без
-// тегів" sets the Documents screen's filter and closes the drawer; clearing
-// the filter happens from the active-filter chip DocumentsScreen shows, not
-// from here.
+// A standalone round button at the bottom-left (same size as the floating
+// island, styled to match it) opens a Bear-style tag sidebar, 2/3 of the
+// screen wide, over a blurred-and-dimmed rest of the screen. Picking a tag
+// or "Без тегів" sets the Documents screen's filter and closes the drawer;
+// clearing the filter happens from the active-filter chip DocumentsScreen
+// shows, not from here. Closing otherwise is a tap anywhere on the blurred
+// backdrop.
 export default function TagsDrawer({ tags, activeFilter, onSelectFilter }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState<'tree' | 'tiles'>('tree');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pickerVisible, setPickerVisible] = useState(false);
-  // How far open the drawer is, 0 (closed) .. DRAWER_WIDTH (fully open) -
-  // both the panel and the tab derive their translateX from this one value,
-  // so the tab always travels together with the panel's edge instead of
-  // staying pinned to the screen edge (it ends up covering whatever sliver
-  // of the island the panel itself doesn't reach).
+  // How far open the panel is, 0 (closed) .. DRAWER_WIDTH (fully open).
+  // Kept separate from the backdrop's blur intensity below - the panel
+  // itself should snap out quickly (a spring here read as "wobbling like a
+  // boat", so a plain eased slide replaces it), while the blur behind it
+  // is meant to fade in more gradually, like the background slowly
+  // dropping out of focus.
   const openAmount = useSharedValue(0);
+  const blurIntensity = useSharedValue(0);
 
   useEffect(() => {
     return onSnapshot(pinnedTagsDoc, (snapshot) => {
@@ -131,8 +147,15 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter }: Props
   }, []);
 
   useEffect(() => {
-    openAmount.value = withSpring(isOpen ? DRAWER_WIDTH : 0, { damping: 22, stiffness: 210 });
-  }, [isOpen, openAmount]);
+    openAmount.value = withTiming(isOpen ? DRAWER_WIDTH : 0, {
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+    });
+    blurIntensity.value = withTiming(isOpen ? 45 : 0, {
+      duration: isOpen ? 520 : 260,
+      easing: Easing.out(Easing.quad),
+    });
+  }, [isOpen, openAmount, blurIntensity]);
 
   const tree = useMemo(() => buildTree(tags), [tags]);
   const topLevel = useMemo(
@@ -172,37 +195,24 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter }: Props
     ]);
   }
 
-  // Job is plain JS state (isOpen) + a shared value it feeds into
-  // useAnimatedStyle - no per-frame worklet logic to protect, so this runs
-  // on the JS thread directly (same call as DocumentEditorScreen's own drag
-  // gesture). onFinalize (not onEnd) always runs the open/closed snap
-  // decision even when the gesture is cancelled rather than ending
-  // normally - sitting at the screen's left edge, this tab is exactly
-  // where Android's own edge-back gesture can steal the touch stream
-  // mid-drag, and onEnd alone would then never fire, leaving the drawer
-  // stuck wherever the last onUpdate left it.
-  const pan = Gesture.Pan()
-    .runOnJS(true)
-    .hitSlop({ left: 10, right: 10, top: 10, bottom: 10 })
-    .activeOffsetX([-5, 5])
-    .failOffsetY([-24, 24])
-    .onUpdate((e) => {
-      const base = isOpen ? DRAWER_WIDTH : 0;
-      openAmount.value = Math.min(DRAWER_WIDTH, Math.max(0, base + e.translationX));
-    })
-    .onFinalize((e) => {
-      setIsOpen(openAmount.value > DRAWER_WIDTH * 0.35 || e.velocityX > 400);
-    });
-
   const panelStyle = useAnimatedStyle(() => ({ transform: [{ translateX: openAmount.value - DRAWER_WIDTH }] }));
-  const tabStyle = useAnimatedStyle(() => ({ transform: [{ translateX: openAmount.value }] }));
+  // A plain opacity fade for the dark tint (kept minimal - the blur itself
+  // carries most of the "out of focus" effect), driven by the same slower
+  // timing as the blur so both settle in together.
   const backdropStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(openAmount.value, [0, DRAWER_WIDTH], [0, 1], Extrapolation.CLAMP),
+    opacity: interpolate(blurIntensity.value, [0, 45], [0, 1], Extrapolation.CLAMP),
   }));
+  const blurProps = useAnimatedProps(() => ({ intensity: blurIntensity.value }));
 
   return (
     <>
       <Animated.View style={[styles.backdrop, backdropStyle]} pointerEvents={isOpen ? 'auto' : 'none'}>
+        <AnimatedBlurView
+          style={StyleSheet.absoluteFill}
+          tint="dark"
+          experimentalBlurMethod="dimezisBlurView"
+          animatedProps={blurProps}
+        />
         <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsOpen(false)} />
       </Animated.View>
 
@@ -260,11 +270,11 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter }: Props
         )}
       </Animated.View>
 
-      <GestureDetector gesture={pan}>
-        <Animated.View style={[styles.tab, tabStyle]}>
-          <Ionicons name="pricetag-outline" size={16} color="#fff" />
-        </Animated.View>
-      </GestureDetector>
+      {!isOpen && (
+        <Pressable style={styles.openButton} onPress={() => setIsOpen(true)}>
+          <Text style={styles.openButtonHash}>#</Text>
+        </Pressable>
+      )}
 
       <Modal visible={pickerVisible} transparent animationType="fade" onRequestClose={() => setPickerVisible(false)}>
         <Pressable style={styles.pickerBackdrop} onPress={() => setPickerVisible(false)}>
@@ -436,29 +446,30 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9CA3AF',
   },
-  tab: {
+  openButton: {
     position: 'absolute',
-    // Bottom-aligned with the island (same 24px offset) but much taller,
-    // so the actual grab point sits well above the screen's bottom-left
-    // corner - that corner is where Android's edge-back gesture and (on
-    // gesture nav) the home-gesture area overlap most, and a short handle
-    // right down in it kept getting its drag stolen mid-gesture.
-    left: 0,
+    // Same size and bottom offset as the island, standing on its own to
+    // its left (see the videobookmark reference) - a plain tap, no more
+    // drag: dragging from the screen's edge was exactly where Android's
+    // own edge-back gesture kept stealing the touch stream mid-swipe.
+    left: 20,
     bottom: 24,
-    width: 34,
-    height: 140,
-    backgroundColor: ACCENT,
-    borderTopRightRadius: 70,
-    borderBottomRightRadius: 70,
-    alignItems: 'flex-start',
+    width: OPEN_BUTTON_SIZE,
+    height: OPEN_BUTTON_SIZE,
+    borderRadius: OPEN_BUTTON_SIZE / 2,
+    backgroundColor: '#fff',
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingLeft: 7,
-    shadowColor: ACCENT,
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    shadowOffset: { width: 2, height: 0 },
-    elevation: 17,
-    zIndex: 17,
+    shadowColor: '#000',
+    shadowOpacity: 0.16,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  openButtonHash: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: ACCENT,
   },
   pickerBackdrop: {
     flex: 1,
