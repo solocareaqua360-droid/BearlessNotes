@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Modal,
   Pressable,
   ScrollView,
@@ -67,6 +66,23 @@ export default function TasksScreen() {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [pickerTaskId, setPickerTaskId] = useState<string | null>(null);
   const [newProjectName, setNewProjectName] = useState('');
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [editingProjectName, setEditingProjectName] = useState('');
+  // The user can't sit and watch midnight pass to test this by hand, so it
+  // has to be right by construction rather than by observation: `today` is
+  // real state, not a value computed inline at render time, so a screen
+  // left open straight through midnight still gets a re-render (and the
+  // star correctly stops showing) within a minute of the date changing,
+  // not only the next time something else happens to re-render the screen.
+  const [today, setToday] = useState(todayDateString());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = todayDateString();
+      setToday((prev) => (prev !== now ? now : prev));
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     // Sorted by checked client-side (a stable sort, so it just regroups
@@ -153,8 +169,8 @@ export default function TasksScreen() {
   }
 
   async function toggleToday(task: Task) {
-    const isToday = task.todayMarkedDate === todayDateString();
-    const newValue = isToday ? null : todayDateString();
+    const isToday = task.todayMarkedDate === today;
+    const newValue = isToday ? null : today;
     updateDoc(doc(db, 'tasks', task.id), { todayMarkedDate: newValue ?? deleteField() });
     const documentRef = doc(db, 'documents', task.documentId);
     const snapshot = await getDoc(documentRef);
@@ -201,6 +217,19 @@ export default function TasksScreen() {
     const color = PROJECT_COLORS[projects.length % PROJECT_COLORS.length];
     await addDoc(projectsCollection, { name, color });
     setNewProjectName('');
+  }
+
+  function startEditProject(project: Project) {
+    setEditingProjectId(project.id);
+    setEditingProjectName(project.name);
+  }
+
+  async function saveEditProject() {
+    const name = editingProjectName.trim();
+    if (editingProjectId && name) {
+      await updateDoc(doc(db, 'projects', editingProjectId), { name });
+    }
+    setEditingProjectId(null);
   }
 
   function confirmDeleteProject(project: Project) {
@@ -250,7 +279,7 @@ export default function TasksScreen() {
 
   function renderTaskRow(item: Task) {
     const project = item.projectId ? projectsById[item.projectId] : undefined;
-    const isToday = item.todayMarkedDate === todayDateString();
+    const isToday = item.todayMarkedDate === today;
     return (
       <View key={item.id} style={styles.row}>
         <Pressable hitSlop={8} onPress={() => toggleTask(item)}>
@@ -290,6 +319,51 @@ export default function TasksScreen() {
     );
   }
 
+  // Одна й та сама секція-рендерер для "Сьогодні" (завжди пришпилена
+  // зверху, якщо там щось є), кожного проекту в групованому вигляді, і
+  // єдиного суцільного списку в негрупованому - справа може одночасно
+  // з'являтися і в "Сьогодні", і у своєму проекті/загальному списку нижче,
+  // це не взаємовиключні місця.
+  function renderSection(section: {
+    key: string;
+    title: string | null;
+    color: string | null;
+    icon?: 'star';
+    unfinished: Task[];
+    completed: Task[];
+  }) {
+    return (
+      <View key={section.key} style={styles.group}>
+        {section.title && (
+          <View style={styles.groupHeader}>
+            {section.icon === 'star' ? (
+              <Ionicons name="star" size={14} color={section.color ?? '#9CA3AF'} />
+            ) : (
+              <View style={[styles.groupDot, { backgroundColor: section.color ?? '#9CA3AF' }]} />
+            )}
+            <Text style={[styles.groupTitle, { color: section.color ?? '#9CA3AF' }]}>{section.title}</Text>
+          </View>
+        )}
+        {section.unfinished.map((task) => renderTaskRow(task))}
+        {section.completed.length > 0 && (
+          <>
+            <Pressable style={styles.collapseToggle} onPress={() => toggleGroupExpanded(section.key)}>
+              <Ionicons
+                name={expandedGroups.has(section.key) ? 'chevron-down' : 'chevron-forward'}
+                size={16}
+                color="#9CA3AF"
+              />
+              <Text style={styles.collapseLabel}>Завершені ({section.completed.length})</Text>
+            </Pressable>
+            {expandedGroups.has(section.key) && section.completed.map((task) => renderTaskRow(task))}
+          </>
+        )}
+      </View>
+    );
+  }
+
+  const todayTasks = tasks.filter((t) => t.todayMarkedDate === today);
+
   if (isLoading) {
     return (
       <View style={[styles.container, styles.emptyState]}>
@@ -324,41 +398,35 @@ export default function TasksScreen() {
         </Pressable>
       </View>
 
-      {groupByProject ? (
-        <ScrollView contentContainerStyle={styles.list}>
-          {groups.map((group) => (
-            <View key={group.key} style={styles.group}>
-              <View style={styles.groupHeader}>
-                <View style={[styles.groupDot, { backgroundColor: group.project?.color ?? '#9CA3AF' }]} />
-                <Text style={[styles.groupTitle, { color: group.project?.color ?? '#9CA3AF' }]}>
-                  {group.project ? group.project.name.toUpperCase() : 'БЕЗ ПРОЕКТУ'}
-                </Text>
-              </View>
-              {group.unfinished.map((task) => renderTaskRow(task))}
-              {group.completed.length > 0 && (
-                <>
-                  <Pressable style={styles.collapseToggle} onPress={() => toggleGroupExpanded(group.key)}>
-                    <Ionicons
-                      name={expandedGroups.has(group.key) ? 'chevron-down' : 'chevron-forward'}
-                      size={16}
-                      color="#9CA3AF"
-                    />
-                    <Text style={styles.collapseLabel}>Завершені ({group.completed.length})</Text>
-                  </Pressable>
-                  {expandedGroups.has(group.key) && group.completed.map((task) => renderTaskRow(task))}
-                </>
-              )}
-            </View>
-          ))}
-        </ScrollView>
-      ) : (
-        <FlatList
-          data={tasks}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => renderTaskRow(item)}
-        />
-      )}
+      <ScrollView contentContainerStyle={styles.list}>
+        {todayTasks.length > 0 &&
+          renderSection({
+            key: '__today__',
+            title: 'СЬОГОДНІ',
+            color: '#F59E0B',
+            icon: 'star',
+            unfinished: todayTasks.filter((t) => !t.checked),
+            completed: todayTasks.filter((t) => t.checked),
+          })}
+
+        {groupByProject
+          ? groups.map((group) =>
+              renderSection({
+                key: group.key,
+                title: group.project ? group.project.name.toUpperCase() : 'БЕЗ ПРОЕКТУ',
+                color: group.project?.color ?? '#9CA3AF',
+                unfinished: group.unfinished,
+                completed: group.completed,
+              })
+            )
+          : renderSection({
+              key: '__all__',
+              title: null,
+              color: null,
+              unfinished: tasks.filter((t) => !t.checked),
+              completed: tasks.filter((t) => t.checked),
+            })}
+      </ScrollView>
 
       <Modal visible={pickerTaskId !== null} transparent animationType="fade" onRequestClose={() => setPickerTaskId(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setPickerTaskId(null)}>
@@ -371,17 +439,35 @@ export default function TasksScreen() {
               <Text style={styles.modalRowText}>Без проекту</Text>
             </Pressable>
 
-            {projects.map((p) => (
-              <View key={p.id} style={styles.modalRow}>
-                <Pressable style={styles.modalRowTap} onPress={() => assignProject(p.id)}>
+            {projects.map((p) =>
+              editingProjectId === p.id ? (
+                <View key={p.id} style={styles.modalRow}>
                   <View style={[styles.modalDot, { backgroundColor: p.color }]} />
-                  <Text style={styles.modalRowText}>{p.name}</Text>
-                </Pressable>
-                <Pressable hitSlop={8} onPress={() => confirmDeleteProject(p)}>
-                  <Ionicons name="close" size={16} color="#9CA3AF" />
-                </Pressable>
-              </View>
-            ))}
+                  <TextInput
+                    style={styles.modalRenameInput}
+                    value={editingProjectName}
+                    onChangeText={setEditingProjectName}
+                    autoFocus
+                    onSubmitEditing={saveEditProject}
+                    onBlur={saveEditProject}
+                    returnKeyType="done"
+                  />
+                </View>
+              ) : (
+                <View key={p.id} style={styles.modalRow}>
+                  <Pressable style={styles.modalRowTap} onPress={() => assignProject(p.id)}>
+                    <View style={[styles.modalDot, { backgroundColor: p.color }]} />
+                    <Text style={styles.modalRowText}>{p.name}</Text>
+                  </Pressable>
+                  <Pressable hitSlop={8} onPress={() => startEditProject(p)}>
+                    <Ionicons name="pencil-outline" size={16} color="#9CA3AF" />
+                  </Pressable>
+                  <Pressable hitSlop={8} onPress={() => confirmDeleteProject(p)}>
+                    <Ionicons name="close" size={16} color="#9CA3AF" />
+                  </Pressable>
+                </View>
+              )
+            )}
 
             <View style={styles.modalDivider} />
 
@@ -595,5 +681,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#111827',
     paddingVertical: 6,
+  },
+  modalRenameInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#111827',
+    paddingVertical: 2,
+    borderBottomWidth: 1,
+    borderBottomColor: ACCENT,
   },
 });
