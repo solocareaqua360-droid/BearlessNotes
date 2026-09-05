@@ -263,6 +263,23 @@ function BlockRow({
   const canEditText = isEditMode && !isSelectMode;
   const type = item.type ?? 'paragraph';
 
+  // There's no cloud copy yet, so the cache file IS the only copy - Android
+  // can purge app cache under storage pressure, which would silently orphan
+  // the block. Checking on each mount (not just trusting that attaching it
+  // succeeded) is what makes the badge an honest confirmation rather than a
+  // decoration that's still green after the file is actually gone.
+  const [fileCached, setFileCached] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (type !== 'file' || !item.fileUri) return;
+    let cancelled = false;
+    LegacyFileSystem.getInfoAsync(item.fileUri).then((info) => {
+      if (!cancelled) setFileCached(info.exists);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [type, item.fileUri]);
+
   let content: ReactNode;
   if (type === 'divider') {
     content = <View style={styles.dividerLine} />;
@@ -305,7 +322,14 @@ function BlockRow({
         onPress={() => onOpenFile(item.id)}
         style={styles.fileBlockRow}
       >
-        <Ionicons name={fileIconFor(item.fileName)} size={22} color={fileIconColorFor(item.fileName)} />
+        <View style={styles.fileIconWrap}>
+          <Ionicons name={fileIconFor(item.fileName)} size={22} color={fileIconColorFor(item.fileName)} />
+          {fileCached !== null && (
+            <View style={[styles.fileCacheBadge, !fileCached && styles.fileCacheBadgeMissing]}>
+              <Ionicons name={fileCached ? 'checkmark' : 'close'} size={9} color="#fff" />
+            </View>
+          )}
+        </View>
         <Text style={styles.fileBlockName} numberOfLines={1}>
           {item.fileName ?? 'Файл'}
         </Text>
@@ -1807,6 +1831,25 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: '#111827',
+  },
+  fileIconWrap: {
+    position: 'relative',
+  },
+  fileCacheBadge: {
+    position: 'absolute',
+    right: -5,
+    bottom: -5,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#16A34A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#F3F4F6',
+  },
+  fileCacheBadgeMissing: {
+    backgroundColor: '#DC2626',
   },
   viewerBackdrop: {
     flex: 1,
