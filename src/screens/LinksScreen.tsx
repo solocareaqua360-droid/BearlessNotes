@@ -9,7 +9,10 @@ import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
+import TagChips from '../components/TagChips';
+import TagPicker from '../components/TagPicker';
 import { usePendingDelete } from '../hooks/usePendingDelete';
+import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -30,6 +33,7 @@ type LinkItem = {
   imageUrl?: string;
   siteName?: string;
   documentIds: string[];
+  tagIds: string[];
 };
 
 type LinkCategory = 'video' | 'geo' | 'other';
@@ -88,7 +92,9 @@ export default function LinksScreen({ route, navigation }: Props) {
   const [documentPicker, setDocumentPicker] = useState<{ link: LinkItem; documents: PickableDocument[] } | null>(
     null
   );
+  const [tagPickerForId, setTagPickerForId] = useState<string | null>(null);
   const { filterPending, requestDelete, undo, toast } = usePendingDelete<LinkItem>();
+  const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
 
   useEffect(() => {
     const linksQuery = query(linksCollection, orderBy('updatedAt', 'desc'));
@@ -103,6 +109,7 @@ export default function LinksScreen({ route, navigation }: Props) {
             imageUrl: data.imageUrl,
             siteName: data.siteName,
             documentIds: Object.keys(data.usedInDocuments ?? {}),
+            tagIds: data.tagIds ?? [],
           };
         })
       );
@@ -111,6 +118,7 @@ export default function LinksScreen({ route, navigation }: Props) {
   }, []);
 
   const filteredLinks = filterPending(links.filter((link) => categoryOf(link) === category));
+  const tagPickerLink = tagPickerForId ? links.find((l) => l.id === tagPickerForId) ?? null : null;
 
   function openSortOrFilter() {
     navigation.navigate('Placeholder', { icon: 'options-outline', label: 'Скоро' });
@@ -177,6 +185,12 @@ export default function LinksScreen({ route, navigation }: Props) {
   async function deleteLink(link: LinkItem) {
     deleteDoc(doc(db, 'links', link.id));
     await Promise.all(
+      link.tagIds.map((tagId) => {
+        const tag = tags.find((t) => t.id === tagId);
+        return tag ? detachTagFromDeletedItem(tag, 'link', link.id) : Promise.resolve();
+      })
+    );
+    await Promise.all(
       link.documentIds.map(async (docId) => {
         const documentRef = doc(db, 'documents', docId);
         const snapshot = await getDoc(documentRef);
@@ -214,9 +228,10 @@ export default function LinksScreen({ route, navigation }: Props) {
               {item.siteName ?? hostnameOf(item.url)}
             </Text>
             <View style={styles.rowMeta}>
-              <View style={styles.tagChip}>
-                <Text style={styles.tagChipLabel}>Теги (скоро)</Text>
-              </View>
+              <TagChips
+                tags={tags.filter((t) => item.tagIds.includes(t.id))}
+                onPress={() => setTagPickerForId(item.id)}
+              />
             </View>
           </View>
         </Pressable>
@@ -292,6 +307,20 @@ export default function LinksScreen({ route, navigation }: Props) {
         documents={documentPicker?.documents ?? []}
         onPick={pickDocument}
         onClose={() => setDocumentPicker(null)}
+      />
+
+      <TagPicker
+        visible={tagPickerLink !== null}
+        kind="link"
+        tags={tags}
+        selectedTagIds={tagPickerLink?.tagIds ?? []}
+        onAttach={(tag) => tagPickerLink && attachTag(tag, 'link', tagPickerLink.id, 'links')}
+        onDetach={(tag) => tagPickerLink && detachTag(tag, 'link', tagPickerLink.id, 'links')}
+        onCreateAndAttach={(path, icon, color) =>
+          tagPickerLink && createAndAttachTag(path, icon, color, 'link', tagPickerLink.id, 'links')
+        }
+        onRenameTag={renameTag}
+        onClose={() => setTagPickerForId(null)}
       />
 
       {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
@@ -401,19 +430,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginTop: 2,
-  },
-  tagChip: {
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  tagChipLabel: {
-    fontSize: 11,
-    color: '#9CA3AF',
   },
   rowActions: {
     flexDirection: 'row',

@@ -9,13 +9,16 @@ import * as LegacyFileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Block } from '../types';
+import { Block, Tag } from '../types';
 import { RootStackParamList } from '../navigation';
 import ZoomableImageViewer, { ViewerAction } from '../components/ZoomableImageViewer';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
+import TagChips from '../components/TagChips';
+import TagPicker from '../components/TagPicker';
 import { usePendingDelete } from '../hooks/usePendingDelete';
+import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 
 const ACCENT = '#EC4899';
 const DOWNLOAD_DIR_STORAGE_KEY = 'bearlessNotes.downloadDirUri';
@@ -29,6 +32,7 @@ type PhotoItem = {
   imageUri: string;
   title?: string;
   documentIds: string[];
+  tagIds: string[];
 };
 
 // Same "pick a folder once, remember it" download flow already built for
@@ -53,7 +57,17 @@ async function downloadPhoto(uri: string) {
   await LegacyFileSystem.writeAsStringAsync(destUri, content, { encoding: 'base64' });
 }
 
-function PhotoThumb({ uri, docCount }: { uri: string; docCount: number }) {
+function PhotoThumb({
+  uri,
+  docCount,
+  tags,
+  onTagPress,
+}: {
+  uri: string;
+  docCount: number;
+  tags: Tag[];
+  onTagPress: () => void;
+}) {
   return (
     <View style={styles.cellImageWrap}>
       <Image source={{ uri }} style={styles.cellImage} resizeMode="cover" />
@@ -63,9 +77,7 @@ function PhotoThumb({ uri, docCount }: { uri: string; docCount: number }) {
         </View>
       )}
       <View style={styles.cellTagRow}>
-        <View style={styles.cellTagChip}>
-          <Text style={styles.cellTagLabel}>Теги (скоро)</Text>
-        </View>
+        <TagChips tags={tags} onPress={onTagPress} />
       </View>
     </View>
   );
@@ -80,7 +92,9 @@ export default function PhotosScreen() {
   const [documentPicker, setDocumentPicker] = useState<{ photo: PhotoItem; documents: PickableDocument[] } | null>(
     null
   );
+  const [tagPickerForId, setTagPickerForId] = useState<string | null>(null);
   const { filterPending, requestDelete, undo, toast } = usePendingDelete<PhotoItem>();
+  const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
 
   useEffect(() => {
     const photosQuery = query(collection(db, 'photos'), orderBy('updatedAt', 'desc'));
@@ -93,6 +107,7 @@ export default function PhotosScreen() {
             imageUri: data.imageUri,
             title: data.title,
             documentIds: Object.keys(data.usedInDocuments ?? {}),
+            tagIds: data.tagIds ?? [],
           };
         })
       );
@@ -102,6 +117,7 @@ export default function PhotosScreen() {
 
   const displayedPhotos = filterPending(photos);
   const viewerPhoto = viewerPhotoId ? photos.find((p) => p.id === viewerPhotoId) ?? null : null;
+  const tagPickerPhoto = tagPickerForId ? photos.find((p) => p.id === tagPickerForId) ?? null : null;
 
   function openSortOrFilter() {
     navigation.navigate('Placeholder', { icon: 'options-outline', label: 'Скоро' });
@@ -172,6 +188,12 @@ export default function PhotosScreen() {
   async function deletePhoto(photo: PhotoItem) {
     deleteDoc(doc(db, 'photos', photo.id));
     await Promise.all(
+      photo.tagIds.map((tagId) => {
+        const tag = tags.find((t) => t.id === tagId);
+        return tag ? detachTagFromDeletedItem(tag, 'photo', photo.id) : Promise.resolve();
+      })
+    );
+    await Promise.all(
       photo.documentIds.map(async (docId) => {
         const documentRef = doc(db, 'documents', docId);
         const snapshot = await getDoc(documentRef);
@@ -191,6 +213,15 @@ export default function PhotosScreen() {
   function viewerActionsFor(photo: PhotoItem): ViewerAction[] {
     return [
       { key: 'rename', icon: 'pencil-outline', label: 'Назва', onPress: () => setRenamingPhoto(photo) },
+      {
+        key: 'tags',
+        icon: 'pricetag-outline',
+        label: 'Теги',
+        onPress: () => {
+          setViewerPhotoId(null);
+          setTagPickerForId(photo.id);
+        },
+      },
       {
         key: 'document',
         icon: 'document-text-outline',
@@ -251,7 +282,12 @@ export default function PhotosScreen() {
         <ScrollView contentContainerStyle={styles.grid}>
           {displayedPhotos.map((photo) => (
             <Pressable key={photo.id} style={styles.cell} onPress={() => setViewerPhotoId(photo.id)}>
-              <PhotoThumb uri={photo.imageUri} docCount={photo.documentIds.length} />
+              <PhotoThumb
+                uri={photo.imageUri}
+                docCount={photo.documentIds.length}
+                tags={tags.filter((t) => photo.tagIds.includes(t.id))}
+                onTagPress={() => setTagPickerForId(photo.id)}
+              />
             </Pressable>
           ))}
         </ScrollView>
@@ -285,6 +321,20 @@ export default function PhotosScreen() {
         documents={documentPicker?.documents ?? []}
         onPick={pickDocument}
         onClose={() => setDocumentPicker(null)}
+      />
+
+      <TagPicker
+        visible={tagPickerPhoto !== null}
+        kind="photo"
+        tags={tags}
+        selectedTagIds={tagPickerPhoto?.tagIds ?? []}
+        onAttach={(tag) => tagPickerPhoto && attachTag(tag, 'photo', tagPickerPhoto.id, 'photos')}
+        onDetach={(tag) => tagPickerPhoto && detachTag(tag, 'photo', tagPickerPhoto.id, 'photos')}
+        onCreateAndAttach={(path, icon, color) =>
+          tagPickerPhoto && createAndAttachTag(path, icon, color, 'photo', tagPickerPhoto.id, 'photos')
+        }
+        onRenameTag={renameTag}
+        onClose={() => setTagPickerForId(null)}
       />
 
       {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
@@ -387,15 +437,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 4,
-  },
-  cellTagChip: {
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    borderRadius: 7,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  cellTagLabel: {
-    fontSize: 10,
-    color: '#6B7280',
   },
 });

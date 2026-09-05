@@ -48,6 +48,28 @@ export interface Project {
   color: string;
 }
 
+// A database-object kind a tag can be attached to. Used both as the second
+// half of a `usedIn` key ("file:abc123") and as an entry in a tag's
+// cumulative `types` list.
+export type TaggableKind = 'file' | 'photo' | 'link';
+
+export interface Tag {
+  id: string;
+  // Full "/"-nested path, e.g. "робота/оренда" - the "/" is what makes it
+  // render as a folder in the tree view, with no separate folder entity.
+  path: string;
+  icon: string; // an Ionicons glyph name
+  color: string;
+  // Every kind this tag has ever been attached to. Cumulative only - never
+  // shrinks when a tag is detached from an item of some kind, since a tag
+  // that already spans multiple kinds shouldn't un-list one just because
+  // this particular item stopped using it.
+  types: TaggableKind[];
+  // Reverse index of everything currently tagged, keyed "`${kind}:${id}`".
+  // A tag only exists while this has at least one key - see useTags.
+  usedIn: Record<string, true>;
+}
+
 export interface DocumentItem {
   id: string;
   title: string;
