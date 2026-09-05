@@ -1188,6 +1188,20 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     },
     []
   );
+  // Mirrors `blocks` for reads inside async callbacks (the preview fetch can
+  // take seconds) - a plain closure over `blocks` would see whatever state
+  // was current when the timeout/fetch was scheduled, not the latest.
+  const blocksRef = useRef<Block[]>(blocks);
+  blocksRef.current = blocks;
+  // A link whose title couldn't be fetched automatically (a raw-coordinates
+  // Maps link, or any page with no fetchable title) pauses the conversion
+  // here instead of silently landing in the `links` mirror unnamed - an
+  // unnamed link is one the user will never find again in a future
+  // "Посилання" database list.
+  const [linkTitlePrompt, setLinkTitlePrompt] = useState<{ blockId: string; url: string; preview: LinkPreview } | null>(
+    null
+  );
+  const [linkTitlePromptValue, setLinkTitlePromptValue] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -1595,26 +1609,58 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     });
   }
 
-  async function convertUrlToLinkBlock(id: string, url: string) {
-    const preview = await fetchLinkPreview(url);
-    if (!isMountedRef.current) return;
+  // The block may have been deleted, retyped into something else, or
+  // converted to a different type while the preview was still fetching (or
+  // while the mandatory-name prompt below was sitting open) - in any of
+  // those cases the stale result should just be dropped.
+  function isLinkConversionStillValid(id: string, url: string): boolean {
+    const block = blocksRef.current.find((b) => b.id === id);
+    return !!block && (block.type ?? 'paragraph') === 'paragraph' && block.text.trim() === url;
+  }
+
+  function applyLinkConversion(id: string, url: string, preview: LinkPreview, title: string) {
     setBlocks((prev) => {
       const block = prev.find((b) => b.id === id);
-      // The block may have been deleted, retyped into something else, or
-      // converted to a different type while the preview was still fetching -
-      // in any of those cases this stale result should just be dropped.
-      if (!block || (block.type ?? 'paragraph') !== 'paragraph' || block.text.trim() !== url) {
-        return prev;
-      }
+      if (!block || (block.type ?? 'paragraph') !== 'paragraph' || block.text.trim() !== url) return prev;
       return prev.map((b) => {
         if (b.id !== id) return b;
-        const linkBlock: Block = { ...buildBlock(id, 'link', url), linkUrl: url };
-        if (preview.title) linkBlock.linkTitle = preview.title;
+        const linkBlock: Block = { ...buildBlock(id, 'link', url), linkUrl: url, linkTitle: title };
         if (preview.imageUrl) linkBlock.linkImageUrl = preview.imageUrl;
         if (preview.siteName) linkBlock.linkSiteName = preview.siteName;
         return linkBlock;
       });
     });
+  }
+
+  async function convertUrlToLinkBlock(id: string, url: string) {
+    const preview = await fetchLinkPreview(url);
+    if (!isMountedRef.current || !isLinkConversionStillValid(id, url)) return;
+    if (preview.title) {
+      applyLinkConversion(id, url, preview, preview.title);
+    } else {
+      // No title to show (a raw-coordinates Maps link with nothing to read
+      // out of the URL, or a page with no fetchable og:title) - stop and
+      // ask instead of quietly filing an unnamed link nobody could find
+      // later.
+      setLinkTitlePrompt({ blockId: id, url, preview });
+      setLinkTitlePromptValue('');
+    }
+  }
+
+  function confirmLinkTitlePrompt() {
+    const prompt = linkTitlePrompt;
+    const title = linkTitlePromptValue.trim();
+    if (!prompt || !title) return;
+    if (isLinkConversionStillValid(prompt.blockId, prompt.url)) {
+      applyLinkConversion(prompt.blockId, prompt.url, prompt.preview, title);
+    }
+    setLinkTitlePrompt(null);
+    setLinkTitlePromptValue('');
+  }
+
+  function cancelLinkTitlePrompt() {
+    setLinkTitlePrompt(null);
+    setLinkTitlePromptValue('');
   }
 
   async function openLinkBlock(url: string) {
@@ -2057,6 +2103,41 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           </GestureHandlerRootView>
         </Modal>
       )}
+
+      {linkTitlePrompt && (
+        <Modal visible transparent animationType="fade" onRequestClose={cancelLinkTitlePrompt}>
+          <View style={styles.linkPromptBackdrop}>
+            <View style={styles.linkPromptCard}>
+              <Text style={styles.linkPromptTitle}>Назва посилання</Text>
+              <Text style={styles.linkPromptHint}>
+                Не вдалося підтягнути заголовок автоматично - введіть назву, щоб потім знайти це посилання в базі.
+              </Text>
+              <TextInput
+                autoFocus
+                value={linkTitlePromptValue}
+                onChangeText={setLinkTitlePromptValue}
+                placeholder="Наприклад: Кафе на Портовій"
+                style={styles.linkPromptInput}
+              />
+              <View style={styles.linkPromptButtons}>
+                <Pressable style={styles.linkPromptCancelButton} onPress={cancelLinkTitlePrompt}>
+                  <Text style={styles.linkPromptCancelLabel}>Скасувати</Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.linkPromptSaveButton,
+                    !linkTitlePromptValue.trim() && styles.linkPromptSaveButtonDisabled,
+                  ]}
+                  disabled={!linkTitlePromptValue.trim()}
+                  onPress={confirmLinkTitlePrompt}
+                >
+                  <Text style={styles.linkPromptSaveLabel}>Зберегти</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }
@@ -2340,6 +2421,68 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: '#111827',
+  },
+  linkPromptBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  linkPromptCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    gap: 12,
+  },
+  linkPromptTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  linkPromptHint: {
+    fontSize: 13,
+    color: '#6B7280',
+    lineHeight: 18,
+  },
+  linkPromptInput: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: '#111827',
+  },
+  linkPromptButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+    marginTop: 4,
+  },
+  linkPromptCancelButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  linkPromptCancelLabel: {
+    fontSize: 15,
+    color: '#6B7280',
+  },
+  linkPromptSaveButton: {
+    backgroundColor: ACCENT,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+  },
+  linkPromptSaveButtonDisabled: {
+    backgroundColor: '#BFDBFE',
+  },
+  linkPromptSaveLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
   },
   viewerBackdrop: {
     flex: 1,
