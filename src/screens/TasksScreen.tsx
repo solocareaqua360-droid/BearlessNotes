@@ -38,16 +38,20 @@ export default function TasksScreen() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Sorted by checked client-side (a stable sort, so it just regroups
+    // without disturbing the newest-first order within each group) rather
+    // than via a second orderBy in the query itself, which would need a
+    // composite index set up in the Firebase console before it'd work.
     const tasksQuery = query(tasksCollection, orderBy('updatedAt', 'desc'));
     return onSnapshot(tasksQuery, (snapshot) => {
-      setTasks(
-        snapshot.docs.map((docSnapshot) => ({
-          id: docSnapshot.id,
-          text: docSnapshot.data().text,
-          checked: docSnapshot.data().checked,
-          documentId: docSnapshot.data().documentId,
-        }))
-      );
+      const loaded = snapshot.docs.map((docSnapshot) => ({
+        id: docSnapshot.id,
+        text: docSnapshot.data().text,
+        checked: docSnapshot.data().checked,
+        documentId: docSnapshot.data().documentId,
+      }));
+      loaded.sort((a, b) => Number(a.checked) - Number(b.checked));
+      setTasks(loaded);
       setIsLoading(false);
     });
   }, []);
