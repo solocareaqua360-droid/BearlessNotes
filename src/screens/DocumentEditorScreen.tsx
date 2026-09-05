@@ -19,7 +19,12 @@ import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
-import { File, Paths } from 'expo-file-system';
+// The new expo-file-system File/Directory API tracks read permission per
+// picked URI internally and rejects copying a URI it didn't hand out
+// itself ("Missing 'READ' permission") - the legacy module just wraps a
+// plain native file copy given two paths, which is what actually works
+// for re-homing a file expo-document-picker (a different module) picked.
+import * as LegacyFileSystem from 'expo-file-system/legacy';
 // react-native-gesture-handler's own ScrollView (not the core RN one) so it
 // shares the same touch arena as our rows' Pan gestures - otherwise a swipe
 // starting on a block (its TextInput especially) never reaches the
@@ -1349,10 +1354,10 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     // The picker's own cache copy lives in a subfolder expo-sharing's
     // FileProvider doesn't recognize in Expo Go ("Not allowed to read file
     // under given URL" the moment the block is opened) - re-copying it
-    // straight into Paths.cache puts it somewhere Sharing can actually read.
-    const destination = new File(Paths.cache, `${generateId()}-${asset.name}`);
-    await new File(asset.uri).copy(destination);
-    const fileUri = destination.uri;
+    // straight into the plain cache directory puts it somewhere Sharing can
+    // actually read.
+    const fileUri = `${LegacyFileSystem.cacheDirectory}${generateId()}-${asset.name}`;
+    await LegacyFileSystem.copyAsync({ from: asset.uri, to: fileUri });
     snapshotBeforeChange();
     setBlocks((prev) => {
       const index = prev.findIndex((b) => b.id === id);
