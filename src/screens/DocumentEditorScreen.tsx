@@ -25,6 +25,7 @@ import * as Sharing from 'expo-sharing';
 // plain native file copy given two paths, which is what actually works
 // for re-homing a file expo-document-picker (a different module) picked.
 import * as LegacyFileSystem from 'expo-file-system/legacy';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 // react-native-gesture-handler's own ScrollView (not the core RN one) so it
 // shares the same touch arena as our rows' Pan gestures - otherwise a swipe
 // starting on a block (its TextInput especially) never reaches the
@@ -51,6 +52,7 @@ const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
 const AUTOSAVE_DELAY_MS = 600;
 const DRAG_LONG_PRESS_MS = 350;
+const DOWNLOAD_DIR_STORAGE_KEY = 'bearlessNotes.downloadDirUri';
 
 // Small fixed palette rather than a full color picker - enough variety for
 // notes without the complexity of a hue/saturation UI.
@@ -89,6 +91,47 @@ function fileIconColorFor(name?: string): string {
   if (ext === 'doc' || ext === 'docx') return '#2563EB';
   if (ext === 'xls' || ext === 'xlsx') return '#16A34A';
   return '#6B7280';
+}
+
+// Asks once (via Android's Storage Access Framework) which folder to save
+// downloads into - the user picks it in the system's own file browser, so
+// it shows up there like any other downloaded file - and reuses that same
+// folder afterward instead of prompting on every download.
+async function getDownloadDirUri(forceReprompt = false): Promise<string | null> {
+  if (!forceReprompt) {
+    const stored = await AsyncStorage.getItem(DOWNLOAD_DIR_STORAGE_KEY);
+    if (stored) return stored;
+  }
+  const permission = await LegacyFileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+  if (!permission.granted) return null;
+  await AsyncStorage.setItem(DOWNLOAD_DIR_STORAGE_KEY, permission.directoryUri);
+  return permission.directoryUri;
+}
+
+async function downloadToDevice(sourceUri: string, fileName: string, mimeType: string) {
+  const dirUri = await getDownloadDirUri();
+  if (!dirUri) return;
+  const dot = fileName.lastIndexOf('.');
+  const nameWithoutExt = dot > 0 ? fileName.slice(0, dot) : fileName;
+  const writeInto = async (targetDirUri: string) => {
+    const destUri = await LegacyFileSystem.StorageAccessFramework.createFileAsync(
+      targetDirUri,
+      nameWithoutExt,
+      mimeType
+    );
+    const content = await LegacyFileSystem.readAsStringAsync(sourceUri, { encoding: 'base64' });
+    await LegacyFileSystem.writeAsStringAsync(destUri, content, { encoding: 'base64' });
+  };
+  try {
+    await writeInto(dirUri);
+  } catch {
+    // The previously granted folder may have been revoked since (e.g. the
+    // user cleared it from Android's settings) - ask once more instead of
+    // silently failing on every future download.
+    const freshDirUri = await getDownloadDirUri(true);
+    if (!freshDirUri) return;
+    await writeInto(freshDirUri);
+  }
 }
 
 // Inline formatting is stored as plain markers inside the block's own text
@@ -230,7 +273,9 @@ type BlockRowProps = {
   onSelectionChange: (id: string, start: number, end: number) => void;
   onOpenImage: (uri: string) => void;
   onToggleImageFit: (id: string) => void;
+  onDownloadImage: (uri: string) => void;
   onOpenFile: (id: string) => void;
+  onDownloadFile: (id: string) => void;
   inputRef: (ref: TextInput | null) => void;
 };
 
@@ -250,7 +295,9 @@ function BlockRow({
   onSelectionChange,
   onOpenImage,
   onToggleImageFit,
+  onDownloadImage,
   onOpenFile,
+  onDownloadFile,
   inputRef,
 }: BlockRowProps) {
   // Outside edit mode (or while selecting), the text field is completely
@@ -300,13 +347,22 @@ function BlockRow({
           <Image source={{ uri: item.imageUri }} style={styles.blockImage} resizeMode={fit} />
         </Pressable>
         {!isSelectMode && (
-          <Pressable
-            hitSlop={8}
-            style={styles.imageFitToggle}
-            onPress={() => onToggleImageFit(item.id)}
-          >
-            <Ionicons name={fit === 'contain' ? 'crop-outline' : 'contract-outline'} size={16} color="#fff" />
-          </Pressable>
+          <>
+            <Pressable
+              hitSlop={8}
+              style={styles.imageFitToggle}
+              onPress={() => onToggleImageFit(item.id)}
+            >
+              <Ionicons name={fit === 'contain' ? 'crop-outline' : 'contract-outline'} size={16} color="#fff" />
+            </Pressable>
+            <Pressable
+              hitSlop={8}
+              style={styles.imageDownloadButton}
+              onPress={() => onDownloadImage(item.imageUri!)}
+            >
+              <Ionicons name="download-outline" size={16} color="#fff" />
+            </Pressable>
+          </>
         )}
       </View>
     ) : (
@@ -317,23 +373,30 @@ function BlockRow({
     // copy, so opening it (via the OS's "open with" sheet) works instantly
     // and offline on this device, but the block won't resolve on another one.
     content = (
-      <Pressable
-        disabled={isSelectMode}
-        onPress={() => onOpenFile(item.id)}
-        style={styles.fileBlockRow}
-      >
-        <View style={styles.fileIconWrap}>
-          <Ionicons name={fileIconFor(item.fileName)} size={22} color={fileIconColorFor(item.fileName)} />
-          {fileCached !== null && (
-            <View style={[styles.fileCacheBadge, !fileCached && styles.fileCacheBadgeMissing]}>
-              <Ionicons name={fileCached ? 'checkmark' : 'close'} size={9} color="#fff" />
-            </View>
-          )}
-        </View>
-        <Text style={styles.fileBlockName} numberOfLines={1}>
-          {item.fileName ?? 'Файл'}
-        </Text>
-      </Pressable>
+      <View style={styles.fileBlockRow}>
+        <Pressable
+          disabled={isSelectMode}
+          onPress={() => onOpenFile(item.id)}
+          style={styles.fileBlockTap}
+        >
+          <View style={styles.fileIconWrap}>
+            <Ionicons name={fileIconFor(item.fileName)} size={22} color={fileIconColorFor(item.fileName)} />
+            {fileCached !== null && (
+              <View style={[styles.fileCacheBadge, !fileCached && styles.fileCacheBadgeMissing]}>
+                <Ionicons name={fileCached ? 'checkmark' : 'close'} size={9} color="#fff" />
+              </View>
+            )}
+          </View>
+          <Text style={styles.fileBlockName} numberOfLines={1}>
+            {item.fileName ?? 'Файл'}
+          </Text>
+        </Pressable>
+        {!isSelectMode && (
+          <Pressable hitSlop={8} onPress={() => onDownloadFile(item.id)}>
+            <Ionicons name="download-outline" size={18} color="#6B7280" />
+          </Pressable>
+        )}
+      </View>
     );
   } else {
     const textField = canEditText ? (
@@ -460,7 +523,9 @@ type SortableBlockRowProps = {
   onSelectionChange: (id: string, start: number, end: number) => void;
   onOpenImage: (uri: string) => void;
   onToggleImageFit: (id: string) => void;
+  onDownloadImage: (uri: string) => void;
   onOpenFile: (id: string) => void;
+  onDownloadFile: (id: string) => void;
   inputRef: (ref: TextInput | null) => void;
 };
 
@@ -486,7 +551,9 @@ function SortableBlockRow({
   onSelectionChange,
   onOpenImage,
   onToggleImageFit,
+  onDownloadImage,
   onOpenFile,
+  onDownloadFile,
   inputRef,
 }: SortableBlockRowProps) {
   // This gesture's whole job is JS-side (finding the nearest gap, updating
@@ -553,7 +620,9 @@ function SortableBlockRow({
             onSelectionChange={onSelectionChange}
             onOpenImage={onOpenImage}
             onToggleImageFit={onToggleImageFit}
+            onDownloadImage={onDownloadImage}
             onOpenFile={onOpenFile}
+            onDownloadFile={onDownloadFile}
             inputRef={inputRef}
           />
         </Animated.View>
@@ -576,7 +645,9 @@ type BlockListProps = {
   onSelectionChange: (id: string, start: number, end: number) => void;
   onOpenImage: (uri: string) => void;
   onToggleImageFit: (id: string) => void;
+  onDownloadImage: (uri: string) => void;
   onOpenFile: (id: string) => void;
+  onDownloadFile: (id: string) => void;
   onInputRef: (id: string, ref: TextInput | null) => void;
 };
 
@@ -595,7 +666,9 @@ function BlockList({
   onSelectionChange,
   onOpenImage,
   onToggleImageFit,
+  onDownloadImage,
   onOpenFile,
+  onDownloadFile,
   onInputRef,
 }: BlockListProps) {
   const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
@@ -801,7 +874,9 @@ function BlockList({
           onSelectionChange={onSelectionChange}
           onOpenImage={onOpenImage}
           onToggleImageFit={onToggleImageFit}
+          onDownloadImage={onDownloadImage}
           onOpenFile={onOpenFile}
+          onDownloadFile={onDownloadFile}
           inputRef={(ref) => onInputRef(item.id, ref)}
         />
         );
@@ -1287,6 +1362,16 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     );
   }
 
+  function downloadImageBlock(uri: string) {
+    downloadToDevice(uri, `photo-${Date.now()}.jpg`, 'image/jpeg');
+  }
+
+  function downloadFileBlock(id: string) {
+    const block = blocks.find((b) => b.id === id);
+    if (!block?.fileUri) return;
+    downloadToDevice(block.fileUri, block.fileName ?? 'file', block.mimeType ?? 'application/octet-stream');
+  }
+
   // Converts the block that triggered the "/" menu into the chosen type.
   // Divider blocks hold no text, so there's nothing left to type into them -
   // a fresh empty paragraph is inserted right after (only if one doesn't
@@ -1628,7 +1713,9 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           onSelectionChange={handleBlockSelectionChange}
           onOpenImage={setViewerImageUri}
           onToggleImageFit={toggleImageFit}
+          onDownloadImage={downloadImageBlock}
           onOpenFile={openFileBlock}
+          onDownloadFile={downloadFileBlock}
           onInputRef={(id, ref) => {
             inputRefs.current[id] = ref;
           }}
@@ -1817,15 +1904,29 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 5,
   },
+  imageDownloadButton: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 12,
+    padding: 5,
+  },
   fileBlockRow: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 10,
     backgroundColor: '#F3F4F6',
+  },
+  fileBlockTap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   fileBlockName: {
     flex: 1,
