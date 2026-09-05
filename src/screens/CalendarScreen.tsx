@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
+  Keyboard,
   LayoutAnimation,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -56,6 +57,16 @@ const calendarPrefsDoc = doc(db, 'settings', 'calendarPrefs');
 // edge-back gesture; a plain ScrollView's native paging has none of that.
 const WEEK_PAGE_OFFSETS = [-7, 0, 7];
 
+// Deliberately shorter than the 180ms the editor waits before measuring the
+// focused block against the keyboard (see scheduleScrollAdjust there) - the
+// fold has to be finished by then, or it measures a position that's still
+// moving and scrolls to the wrong place.
+const COLLAPSE_ANIMATION = LayoutAnimation.create(
+  160,
+  LayoutAnimation.Types.easeInEaseOut,
+  LayoutAnimation.Properties.opacity
+);
+
 export default function CalendarScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const today = useMemo(() => new Date(), []);
@@ -71,6 +82,11 @@ export default function CalendarScreen() {
   const [onlyFilledDays, setOnlyFilledDays] = useState(false);
   const [filledDates, setFilledDates] = useState<Set<string>>(new Set());
   const [menuOpen, setMenuOpen] = useState(false);
+  // The calendar itself folds away while the keyboard is up: on a phone the
+  // strip (let alone the month grid) plus the keyboard leaves almost nothing
+  // for the note being written. Coming back the moment the keyboard closes
+  // is what makes writing on a shorter screen work at all.
+  const [isWriting, setIsWriting] = useState(false);
 
   const weekScrollRef = useRef<ScrollView>(null);
 
@@ -80,12 +96,27 @@ export default function CalendarScreen() {
     });
   }, []);
 
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => {
+      LayoutAnimation.configureNext(COLLAPSE_ANIMATION);
+      setIsWriting(true);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      LayoutAnimation.configureNext(COLLAPSE_ANIMATION);
+      setIsWriting(false);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   // Recenters the 3-page week strip on the (possibly new) current week every
-  // time it changes - including the very first render, so the initial
-  // contentOffset prop below and this agree instead of racing.
+  // time it changes - and on every remount, since the strip is unmounted
+  // while writing (see isWriting) and comes back at page 0 otherwise.
   useEffect(() => {
     weekScrollRef.current?.scrollTo({ x: PAGE_WIDTH, animated: false });
-  }, [weekStart]);
+  }, [weekStart, isWriting]);
 
   // Which days in the visible month already have a real note - only
   // queried while the month grid is open, since it's the only place this
@@ -172,7 +203,7 @@ export default function CalendarScreen() {
         </View>
       )}
 
-      {isMonthExpanded ? (
+      {isWriting ? null : isMonthExpanded ? (
         <View>
           <View style={styles.monthNav}>
             <Pressable hitSlop={8} onPress={() => changeVisibleMonth(-1)}>
@@ -225,7 +256,12 @@ export default function CalendarScreen() {
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
+          // RN gives every ScrollView flexGrow: 1, so without this the week
+          // strip stretches over all the free height in this column and
+          // pushes the note far down the screen.
+          style={styles.weekScroll}
           contentOffset={{ x: PAGE_WIDTH, y: 0 }}
+          onLayout={() => weekScrollRef.current?.scrollTo({ x: PAGE_WIDTH, animated: false })}
           onMomentumScrollEnd={handleWeekScrollEnd}
         >
           {WEEK_PAGE_OFFSETS.map((offset) => (
@@ -252,26 +288,40 @@ export default function CalendarScreen() {
         </ScrollView>
       )}
 
-      <View style={styles.expandRow}>
-        <Pressable style={styles.expandButton} onPress={toggleMonthExpanded}>
-          <Ionicons name={isMonthExpanded ? 'chevron-up' : 'chevron-down'} size={16} color="#9CA3AF" />
-        </Pressable>
-      </View>
+      {!isWriting && (
+        <View style={styles.expandRow}>
+          <Pressable style={styles.expandButton} onPress={toggleMonthExpanded}>
+            <Ionicons name={isMonthExpanded ? 'chevron-up' : 'chevron-down'} size={16} color="#9CA3AF" />
+          </Pressable>
+        </View>
+      )}
 
-      <View style={styles.dateHeader}>
-        <View style={styles.weekdayRow}>
-          <Text style={styles.weekdayFull}>{WEEKDAY_FULL[mondayIndex(selectedDate)]}</Text>
-          {isSameDay(selectedDate, today) && (
-            <View style={styles.todayChip}>
-              <Text style={styles.todayChipLabel}>Сьогодні</Text>
-            </View>
-          )}
+      {isWriting ? (
+        // One compact line while writing - which day this is still has to be
+        // visible, but the big date block would eat the space the keyboard
+        // already took.
+        <Pressable style={styles.compactDate} onPress={() => Keyboard.dismiss()}>
+          <Text style={styles.compactDateLabel}>
+            {WEEKDAY_FULL[mondayIndex(selectedDate)]}, {formatBigDate(selectedDate)}
+          </Text>
+          <Ionicons name="chevron-down" size={14} color="#9CA3AF" />
+        </Pressable>
+      ) : (
+        <View style={styles.dateHeader}>
+          <View style={styles.weekdayRow}>
+            <Text style={styles.weekdayFull}>{WEEKDAY_FULL[mondayIndex(selectedDate)]}</Text>
+            {isSameDay(selectedDate, today) && (
+              <View style={styles.todayChip}>
+                <Text style={styles.todayChipLabel}>Сьогодні</Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.dateLine}>
+            <Text style={styles.dateBig}>{formatBigDate(selectedDate)}</Text>
+            <Text style={styles.weekNum}>Тиждень {isoWeekNumber(selectedDate)}</Text>
+          </View>
         </View>
-        <View style={styles.dateLine}>
-          <Text style={styles.dateBig}>{formatBigDate(selectedDate)}</Text>
-          <Text style={styles.weekNum}>Тиждень {isoWeekNumber(selectedDate)}</Text>
-        </View>
-      </View>
+      )}
 
       <View style={{ flex: 1 }}>
         <DocumentEditorScreen
@@ -380,11 +430,27 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
+  weekScroll: {
+    flexGrow: 0,
+  },
   weekRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 8,
+  },
+  compactDate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 6,
+  },
+  compactDateLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: ACCENT,
   },
   dayCell: {
     flex: 1,

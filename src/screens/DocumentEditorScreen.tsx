@@ -2193,6 +2193,27 @@ export default function DocumentEditorScreen(props: Props) {
       </View>
       )}
 
+      {/* Embedded (CalendarScreen): the same undo/redo/select-mode controls
+          the header carries in the full-screen editor, as one slim row -
+          the embedding screen owns the top of the screen, so there's no
+          header here to hang them off. */}
+      {embedded && (
+        <View style={styles.embeddedToolbar}>
+          <Text style={styles.headerStatus}>{saveStatus === 'saving' ? 'Збереження…' : 'Збережено'}</Text>
+          <View style={styles.embeddedToolbarButtons}>
+            <Pressable hitSlop={10} onPress={undo} disabled={!canUndo}>
+              <Ionicons name="arrow-undo-outline" size={20} color={canUndo ? '#111827' : '#D1D5DB'} />
+            </Pressable>
+            <Pressable hitSlop={10} onPress={redo} disabled={!canRedo}>
+              <Ionicons name="arrow-redo-outline" size={20} color={canRedo ? '#111827' : '#D1D5DB'} />
+            </Pressable>
+            <Pressable hitSlop={10} onPress={toggleSelectMode}>
+              <Ionicons name={isSelectMode ? 'close' : 'ellipse-outline'} size={20} color="#111827" />
+            </Pressable>
+          </View>
+        </View>
+      )}
+
       {slashMenuBlockId && (
         <ScrollView
           horizontal
@@ -2282,7 +2303,13 @@ export default function DocumentEditorScreen(props: Props) {
       <ScrollView
         ref={scrollViewRef}
         style={styles.scrollArea}
-        contentContainerStyle={[embedded && styles.scrollAreaEmbedded, { paddingBottom: keyboardHeight + 40 }]}
+        contentContainerStyle={[
+          embedded && styles.scrollAreaEmbedded,
+          // Embedded, with the keyboard down, the floating island and the
+          // tags-drawer button sit over the bottom of this list - the last
+          // block (and "Додати блок") has to be able to scroll clear of them.
+          { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 40 : embedded ? 120 : 40 },
+        ]}
         keyboardShouldPersistTaps="handled"
         onScroll={(e) => {
           scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
@@ -2348,7 +2375,17 @@ export default function DocumentEditorScreen(props: Props) {
         )}
       </ScrollView>
 
-      <Pressable style={[styles.editModeFab, embedded && styles.editModeFabEmbedded]} onPress={toggleEditMode}>
+      <Pressable
+        style={[
+          styles.editModeFab,
+          // Embedded, this button has to dodge two things the full-screen
+          // editor never has under it: the floating island (keyboard down)
+          // and the keyboard itself - otherwise there's no way to tap
+          // "done" without dismissing the keyboard some other way first.
+          embedded && (keyboardHeight > 0 ? { bottom: keyboardHeight + 16 } : styles.editModeFabEmbedded),
+        ]}
+        onPress={toggleEditMode}
+      >
         <Ionicons name={isEditMode ? 'checkmark-outline' : 'create-outline'} size={24} color="#fff" />
       </Pressable>
 
@@ -2478,6 +2515,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
+  },
+  embeddedToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 4,
+  },
+  embeddedToolbarButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
   },
   headerRight: {
     flexDirection: 'row',
