@@ -2,17 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
   Keyboard,
-  LayoutAnimation,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  UIManager,
   View,
 } from 'react-native';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -38,10 +36,6 @@ import {
   mondayOf,
 } from '../utils/dateLocale';
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
 const ACCENT = '#3B82F6';
 const PAGE_WIDTH = Dimensions.get('window').width;
 const documentsCollection = collection(db, 'documents');
@@ -57,15 +51,19 @@ const calendarPrefsDoc = doc(db, 'settings', 'calendarPrefs');
 // edge-back gesture; a plain ScrollView's native paging has none of that.
 const WEEK_PAGE_OFFSETS = [-7, 0, 7];
 
-// Deliberately shorter than the 180ms the editor waits before measuring the
-// focused block against the keyboard (see scheduleScrollAdjust there) - the
-// fold has to be finished by then, or it measures a position that's still
-// moving and scrolls to the wrong place.
-const COLLAPSE_ANIMATION = LayoutAnimation.create(
-  160,
-  LayoutAnimation.Types.easeInEaseOut,
-  LayoutAnimation.Properties.opacity
-);
+// The week strip and the month grid are the same cells in the same columns,
+// so the fold between them is one clipped box whose height is animated
+// between one row and six, with the two layers cross-fading inside it. The
+// weekday header above stays put through the whole thing, which is what
+// makes it read as the calendar growing rather than two views swapping.
+// (Reanimated, not LayoutAnimation - LayoutAnimation on Android latches
+// onto whatever layout change happens next, which is what was leaving day
+// numbers permanently faded out after tapping between days.)
+const ROW_HEIGHT = 40;
+const WEEK_AREA_HEIGHT = ROW_HEIGHT;
+const MONTH_AREA_HEIGHT = ROW_HEIGHT * 6;
+const MONTH_NAV_HEIGHT = 36;
+const WEEKDAY_HEADER_HEIGHT = 22;
 
 export default function CalendarScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -82,13 +80,28 @@ export default function CalendarScreen() {
   const [onlyFilledDays, setOnlyFilledDays] = useState(false);
   const [filledDates, setFilledDates] = useState<Set<string>>(new Set());
   const [menuOpen, setMenuOpen] = useState(false);
-  // The calendar itself folds away while the keyboard is up: on a phone the
-  // strip (let alone the month grid) plus the keyboard leaves almost nothing
-  // for the note being written. Coming back the moment the keyboard closes
-  // is what makes writing on a shorter screen work at all.
+  // The calendar folds away entirely while the keyboard is up: on a phone
+  // the strip (let alone the month grid) plus the keyboard leaves almost
+  // nothing for the note being written.
   const [isWriting, setIsWriting] = useState(false);
 
   const weekScrollRef = useRef<ScrollView>(null);
+  const expandAmount = useSharedValue(0); // 0 = week strip, 1 = month grid
+  const visibleAmount = useSharedValue(1); // 0 = folded away (writing)
+
+  useEffect(() => {
+    expandAmount.value = withTiming(isMonthExpanded ? 1 : 0, {
+      duration: 300,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [isMonthExpanded, expandAmount]);
+
+  useEffect(() => {
+    visibleAmount.value = withTiming(isWriting ? 0 : 1, {
+      duration: 200,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [isWriting, visibleAmount]);
 
   useEffect(() => {
     return onSnapshot(calendarPrefsDoc, (snapshot) => {
@@ -97,34 +110,32 @@ export default function CalendarScreen() {
   }, []);
 
   useEffect(() => {
-    const showSub = Keyboard.addListener('keyboardDidShow', () => {
-      LayoutAnimation.configureNext(COLLAPSE_ANIMATION);
-      setIsWriting(true);
-    });
-    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
-      LayoutAnimation.configureNext(COLLAPSE_ANIMATION);
-      setIsWriting(false);
-    });
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setIsWriting(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setIsWriting(false));
     return () => {
       showSub.remove();
       hideSub.remove();
     };
   }, []);
 
-  // Recenters the 3-page week strip on the (possibly new) current week every
-  // time it changes - and on every remount, since the strip is unmounted
-  // while writing (see isWriting) and comes back at page 0 otherwise.
+  // Recenters the 3-page week strip on the (possibly new) current week.
   useEffect(() => {
     weekScrollRef.current?.scrollTo({ x: PAGE_WIDTH, animated: false });
-  }, [weekStart, isWriting]);
+  }, [weekStart]);
 
-  // Which days in the visible month already have a real note - only
-  // queried while the month grid is open, since it's the only place this
-  // is shown (the "only filled days" toggle). calendarDate sorts the same
-  // as the date it represents (YYYY-MM-DD), so a plain range filter is a
-  // full month's worth of documents, no composite index needed.
+  // The month grid follows whichever day is open, so collapsing back to the
+  // week strip and expanding again always lands on the right month. Changing
+  // months with the arrows doesn't touch selectedDate, so it doesn't fight
+  // this.
   useEffect(() => {
-    if (!isMonthExpanded) return;
+    setVisibleMonth({ year: selectedDate.getFullYear(), month: selectedDate.getMonth() });
+  }, [selectedDate]);
+
+  // Which days in the visible month already have a real note (the "only
+  // filled days" toggle). calendarDate sorts the same as the date it
+  // represents (YYYY-MM-DD), so a plain range filter is one month's worth of
+  // documents, no composite index needed.
+  useEffect(() => {
     const monthStartKey = dateKey(new Date(visibleMonth.year, visibleMonth.month, 1));
     const monthEndKey = dateKey(new Date(visibleMonth.year, visibleMonth.month + 1, 0));
     const filledQuery = query(
@@ -140,7 +151,7 @@ export default function CalendarScreen() {
       });
       setFilledDates(filled);
     });
-  }, [isMonthExpanded, visibleMonth.year, visibleMonth.month]);
+  }, [visibleMonth.year, visibleMonth.month]);
 
   function selectDay(date: Date) {
     setSelectedDate(date);
@@ -155,14 +166,6 @@ export default function CalendarScreen() {
     setSelectedDate((prev) => addDays(prev, deltaDays));
   }
 
-  function toggleMonthExpanded() {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    if (!isMonthExpanded) {
-      setVisibleMonth({ year: selectedDate.getFullYear(), month: selectedDate.getMonth() });
-    }
-    setIsMonthExpanded((prev) => !prev);
-  }
-
   function changeVisibleMonth(delta: number) {
     setVisibleMonth((prev) => {
       const d = new Date(prev.year, prev.month + delta, 1);
@@ -174,6 +177,24 @@ export default function CalendarScreen() {
     setMenuOpen(false);
     await setDoc(calendarPrefsDoc, { onlyFilledDays: !onlyFilledDays }, { merge: true });
   }
+
+  const calendarWrapStyle = useAnimatedStyle(() => {
+    const navHeight = MONTH_NAV_HEIGHT * expandAmount.value;
+    const gridHeight = WEEK_AREA_HEIGHT + (MONTH_AREA_HEIGHT - WEEK_AREA_HEIGHT) * expandAmount.value;
+    return {
+      height: (navHeight + WEEKDAY_HEADER_HEIGHT + gridHeight) * visibleAmount.value,
+      opacity: visibleAmount.value,
+    };
+  });
+  const monthNavStyle = useAnimatedStyle(() => ({
+    height: MONTH_NAV_HEIGHT * expandAmount.value,
+    opacity: expandAmount.value,
+  }));
+  const gridClipStyle = useAnimatedStyle(() => ({
+    height: WEEK_AREA_HEIGHT + (MONTH_AREA_HEIGHT - WEEK_AREA_HEIGHT) * expandAmount.value,
+  }));
+  const weekLayerStyle = useAnimatedStyle(() => ({ opacity: 1 - expandAmount.value }));
+  const monthLayerStyle = useAnimatedStyle(() => ({ opacity: expandAmount.value }));
 
   const monthGrid = useMemo(
     () => getMonthGrid(visibleMonth.year, visibleMonth.month),
@@ -203,94 +224,95 @@ export default function CalendarScreen() {
         </View>
       )}
 
-      {isWriting ? null : isMonthExpanded ? (
-        <View>
+      <Animated.View style={[styles.calendarWrap, calendarWrapStyle]}>
+        <Animated.View style={[styles.monthNavWrap, monthNavStyle]}>
           <View style={styles.monthNav}>
-            <Pressable hitSlop={8} onPress={() => changeVisibleMonth(-1)}>
+            <Pressable hitSlop={10} onPress={() => changeVisibleMonth(-1)}>
               <Ionicons name="chevron-back" size={18} color="#9CA3AF" />
             </Pressable>
             <Text style={styles.monthNavLabel}>
               {MONTH_FULL[visibleMonth.month]} {visibleMonth.year}
             </Text>
-            <Pressable hitSlop={8} onPress={() => changeVisibleMonth(1)}>
+            <Pressable hitSlop={10} onPress={() => changeVisibleMonth(1)}>
               <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
             </Pressable>
           </View>
+        </Animated.View>
 
-          <View style={styles.weekdayHeader}>
-            {WEEKDAY_SHORT.map((w) => (
-              <Text key={w} style={styles.weekdayHeaderLabel}>
-                {w}
-              </Text>
-            ))}
-          </View>
-
-          <View style={styles.monthGrid}>
-            {monthGrid.map(({ date, inMonth }) => {
-              const key = dateKey(date);
-              const isToday = isSameDay(date, today);
-              const isSelected = !isToday && key === selectedKey;
-              const hideNumber = onlyFilledDays && inMonth && !isToday && !filledDates.has(key);
-              return (
-                <Pressable key={key} style={styles.gridCell} onPress={() => selectDay(date)}>
-                  {!hideNumber && (
-                    <Text
-                      style={[
-                        styles.gridNum,
-                        !inMonth && styles.gridNumMuted,
-                        isSelected && styles.gridNumSelected,
-                        isToday && styles.gridNumToday,
-                      ]}
-                    >
-                      {date.getDate()}
-                    </Text>
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      ) : (
-        <ScrollView
-          ref={weekScrollRef}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          // RN gives every ScrollView flexGrow: 1, so without this the week
-          // strip stretches over all the free height in this column and
-          // pushes the note far down the screen.
-          style={styles.weekScroll}
-          contentOffset={{ x: PAGE_WIDTH, y: 0 }}
-          onLayout={() => weekScrollRef.current?.scrollTo({ x: PAGE_WIDTH, animated: false })}
-          onMomentumScrollEnd={handleWeekScrollEnd}
-        >
-          {WEEK_PAGE_OFFSETS.map((offset) => (
-            <View key={offset} style={{ width: PAGE_WIDTH }}>
-              <View style={styles.weekRow}>
-                {getWeekDates(addDays(weekStart, offset)).map((date) => {
-                  const key = dateKey(date);
-                  const isToday = isSameDay(date, today);
-                  const isSelected = !isToday && key === selectedKey;
-                  return (
-                    <Pressable key={key} style={styles.dayCell} onPress={() => selectDay(date)}>
-                      <Text style={styles.dayAbbr}>{WEEKDAY_SHORT[mondayIndex(date)]}</Text>
-                      <Text
-                        style={[styles.dayNum, isSelected && styles.dayNumSelected, isToday && styles.dayNumToday]}
-                      >
-                        {date.getDate()}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
+        <View style={styles.weekdayHeader}>
+          {WEEKDAY_SHORT.map((w) => (
+            <Text key={w} style={styles.weekdayHeaderLabel}>
+              {w}
+            </Text>
           ))}
-        </ScrollView>
-      )}
+        </View>
+
+        <Animated.View style={[styles.gridClip, gridClipStyle]}>
+          <Animated.View
+            style={[styles.calendarLayer, { height: WEEK_AREA_HEIGHT }, weekLayerStyle]}
+            pointerEvents={isMonthExpanded ? 'none' : 'auto'}
+          >
+            <ScrollView
+              ref={weekScrollRef}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              // RN gives every ScrollView flexGrow: 1, so without a fixed
+              // height here the strip stretches over all the free space.
+              style={styles.weekScroll}
+              contentOffset={{ x: PAGE_WIDTH, y: 0 }}
+              onLayout={() => weekScrollRef.current?.scrollTo({ x: PAGE_WIDTH, animated: false })}
+              onMomentumScrollEnd={handleWeekScrollEnd}
+            >
+              {WEEK_PAGE_OFFSETS.map((offset) => (
+                <View key={offset} style={styles.weekPage}>
+                  {getWeekDates(addDays(weekStart, offset)).map((date) => (
+                    <DayCell
+                      key={dateKey(date)}
+                      date={date}
+                      isToday={isSameDay(date, today)}
+                      isSelected={dateKey(date) === selectedKey}
+                      onPress={() => selectDay(date)}
+                    />
+                  ))}
+                </View>
+              ))}
+            </ScrollView>
+          </Animated.View>
+
+          <Animated.View
+            style={[styles.calendarLayer, { height: MONTH_AREA_HEIGHT }, monthLayerStyle]}
+            pointerEvents={isMonthExpanded ? 'auto' : 'none'}
+          >
+            <View style={styles.monthGrid}>
+              {monthGrid.map(({ date, inMonth }) => {
+                const key = dateKey(date);
+                const isToday = isSameDay(date, today);
+                return (
+                  <DayCell
+                    key={key}
+                    date={date}
+                    isToday={isToday}
+                    isSelected={key === selectedKey}
+                    muted={!inMonth}
+                    hidden={onlyFilledDays && inMonth && !isToday && !filledDates.has(key)}
+                    inGrid
+                    onPress={() => selectDay(date)}
+                  />
+                );
+              })}
+            </View>
+          </Animated.View>
+        </Animated.View>
+      </Animated.View>
 
       {!isWriting && (
         <View style={styles.expandRow}>
-          <Pressable style={styles.expandButton} onPress={toggleMonthExpanded}>
+          <Pressable
+            style={styles.expandButton}
+            hitSlop={10}
+            onPress={() => setIsMonthExpanded((prev) => !prev)}
+          >
             <Ionicons name={isMonthExpanded ? 'chevron-up' : 'chevron-down'} size={16} color="#9CA3AF" />
           </Pressable>
         </View>
@@ -323,7 +345,7 @@ export default function CalendarScreen() {
         </View>
       )}
 
-      <View style={{ flex: 1 }}>
+      <View style={styles.noteArea}>
         <DocumentEditorScreen
           key={dailyDocId}
           embedded
@@ -335,6 +357,47 @@ export default function CalendarScreen() {
 
       <TagsDrawer tags={tags} activeFilter={null} onSelectFilter={() => {}} />
     </View>
+  );
+}
+
+// The circle is a View and the number a plain Text inside it, and the border
+// is always there (transparent when it shouldn't show) - a Text that itself
+// carries the background/border and changes them between states is what
+// Android renders unreliably, and it also keeps selecting a day from
+// changing any measurement.
+function DayCell({
+  date,
+  isToday,
+  isSelected,
+  muted,
+  hidden,
+  inGrid,
+  onPress,
+}: {
+  date: Date;
+  isToday: boolean;
+  isSelected: boolean;
+  muted?: boolean;
+  hidden?: boolean;
+  inGrid?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={inGrid ? styles.gridCell : styles.dayCell} onPress={onPress}>
+      <View
+        style={[
+          styles.dayCircle,
+          isSelected && !isToday && styles.dayCircleSelected,
+          isToday && styles.dayCircleToday,
+        ]}
+      >
+        {!hidden && (
+          <Text style={[styles.dayNum, muted && styles.dayNumMuted, isToday && styles.dayNumToday]}>
+            {date.getDate()}
+          </Text>
+        )}
+      </View>
+    </Pressable>
   );
 }
 
@@ -430,65 +493,18 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
-  weekScroll: {
-    flexGrow: 0,
+  calendarWrap: {
+    overflow: 'hidden',
   },
-  weekRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 8,
-  },
-  compactDate: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 20,
-    paddingTop: 4,
-    paddingBottom: 6,
-  },
-  compactDateLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: ACCENT,
-  },
-  dayCell: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 6,
-  },
-  dayAbbr: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    fontWeight: '500',
-  },
-  dayNum: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#111827',
-  },
-  dayNumSelected: {
-    borderWidth: 1.5,
-    borderColor: '#D1D5DB',
-    fontWeight: '700',
-  },
-  dayNumToday: {
-    backgroundColor: '#EF4444',
-    color: '#fff',
-    fontWeight: '700',
+  monthNavWrap: {
+    overflow: 'hidden',
   },
   monthNav: {
+    height: MONTH_NAV_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 18,
-    paddingTop: 4,
-    paddingBottom: 10,
   },
   monthNavLabel: {
     fontSize: 16,
@@ -496,6 +512,7 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   weekdayHeader: {
+    height: WEEKDAY_HEADER_HEIGHT,
     flexDirection: 'row',
     paddingHorizontal: 16,
   },
@@ -506,39 +523,67 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     fontWeight: '500',
   },
+  gridClip: {
+    overflow: 'hidden',
+  },
+  calendarLayer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+  },
+  weekScroll: {
+    flexGrow: 0,
+    height: WEEK_AREA_HEIGHT,
+  },
+  weekPage: {
+    width: PAGE_WIDTH,
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+  },
+  dayCell: {
+    flex: 1,
+    height: ROW_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   monthGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: 16,
-    paddingTop: 8,
   },
   gridCell: {
     width: `${100 / 7}%`,
+    height: ROW_HEIGHT,
     alignItems: 'center',
-    paddingVertical: 3,
+    justifyContent: 'center',
   },
-  gridNum: {
+  dayCircle: {
     width: 34,
     height: 34,
     borderRadius: 17,
-    textAlign: 'center',
-    textAlignVertical: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  dayCircleSelected: {
+    borderColor: '#D1D5DB',
+  },
+  dayCircleToday: {
+    backgroundColor: '#EF4444',
+    borderColor: '#EF4444',
+  },
+  dayNum: {
     fontSize: 15,
-    fontWeight: '500',
+    fontWeight: '600',
     color: '#111827',
   },
-  gridNumMuted: {
+  dayNumMuted: {
     color: '#D1D5DB',
   },
-  gridNumSelected: {
-    borderWidth: 1.5,
-    borderColor: '#D1D5DB',
-    fontWeight: '700',
-  },
-  gridNumToday: {
-    backgroundColor: '#EF4444',
+  dayNumToday: {
     color: '#fff',
-    fontWeight: '700',
   },
   expandRow: {
     flexDirection: 'row',
@@ -552,6 +597,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  compactDate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 6,
+  },
+  compactDateLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: ACCENT,
   },
   dateHeader: {
     paddingHorizontal: 20,
@@ -592,5 +650,8 @@ const styles = StyleSheet.create({
   weekNum: {
     fontSize: 14,
     color: '#9CA3AF',
+  },
+  noteArea: {
+    flex: 1,
   },
 });
