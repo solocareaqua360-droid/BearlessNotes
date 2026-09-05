@@ -457,6 +457,7 @@ type BlockRowProps = {
   onToggleImageFit: (id: string) => void;
   onOpenFile: (id: string) => void;
   onDownloadFile: (id: string) => void;
+  onOpenFileDatabase: () => void;
   onOpenLink: (url: string) => void;
   onOpenLinkDatabase: (block: Block) => void;
   inputRef: (ref: TextInput | null) => void;
@@ -480,6 +481,7 @@ function BlockRow({
   onToggleImageFit,
   onOpenFile,
   onDownloadFile,
+  onOpenFileDatabase,
   onOpenLink,
   onOpenLinkDatabase,
   inputRef,
@@ -567,9 +569,14 @@ function BlockRow({
           </Text>
         </Pressable>
         {!isSelectMode && (
-          <Pressable hitSlop={8} onPress={() => onDownloadFile(item.id)}>
-            <Ionicons name="download-outline" size={18} color="#6B7280" />
-          </Pressable>
+          <>
+            <Pressable hitSlop={8} onPress={onOpenFileDatabase} style={styles.fileDbButton}>
+              <Ionicons name="server-outline" size={16} color="#6B7280" />
+            </Pressable>
+            <Pressable hitSlop={8} onPress={() => onDownloadFile(item.id)}>
+              <Ionicons name="download-outline" size={18} color="#6B7280" />
+            </Pressable>
+          </>
         )}
       </View>
     );
@@ -790,6 +797,7 @@ type SortableBlockRowProps = {
   onToggleImageFit: (id: string) => void;
   onOpenFile: (id: string) => void;
   onDownloadFile: (id: string) => void;
+  onOpenFileDatabase: () => void;
   onOpenLink: (url: string) => void;
   onOpenLinkDatabase: (block: Block) => void;
   inputRef: (ref: TextInput | null) => void;
@@ -819,6 +827,7 @@ function SortableBlockRow({
   onToggleImageFit,
   onOpenFile,
   onDownloadFile,
+  onOpenFileDatabase,
   onOpenLink,
   onOpenLinkDatabase,
   inputRef,
@@ -889,6 +898,7 @@ function SortableBlockRow({
             onToggleImageFit={onToggleImageFit}
             onOpenFile={onOpenFile}
             onDownloadFile={onDownloadFile}
+            onOpenFileDatabase={onOpenFileDatabase}
             onOpenLink={onOpenLink}
             onOpenLinkDatabase={onOpenLinkDatabase}
             inputRef={inputRef}
@@ -915,6 +925,7 @@ type BlockListProps = {
   onToggleImageFit: (id: string) => void;
   onOpenFile: (id: string) => void;
   onDownloadFile: (id: string) => void;
+  onOpenFileDatabase: () => void;
   onOpenLink: (url: string) => void;
   onOpenLinkDatabase: (block: Block) => void;
   onInputRef: (id: string, ref: TextInput | null) => void;
@@ -937,6 +948,7 @@ function BlockList({
   onToggleImageFit,
   onOpenFile,
   onDownloadFile,
+  onOpenFileDatabase,
   onOpenLink,
   onOpenLinkDatabase,
   onInputRef,
@@ -1146,6 +1158,7 @@ function BlockList({
           onToggleImageFit={onToggleImageFit}
           onOpenFile={onOpenFile}
           onDownloadFile={onDownloadFile}
+          onOpenFileDatabase={onOpenFileDatabase}
           onOpenLink={onOpenLink}
           onOpenLinkDatabase={onOpenLinkDatabase}
           inputRef={(ref) => onInputRef(item.id, ref)}
@@ -2251,6 +2264,7 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           onToggleImageFit={toggleImageFit}
           onOpenFile={openFileBlock}
           onDownloadFile={downloadFileBlock}
+          onOpenFileDatabase={() => navigation.navigate('Files')}
           onOpenLink={openLinkBlock}
           onOpenLinkDatabase={openLinkDatabase}
           onInputRef={(id, ref) => {
@@ -2292,6 +2306,15 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
                   icon: 'pencil-outline',
                   label: 'Назва',
                   onPress: () => setImageRenameId(viewerBlock.id),
+                },
+                {
+                  key: 'database',
+                  icon: 'server-outline',
+                  label: 'База',
+                  onPress: () => {
+                    setViewerImageId(null);
+                    navigation.navigate('Photos');
+                  },
                 },
                 {
                   key: 'share',
@@ -2537,6 +2560,9 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: '#111827',
+  },
+  fileDbButton: {
+    padding: 2,
   },
   fileIconWrap: {
     position: 'relative',
