@@ -1,12 +1,29 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, doc, getDoc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  onSnapshot,
+  orderBy,
+  query,
+  updateDoc,
+} from 'firebase/firestore';
 import { db } from '../firebase';
 import { Block } from '../types';
+import { RootStackParamList } from '../navigation';
 
 const ACCENT = '#3B82F6';
+const DANGER = '#EF4444';
 const tasksCollection = collection(db, 'tasks');
+
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 type Task = {
   id: string;
@@ -16,6 +33,7 @@ type Task = {
 };
 
 export default function TasksScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -47,6 +65,31 @@ export default function TasksScreen() {
     const blocks: Block[] = data.blocks ?? [];
     const updatedBlocks = blocks.map((b) => (b.id === task.id ? { ...b, checked: newChecked } : b));
     updateDoc(documentRef, { blocks: updatedBlocks });
+  }
+
+  // A task isn't a separate record referenced from multiple documents like
+  // other object types will be - it IS the checkbox block, in exactly the
+  // one document it was typed into. So deleting it here has to remove that
+  // block from its source document too, not just this mirror, and the
+  // warning names that one document instead of a list of mentions.
+  function confirmDeleteTask(task: Task) {
+    Alert.alert('Видалити справу?', 'Чекбокс також зникне з документа, де його написано.', [
+      { text: 'Скасувати', style: 'cancel' },
+      { text: 'Видалити', style: 'destructive', onPress: () => deleteTask(task) },
+    ]);
+  }
+
+  async function deleteTask(task: Task) {
+    deleteDoc(doc(db, 'tasks', task.id));
+    const documentRef = doc(db, 'documents', task.documentId);
+    const snapshot = await getDoc(documentRef);
+    const data = snapshot.data();
+    if (!data) return;
+    const blocks: Block[] = data.blocks ?? [];
+    const remaining = blocks.filter((b) => b.id !== task.id);
+    updateDoc(documentRef, {
+      blocks: remaining.length > 0 ? remaining : [{ id: generateId(), text: '' }],
+    });
   }
 
   if (isLoading) {
@@ -89,7 +132,17 @@ export default function TasksScreen() {
                 color={item.checked ? ACCENT : '#9CA3AF'}
               />
             </Pressable>
-            <Text style={[styles.rowText, item.checked && styles.rowTextChecked]}>{item.text}</Text>
+            <Pressable
+              style={styles.rowTextTap}
+              onPress={() => navigation.navigate('Editor', { documentId: item.documentId })}
+            >
+              <Text style={[styles.rowText, item.checked && styles.rowTextChecked]} numberOfLines={2}>
+                {item.text}
+              </Text>
+            </Pressable>
+            <Pressable hitSlop={8} onPress={() => confirmDeleteTask(item)} style={styles.rowDelete}>
+              <Ionicons name="trash-outline" size={20} color={DANGER} />
+            </Pressable>
           </View>
         )}
       />
@@ -145,13 +198,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
   },
-  rowText: {
+  rowTextTap: {
     flex: 1,
+  },
+  rowText: {
     fontSize: 16,
     color: '#111827',
   },
   rowTextChecked: {
     textDecorationLine: 'line-through',
     opacity: 0.5,
+  },
+  rowDelete: {
+    padding: 4,
   },
 });
