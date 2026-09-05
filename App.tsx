@@ -3,7 +3,6 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
 import './src/firebase';
 import DocumentsScreen from './src/screens/DocumentsScreen';
 import PlaceholderScreen from './src/screens/PlaceholderScreen';
@@ -16,56 +15,21 @@ import TagManageScreen from './src/screens/TagManageScreen';
 import TagItemsScreen from './src/screens/TagItemsScreen';
 import SearchScreen from './src/screens/SearchScreen';
 import DocumentEditorScreen from './src/screens/DocumentEditorScreen';
+import FloatingIslandTabBar from './src/components/FloatingIslandTabBar';
 import { RootStackParamList } from './src/navigation';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+// "Пошук" isn't a tab anymore - it's a search icon on DocumentsScreen that
+// pushes its own stack screen (see navigation.ts) - and these three tabs
+// render through the floating-island tab bar instead of the default one.
 function Tabs() {
   return (
-    <Tab.Navigator
-      screenOptions={{
-        tabBarActiveTintColor: '#3B82F6',
-        tabBarInactiveTintColor: '#9CA3AF',
-      }}
-    >
-      <Tab.Screen
-        name="Документи"
-        component={DocumentsScreen}
-        options={{
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="document-text-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="Пошук"
-        component={SearchScreen}
-        options={{
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="search-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="Календар"
-        options={{
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar-outline" size={size} color={color} />
-          ),
-        }}
-      >
-        {() => <PlaceholderScreen icon="calendar-outline" label="Скоро" />}
-      </Tab.Screen>
-      <Tab.Screen
-        name="Більше"
-        component={DatabasesScreen}
-        options={{
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="ellipsis-horizontal-outline" size={size} color={color} />
-          ),
-        }}
-      />
+    <Tab.Navigator screenOptions={{ headerShown: false }} tabBar={(props) => <FloatingIslandTabBar {...props} />}>
+      <Tab.Screen name="Документи" component={DocumentsScreen} />
+      <Tab.Screen name="Календар">{() => <PlaceholderScreen icon="calendar-outline" label="Скоро" />}</Tab.Screen>
+      <Tab.Screen name="Більше" component={DatabasesScreen} />
     </Tab.Navigator>
   );
 }
@@ -84,6 +48,7 @@ export default function App() {
           <Stack.Screen name="Files" component={FilesScreen} />
           <Stack.Screen name="Tags" component={TagManageScreen} />
           <Stack.Screen name="TagItems" component={TagItemsScreen} />
+          <Stack.Screen name="Search" component={SearchScreen} />
           <Stack.Screen name="Placeholder">
             {({ route }) => <PlaceholderScreen icon={route.params.icon} label={route.params.label} />}
           </Stack.Screen>
