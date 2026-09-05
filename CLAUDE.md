@@ -26,9 +26,19 @@ any other app in this account (e.g. `bookmarvideo`). Keep it that way:
 
 ## Current state
 
-Stages 0–3 (`DEVELOPMENT_PLAN.md`) are done and confirmed on a real
-Android device via Expo Go. Stage 4 (undo/redo, text formatting, "/"
-quick-add menu, image blocks) is next and not yet started.
+Stages 0–4 (`DEVELOPMENT_PLAN.md`) are done and confirmed on a real
+Android device via Expo Go — undo/redo, inline text formatting, the "/"
+quick-add menu (bulleted/numbered lists, checkbox, image, file,
+divider), and image blocks (real-proportions/cropped toggle, full-screen
+zoom, compression). Also added on top of the plan: attaching arbitrary
+files (PDF/Word/Excel/etc.) as a block, opened via the OS's own
+"open with" sheet from a local cache copy, plus downloading both photos
+and files to a folder the user picks once via Android's Storage Access
+Framework. None of this has a cloud copy yet (images and files live
+only in the device's local cache/Firestore-referenced URI) — real
+Google Drive backup for this is noted as the top post-MVP priority, see
+the bottom of `DEVELOPMENT_PLAN.md`. Stage 5 (bypass-conversion of
+blocks into database objects) is next and not yet started.
 
 The Firebase project (`bearless-notes`, Spark plan) has Firestore
 (test-mode rules, region `eur3` — **rules must be locked down before real
