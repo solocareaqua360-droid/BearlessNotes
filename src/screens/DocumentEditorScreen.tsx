@@ -1348,14 +1348,20 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
   // attached from.
   async function pickFileForBlock(id: string) {
     setSlashMenuBlockId(null);
-    const result = await DocumentPicker.getDocumentAsync({ type: '*/*' });
+    // copyToCacheDirectory: false keeps the raw content:// SAF URI instead
+    // of the picker's own file:// cache copy. Traced through both modules'
+    // Android source: expo-file-system's permission check unconditionally
+    // trusts any content:// URI, but only trusts a file:// one that falls
+    // under the exact cache directory ITS OWN Context resolves - which,
+    // under Expo Go's per-experience sandboxing, isn't the same directory
+    // expo-document-picker actually copied into. That mismatch is what
+    // produced both "Not allowed to read file under given URL" (from
+    // expo-sharing) and "isn't readable" (from copyAsync's own check) on
+    // that file:// path. Reading through content:// instead sidesteps the
+    // whole comparison.
+    const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: false });
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
-    // The picker's own cache copy lives in a subfolder expo-sharing's
-    // FileProvider doesn't recognize in Expo Go ("Not allowed to read file
-    // under given URL" the moment the block is opened) - re-copying it
-    // straight into the plain cache directory puts it somewhere Sharing can
-    // actually read.
     const fileUri = `${LegacyFileSystem.cacheDirectory}${generateId()}-${asset.name}`;
     await LegacyFileSystem.copyAsync({ from: asset.uri, to: fileUri });
     snapshotBeforeChange();
