@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -57,6 +57,8 @@ export default function FilesScreen() {
     null
   );
   const [tagPickerForId, setTagPickerForId] = useState<string | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const { filterPending, requestDelete, undo, toast } = usePendingDelete<FileItem>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
 
@@ -81,12 +83,12 @@ export default function FilesScreen() {
     });
   }, []);
 
-  const displayedFiles = filterPending(files);
+  const pendingFilteredFiles = filterPending(files);
+  const needle = searchQuery.trim().toLowerCase();
+  const displayedFiles = needle
+    ? pendingFilteredFiles.filter((f) => (f.title || f.fileName).toLowerCase().includes(needle))
+    : pendingFilteredFiles;
   const tagPickerFile = tagPickerForId ? files.find((f) => f.id === tagPickerForId) ?? null : null;
-
-  function openSortOrFilter() {
-    navigation.navigate('Placeholder', { icon: 'options-outline', label: 'Скоро' });
-  }
 
   async function openFile(file: FileItem) {
     const available = await Sharing.isAvailableAsync();
@@ -223,25 +225,36 @@ export default function FilesScreen() {
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.header}>Файли</Text>
-        <View style={styles.headerIcons}>
-          <Pressable hitSlop={8} onPress={openSortOrFilter}>
-            <Ionicons name="swap-vertical-outline" size={20} color="#6B7280" />
-          </Pressable>
-          <Pressable hitSlop={8} onPress={openSortOrFilter}>
-            <Ionicons name="filter-outline" size={20} color="#6B7280" />
-          </Pressable>
-        </View>
+        <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
+          <Ionicons name={isSearching ? 'close' : 'search'} size={20} color="#6B7280" />
+        </Pressable>
       </View>
+
+      {isSearching && (
+        <View style={styles.searchRow}>
+          <Ionicons name="search" size={14} color="#9CA3AF" />
+          <TextInput
+            autoFocus
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Пошук файлів"
+            placeholderTextColor="#9CA3AF"
+            style={styles.searchInput}
+          />
+        </View>
+      )}
 
       {displayedFiles.length === 0 ? (
         <View style={styles.emptyState}>
           <View style={styles.emptyIcon}>
             <Ionicons name="document-outline" size={32} color={ACCENT} />
           </View>
-          <Text style={styles.emptyLabel}>Ще немає файлів</Text>
-          <Text style={styles.emptyHint}>
-            Прикріпіть файл як блок у будь-якому документі - він з'явиться тут сам
-          </Text>
+          <Text style={styles.emptyLabel}>{needle ? 'Нічого не знайдено' : 'Ще немає файлів'}</Text>
+          {!needle && (
+            <Text style={styles.emptyHint}>
+              Прикріпіть файл як блок у будь-якому документі - він з'явиться тут сам
+            </Text>
+          )}
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.list}>{displayedFiles.map(renderFileRow)}</ScrollView>
@@ -302,9 +315,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#111827',
   },
-  headerIcons: {
+  searchRow: {
     flexDirection: 'row',
-    gap: 16,
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 8,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#111827',
   },
   emptyState: {
     flex: 1,

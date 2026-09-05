@@ -2149,19 +2149,18 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
           {saveStatus === 'saving' ? 'Збереження…' : 'Збережено'}
         </Text>
         <View style={styles.headerRight}>
-          <Pressable hitSlop={8} onPress={toggleEditMode}>
-            <Ionicons
-              name={isEditMode ? 'checkmark-outline' : 'create-outline'}
-              size={22}
-              color={isEditMode ? ACCENT : '#111827'}
-            />
-          </Pressable>
           <Pressable hitSlop={8} onPress={toggleSelectMode}>
             <Ionicons
               name={isSelectMode ? 'close' : 'ellipse-outline'}
               size={22}
               color="#111827"
             />
+          </Pressable>
+          <Pressable
+            hitSlop={8}
+            onPress={() => navigation.navigate('Placeholder', { icon: 'ellipsis-horizontal-outline', label: 'Скоро' })}
+          >
+            <Ionicons name="ellipsis-horizontal-outline" size={22} color="#111827" />
           </Pressable>
         </View>
       </View>
@@ -2319,6 +2318,10 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
         )}
       </ScrollView>
 
+      <Pressable style={styles.editModeFab} onPress={toggleEditMode}>
+        <Ionicons name={isEditMode ? 'checkmark-outline' : 'create-outline'} size={24} color="#fff" />
+      </Pressable>
+
       {viewerBlock?.imageUri && (
         <Modal
           visible
@@ -2450,6 +2453,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
+  },
+  editModeFab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: ACCENT,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
   },
   scrollArea: {
     flex: 1,

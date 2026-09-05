@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -93,6 +93,8 @@ export default function PhotosScreen() {
     null
   );
   const [tagPickerForId, setTagPickerForId] = useState<string | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const { filterPending, requestDelete, undo, toast } = usePendingDelete<PhotoItem>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
 
@@ -115,13 +117,13 @@ export default function PhotosScreen() {
     });
   }, []);
 
-  const displayedPhotos = filterPending(photos);
+  const pendingFilteredPhotos = filterPending(photos);
+  const needle = searchQuery.trim().toLowerCase();
+  const displayedPhotos = needle
+    ? pendingFilteredPhotos.filter((p) => (p.title ?? '').toLowerCase().includes(needle))
+    : pendingFilteredPhotos;
   const viewerPhoto = viewerPhotoId ? photos.find((p) => p.id === viewerPhotoId) ?? null : null;
   const tagPickerPhoto = tagPickerForId ? photos.find((p) => p.id === tagPickerForId) ?? null : null;
-
-  function openSortOrFilter() {
-    navigation.navigate('Placeholder', { icon: 'options-outline', label: 'Скоро' });
-  }
 
   async function openDocumentIcon(photo: PhotoItem) {
     if (photo.documentIds.length === 0) return;
@@ -258,25 +260,36 @@ export default function PhotosScreen() {
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.header}>Фото</Text>
-        <View style={styles.headerIcons}>
-          <Pressable hitSlop={8} onPress={openSortOrFilter}>
-            <Ionicons name="swap-vertical-outline" size={20} color="#6B7280" />
-          </Pressable>
-          <Pressable hitSlop={8} onPress={openSortOrFilter}>
-            <Ionicons name="filter-outline" size={20} color="#6B7280" />
-          </Pressable>
-        </View>
+        <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
+          <Ionicons name={isSearching ? 'close' : 'search'} size={20} color="#6B7280" />
+        </Pressable>
       </View>
+
+      {isSearching && (
+        <View style={styles.searchRow}>
+          <Ionicons name="search" size={14} color="#9CA3AF" />
+          <TextInput
+            autoFocus
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Пошук фото за назвою"
+            placeholderTextColor="#9CA3AF"
+            style={styles.searchInput}
+          />
+        </View>
+      )}
 
       {displayedPhotos.length === 0 ? (
         <View style={styles.emptyState}>
           <View style={styles.emptyIcon}>
             <Ionicons name="image-outline" size={32} color={ACCENT} />
           </View>
-          <Text style={styles.emptyLabel}>Ще немає фото</Text>
-          <Text style={styles.emptyHint}>
-            Додайте зображення як блок у будь-якому документі - воно з'явиться тут само
-          </Text>
+          <Text style={styles.emptyLabel}>{needle ? 'Нічого не знайдено' : 'Ще немає фото'}</Text>
+          {!needle && (
+            <Text style={styles.emptyHint}>
+              Додайте зображення як блок у будь-якому документі - воно з'явиться тут само
+            </Text>
+          )}
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.grid}>
@@ -360,9 +373,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#111827',
   },
-  headerIcons: {
+  searchRow: {
     flexDirection: 'row',
-    gap: 16,
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 8,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#111827',
   },
   emptyState: {
     flex: 1,

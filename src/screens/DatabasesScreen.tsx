@@ -39,7 +39,15 @@ export default function DatabasesScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Бази даних</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.header}>Бази даних</Text>
+        <Pressable
+          hitSlop={8}
+          onPress={() => navigation.navigate('Placeholder', { icon: 'ellipsis-horizontal-outline', label: 'Скоро' })}
+        >
+          <Ionicons name="ellipsis-horizontal-outline" size={22} color="#111827" />
+        </Pressable>
+      </View>
       <ScrollView contentContainerStyle={styles.content}>
         <Pressable style={styles.wideTile} onPress={() => navigation.navigate('Tasks')}>
           <View style={[styles.tileIcon, { backgroundColor: '#EFF6FF' }]}>
@@ -90,13 +98,18 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 56,
+    paddingBottom: 12,
+  },
   header: {
     fontSize: 22,
     fontWeight: '700',
     color: '#111827',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 12,
   },
   content: {
     paddingHorizontal: 20,

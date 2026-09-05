@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
@@ -103,6 +103,8 @@ export default function LinksScreen({ route, navigation }: Props) {
     null
   );
   const [tagPickerForId, setTagPickerForId] = useState<string | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const { filterPending, requestDelete, undo, toast } = usePendingDelete<LinkItem>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
 
@@ -127,12 +129,12 @@ export default function LinksScreen({ route, navigation }: Props) {
     });
   }, []);
 
-  const filteredLinks = filterPending(links.filter((link) => categoryOf(link) === category));
+  const categoryLinks = filterPending(links.filter((link) => categoryOf(link) === category));
+  const needle = searchQuery.trim().toLowerCase();
+  const filteredLinks = needle
+    ? categoryLinks.filter((link) => (link.title || hostnameOf(link.url)).toLowerCase().includes(needle))
+    : categoryLinks;
   const tagPickerLink = tagPickerForId ? links.find((l) => l.id === tagPickerForId) ?? null : null;
-
-  function openSortOrFilter() {
-    navigation.navigate('Placeholder', { icon: 'options-outline', label: 'Скоро' });
-  }
 
   function openLinkUrl(url: string) {
     Linking.openURL(url).catch(() => {});
@@ -279,23 +281,32 @@ export default function LinksScreen({ route, navigation }: Props) {
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.header}>{info.title}</Text>
-        <View style={styles.headerIcons}>
-          <Pressable hitSlop={8} onPress={openSortOrFilter}>
-            <Ionicons name="swap-vertical-outline" size={20} color="#6B7280" />
-          </Pressable>
-          <Pressable hitSlop={8} onPress={openSortOrFilter}>
-            <Ionicons name="filter-outline" size={20} color="#6B7280" />
-          </Pressable>
-        </View>
+        <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
+          <Ionicons name={isSearching ? 'close' : 'search'} size={20} color="#6B7280" />
+        </Pressable>
       </View>
+
+      {isSearching && (
+        <View style={styles.searchRow}>
+          <Ionicons name="search" size={14} color="#9CA3AF" />
+          <TextInput
+            autoFocus
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Пошук за назвою"
+            placeholderTextColor="#9CA3AF"
+            style={styles.searchInput}
+          />
+        </View>
+      )}
 
       {filteredLinks.length === 0 ? (
         <View style={styles.emptyState}>
           <View style={[styles.emptyIcon, { backgroundColor: `${info.color}1A` }]}>
             <Ionicons name={info.icon} size={32} color={info.color} />
           </View>
-          <Text style={styles.emptyLabel}>Ще немає збережених посилань</Text>
-          <Text style={styles.emptyHint}>{info.emptyHint}</Text>
+          <Text style={styles.emptyLabel}>{needle ? 'Нічого не знайдено' : 'Ще немає збережених посилань'}</Text>
+          {!needle && <Text style={styles.emptyHint}>{info.emptyHint}</Text>}
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.list}>{filteredLinks.map(renderLinkRow)}</ScrollView>
@@ -359,9 +370,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#111827',
   },
-  headerIcons: {
+  searchRow: {
     flexDirection: 'row',
-    gap: 16,
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 8,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#111827',
   },
   emptyState: {
     flex: 1,

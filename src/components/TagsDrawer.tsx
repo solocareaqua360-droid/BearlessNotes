@@ -117,7 +117,12 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter }: Props
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pickerVisible, setPickerVisible] = useState(false);
-  const translateX = useSharedValue(-DRAWER_WIDTH);
+  // How far open the drawer is, 0 (closed) .. DRAWER_WIDTH (fully open) -
+  // both the panel and the tab derive their translateX from this one value,
+  // so the tab always travels together with the panel's edge instead of
+  // staying pinned to the screen edge (it ends up covering whatever sliver
+  // of the island the panel itself doesn't reach).
+  const openAmount = useSharedValue(0);
 
   useEffect(() => {
     return onSnapshot(pinnedTagsDoc, (snapshot) => {
@@ -126,8 +131,8 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter }: Props
   }, []);
 
   useEffect(() => {
-    translateX.value = withSpring(isOpen ? 0 : -DRAWER_WIDTH, { damping: 22, stiffness: 210 });
-  }, [isOpen, translateX]);
+    openAmount.value = withSpring(isOpen ? DRAWER_WIDTH : 0, { damping: 22, stiffness: 210 });
+  }, [isOpen, openAmount]);
 
   const tree = useMemo(() => buildTree(tags), [tags]);
   const topLevel = useMemo(
@@ -170,21 +175,29 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter }: Props
   // Job is plain JS state (isOpen) + a shared value it feeds into
   // useAnimatedStyle - no per-frame worklet logic to protect, so this runs
   // on the JS thread directly (same call as DocumentEditorScreen's own drag
-  // gesture).
+  // gesture). onFinalize (not onEnd) always runs the open/closed snap
+  // decision even when the gesture is cancelled rather than ending
+  // normally - sitting at the screen's left edge, this tab is exactly
+  // where Android's own edge-back gesture can steal the touch stream
+  // mid-drag, and onEnd alone would then never fire, leaving the drawer
+  // stuck wherever the last onUpdate left it.
   const pan = Gesture.Pan()
     .runOnJS(true)
+    .hitSlop({ left: 10, right: 10, top: 10, bottom: 10 })
+    .activeOffsetX([-5, 5])
+    .failOffsetY([-24, 24])
     .onUpdate((e) => {
-      const base = isOpen ? 0 : -DRAWER_WIDTH;
-      translateX.value = Math.min(0, Math.max(-DRAWER_WIDTH, base + e.translationX));
+      const base = isOpen ? DRAWER_WIDTH : 0;
+      openAmount.value = Math.min(DRAWER_WIDTH, Math.max(0, base + e.translationX));
     })
-    .onEnd((e) => {
-      const openAmount = translateX.value + DRAWER_WIDTH;
-      setIsOpen(openAmount > DRAWER_WIDTH * 0.35 || e.velocityX > 400);
+    .onFinalize((e) => {
+      setIsOpen(openAmount.value > DRAWER_WIDTH * 0.35 || e.velocityX > 400);
     });
 
-  const panelStyle = useAnimatedStyle(() => ({ transform: [{ translateX: translateX.value }] }));
+  const panelStyle = useAnimatedStyle(() => ({ transform: [{ translateX: openAmount.value - DRAWER_WIDTH }] }));
+  const tabStyle = useAnimatedStyle(() => ({ transform: [{ translateX: openAmount.value }] }));
   const backdropStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(translateX.value, [-DRAWER_WIDTH, 0], [0, 1], Extrapolation.CLAMP),
+    opacity: interpolate(openAmount.value, [0, DRAWER_WIDTH], [0, 1], Extrapolation.CLAMP),
   }));
 
   return (
@@ -248,9 +261,9 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter }: Props
       </Animated.View>
 
       <GestureDetector gesture={pan}>
-        <View style={styles.tab}>
-          <Ionicons name="pricetag-outline" size={15} color="#fff" />
-        </View>
+        <Animated.View style={[styles.tab, tabStyle]}>
+          <Ionicons name="pricetag-outline" size={16} color="#fff" />
+        </Animated.View>
       </GestureDetector>
 
       <Modal visible={pickerVisible} transparent animationType="fade" onRequestClose={() => setPickerVisible(false)}>
@@ -283,6 +296,11 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     backgroundColor: 'rgba(17,24,39,0.35)',
+    // Above FloatingIslandTabBar's own elevation (6) so the drawer - and
+    // the dimming behind it - covers the floating island instead of
+    // sitting under it.
+    elevation: 15,
+    zIndex: 15,
   },
   panel: {
     position: 'absolute',
@@ -297,7 +315,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 20,
     shadowOffset: { width: 4, height: 0 },
-    elevation: 8,
+    elevation: 16,
+    zIndex: 16,
   },
   title: {
     fontSize: 19,
@@ -419,13 +438,18 @@ const styles = StyleSheet.create({
   },
   tab: {
     position: 'absolute',
+    // Bottom-aligned with the island (same 24px offset) but much taller,
+    // so the actual grab point sits well above the screen's bottom-left
+    // corner - that corner is where Android's edge-back gesture and (on
+    // gesture nav) the home-gesture area overlap most, and a short handle
+    // right down in it kept getting its drag stolen mid-gesture.
     left: 0,
     bottom: 24,
     width: 34,
-    height: 64,
+    height: 140,
     backgroundColor: ACCENT,
-    borderTopRightRadius: 32,
-    borderBottomRightRadius: 32,
+    borderTopRightRadius: 70,
+    borderBottomRightRadius: 70,
     alignItems: 'flex-start',
     justifyContent: 'center',
     paddingLeft: 7,
@@ -433,7 +457,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 10,
     shadowOffset: { width: 2, height: 0 },
-    elevation: 5,
+    elevation: 17,
+    zIndex: 17,
   },
   pickerBackdrop: {
     flex: 1,
