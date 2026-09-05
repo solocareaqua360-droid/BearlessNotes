@@ -13,11 +13,12 @@ type Tile = {
   color: string;
 };
 
-// Only "Справи" is a real, working database so far (see TasksScreen) - the
-// rest are placeholders per PROJECT_BRIEF.md's object model (нагадування,
-// зображення/файли/посилання as their own queryable types, plus geo points)
-// and get filled in one at a time, the same way справи already went from
-// "just a block" to a real cross-document list.
+// "Справи" and "Посилання" are real, working databases so far (see
+// TasksScreen/LinksScreen) - the rest are placeholders per PROJECT_BRIEF.md's
+// object model (нагадування, зображення/файли as their own queryable types,
+// plus geo points as a variant of links) and get filled in one at a time,
+// the same way each of the above went from "just a block" to a real
+// cross-document list.
 const GRID_TILES: Tile[] = [
   { key: 'geo', label: 'Геоточки', icon: 'location-outline', color: '#16A34A' },
   { key: 'links', label: 'Посилання', icon: 'link-outline', color: '#3B82F6' },
@@ -45,7 +46,18 @@ export default function DatabasesScreen() {
             <Pressable
               key={tile.key}
               style={styles.tile}
-              onPress={() => navigation.navigate('Placeholder', { icon: tile.icon, label: 'Скоро' })}
+              onPress={() =>
+                // Гео-точки та YouTube/TikTok-посилання are 'link' blocks
+                // under the hood too (see DocumentEditorScreen's
+                // fetchLinkPreview) and already land in the same `links`
+                // mirror collection LinksScreen reads from - so all three
+                // tiles open that one real screen, not separate "Скоро"
+                // placeholders, until they're worth splitting apart (e.g.
+                // once sort/filter can tell them apart for the user).
+                tile.key === 'links' || tile.key === 'geo' || tile.key === 'video'
+                  ? navigation.navigate('Links')
+                  : navigation.navigate('Placeholder', { icon: tile.icon, label: 'Скоро' })
+              }
             >
               <View style={[styles.tileIcon, { backgroundColor: `${tile.color}1A` }]}>
                 <Ionicons name={tile.icon} size={20} color={tile.color} />
