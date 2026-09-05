@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import './src/firebase';
 import DocumentsScreen from './src/screens/DocumentsScreen';
 import PlaceholderScreen from './src/screens/PlaceholderScreen';
+import TasksScreen from './src/screens/TasksScreen';
 import DocumentEditorScreen from './src/screens/DocumentEditorScreen';
 import { RootStackParamList } from './src/navigation';
 
@@ -52,14 +53,13 @@ function Tabs() {
       </Tab.Screen>
       <Tab.Screen
         name="Більше"
+        component={TasksScreen}
         options={{
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="ellipsis-horizontal-outline" size={size} color={color} />
           ),
         }}
-      >
-        {() => <PlaceholderScreen icon="ellipsis-horizontal-outline" label="Скоро" />}
-      </Tab.Screen>
+      />
     </Tab.Navigator>
   );
 }
