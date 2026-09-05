@@ -19,6 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
+import { File, Paths } from 'expo-file-system';
 // react-native-gesture-handler's own ScrollView (not the core RN one) so it
 // shares the same touch arena as our rows' Pan gestures - otherwise a swipe
 // starting on a block (its TextInput especially) never reaches the
@@ -1337,20 +1338,27 @@ export default function DocumentEditorScreen({ route, navigation }: Props) {
     });
   }
 
-  // No cloud upload yet - the picker's own cache copy (copyToCacheDirectory
-  // defaults to true) is what gets stored and later opened, so this only
-  // works on the device the file was attached from.
+  // No cloud upload yet - the picker's own cache copy is what gets stored
+  // and later opened, so this only works on the device the file was
+  // attached from.
   async function pickFileForBlock(id: string) {
     setSlashMenuBlockId(null);
     const result = await DocumentPicker.getDocumentAsync({ type: '*/*' });
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
+    // The picker's own cache copy lives in a subfolder expo-sharing's
+    // FileProvider doesn't recognize in Expo Go ("Not allowed to read file
+    // under given URL" the moment the block is opened) - re-copying it
+    // straight into Paths.cache puts it somewhere Sharing can actually read.
+    const destination = new File(Paths.cache, `${generateId()}-${asset.name}`);
+    await new File(asset.uri).copy(destination);
+    const fileUri = destination.uri;
     snapshotBeforeChange();
     setBlocks((prev) => {
       const index = prev.findIndex((b) => b.id === id);
       if (index === -1) return prev;
       const next = [...prev];
-      const fileBlock: Block = { ...buildBlock(id, 'file', ''), fileUri: asset.uri, fileName: asset.name };
+      const fileBlock: Block = { ...buildBlock(id, 'file', ''), fileUri, fileName: asset.name };
       if (asset.mimeType) fileBlock.mimeType = asset.mimeType;
       next[index] = fileBlock;
       if (index === next.length - 1) {
