@@ -1,16 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
-import Animated, {
-  Easing,
-  Extrapolation,
-  interpolate,
-  useAnimatedProps,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { arrayRemove, arrayUnion, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Tag } from '../types';
@@ -21,8 +12,6 @@ const DRAWER_WIDTH = Math.round(Dimensions.get('window').width * (2 / 3));
 // Matches FloatingIslandTabBar's own height (8px padding + 48px buttons) -
 // the open button is a standalone circle the same size as the island.
 const OPEN_BUTTON_SIZE = 64;
-
-const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
 
 export type DocumentTagFilter = { type: 'tag'; tag: Tag } | { type: 'untagged' };
 
@@ -120,11 +109,10 @@ type Props = {
 
 // A standalone round button at the bottom-left (same size as the floating
 // island, styled to match it) opens a Bear-style tag sidebar, 2/3 of the
-// screen wide, over a blurred-and-dimmed rest of the screen. Picking a tag
-// or "Без тегів" sets the Documents screen's filter and closes the drawer;
-// clearing the filter happens from the active-filter chip DocumentsScreen
-// shows, not from here. Closing otherwise is a tap anywhere on the blurred
-// backdrop.
+// screen wide, over a dimmed rest of the screen. Picking a tag or "Без
+// тегів" sets the Documents screen's filter and closes the drawer; clearing
+// the filter happens from the active-filter chip DocumentsScreen shows, not
+// from here. Closing otherwise is a tap anywhere on the dimmed backdrop.
 export default function TagsDrawer({ tags, activeFilter, onSelectFilter }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState<'tree' | 'tiles'>('tree');
@@ -132,13 +120,15 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter }: Props
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pickerVisible, setPickerVisible] = useState(false);
   // How far open the panel is, 0 (closed) .. DRAWER_WIDTH (fully open).
-  // Kept separate from the backdrop's blur intensity below - the panel
-  // itself should snap out quickly (a spring here read as "wobbling like a
-  // boat", so a plain eased slide replaces it), while the blur behind it
-  // is meant to fade in more gradually, like the background slowly
-  // dropping out of focus.
+  // Kept separate from the backdrop's own dim-in below - the panel itself
+  // snaps out quickly (a spring here read as "wobbling like a boat", so a
+  // plain eased slide replaces it), while the dimming behind it fades in
+  // more gradually, like the background slowly dropping out of focus.
+  // (A real blur was tried here too - expo-blur's Android blur view - but
+  // the native module bundled in Expo Go didn't match the JS package's
+  // version and crashed the app outright, so this stays a plain dim.)
   const openAmount = useSharedValue(0);
-  const blurIntensity = useSharedValue(0);
+  const dimAmount = useSharedValue(0);
 
   useEffect(() => {
     return onSnapshot(pinnedTagsDoc, (snapshot) => {
@@ -151,11 +141,11 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter }: Props
       duration: 260,
       easing: Easing.out(Easing.cubic),
     });
-    blurIntensity.value = withTiming(isOpen ? 45 : 0, {
+    dimAmount.value = withTiming(isOpen ? 1 : 0, {
       duration: isOpen ? 520 : 260,
       easing: Easing.out(Easing.quad),
     });
-  }, [isOpen, openAmount, blurIntensity]);
+  }, [isOpen, openAmount, dimAmount]);
 
   const tree = useMemo(() => buildTree(tags), [tags]);
   const topLevel = useMemo(
@@ -196,23 +186,11 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter }: Props
   }
 
   const panelStyle = useAnimatedStyle(() => ({ transform: [{ translateX: openAmount.value - DRAWER_WIDTH }] }));
-  // A plain opacity fade for the dark tint (kept minimal - the blur itself
-  // carries most of the "out of focus" effect), driven by the same slower
-  // timing as the blur so both settle in together.
-  const backdropStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(blurIntensity.value, [0, 45], [0, 1], Extrapolation.CLAMP),
-  }));
-  const blurProps = useAnimatedProps(() => ({ intensity: blurIntensity.value }));
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: dimAmount.value }));
 
   return (
     <>
       <Animated.View style={[styles.backdrop, backdropStyle]} pointerEvents={isOpen ? 'auto' : 'none'}>
-        <AnimatedBlurView
-          style={StyleSheet.absoluteFill}
-          tint="dark"
-          experimentalBlurMethod="dimezisBlurView"
-          animatedProps={blurProps}
-        />
         <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsOpen(false)} />
       </Animated.View>
 
