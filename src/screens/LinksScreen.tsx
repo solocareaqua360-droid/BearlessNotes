@@ -549,7 +549,6 @@ export default function LinksScreen({ route, navigation }: Props) {
         activeFilter={tagFilter}
         onSelectFilter={setTagFilter}
         hideOpenButton={isSelectMode}
-        simple
       />
 
       <BulkActionBar

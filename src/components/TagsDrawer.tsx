@@ -1,13 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Alert, Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { arrayRemove, arrayUnion, doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { db } from '../firebase';
 import { Tag } from '../types';
 
 const ACCENT = '#3B82F6';
-const pinnedTagsDoc = doc(db, 'settings', 'pinnedTags');
 const DRAWER_WIDTH = Math.round(Dimensions.get('window').width * (2 / 3));
 // Matches FloatingIslandTabBar's own height (8px padding + 48px buttons) -
 // the open button is a standalone circle the same size as the island.
@@ -44,6 +41,11 @@ type TreeNode = {
   children: Map<string, TreeNode>;
 };
 
+// A branch only exists here for a path some tag in `tags` actually sits on -
+// so a screen that passes in just its own "used" tags (see Files/Photos/
+// Links) automatically prunes the whole tree down to branches that still
+// have at least one tagged item, rather than every branch that ever existed
+// app-wide.
 function buildTree(tags: Tag[]): TreeNode {
   const root: TreeNode = { name: '', fullPath: '', children: new Map() };
   for (const tag of tags) {
@@ -136,14 +138,10 @@ type Props = {
   // it has to get out of the way while their own bulk-select bar is on
   // screen (same bottom-left corner, would otherwise overlap it).
   hideOpenButton?: boolean;
-  // Files/Photos/Links: skip the tree and the pin-a-tile picker entirely -
-  // `tags` is already the exact (small) set the screen wants offered, so
-  // it's shown as one flat tile grid with nothing else to browse.
-  simple?: boolean;
 };
 
 // A standalone round button at the bottom-left (same size as the floating
-// island, styled to match it) opens a Bear-style tag sidebar, 2/3 of the
+// island, styled to match it) opens a Bear-style tag tree, 2/3 of the
 // screen wide, over a dimmed rest of the screen. Tapping a tag (or "Без
 // тегів") toggles it into the calling screen's filter without closing the
 // drawer, so more than one can be picked; closing happens by tapping the
@@ -151,8 +149,10 @@ type Props = {
 // tags combine: Мульти = at least one matches (OR), Ізолюючий = every
 // picked tag must be present (AND). Shared as-is across Documents/
 // Calendar/Files/Photos/Links - it only ever browses and toggles from
-// whatever `tags` list it's given.
-export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpenButton, simple }: Props) {
+// whatever `tags` list it's given (Files/Photos/Links pass only their own
+// "used" tags, which is what prunes empty branches for them - see
+// buildTree above).
+export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpenButton }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   // The backdrop+panel live inside a real Modal (a separate Android window,
   // always painted above the whole activity - including the floating
@@ -162,11 +162,8 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
   // flips false so the closing animation below gets to finish before the
   // Modal actually unmounts, instead of yanking the drawer away instantly.
   const [isRendered, setIsRendered] = useState(false);
-  const [viewMode, setViewMode] = useState<'tree' | 'tiles'>('tree');
   const [filterMode, setFilterMode] = useState<TagFilterMode>('multi');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
-  const [pickerVisible, setPickerVisible] = useState(false);
   // How far open the panel is, 0 (closed) .. DRAWER_WIDTH (fully open).
   // Kept separate from the backdrop's own dim-in below - the panel itself
   // snaps out quickly (a spring here read as "wobbling like a boat", so a
@@ -178,36 +175,26 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
   const openAmount = useSharedValue(0);
   const dimAmount = useSharedValue(0);
 
-  useEffect(() => {
-    return onSnapshot(pinnedTagsDoc, (snapshot) => {
-      setPinnedIds(snapshot.data()?.tagIds ?? []);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (isOpen) setIsRendered(true);
-    openAmount.value = withTiming(isOpen ? DRAWER_WIDTH : 0, {
-      duration: 260,
-      easing: Easing.out(Easing.cubic),
-    });
-    dimAmount.value = withTiming(isOpen ? 1 : 0, {
-      duration: isOpen ? 520 : 260,
-      easing: Easing.out(Easing.quad),
-    });
-    if (!isOpen) {
-      const timeout = setTimeout(() => setIsRendered(false), 260);
-      return () => clearTimeout(timeout);
-    }
-  }, [isOpen, openAmount, dimAmount]);
-
   const tree = useMemo(() => buildTree(tags), [tags]);
   const topLevel = useMemo(
     () => Array.from(tree.children.values()).sort((a, b) => a.name.localeCompare(b.name)),
     [tree]
   );
-  const pinnedTags = tags.filter((t) => pinnedIds.includes(t.id));
-  const unpinnedTags = tags.filter((t) => !pinnedIds.includes(t.id));
   const selectedTagIds = activeFilter?.type === 'tags' ? new Set(activeFilter.tagIds) : new Set<string>();
+
+  function openDrawer() {
+    setIsOpen(true);
+    setIsRendered(true);
+    openAmount.value = withTiming(DRAWER_WIDTH, { duration: 260, easing: Easing.out(Easing.cubic) });
+    dimAmount.value = withTiming(1, { duration: 520, easing: Easing.out(Easing.quad) });
+  }
+
+  function closeDrawer() {
+    setIsOpen(false);
+    openAmount.value = withTiming(0, { duration: 260, easing: Easing.out(Easing.cubic) });
+    dimAmount.value = withTiming(0, { duration: 260, easing: Easing.out(Easing.quad) });
+    setTimeout(() => setIsRendered(false), 260);
+  }
 
   function toggleExpand(path: string) {
     setExpanded((prev) => {
@@ -236,111 +223,47 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
     }
   }
 
-  async function pinTag(tag: Tag) {
-    setPickerVisible(false);
-    await setDoc(pinnedTagsDoc, { tagIds: arrayUnion(tag.id) }, { merge: true });
-  }
-
-  function confirmUnpin(tag: Tag) {
-    Alert.alert(`Прибрати "${tag.path}" з плиток?`, undefined, [
-      { text: 'Скасувати', style: 'cancel' },
-      {
-        text: 'Прибрати',
-        style: 'destructive',
-        onPress: () => setDoc(pinnedTagsDoc, { tagIds: arrayRemove(tag.id) }, { merge: true }),
-      },
-    ]);
-  }
-
   const panelStyle = useAnimatedStyle(() => ({ transform: [{ translateX: openAmount.value - DRAWER_WIDTH }] }));
   const backdropStyle = useAnimatedStyle(() => ({ opacity: dimAmount.value }));
 
-  function renderTile(tag: Tag, onLongPress?: () => void) {
-    const isSelected = selectedTagIds.has(tag.id);
-    return (
-      <Pressable
-        key={tag.id}
-        style={[styles.tile, isSelected && styles.tileActive]}
-        onPress={() => toggleTag(tag)}
-        onLongPress={onLongPress}
-      >
-        <View style={[styles.tileIcon, { backgroundColor: `${tag.color}1A` }]}>
-          <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={16} color={tag.color} />
-        </View>
-        <Text style={styles.tileLabel} numberOfLines={1}>
-          {tag.path}
-        </Text>
-        {isSelected && <Ionicons name="checkmark-circle" size={14} color={ACCENT} style={styles.tileCheck} />}
-      </Pressable>
-    );
-  }
-
   return (
     <>
-      <Modal
-        visible={isRendered}
-        transparent
-        animationType="none"
-        statusBarTranslucent
-        onRequestClose={() => setIsOpen(false)}
-      >
+      <Modal visible={isRendered} transparent animationType="none" statusBarTranslucent onRequestClose={closeDrawer}>
         <Animated.View style={[styles.backdrop, backdropStyle]} pointerEvents={isOpen ? 'auto' : 'none'}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsOpen(false)} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeDrawer} />
         </Animated.View>
 
         <Animated.View style={[styles.panel, { width: DRAWER_WIDTH }, panelStyle]}>
-        <Text style={styles.title}>Теги</Text>
+          <Text style={styles.title}>Теги</Text>
 
-        {!simple && (
           <View style={styles.segmented}>
             <Pressable
-              style={[styles.segmentButton, viewMode === 'tree' && styles.segmentButtonActive]}
-              onPress={() => setViewMode('tree')}
+              style={[styles.segmentButton, filterMode === 'multi' && styles.segmentButtonActive]}
+              onPress={() => selectFilterMode('multi')}
             >
-              <Text style={[styles.segmentLabel, viewMode === 'tree' && styles.segmentLabelActive]}>Дерево</Text>
+              <Text style={[styles.segmentLabel, filterMode === 'multi' && styles.segmentLabelActive]}>Мульти</Text>
             </Pressable>
             <Pressable
-              style={[styles.segmentButton, viewMode === 'tiles' && styles.segmentButtonActive]}
-              onPress={() => setViewMode('tiles')}
+              style={[styles.segmentButton, filterMode === 'isolating' && styles.segmentButtonActive]}
+              onPress={() => selectFilterMode('isolating')}
             >
-              <Text style={[styles.segmentLabel, viewMode === 'tiles' && styles.segmentLabelActive]}>Плитки</Text>
+              <Text style={[styles.segmentLabel, filterMode === 'isolating' && styles.segmentLabelActive]}>
+                Ізолюючий
+              </Text>
             </Pressable>
           </View>
-        )}
 
-        <View style={styles.segmented}>
           <Pressable
-            style={[styles.segmentButton, filterMode === 'multi' && styles.segmentButtonActive]}
-            onPress={() => selectFilterMode('multi')}
+            style={[styles.untaggedRow, activeFilter?.type === 'untagged' && styles.untaggedRowActive]}
+            onPress={toggleUntagged}
           >
-            <Text style={[styles.segmentLabel, filterMode === 'multi' && styles.segmentLabelActive]}>Мульти</Text>
+            <View style={styles.treeIcon}>
+              <Ionicons name="pricetag-outline" size={12} color="#9CA3AF" />
+            </View>
+            <Text style={styles.untaggedLabel}>Без тегів</Text>
           </Pressable>
-          <Pressable
-            style={[styles.segmentButton, filterMode === 'isolating' && styles.segmentButtonActive]}
-            onPress={() => selectFilterMode('isolating')}
-          >
-            <Text style={[styles.segmentLabel, filterMode === 'isolating' && styles.segmentLabelActive]}>
-              Ізолюючий
-            </Text>
-          </Pressable>
-        </View>
+          <View style={styles.divider} />
 
-        <Pressable
-          style={[styles.untaggedRow, activeFilter?.type === 'untagged' && styles.untaggedRowActive]}
-          onPress={toggleUntagged}
-        >
-          <View style={styles.treeIcon}>
-            <Ionicons name="pricetag-outline" size={12} color="#9CA3AF" />
-          </View>
-          <Text style={styles.untaggedLabel}>Без тегів</Text>
-        </Pressable>
-        <View style={styles.divider} />
-
-        {simple ? (
-          <ScrollView contentContainerStyle={styles.tileGrid}>
-            {tags.map((tag) => renderTile(tag))}
-          </ScrollView>
-        ) : viewMode === 'tree' ? (
           <ScrollView style={styles.scroll}>
             {topLevel.map((node) => (
               <TreeRow
@@ -354,44 +277,14 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
               />
             ))}
           </ScrollView>
-        ) : (
-          <ScrollView contentContainerStyle={styles.tileGrid}>
-            {pinnedTags.map((tag) => renderTile(tag, () => confirmUnpin(tag)))}
-            <Pressable style={[styles.tile, styles.newTile]} onPress={() => setPickerVisible(true)}>
-              <View style={styles.newTileIcon}>
-                <Ionicons name="add" size={16} color="#9CA3AF" />
-              </View>
-              <Text style={styles.newTileLabel}>Додати</Text>
-            </Pressable>
-          </ScrollView>
-        )}
         </Animated.View>
       </Modal>
 
       {!isOpen && !hideOpenButton && (
-        <Pressable style={styles.openButton} onPress={() => setIsOpen(true)}>
+        <Pressable style={styles.openButton} onPress={openDrawer}>
           <Text style={styles.openButtonHash}>#</Text>
         </Pressable>
       )}
-
-      <Modal visible={pickerVisible} transparent animationType="fade" onRequestClose={() => setPickerVisible(false)}>
-        <Pressable style={styles.pickerBackdrop} onPress={() => setPickerVisible(false)}>
-          <Pressable style={styles.pickerSheet} onPress={() => {}}>
-            <View style={styles.pickerHandle} />
-            <Text style={styles.title}>Додати плитку</Text>
-            <ScrollView style={styles.pickerList}>
-              {unpinnedTags.map((tag) => (
-                <Pressable key={tag.id} style={styles.pickerRow} onPress={() => pinTag(tag)}>
-                  <View style={[styles.treeIcon, { backgroundColor: `${tag.color}1A` }]}>
-                    <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={12} color={tag.color} />
-                  </View>
-                  <Text style={styles.treeLabel}>{tag.path}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </>
   );
 }
@@ -498,61 +391,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#111827',
   },
-  tileGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  tile: {
-    position: 'relative',
-    width: '47%',
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    padding: 10,
-    gap: 6,
-  },
-  tileActive: {
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1.5,
-    borderColor: ACCENT,
-  },
-  tileCheck: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-  },
-  tileIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tileLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#111827',
-  },
-  newTile: {
-    backgroundColor: '#fff',
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: '#D1D5DB',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  newTileIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  newTileLabel: {
-    fontSize: 12,
-    color: '#9CA3AF',
-  },
   openButton: {
     position: 'absolute',
     // Same size and bottom offset as the island, standing on its own to
@@ -577,36 +415,5 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: '700',
     color: ACCENT,
-  },
-  pickerBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(17,24,39,0.45)',
-    justifyContent: 'flex-end',
-  },
-  pickerSheet: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 28,
-    maxHeight: '70%',
-  },
-  pickerHandle: {
-    width: 36,
-    height: 4,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 12,
-  },
-  pickerList: {
-    maxHeight: 320,
-  },
-  pickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 9,
   },
 });

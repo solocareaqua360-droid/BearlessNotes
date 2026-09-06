@@ -549,7 +549,6 @@ export default function PhotosScreen() {
         activeFilter={tagFilter}
         onSelectFilter={setTagFilter}
         hideOpenButton={isSelectMode}
-        simple
       />
 
       <BulkActionBar

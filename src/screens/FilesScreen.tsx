@@ -484,7 +484,6 @@ export default function FilesScreen() {
         activeFilter={tagFilter}
         onSelectFilter={setTagFilter}
         hideOpenButton={isSelectMode}
-        simple
       />
 
       <BulkActionBar
