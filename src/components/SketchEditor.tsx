@@ -1,19 +1,10 @@
 import { useEffect, useState } from 'react';
-import {
-  GestureResponderEvent,
-  LayoutChangeEvent,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { GestureResponderEvent, LayoutChangeEvent, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SketchElement } from '../types';
+import RenamePrompt from './RenamePrompt';
 
 const COLORS = ['#111827', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
 const WIDTHS = [3, 6, 10];
@@ -103,7 +94,12 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
   const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
   const [shapeStart, setShapeStart] = useState<Point | null>(null);
   const [shapeCurrent, setShapeCurrent] = useState<Point | null>(null);
-  const [pendingText, setPendingText] = useState<{ x: number; y: number; value: string } | null>(null);
+  // A separate (nested) Modal, not an overlay positioned inside the canvas
+  // View below - that canvas already claims touch responder for the whole
+  // drawing gesture, which fights an inline TextInput for focus (the
+  // keyboard would flash open and immediately close). A proper Modal lives
+  // in its own native window on Android, sidestepping that entirely.
+  const [pendingText, setPendingText] = useState<{ x: number; y: number } | null>(null);
   const [draggingText, setDraggingText] = useState<{ index: number; offsetX: number; offsetY: number } | null>(
     null
   );
@@ -148,7 +144,7 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
         setDraggingText({ index: hitIndex, offsetX: locationX - el.x, offsetY: locationY - el.y });
         return;
       }
-      setPendingText({ x: locationX, y: locationY, value: '' });
+      setPendingText({ x: locationX, y: locationY });
       return;
     }
     if (tool === 'line' || tool === 'rect' || tool === 'circle') {
@@ -206,16 +202,14 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
     });
   }
 
-  function commitText() {
-    setPendingText((p) => {
-      if (p && p.value.trim()) {
-        setElements((els) => [
-          ...els,
-          { kind: 'text', x: p.x, y: p.y, text: p.value.trim(), color, fontSize: TEXT_FONT_SIZE },
-        ]);
-      }
-      return null;
-    });
+  function commitText(value: string) {
+    if (pendingText) {
+      setElements((els) => [
+        ...els,
+        { kind: 'text', x: pendingText.x, y: pendingText.y, text: value, color, fontSize: TEXT_FONT_SIZE },
+      ]);
+    }
+    setPendingText(null);
   }
 
   function undo() {
@@ -304,22 +298,16 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
               />
             )}
           </Svg>
-
-          {pendingText && (
-            <TextInput
-              autoFocus
-              value={pendingText.value}
-              onChangeText={(v) => setPendingText((p) => p && { ...p, value: v })}
-              onSubmitEditing={commitText}
-              onBlur={commitText}
-              placeholder="Текст…"
-              style={[
-                styles.textOverlayInput,
-                { left: pendingText.x, top: pendingText.y - TEXT_FONT_SIZE, color, fontSize: TEXT_FONT_SIZE },
-              ]}
-            />
-          )}
         </View>
+
+        <RenamePrompt
+          visible={pendingText !== null}
+          title="Текст"
+          initialValue=""
+          placeholder="Текст…"
+          onCancel={() => setPendingText(null)}
+          onSave={commitText}
+        />
 
         <View style={styles.toolbar}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolRow}>
@@ -401,12 +389,6 @@ const styles = StyleSheet.create({
   canvas: {
     flex: 1,
     backgroundColor: '#fff',
-  },
-  textOverlayInput: {
-    position: 'absolute',
-    minWidth: 80,
-    padding: 0,
-    fontWeight: '600',
   },
   toolbar: {
     borderTopWidth: StyleSheet.hairlineWidth,
