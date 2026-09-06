@@ -1,29 +1,51 @@
 import { useEffect, useState } from 'react';
-import { GestureResponderEvent, LayoutChangeEvent, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  GestureResponderEvent,
+  LayoutChangeEvent,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import Svg, { Path, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { SketchElement } from '../types';
-import RenamePrompt from './RenamePrompt';
+import { SketchElement, SketchPathElement, SketchShape } from '../types';
 
 const COLORS = ['#111827', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
 const WIDTHS = [3, 6, 10];
 const TEXT_FONT_SIZE = 22;
-// How close a touch has to land to an element to erase it - whole-element
-// erase (not true pixel erasing), since elements are vector data rather
-// than a raster canvas.
-const ERASE_RADIUS = 24;
+// How close a touch has to land to a stroke's points to rub them out. The
+// eraser removes just the points it passes over (splitting what's left
+// into separate strokes), rather than the whole element - erasing a whole
+// stroke is what plain "undo" already does.
+const ERASE_RADIUS = 18;
+const HANDLE_RADIUS = 8;
+const HANDLE_TOUCH_RADIUS = 22;
 
 type Point = { x: number; y: number };
-type Tool = 'pen' | 'line' | 'rect' | 'circle' | 'text' | 'eraser';
+type Tool = 'pen' | 'line' | 'arrow' | 'rect' | 'circle' | 'text' | 'select' | 'eraser';
+type ShapeTool = SketchShape['kind'];
 
-const TOOLS: { tool: Tool; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { tool: 'pen', icon: 'pencil-outline' },
-  { tool: 'line', icon: 'remove-outline' },
-  { tool: 'rect', icon: 'square-outline' },
-  { tool: 'circle', icon: 'ellipse-outline' },
-  { tool: 'text', icon: 'text-outline' },
+const TOOLS: { tool: Tool; family: 'ion' | 'mci'; icon: string }[] = [
+  { tool: 'pen', family: 'ion', icon: 'pencil-outline' },
+  { tool: 'line', family: 'ion', icon: 'remove-outline' },
+  { tool: 'arrow', family: 'ion', icon: 'arrow-forward-outline' },
+  { tool: 'rect', family: 'ion', icon: 'square-outline' },
+  { tool: 'circle', family: 'ion', icon: 'ellipse-outline' },
+  { tool: 'text', family: 'ion', icon: 'text-outline' },
+  { tool: 'select', family: 'mci', icon: 'cursor-move' },
+  { tool: 'eraser', family: 'mci', icon: 'eraser' },
 ];
+
+const SHAPE_TOOLS: ShapeTool[] = ['line', 'arrow', 'rect', 'circle'];
+
+function isShapeTool(tool: Tool): tool is ShapeTool {
+  return (SHAPE_TOOLS as Tool[]).includes(tool);
+}
 
 interface Props {
   visible: boolean;
@@ -36,6 +58,9 @@ function pointsToPath(points: Point[]): string {
   return points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
 }
 
+// Every element's `d` is built from plain M/L segments only (no arcs, no
+// curves) - that keeps one parser good for every hit test the editor does:
+// erasing, selecting, and bounding boxes.
 function parsePathPoints(d: string): Point[] {
   return d
     .split(/(?=[ML])/)
@@ -46,47 +71,133 @@ function parsePathPoints(d: string): Point[] {
     });
 }
 
-// A rectangle/circle only needs its own start/end drag points, not a
-// point-by-point trace like a pen stroke - each just becomes a plain SVG
-// path so it renders through the exact same <Path> element as a stroke.
-// The circle is a 32-sided polygon rather than a true SVG arc - visually
-// indistinguishable at normal stroke widths, but it keeps every element's
-// `d` built from plain M/L points, so parsePathPoints (used for erasing)
-// doesn't need separate arc-math just for this one shape.
-function shapePath(tool: 'line' | 'rect' | 'circle', start: Point, end: Point): string {
-  if (tool === 'line') return `M${start.x} ${start.y} L${end.x} ${end.y}`;
-  if (tool === 'rect') {
-    return `M${start.x} ${start.y} L${end.x} ${start.y} L${end.x} ${end.y} L${start.x} ${end.y} Z`;
+// A shape is stored by its two defining points (plus its kind) rather than
+// only as a finished path, so it can still be moved and resized afterwards
+// - `d` is just regenerated from them each time.
+function shapeToPath(shape: SketchShape, strokeWidth: number): string {
+  const { kind, x1, y1, x2, y2 } = shape;
+  if (kind === 'line') return `M${x1} ${y1} L${x2} ${y2}`;
+  if (kind === 'arrow') {
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const head = Math.max(14, strokeWidth * 4);
+    const spread = Math.PI / 7;
+    const hx1 = x2 - head * Math.cos(angle - spread);
+    const hy1 = y2 - head * Math.sin(angle - spread);
+    const hx2 = x2 - head * Math.cos(angle + spread);
+    const hy2 = y2 - head * Math.sin(angle + spread);
+    return `M${x1} ${y1} L${x2} ${y2} M${hx1} ${hy1} L${x2} ${y2} L${hx2} ${hy2}`;
   }
-  const r = Math.hypot(end.x - start.x, end.y - start.y) || 1;
-  const { x: cx, y: cy } = start;
-  const segments = 32;
+  if (kind === 'rect') {
+    return `M${x1} ${y1} L${x2} ${y1} L${x2} ${y2} L${x1} ${y2} L${x1} ${y1}`;
+  }
+  // Circle as a 32-sided polygon rather than a true SVG arc: visually
+  // indistinguishable at these stroke widths, and it keeps the path made
+  // of plain points so the eraser and hit tests work on it unchanged.
+  const r = Math.hypot(x2 - x1, y2 - y1) || 1;
   const points: Point[] = [];
-  for (let i = 0; i <= segments; i++) {
-    const angle = (i / segments) * Math.PI * 2;
-    points.push({ x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
+  for (let i = 0; i <= 32; i++) {
+    const angle = (i / 32) * Math.PI * 2;
+    points.push({ x: x1 + r * Math.cos(angle), y: y1 + r * Math.sin(angle) });
   }
   return pointsToPath(points);
 }
 
-function elementNear(el: SketchElement, x: number, y: number): boolean {
-  if (el.kind === 'text') return Math.hypot(el.x - x, el.y - y) < ERASE_RADIUS;
-  return parsePathPoints(el.d).some((p) => Math.hypot(p.x - x, p.y - y) < ERASE_RADIUS);
+function shapeElement(shape: SketchShape, color: string, width: number): SketchPathElement {
+  return { kind: 'path', d: shapeToPath(shape, width), color, width, shape };
 }
 
-// A rough bounding box (no text-measurement API available here) used only
-// to tell "tapped an existing text label, drag it" apart from "tapped
-// empty canvas, start a new one" - x/y is the text's own baseline origin.
-function textHitIndex(elements: SketchElement[], x: number, y: number): number {
+// Where the resize grips sit for a selected shape. A line/arrow grabs by
+// its two ends, a rectangle by its corners, a circle by one point on its
+// rim (its centre is the anchor).
+function shapeHandles(shape: SketchShape): Point[] {
+  const { kind, x1, y1, x2, y2 } = shape;
+  if (kind === 'rect') {
+    return [
+      { x: x1, y: y1 },
+      { x: x2, y: y1 },
+      { x: x2, y: y2 },
+      { x: x1, y: y2 },
+    ];
+  }
+  if (kind === 'circle') {
+    const r = Math.hypot(x2 - x1, y2 - y1) || 1;
+    return [{ x: x1 + r, y: y1 }];
+  }
+  return [
+    { x: x1, y: y1 },
+    { x: x2, y: y2 },
+  ];
+}
+
+function resizeShape(shape: SketchShape, handleIndex: number, p: Point): SketchShape {
+  if (shape.kind === 'rect') {
+    if (handleIndex === 0) return { ...shape, x1: p.x, y1: p.y };
+    if (handleIndex === 1) return { ...shape, x2: p.x, y1: p.y };
+    if (handleIndex === 2) return { ...shape, x2: p.x, y2: p.y };
+    return { ...shape, x1: p.x, y2: p.y };
+  }
+  if (shape.kind === 'circle') return { ...shape, x2: p.x, y2: p.y };
+  if (handleIndex === 0) return { ...shape, x1: p.x, y1: p.y };
+  return { ...shape, x2: p.x, y2: p.y };
+}
+
+function moveShape(shape: SketchShape, dx: number, dy: number): SketchShape {
+  return { ...shape, x1: shape.x1 + dx, y1: shape.y1 + dy, x2: shape.x2 + dx, y2: shape.y2 + dy };
+}
+
+function boundsOf(el: SketchElement): { minX: number; minY: number; maxX: number; maxY: number } {
+  if (el.kind === 'text') {
+    const approxWidth = Math.max(el.text.length * el.fontSize * 0.55, 20);
+    return { minX: el.x, minY: el.y - el.fontSize, maxX: el.x + approxWidth, maxY: el.y };
+  }
+  const points = parsePathPoints(el.d);
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
+}
+
+// Only shapes and text can be picked up - a freehand pen stroke stays
+// where it was drawn (moving those was explicitly not wanted).
+function isSelectable(el: SketchElement): boolean {
+  return el.kind === 'text' || el.shape !== undefined;
+}
+
+function selectableIndexAt(elements: SketchElement[], x: number, y: number): number {
+  const PAD = 14;
   for (let i = elements.length - 1; i >= 0; i--) {
     const el = elements[i];
-    if (el.kind !== 'text') continue;
-    const approxWidth = Math.max(el.text.length * el.fontSize * 0.55, 20);
-    if (x >= el.x - 10 && x <= el.x + approxWidth + 10 && y >= el.y - el.fontSize - 10 && y <= el.y + 10) {
-      return i;
-    }
+    if (!isSelectable(el)) continue;
+    const b = boundsOf(el);
+    if (x >= b.minX - PAD && x <= b.maxX + PAD && y >= b.minY - PAD && y <= b.maxY + PAD) return i;
   }
   return -1;
+}
+
+// Rubs out just the points the eraser passed over: what's left of a stroke
+// is split into separate strokes, so wiping the middle of a line leaves
+// its two ends behind instead of deleting the whole thing. A shape that
+// gets partly rubbed out loses its shape data (it's no longer a clean
+// rectangle/circle) and carries on as a plain path.
+function eraseFromElement(el: SketchElement, x: number, y: number): SketchElement[] {
+  if (el.kind === 'text') {
+    const b = boundsOf(el);
+    const hit = x >= b.minX - 8 && x <= b.maxX + 8 && y >= b.minY - 8 && y <= b.maxY + 8;
+    return hit ? [] : [el];
+  }
+  const points = parsePathPoints(el.d);
+  if (!points.some((p) => Math.hypot(p.x - x, p.y - y) < ERASE_RADIUS)) return [el];
+  const runs: Point[][] = [];
+  let run: Point[] = [];
+  for (const p of points) {
+    if (Math.hypot(p.x - x, p.y - y) < ERASE_RADIUS) {
+      if (run.length > 1) runs.push(run);
+      run = [];
+    } else {
+      run.push(p);
+    }
+  }
+  if (run.length > 1) runs.push(run);
+  return runs.map((r) => ({ kind: 'path', d: pointsToPath(r), color: el.color, width: el.width }));
 }
 
 export default function SketchEditor({ visible, initialElements, onSave, onClose }: Props) {
@@ -94,15 +205,15 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
   const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
   const [shapeStart, setShapeStart] = useState<Point | null>(null);
   const [shapeCurrent, setShapeCurrent] = useState<Point | null>(null);
-  // A separate (nested) Modal, not an overlay positioned inside the canvas
-  // View below - that canvas already claims touch responder for the whole
-  // drawing gesture, which fights an inline TextInput for focus (the
-  // keyboard would flash open and immediately close). A proper Modal lives
-  // in its own native window on Android, sidestepping that entirely.
-  const [pendingText, setPendingText] = useState<{ x: number; y: number } | null>(null);
-  const [draggingText, setDraggingText] = useState<{ index: number; offsetX: number; offsetY: number } | null>(
-    null
-  );
+  // Placement for a new text label; the field itself is a plain overlay in
+  // this same window - NOT a nested <Modal>, which on Android takes focus
+  // away from its own TextInput (the keyboard opened and closed again).
+  const [pendingText, setPendingText] = useState<Point | null>(null);
+  const [textValue, setTextValue] = useState('');
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [drag, setDrag] = useState<
+    { kind: 'move'; index: number; lastX: number; lastY: number } | { kind: 'handle'; index: number; handle: number } | null
+  >(null);
   const [color, setColor] = useState(COLORS[0]);
   const [strokeWidth, setStrokeWidth] = useState(WIDTHS[0]);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
@@ -118,7 +229,9 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
       setShapeStart(null);
       setShapeCurrent(null);
       setPendingText(null);
-      setDraggingText(null);
+      setTextValue('');
+      setSelectedIndex(null);
+      setDrag(null);
       setTool('pen');
     }
   }, [visible, initialElements]);
@@ -128,7 +241,52 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
   }
 
   function eraseAt(x: number, y: number) {
-    setElements((prev) => prev.filter((el) => !elementNear(el, x, y)));
+    setElements((prev) => prev.flatMap((el) => eraseFromElement(el, x, y)));
+    setSelectedIndex(null);
+  }
+
+  function updateElement(index: number, next: SketchElement) {
+    setElements((prev) => prev.map((el, i) => (i === index ? next : el)));
+  }
+
+  function handleSelectStart(x: number, y: number) {
+    // A grip on the already-selected shape wins over picking something
+    // else up, so resizing still works when shapes overlap.
+    if (selectedIndex !== null) {
+      const el = elements[selectedIndex];
+      if (el && el.kind === 'path' && el.shape) {
+        const handles = shapeHandles(el.shape);
+        const handle = handles.findIndex((h) => Math.hypot(h.x - x, h.y - y) < HANDLE_TOUCH_RADIUS);
+        if (handle !== -1) {
+          setDrag({ kind: 'handle', index: selectedIndex, handle });
+          return;
+        }
+      }
+    }
+    const index = selectableIndexAt(elements, x, y);
+    setSelectedIndex(index === -1 ? null : index);
+    if (index !== -1) setDrag({ kind: 'move', index, lastX: x, lastY: y });
+  }
+
+  function handleSelectMove(x: number, y: number) {
+    if (!drag) return;
+    const el = elements[drag.index];
+    if (!el) return;
+    if (drag.kind === 'handle') {
+      if (el.kind === 'path' && el.shape) {
+        const shape = resizeShape(el.shape, drag.handle, { x, y });
+        updateElement(drag.index, shapeElement(shape, el.color, el.width));
+      }
+      return;
+    }
+    const dx = x - drag.lastX;
+    const dy = y - drag.lastY;
+    if (el.kind === 'text') {
+      updateElement(drag.index, { ...el, x: el.x + dx, y: el.y + dy });
+    } else if (el.shape) {
+      updateElement(drag.index, shapeElement(moveShape(el.shape, dx, dy), el.color, el.width));
+    }
+    setDrag({ ...drag, lastX: x, lastY: y });
   }
 
   function handleStart(e: GestureResponderEvent) {
@@ -137,17 +295,16 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
       eraseAt(locationX, locationY);
       return;
     }
+    if (tool === 'select') {
+      handleSelectStart(locationX, locationY);
+      return;
+    }
     if (tool === 'text') {
-      const hitIndex = textHitIndex(elements, locationX, locationY);
-      if (hitIndex !== -1) {
-        const el = elements[hitIndex] as { kind: 'text'; x: number; y: number };
-        setDraggingText({ index: hitIndex, offsetX: locationX - el.x, offsetY: locationY - el.y });
-        return;
-      }
+      setTextValue('');
       setPendingText({ x: locationX, y: locationY });
       return;
     }
-    if (tool === 'line' || tool === 'rect' || tool === 'circle') {
+    if (isShapeTool(tool)) {
       setShapeStart({ x: locationX, y: locationY });
       setShapeCurrent({ x: locationX, y: locationY });
       return;
@@ -161,20 +318,12 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
       eraseAt(locationX, locationY);
       return;
     }
-    if (tool === 'text') {
-      if (draggingText) {
-        const { index, offsetX, offsetY } = draggingText;
-        setElements((prev) =>
-          prev.map((el, i) =>
-            i === index && el.kind === 'text'
-              ? { ...el, x: locationX - offsetX, y: locationY - offsetY }
-              : el
-          )
-        );
-      }
+    if (tool === 'select') {
+      handleSelectMove(locationX, locationY);
       return;
     }
-    if (tool === 'line' || tool === 'rect' || tool === 'circle') {
+    if (tool === 'text') return;
+    if (isShapeTool(tool)) {
       setShapeCurrent({ x: locationX, y: locationY });
       return;
     }
@@ -182,13 +331,17 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
   }
 
   function handleEnd() {
-    setDraggingText(null);
-    if (tool === 'line' || tool === 'rect' || tool === 'circle') {
+    setDrag(null);
+    if (isShapeTool(tool)) {
       if (shapeStart && shapeCurrent && (shapeStart.x !== shapeCurrent.x || shapeStart.y !== shapeCurrent.y)) {
-        setElements((prev) => [
-          ...prev,
-          { kind: 'path', d: shapePath(tool, shapeStart, shapeCurrent), color, width: strokeWidth },
-        ]);
+        const shape: SketchShape = {
+          kind: tool,
+          x1: shapeStart.x,
+          y1: shapeStart.y,
+          x2: shapeCurrent.x,
+          y2: shapeCurrent.y,
+        };
+        setElements((prev) => [...prev, shapeElement(shape, color, strokeWidth)]);
       }
       setShapeStart(null);
       setShapeCurrent(null);
@@ -202,30 +355,50 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
     });
   }
 
-  function commitText(value: string) {
-    if (pendingText) {
+  function commitText() {
+    const value = textValue.trim();
+    if (pendingText && value) {
       setElements((els) => [
         ...els,
         { kind: 'text', x: pendingText.x, y: pendingText.y, text: value, color, fontSize: TEXT_FONT_SIZE },
       ]);
     }
     setPendingText(null);
+    setTextValue('');
   }
 
   function undo() {
+    setSelectedIndex(null);
     setElements((els) => els.slice(0, -1));
   }
 
   function clear() {
+    setSelectedIndex(null);
     setElements([]);
   }
 
-  function selectColor(c: string) {
-    if (tool === 'eraser') setTool('pen');
-    setColor(c);
+  function selectTool(t: Tool) {
+    if (t !== 'select') setSelectedIndex(null);
+    setTool(t);
   }
 
-  const previewShapeD = shapeStart && shapeCurrent ? shapePath(tool as 'line' | 'rect' | 'circle', shapeStart, shapeCurrent) : null;
+  function selectColor(c: string) {
+    setColor(c);
+    // Recolour whatever is selected, so the palette also works as "change
+    // this one's colour" rather than only affecting the next thing drawn.
+    if (selectedIndex !== null) {
+      const el = elements[selectedIndex];
+      if (el) updateElement(selectedIndex, { ...el, color: c });
+    }
+  }
+
+  const previewShape: SketchShape | null =
+    isShapeTool(tool) && shapeStart && shapeCurrent
+      ? { kind: tool, x1: shapeStart.x, y1: shapeStart.y, x2: shapeCurrent.x, y2: shapeCurrent.y }
+      : null;
+  const selected = selectedIndex !== null ? elements[selectedIndex] : undefined;
+  const selectedBounds = selected ? boundsOf(selected) : null;
+  const selectedHandles = selected && selected.kind === 'path' && selected.shape ? shapeHandles(selected.shape) : [];
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -287,9 +460,9 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
                 strokeLinejoin="round"
               />
             )}
-            {previewShapeD && (
+            {previewShape && (
               <Path
-                d={previewShapeD}
+                d={shapeToPath(previewShape, strokeWidth)}
                 stroke={color}
                 strokeWidth={strokeWidth}
                 fill="none"
@@ -297,37 +470,40 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
                 strokeLinejoin="round"
               />
             )}
+            {selectedBounds && (
+              <Rect
+                x={selectedBounds.minX - 6}
+                y={selectedBounds.minY - 6}
+                width={selectedBounds.maxX - selectedBounds.minX + 12}
+                height={selectedBounds.maxY - selectedBounds.minY + 12}
+                stroke="#3B82F6"
+                strokeWidth={1}
+                strokeDasharray="6 4"
+                fill="none"
+              />
+            )}
+            {selectedHandles.map((h, i) => (
+              <Circle key={`h${i}`} cx={h.x} cy={h.y} r={HANDLE_RADIUS} fill="#fff" stroke="#3B82F6" strokeWidth={2} />
+            ))}
           </Svg>
         </View>
 
-        <RenamePrompt
-          visible={pendingText !== null}
-          title="Текст"
-          initialValue=""
-          placeholder="Текст…"
-          onCancel={() => setPendingText(null)}
-          onSave={commitText}
-        />
-
         <View style={styles.toolbar}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolRow}>
-            {TOOLS.map(({ tool: t, icon }) => (
+            {TOOLS.map(({ tool: t, family, icon }) => (
               <Pressable
                 key={t}
                 hitSlop={4}
                 style={[styles.toolButton, tool === t && styles.toolButtonActive]}
-                onPress={() => setTool(t)}
+                onPress={() => selectTool(t)}
               >
-                <Ionicons name={icon} size={20} color={tool === t ? '#fff' : '#111827'} />
+                {family === 'ion' ? (
+                  <Ionicons name={icon as never} size={20} color={tool === t ? '#fff' : '#111827'} />
+                ) : (
+                  <MaterialCommunityIcons name={icon as never} size={20} color={tool === t ? '#fff' : '#111827'} />
+                )}
               </Pressable>
             ))}
-            <Pressable
-              hitSlop={4}
-              style={[styles.toolButton, tool === 'eraser' && styles.toolButtonActive]}
-              onPress={() => setTool('eraser')}
-            >
-              <MaterialCommunityIcons name="eraser" size={20} color={tool === 'eraser' ? '#fff' : '#111827'} />
-            </Pressable>
           </ScrollView>
           <View style={styles.colorRow}>
             {COLORS.map((c) => (
@@ -352,6 +528,40 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
             ))}
           </View>
         </View>
+
+        {pendingText && (
+          <View style={styles.textPromptBackdrop}>
+            <View style={styles.textPromptCard}>
+              <Text style={styles.textPromptTitle}>Текст</Text>
+              <TextInput
+                autoFocus
+                value={textValue}
+                onChangeText={setTextValue}
+                onSubmitEditing={commitText}
+                placeholder="Текст…"
+                style={styles.textPromptInput}
+              />
+              <View style={styles.textPromptButtons}>
+                <Pressable
+                  style={styles.textPromptCancel}
+                  onPress={() => {
+                    setPendingText(null);
+                    setTextValue('');
+                  }}
+                >
+                  <Text style={styles.textPromptCancelLabel}>Скасувати</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.textPromptSave, !textValue.trim() && styles.textPromptSaveDisabled]}
+                  disabled={!textValue.trim()}
+                  onPress={commitText}
+                >
+                  <Text style={styles.textPromptSaveLabel}>Додати</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        )}
       </SafeAreaView>
     </Modal>
   );
@@ -442,5 +652,66 @@ const styles = StyleSheet.create({
   },
   widthDot: {
     backgroundColor: '#111827',
+  },
+  textPromptBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  textPromptCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    gap: 12,
+  },
+  textPromptTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  textPromptInput: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: '#111827',
+  },
+  textPromptButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+    marginTop: 4,
+  },
+  textPromptCancel: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  textPromptCancelLabel: {
+    fontSize: 15,
+    color: '#6B7280',
+  },
+  textPromptSave: {
+    backgroundColor: '#3B82F6',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+  },
+  textPromptSaveDisabled: {
+    backgroundColor: '#BFDBFE',
+  },
+  textPromptSaveLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
   },
 });

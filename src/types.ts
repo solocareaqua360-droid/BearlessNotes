@@ -15,11 +15,25 @@ export type BlockType =
 // directly from its start/end points (a rectangle as a closed 4-point
 // path, a circle as two arcs) - either way it's just a path to render,
 // no separate shape-kind field needed.
+// The two defining points of a simple shape, kept alongside the rendered
+// path so the shape can still be moved/resized later - a freehand pen
+// stroke has no such structure and is deliberately not movable.
+export interface SketchShape {
+  kind: 'line' | 'arrow' | 'rect' | 'circle';
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
 export interface SketchPathElement {
   kind: 'path';
   d: string;
   color: string;
   width: number;
+  // Absent on freehand strokes, and dropped from a shape the eraser has
+  // partly rubbed out (it's no longer a clean rectangle/circle).
+  shape?: SketchShape;
 }
 
 // A text label placed on a 'sketch' block's canvas.
