@@ -37,7 +37,6 @@ import CopyToNoteModal from '../components/CopyToNoteModal';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
-import { useHiddenTags } from '../hooks/useHiddenTags';
 import { blockFromPhoto, copyObjectsToNote } from '../utils/copyToNote';
 import { setLastDatabaseRoute } from '../utils/lastDatabaseRoute';
 
@@ -142,7 +141,6 @@ export default function PhotosScreen() {
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
   const { filterPending, requestDelete, requestDeleteMany, undo, toast } = usePendingDelete<PhotoItem>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
-  const { hiddenIds, hideTag } = useHiddenTags('photo');
   const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, clear: clearSelection } =
     useMultiSelect();
 
@@ -198,7 +196,7 @@ export default function PhotosScreen() {
   // Only offer tags actually assigned to at least one photo - not the whole
   // app-wide tag list - so this drawer stays a short, relevant menu.
   const usedTagIds = new Set(photos.flatMap((p) => p.tagIds));
-  const drawerTags = tags.filter((t) => usedTagIds.has(t.id) && !hiddenIds.has(t.id));
+  const drawerTags = tags.filter((t) => usedTagIds.has(t.id));
   const needle = searchQuery.trim().toLowerCase();
   const displayedPhotos = needle
     ? tagFilteredPhotos.filter((p) => (p.title ?? '').toLowerCase().includes(needle))
@@ -292,13 +290,6 @@ export default function PhotosScreen() {
         }
       })
     );
-  }
-
-  function removeTagFromDrawer(tag: { id: string }) {
-    hideTag(tag.id);
-    if (tagFilter?.type === 'tags' && tagFilter.tagIds.includes(tag.id)) {
-      setTagFilter(removeTagFromFilter(tagFilter, tag.id));
-    }
   }
 
   function confirmDeleteSelected() {
@@ -566,7 +557,6 @@ export default function PhotosScreen() {
         activeFilter={tagFilter}
         onSelectFilter={setTagFilter}
         hideOpenButton={isSelectMode}
-        onRemoveTag={removeTagFromDrawer}
       />
 
       <BulkActionBar

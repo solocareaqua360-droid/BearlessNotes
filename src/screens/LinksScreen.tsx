@@ -32,7 +32,6 @@ import CopyToNoteModal from '../components/CopyToNoteModal';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useTags, detachTagFromDeletedItem, isTagAllowedForKind } from '../hooks/useTags';
-import { useHiddenTags } from '../hooks/useHiddenTags';
 import { blockFromLink, copyObjectsToNote } from '../utils/copyToNote';
 import { linkDocId } from '../utils/linkId';
 import { setLastDatabaseRoute } from '../utils/lastDatabaseRoute';
@@ -148,7 +147,6 @@ export default function LinksScreen({ route, navigation }: Props) {
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
   const { filterPending, requestDelete, requestDeleteMany, undo, toast } = usePendingDelete<LinkItem>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
-  const { hiddenIds, hideTag } = useHiddenTags(tagKind);
   const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, clear: clearSelection } =
     useMultiSelect();
 
@@ -212,9 +210,7 @@ export default function LinksScreen({ route, navigation }: Props) {
   // whichever of the three link screens this is, and only ones actually
   // assigned to a link in this category.
   const usedTagIds = new Set(categoryLinks.flatMap((l) => l.tagIds));
-  const drawerTags = tags.filter(
-    (t) => isTagAllowedForKind(t, tagKind) && usedTagIds.has(t.id) && !hiddenIds.has(t.id)
-  );
+  const drawerTags = tags.filter((t) => isTagAllowedForKind(t, tagKind) && usedTagIds.has(t.id));
   const tagPickerLink = tagPickerForId ? links.find((l) => l.id === tagPickerForId) ?? null : null;
   const selectedLinks = categoryLinks.filter((l) => selectedIds.has(l.id));
 
@@ -299,13 +295,6 @@ export default function LinksScreen({ route, navigation }: Props) {
         }
       })
     );
-  }
-
-  function removeTagFromDrawer(tag: { id: string }) {
-    hideTag(tag.id);
-    if (tagFilter?.type === 'tags' && tagFilter.tagIds.includes(tag.id)) {
-      setTagFilter(removeTagFromFilter(tagFilter, tag.id));
-    }
   }
 
   function confirmDeleteSelected() {
@@ -569,7 +558,6 @@ export default function LinksScreen({ route, navigation }: Props) {
         activeFilter={tagFilter}
         onSelectFilter={setTagFilter}
         hideOpenButton={isSelectMode}
-        onRemoveTag={removeTagFromDrawer}
       />
 
       <BulkActionBar

@@ -73,7 +73,6 @@ function TreeRow({
   selectedIds,
   onToggleExpand,
   onToggleTag,
-  onRemoveTag,
 }: {
   node: TreeNode;
   depth: number;
@@ -81,7 +80,6 @@ function TreeRow({
   selectedIds: Set<string>;
   onToggleExpand: (path: string) => void;
   onToggleTag: (tag: Tag) => void;
-  onRemoveTag?: (tag: Tag) => void;
 }) {
   const hasChildren = node.children.size > 0;
   const isExpanded = expanded.has(node.fullPath);
@@ -114,11 +112,6 @@ function TreeRow({
           {node.name}
         </Text>
         {isSelected && <Ionicons name="checkmark" size={16} color={ACCENT} />}
-        {node.tag && onRemoveTag && (
-          <Pressable hitSlop={8} onPress={() => onRemoveTag(node.tag!)}>
-            <Ionicons name="close" size={14} color="#9CA3AF" />
-          </Pressable>
-        )}
       </Pressable>
       {hasChildren &&
         isExpanded &&
@@ -131,7 +124,6 @@ function TreeRow({
             selectedIds={selectedIds}
             onToggleExpand={onToggleExpand}
             onToggleTag={onToggleTag}
-            onRemoveTag={onRemoveTag}
           />
         ))}
     </View>
@@ -146,11 +138,6 @@ type Props = {
   // it has to get out of the way while their own bulk-select bar is on
   // screen (same bottom-left corner, would otherwise overlap it).
   hideOpenButton?: boolean;
-  // Files/Photos/Links only: renders an "x" next to each tag row that hides
-  // it from THIS kind's suggestion tree without touching any item's actual
-  // tags (see useHiddenTags) - omitted entirely on Documents/Calendar, which
-  // browse the app's full, unfiltered tag list and have no such concept.
-  onRemoveTag?: (tag: Tag) => void;
 };
 
 // A standalone round button at the bottom-left (same size as the floating
@@ -165,7 +152,7 @@ type Props = {
 // whatever `tags` list it's given (Files/Photos/Links pass only their own
 // "used" tags, which is what prunes empty branches for them - see
 // buildTree above).
-export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpenButton, onRemoveTag }: Props) {
+export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpenButton }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   // The backdrop+panel live inside a real Modal (a separate Android window,
   // always painted above the whole activity - including the floating
@@ -287,7 +274,6 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
                 selectedIds={selectedTagIds}
                 onToggleExpand={toggleExpand}
                 onToggleTag={toggleTag}
-                onRemoveTag={onRemoveTag}
               />
             ))}
           </ScrollView>

@@ -14,21 +14,29 @@ const ACCENT = '#3B82F6';
 // from Документи/Календар, FloatingIslandTabBar's own "Більше" button
 // instead jumps into whichever database this bar was last shown on (see
 // utils/lastDatabaseRoute).
+//
+// Uses popTo, not navigate, for all three: this screen (Files/Photos/Links/
+// Tasks/Tags) always sits on top of 'Tabs' further down the same stack, so
+// every one of these is really "go back to that existing screen, applying
+// these params" - navigate()'s "already exists in the stack" handling is
+// exactly the kind of implicit behavior popTo replaces with an explicit,
+// reliable action (and per its own docs, pushes 'Tabs' fresh instead if it
+// somehow isn't there, so this can't come up empty either way).
 export default function DatabaseIslandBar() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   return (
     <View style={styles.wrap} pointerEvents="box-none">
       <View style={styles.island}>
-        <Pressable style={styles.button} onPress={() => navigation.navigate('Tabs', { screen: 'Документи' })}>
+        <Pressable style={styles.button} onPress={() => navigation.popTo('Tabs', { screen: 'Документи' })}>
           <Ionicons name="document-text-outline" size={20} color="#6B7280" />
         </Pressable>
-        <Pressable style={styles.button} onPress={() => navigation.navigate('Tabs', { screen: 'Календар' })}>
+        <Pressable style={styles.button} onPress={() => navigation.popTo('Tabs', { screen: 'Календар' })}>
           <Ionicons name="calendar-outline" size={20} color="#6B7280" />
         </Pressable>
         <Pressable
           style={[styles.button, styles.buttonActive]}
-          onPress={() => navigation.navigate('Tabs', { screen: 'Більше' })}
+          onPress={() => navigation.popTo('Tabs', { screen: 'Більше' })}
         >
           <Ionicons name="ellipsis-horizontal-outline" size={20} color={ACCENT} />
         </Pressable>

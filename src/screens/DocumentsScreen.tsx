@@ -60,6 +60,11 @@ export default function DocumentsScreen() {
   }, []);
 
   const displayedDocuments = documents.filter((item) => matchesTagFilter(item.tagIds ?? [], activeFilter));
+  // Only offer tags actually assigned to at least one document - not the
+  // whole app-wide tag list - same "used tags" pruning Files/Photos/Links
+  // already apply to their own drawers.
+  const usedTagIds = new Set(documents.flatMap((d) => d.tagIds ?? []));
+  const drawerTags = tags.filter((t) => usedTagIds.has(t.id));
 
   async function createDocument() {
     const newDoc = await addDoc(documentsCollection, {
@@ -175,7 +180,7 @@ export default function DocumentsScreen() {
         <Ionicons name="add" size={28} color="#fff" />
       </Pressable>
 
-      <TagsDrawer tags={tags} activeFilter={activeFilter} onSelectFilter={setActiveFilter} />
+      <TagsDrawer tags={drawerTags} activeFilter={activeFilter} onSelectFilter={setActiveFilter} />
     </View>
   );
 }

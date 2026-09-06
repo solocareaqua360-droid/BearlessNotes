@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tag, TaggableKind } from '../types';
 import { TAG_COLORS, TAG_ICONS } from '../constants/tags';
 import { isTagAllowedForKind } from '../hooks/useTags';
+import { useHiddenTags } from '../hooks/useHiddenTags';
 import RenamePrompt from './RenamePrompt';
 
 const ACCENT = '#3B82F6';
@@ -58,6 +59,7 @@ export default function TagPicker({
   const [selectedIcon, setSelectedIcon] = useState(TAG_ICONS[0]);
   const [selectedColor, setSelectedColor] = useState(TAG_COLORS[0]);
   const [renamingTag, setRenamingTag] = useState<Tag | null>(null);
+  const { hiddenIds, hideTag } = useHiddenTags(kind);
 
   useEffect(() => {
     if (visible) {
@@ -80,7 +82,14 @@ export default function TagPicker({
 
   const needle = query.trim().toLowerCase();
   const visibleTags = tags.filter((tag) => isTagAllowedForKind(tag, kind));
-  const matches = needle.length === 0 ? visibleTags : visibleTags.filter((tag) => tag.path.toLowerCase().includes(needle));
+  // The empty-search "recommended" list drops anything hidden via the "x"
+  // below; typing a search still surfaces a hidden tag so it can be found
+  // and re-attached - attachTag un-hides it the moment that happens (see
+  // useTags), which is exactly how a hidden tag is meant to come back.
+  const matches =
+    needle.length === 0
+      ? visibleTags.filter((tag) => !hiddenIds.has(tag.id))
+      : visibleTags.filter((tag) => tag.path.toLowerCase().includes(needle));
   // Checked against the FULL tag list (not just what's visible for this
   // kind) so a name already used by a hidden, cross-kind tag can't be
   // duplicated - it just stays unavailable here, same as being filtered out.
@@ -151,6 +160,9 @@ export default function TagPicker({
                       </Pressable>
                       <Pressable hitSlop={8} style={styles.pencilButton} onPress={() => setRenamingTag(tag)}>
                         <Ionicons name="pencil-outline" size={14} color="#9CA3AF" />
+                      </Pressable>
+                      <Pressable hitSlop={8} style={styles.pencilButton} onPress={() => hideTag(tag.id)}>
+                        <Ionicons name="close" size={14} color="#9CA3AF" />
                       </Pressable>
                     </View>
                   );
