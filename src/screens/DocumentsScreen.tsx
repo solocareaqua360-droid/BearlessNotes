@@ -25,7 +25,7 @@ import { db } from '../firebase';
 import { DocumentItem } from '../types';
 import { RootStackParamList } from '../navigation';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
-import TagsDrawer, { TagFilter } from '../components/TagsDrawer';
+import TagsDrawer, { TagFilter, matchesTagFilter, removeTagFromFilter } from '../components/TagsDrawer';
 import DocumentCard from '../components/DocumentCard';
 import { extractPreview } from '../utils/documentPreview';
 
@@ -59,12 +59,7 @@ export default function DocumentsScreen() {
     });
   }, []);
 
-  const displayedDocuments = documents.filter((item) => {
-    if (!activeFilter) return true;
-    const itemTagIds = item.tagIds ?? [];
-    if (activeFilter.type === 'untagged') return itemTagIds.length === 0;
-    return itemTagIds.includes(activeFilter.tag.id);
-  });
+  const displayedDocuments = documents.filter((item) => matchesTagFilter(item.tagIds ?? [], activeFilter));
 
   async function createDocument() {
     const newDoc = await addDoc(documentsCollection, {
@@ -109,26 +104,29 @@ export default function DocumentsScreen() {
 
       {activeFilter && (
         <View style={styles.filterRow}>
-          <View style={styles.filterChip}>
-            {activeFilter.type === 'tag' ? (
-              <>
-                <Ionicons
-                  name={activeFilter.tag.icon as keyof typeof Ionicons.glyphMap}
-                  size={13}
-                  color={activeFilter.tag.color}
-                />
-                <Text style={[styles.filterChipLabel, { color: activeFilter.tag.color }]}>{activeFilter.tag.path}</Text>
-              </>
-            ) : (
-              <>
-                <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
-                <Text style={styles.filterChipLabel}>Без тегів</Text>
-              </>
-            )}
-            <Pressable hitSlop={8} onPress={() => setActiveFilter(null)}>
-              <Ionicons name="close" size={14} color={activeFilter.type === 'tag' ? activeFilter.tag.color : '#6B7280'} />
-            </Pressable>
-          </View>
+          {activeFilter.type === 'untagged' ? (
+            <View style={styles.filterChip}>
+              <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
+              <Text style={styles.filterChipLabel}>Без тегів</Text>
+              <Pressable hitSlop={8} onPress={() => setActiveFilter(null)}>
+                <Ionicons name="close" size={14} color="#6B7280" />
+              </Pressable>
+            </View>
+          ) : (
+            activeFilter.tagIds.map((tagId) => {
+              const tag = tags.find((t) => t.id === tagId);
+              if (!tag) return null;
+              return (
+                <View key={tagId} style={styles.filterChip}>
+                  <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tag.color} />
+                  <Text style={[styles.filterChipLabel, { color: tag.color }]}>{tag.path}</Text>
+                  <Pressable hitSlop={8} onPress={() => setActiveFilter(removeTagFromFilter(activeFilter, tagId))}>
+                    <Ionicons name="close" size={14} color={tag.color} />
+                  </Pressable>
+                </View>
+              );
+            })
+          )}
         </View>
       )}
 
@@ -214,6 +212,9 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
     paddingHorizontal: 20,
     paddingBottom: 8,
   },

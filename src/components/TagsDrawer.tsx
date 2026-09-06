@@ -13,7 +13,29 @@ const DRAWER_WIDTH = Math.round(Dimensions.get('window').width * (2 / 3));
 // the open button is a standalone circle the same size as the island.
 const OPEN_BUTTON_SIZE = 64;
 
-export type TagFilter = { type: 'tag'; tag: Tag } | { type: 'untagged' };
+// 'multi' shows anything with at least one of the selected tags (OR);
+// 'isolating' shows only items carrying every selected tag (AND).
+export type TagFilterMode = 'multi' | 'isolating';
+
+export type TagFilter = { type: 'tags'; tagIds: string[]; mode: TagFilterMode } | { type: 'untagged' };
+
+// Single source of truth for what a tag filter actually matches, shared by
+// every screen that filters its own list against a TagsDrawer selection.
+export function matchesTagFilter(itemTagIds: string[], filter: TagFilter | null): boolean {
+  if (!filter) return true;
+  if (filter.type === 'untagged') return itemTagIds.length === 0;
+  return filter.mode === 'isolating'
+    ? filter.tagIds.every((id) => itemTagIds.includes(id))
+    : filter.tagIds.some((id) => itemTagIds.includes(id));
+}
+
+// Used by each per-tag chip's own "x" - drops just that one tag out of the
+// filter instead of clearing the whole selection.
+export function removeTagFromFilter(filter: TagFilter, tagId: string): TagFilter | null {
+  if (filter.type !== 'tags') return null;
+  const remaining = filter.tagIds.filter((id) => id !== tagId);
+  return remaining.length === 0 ? null : { type: 'tags', tagIds: remaining, mode: filter.mode };
+}
 
 type TreeNode = {
   name: string;
@@ -46,24 +68,27 @@ function TreeRow({
   node,
   depth,
   expanded,
+  selectedIds,
   onToggleExpand,
-  onOpenTag,
+  onToggleTag,
 }: {
   node: TreeNode;
   depth: number;
   expanded: Set<string>;
+  selectedIds: Set<string>;
   onToggleExpand: (path: string) => void;
-  onOpenTag: (tag: Tag) => void;
+  onToggleTag: (tag: Tag) => void;
 }) {
   const hasChildren = node.children.size > 0;
   const isExpanded = expanded.has(node.fullPath);
+  const isSelected = !!node.tag && selectedIds.has(node.tag.id);
   const children = Array.from(node.children.values()).sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <View>
       <Pressable
-        style={[styles.treeRow, { paddingLeft: 4 + depth * 20 }]}
-        onPress={() => (node.tag ? onOpenTag(node.tag) : onToggleExpand(node.fullPath))}
+        style={[styles.treeRow, isSelected && styles.treeRowActive, { paddingLeft: 4 + depth * 20 }]}
+        onPress={() => (node.tag ? onToggleTag(node.tag) : onToggleExpand(node.fullPath))}
       >
         {hasChildren ? (
           <Pressable hitSlop={8} onPress={() => onToggleExpand(node.fullPath)}>
@@ -84,6 +109,7 @@ function TreeRow({
         <Text style={styles.treeLabel} numberOfLines={1}>
           {node.name}
         </Text>
+        {isSelected && <Ionicons name="checkmark" size={16} color={ACCENT} />}
       </Pressable>
       {hasChildren &&
         isExpanded &&
@@ -93,8 +119,9 @@ function TreeRow({
             node={child}
             depth={depth + 1}
             expanded={expanded}
+            selectedIds={selectedIds}
             onToggleExpand={onToggleExpand}
-            onOpenTag={onOpenTag}
+            onToggleTag={onToggleTag}
           />
         ))}
     </View>
@@ -104,22 +131,28 @@ function TreeRow({
 type Props = {
   tags: Tag[];
   activeFilter: TagFilter | null;
-  onSelectFilter: (filter: TagFilter) => void;
+  onSelectFilter: (filter: TagFilter | null) => void;
   // Files/Photos/Links show the same round button in the same corner, but
   // it has to get out of the way while their own bulk-select bar is on
   // screen (same bottom-left corner, would otherwise overlap it).
   hideOpenButton?: boolean;
+  // Files/Photos/Links: skip the tree and the pin-a-tile picker entirely -
+  // `tags` is already the exact (small) set the screen wants offered, so
+  // it's shown as one flat tile grid with nothing else to browse.
+  simple?: boolean;
 };
 
 // A standalone round button at the bottom-left (same size as the floating
 // island, styled to match it) opens a Bear-style tag sidebar, 2/3 of the
-// screen wide, over a dimmed rest of the screen. Picking a tag or "Без
-// тегів" sets the calling screen's own filter and closes the drawer;
-// clearing the filter happens from the active-filter chip that screen
-// shows, not from here. Closing otherwise is a tap anywhere on the dimmed
-// backdrop. Shared as-is across Documents/Calendar/Files/Photos/Links -
-// it only ever browses and picks from whatever `tags` list it's given.
-export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpenButton }: Props) {
+// screen wide, over a dimmed rest of the screen. Tapping a tag (or "Без
+// тегів") toggles it into the calling screen's filter without closing the
+// drawer, so more than one can be picked; closing happens by tapping the
+// dimmed backdrop. The Мульти/Ізолюючий switch decides how multiple picked
+// tags combine: Мульти = at least one matches (OR), Ізолюючий = every
+// picked tag must be present (AND). Shared as-is across Documents/
+// Calendar/Files/Photos/Links - it only ever browses and toggles from
+// whatever `tags` list it's given.
+export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpenButton, simple }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   // The backdrop+panel live inside a real Modal (a separate Android window,
   // always painted above the whole activity - including the floating
@@ -129,7 +162,8 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
   // flips false so the closing animation below gets to finish before the
   // Modal actually unmounts, instead of yanking the drawer away instantly.
   const [isRendered, setIsRendered] = useState(false);
-  const [mode, setMode] = useState<'tree' | 'tiles'>('tree');
+  const [viewMode, setViewMode] = useState<'tree' | 'tiles'>('tree');
+  const [filterMode, setFilterMode] = useState<TagFilterMode>('multi');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -173,6 +207,7 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
   );
   const pinnedTags = tags.filter((t) => pinnedIds.includes(t.id));
   const unpinnedTags = tags.filter((t) => !pinnedIds.includes(t.id));
+  const selectedTagIds = activeFilter?.type === 'tags' ? new Set(activeFilter.tagIds) : new Set<string>();
 
   function toggleExpand(path: string) {
     setExpanded((prev) => {
@@ -183,9 +218,22 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
     });
   }
 
-  function pickTag(tag: Tag) {
-    onSelectFilter({ type: 'tag', tag });
-    setIsOpen(false);
+  function toggleTag(tag: Tag) {
+    const next = new Set(selectedTagIds);
+    if (next.has(tag.id)) next.delete(tag.id);
+    else next.add(tag.id);
+    onSelectFilter(next.size === 0 ? null : { type: 'tags', tagIds: Array.from(next), mode: filterMode });
+  }
+
+  function toggleUntagged() {
+    onSelectFilter(activeFilter?.type === 'untagged' ? null : { type: 'untagged' });
+  }
+
+  function selectFilterMode(next: TagFilterMode) {
+    setFilterMode(next);
+    if (activeFilter?.type === 'tags') {
+      onSelectFilter({ type: 'tags', tagIds: activeFilter.tagIds, mode: next });
+    }
   }
 
   async function pinTag(tag: Tag) {
@@ -207,6 +255,26 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
   const panelStyle = useAnimatedStyle(() => ({ transform: [{ translateX: openAmount.value - DRAWER_WIDTH }] }));
   const backdropStyle = useAnimatedStyle(() => ({ opacity: dimAmount.value }));
 
+  function renderTile(tag: Tag, onLongPress?: () => void) {
+    const isSelected = selectedTagIds.has(tag.id);
+    return (
+      <Pressable
+        key={tag.id}
+        style={[styles.tile, isSelected && styles.tileActive]}
+        onPress={() => toggleTag(tag)}
+        onLongPress={onLongPress}
+      >
+        <View style={[styles.tileIcon, { backgroundColor: `${tag.color}1A` }]}>
+          <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={16} color={tag.color} />
+        </View>
+        <Text style={styles.tileLabel} numberOfLines={1}>
+          {tag.path}
+        </Text>
+        {isSelected && <Ionicons name="checkmark-circle" size={14} color={ACCENT} style={styles.tileCheck} />}
+      </Pressable>
+    );
+  }
+
   return (
     <>
       <Modal
@@ -223,21 +291,43 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
         <Animated.View style={[styles.panel, { width: DRAWER_WIDTH }, panelStyle]}>
         <Text style={styles.title}>Теги</Text>
 
+        {!simple && (
+          <View style={styles.segmented}>
+            <Pressable
+              style={[styles.segmentButton, viewMode === 'tree' && styles.segmentButtonActive]}
+              onPress={() => setViewMode('tree')}
+            >
+              <Text style={[styles.segmentLabel, viewMode === 'tree' && styles.segmentLabelActive]}>Дерево</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.segmentButton, viewMode === 'tiles' && styles.segmentButtonActive]}
+              onPress={() => setViewMode('tiles')}
+            >
+              <Text style={[styles.segmentLabel, viewMode === 'tiles' && styles.segmentLabelActive]}>Плитки</Text>
+            </Pressable>
+          </View>
+        )}
+
         <View style={styles.segmented}>
-          <Pressable style={[styles.segmentButton, mode === 'tree' && styles.segmentButtonActive]} onPress={() => setMode('tree')}>
-            <Text style={[styles.segmentLabel, mode === 'tree' && styles.segmentLabelActive]}>Дерево</Text>
+          <Pressable
+            style={[styles.segmentButton, filterMode === 'multi' && styles.segmentButtonActive]}
+            onPress={() => selectFilterMode('multi')}
+          >
+            <Text style={[styles.segmentLabel, filterMode === 'multi' && styles.segmentLabelActive]}>Мульти</Text>
           </Pressable>
-          <Pressable style={[styles.segmentButton, mode === 'tiles' && styles.segmentButtonActive]} onPress={() => setMode('tiles')}>
-            <Text style={[styles.segmentLabel, mode === 'tiles' && styles.segmentLabelActive]}>Плитки</Text>
+          <Pressable
+            style={[styles.segmentButton, filterMode === 'isolating' && styles.segmentButtonActive]}
+            onPress={() => selectFilterMode('isolating')}
+          >
+            <Text style={[styles.segmentLabel, filterMode === 'isolating' && styles.segmentLabelActive]}>
+              Ізолюючий
+            </Text>
           </Pressable>
         </View>
 
         <Pressable
           style={[styles.untaggedRow, activeFilter?.type === 'untagged' && styles.untaggedRowActive]}
-          onPress={() => {
-            onSelectFilter({ type: 'untagged' });
-            setIsOpen(false);
-          }}
+          onPress={toggleUntagged}
         >
           <View style={styles.treeIcon}>
             <Ionicons name="pricetag-outline" size={12} color="#9CA3AF" />
@@ -246,24 +336,27 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
         </Pressable>
         <View style={styles.divider} />
 
-        {mode === 'tree' ? (
+        {simple ? (
+          <ScrollView contentContainerStyle={styles.tileGrid}>
+            {tags.map((tag) => renderTile(tag))}
+          </ScrollView>
+        ) : viewMode === 'tree' ? (
           <ScrollView style={styles.scroll}>
             {topLevel.map((node) => (
-              <TreeRow key={node.fullPath} node={node} depth={0} expanded={expanded} onToggleExpand={toggleExpand} onOpenTag={pickTag} />
+              <TreeRow
+                key={node.fullPath}
+                node={node}
+                depth={0}
+                expanded={expanded}
+                selectedIds={selectedTagIds}
+                onToggleExpand={toggleExpand}
+                onToggleTag={toggleTag}
+              />
             ))}
           </ScrollView>
         ) : (
           <ScrollView contentContainerStyle={styles.tileGrid}>
-            {pinnedTags.map((tag) => (
-              <Pressable key={tag.id} style={styles.tile} onPress={() => pickTag(tag)} onLongPress={() => confirmUnpin(tag)}>
-                <View style={[styles.tileIcon, { backgroundColor: `${tag.color}1A` }]}>
-                  <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={16} color={tag.color} />
-                </View>
-                <Text style={styles.tileLabel} numberOfLines={1}>
-                  {tag.path}
-                </Text>
-              </Pressable>
-            ))}
+            {pinnedTags.map((tag) => renderTile(tag, () => confirmUnpin(tag)))}
             <Pressable style={[styles.tile, styles.newTile]} onPress={() => setPickerVisible(true)}>
               <View style={styles.newTileIcon}>
                 <Ionicons name="add" size={16} color="#9CA3AF" />
@@ -388,6 +481,10 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     paddingRight: 4,
   },
+  treeRowActive: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 8,
+  },
   treeIcon: {
     width: 26,
     height: 26,
@@ -407,11 +504,22 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   tile: {
+    position: 'relative',
     width: '47%',
     backgroundColor: '#F9FAFB',
     borderRadius: 12,
     padding: 10,
     gap: 6,
+  },
+  tileActive: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1.5,
+    borderColor: ACCENT,
+  },
+  tileCheck: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
   },
   tileIcon: {
     width: 30,

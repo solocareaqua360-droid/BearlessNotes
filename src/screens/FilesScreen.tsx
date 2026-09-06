@@ -27,7 +27,7 @@ import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
-import TagsDrawer, { TagFilter } from '../components/TagsDrawer';
+import TagsDrawer, { TagFilter, matchesTagFilter, removeTagFromFilter } from '../components/TagsDrawer';
 import CopyToNoteModal from '../components/CopyToNoteModal';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
@@ -134,11 +134,11 @@ export default function FilesScreen() {
       : groupFilter === UNASSIGNED_ID
         ? pendingFilteredFiles.filter((f) => !f.groupId)
         : pendingFilteredFiles.filter((f) => f.groupId === groupFilter);
-  const tagFilteredFiles = !tagFilter
-    ? groupFilteredFiles
-    : tagFilter.type === 'untagged'
-      ? groupFilteredFiles.filter((f) => f.tagIds.length === 0)
-      : groupFilteredFiles.filter((f) => f.tagIds.includes(tagFilter.tag.id));
+  const tagFilteredFiles = groupFilteredFiles.filter((f) => matchesTagFilter(f.tagIds, tagFilter));
+  // Only offer tags actually assigned to at least one file - not the whole
+  // app-wide tag list - so this drawer stays a short, relevant menu.
+  const usedTagIds = new Set(files.flatMap((f) => f.tagIds));
+  const drawerTags = tags.filter((t) => usedTagIds.has(t.id));
   const needle = searchQuery.trim().toLowerCase();
   const displayedFiles = needle
     ? tagFilteredFiles.filter((f) => (f.title || f.fileName).toLowerCase().includes(needle))
@@ -362,22 +362,29 @@ export default function FilesScreen() {
 
       {tagFilter && (
         <View style={styles.filterRow}>
-          <View style={styles.filterChip}>
-            {tagFilter.type === 'tag' ? (
-              <>
-                <Ionicons name={tagFilter.tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tagFilter.tag.color} />
-                <Text style={[styles.filterChipLabel, { color: tagFilter.tag.color }]}>{tagFilter.tag.path}</Text>
-              </>
-            ) : (
-              <>
-                <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
-                <Text style={styles.filterChipLabel}>Без тегів</Text>
-              </>
-            )}
-            <Pressable hitSlop={8} onPress={() => setTagFilter(null)}>
-              <Ionicons name="close" size={14} color={tagFilter.type === 'tag' ? tagFilter.tag.color : '#6B7280'} />
-            </Pressable>
-          </View>
+          {tagFilter.type === 'untagged' ? (
+            <View style={styles.filterChip}>
+              <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
+              <Text style={styles.filterChipLabel}>Без тегів</Text>
+              <Pressable hitSlop={8} onPress={() => setTagFilter(null)}>
+                <Ionicons name="close" size={14} color="#6B7280" />
+              </Pressable>
+            </View>
+          ) : (
+            tagFilter.tagIds.map((tagId) => {
+              const tag = tags.find((t) => t.id === tagId);
+              if (!tag) return null;
+              return (
+                <View key={tagId} style={styles.filterChip}>
+                  <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tag.color} />
+                  <Text style={[styles.filterChipLabel, { color: tag.color }]}>{tag.path}</Text>
+                  <Pressable hitSlop={8} onPress={() => setTagFilter(removeTagFromFilter(tagFilter, tagId))}>
+                    <Ionicons name="close" size={14} color={tag.color} />
+                  </Pressable>
+                </View>
+              );
+            })
+          )}
         </View>
       )}
 
@@ -472,7 +479,13 @@ export default function FilesScreen() {
         onClose={() => setBulkCopyModalVisible(false)}
       />
 
-      <TagsDrawer tags={tags} activeFilter={tagFilter} onSelectFilter={setTagFilter} hideOpenButton={isSelectMode} />
+      <TagsDrawer
+        tags={drawerTags}
+        activeFilter={tagFilter}
+        onSelectFilter={setTagFilter}
+        hideOpenButton={isSelectMode}
+        simple
+      />
 
       <BulkActionBar
         count={selectedIds.size}
@@ -511,6 +524,9 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
     paddingHorizontal: 20,
     paddingBottom: 8,
   },
