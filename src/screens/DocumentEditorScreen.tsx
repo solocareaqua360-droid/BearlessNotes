@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Dimensions,
   Image,
   Keyboard,
@@ -20,6 +21,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
+import DocumentScanner, { ResponseType, ScanDocumentResponseStatus } from 'react-native-document-scanner-plugin';
+import * as Print from 'expo-print';
+import { dateKey } from '../utils/dateLocale';
 // The new expo-file-system File/Directory API tracks read permission per
 // picked URI internally and rejects copying a URI it didn't hand out
 // itself ("Missing 'READ' permission") - the legacy module just wraps a
@@ -1995,6 +1999,104 @@ export default function DocumentEditorScreen(props: Props) {
     });
   }
 
+  // Same size cap/quality as compressPickedImage, but for a scanned page
+  // whose dimensions aren't known upfront (the scanner plugin only returns
+  // a file path) - render once un-resized just to read them off, then reuse
+  // the existing compressor with those.
+  async function compressScannedImage(uri: string): Promise<string> {
+    try {
+      const probe = await ImageManipulator.manipulate(uri).renderAsync();
+      return await compressPickedImage(uri, probe.width, probe.height);
+    } catch {
+      return uri;
+    }
+  }
+
+  async function insertScannedImages(id: string, uris: string[]) {
+    const compressed: string[] = [];
+    for (const uri of uris) {
+      compressed.push(await compressScannedImage(uri));
+    }
+    snapshotBeforeChange();
+    setBlocks((prev) => {
+      const index = prev.findIndex((b) => b.id === id);
+      if (index === -1) return prev;
+      const imageBlocks = compressed.map((uri, i) => ({
+        ...buildBlock(i === 0 ? id : generateId(), 'image', ''),
+        imageUri: uri,
+      }));
+      const next = [...prev];
+      next.splice(index, 1, ...imageBlocks);
+      const lastIndex = index + imageBlocks.length - 1;
+      if (lastIndex === next.length - 1) {
+        const trailing = newBlock();
+        next.push(trailing);
+        focusIdRef.current = trailing.id;
+      } else {
+        focusIdRef.current = next[lastIndex + 1].id;
+      }
+      return next;
+    });
+  }
+
+  // Assembles scanned pages into one PDF via expo-print (HTML -> PDF, no
+  // native module needed) rather than the scanner plugin's own output,
+  // which is JPEG-only. Pages go in as base64 data URIs - expo-print's
+  // WebView renderer isn't guaranteed to resolve a local file:// path.
+  async function insertScannedPdf(id: string, uris: string[]) {
+    const pagesHtml = await Promise.all(
+      uris.map(async (uri) => {
+        const base64 = await LegacyFileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+        return `<div style="page-break-after: always;"><img src="data:image/jpeg;base64,${base64}" style="width:100%;" /></div>`;
+      })
+    );
+    // A4 at 72 PPI.
+    const { uri: pdfUri } = await Print.printToFileAsync({
+      html: `<html><body style="margin:0;">${pagesHtml.join('')}</body></html>`,
+      width: 595,
+      height: 842,
+    });
+    const fileName = `Скан ${dateKey(new Date())}.pdf`;
+    const fileUri = `${LegacyFileSystem.cacheDirectory}${generateId()}-${fileName}`;
+    await LegacyFileSystem.copyAsync({ from: pdfUri, to: fileUri });
+    snapshotBeforeChange();
+    setBlocks((prev) => {
+      const index = prev.findIndex((b) => b.id === id);
+      if (index === -1) return prev;
+      const next = [...prev];
+      next[index] = { ...buildBlock(id, 'file', ''), fileUri, fileName, mimeType: 'application/pdf' };
+      if (index === next.length - 1) {
+        const trailing = newBlock();
+        next.splice(index + 1, 0, trailing);
+        focusIdRef.current = trailing.id;
+      } else {
+        focusIdRef.current = next[index + 1].id;
+      }
+      return next;
+    });
+  }
+
+  async function scanDocumentForBlock(id: string) {
+    setSlashMenuBlockId(null);
+    let result;
+    try {
+      result = await DocumentScanner.scanDocument({ responseType: ResponseType.ImageFilePath });
+    } catch {
+      return;
+    }
+    const pages = result.scannedImages;
+    if (result.status !== ScanDocumentResponseStatus.Success || !pages?.length) return;
+    if (pages.length === 1) {
+      await insertScannedImages(id, pages);
+      return;
+    }
+    Alert.alert(`Відскановано сторінок: ${pages.length}`, 'Як зберегти?', [
+      { text: 'Скасувати', style: 'cancel' },
+      { text: 'Окремі фото', onPress: () => insertScannedImages(id, pages) },
+      { text: 'Один PDF', onPress: () => insertScannedPdf(id, pages) },
+    ]);
+  }
+
   async function openFileBlock(id: string) {
     const block = blocks.find((b) => b.id === id);
     if (!block?.fileUri) return;
@@ -2195,6 +2297,10 @@ export default function DocumentEditorScreen(props: Props) {
           <Pressable style={styles.slashMenuItem} hitSlop={6} onPress={() => pickFileForBlock(slashMenuBlockId)}>
             <Ionicons name="document-outline" size={20} color="#111827" />
             <Text style={styles.slashMenuLabel}>Файл</Text>
+          </Pressable>
+          <Pressable style={styles.slashMenuItem} hitSlop={6} onPress={() => scanDocumentForBlock(slashMenuBlockId)}>
+            <Ionicons name="scan-outline" size={20} color="#111827" />
+            <Text style={styles.slashMenuLabel}>Сканувати</Text>
           </Pressable>
         </ScrollView>
       )}

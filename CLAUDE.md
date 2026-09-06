@@ -90,13 +90,38 @@ since it can't change after a Play Store publish). A local
 `expo prebuild --platform android` confirmed the config plugins wire up
 cleanly with no errors — that generated `android/` folder was then
 deleted, since it's git-ignored on purpose (EAS Build regenerates native
-projects in the cloud on every build; don't commit them). Still to do:
-`eas login` + `eas build --profile development --platform android` from
-a real Expo account (not from a Claude Code session), installing the
-resulting dev-client APK on the phone, and the actual scanner UI/flow in
-the document editor. Until that build exists, Expo Go keeps working
-exactly as before for everything already shipped — only the new scanner
-code needs the dev client.
+projects in the cloud on every build; don't commit them).
+
+**Dev-client build: done, but not via `eas build` CLI** — this Claude
+Code session's sandbox has `api.expo.dev` blocked by its own network
+policy, so the first build was triggered instead through the expo.dev
+web dashboard's "Build from GitHub", walking the (non-technical) user
+through it screenshot by screenshot. That also surfaced that the
+account's existing "bearlessnotes" Expo project already held builds for
+the user's *other* app (the video-bookmark one) — a genuine cross-
+project mixup, not just a naming coincidence — so this app now has its
+own freshly-created "bearless-notes" Expo project instead (`app.json`'s
+`extra.eas.projectId`). The Android upload keystore was auto-generated
+by EAS itself (once, during an earlier accidentally-triggered
+`production`-profile build that got cancelled) rather than a keystore
+generated in-session and handed to the user, which turned out to be
+unnecessary. The resulting `development`-profile APK is installed on the
+user's phone and confirmed opening into the custom dev client's
+"Development servers" screen.
+
+The scanner UI/flow itself is now written (`DocumentEditorScreen.tsx`):
+a "Сканувати" entry in the "/" menu calls `DocumentScanner.scanDocument()`;
+one page becomes a photo block same as picking one normally, multiple
+pages prompt (`Alert`) for "Окремі фото" vs "Один PDF" (assembled via
+`expo-print`, HTML with one base64 `<img>` per `page-break`, saved as a
+file block). Not yet verified on-device.
+
+**Deliberately skipping live `npm start` + dev-client reload for this
+round** — the user doesn't have a laptop reliably free to keep a dev
+server running during this work, so instead of that live-reload loop,
+the plan is one more EAS build (`preview` profile: JS bundled into the
+APK, no server needed) once the scanner code is settled, tested the same
+way the first build was (web dashboard, no terminal on the user's side).
 
 The Firebase project (`bearless-notes`, Spark plan) has Firestore
 (test-mode rules, region `eur3` — **rules must be locked down before real
