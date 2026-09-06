@@ -1416,7 +1416,7 @@ export default function DocumentEditorScreen(props: Props) {
       // fire-and-forget, since a failed/skipped backup must never block
       // attaching the photo itself.
       if (!knownPhotoBlockIdsRef.current.has(b.id)) {
-        backupFileToDrive(b.imageUri!, `${b.id}.jpg`, 'image/jpeg').then((driveFileId) => {
+        backupFileToDrive(b.imageUri!, `${b.id}.jpg`, 'image/jpeg', 'Photos').then((driveFileId) => {
           if (driveFileId) updateDoc(doc(db, 'photos', b.id), { driveFileId });
         });
       }
@@ -1445,7 +1445,7 @@ export default function DocumentEditorScreen(props: Props) {
       if (b.fileTitle) fileDoc.title = b.fileTitle;
       setDoc(doc(db, 'files', b.id), fileDoc, { merge: true });
       if (!knownFileBlockIdsRef.current.has(b.id)) {
-        backupFileToDrive(b.fileUri!, b.fileName ?? b.id, b.mimeType ?? 'application/octet-stream').then(
+        backupFileToDrive(b.fileUri!, b.fileName ?? b.id, b.mimeType ?? 'application/octet-stream', 'Files').then(
           (driveFileId) => {
             if (driveFileId) updateDoc(doc(db, 'files', b.id), { driveFileId });
           }

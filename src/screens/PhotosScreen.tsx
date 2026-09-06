@@ -1,5 +1,16 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -37,6 +48,7 @@ import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 import { blockFromPhoto, copyObjectsToNote } from '../utils/copyToNote';
+import { deleteFileFromDrive } from '../utils/googleDrive';
 
 const ACCENT = '#EC4899';
 const groupsCollection = collection(db, 'groups');
@@ -53,6 +65,7 @@ type PhotoItem = {
   documentIds: string[];
   tagIds: string[];
   groupId?: string;
+  driveFileId?: string;
 };
 
 // Same "pick a folder once, remember it" download flow already built for
@@ -155,6 +168,7 @@ export default function PhotosScreen() {
             documentIds: Object.keys(data.usedInDocuments ?? {}),
             tagIds: data.tagIds ?? [],
             groupId: data.groupId,
+            driveFileId: data.driveFileId,
           };
         })
       );
@@ -256,11 +270,26 @@ export default function PhotosScreen() {
 
   function confirmDeletePhoto(photo: PhotoItem) {
     setViewerPhotoId(null);
-    requestDelete(photo, 'Фото видалено', () => deletePhoto(photo));
+    if (!photo.driveFileId) {
+      requestDelete(photo, 'Фото видалено', () => deletePhoto(photo, false));
+      return;
+    }
+    Alert.alert('Видалити копію з Google Диску?', undefined, [
+      {
+        text: 'Залишити на Диску',
+        onPress: () => requestDelete(photo, 'Фото видалено', () => deletePhoto(photo, false)),
+      },
+      {
+        text: 'Видалити з Диску',
+        style: 'destructive',
+        onPress: () => requestDelete(photo, 'Фото видалено', () => deletePhoto(photo, true)),
+      },
+    ]);
   }
 
-  async function deletePhoto(photo: PhotoItem) {
+  async function deletePhoto(photo: PhotoItem, alsoDeleteFromDrive: boolean) {
     deleteDoc(doc(db, 'photos', photo.id));
+    if (alsoDeleteFromDrive && photo.driveFileId) deleteFileFromDrive(photo.driveFileId);
     await Promise.all(
       photo.tagIds.map((tagId) => {
         const tag = tags.find((t) => t.id === tagId);
@@ -285,10 +314,36 @@ export default function PhotosScreen() {
   }
 
   function confirmDeleteSelected() {
-    requestDeleteMany(selectedPhotos, `Видалено фото: ${selectedPhotos.length}`, () => {
-      selectedPhotos.forEach(deletePhoto);
-    });
-    clearSelection();
+    const photosToDelete = selectedPhotos;
+    const anyOnDrive = photosToDelete.some((p) => p.driveFileId);
+    if (!anyOnDrive) {
+      requestDeleteMany(photosToDelete, `Видалено фото: ${photosToDelete.length}`, () => {
+        photosToDelete.forEach((p) => deletePhoto(p, false));
+      });
+      clearSelection();
+      return;
+    }
+    Alert.alert('Видалити копії з Google Диску?', undefined, [
+      {
+        text: 'Залишити на Диску',
+        onPress: () => {
+          requestDeleteMany(photosToDelete, `Видалено фото: ${photosToDelete.length}`, () => {
+            photosToDelete.forEach((p) => deletePhoto(p, false));
+          });
+          clearSelection();
+        },
+      },
+      {
+        text: 'Видалити з Диску',
+        style: 'destructive',
+        onPress: () => {
+          requestDeleteMany(photosToDelete, `Видалено фото: ${photosToDelete.length}`, () => {
+            photosToDelete.forEach((p) => deletePhoto(p, true));
+          });
+          clearSelection();
+        },
+      },
+    ]);
   }
 
   async function bulkAttachTag(tag: Parameters<typeof attachTag>[0]) {

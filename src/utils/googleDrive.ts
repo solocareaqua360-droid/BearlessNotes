@@ -8,6 +8,14 @@ const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const FOLDER_NAME = 'Bearless Notes';
 const FOLDER_ID_STORAGE_KEY = 'bearlessNotes.driveFolderId';
 
+// Backed-up files are split into subfolders under "Bearless Notes" by kind
+// (Photos/Files) rather than left flat, per the user's own request.
+export type DriveSubFolder = 'Photos' | 'Files';
+const SUBFOLDER_ID_STORAGE_KEY: Record<DriveSubFolder, string> = {
+  Photos: 'bearlessNotes.driveFolderId.photos',
+  Files: 'bearlessNotes.driveFolderId.files',
+};
+
 let configured = false;
 function ensureConfigured() {
   if (configured) return;
@@ -38,7 +46,7 @@ export async function connectGoogleDrive(): Promise<string> {
 export async function disconnectGoogleDrive(): Promise<void> {
   ensureConfigured();
   await GoogleSignin.signOut();
-  await AsyncStorage.removeItem(FOLDER_ID_STORAGE_KEY);
+  await AsyncStorage.multiRemove([FOLDER_ID_STORAGE_KEY, ...Object.values(SUBFOLDER_ID_STORAGE_KEY)]);
 }
 
 async function getDriveAccessToken(): Promise<string> {
@@ -48,14 +56,21 @@ async function getDriveAccessToken(): Promise<string> {
   return accessToken;
 }
 
-// Cached after the first lookup/creation so every subsequent upload skips
-// the extra "does this folder already exist" round trip.
-async function ensureAppFolder(accessToken: string): Promise<string> {
-  const cached = await AsyncStorage.getItem(FOLDER_ID_STORAGE_KEY);
+// Finds a folder by name (optionally under a given parent), creating it if
+// missing, and caches the result under `storageKey` so repeat uploads skip
+// the lookup round trip entirely.
+async function ensureFolder(
+  accessToken: string,
+  storageKey: string,
+  name: string,
+  parentId?: string
+): Promise<string> {
+  const cached = await AsyncStorage.getItem(storageKey);
   if (cached) return cached;
 
+  const parentClause = parentId ? ` and '${parentId}' in parents` : '';
   const query = encodeURIComponent(
-    `name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`
+    `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false${parentClause}`
   );
   const listRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -64,17 +79,28 @@ async function ensureAppFolder(accessToken: string): Promise<string> {
   let folderId: string | undefined = listJson.files?.[0]?.id;
 
   if (!folderId) {
+    const metadata: Record<string, unknown> = { name, mimeType: 'application/vnd.google-apps.folder' };
+    if (parentId) metadata.parents = [parentId];
     const createRes = await fetch('https://www.googleapis.com/drive/v3/files?fields=id', {
       method: 'POST',
       headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' }),
+      body: JSON.stringify(metadata),
     });
     const createJson = await createRes.json();
     folderId = createJson.id;
   }
 
-  await AsyncStorage.setItem(FOLDER_ID_STORAGE_KEY, folderId!);
+  await AsyncStorage.setItem(storageKey, folderId!);
   return folderId!;
+}
+
+async function ensureAppFolder(accessToken: string): Promise<string> {
+  return ensureFolder(accessToken, FOLDER_ID_STORAGE_KEY, FOLDER_NAME);
+}
+
+async function ensureSubFolder(accessToken: string, subFolder: DriveSubFolder): Promise<string> {
+  const parentId = await ensureAppFolder(accessToken);
+  return ensureFolder(accessToken, SUBFOLDER_ID_STORAGE_KEY[subFolder], subFolder, parentId);
 }
 
 // Multipart upload (metadata + base64 content in one request) - the
@@ -122,15 +148,34 @@ async function uploadFileToDrive(
 export async function backupFileToDrive(
   localUri: string,
   fileName: string,
-  mimeType: string
+  mimeType: string,
+  subFolder: DriveSubFolder
 ): Promise<string | null> {
   ensureConfigured();
   if (!GoogleSignin.hasPreviousSignIn()) return null;
   try {
     const accessToken = await getDriveAccessToken();
-    const folderId = await ensureAppFolder(accessToken);
+    const folderId = await ensureSubFolder(accessToken, subFolder);
     return await uploadFileToDrive(accessToken, folderId, localUri, fileName, mimeType);
   } catch {
     return null;
+  }
+}
+
+// Used when the user chooses to also remove the Drive backup after deleting
+// a file/photo locally - never throws, since a failed cloud delete should
+// never block the local delete that already happened.
+export async function deleteFileFromDrive(driveFileId: string): Promise<boolean> {
+  ensureConfigured();
+  if (!GoogleSignin.hasPreviousSignIn()) return false;
+  try {
+    const accessToken = await getDriveAccessToken();
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    return response.ok;
+  } catch {
+    return false;
   }
 }

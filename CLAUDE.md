@@ -197,6 +197,22 @@ app; `.env` is git-ignored on purpose. `DocumentsScreen.tsx` and
 `DocumentEditorScreen.tsx` both read/write Firestore directly
 (`onSnapshot`/`addDoc`/`deleteDoc`/`updateDoc`, no local-only state).
 
+**Confirmed data-recovery guarantee (user asked explicitly whether a full
+app delete + cache clear + reinstall keeps everything, Craft/Bear/Google-
+Keep-style):** `auth` from `src/firebase.ts` is initialized but never
+actually used anywhere - no sign-in screen, no `onAuthStateChanged`, no
+per-user data gating. The Firebase config is baked directly into the build
+from `.env`, so every install of the app talks to the same one shared
+Firestore project with no login step at all. That means document/note
+text, tasks, tags, links and sketch vector data (`sketchElements` - see
+above) already survive delete+reinstall today, automatically, with nothing
+the user needs to do. The one thing that does NOT survive yet is the raw
+bytes of photo/file attachments (Firestore only stores a local URI, not
+the file content) - that gap is exactly what the Google Drive backup below
+is for, and it isn't fully solved yet: first-slice-only (new files/photos
+going forward, no backfill of pre-existing ones), and not yet confirmed
+on-device.
+
 The document editor (`src/screens/DocumentEditorScreen.tsx`) is a
 hand-rolled block editor — no third-party list/drag/swipe library, all
 built directly on `react-native-gesture-handler` + `react-native-reanimated`

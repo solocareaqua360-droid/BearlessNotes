@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -33,6 +33,7 @@ import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 import { blockFromFile, copyObjectsToNote } from '../utils/copyToNote';
+import { deleteFileFromDrive } from '../utils/googleDrive';
 
 const ACCENT = '#8B5CF6';
 const DANGER = '#EF4444';
@@ -51,6 +52,7 @@ type FileItem = {
   documentIds: string[];
   tagIds: string[];
   groupId?: string;
+  driveFileId?: string;
 };
 
 // Same tinting-by-extension used on the file block itself in
@@ -105,6 +107,7 @@ export default function FilesScreen() {
             documentIds: Object.keys(data.usedInDocuments ?? {}),
             tagIds: data.tagIds ?? [],
             groupId: data.groupId,
+            driveFileId: data.driveFileId,
           };
         })
       );
@@ -199,11 +202,26 @@ export default function FilesScreen() {
   }
 
   function confirmDeleteFile(file: FileItem) {
-    requestDelete(file, 'Файл видалено', () => deleteFile(file));
+    if (!file.driveFileId) {
+      requestDelete(file, 'Файл видалено', () => deleteFile(file, false));
+      return;
+    }
+    Alert.alert('Видалити копію з Google Диску?', undefined, [
+      {
+        text: 'Залишити на Диску',
+        onPress: () => requestDelete(file, 'Файл видалено', () => deleteFile(file, false)),
+      },
+      {
+        text: 'Видалити з Диску',
+        style: 'destructive',
+        onPress: () => requestDelete(file, 'Файл видалено', () => deleteFile(file, true)),
+      },
+    ]);
   }
 
-  async function deleteFile(file: FileItem) {
+  async function deleteFile(file: FileItem, alsoDeleteFromDrive: boolean) {
     deleteDoc(doc(db, 'files', file.id));
+    if (alsoDeleteFromDrive && file.driveFileId) deleteFileFromDrive(file.driveFileId);
     await Promise.all(
       file.tagIds.map((tagId) => {
         const tag = tags.find((t) => t.id === tagId);
@@ -228,10 +246,36 @@ export default function FilesScreen() {
   }
 
   function confirmDeleteSelected() {
-    requestDeleteMany(selectedFiles, `Видалено файлів: ${selectedFiles.length}`, () => {
-      selectedFiles.forEach(deleteFile);
-    });
-    clearSelection();
+    const filesToDelete = selectedFiles;
+    const anyOnDrive = filesToDelete.some((f) => f.driveFileId);
+    if (!anyOnDrive) {
+      requestDeleteMany(filesToDelete, `Видалено файлів: ${filesToDelete.length}`, () => {
+        filesToDelete.forEach((f) => deleteFile(f, false));
+      });
+      clearSelection();
+      return;
+    }
+    Alert.alert('Видалити копії з Google Диску?', undefined, [
+      {
+        text: 'Залишити на Диску',
+        onPress: () => {
+          requestDeleteMany(filesToDelete, `Видалено файлів: ${filesToDelete.length}`, () => {
+            filesToDelete.forEach((f) => deleteFile(f, false));
+          });
+          clearSelection();
+        },
+      },
+      {
+        text: 'Видалити з Диску',
+        style: 'destructive',
+        onPress: () => {
+          requestDeleteMany(filesToDelete, `Видалено файлів: ${filesToDelete.length}`, () => {
+            filesToDelete.forEach((f) => deleteFile(f, true));
+          });
+          clearSelection();
+        },
+      },
+    ]);
   }
 
   async function bulkAttachTag(tag: Parameters<typeof attachTag>[0]) {
