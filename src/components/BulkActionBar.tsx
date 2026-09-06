@@ -7,7 +7,7 @@ const DANGER = '#EF4444';
 type Props = {
   count: number;
   onTag: () => void;
-  onProject: () => void;
+  onGroup: () => void;
   onCopy: () => void;
   onDelete: () => void;
 };
@@ -15,7 +15,7 @@ type Props = {
 // Bottom bar shown while select-mode is on and at least one row is picked
 // (Files/Photos/Links) - same bottom-bar placement as the document editor's
 // own select-mode delete bar, just with more than one action.
-export default function BulkActionBar({ count, onTag, onProject, onCopy, onDelete }: Props) {
+export default function BulkActionBar({ count, onTag, onGroup, onCopy, onDelete }: Props) {
   if (count === 0) return null;
   return (
     <View style={styles.bar}>
@@ -25,9 +25,9 @@ export default function BulkActionBar({ count, onTag, onProject, onCopy, onDelet
           <Ionicons name="pricetag-outline" size={20} color={ACCENT} />
           <Text style={styles.actionLabel}>Тег</Text>
         </Pressable>
-        <Pressable style={styles.action} hitSlop={6} onPress={onProject}>
+        <Pressable style={styles.action} hitSlop={6} onPress={onGroup}>
           <Ionicons name="folder-outline" size={20} color={ACCENT} />
-          <Text style={styles.actionLabel}>Проєкт</Text>
+          <Text style={styles.actionLabel}>Групування</Text>
         </Pressable>
         <Pressable style={styles.action} hitSlop={6} onPress={onCopy}>
           <Ionicons name="document-text-outline" size={20} color={ACCENT} />

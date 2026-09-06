@@ -48,6 +48,16 @@ export interface Project {
   color: string;
 }
 
+// Same shape as Project, but a deliberately separate concept and Firestore
+// collection ("групування", not "проєкт") - Files/Photos/Links group into
+// these, Tasks' own projects stay theirs, and the two are never meant to
+// mix even though a Group and a Project look identical on paper.
+export interface Group {
+  id: string;
+  name: string;
+  color: string;
+}
+
 // A database-object kind a tag can be attached to. Used both as the second
 // half of a `usedIn` key ("file:abc123") and as an entry in a tag's
 // cumulative `types` list.

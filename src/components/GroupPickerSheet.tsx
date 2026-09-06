@@ -3,53 +3,53 @@ import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'reac
 import { Ionicons } from '@expo/vector-icons';
 import { addDoc, collection, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Project } from '../types';
+import { Group } from '../types';
 
 const ACCENT = '#3B82F6';
-const PROJECT_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
-const projectsCollection = collection(db, 'projects');
+const GROUP_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
+const groupsCollection = collection(db, 'groups');
 
 type Props = {
   visible: boolean;
-  projects: Project[];
-  onPick: (projectId: string | null) => void;
+  groups: Group[];
+  onPick: (groupId: string | null) => void;
   onClose: () => void;
 };
 
-// Same bottom sheet TasksScreen already has inline for a single task's
-// project, pulled out so Files/Photos/Links can assign a project to a
-// selection too (see BulkActionBar) - manages the shared `projects`
-// collection itself (create/rename/delete), same as the original.
-export default function ProjectPickerSheet({ visible, projects, onPick, onClose }: Props) {
-  const [newProjectName, setNewProjectName] = useState('');
-  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
-  const [editingProjectName, setEditingProjectName] = useState('');
+// Group assignment for Files/Photos/Links - deliberately its own `groups`
+// collection, separate from Tasks' `projects` (the user was explicit these
+// two shouldn't be the same thing, even though the sheet UI is nearly
+// identical to TasksScreen's own inline project picker).
+export default function GroupPickerSheet({ visible, groups, onPick, onClose }: Props) {
+  const [newGroupName, setNewGroupName] = useState('');
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [editingGroupName, setEditingGroupName] = useState('');
 
-  async function addProject() {
-    const name = newProjectName.trim();
+  async function addGroup() {
+    const name = newGroupName.trim();
     if (!name) return;
-    const color = PROJECT_COLORS[projects.length % PROJECT_COLORS.length];
-    await addDoc(projectsCollection, { name, color });
-    setNewProjectName('');
+    const color = GROUP_COLORS[groups.length % GROUP_COLORS.length];
+    await addDoc(groupsCollection, { name, color });
+    setNewGroupName('');
   }
 
-  function startEditProject(project: Project) {
-    setEditingProjectId(project.id);
-    setEditingProjectName(project.name);
+  function startEditGroup(group: Group) {
+    setEditingGroupId(group.id);
+    setEditingGroupName(group.name);
   }
 
-  async function saveEditProject() {
-    const name = editingProjectName.trim();
-    if (editingProjectId && name) {
-      await updateDoc(doc(db, 'projects', editingProjectId), { name });
+  async function saveEditGroup() {
+    const name = editingGroupName.trim();
+    if (editingGroupId && name) {
+      await updateDoc(doc(db, 'groups', editingGroupId), { name });
     }
-    setEditingProjectId(null);
+    setEditingGroupId(null);
   }
 
-  function confirmDeleteProject(project: Project) {
-    Alert.alert('Видалити проєкт?', `Об'єкти з проєктом "${project.name}" стануть без проєкту.`, [
+  function confirmDeleteGroup(group: Group) {
+    Alert.alert('Видалити групу?', `Об'єкти з групою "${group.name}" стануть без групи.`, [
       { text: 'Скасувати', style: 'cancel' },
-      { text: 'Видалити', style: 'destructive', onPress: () => deleteDoc(doc(db, 'projects', project.id)) },
+      { text: 'Видалити', style: 'destructive', onPress: () => deleteDoc(doc(db, 'groups', group.id)) },
     ]);
   }
 
@@ -58,37 +58,37 @@ export default function ProjectPickerSheet({ visible, projects, onPick, onClose 
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.handle} />
-          <Text style={styles.title}>Оберіть проєкт</Text>
+          <Text style={styles.title}>Групування</Text>
 
           <Pressable style={styles.row} onPress={() => onPick(null)}>
             <View style={[styles.dot, { backgroundColor: '#9CA3AF' }]} />
-            <Text style={styles.rowText}>Без проєкту</Text>
+            <Text style={styles.rowText}>Без групи</Text>
           </Pressable>
 
-          {projects.map((p) =>
-            editingProjectId === p.id ? (
-              <View key={p.id} style={styles.row}>
-                <View style={[styles.dot, { backgroundColor: p.color }]} />
+          {groups.map((g) =>
+            editingGroupId === g.id ? (
+              <View key={g.id} style={styles.row}>
+                <View style={[styles.dot, { backgroundColor: g.color }]} />
                 <TextInput
                   style={styles.renameInput}
-                  value={editingProjectName}
-                  onChangeText={setEditingProjectName}
+                  value={editingGroupName}
+                  onChangeText={setEditingGroupName}
                   autoFocus
-                  onSubmitEditing={saveEditProject}
-                  onBlur={saveEditProject}
+                  onSubmitEditing={saveEditGroup}
+                  onBlur={saveEditGroup}
                   returnKeyType="done"
                 />
               </View>
             ) : (
-              <View key={p.id} style={styles.row}>
-                <Pressable style={styles.rowTap} onPress={() => onPick(p.id)}>
-                  <View style={[styles.dot, { backgroundColor: p.color }]} />
-                  <Text style={styles.rowText}>{p.name}</Text>
+              <View key={g.id} style={styles.row}>
+                <Pressable style={styles.rowTap} onPress={() => onPick(g.id)}>
+                  <View style={[styles.dot, { backgroundColor: g.color }]} />
+                  <Text style={styles.rowText}>{g.name}</Text>
                 </Pressable>
-                <Pressable hitSlop={8} onPress={() => startEditProject(p)}>
+                <Pressable hitSlop={8} onPress={() => startEditGroup(g)}>
                   <Ionicons name="pencil-outline" size={16} color="#9CA3AF" />
                 </Pressable>
-                <Pressable hitSlop={8} onPress={() => confirmDeleteProject(p)}>
+                <Pressable hitSlop={8} onPress={() => confirmDeleteGroup(g)}>
                   <Ionicons name="close" size={16} color="#9CA3AF" />
                 </Pressable>
               </View>
@@ -100,13 +100,13 @@ export default function ProjectPickerSheet({ visible, projects, onPick, onClose 
           <View style={styles.addRow}>
             <TextInput
               style={styles.addInput}
-              value={newProjectName}
-              onChangeText={setNewProjectName}
-              placeholder="Новий проєкт"
-              onSubmitEditing={addProject}
+              value={newGroupName}
+              onChangeText={setNewGroupName}
+              placeholder="Нова група"
+              onSubmitEditing={addGroup}
               returnKeyType="done"
             />
-            <Pressable hitSlop={8} onPress={addProject}>
+            <Pressable hitSlop={8} onPress={addGroup}>
               <Ionicons name="add-circle" size={26} color={ACCENT} />
             </Pressable>
           </View>

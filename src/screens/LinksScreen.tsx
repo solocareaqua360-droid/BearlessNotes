@@ -15,7 +15,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Block, Project, TaggableKind } from '../types';
+import { Block, Group, TaggableKind } from '../types';
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
@@ -23,18 +23,19 @@ import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
-import ProjectPickerSheet from '../components/ProjectPickerSheet';
-import ProjectTabsRow, { NO_PROJECT_ID } from '../components/ProjectTabsRow';
+import GroupPickerSheet from '../components/GroupPickerSheet';
+import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import CopyToNoteModal from '../components/CopyToNoteModal';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 import { blockFromLink, copyObjectsToNote } from '../utils/copyToNote';
+import { linkDocId } from '../utils/linkId';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
 const linksCollection = collection(db, 'links');
-const projectsCollection = collection(db, 'projects');
+const groupsCollection = collection(db, 'groups');
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -52,7 +53,7 @@ type LinkItem = {
   siteName?: string;
   documentIds: string[];
   tagIds: string[];
-  projectId?: string;
+  groupId?: string;
 };
 
 type LinkCategory = 'video' | 'geo' | 'other';
@@ -124,10 +125,10 @@ export default function LinksScreen({ route, navigation }: Props) {
   const [tagPickerForId, setTagPickerForId] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [projectFilter, setProjectFilter] = useState<string | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [groupFilter, setGroupFilter] = useState<string | null>(null);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
-  const [bulkProjectPickerVisible, setBulkProjectPickerVisible] = useState(false);
+  const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
   const { filterPending, requestDelete, requestDeleteMany, undo, toast } = usePendingDelete<LinkItem>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
@@ -148,7 +149,7 @@ export default function LinksScreen({ route, navigation }: Props) {
             siteName: data.siteName,
             documentIds: Object.keys(data.usedInDocuments ?? {}),
             tagIds: data.tagIds ?? [],
-            projectId: data.projectId,
+            groupId: data.groupId,
           };
         })
       );
@@ -157,22 +158,22 @@ export default function LinksScreen({ route, navigation }: Props) {
   }, []);
 
   useEffect(() => {
-    return onSnapshot(query(projectsCollection, orderBy('name')), (snapshot) => {
-      setProjects(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as { name: string; color: string }) })));
+    return onSnapshot(query(groupsCollection, orderBy('name')), (snapshot) => {
+      setGroups(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as { name: string; color: string }) })));
     });
   }, []);
 
   const categoryLinks = filterPending(links.filter((link) => categoryOf(link) === category));
-  const projectFilteredLinks =
-    projectFilter === null
+  const groupFilteredLinks =
+    groupFilter === null
       ? categoryLinks
-      : projectFilter === NO_PROJECT_ID
-        ? categoryLinks.filter((l) => !l.projectId)
-        : categoryLinks.filter((l) => l.projectId === projectFilter);
+      : groupFilter === UNASSIGNED_ID
+        ? categoryLinks.filter((l) => !l.groupId)
+        : categoryLinks.filter((l) => l.groupId === groupFilter);
   const needle = searchQuery.trim().toLowerCase();
   const filteredLinks = needle
-    ? projectFilteredLinks.filter((link) => (link.title || hostnameOf(link.url)).toLowerCase().includes(needle))
-    : projectFilteredLinks;
+    ? groupFilteredLinks.filter((link) => (link.title || hostnameOf(link.url)).toLowerCase().includes(needle))
+    : groupFilteredLinks;
   const tagPickerLink = tagPickerForId ? links.find((l) => l.id === tagPickerForId) ?? null : null;
   const selectedLinks = categoryLinks.filter((l) => selectedIds.has(l.id));
 
@@ -278,11 +279,11 @@ export default function LinksScreen({ route, navigation }: Props) {
     clearSelection();
   }
 
-  async function bulkAssignProject(projectId: string | null) {
-    setBulkProjectPickerVisible(false);
+  async function bulkAssignGroup(groupId: string | null) {
+    setBulkGroupPickerVisible(false);
     const batch = writeBatch(db);
     selectedLinks.forEach((l) => {
-      batch.update(doc(db, 'links', l.id), { projectId: projectId ?? deleteField() });
+      batch.update(doc(db, 'links', l.id), { groupId: groupId ?? deleteField() });
     });
     await batch.commit();
     clearSelection();
@@ -294,7 +295,7 @@ export default function LinksScreen({ route, navigation }: Props) {
     await copyObjectsToNote(
       documentId,
       blocks,
-      selectedLinks.map((l) => ({ collectionName: 'links', id: l.id }))
+      selectedLinks.map((l) => ({ collectionName: 'links', id: linkDocId(l.url) }))
     );
     clearSelection();
   }
@@ -305,7 +306,7 @@ export default function LinksScreen({ route, navigation }: Props) {
     const newDocumentId = await copyObjectsToNote(
       null,
       blocks,
-      selectedLinks.map((l) => ({ collectionName: 'links', id: l.id }))
+      selectedLinks.map((l) => ({ collectionName: 'links', id: linkDocId(l.url) }))
     );
     clearSelection();
     navigation.navigate('Editor', { documentId: newDocumentId });
@@ -396,8 +397,8 @@ export default function LinksScreen({ route, navigation }: Props) {
         </View>
       </View>
 
-      {projects.length > 0 && (
-        <ProjectTabsRow projects={projects} selected={projectFilter} onSelect={setProjectFilter} />
+      {groups.length > 0 && (
+        <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" />
       )}
 
       {isSearching && (
@@ -472,11 +473,11 @@ export default function LinksScreen({ route, navigation }: Props) {
         onClose={() => setBulkTagPickerVisible(false)}
       />
 
-      <ProjectPickerSheet
-        visible={bulkProjectPickerVisible}
-        projects={projects}
-        onPick={bulkAssignProject}
-        onClose={() => setBulkProjectPickerVisible(false)}
+      <GroupPickerSheet
+        visible={bulkGroupPickerVisible}
+        groups={groups}
+        onPick={bulkAssignGroup}
+        onClose={() => setBulkGroupPickerVisible(false)}
       />
 
       <CopyToNoteModal
@@ -489,7 +490,7 @@ export default function LinksScreen({ route, navigation }: Props) {
       <BulkActionBar
         count={selectedIds.size}
         onTag={() => setBulkTagPickerVisible(true)}
-        onProject={() => setBulkProjectPickerVisible(true)}
+        onGroup={() => setBulkGroupPickerVisible(true)}
         onCopy={() => setBulkCopyModalVisible(true)}
         onDelete={confirmDeleteSelected}
       />

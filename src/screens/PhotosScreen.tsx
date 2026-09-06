@@ -20,7 +20,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Block, Project, Tag } from '../types';
+import { Block, Group, Tag } from '../types';
 import { RootStackParamList } from '../navigation';
 import ZoomableImageViewer, { ViewerAction } from '../components/ZoomableImageViewer';
 import RenamePrompt from '../components/RenamePrompt';
@@ -29,8 +29,8 @@ import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
-import ProjectPickerSheet from '../components/ProjectPickerSheet';
-import ProjectTabsRow, { NO_PROJECT_ID } from '../components/ProjectTabsRow';
+import GroupPickerSheet from '../components/GroupPickerSheet';
+import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import CopyToNoteModal from '../components/CopyToNoteModal';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
@@ -38,7 +38,7 @@ import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 import { blockFromPhoto, copyObjectsToNote } from '../utils/copyToNote';
 
 const ACCENT = '#EC4899';
-const projectsCollection = collection(db, 'projects');
+const groupsCollection = collection(db, 'groups');
 const DOWNLOAD_DIR_STORAGE_KEY = 'bearlessNotes.downloadDirUri';
 
 function generateId(): string {
@@ -51,7 +51,7 @@ type PhotoItem = {
   title?: string;
   documentIds: string[];
   tagIds: string[];
-  projectId?: string;
+  groupId?: string;
 };
 
 // Same "pick a folder once, remember it" download flow already built for
@@ -130,10 +130,10 @@ export default function PhotosScreen() {
   const [tagPickerForId, setTagPickerForId] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [projectFilter, setProjectFilter] = useState<string | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [groupFilter, setGroupFilter] = useState<string | null>(null);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
-  const [bulkProjectPickerVisible, setBulkProjectPickerVisible] = useState(false);
+  const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
   const { filterPending, requestDelete, requestDeleteMany, undo, toast } = usePendingDelete<PhotoItem>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
@@ -152,7 +152,7 @@ export default function PhotosScreen() {
             title: data.title,
             documentIds: Object.keys(data.usedInDocuments ?? {}),
             tagIds: data.tagIds ?? [],
-            projectId: data.projectId,
+            groupId: data.groupId,
           };
         })
       );
@@ -161,22 +161,22 @@ export default function PhotosScreen() {
   }, []);
 
   useEffect(() => {
-    return onSnapshot(query(projectsCollection, orderBy('name')), (snapshot) => {
-      setProjects(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as { name: string; color: string }) })));
+    return onSnapshot(query(groupsCollection, orderBy('name')), (snapshot) => {
+      setGroups(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as { name: string; color: string }) })));
     });
   }, []);
 
   const pendingFilteredPhotos = filterPending(photos);
-  const projectFilteredPhotos =
-    projectFilter === null
+  const groupFilteredPhotos =
+    groupFilter === null
       ? pendingFilteredPhotos
-      : projectFilter === NO_PROJECT_ID
-        ? pendingFilteredPhotos.filter((p) => !p.projectId)
-        : pendingFilteredPhotos.filter((p) => p.projectId === projectFilter);
+      : groupFilter === UNASSIGNED_ID
+        ? pendingFilteredPhotos.filter((p) => !p.groupId)
+        : pendingFilteredPhotos.filter((p) => p.groupId === groupFilter);
   const needle = searchQuery.trim().toLowerCase();
   const displayedPhotos = needle
-    ? projectFilteredPhotos.filter((p) => (p.title ?? '').toLowerCase().includes(needle))
-    : projectFilteredPhotos;
+    ? groupFilteredPhotos.filter((p) => (p.title ?? '').toLowerCase().includes(needle))
+    : groupFilteredPhotos;
   const viewerPhoto = viewerPhotoId ? photos.find((p) => p.id === viewerPhotoId) ?? null : null;
   const tagPickerPhoto = tagPickerForId ? photos.find((p) => p.id === tagPickerForId) ?? null : null;
   const selectedPhotos = photos.filter((p) => selectedIds.has(p.id));
@@ -287,11 +287,11 @@ export default function PhotosScreen() {
     clearSelection();
   }
 
-  async function bulkAssignProject(projectId: string | null) {
-    setBulkProjectPickerVisible(false);
+  async function bulkAssignGroup(groupId: string | null) {
+    setBulkGroupPickerVisible(false);
     const batch = writeBatch(db);
     selectedPhotos.forEach((p) => {
-      batch.update(doc(db, 'photos', p.id), { projectId: projectId ?? deleteField() });
+      batch.update(doc(db, 'photos', p.id), { groupId: groupId ?? deleteField() });
     });
     await batch.commit();
     clearSelection();
@@ -378,8 +378,8 @@ export default function PhotosScreen() {
         </View>
       </View>
 
-      {projects.length > 0 && (
-        <ProjectTabsRow projects={projects} selected={projectFilter} onSelect={setProjectFilter} />
+      {groups.length > 0 && (
+        <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" />
       )}
 
       {isSearching && (
@@ -485,11 +485,11 @@ export default function PhotosScreen() {
         onClose={() => setBulkTagPickerVisible(false)}
       />
 
-      <ProjectPickerSheet
-        visible={bulkProjectPickerVisible}
-        projects={projects}
-        onPick={bulkAssignProject}
-        onClose={() => setBulkProjectPickerVisible(false)}
+      <GroupPickerSheet
+        visible={bulkGroupPickerVisible}
+        groups={groups}
+        onPick={bulkAssignGroup}
+        onClose={() => setBulkGroupPickerVisible(false)}
       />
 
       <CopyToNoteModal
@@ -502,7 +502,7 @@ export default function PhotosScreen() {
       <BulkActionBar
         count={selectedIds.size}
         onTag={() => setBulkTagPickerVisible(true)}
-        onProject={() => setBulkProjectPickerVisible(true)}
+        onGroup={() => setBulkGroupPickerVisible(true)}
         onCopy={() => setBulkCopyModalVisible(true)}
         onDelete={confirmDeleteSelected}
       />

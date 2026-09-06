@@ -28,7 +28,7 @@ import {
 import { db } from '../firebase';
 import { Block, Project } from '../types';
 import { RootStackParamList } from '../navigation';
-import ProjectTabsRow, { NO_PROJECT_ID } from '../components/ProjectTabsRow';
+import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -134,7 +134,7 @@ export default function TasksScreen() {
   // is deleted.
   const filteredTasks = useMemo(() => {
     if (projectFilter === null) return tasks;
-    if (projectFilter === NO_PROJECT_ID) return tasks.filter((t) => !t.projectId);
+    if (projectFilter === UNASSIGNED_ID) return tasks.filter((t) => !t.projectId);
     return tasks.filter((t) => t.projectId === projectFilter);
   }, [tasks, projectFilter]);
 
@@ -407,7 +407,7 @@ export default function TasksScreen() {
       </View>
 
       {projects.length > 0 && (
-        <ProjectTabsRow projects={projects} selected={projectFilter} onSelect={setProjectFilter} />
+        <ProjectTabsRow items={projects} selected={projectFilter} onSelect={setProjectFilter} />
       )}
 
       <ScrollView contentContainerStyle={styles.list}>

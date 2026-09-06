@@ -17,7 +17,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Block, Project } from '../types';
+import { Block, Group } from '../types';
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
@@ -25,8 +25,8 @@ import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
-import ProjectPickerSheet from '../components/ProjectPickerSheet';
-import ProjectTabsRow, { NO_PROJECT_ID } from '../components/ProjectTabsRow';
+import GroupPickerSheet from '../components/GroupPickerSheet';
+import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import CopyToNoteModal from '../components/CopyToNoteModal';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
@@ -35,7 +35,7 @@ import { blockFromFile, copyObjectsToNote } from '../utils/copyToNote';
 
 const ACCENT = '#8B5CF6';
 const DANGER = '#EF4444';
-const projectsCollection = collection(db, 'projects');
+const groupsCollection = collection(db, 'groups');
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -49,7 +49,7 @@ type FileItem = {
   title?: string;
   documentIds: string[];
   tagIds: string[];
-  projectId?: string;
+  groupId?: string;
 };
 
 // Same tinting-by-extension used on the file block itself in
@@ -78,10 +78,10 @@ export default function FilesScreen() {
   const [tagPickerForId, setTagPickerForId] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [projectFilter, setProjectFilter] = useState<string | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [groupFilter, setGroupFilter] = useState<string | null>(null);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
-  const [bulkProjectPickerVisible, setBulkProjectPickerVisible] = useState(false);
+  const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
   const { filterPending, requestDelete, requestDeleteMany, undo, toast } = usePendingDelete<FileItem>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
@@ -102,7 +102,7 @@ export default function FilesScreen() {
             title: data.title,
             documentIds: Object.keys(data.usedInDocuments ?? {}),
             tagIds: data.tagIds ?? [],
-            projectId: data.projectId,
+            groupId: data.groupId,
           };
         })
       );
@@ -111,22 +111,22 @@ export default function FilesScreen() {
   }, []);
 
   useEffect(() => {
-    return onSnapshot(query(projectsCollection, orderBy('name')), (snapshot) => {
-      setProjects(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as { name: string; color: string }) })));
+    return onSnapshot(query(groupsCollection, orderBy('name')), (snapshot) => {
+      setGroups(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as { name: string; color: string }) })));
     });
   }, []);
 
   const pendingFilteredFiles = filterPending(files);
-  const projectFilteredFiles =
-    projectFilter === null
+  const groupFilteredFiles =
+    groupFilter === null
       ? pendingFilteredFiles
-      : projectFilter === NO_PROJECT_ID
-        ? pendingFilteredFiles.filter((f) => !f.projectId)
-        : pendingFilteredFiles.filter((f) => f.projectId === projectFilter);
+      : groupFilter === UNASSIGNED_ID
+        ? pendingFilteredFiles.filter((f) => !f.groupId)
+        : pendingFilteredFiles.filter((f) => f.groupId === groupFilter);
   const needle = searchQuery.trim().toLowerCase();
   const displayedFiles = needle
-    ? projectFilteredFiles.filter((f) => (f.title || f.fileName).toLowerCase().includes(needle))
-    : projectFilteredFiles;
+    ? groupFilteredFiles.filter((f) => (f.title || f.fileName).toLowerCase().includes(needle))
+    : groupFilteredFiles;
   const tagPickerFile = tagPickerForId ? files.find((f) => f.id === tagPickerForId) ?? null : null;
   const selectedFiles = files.filter((f) => selectedIds.has(f.id));
 
@@ -230,11 +230,11 @@ export default function FilesScreen() {
     clearSelection();
   }
 
-  async function bulkAssignProject(projectId: string | null) {
-    setBulkProjectPickerVisible(false);
+  async function bulkAssignGroup(groupId: string | null) {
+    setBulkGroupPickerVisible(false);
     const batch = writeBatch(db);
     selectedFiles.forEach((f) => {
-      batch.update(doc(db, 'files', f.id), { projectId: projectId ?? deleteField() });
+      batch.update(doc(db, 'files', f.id), { groupId: groupId ?? deleteField() });
     });
     await batch.commit();
     clearSelection();
@@ -340,8 +340,8 @@ export default function FilesScreen() {
         </View>
       </View>
 
-      {projects.length > 0 && (
-        <ProjectTabsRow projects={projects} selected={projectFilter} onSelect={setProjectFilter} />
+      {groups.length > 0 && (
+        <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" />
       )}
 
       {isSearching && (
@@ -420,11 +420,11 @@ export default function FilesScreen() {
         onClose={() => setBulkTagPickerVisible(false)}
       />
 
-      <ProjectPickerSheet
-        visible={bulkProjectPickerVisible}
-        projects={projects}
-        onPick={bulkAssignProject}
-        onClose={() => setBulkProjectPickerVisible(false)}
+      <GroupPickerSheet
+        visible={bulkGroupPickerVisible}
+        groups={groups}
+        onPick={bulkAssignGroup}
+        onClose={() => setBulkGroupPickerVisible(false)}
       />
 
       <CopyToNoteModal
@@ -437,7 +437,7 @@ export default function FilesScreen() {
       <BulkActionBar
         count={selectedIds.size}
         onTag={() => setBulkTagPickerVisible(true)}
-        onProject={() => setBulkProjectPickerVisible(true)}
+        onGroup={() => setBulkGroupPickerVisible(true)}
         onCopy={() => setBulkCopyModalVisible(true)}
         onDelete={confirmDeleteSelected}
       />
