@@ -88,8 +88,14 @@ Drive):
   via `expo-print`, no native module needed for that part).
   `expo-dev-client`, the scanner plugin, and `expo-print` are installed
   and wired into `app.json`'s `plugins`; the Android `package` id was
-  deliberately set to `com.bearlessnotes.app` before the first real
-  build (can't change after a Play Store publish).
+  deliberately set before the first real build (can't change after a
+  Play Store publish) - first to `com.bearlessnotes.app`, then
+  corrected to `com.bearlessnotes.notes` once it turned out the first
+  string was already claimed by the user's other app (video bookmark,
+  same GitHub account, different branch of this same repo) - Android
+  treats two apps with the same package id as one and the same,
+  offering "update" instead of a separate install, which is exactly
+  the bug this surfaced as on-device.
 - The first dev-client build could **not** be done with `eas build`
   from a Claude Code cloud session — that sandbox's network policy
   blocks `api.expo.dev` outright. Worked around by triggering it

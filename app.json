@@ -18,7 +18,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "softwareKeyboardLayoutMode": "resize",
-      "package": "com.bearlessnotes.app"
+      "package": "com.bearlessnotes.notes"
     },
     "web": {
       "favicon": "./assets/favicon.png"

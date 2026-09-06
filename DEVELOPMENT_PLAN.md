@@ -545,10 +545,17 @@ EAS dev-client (нативні модулі, яких немає в Expo Go).
       `expo-print`; конфіг-плагіни додано в `app.json`
       (`expo-dev-client` + `react-native-document-scanner-plugin` з
       повідомленням дозволу камери українською)
-- [x] Заданий Android `package` (`com.bearlessnotes.app`) замість
-      автозгенерованого `com.anonymous.bearlessnotes` — обов'язково до
-      першої реальної збірки, бо змінити його після публікації в Play
-      Store вже не можна
+- [x] Заданий Android `package` — спочатку `com.bearlessnotes.app`
+      замість автозгенерованого `com.anonymous.bearlessnotes`, але
+      виявилось, що саме цей рядок уже зайнятий іншим застосунком
+      користувача (video bookmark, у гілці
+      `claude/video-bookmark-app-structure-4s4vfm` цього ж репозиторію)
+      — Android розрізняє застосунки саме за package name, тож
+      однаковий рядок = "той самий застосунок" (звідси "оновити"
+      замість "встановити" при спробі мати обидва на телефоні).
+      Виправлено на унікальний `com.bearlessnotes.notes`. Обов'язково
+      перевіряти це до першої реальної (не dev-client) збірки, бо
+      змінити package після публікації в Play Store вже не можна
 - [x] Додано `eas.json` (профілі `development`/`preview`/`production`)
       і npm-скрипти `prebuild` та `build:android:dev`
 - [x] Локальна перевірка (`expo prebuild --platform android`) —
