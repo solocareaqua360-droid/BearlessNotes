@@ -25,7 +25,7 @@ import { db } from '../firebase';
 import { DocumentItem } from '../types';
 import { RootStackParamList } from '../navigation';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
-import TagsDrawer, { DocumentTagFilter } from '../components/TagsDrawer';
+import TagsDrawer, { TagFilter } from '../components/TagsDrawer';
 import DocumentCard from '../components/DocumentCard';
 import { extractPreview } from '../utils/documentPreview';
 
@@ -36,7 +36,7 @@ export default function DocumentsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeFilter, setActiveFilter] = useState<DocumentTagFilter | null>(null);
+  const [activeFilter, setActiveFilter] = useState<TagFilter | null>(null);
   const { tags } = useTags();
 
   useEffect(() => {

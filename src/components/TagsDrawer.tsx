@@ -13,7 +13,7 @@ const DRAWER_WIDTH = Math.round(Dimensions.get('window').width * (2 / 3));
 // the open button is a standalone circle the same size as the island.
 const OPEN_BUTTON_SIZE = 64;
 
-export type DocumentTagFilter = { type: 'tag'; tag: Tag } | { type: 'untagged' };
+export type TagFilter = { type: 'tag'; tag: Tag } | { type: 'untagged' };
 
 type TreeNode = {
   name: string;
@@ -103,17 +103,23 @@ function TreeRow({
 
 type Props = {
   tags: Tag[];
-  activeFilter: DocumentTagFilter | null;
-  onSelectFilter: (filter: DocumentTagFilter) => void;
+  activeFilter: TagFilter | null;
+  onSelectFilter: (filter: TagFilter) => void;
+  // Files/Photos/Links show the same round button in the same corner, but
+  // it has to get out of the way while their own bulk-select bar is on
+  // screen (same bottom-left corner, would otherwise overlap it).
+  hideOpenButton?: boolean;
 };
 
 // A standalone round button at the bottom-left (same size as the floating
 // island, styled to match it) opens a Bear-style tag sidebar, 2/3 of the
 // screen wide, over a dimmed rest of the screen. Picking a tag or "Без
-// тегів" sets the Documents screen's filter and closes the drawer; clearing
-// the filter happens from the active-filter chip DocumentsScreen shows, not
-// from here. Closing otherwise is a tap anywhere on the dimmed backdrop.
-export default function TagsDrawer({ tags, activeFilter, onSelectFilter }: Props) {
+// тегів" sets the calling screen's own filter and closes the drawer;
+// clearing the filter happens from the active-filter chip that screen
+// shows, not from here. Closing otherwise is a tap anywhere on the dimmed
+// backdrop. Shared as-is across Documents/Calendar/Files/Photos/Links -
+// it only ever browses and picks from whatever `tags` list it's given.
+export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpenButton }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   // The backdrop+panel live inside a real Modal (a separate Android window,
   // always painted above the whole activity - including the floating
@@ -269,7 +275,7 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter }: Props
         </Animated.View>
       </Modal>
 
-      {!isOpen && (
+      {!isOpen && !hideOpenButton && (
         <Pressable style={styles.openButton} onPress={() => setIsOpen(true)}>
           <Text style={styles.openButtonHash}>#</Text>
         </Pressable>

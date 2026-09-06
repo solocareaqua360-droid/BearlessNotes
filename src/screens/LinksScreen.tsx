@@ -25,10 +25,11 @@ import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
 import GroupPickerSheet, { GroupKind } from '../components/GroupPickerSheet';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
+import TagsDrawer, { TagFilter } from '../components/TagsDrawer';
 import CopyToNoteModal from '../components/CopyToNoteModal';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
-import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
+import { useTags, detachTagFromDeletedItem, isTagAllowedForKind } from '../hooks/useTags';
 import { blockFromLink, copyObjectsToNote } from '../utils/copyToNote';
 import { linkDocId } from '../utils/linkId';
 
@@ -136,6 +137,7 @@ export default function LinksScreen({ route, navigation }: Props) {
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
+  const [tagFilter, setTagFilter] = useState<TagFilter | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
@@ -189,10 +191,19 @@ export default function LinksScreen({ route, navigation }: Props) {
       : groupFilter === UNASSIGNED_ID
         ? categoryLinks.filter((l) => !l.groupId)
         : categoryLinks.filter((l) => l.groupId === groupFilter);
+  const tagFilteredLinks = !tagFilter
+    ? groupFilteredLinks
+    : tagFilter.type === 'untagged'
+      ? groupFilteredLinks.filter((l) => l.tagIds.length === 0)
+      : groupFilteredLinks.filter((l) => l.tagIds.includes(tagFilter.tag.id));
   const needle = searchQuery.trim().toLowerCase();
   const filteredLinks = needle
-    ? groupFilteredLinks.filter((link) => (link.title || hostnameOf(link.url)).toLowerCase().includes(needle))
-    : groupFilteredLinks;
+    ? tagFilteredLinks.filter((link) => (link.title || hostnameOf(link.url)).toLowerCase().includes(needle))
+    : tagFilteredLinks;
+  // Video/geo/other tags don't mix (see the TaggableKind comment in
+  // types.ts) - the drawer here must only ever offer tags relevant to
+  // whichever of the three link screens this is.
+  const drawerTags = tags.filter((t) => isTagAllowedForKind(t, tagKind));
   const tagPickerLink = tagPickerForId ? links.find((l) => l.id === tagPickerForId) ?? null : null;
   const selectedLinks = categoryLinks.filter((l) => selectedIds.has(l.id));
 
@@ -420,6 +431,27 @@ export default function LinksScreen({ route, navigation }: Props) {
         <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" />
       )}
 
+      {tagFilter && (
+        <View style={styles.filterRow}>
+          <View style={styles.filterChip}>
+            {tagFilter.type === 'tag' ? (
+              <>
+                <Ionicons name={tagFilter.tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tagFilter.tag.color} />
+                <Text style={[styles.filterChipLabel, { color: tagFilter.tag.color }]}>{tagFilter.tag.path}</Text>
+              </>
+            ) : (
+              <>
+                <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
+                <Text style={styles.filterChipLabel}>Без тегів</Text>
+              </>
+            )}
+            <Pressable hitSlop={8} onPress={() => setTagFilter(null)}>
+              <Ionicons name="close" size={14} color={tagFilter.type === 'tag' ? tagFilter.tag.color : '#6B7280'} />
+            </Pressable>
+          </View>
+        </View>
+      )}
+
       {isSearching && (
         <View style={styles.searchRow}>
           <Ionicons name="search" size={14} color="#9CA3AF" />
@@ -507,6 +539,8 @@ export default function LinksScreen({ route, navigation }: Props) {
         onClose={() => setBulkCopyModalVisible(false)}
       />
 
+      <TagsDrawer tags={drawerTags} activeFilter={tagFilter} onSelectFilter={setTagFilter} hideOpenButton={isSelectMode} />
+
       <BulkActionBar
         count={selectedIds.size}
         onTag={() => setBulkTagPickerVisible(true)}
@@ -545,6 +579,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
+  },
+  filterRow: {
+    paddingHorizontal: 20,
+    paddingBottom: 8,
+  },
+  filterChip: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  filterChipLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: ACCENT,
   },
   rowCheckbox: {
     alignSelf: 'center',
