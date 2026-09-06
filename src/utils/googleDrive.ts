@@ -56,6 +56,14 @@ async function getDriveAccessToken(): Promise<string> {
   return accessToken;
 }
 
+// Drive's error bodies are all shaped { error: { message, code } } - this
+// pulls the human-readable part out for the "Перевірити з'єднання" dialog,
+// which is the only place these ever reach the user.
+function describeApiError(json: unknown): string {
+  const message = (json as { error?: { message?: string } })?.error?.message;
+  return message ?? JSON.stringify(json);
+}
+
 // Finds a folder by name (optionally under a given parent), creating it if
 // missing, and caches the result under `storageKey` so repeat uploads skip
 // the lookup round trip entirely.
@@ -90,7 +98,9 @@ async function ensureFolder(
     folderId = createJson.id;
     if (!folderId) {
       console.warn('[googleDrive] failed to create folder', name, createRes.status, createJson);
-      throw new Error(`Drive folder creation failed for "${name}"`);
+      throw new Error(
+        `Не вдалося створити папку "${name}" (HTTP ${createRes.status}): ${describeApiError(createJson)}`
+      );
     }
   }
 
@@ -112,14 +122,13 @@ async function ensureSubFolder(accessToken: string, subFolder: DriveSubFolder): 
 // this app deals with. Content-Transfer-Encoding: base64 lets the media
 // part carry base64 text directly instead of needing raw binary in the
 // request body, which `fetch` on React Native can't build easily.
-async function uploadFileToDrive(
+async function uploadBase64ToDrive(
   accessToken: string,
   folderId: string,
-  localUri: string,
   fileName: string,
-  mimeType: string
+  mimeType: string,
+  base64Data: string
 ): Promise<string> {
-  const base64Data = await LegacyFileSystem.readAsStringAsync(localUri, { encoding: 'base64' });
   const boundary = 'bearlessnotes-drive-upload';
   const metadata = { name: fileName, parents: [folderId] };
   const body =
@@ -143,9 +152,20 @@ async function uploadFileToDrive(
   const json = await response.json();
   if (!json.id) {
     console.warn('[googleDrive] upload failed', fileName, response.status, json);
-    throw new Error('Drive upload failed');
+    throw new Error(`Завантаження не вдалося (HTTP ${response.status}): ${describeApiError(json)}`);
   }
   return json.id as string;
+}
+
+async function uploadFileToDrive(
+  accessToken: string,
+  folderId: string,
+  localUri: string,
+  fileName: string,
+  mimeType: string
+): Promise<string> {
+  const base64Data = await LegacyFileSystem.readAsStringAsync(localUri, { encoding: 'base64' });
+  return uploadBase64ToDrive(accessToken, folderId, fileName, mimeType, base64Data);
 }
 
 // Fire-and-forget entry point used right after attaching a new file/photo:
@@ -170,6 +190,41 @@ export async function backupFileToDrive(
   } catch (e) {
     console.warn('[googleDrive] backupFileToDrive failed', fileName, e);
     return null;
+  }
+}
+
+// "Bearless Notes Drive test" as base64 - the diagnostic below uploads this
+// tiny file rather than a real attachment, so it needs no picker and no
+// local file to read.
+const DIAGNOSTIC_FILE_BASE64 = 'QmVhcmxlc3MgTm90ZXMgRHJpdmUgdGVzdA==';
+
+// Runs exactly the same path an automatic backup takes (token → folders →
+// upload) and reports what happened in plain words, since the automatic
+// backup itself is deliberately silent and its console warnings don't
+// reliably reach a terminal when Metro runs as a background task.
+export async function runDriveDiagnostics(): Promise<string> {
+  ensureConfigured();
+  if (!GoogleSignin.hasPreviousSignIn()) {
+    return 'Немає збереженого входу Google — підключи акаунт заново.';
+  }
+  let accessToken: string;
+  try {
+    accessToken = await getDriveAccessToken();
+  } catch (e) {
+    return `Не вдалося отримати токен доступу: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  try {
+    const folderId = await ensureSubFolder(accessToken, 'Files');
+    const fileId = await uploadBase64ToDrive(
+      accessToken,
+      folderId,
+      `bearless-notes-test-${Date.now()}.txt`,
+      'text/plain',
+      DIAGNOSTIC_FILE_BASE64
+    );
+    return `Успішно. Тестовий файл завантажено в "Bearless Notes/Files" (id ${fileId}).`;
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
   }
 }
 

@@ -6,6 +6,7 @@ import {
   disconnectGoogleDrive,
   getConnectedEmail,
   isDriveConnected,
+  runDriveDiagnostics,
 } from '../utils/googleDrive';
 
 const ACCENT = '#3B82F6';
@@ -22,6 +23,19 @@ export default function SettingsScreen() {
       setEmail(connectedEmail);
     } catch {
       // Cancelled or failed - nothing to show, the button just stays as is.
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // The automatic backup is deliberately silent (a failed backup must never
+  // block attaching a file), so this is the only place the actual reason a
+  // backup isn't landing on Drive becomes visible.
+  async function handleCheckConnection() {
+    setBusy(true);
+    try {
+      const result = await runDriveDiagnostics();
+      Alert.alert('Перевірка з\'єднання', result);
     } finally {
       setBusy(false);
     }
@@ -65,8 +79,11 @@ export default function SettingsScreen() {
             <Text style={styles.cardHint}>
               Нові файли й фото автоматично копіюються в папку "Bearless Notes" на Диску.
             </Text>
+            <Pressable style={styles.checkButton} onPress={handleCheckConnection} disabled={busy}>
+              {busy ? <ActivityIndicator color={ACCENT} /> : <Text style={styles.checkLabel}>Перевірити з'єднання</Text>}
+            </Pressable>
             <Pressable style={styles.disconnectButton} onPress={handleDisconnect} disabled={busy}>
-              {busy ? <ActivityIndicator color={DANGER} /> : <Text style={styles.disconnectLabel}>Відключити</Text>}
+              <Text style={styles.disconnectLabel}>Відключити</Text>
             </Pressable>
           </>
         ) : (
@@ -136,6 +153,19 @@ const styles = StyleSheet.create({
   },
   connectLabel: {
     color: '#fff',
+    fontWeight: '600',
+    fontSize: 15,
+  },
+  checkButton: {
+    borderWidth: 1,
+    borderColor: ACCENT,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  checkLabel: {
+    color: ACCENT,
     fontWeight: '600',
     fontSize: 15,
   },
