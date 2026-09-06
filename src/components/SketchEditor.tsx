@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react';
 import { GestureResponderEvent, LayoutChangeEvent, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SketchStroke } from '../types';
 
 const COLORS = ['#111827', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
 const WIDTHS = [3, 6, 10];
+// How close a touch has to land to any point of a stroke to erase it -
+// whole-stroke erase (not true pixel erasing), since strokes are stored
+// as vector paths rather than a raster canvas.
+const ERASE_RADIUS = 24;
 
 interface Props {
   visible: boolean;
@@ -19,12 +23,23 @@ function pointsToPath(points: { x: number; y: number }[]): string {
   return points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
 }
 
+function parsePathPoints(d: string): { x: number; y: number }[] {
+  return d
+    .split(/(?=[ML])/)
+    .filter(Boolean)
+    .map((segment) => {
+      const [x, y] = segment.slice(1).trim().split(' ').map(Number);
+      return { x, y };
+    });
+}
+
 export default function SketchEditor({ visible, initialStrokes, onSave, onClose }: Props) {
   const [strokes, setStrokes] = useState<SketchStroke[]>(initialStrokes);
   const [currentPoints, setCurrentPoints] = useState<{ x: number; y: number }[]>([]);
   const [color, setColor] = useState(COLORS[0]);
   const [strokeWidth, setStrokeWidth] = useState(WIDTHS[0]);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const [eraserActive, setEraserActive] = useState(false);
 
   // Re-seed local state each time the modal opens, since it stays mounted
   // (just hidden) between blocks otherwise and would carry over the
@@ -40,13 +55,27 @@ export default function SketchEditor({ visible, initialStrokes, onSave, onClose 
     setCanvasSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height });
   }
 
+  function eraseAt(x: number, y: number) {
+    setStrokes((prev) =>
+      prev.filter((s) => !parsePathPoints(s.d).some((p) => Math.hypot(p.x - x, p.y - y) < ERASE_RADIUS))
+    );
+  }
+
   function handleStart(e: GestureResponderEvent) {
     const { locationX, locationY } = e.nativeEvent;
+    if (eraserActive) {
+      eraseAt(locationX, locationY);
+      return;
+    }
     setCurrentPoints([{ x: locationX, y: locationY }]);
   }
 
   function handleMove(e: GestureResponderEvent) {
     const { locationX, locationY } = e.nativeEvent;
+    if (eraserActive) {
+      eraseAt(locationX, locationY);
+      return;
+    }
     setCurrentPoints((prev) => [...prev, { x: locationX, y: locationY }]);
   }
 
@@ -67,6 +96,11 @@ export default function SketchEditor({ visible, initialStrokes, onSave, onClose 
     setStrokes([]);
   }
 
+  function selectColor(c: string) {
+    setEraserActive(false);
+    setColor(c);
+  }
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -77,6 +111,13 @@ export default function SketchEditor({ visible, initialStrokes, onSave, onClose 
           <View style={styles.headerActions}>
             <Pressable hitSlop={10} onPress={undo} disabled={strokes.length === 0}>
               <Ionicons name="arrow-undo-outline" size={22} color={strokes.length ? '#111827' : '#D1D5DB'} />
+            </Pressable>
+            <Pressable
+              hitSlop={10}
+              style={[styles.eraserButton, eraserActive && styles.eraserButtonActive]}
+              onPress={() => setEraserActive((v) => !v)}
+            >
+              <MaterialCommunityIcons name="eraser" size={20} color={eraserActive ? '#fff' : '#111827'} />
             </Pressable>
             <Pressable hitSlop={10} onPress={clear} disabled={strokes.length === 0}>
               <Ionicons name="trash-outline" size={22} color={strokes.length ? '#111827' : '#D1D5DB'} />
@@ -130,7 +171,7 @@ export default function SketchEditor({ visible, initialStrokes, onSave, onClose 
               <Pressable
                 key={c}
                 hitSlop={4}
-                onPress={() => setColor(c)}
+                onPress={() => selectColor(c)}
                 style={[styles.colorSwatch, { backgroundColor: c }, color === c && styles.colorSwatchActive]}
               />
             ))}
@@ -169,7 +210,15 @@ const styles = StyleSheet.create({
   },
   headerActions: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 20,
+  },
+  eraserButton: {
+    padding: 4,
+    borderRadius: 6,
+  },
+  eraserButtonActive: {
+    backgroundColor: '#3B82F6',
   },
   doneButton: {
     backgroundColor: '#3B82F6',
