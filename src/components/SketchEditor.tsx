@@ -83,12 +83,30 @@ function elementNear(el: SketchElement, x: number, y: number): boolean {
   return parsePathPoints(el.d).some((p) => Math.hypot(p.x - x, p.y - y) < ERASE_RADIUS);
 }
 
+// A rough bounding box (no text-measurement API available here) used only
+// to tell "tapped an existing text label, drag it" apart from "tapped
+// empty canvas, start a new one" - x/y is the text's own baseline origin.
+function textHitIndex(elements: SketchElement[], x: number, y: number): number {
+  for (let i = elements.length - 1; i >= 0; i--) {
+    const el = elements[i];
+    if (el.kind !== 'text') continue;
+    const approxWidth = Math.max(el.text.length * el.fontSize * 0.55, 20);
+    if (x >= el.x - 10 && x <= el.x + approxWidth + 10 && y >= el.y - el.fontSize - 10 && y <= el.y + 10) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 export default function SketchEditor({ visible, initialElements, onSave, onClose }: Props) {
   const [elements, setElements] = useState<SketchElement[]>(initialElements);
   const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
   const [shapeStart, setShapeStart] = useState<Point | null>(null);
   const [shapeCurrent, setShapeCurrent] = useState<Point | null>(null);
   const [pendingText, setPendingText] = useState<{ x: number; y: number; value: string } | null>(null);
+  const [draggingText, setDraggingText] = useState<{ index: number; offsetX: number; offsetY: number } | null>(
+    null
+  );
   const [color, setColor] = useState(COLORS[0]);
   const [strokeWidth, setStrokeWidth] = useState(WIDTHS[0]);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
@@ -104,6 +122,7 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
       setShapeStart(null);
       setShapeCurrent(null);
       setPendingText(null);
+      setDraggingText(null);
       setTool('pen');
     }
   }, [visible, initialElements]);
@@ -123,6 +142,12 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
       return;
     }
     if (tool === 'text') {
+      const hitIndex = textHitIndex(elements, locationX, locationY);
+      if (hitIndex !== -1) {
+        const el = elements[hitIndex] as { kind: 'text'; x: number; y: number };
+        setDraggingText({ index: hitIndex, offsetX: locationX - el.x, offsetY: locationY - el.y });
+        return;
+      }
       setPendingText({ x: locationX, y: locationY, value: '' });
       return;
     }
@@ -140,7 +165,19 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
       eraseAt(locationX, locationY);
       return;
     }
-    if (tool === 'text') return;
+    if (tool === 'text') {
+      if (draggingText) {
+        const { index, offsetX, offsetY } = draggingText;
+        setElements((prev) =>
+          prev.map((el, i) =>
+            i === index && el.kind === 'text'
+              ? { ...el, x: locationX - offsetX, y: locationY - offsetY }
+              : el
+          )
+        );
+      }
+      return;
+    }
     if (tool === 'line' || tool === 'rect' || tool === 'circle') {
       setShapeCurrent({ x: locationX, y: locationY });
       return;
@@ -149,6 +186,7 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
   }
 
   function handleEnd() {
+    setDraggingText(null);
     if (tool === 'line' || tool === 'rect' || tool === 'circle') {
       if (shapeStart && shapeCurrent && (shapeStart.x !== shapeCurrent.x || shapeStart.y !== shapeCurrent.y)) {
         setElements((prev) => [
