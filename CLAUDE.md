@@ -119,6 +119,25 @@ Drive):
   on-device for the photo path; the PDF path and true multi-page scans
   aren't separately confirmed yet.
 
+**Sketch/drawing (7, `DEVELOPMENT_PLAN.md` Stage 11) — code written,
+not yet built/tested.** The requirement (explicitly, matching Google
+Keep) is a drawing that can be reopened and continued, not a flattened
+photo - so it's stored as vector data, not a raster image. New `sketch`
+block type (`types.ts`): `sketchStrokes` (array of `{d, color, width}` -
+`d` is a plain SVG path string) plus `sketchWidth`/`sketchHeight` (the
+canvas size the strokes were captured against, reused as the SVG
+`viewBox` for both the inline preview and reopening the editor, so it
+doesn't distort on a different screen size). Library: `react-native-svg`
+over `@shopify/react-native-skia` - lighter, and a stroke is just an SVG
+`Path`, no extra serialization format needed. The editor
+(`src/components/SketchEditor.tsx`) is a full-screen modal using plain
+React Native responder events for the touch drawing (not
+gesture-handler - it's an isolated canvas, not part of the scrolling
+block list). Since `react-native-svg` is a native module the currently-
+installed dev-client APK doesn't have, this needs the same kind of
+fresh build as the scanner did (web dashboard "Build from GitHub")
+before it can be tried on-device at all.
+
 The Firebase project (`bearless-notes`, Spark plan) has Firestore
 (test-mode rules, region `eur3` — **rules must be locked down before real
 users touch this**, test mode is open for 30 days from creation) and

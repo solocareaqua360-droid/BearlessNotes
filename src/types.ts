@@ -1,4 +1,21 @@
-export type BlockType = 'paragraph' | 'bulleted' | 'numbered' | 'checkbox' | 'divider' | 'image' | 'file' | 'link';
+export type BlockType =
+  | 'paragraph'
+  | 'bulleted'
+  | 'numbered'
+  | 'checkbox'
+  | 'divider'
+  | 'image'
+  | 'file'
+  | 'link'
+  | 'sketch';
+
+// One freehand stroke in a 'sketch' block - `d` is a plain SVG path `d`
+// attribute ("M10 10 L12 12 ...") built up point-by-point while drawing.
+export interface SketchStroke {
+  d: string;
+  color: string;
+  width: number;
+}
 
 export interface Block {
   id: string;
@@ -40,6 +57,15 @@ export interface Block {
   linkTitle?: string;
   linkImageUrl?: string;
   linkSiteName?: string;
+  // 'sketch' blocks only. Strokes are kept as vector data (not a flattened
+  // image) specifically so the drawing can be reopened and continued, the
+  // way Google Keep's drawings work. sketchWidth/sketchHeight are the
+  // canvas size the strokes' coordinates were captured against - the
+  // editor and the inline preview both use that as the SVG viewBox so a
+  // drawing still scales correctly if reopened on a different screen size.
+  sketchStrokes?: SketchStroke[];
+  sketchWidth?: number;
+  sketchHeight?: number;
 }
 
 export interface Project {

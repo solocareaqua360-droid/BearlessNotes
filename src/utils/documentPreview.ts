@@ -87,7 +87,7 @@ export function hasNoteContent(title: string, blocks: Block[] | undefined): bool
   return (blocks ?? []).some((b) => {
     if ((b.text ?? '').trim() !== '') return true;
     const type = b.type ?? 'paragraph';
-    return type === 'image' || type === 'file' || type === 'link' || type === 'divider';
+    return type === 'image' || type === 'file' || type === 'link' || type === 'divider' || type === 'sketch';
   });
 }
 

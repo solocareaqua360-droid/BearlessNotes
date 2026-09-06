@@ -46,11 +46,13 @@ import Animated, {
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { deleteDoc, deleteField, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Block, BlockType, Tag } from '../types';
+import Svg, { Path } from 'react-native-svg';
+import { Block, BlockType, SketchStroke, Tag } from '../types';
 import { RootStackParamList } from '../navigation';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentTagsBlock from '../components/DocumentTagsBlock';
+import SketchEditor from '../components/SketchEditor';
 import { useTags } from '../hooks/useTags';
 import { linkDocId } from '../utils/linkId';
 
@@ -400,6 +402,7 @@ type BlockRowProps = {
   onOpenFileDatabase: () => void;
   onOpenLink: (url: string) => void;
   onOpenLinkDatabase: (block: Block) => void;
+  onOpenSketch: (id: string) => void;
   inputRef: (ref: TextInput | null) => void;
 };
 
@@ -424,6 +427,7 @@ function BlockRow({
   onOpenFileDatabase,
   onOpenLink,
   onOpenLinkDatabase,
+  onOpenSketch,
   inputRef,
 }: BlockRowProps) {
   // Outside edit mode (or while selecting), the text field is completely
@@ -484,6 +488,38 @@ function BlockRow({
       </View>
     ) : (
       <Text style={styles.blockPlaceholder}>Немає зображення</Text>
+    );
+  } else if (type === 'sketch') {
+    // viewBox reuses the exact canvas size the strokes were captured
+    // against (see SketchEditor) so the drawing scales correctly here
+    // regardless of how much smaller this preview box is.
+    const strokes = item.sketchStrokes ?? [];
+    const vbWidth = item.sketchWidth || 1;
+    const vbHeight = item.sketchHeight || 1;
+    content = (
+      <Pressable
+        disabled={isSelectMode}
+        onPress={() => onOpenSketch(item.id)}
+        style={styles.blockImageWrap}
+      >
+        {strokes.length > 0 ? (
+          <Svg width="100%" height="100%" viewBox={`0 0 ${vbWidth} ${vbHeight}`}>
+            {strokes.map((s, i) => (
+              <Path
+                key={i}
+                d={s.d}
+                stroke={s.color}
+                strokeWidth={s.width}
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            ))}
+          </Svg>
+        ) : (
+          <Text style={styles.blockPlaceholder}>Порожній малюнок</Text>
+        )}
+      </Pressable>
     );
   } else if (type === 'file') {
     // No cloud upload yet - the URI is the file picker's own local cache
@@ -740,6 +776,7 @@ type SortableBlockRowProps = {
   onOpenFileDatabase: () => void;
   onOpenLink: (url: string) => void;
   onOpenLinkDatabase: (block: Block) => void;
+  onOpenSketch: (id: string) => void;
   inputRef: (ref: TextInput | null) => void;
 };
 
@@ -770,6 +807,7 @@ function SortableBlockRow({
   onOpenFileDatabase,
   onOpenLink,
   onOpenLinkDatabase,
+  onOpenSketch,
   inputRef,
 }: SortableBlockRowProps) {
   // This gesture's whole job is JS-side (finding the nearest gap, updating
@@ -841,6 +879,7 @@ function SortableBlockRow({
             onOpenFileDatabase={onOpenFileDatabase}
             onOpenLink={onOpenLink}
             onOpenLinkDatabase={onOpenLinkDatabase}
+            onOpenSketch={onOpenSketch}
             inputRef={inputRef}
           />
         </Animated.View>
@@ -868,6 +907,7 @@ type BlockListProps = {
   onOpenFileDatabase: () => void;
   onOpenLink: (url: string) => void;
   onOpenLinkDatabase: (block: Block) => void;
+  onOpenSketch: (id: string) => void;
   onInputRef: (id: string, ref: TextInput | null) => void;
 };
 
@@ -891,6 +931,7 @@ function BlockList({
   onOpenFileDatabase,
   onOpenLink,
   onOpenLinkDatabase,
+  onOpenSketch,
   onInputRef,
 }: BlockListProps) {
   const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
@@ -1101,6 +1142,7 @@ function BlockList({
           onOpenFileDatabase={onOpenFileDatabase}
           onOpenLink={onOpenLink}
           onOpenLinkDatabase={onOpenLinkDatabase}
+          onOpenSketch={onOpenSketch}
           inputRef={(ref) => onInputRef(item.id, ref)}
         />
         );
@@ -1155,6 +1197,7 @@ export default function DocumentEditorScreen(props: Props) {
   const [slashMenuBlockId, setSlashMenuBlockId] = useState<string | null>(null);
   const [viewerImageId, setViewerImageId] = useState<string | null>(null);
   const [imageRenameId, setImageRenameId] = useState<string | null>(null);
+  const [sketchEditorBlockId, setSketchEditorBlockId] = useState<string | null>(null);
   const focusIdRef = useRef<string | null>(null);
   const focusToEndRef = useRef(false);
   const focusedBlockIdRef = useRef<string | null>(null);
@@ -2093,6 +2136,56 @@ export default function DocumentEditorScreen(props: Props) {
     ]);
   }
 
+  // A new sketch block starts empty and opens straight into the editor -
+  // there's nothing useful to show in the document until it's drawn. The
+  // paragraph -> sketch conversion here is deliberately NOT on the undo
+  // stack (no snapshotBeforeChange) - it's provisional until something is
+  // actually drawn and saved; closeSketchEditor below reverts it cleanly
+  // if the user backs out without drawing anything, with nothing for undo
+  // to unwind either way.
+  const pendingNewSketchIdRef = useRef<string | null>(null);
+
+  function addSketchBlock(id: string) {
+    setSlashMenuBlockId(null);
+    pendingNewSketchIdRef.current = id;
+    setBlocks((prev) => prev.map((b) => (b.id === id ? buildBlock(id, 'sketch', '') : b)));
+    setSketchEditorBlockId(id);
+  }
+
+  function openSketchBlock(id: string) {
+    setSketchEditorBlockId(id);
+  }
+
+  function closeSketchEditor() {
+    const id = sketchEditorBlockId;
+    setSketchEditorBlockId(null);
+    if (id && pendingNewSketchIdRef.current === id) {
+      setBlocks((prev) => {
+        const index = prev.findIndex((b) => b.id === id);
+        if (index === -1 || (prev[index].sketchStrokes?.length ?? 0) > 0) return prev;
+        const next = [...prev];
+        next[index] = buildBlock(id, 'paragraph', '');
+        return next;
+      });
+    }
+    pendingNewSketchIdRef.current = null;
+  }
+
+  function saveSketchStrokes(strokes: SketchStroke[], width: number, height: number) {
+    const id = sketchEditorBlockId;
+    if (!id) return;
+    setSketchEditorBlockId(null);
+    pendingNewSketchIdRef.current = null;
+    snapshotBeforeChange();
+    setBlocks((prev) => {
+      const index = prev.findIndex((b) => b.id === id);
+      if (index === -1) return prev;
+      const next = [...prev];
+      next[index] = { ...next[index], sketchStrokes: strokes, sketchWidth: width, sketchHeight: height };
+      return next;
+    });
+  }
+
   async function openFileBlock(id: string) {
     const block = blocks.find((b) => b.id === id);
     if (!block?.fileUri) return;
@@ -2298,6 +2391,10 @@ export default function DocumentEditorScreen(props: Props) {
             <Ionicons name="scan-outline" size={20} color="#111827" />
             <Text style={styles.slashMenuLabel}>Сканувати</Text>
           </Pressable>
+          <Pressable style={styles.slashMenuItem} hitSlop={6} onPress={() => addSketchBlock(slashMenuBlockId)}>
+            <Ionicons name="brush-outline" size={20} color="#111827" />
+            <Text style={styles.slashMenuLabel}>Малюнок</Text>
+          </Pressable>
         </ScrollView>
       )}
 
@@ -2393,6 +2490,7 @@ export default function DocumentEditorScreen(props: Props) {
           onOpenFileDatabase={() => navigation.navigate('Files')}
           onOpenLink={openLinkBlock}
           onOpenLinkDatabase={openLinkDatabase}
+          onOpenSketch={openSketchBlock}
           onInputRef={(id, ref) => {
             inputRefs.current[id] = ref;
           }}
@@ -2480,6 +2578,15 @@ export default function DocumentEditorScreen(props: Props) {
           </GestureHandlerRootView>
         </Modal>
       )}
+
+      <SketchEditor
+        visible={sketchEditorBlockId !== null}
+        initialStrokes={
+          (sketchEditorBlockId && blocks.find((b) => b.id === sketchEditorBlockId)?.sketchStrokes) || []
+        }
+        onSave={saveSketchStrokes}
+        onClose={closeSketchEditor}
+      />
 
       <RenamePrompt
         visible={imageRenameId !== null}
