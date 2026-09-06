@@ -63,7 +63,7 @@ cache/Firestore-referenced URI) — that's item 2 of the roadmap below.
    this one can reuse their patterns (groups, tags, bulk edit) instead of
    inventing its own
 6. Document scanner (save as JPEG or PDF) — **done**
-7. Sketch/drawing tool
+7. Sketch/drawing tool — **done**
 8. Task reminders/notifications
 9. Note cover image + paper color
 10. Real (non-test) Firestore security rules — test mode is open for 30
@@ -72,10 +72,13 @@ cache/Firestore-referenced URI) — that's item 2 of the roadmap below.
 **Agreed next chunk of work, decided at the end of the previous session:
 scanner (6) → transition to an EAS dev-build (Expo Go can't host a
 scanner, sketch, notifications, or Drive — all need native modules not
-present in Expo Go) → sketch (7) → Google Drive sync (2).** Scanner and
-the dev-build transition are both done (see below); sketch (7) is next.
-After Drive sync, revisit the remaining order for 4, 9, 10, 8, 5 together
-again — it was deliberately left open rather than fixed in advance.
+present in Expo Go) → sketch (7) → Google Drive sync (2).** Scanner, the
+dev-build transition, and sketch are all done (see below); Drive sync
+(2) is next — the Google Cloud side (dedicated project, Drive API,
+OAuth consent screen and Android client) is already set up, see Stage
+12 in `DEVELOPMENT_PLAN.md`. After Drive sync, revisit the remaining
+order for 4, 9, 10, 8, 5 together again — it was deliberately left open
+rather than fixed in advance.
 
 **Scanner + EAS dev-build transition (Stage 10 in `DEVELOPMENT_PLAN.md`)
 — done.** Summary of what that took, since the same setup now carries
@@ -125,24 +128,48 @@ Drive):
   on-device for the photo path; the PDF path and true multi-page scans
   aren't separately confirmed yet.
 
-**Sketch/drawing (7, `DEVELOPMENT_PLAN.md` Stage 11) — code written,
-not yet built/tested.** The requirement (explicitly, matching Google
-Keep) is a drawing that can be reopened and continued, not a flattened
-photo - so it's stored as vector data, not a raster image. New `sketch`
-block type (`types.ts`): `sketchStrokes` (array of `{d, color, width}` -
-`d` is a plain SVG path string) plus `sketchWidth`/`sketchHeight` (the
-canvas size the strokes were captured against, reused as the SVG
-`viewBox` for both the inline preview and reopening the editor, so it
-doesn't distort on a different screen size). Library: `react-native-svg`
-over `@shopify/react-native-skia` - lighter, and a stroke is just an SVG
-`Path`, no extra serialization format needed. The editor
-(`src/components/SketchEditor.tsx`) is a full-screen modal using plain
-React Native responder events for the touch drawing (not
-gesture-handler - it's an isolated canvas, not part of the scrolling
-block list). Since `react-native-svg` is a native module the currently-
-installed dev-client APK doesn't have, this needs the same kind of
-fresh build as the scanner did (web dashboard "Build from GitHub")
-before it can be tried on-device at all.
+**Sketch/drawing (7, `DEVELOPMENT_PLAN.md` Stage 11) — done, confirmed
+on-device.** The requirement (explicitly, matching Google Keep) is a
+drawing that can be reopened and continued, not a flattened photo - so
+it's stored as vector data, not a raster image. New `sketch` block type
+(`types.ts`): `sketchElements` (an ordered `SketchElement[]` - a `path`
+or `text` union, one flat list rather than separate arrays per kind, so
+undo and z-order both just mean "the last item") plus
+`sketchWidth`/`sketchHeight` (the canvas size elements were captured
+against, reused as the SVG `viewBox` for both the inline preview and
+reopening the editor, so it doesn't distort on a different screen
+size). Library: `react-native-svg` over `@shopify/react-native-skia` -
+lighter, and everything maps onto a plain SVG `Path`/`Text`, no extra
+serialization format needed. The editor (`src/components/
+SketchEditor.tsx`) is a full-screen modal using plain React Native
+responder events for the touch drawing (not gesture-handler - it's an
+isolated canvas, not part of the scrolling block list).
+
+Grew past the initial pen-only scope once the user tried it on-device:
+line/arrow/rectangle/circle tools (a shape keeps its two defining points
+as `SketchShape` alongside its rendered path, since a finished `d`
+string alone can't be resized), a "select" tool (tap a shape or text
+label for a dashed box + corner grips - drag inside to move, drag a grip
+to resize; deliberately **not** available for freehand pen strokes, per
+the user), and a partial eraser (rubs out just the points it passes
+over and splits what's left into separate strokes, rather than deleting
+the whole element - full-element delete is what plain undo already
+does). Two real bugs surfaced during testing, both fixed:
+- Text entry needed three attempts. First an inline `TextInput`
+  overlaid on the canvas - the canvas's own touch responder fought it
+  for focus (keyboard flashed open and shut). Then `RenamePrompt` (a
+  nested `<Modal>`) - Android hands focus away from a `TextInput` inside
+  a Modal nested in another Modal, same symptom. The fix was a plain
+  overlay `View` as a sibling of the canvas (not a child of it, and not
+  a second Modal).
+- Even after that fix, the keyboard opening still wiped everything drawn
+  and closed the text field again. Root cause: `DocumentEditorScreen`
+  passes `initialElements={block?.sketchElements || []}` - a fresh array
+  on every one of *its* renders - and it re-renders on `keyboardDidShow`
+  (it tracks keyboard height for its own layout). The editor was
+  re-seeding its state on every `initialElements` change instead of only
+  on the hidden→visible transition, so each keystroke's keyboard-open
+  render reset the whole drawing.
 
 **Follow-up idea, raised by the user, revisit once sketch (7) is fully
 done and confirmed on-device:** redesign the editor's toolbar to match
