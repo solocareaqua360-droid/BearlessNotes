@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Sharing from 'expo-sharing';
@@ -29,7 +29,6 @@ import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
-import DatabaseIslandBar from '../components/DatabaseIslandBar';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import TagsDrawer, { TagFilter, matchesTagFilter, removeTagFromFilter } from '../components/TagsDrawer';
@@ -38,7 +37,6 @@ import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 import { blockFromPhoto, copyObjectsToNote } from '../utils/copyToNote';
-import { setLastDatabaseRoute } from '../utils/lastDatabaseRoute';
 
 const ACCENT = '#EC4899';
 const groupsCollection = collection(db, 'groups');
@@ -143,12 +141,6 @@ export default function PhotosScreen() {
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
   const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, clear: clearSelection } =
     useMultiSelect();
-
-  useFocusEffect(
-    useCallback(() => {
-      setLastDatabaseRoute({ name: 'Photos' });
-    }, [])
-  );
 
   useEffect(() => {
     const photosQuery = query(collection(db, 'photos'), orderBy('updatedAt', 'desc'));
@@ -568,8 +560,6 @@ export default function PhotosScreen() {
       />
 
       {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
-
-      {!isSelectMode && <DatabaseIslandBar />}
     </View>
   );
 }

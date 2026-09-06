@@ -7,7 +7,6 @@ import { Tag } from '../types';
 import { RootStackParamList } from '../navigation';
 import { useTags } from '../hooks/useTags';
 import TagEditSheet from '../components/TagEditSheet';
-import DatabaseIslandBar from '../components/DatabaseIslandBar';
 
 const DANGER = '#EF4444';
 
@@ -96,8 +95,6 @@ export default function TagManageScreen() {
         </ScrollView>
       )}
 
-      <DatabaseIslandBar />
-
       <TagEditSheet
         visible={editingTag !== null}
         tag={editingTag}
@@ -163,7 +160,7 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: 20,
-    paddingBottom: 100,
+    paddingBottom: 24,
   },
   row: {
     flexDirection: 'row',

@@ -1,7 +1,6 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { getLastDatabaseRoute } from '../utils/lastDatabaseRoute';
 
 const ACCENT = '#3B82F6';
 
@@ -29,20 +28,7 @@ export default function FloatingIslandTabBar({ state, navigation }: BottomTabBar
               style={[styles.button, focused && styles.buttonActive]}
               onPress={() => {
                 const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-                if (focused || event.defaultPrevented) return;
-                // Tapping "Більше" from Документи/Календар jumps straight
-                // into whichever database (Files/Photos/Links/Tasks) was
-                // last open, instead of always landing on the hub - see
-                // DatabaseIslandBar for the matching "step back to hub"
-                // half of this, shown while already inside a database.
-                const lastDatabase = route.name === 'Більше' ? getLastDatabaseRoute() : null;
-                if (lastDatabase?.name === 'Links') {
-                  navigation.navigate(lastDatabase.name, lastDatabase.params);
-                } else if (lastDatabase) {
-                  navigation.navigate(lastDatabase.name);
-                } else {
-                  navigation.navigate(route.name);
-                }
+                if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
               }}
             >
               <Ionicons name={icon} size={20} color={focused ? ACCENT : '#6B7280'} />

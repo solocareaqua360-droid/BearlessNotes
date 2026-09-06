@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   collection,
@@ -24,7 +23,6 @@ import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
-import DatabaseIslandBar from '../components/DatabaseIslandBar';
 import GroupPickerSheet, { GroupKind } from '../components/GroupPickerSheet';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import TagsDrawer, { TagFilter, matchesTagFilter, removeTagFromFilter } from '../components/TagsDrawer';
@@ -34,7 +32,6 @@ import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useTags, detachTagFromDeletedItem, isTagAllowedForKind } from '../hooks/useTags';
 import { blockFromLink, copyObjectsToNote } from '../utils/copyToNote';
 import { linkDocId } from '../utils/linkId';
-import { setLastDatabaseRoute } from '../utils/lastDatabaseRoute';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -149,12 +146,6 @@ export default function LinksScreen({ route, navigation }: Props) {
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
   const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, clear: clearSelection } =
     useMultiSelect();
-
-  useFocusEffect(
-    useCallback(() => {
-      setLastDatabaseRoute({ name: 'Links', params: { category } });
-    }, [category])
-  );
 
   useEffect(() => {
     const linksQuery = query(linksCollection, orderBy('updatedAt', 'desc'));
@@ -569,8 +560,6 @@ export default function LinksScreen({ route, navigation }: Props) {
       />
 
       {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
-
-      {!isSelectMode && <DatabaseIslandBar />}
     </View>
   );
 }
