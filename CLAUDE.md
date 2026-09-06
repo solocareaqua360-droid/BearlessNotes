@@ -26,19 +26,55 @@ any other app in this account (e.g. `bookmarvideo`). Keep it that way:
 
 ## Current state
 
-Stages 0–4 (`DEVELOPMENT_PLAN.md`) are done and confirmed on a real
+Stages 0–4 (`DEVELOPMENT_PLAN.md`) are fully done and confirmed on a real
 Android device via Expo Go — undo/redo, inline text formatting, the "/"
-quick-add menu (bulleted/numbered lists, checkbox, image, file,
-divider), and image blocks (real-proportions/cropped toggle, full-screen
-zoom, compression). Also added on top of the plan: attaching arbitrary
-files (PDF/Word/Excel/etc.) as a block, opened via the OS's own
-"open with" sheet from a local cache copy, plus downloading both photos
-and files to a folder the user picks once via Android's Storage Access
-Framework. None of this has a cloud copy yet (images and files live
-only in the device's local cache/Firestore-referenced URI) — real
-Google Drive backup for this is noted as the top post-MVP priority, see
-the bottom of `DEVELOPMENT_PLAN.md`. Stage 5 (bypass-conversion of
-blocks into database objects) is next and not yet started.
+quick-add menu, image blocks, and attaching arbitrary files (opened via
+the OS "open with" sheet), plus downloading photos/files to a
+user-picked folder via Storage Access Framework.
+
+Stage 5 (bypass-conversion of blocks into database objects) and Stage 6
+(bulk-select modes) are mostly done, a few smaller items still unchecked
+in `DEVELOPMENT_PLAN.md` (per-object delete confirmation, bulk-select on
+the Documents list itself, PDF export). What's working: Tasks, Links
+(YouTube/TikTok, geo, other — split from one `links` mirror collection),
+Photos and Files all live as real cross-document Firestore objects, not
+just blocks. A full tag system (tree-based `TagsDrawer`, multi-select
+Мульти/Ізолюючий filter mode, per-item `TagPicker` with hide-from-
+suggestions and icon/color editing) is shared across Documents/Files/
+Photos/Links, plus a separate per-database-type "групування" field
+(`Group`, deliberately distinct from Tasks' own `Project`) with bulk
+select/tag/group/delete/copy-to-note on Files/Photos/Links. The Calendar
+screen (week strip + expandable month grid, inline daily-note editing,
+"only filled days" toggle) is also built and confirmed. None of this has
+real cloud file backup yet (images/files live only in the device's local
+cache/Firestore-referenced URI) — that's item 2 of the roadmap below.
+
+### Post-MVP roadmap — 10 items agreed with the user, in original order:
+1. Bulk editing of database objects — **done**
+2. Google Drive sync (cloud backup for files/photos + storage counter +
+   real sort/filter) — needs a second auth flow (Google Sign-In) and a
+   second backend (Drive API), so it's deliberately not bundled with the
+   scanner/sketch work below even though all three need the same
+   EAS dev-build transition
+3. Group/project-tabs field on every database — **done**
+4. Kanban view for Tasks (todo/doing/paused/done)
+5. Custom database with Notion-like field types — last on purpose: every
+   other database (Tasks/Links/Photos/Files) exists first specifically so
+   this one can reuse their patterns (groups, tags, bulk edit) instead of
+   inventing its own
+6. Document scanner (save as JPEG or PDF)
+7. Sketch/drawing tool
+8. Task reminders/notifications
+9. Note cover image + paper color
+10. Real (non-test) Firestore security rules — test mode is open for 30
+    days from project creation; must land before real users touch this
+
+**Agreed next chunk of work, decided at the end of the previous session:
+scanner (6) → transition to an EAS dev-build (Expo Go can't host a
+scanner, sketch, notifications, or Drive — all need native modules not
+present in Expo Go) → sketch (7) → Google Drive sync (2).** After that,
+revisit the remaining order for 4, 9, 10, 8, 5 together again — it was
+deliberately left open rather than fixed in advance.
 
 The Firebase project (`bearless-notes`, Spark plan) has Firestore
 (test-mode rules, region `eur3` — **rules must be locked down before real
