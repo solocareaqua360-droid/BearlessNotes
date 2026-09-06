@@ -33,6 +33,21 @@ export function getConnectedEmail(): string | null {
   return GoogleSignin.getCurrentUser()?.user.email ?? null;
 }
 
+function hasDriveScope(): boolean {
+  return GoogleSignin.getCurrentUser()?.scopes?.includes(DRIVE_SCOPE) ?? false;
+}
+
+// `configure({ scopes })` alone does NOT get drive.file granted on Android -
+// signing in only authenticates, and anything past the default email/profile
+// scopes needs this separate consent screen. Skipping it is what produced a
+// successful sign-in whose token Drive then rejected with
+// "Request had insufficient authentication scopes" (HTTP 403).
+async function requestDriveScope(): Promise<boolean> {
+  const response = await GoogleSignin.addScopes({ scopes: [DRIVE_SCOPE] });
+  if (!response || response.type !== 'success') return false;
+  return response.data.scopes?.includes(DRIVE_SCOPE) ?? false;
+}
+
 // Throws on cancel/failure - the Settings screen shows that as "not
 // connected" rather than treating it as a real error.
 export async function connectGoogleDrive(): Promise<string> {
@@ -40,6 +55,7 @@ export async function connectGoogleDrive(): Promise<string> {
   await GoogleSignin.hasPlayServices();
   const response = await GoogleSignin.signIn();
   if (response.type !== 'success') throw new Error('cancelled');
+  if (!response.data.scopes?.includes(DRIVE_SCOPE)) await requestDriveScope();
   return response.data.user.email;
 }
 
@@ -206,6 +222,13 @@ export async function runDriveDiagnostics(): Promise<string> {
   ensureConfigured();
   if (!GoogleSignin.hasPreviousSignIn()) {
     return 'Немає збереженого входу Google — підключи акаунт заново.';
+  }
+  // An account signed in before the drive.file consent step existed carries
+  // a token Drive rejects outright, so ask for the missing permission here
+  // rather than making the user disconnect and reconnect.
+  if (!hasDriveScope()) {
+    const granted = await requestDriveScope();
+    if (!granted) return 'Дозвіл на Google Drive не надано — без нього копіювання файлів неможливе.';
   }
   let accessToken: string;
   try {
