@@ -17,9 +17,9 @@ import TagItemsScreen from './src/screens/TagItemsScreen';
 import SearchScreen from './src/screens/SearchScreen';
 import DocumentEditorScreen from './src/screens/DocumentEditorScreen';
 import FloatingIslandTabBar from './src/components/FloatingIslandTabBar';
-import { RootStackParamList } from './src/navigation';
+import { RootStackParamList, TabParamList } from './src/navigation';
 
-const Tab = createBottomTabNavigator();
+const Tab = createBottomTabNavigator<TabParamList>();
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 // "Пошук" isn't a tab anymore - it's a search icon on DocumentsScreen that

@@ -3,7 +3,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import { Tag } from '../types';
 import { useTags } from '../hooks/useTags';
-import RenamePrompt from '../components/RenamePrompt';
+import TagEditSheet from '../components/TagEditSheet';
 
 const DANGER = '#EF4444';
 
@@ -23,8 +23,8 @@ const KIND_LABELS: Record<string, string> = {
 // into a visual tree - the tree view belongs to Search's browsing mode, not
 // duplicated here.
 export default function TagManageScreen() {
-  const { tags, isLoading, renameTag, deleteTagCompletely } = useTags();
-  const [renamingTag, setRenamingTag] = useState<Tag | null>(null);
+  const { tags, isLoading, updateTag, deleteTagCompletely } = useTags();
+  const [editingTag, setEditingTag] = useState<Tag | null>(null);
 
   function confirmDelete(tag: Tag) {
     const count = Object.keys(tag.usedIn).length;
@@ -67,7 +67,7 @@ export default function TagManageScreen() {
                   {tag.types.map((t) => KIND_LABELS[t] ?? t).join(', ')}
                 </Text>
               </View>
-              <Pressable hitSlop={8} style={styles.rowAction} onPress={() => setRenamingTag(tag)}>
+              <Pressable hitSlop={8} style={styles.rowAction} onPress={() => setEditingTag(tag)}>
                 <Ionicons name="pencil-outline" size={15} color="#9CA3AF" />
               </Pressable>
               <Pressable hitSlop={8} style={styles.rowAction} onPress={() => confirmDelete(tag)}>
@@ -78,14 +78,13 @@ export default function TagManageScreen() {
         </ScrollView>
       )}
 
-      <RenamePrompt
-        visible={renamingTag !== null}
-        title="Назва тега"
-        initialValue={renamingTag?.path ?? ''}
-        onCancel={() => setRenamingTag(null)}
-        onSave={(value) => {
-          if (renamingTag) renameTag(renamingTag, value);
-          setRenamingTag(null);
+      <TagEditSheet
+        visible={editingTag !== null}
+        tag={editingTag}
+        onCancel={() => setEditingTag(null)}
+        onSave={(path, icon, color) => {
+          if (editingTag) updateTag(editingTag, { path, icon, color });
+          setEditingTag(null);
         }}
       />
     </View>

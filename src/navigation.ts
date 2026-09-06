@@ -1,7 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
+import { NavigatorScreenParams } from '@react-navigation/native';
+
+// The three floating-island tabs (see FloatingIslandTabBar) - typed so
+// DatabaseIslandBar and the island itself can navigate into a specific tab
+// by name from screens pushed outside the Tab.Navigator (Files/Photos/
+// Links/Tasks).
+export type TabParamList = {
+  Документи: undefined;
+  Календар: undefined;
+  Більше: undefined;
+};
 
 export type RootStackParamList = {
-  Tabs: undefined;
+  Tabs: NavigatorScreenParams<TabParamList> | undefined;
   Editor: { documentId: string };
   Tasks: undefined;
   // Geo/video/other links all live in the one `links` mirror collection

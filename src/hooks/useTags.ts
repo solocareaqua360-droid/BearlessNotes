@@ -9,6 +9,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  updateDoc,
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -93,7 +94,10 @@ export function useTags() {
   }
 
   // Attaches an existing tag to an item, silently expanding its `types`
-  // list when this is the first time it's used on this kind of item.
+  // list when this is the first time it's used on this kind of item. Also
+  // un-hides it from this kind's own suggestion tree (see useHiddenTags) -
+  // a fresh assignment is exactly the signal that should bring a
+  // previously-hidden tag back.
   async function attachTag(tag: Tag, kind: TaggableKind, itemId: string, itemsCollection: string) {
     const batch = writeBatch(db);
     batch.update(doc(db, 'tags', tag.id), {
@@ -101,6 +105,7 @@ export function useTags() {
       types: arrayUnion(kind),
     });
     batch.update(doc(db, itemsCollection, itemId), { tagIds: arrayUnion(tag.id) });
+    batch.set(doc(db, 'hiddenTags', kind), { tagIds: arrayRemove(tag.id) }, { merge: true });
     await batch.commit();
   }
 
@@ -149,6 +154,16 @@ export function useTags() {
     await batch.commit();
   }
 
+  // Full edit from TagManageScreen - path, icon and color all at once,
+  // unlike renameTag's path-only quick fix from the per-item picker.
+  async function updateTag(tag: Tag, updates: { path: string; icon: string; color: string }) {
+    await updateDoc(doc(db, 'tags', tag.id), {
+      path: updates.path.trim(),
+      icon: updates.icon,
+      color: updates.color,
+    });
+  }
+
   // Explicit delete from TagManageScreen - strips the tag off every item
   // that currently carries it (not just one), then removes the tag doc
   // itself. Distinct from detachTag, which only ever removes one usage and
@@ -173,6 +188,7 @@ export function useTags() {
     createAndAttachTag,
     detachTag,
     renameTag,
+    updateTag,
     deleteTagCompletely,
   };
 }

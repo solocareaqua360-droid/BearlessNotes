@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   addDoc,
@@ -29,6 +29,8 @@ import { db } from '../firebase';
 import { Block, Project } from '../types';
 import { RootStackParamList } from '../navigation';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
+import DatabaseIslandBar from '../components/DatabaseIslandBar';
+import { setLastDatabaseRoute } from '../utils/lastDatabaseRoute';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -77,6 +79,12 @@ export default function TasksScreen() {
   // star correctly stops showing) within a minute of the date changing,
   // not only the next time something else happens to re-render the screen.
   const [today, setToday] = useState(todayDateString());
+
+  useFocusEffect(
+    useCallback(() => {
+      setLastDatabaseRoute({ name: 'Tasks' });
+    }, [])
+  );
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -392,6 +400,7 @@ export default function TasksScreen() {
             Впишіть текст у чекбокс у будь-якому документі - справа з'явиться тут сама
           </Text>
         </View>
+        <DatabaseIslandBar />
       </View>
     );
   }
@@ -443,6 +452,8 @@ export default function TasksScreen() {
           <Text style={styles.emptyFilterLabel}>Немає справ із цим фільтром</Text>
         )}
       </ScrollView>
+
+      <DatabaseIslandBar />
 
       <Modal visible={pickerTaskId !== null} transparent animationType="fade" onRequestClose={() => setPickerTaskId(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setPickerTaskId(null)}>

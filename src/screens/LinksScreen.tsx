@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   collection,
@@ -23,6 +24,7 @@ import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
+import DatabaseIslandBar from '../components/DatabaseIslandBar';
 import GroupPickerSheet, { GroupKind } from '../components/GroupPickerSheet';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import TagsDrawer, { TagFilter, matchesTagFilter, removeTagFromFilter } from '../components/TagsDrawer';
@@ -30,8 +32,10 @@ import CopyToNoteModal from '../components/CopyToNoteModal';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useTags, detachTagFromDeletedItem, isTagAllowedForKind } from '../hooks/useTags';
+import { useHiddenTags } from '../hooks/useHiddenTags';
 import { blockFromLink, copyObjectsToNote } from '../utils/copyToNote';
 import { linkDocId } from '../utils/linkId';
+import { setLastDatabaseRoute } from '../utils/lastDatabaseRoute';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -144,8 +148,15 @@ export default function LinksScreen({ route, navigation }: Props) {
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
   const { filterPending, requestDelete, requestDeleteMany, undo, toast } = usePendingDelete<LinkItem>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
+  const { hiddenIds, hideTag } = useHiddenTags(tagKind);
   const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, clear: clearSelection } =
     useMultiSelect();
+
+  useFocusEffect(
+    useCallback(() => {
+      setLastDatabaseRoute({ name: 'Links', params: { category } });
+    }, [category])
+  );
 
   useEffect(() => {
     const linksQuery = query(linksCollection, orderBy('updatedAt', 'desc'));
@@ -201,7 +212,9 @@ export default function LinksScreen({ route, navigation }: Props) {
   // whichever of the three link screens this is, and only ones actually
   // assigned to a link in this category.
   const usedTagIds = new Set(categoryLinks.flatMap((l) => l.tagIds));
-  const drawerTags = tags.filter((t) => isTagAllowedForKind(t, tagKind) && usedTagIds.has(t.id));
+  const drawerTags = tags.filter(
+    (t) => isTagAllowedForKind(t, tagKind) && usedTagIds.has(t.id) && !hiddenIds.has(t.id)
+  );
   const tagPickerLink = tagPickerForId ? links.find((l) => l.id === tagPickerForId) ?? null : null;
   const selectedLinks = categoryLinks.filter((l) => selectedIds.has(l.id));
 
@@ -286,6 +299,13 @@ export default function LinksScreen({ route, navigation }: Props) {
         }
       })
     );
+  }
+
+  function removeTagFromDrawer(tag: { id: string }) {
+    hideTag(tag.id);
+    if (tagFilter?.type === 'tags' && tagFilter.tagIds.includes(tag.id)) {
+      setTagFilter(removeTagFromFilter(tagFilter, tag.id));
+    }
   }
 
   function confirmDeleteSelected() {
@@ -549,6 +569,7 @@ export default function LinksScreen({ route, navigation }: Props) {
         activeFilter={tagFilter}
         onSelectFilter={setTagFilter}
         hideOpenButton={isSelectMode}
+        onRemoveTag={removeTagFromDrawer}
       />
 
       <BulkActionBar
@@ -560,6 +581,8 @@ export default function LinksScreen({ route, navigation }: Props) {
       />
 
       {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
+
+      {!isSelectMode && <DatabaseIslandBar />}
     </View>
   );
 }

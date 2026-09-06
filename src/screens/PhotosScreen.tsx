@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Sharing from 'expo-sharing';
@@ -29,6 +29,7 @@ import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
+import DatabaseIslandBar from '../components/DatabaseIslandBar';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import TagsDrawer, { TagFilter, matchesTagFilter, removeTagFromFilter } from '../components/TagsDrawer';
@@ -36,7 +37,9 @@ import CopyToNoteModal from '../components/CopyToNoteModal';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
+import { useHiddenTags } from '../hooks/useHiddenTags';
 import { blockFromPhoto, copyObjectsToNote } from '../utils/copyToNote';
+import { setLastDatabaseRoute } from '../utils/lastDatabaseRoute';
 
 const ACCENT = '#EC4899';
 const groupsCollection = collection(db, 'groups');
@@ -139,8 +142,15 @@ export default function PhotosScreen() {
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
   const { filterPending, requestDelete, requestDeleteMany, undo, toast } = usePendingDelete<PhotoItem>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
+  const { hiddenIds, hideTag } = useHiddenTags('photo');
   const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, clear: clearSelection } =
     useMultiSelect();
+
+  useFocusEffect(
+    useCallback(() => {
+      setLastDatabaseRoute({ name: 'Photos' });
+    }, [])
+  );
 
   useEffect(() => {
     const photosQuery = query(collection(db, 'photos'), orderBy('updatedAt', 'desc'));
@@ -188,7 +198,7 @@ export default function PhotosScreen() {
   // Only offer tags actually assigned to at least one photo - not the whole
   // app-wide tag list - so this drawer stays a short, relevant menu.
   const usedTagIds = new Set(photos.flatMap((p) => p.tagIds));
-  const drawerTags = tags.filter((t) => usedTagIds.has(t.id));
+  const drawerTags = tags.filter((t) => usedTagIds.has(t.id) && !hiddenIds.has(t.id));
   const needle = searchQuery.trim().toLowerCase();
   const displayedPhotos = needle
     ? tagFilteredPhotos.filter((p) => (p.title ?? '').toLowerCase().includes(needle))
@@ -282,6 +292,13 @@ export default function PhotosScreen() {
         }
       })
     );
+  }
+
+  function removeTagFromDrawer(tag: { id: string }) {
+    hideTag(tag.id);
+    if (tagFilter?.type === 'tags' && tagFilter.tagIds.includes(tag.id)) {
+      setTagFilter(removeTagFromFilter(tagFilter, tag.id));
+    }
   }
 
   function confirmDeleteSelected() {
@@ -549,6 +566,7 @@ export default function PhotosScreen() {
         activeFilter={tagFilter}
         onSelectFilter={setTagFilter}
         hideOpenButton={isSelectMode}
+        onRemoveTag={removeTagFromDrawer}
       />
 
       <BulkActionBar
@@ -560,6 +578,8 @@ export default function PhotosScreen() {
       />
 
       {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
+
+      {!isSelectMode && <DatabaseIslandBar />}
     </View>
   );
 }
