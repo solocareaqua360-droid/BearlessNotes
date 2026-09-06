@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   GestureResponderEvent,
   LayoutChangeEvent,
@@ -219,11 +219,20 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [tool, setTool] = useState<Tool>('pen');
 
-  // Re-seed local state each time the modal opens, since it stays mounted
+  // Re-seed local state when the editor OPENS, since it stays mounted
   // (just hidden) between blocks otherwise and would carry over the
   // previous block's drawing.
+  //
+  // Keyed strictly off the hidden -> visible transition, never off
+  // `initialElements` changing: the parent builds that prop inline
+  // (`... || []`), so it's a fresh array on every one of ITS renders - and
+  // it re-renders whenever the keyboard opens, because it tracks the
+  // keyboard height. Re-seeding on that would wipe everything drawn so far
+  // and close the text field the moment its keyboard appeared, which is
+  // exactly what it did.
+  const wasVisibleRef = useRef(false);
   useEffect(() => {
-    if (visible) {
+    if (visible && !wasVisibleRef.current) {
       setElements(initialElements);
       setCurrentPoints([]);
       setShapeStart(null);
@@ -234,6 +243,7 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
       setDrag(null);
       setTool('pen');
     }
+    wasVisibleRef.current = visible;
   }, [visible, initialElements]);
 
   function handleCanvasLayout(e: LayoutChangeEvent) {
