@@ -14,6 +14,7 @@ import PhotosScreen from './src/screens/PhotosScreen';
 import FilesScreen from './src/screens/FilesScreen';
 import TagManageScreen from './src/screens/TagManageScreen';
 import TagItemsScreen from './src/screens/TagItemsScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
 import SearchScreen from './src/screens/SearchScreen';
 import DocumentEditorScreen from './src/screens/DocumentEditorScreen';
 import FloatingIslandTabBar from './src/components/FloatingIslandTabBar';
@@ -49,6 +50,7 @@ export default function App() {
           <Stack.Screen name="Files" component={FilesScreen} />
           <Stack.Screen name="Tags" component={TagManageScreen} />
           <Stack.Screen name="TagItems" component={TagItemsScreen} />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
           <Stack.Screen name="Search" component={SearchScreen} />
           <Stack.Screen name="Placeholder">
             {({ route }) => <PlaceholderScreen icon={route.params.icon} label={route.params.label} />}

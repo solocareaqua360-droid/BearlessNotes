@@ -53,6 +53,7 @@ import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentTagsBlock from '../components/DocumentTagsBlock';
 import SketchEditor from '../components/SketchEditor';
+import { backupFileToDrive } from '../utils/googleDrive';
 import { useTags } from '../hooks/useTags';
 import { linkDocId } from '../utils/linkId';
 
@@ -1410,6 +1411,15 @@ export default function DocumentEditorScreen(props: Props) {
       if (b.imageTitle) photoDoc.title = b.imageTitle;
       if (b.imageFit) photoDoc.imageFit = b.imageFit;
       setDoc(doc(db, 'photos', b.id), photoDoc, { merge: true });
+      // A genuinely new photo (not one already mirrored before this
+      // render) also gets backed up to Google Drive, if connected -
+      // fire-and-forget, since a failed/skipped backup must never block
+      // attaching the photo itself.
+      if (!knownPhotoBlockIdsRef.current.has(b.id)) {
+        backupFileToDrive(b.imageUri!, `${b.id}.jpg`, 'image/jpeg').then((driveFileId) => {
+          if (driveFileId) updateDoc(doc(db, 'photos', b.id), { driveFileId });
+        });
+      }
     });
     knownPhotoBlockIdsRef.current.forEach((id) => {
       if (!currentIds.has(id)) {
@@ -1434,6 +1444,13 @@ export default function DocumentEditorScreen(props: Props) {
       if (b.mimeType) fileDoc.mimeType = b.mimeType;
       if (b.fileTitle) fileDoc.title = b.fileTitle;
       setDoc(doc(db, 'files', b.id), fileDoc, { merge: true });
+      if (!knownFileBlockIdsRef.current.has(b.id)) {
+        backupFileToDrive(b.fileUri!, b.fileName ?? b.id, b.mimeType ?? 'application/octet-stream').then(
+          (driveFileId) => {
+            if (driveFileId) updateDoc(doc(db, 'files', b.id), { driveFileId });
+          }
+        );
+      }
     });
     knownFileBlockIdsRef.current.forEach((id) => {
       if (!currentIds.has(id)) {

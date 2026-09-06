@@ -12,6 +12,7 @@ export type RootStackParamList = {
   Files: undefined;
   Tags: undefined;
   TagItems: { tagId: string };
+  Settings: undefined;
   // Pushed from the search icon on DocumentsScreen - no longer a bottom
   // tab (see FloatingIslandTabBar).
   Search: undefined;

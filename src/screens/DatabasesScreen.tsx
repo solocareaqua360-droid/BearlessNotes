@@ -41,10 +41,7 @@ export default function DatabasesScreen() {
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.header}>Бази даних</Text>
-        <Pressable
-          hitSlop={8}
-          onPress={() => navigation.navigate('Placeholder', { icon: 'ellipsis-horizontal-outline', label: 'Скоро' })}
-        >
+        <Pressable hitSlop={8} onPress={() => navigation.navigate('Settings')}>
           <Ionicons name="ellipsis-horizontal-outline" size={22} color="#111827" />
         </Pressable>
       </View>
