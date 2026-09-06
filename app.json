@@ -17,10 +17,20 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "softwareKeyboardLayoutMode": "resize"
+      "softwareKeyboardLayoutMode": "resize",
+      "package": "com.bearlessnotes.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-dev-client",
+      [
+        "react-native-document-scanner-plugin",
+        {
+          "cameraPermission": "Bearless Notes потребує доступу до камери, щоб сканувати документи"
+        }
+      ]
+    ]
   }
 }
