@@ -7,9 +7,20 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Sharing from 'expo-sharing';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
+import {
+  collection,
+  deleteDoc,
+  deleteField,
+  doc,
+  getDoc,
+  onSnapshot,
+  orderBy,
+  query,
+  updateDoc,
+  writeBatch,
+} from 'firebase/firestore';
 import { db } from '../firebase';
-import { Block, Tag } from '../types';
+import { Block, Project, Tag } from '../types';
 import { RootStackParamList } from '../navigation';
 import ZoomableImageViewer, { ViewerAction } from '../components/ZoomableImageViewer';
 import RenamePrompt from '../components/RenamePrompt';
@@ -17,10 +28,16 @@ import DocumentPickerModal, { PickableDocument } from '../components/DocumentPic
 import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
+import BulkActionBar from '../components/BulkActionBar';
+import ProjectPickerSheet from '../components/ProjectPickerSheet';
+import CopyToNoteModal from '../components/CopyToNoteModal';
 import { usePendingDelete } from '../hooks/usePendingDelete';
+import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
+import { blockFromPhoto, copyObjectsToNote } from '../utils/copyToNote';
 
 const ACCENT = '#EC4899';
+const projectsCollection = collection(db, 'projects');
 const DOWNLOAD_DIR_STORAGE_KEY = 'bearlessNotes.downloadDirUri';
 
 function generateId(): string {
@@ -33,6 +50,7 @@ type PhotoItem = {
   title?: string;
   documentIds: string[];
   tagIds: string[];
+  projectId?: string;
 };
 
 // Same "pick a folder once, remember it" download flow already built for
@@ -62,23 +80,39 @@ function PhotoThumb({
   docCount,
   tags,
   onTagPress,
+  isSelectMode,
+  isSelected,
 }: {
   uri: string;
   docCount: number;
   tags: Tag[];
   onTagPress: () => void;
+  isSelectMode: boolean;
+  isSelected: boolean;
 }) {
   return (
     <View style={styles.cellImageWrap}>
       <Image source={{ uri }} style={styles.cellImage} resizeMode="cover" />
-      {docCount > 1 && (
-        <View style={styles.cellBadge}>
-          <Text style={styles.cellBadgeLabel}>{docCount}</Text>
+      {isSelectMode ? (
+        <View style={styles.cellCheckbox}>
+          <Ionicons
+            name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+            size={22}
+            color={isSelected ? ACCENT : '#fff'}
+          />
         </View>
+      ) : (
+        <>
+          {docCount > 1 && (
+            <View style={styles.cellBadge}>
+              <Text style={styles.cellBadgeLabel}>{docCount}</Text>
+            </View>
+          )}
+          <View style={styles.cellTagRow}>
+            <TagChips tags={tags} onPress={onTagPress} />
+          </View>
+        </>
       )}
-      <View style={styles.cellTagRow}>
-        <TagChips tags={tags} onPress={onTagPress} />
-      </View>
     </View>
   );
 }
@@ -95,8 +129,14 @@ export default function PhotosScreen() {
   const [tagPickerForId, setTagPickerForId] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const { filterPending, requestDelete, undo, toast } = usePendingDelete<PhotoItem>();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
+  const [bulkProjectPickerVisible, setBulkProjectPickerVisible] = useState(false);
+  const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
+  const { filterPending, requestDelete, requestDeleteMany, undo, toast } = usePendingDelete<PhotoItem>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
+  const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, clear: clearSelection } =
+    useMultiSelect();
 
   useEffect(() => {
     const photosQuery = query(collection(db, 'photos'), orderBy('updatedAt', 'desc'));
@@ -110,10 +150,17 @@ export default function PhotosScreen() {
             title: data.title,
             documentIds: Object.keys(data.usedInDocuments ?? {}),
             tagIds: data.tagIds ?? [],
+            projectId: data.projectId,
           };
         })
       );
       setIsLoading(false);
+    });
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(query(projectsCollection, orderBy('name')), (snapshot) => {
+      setProjects(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as { name: string; color: string }) })));
     });
   }, []);
 
@@ -124,6 +171,7 @@ export default function PhotosScreen() {
     : pendingFilteredPhotos;
   const viewerPhoto = viewerPhotoId ? photos.find((p) => p.id === viewerPhotoId) ?? null : null;
   const tagPickerPhoto = tagPickerForId ? photos.find((p) => p.id === tagPickerForId) ?? null : null;
+  const selectedPhotos = photos.filter((p) => selectedIds.has(p.id));
 
   async function openDocumentIcon(photo: PhotoItem) {
     if (photo.documentIds.length === 0) return;
@@ -212,6 +260,58 @@ export default function PhotosScreen() {
     );
   }
 
+  function confirmDeleteSelected() {
+    requestDeleteMany(selectedPhotos, `Видалено фото: ${selectedPhotos.length}`, () => {
+      selectedPhotos.forEach(deletePhoto);
+    });
+    clearSelection();
+  }
+
+  async function bulkAttachTag(tag: Parameters<typeof attachTag>[0]) {
+    setBulkTagPickerVisible(false);
+    await Promise.all(selectedPhotos.map((p) => attachTag(tag, 'photo', p.id, 'photos')));
+    clearSelection();
+  }
+
+  async function bulkCreateAndAttachTag(path: string, icon: string, color: string) {
+    setBulkTagPickerVisible(false);
+    await Promise.all(selectedPhotos.map((p) => createAndAttachTag(path, icon, color, 'photo', p.id, 'photos')));
+    clearSelection();
+  }
+
+  async function bulkAssignProject(projectId: string | null) {
+    setBulkProjectPickerVisible(false);
+    const batch = writeBatch(db);
+    selectedPhotos.forEach((p) => {
+      batch.update(doc(db, 'photos', p.id), { projectId: projectId ?? deleteField() });
+    });
+    await batch.commit();
+    clearSelection();
+  }
+
+  async function bulkCopyToExisting(documentId: string) {
+    setBulkCopyModalVisible(false);
+    const blocks = selectedPhotos.map(blockFromPhoto);
+    await copyObjectsToNote(
+      documentId,
+      blocks,
+      selectedPhotos.map((p) => ({ collectionName: 'photos', id: p.id }))
+    );
+    clearSelection();
+  }
+
+  async function bulkCopyToNew() {
+    setBulkCopyModalVisible(false);
+    const blocks = selectedPhotos.map(blockFromPhoto);
+    const newDocumentId = await copyObjectsToNote(
+      null,
+      blocks,
+      selectedPhotos.map((p) => ({ collectionName: 'photos', id: p.id }))
+    );
+    clearSelection();
+    navigation.navigate('Editor', { documentId: newDocumentId });
+  }
+
   function viewerActionsFor(photo: PhotoItem): ViewerAction[] {
     return [
       { key: 'rename', icon: 'pencil-outline', label: 'Назва', onPress: () => setRenamingPhoto(photo) },
@@ -260,9 +360,14 @@ export default function PhotosScreen() {
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.header}>Фото</Text>
-        <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
-          <Ionicons name={isSearching ? 'close' : 'search'} size={20} color="#6B7280" />
-        </Pressable>
+        <View style={styles.headerButtons}>
+          <Pressable hitSlop={8} onPress={toggleSelectMode}>
+            <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={20} color="#6B7280" />
+          </Pressable>
+          <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
+            <Ionicons name={isSearching ? 'close' : 'search'} size={20} color="#6B7280" />
+          </Pressable>
+        </View>
       </View>
 
       {isSearching && (
@@ -292,14 +397,20 @@ export default function PhotosScreen() {
           )}
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.grid}>
+        <ScrollView contentContainerStyle={[styles.grid, isSelectMode && styles.gridWithBulkBar]}>
           {displayedPhotos.map((photo) => (
-            <Pressable key={photo.id} style={styles.cell} onPress={() => setViewerPhotoId(photo.id)}>
+            <Pressable
+              key={photo.id}
+              style={styles.cell}
+              onPress={() => (isSelectMode ? toggleSelected(photo.id) : setViewerPhotoId(photo.id))}
+            >
               <PhotoThumb
                 uri={photo.imageUri}
                 docCount={photo.documentIds.length}
                 tags={tags.filter((t) => photo.tagIds.includes(t.id))}
                 onTagPress={() => setTagPickerForId(photo.id)}
+                isSelectMode={isSelectMode}
+                isSelected={selectedIds.has(photo.id)}
               />
             </Pressable>
           ))}
@@ -350,6 +461,40 @@ export default function PhotosScreen() {
         onClose={() => setTagPickerForId(null)}
       />
 
+      <TagPicker
+        visible={bulkTagPickerVisible}
+        kind="photo"
+        tags={tags}
+        selectedTagIds={[]}
+        onAttach={bulkAttachTag}
+        onDetach={() => {}}
+        onCreateAndAttach={bulkCreateAndAttachTag}
+        onRenameTag={renameTag}
+        onClose={() => setBulkTagPickerVisible(false)}
+      />
+
+      <ProjectPickerSheet
+        visible={bulkProjectPickerVisible}
+        projects={projects}
+        onPick={bulkAssignProject}
+        onClose={() => setBulkProjectPickerVisible(false)}
+      />
+
+      <CopyToNoteModal
+        visible={bulkCopyModalVisible}
+        onPickExisting={bulkCopyToExisting}
+        onPickNew={bulkCopyToNew}
+        onClose={() => setBulkCopyModalVisible(false)}
+      />
+
+      <BulkActionBar
+        count={selectedIds.size}
+        onTag={() => setBulkTagPickerVisible(true)}
+        onProject={() => setBulkProjectPickerVisible(true)}
+        onCopy={() => setBulkCopyModalVisible(true)}
+        onDelete={confirmDeleteSelected}
+      />
+
       {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
     </View>
   );
@@ -372,6 +517,11 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: '#111827',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
   },
   searchRow: {
     flexDirection: 'row',
@@ -422,6 +572,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     gap: 12,
+  },
+  gridWithBulkBar: {
+    paddingBottom: 90,
+  },
+  cellCheckbox: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cell: {
     width: '47%',

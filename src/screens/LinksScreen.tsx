@@ -2,21 +2,38 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
+import {
+  collection,
+  deleteDoc,
+  deleteField,
+  doc,
+  getDoc,
+  onSnapshot,
+  orderBy,
+  query,
+  updateDoc,
+  writeBatch,
+} from 'firebase/firestore';
 import { db } from '../firebase';
-import { Block, TaggableKind } from '../types';
+import { Block, Project, TaggableKind } from '../types';
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
+import BulkActionBar from '../components/BulkActionBar';
+import ProjectPickerSheet from '../components/ProjectPickerSheet';
+import CopyToNoteModal from '../components/CopyToNoteModal';
 import { usePendingDelete } from '../hooks/usePendingDelete';
+import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
+import { blockFromLink, copyObjectsToNote } from '../utils/copyToNote';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
 const linksCollection = collection(db, 'links');
+const projectsCollection = collection(db, 'projects');
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -34,6 +51,7 @@ type LinkItem = {
   siteName?: string;
   documentIds: string[];
   tagIds: string[];
+  projectId?: string;
 };
 
 type LinkCategory = 'video' | 'geo' | 'other';
@@ -105,8 +123,14 @@ export default function LinksScreen({ route, navigation }: Props) {
   const [tagPickerForId, setTagPickerForId] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const { filterPending, requestDelete, undo, toast } = usePendingDelete<LinkItem>();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
+  const [bulkProjectPickerVisible, setBulkProjectPickerVisible] = useState(false);
+  const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
+  const { filterPending, requestDelete, requestDeleteMany, undo, toast } = usePendingDelete<LinkItem>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
+  const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, clear: clearSelection } =
+    useMultiSelect();
 
   useEffect(() => {
     const linksQuery = query(linksCollection, orderBy('updatedAt', 'desc'));
@@ -122,10 +146,17 @@ export default function LinksScreen({ route, navigation }: Props) {
             siteName: data.siteName,
             documentIds: Object.keys(data.usedInDocuments ?? {}),
             tagIds: data.tagIds ?? [],
+            projectId: data.projectId,
           };
         })
       );
       setIsLoading(false);
+    });
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(query(projectsCollection, orderBy('name')), (snapshot) => {
+      setProjects(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as { name: string; color: string }) })));
     });
   }, []);
 
@@ -135,6 +166,7 @@ export default function LinksScreen({ route, navigation }: Props) {
     ? categoryLinks.filter((link) => (link.title || hostnameOf(link.url)).toLowerCase().includes(needle))
     : categoryLinks;
   const tagPickerLink = tagPickerForId ? links.find((l) => l.id === tagPickerForId) ?? null : null;
+  const selectedLinks = categoryLinks.filter((l) => selectedIds.has(l.id));
 
   function openLinkUrl(url: string) {
     Linking.openURL(url).catch(() => {});
@@ -219,12 +251,75 @@ export default function LinksScreen({ route, navigation }: Props) {
     );
   }
 
+  function confirmDeleteSelected() {
+    requestDeleteMany(selectedLinks, `Видалено посилань: ${selectedLinks.length}`, () => {
+      selectedLinks.forEach(deleteLink);
+    });
+    clearSelection();
+  }
+
+  async function bulkAttachTag(tag: Parameters<typeof attachTag>[0]) {
+    setBulkTagPickerVisible(false);
+    await Promise.all(selectedLinks.map((l) => attachTag(tag, tagKind, l.id, 'links')));
+    clearSelection();
+  }
+
+  async function bulkCreateAndAttachTag(path: string, icon: string, color: string) {
+    setBulkTagPickerVisible(false);
+    await Promise.all(selectedLinks.map((l) => createAndAttachTag(path, icon, color, tagKind, l.id, 'links')));
+    clearSelection();
+  }
+
+  async function bulkAssignProject(projectId: string | null) {
+    setBulkProjectPickerVisible(false);
+    const batch = writeBatch(db);
+    selectedLinks.forEach((l) => {
+      batch.update(doc(db, 'links', l.id), { projectId: projectId ?? deleteField() });
+    });
+    await batch.commit();
+    clearSelection();
+  }
+
+  async function bulkCopyToExisting(documentId: string) {
+    setBulkCopyModalVisible(false);
+    const blocks = selectedLinks.map(blockFromLink);
+    await copyObjectsToNote(
+      documentId,
+      blocks,
+      selectedLinks.map((l) => ({ collectionName: 'links', id: l.id }))
+    );
+    clearSelection();
+  }
+
+  async function bulkCopyToNew() {
+    setBulkCopyModalVisible(false);
+    const blocks = selectedLinks.map(blockFromLink);
+    const newDocumentId = await copyObjectsToNote(
+      null,
+      blocks,
+      selectedLinks.map((l) => ({ collectionName: 'links', id: l.id }))
+    );
+    clearSelection();
+    navigation.navigate('Editor', { documentId: newDocumentId });
+  }
+
   function renderLinkRow(item: LinkItem) {
     const itemInfo = CATEGORY_INFO[categoryOf(item)];
     const docCount = item.documentIds.length;
     return (
       <View key={item.id} style={styles.row}>
-        <Pressable style={styles.rowTap} onPress={() => openLinkUrl(item.url)}>
+        <Pressable
+          style={styles.rowTap}
+          onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkUrl(item.url))}
+        >
+          {isSelectMode && (
+            <Ionicons
+              name={selectedIds.has(item.id) ? 'checkbox' : 'square-outline'}
+              size={22}
+              color={selectedIds.has(item.id) ? ACCENT : '#9CA3AF'}
+              style={styles.rowCheckbox}
+            />
+          )}
           {item.imageUrl ? (
             <Image source={{ uri: item.imageUrl }} style={styles.thumb} resizeMode="cover" />
           ) : (
@@ -247,24 +342,26 @@ export default function LinksScreen({ route, navigation }: Props) {
             </View>
           </View>
         </Pressable>
-        <View style={styles.rowActions}>
-          <Pressable hitSlop={8} onPress={() => setRenamingLink(item)} style={styles.rowActionButton}>
-            <Ionicons name="pencil-outline" size={16} color="#9CA3AF" />
-          </Pressable>
-          <Pressable hitSlop={8} onPress={() => openDocumentIcon(item)} style={styles.rowDocButtonWrap}>
-            <View style={styles.rowDocButton}>
-              <Ionicons name="document-text-outline" size={16} color={ACCENT} />
-            </View>
-            {docCount > 1 && (
-              <View style={styles.rowDocBadge}>
-                <Text style={styles.rowDocBadgeLabel}>{docCount}</Text>
+        {!isSelectMode && (
+          <View style={styles.rowActions}>
+            <Pressable hitSlop={8} onPress={() => setRenamingLink(item)} style={styles.rowActionButton}>
+              <Ionicons name="pencil-outline" size={16} color="#9CA3AF" />
+            </Pressable>
+            <Pressable hitSlop={8} onPress={() => openDocumentIcon(item)} style={styles.rowDocButtonWrap}>
+              <View style={styles.rowDocButton}>
+                <Ionicons name="document-text-outline" size={16} color={ACCENT} />
               </View>
-            )}
-          </Pressable>
-          <Pressable hitSlop={8} onPress={() => confirmDeleteLink(item)} style={styles.rowActionButton}>
-            <Ionicons name="trash-outline" size={16} color={DANGER} />
-          </Pressable>
-        </View>
+              {docCount > 1 && (
+                <View style={styles.rowDocBadge}>
+                  <Text style={styles.rowDocBadgeLabel}>{docCount}</Text>
+                </View>
+              )}
+            </Pressable>
+            <Pressable hitSlop={8} onPress={() => confirmDeleteLink(item)} style={styles.rowActionButton}>
+              <Ionicons name="trash-outline" size={16} color={DANGER} />
+            </Pressable>
+          </View>
+        )}
       </View>
     );
   }
@@ -281,9 +378,14 @@ export default function LinksScreen({ route, navigation }: Props) {
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.header}>{info.title}</Text>
-        <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
-          <Ionicons name={isSearching ? 'close' : 'search'} size={20} color="#6B7280" />
-        </Pressable>
+        <View style={styles.headerButtons}>
+          <Pressable hitSlop={8} onPress={toggleSelectMode}>
+            <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={20} color="#6B7280" />
+          </Pressable>
+          <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
+            <Ionicons name={isSearching ? 'close' : 'search'} size={20} color="#6B7280" />
+          </Pressable>
+        </View>
       </View>
 
       {isSearching && (
@@ -309,7 +411,9 @@ export default function LinksScreen({ route, navigation }: Props) {
           {!needle && <Text style={styles.emptyHint}>{info.emptyHint}</Text>}
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.list}>{filteredLinks.map(renderLinkRow)}</ScrollView>
+        <ScrollView contentContainerStyle={[styles.list, isSelectMode && styles.listWithBulkBar]}>
+          {filteredLinks.map(renderLinkRow)}
+        </ScrollView>
       )}
 
       <RenamePrompt
@@ -344,6 +448,40 @@ export default function LinksScreen({ route, navigation }: Props) {
         onClose={() => setTagPickerForId(null)}
       />
 
+      <TagPicker
+        visible={bulkTagPickerVisible}
+        kind={tagKind}
+        tags={tags}
+        selectedTagIds={[]}
+        onAttach={bulkAttachTag}
+        onDetach={() => {}}
+        onCreateAndAttach={bulkCreateAndAttachTag}
+        onRenameTag={renameTag}
+        onClose={() => setBulkTagPickerVisible(false)}
+      />
+
+      <ProjectPickerSheet
+        visible={bulkProjectPickerVisible}
+        projects={projects}
+        onPick={bulkAssignProject}
+        onClose={() => setBulkProjectPickerVisible(false)}
+      />
+
+      <CopyToNoteModal
+        visible={bulkCopyModalVisible}
+        onPickExisting={bulkCopyToExisting}
+        onPickNew={bulkCopyToNew}
+        onClose={() => setBulkCopyModalVisible(false)}
+      />
+
+      <BulkActionBar
+        count={selectedIds.size}
+        onTag={() => setBulkTagPickerVisible(true)}
+        onProject={() => setBulkProjectPickerVisible(true)}
+        onCopy={() => setBulkCopyModalVisible(true)}
+        onDelete={confirmDeleteSelected}
+      />
+
       {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
     </View>
   );
@@ -369,6 +507,14 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: '#111827',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  rowCheckbox: {
+    alignSelf: 'center',
   },
   searchRow: {
     flexDirection: 'row',
@@ -416,6 +562,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 20,
     gap: 10,
+  },
+  listWithBulkBar: {
+    paddingBottom: 90,
   },
   row: {
     flexDirection: 'row',

@@ -4,20 +4,37 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Sharing from 'expo-sharing';
-import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
+import {
+  collection,
+  deleteDoc,
+  deleteField,
+  doc,
+  getDoc,
+  onSnapshot,
+  orderBy,
+  query,
+  updateDoc,
+  writeBatch,
+} from 'firebase/firestore';
 import { db } from '../firebase';
-import { Block } from '../types';
+import { Block, Project } from '../types';
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
+import BulkActionBar from '../components/BulkActionBar';
+import ProjectPickerSheet from '../components/ProjectPickerSheet';
+import CopyToNoteModal from '../components/CopyToNoteModal';
 import { usePendingDelete } from '../hooks/usePendingDelete';
+import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
+import { blockFromFile, copyObjectsToNote } from '../utils/copyToNote';
 
 const ACCENT = '#8B5CF6';
 const DANGER = '#EF4444';
+const projectsCollection = collection(db, 'projects');
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -31,6 +48,7 @@ type FileItem = {
   title?: string;
   documentIds: string[];
   tagIds: string[];
+  projectId?: string;
 };
 
 // Same tinting-by-extension used on the file block itself in
@@ -59,8 +77,14 @@ export default function FilesScreen() {
   const [tagPickerForId, setTagPickerForId] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const { filterPending, requestDelete, undo, toast } = usePendingDelete<FileItem>();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
+  const [bulkProjectPickerVisible, setBulkProjectPickerVisible] = useState(false);
+  const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
+  const { filterPending, requestDelete, requestDeleteMany, undo, toast } = usePendingDelete<FileItem>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
+  const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, clear: clearSelection } =
+    useMultiSelect();
 
   useEffect(() => {
     const filesQuery = query(collection(db, 'files'), orderBy('updatedAt', 'desc'));
@@ -76,10 +100,17 @@ export default function FilesScreen() {
             title: data.title,
             documentIds: Object.keys(data.usedInDocuments ?? {}),
             tagIds: data.tagIds ?? [],
+            projectId: data.projectId,
           };
         })
       );
       setIsLoading(false);
+    });
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(query(projectsCollection, orderBy('name')), (snapshot) => {
+      setProjects(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as { name: string; color: string }) })));
     });
   }, []);
 
@@ -89,6 +120,7 @@ export default function FilesScreen() {
     ? pendingFilteredFiles.filter((f) => (f.title || f.fileName).toLowerCase().includes(needle))
     : pendingFilteredFiles;
   const tagPickerFile = tagPickerForId ? files.find((f) => f.id === tagPickerForId) ?? null : null;
+  const selectedFiles = files.filter((f) => selectedIds.has(f.id));
 
   async function openFile(file: FileItem) {
     const available = await Sharing.isAvailableAsync();
@@ -171,11 +203,74 @@ export default function FilesScreen() {
     );
   }
 
+  function confirmDeleteSelected() {
+    requestDeleteMany(selectedFiles, `Видалено файлів: ${selectedFiles.length}`, () => {
+      selectedFiles.forEach(deleteFile);
+    });
+    clearSelection();
+  }
+
+  async function bulkAttachTag(tag: Parameters<typeof attachTag>[0]) {
+    setBulkTagPickerVisible(false);
+    await Promise.all(selectedFiles.map((f) => attachTag(tag, 'file', f.id, 'files')));
+    clearSelection();
+  }
+
+  async function bulkCreateAndAttachTag(path: string, icon: string, color: string) {
+    setBulkTagPickerVisible(false);
+    await Promise.all(selectedFiles.map((f) => createAndAttachTag(path, icon, color, 'file', f.id, 'files')));
+    clearSelection();
+  }
+
+  async function bulkAssignProject(projectId: string | null) {
+    setBulkProjectPickerVisible(false);
+    const batch = writeBatch(db);
+    selectedFiles.forEach((f) => {
+      batch.update(doc(db, 'files', f.id), { projectId: projectId ?? deleteField() });
+    });
+    await batch.commit();
+    clearSelection();
+  }
+
+  async function bulkCopyToExisting(documentId: string) {
+    setBulkCopyModalVisible(false);
+    const blocks = selectedFiles.map(blockFromFile);
+    await copyObjectsToNote(
+      documentId,
+      blocks,
+      selectedFiles.map((f) => ({ collectionName: 'files', id: f.id }))
+    );
+    clearSelection();
+  }
+
+  async function bulkCopyToNew() {
+    setBulkCopyModalVisible(false);
+    const blocks = selectedFiles.map(blockFromFile);
+    const newDocumentId = await copyObjectsToNote(
+      null,
+      blocks,
+      selectedFiles.map((f) => ({ collectionName: 'files', id: f.id }))
+    );
+    clearSelection();
+    navigation.navigate('Editor', { documentId: newDocumentId });
+  }
+
   function renderFileRow(item: FileItem) {
     const docCount = item.documentIds.length;
     return (
       <View key={item.id} style={styles.row}>
-        <Pressable style={styles.rowTap} onPress={() => openFile(item)}>
+        <Pressable
+          style={styles.rowTap}
+          onPress={() => (isSelectMode ? toggleSelected(item.id) : openFile(item))}
+        >
+          {isSelectMode && (
+            <Ionicons
+              name={selectedIds.has(item.id) ? 'checkbox' : 'square-outline'}
+              size={22}
+              color={selectedIds.has(item.id) ? ACCENT : '#9CA3AF'}
+              style={styles.rowCheckbox}
+            />
+          )}
           <View style={[styles.thumbIcon, { backgroundColor: `${fileIconColorFor(item.fileName)}1A` }]}>
             <Ionicons name={fileIconFor(item.fileName)} size={20} color={fileIconColorFor(item.fileName)} />
           </View>
@@ -191,24 +286,26 @@ export default function FilesScreen() {
             </View>
           </View>
         </Pressable>
-        <View style={styles.rowActions}>
-          <Pressable hitSlop={8} onPress={() => setRenamingFile(item)} style={styles.rowActionButton}>
-            <Ionicons name="pencil-outline" size={16} color="#9CA3AF" />
-          </Pressable>
-          <Pressable hitSlop={8} onPress={() => openDocumentIcon(item)} style={styles.rowDocButtonWrap}>
-            <View style={styles.rowDocButton}>
-              <Ionicons name="document-text-outline" size={16} color={ACCENT} />
-            </View>
-            {docCount > 1 && (
-              <View style={styles.rowDocBadge}>
-                <Text style={styles.rowDocBadgeLabel}>{docCount}</Text>
+        {!isSelectMode && (
+          <View style={styles.rowActions}>
+            <Pressable hitSlop={8} onPress={() => setRenamingFile(item)} style={styles.rowActionButton}>
+              <Ionicons name="pencil-outline" size={16} color="#9CA3AF" />
+            </Pressable>
+            <Pressable hitSlop={8} onPress={() => openDocumentIcon(item)} style={styles.rowDocButtonWrap}>
+              <View style={styles.rowDocButton}>
+                <Ionicons name="document-text-outline" size={16} color={ACCENT} />
               </View>
-            )}
-          </Pressable>
-          <Pressable hitSlop={8} onPress={() => confirmDeleteFile(item)} style={styles.rowActionButton}>
-            <Ionicons name="trash-outline" size={16} color={DANGER} />
-          </Pressable>
-        </View>
+              {docCount > 1 && (
+                <View style={styles.rowDocBadge}>
+                  <Text style={styles.rowDocBadgeLabel}>{docCount}</Text>
+                </View>
+              )}
+            </Pressable>
+            <Pressable hitSlop={8} onPress={() => confirmDeleteFile(item)} style={styles.rowActionButton}>
+              <Ionicons name="trash-outline" size={16} color={DANGER} />
+            </Pressable>
+          </View>
+        )}
       </View>
     );
   }
@@ -225,9 +322,14 @@ export default function FilesScreen() {
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.header}>Файли</Text>
-        <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
-          <Ionicons name={isSearching ? 'close' : 'search'} size={20} color="#6B7280" />
-        </Pressable>
+        <View style={styles.headerButtons}>
+          <Pressable hitSlop={8} onPress={toggleSelectMode}>
+            <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={20} color="#6B7280" />
+          </Pressable>
+          <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
+            <Ionicons name={isSearching ? 'close' : 'search'} size={20} color="#6B7280" />
+          </Pressable>
+        </View>
       </View>
 
       {isSearching && (
@@ -257,7 +359,9 @@ export default function FilesScreen() {
           )}
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.list}>{displayedFiles.map(renderFileRow)}</ScrollView>
+        <ScrollView contentContainerStyle={[styles.list, isSelectMode && styles.listWithBulkBar]}>
+          {displayedFiles.map(renderFileRow)}
+        </ScrollView>
       )}
 
       <RenamePrompt
@@ -292,6 +396,40 @@ export default function FilesScreen() {
         onClose={() => setTagPickerForId(null)}
       />
 
+      <TagPicker
+        visible={bulkTagPickerVisible}
+        kind="file"
+        tags={tags}
+        selectedTagIds={[]}
+        onAttach={bulkAttachTag}
+        onDetach={() => {}}
+        onCreateAndAttach={bulkCreateAndAttachTag}
+        onRenameTag={renameTag}
+        onClose={() => setBulkTagPickerVisible(false)}
+      />
+
+      <ProjectPickerSheet
+        visible={bulkProjectPickerVisible}
+        projects={projects}
+        onPick={bulkAssignProject}
+        onClose={() => setBulkProjectPickerVisible(false)}
+      />
+
+      <CopyToNoteModal
+        visible={bulkCopyModalVisible}
+        onPickExisting={bulkCopyToExisting}
+        onPickNew={bulkCopyToNew}
+        onClose={() => setBulkCopyModalVisible(false)}
+      />
+
+      <BulkActionBar
+        count={selectedIds.size}
+        onTag={() => setBulkTagPickerVisible(true)}
+        onProject={() => setBulkProjectPickerVisible(true)}
+        onCopy={() => setBulkCopyModalVisible(true)}
+        onDelete={confirmDeleteSelected}
+      />
+
       {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
     </View>
   );
@@ -314,6 +452,14 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: '#111827',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  rowCheckbox: {
+    alignSelf: 'center',
   },
   searchRow: {
     flexDirection: 'row',
@@ -361,6 +507,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 20,
     gap: 10,
+  },
+  listWithBulkBar: {
+    paddingBottom: 90,
   },
   row: {
     flexDirection: 'row',
