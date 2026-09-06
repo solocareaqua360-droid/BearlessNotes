@@ -131,13 +131,15 @@ export default function CalendarScreen() {
     setVisibleMonth({ year: selectedDate.getFullYear(), month: selectedDate.getMonth() });
   }, [selectedDate]);
 
-  // Which days in the visible month already have a real note (the "only
-  // filled days" toggle). calendarDate sorts the same as the date it
-  // represents (YYYY-MM-DD), so a plain range filter is one month's worth of
-  // documents, no composite index needed.
+  // Which days already have a real note (the "only filled days" toggle) -
+  // padded a week past either end of the visible month so the week strip's
+  // own hidden-day check (below) stays correct even for a week that spans
+  // two months. calendarDate sorts the same as the date it represents
+  // (YYYY-MM-DD), so a plain range filter covers this with no composite
+  // index needed.
   useEffect(() => {
-    const monthStartKey = dateKey(new Date(visibleMonth.year, visibleMonth.month, 1));
-    const monthEndKey = dateKey(new Date(visibleMonth.year, visibleMonth.month + 1, 0));
+    const monthStartKey = dateKey(addDays(new Date(visibleMonth.year, visibleMonth.month, 1), -7));
+    const monthEndKey = dateKey(addDays(new Date(visibleMonth.year, visibleMonth.month + 1, 0), 7));
     const filledQuery = query(
       documentsCollection,
       where('calendarDate', '>=', monthStartKey),
@@ -266,15 +268,20 @@ export default function CalendarScreen() {
             >
               {WEEK_PAGE_OFFSETS.map((offset) => (
                 <View key={offset} style={styles.weekPage}>
-                  {getWeekDates(addDays(weekStart, offset)).map((date) => (
-                    <DayCell
-                      key={dateKey(date)}
-                      date={date}
-                      isToday={isSameDay(date, today)}
-                      isSelected={dateKey(date) === selectedKey}
-                      onPress={() => selectDay(date)}
-                    />
-                  ))}
+                  {getWeekDates(addDays(weekStart, offset)).map((date) => {
+                    const key = dateKey(date);
+                    const isToday = isSameDay(date, today);
+                    return (
+                      <DayCell
+                        key={key}
+                        date={date}
+                        isToday={isToday}
+                        isSelected={key === selectedKey}
+                        hidden={onlyFilledDays && !isToday && !filledDates.has(key)}
+                        onPress={() => selectDay(date)}
+                      />
+                    );
+                  })}
                 </View>
               ))}
             </ScrollView>
