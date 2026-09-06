@@ -31,6 +31,11 @@
           "cameraPermission": "Bearless Notes потребує доступу до камери, щоб сканувати документи"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "862729ab-f7db-43fc-9615-ec489deeb26d"
+      }
+    }
   }
 }
