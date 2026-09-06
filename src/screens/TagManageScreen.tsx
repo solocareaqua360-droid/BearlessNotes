@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Tag } from '../types';
+import { RootStackParamList } from '../navigation';
 import { useTags } from '../hooks/useTags';
 import TagEditSheet from '../components/TagEditSheet';
+import DatabaseIslandBar from '../components/DatabaseIslandBar';
 
 const DANGER = '#EF4444';
 
@@ -23,6 +27,7 @@ const KIND_LABELS: Record<string, string> = {
 // into a visual tree - the tree view belongs to Search's browsing mode, not
 // duplicated here.
 export default function TagManageScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { tags, isLoading, updateTag, deleteTagCompletely } = useTags();
   const [editingTag, setEditingTag] = useState<Tag | null>(null);
 
@@ -40,7 +45,15 @@ export default function TagManageScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Теги</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.header}>Теги</Text>
+        <Pressable
+          hitSlop={8}
+          onPress={() => navigation.navigate('Placeholder', { icon: 'ellipsis-horizontal-outline', label: 'Скоро' })}
+        >
+          <Ionicons name="ellipsis-horizontal-outline" size={22} color="#111827" />
+        </Pressable>
+      </View>
       <Text style={styles.subtitle}>
         Керування вже існуючими тегами. Створити новий тег можна лише разом із присвоєнням елементу.
       </Text>
@@ -57,16 +70,21 @@ export default function TagManageScreen() {
         <ScrollView contentContainerStyle={styles.list}>
           {tags.map((tag) => (
             <View key={tag.id} style={styles.row}>
-              <View style={[styles.rowIcon, { backgroundColor: `${tag.color}1A` }]}>
-                <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={16} color={tag.color} />
-              </View>
-              <View style={styles.rowBody}>
-                <Text style={styles.rowLabel}>{tag.path}</Text>
-                <Text style={styles.rowMeta}>
-                  {Object.keys(tag.usedIn).length} {Object.keys(tag.usedIn).length === 1 ? 'елемент' : 'елементів'} ·{' '}
-                  {tag.types.map((t) => KIND_LABELS[t] ?? t).join(', ')}
-                </Text>
-              </View>
+              <Pressable
+                style={styles.rowTap}
+                onPress={() => navigation.navigate('TagItems', { tagId: tag.id })}
+              >
+                <View style={[styles.rowIcon, { backgroundColor: `${tag.color}1A` }]}>
+                  <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={16} color={tag.color} />
+                </View>
+                <View style={styles.rowBody}>
+                  <Text style={styles.rowLabel}>{tag.path}</Text>
+                  <Text style={styles.rowMeta}>
+                    {Object.keys(tag.usedIn).length} {Object.keys(tag.usedIn).length === 1 ? 'елемент' : 'елементів'} ·{' '}
+                    {tag.types.map((t) => KIND_LABELS[t] ?? t).join(', ')}
+                  </Text>
+                </View>
+              </Pressable>
               <Pressable hitSlop={8} style={styles.rowAction} onPress={() => setEditingTag(tag)}>
                 <Ionicons name="pencil-outline" size={15} color="#9CA3AF" />
               </Pressable>
@@ -77,6 +95,8 @@ export default function TagManageScreen() {
           ))}
         </ScrollView>
       )}
+
+      <DatabaseIslandBar />
 
       <TagEditSheet
         visible={editingTag !== null}
@@ -96,12 +116,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 56,
+  },
   header: {
     fontSize: 22,
     fontWeight: '700',
     color: '#111827',
-    paddingHorizontal: 20,
-    paddingTop: 56,
   },
   subtitle: {
     fontSize: 12,
@@ -138,13 +163,19 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: 20,
-    paddingBottom: 24,
+    paddingBottom: 100,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 4,
     paddingVertical: 10,
+  },
+  rowTap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   rowIcon: {
     width: 32,

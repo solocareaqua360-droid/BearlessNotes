@@ -43,11 +43,14 @@ export default function App() {
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="Tabs" component={Tabs} />
           <Stack.Screen name="Editor" component={DocumentEditorScreen} />
-          <Stack.Screen name="Tasks" component={TasksScreen} />
-          <Stack.Screen name="Links" component={LinksScreen} />
-          <Stack.Screen name="Photos" component={PhotosScreen} />
-          <Stack.Screen name="Files" component={FilesScreen} />
-          <Stack.Screen name="Tags" component={TagManageScreen} />
+          {/* Each shows DatabaseIslandBar - no slide transition, so the
+              island reads as a fixed piece of chrome instead of sliding in
+              and out with the rest of the screen on every push/pop. */}
+          <Stack.Screen name="Tasks" component={TasksScreen} options={{ animation: 'none' }} />
+          <Stack.Screen name="Links" component={LinksScreen} options={{ animation: 'none' }} />
+          <Stack.Screen name="Photos" component={PhotosScreen} options={{ animation: 'none' }} />
+          <Stack.Screen name="Files" component={FilesScreen} options={{ animation: 'none' }} />
+          <Stack.Screen name="Tags" component={TagManageScreen} options={{ animation: 'none' }} />
           <Stack.Screen name="TagItems" component={TagItemsScreen} />
           <Stack.Screen name="Search" component={SearchScreen} />
           <Stack.Screen name="Placeholder">
