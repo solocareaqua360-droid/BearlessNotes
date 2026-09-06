@@ -46,8 +46,8 @@ import Animated, {
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { deleteDoc, deleteField, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import Svg, { Path } from 'react-native-svg';
-import { Block, BlockType, SketchStroke, Tag } from '../types';
+import Svg, { Path, Text as SvgText } from 'react-native-svg';
+import { Block, BlockType, SketchElement, Tag } from '../types';
 import { RootStackParamList } from '../navigation';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import RenamePrompt from '../components/RenamePrompt';
@@ -490,10 +490,10 @@ function BlockRow({
       <Text style={styles.blockPlaceholder}>Немає зображення</Text>
     );
   } else if (type === 'sketch') {
-    // viewBox reuses the exact canvas size the strokes were captured
+    // viewBox reuses the exact canvas size the elements were captured
     // against (see SketchEditor) so the drawing scales correctly here
     // regardless of how much smaller this preview box is.
-    const strokes = item.sketchStrokes ?? [];
+    const elements = item.sketchElements ?? [];
     const vbWidth = item.sketchWidth || 1;
     const vbHeight = item.sketchHeight || 1;
     content = (
@@ -502,19 +502,25 @@ function BlockRow({
         onPress={() => onOpenSketch(item.id)}
         style={styles.blockImageWrap}
       >
-        {strokes.length > 0 ? (
+        {elements.length > 0 ? (
           <Svg width="100%" height="100%" viewBox={`0 0 ${vbWidth} ${vbHeight}`}>
-            {strokes.map((s, i) => (
-              <Path
-                key={i}
-                d={s.d}
-                stroke={s.color}
-                strokeWidth={s.width}
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            ))}
+            {elements.map((el, i) =>
+              el.kind === 'text' ? (
+                <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
+                  {el.text}
+                </SvgText>
+              ) : (
+                <Path
+                  key={i}
+                  d={el.d}
+                  stroke={el.color}
+                  strokeWidth={el.width}
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              )
+            )}
           </Svg>
         ) : (
           <Text style={styles.blockPlaceholder}>Порожній малюнок</Text>
@@ -2162,7 +2168,7 @@ export default function DocumentEditorScreen(props: Props) {
     if (id && pendingNewSketchIdRef.current === id) {
       setBlocks((prev) => {
         const index = prev.findIndex((b) => b.id === id);
-        if (index === -1 || (prev[index].sketchStrokes?.length ?? 0) > 0) return prev;
+        if (index === -1 || (prev[index].sketchElements?.length ?? 0) > 0) return prev;
         const next = [...prev];
         next[index] = buildBlock(id, 'paragraph', '');
         return next;
@@ -2171,7 +2177,7 @@ export default function DocumentEditorScreen(props: Props) {
     pendingNewSketchIdRef.current = null;
   }
 
-  function saveSketchStrokes(strokes: SketchStroke[], width: number, height: number) {
+  function saveSketchElements(elements: SketchElement[], width: number, height: number) {
     const id = sketchEditorBlockId;
     if (!id) return;
     setSketchEditorBlockId(null);
@@ -2181,7 +2187,7 @@ export default function DocumentEditorScreen(props: Props) {
       const index = prev.findIndex((b) => b.id === id);
       if (index === -1) return prev;
       const next = [...prev];
-      next[index] = { ...next[index], sketchStrokes: strokes, sketchWidth: width, sketchHeight: height };
+      next[index] = { ...next[index], sketchElements: elements, sketchWidth: width, sketchHeight: height };
       return next;
     });
   }
@@ -2581,10 +2587,10 @@ export default function DocumentEditorScreen(props: Props) {
 
       <SketchEditor
         visible={sketchEditorBlockId !== null}
-        initialStrokes={
-          (sketchEditorBlockId && blocks.find((b) => b.id === sketchEditorBlockId)?.sketchStrokes) || []
+        initialElements={
+          (sketchEditorBlockId && blocks.find((b) => b.id === sketchEditorBlockId)?.sketchElements) || []
         }
-        onSave={saveSketchStrokes}
+        onSave={saveSketchElements}
         onClose={closeSketchEditor}
       />
 

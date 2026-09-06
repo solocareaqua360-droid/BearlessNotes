@@ -9,13 +9,34 @@ export type BlockType =
   | 'link'
   | 'sketch';
 
-// One freehand stroke in a 'sketch' block - `d` is a plain SVG path `d`
-// attribute ("M10 10 L12 12 ...") built up point-by-point while drawing.
-export interface SketchStroke {
+// One freehand stroke OR simple shape (line/rectangle/circle) in a
+// 'sketch' block - `d` is a plain SVG path `d` attribute. A freehand
+// stroke builds it up point-by-point while drawing; a shape computes it
+// directly from its start/end points (a rectangle as a closed 4-point
+// path, a circle as two arcs) - either way it's just a path to render,
+// no separate shape-kind field needed.
+export interface SketchPathElement {
+  kind: 'path';
   d: string;
   color: string;
   width: number;
 }
+
+// A text label placed on a 'sketch' block's canvas.
+export interface SketchTextElement {
+  kind: 'text';
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+  fontSize: number;
+}
+
+// A single drawn/placed thing on a 'sketch' block's canvas, in the order
+// it was added - one flat, ordered list (rather than separate arrays per
+// kind) so "undo" and z-order (a later element drawn on top of an
+// earlier one) both just mean "look at the last item".
+export type SketchElement = SketchPathElement | SketchTextElement;
 
 export interface Block {
   id: string;
@@ -57,13 +78,14 @@ export interface Block {
   linkTitle?: string;
   linkImageUrl?: string;
   linkSiteName?: string;
-  // 'sketch' blocks only. Strokes are kept as vector data (not a flattened
-  // image) specifically so the drawing can be reopened and continued, the
-  // way Google Keep's drawings work. sketchWidth/sketchHeight are the
-  // canvas size the strokes' coordinates were captured against - the
-  // editor and the inline preview both use that as the SVG viewBox so a
-  // drawing still scales correctly if reopened on a different screen size.
-  sketchStrokes?: SketchStroke[];
+  // 'sketch' blocks only. Elements are kept as vector data (not a
+  // flattened image) specifically so the drawing can be reopened and
+  // continued, the way Google Keep's drawings work. sketchWidth/
+  // sketchHeight are the canvas size the elements' coordinates were
+  // captured against - the editor and the inline preview both use that
+  // as the SVG viewBox so a drawing still scales correctly if reopened
+  // on a different screen size.
+  sketchElements?: SketchElement[];
   sketchWidth?: number;
   sketchHeight?: number;
 }
