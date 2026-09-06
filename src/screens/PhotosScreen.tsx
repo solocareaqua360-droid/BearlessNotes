@@ -30,6 +30,7 @@ import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
 import ProjectPickerSheet from '../components/ProjectPickerSheet';
+import ProjectTabsRow, { NO_PROJECT_ID } from '../components/ProjectTabsRow';
 import CopyToNoteModal from '../components/CopyToNoteModal';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
@@ -129,6 +130,7 @@ export default function PhotosScreen() {
   const [tagPickerForId, setTagPickerForId] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [projectFilter, setProjectFilter] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkProjectPickerVisible, setBulkProjectPickerVisible] = useState(false);
@@ -165,10 +167,16 @@ export default function PhotosScreen() {
   }, []);
 
   const pendingFilteredPhotos = filterPending(photos);
+  const projectFilteredPhotos =
+    projectFilter === null
+      ? pendingFilteredPhotos
+      : projectFilter === NO_PROJECT_ID
+        ? pendingFilteredPhotos.filter((p) => !p.projectId)
+        : pendingFilteredPhotos.filter((p) => p.projectId === projectFilter);
   const needle = searchQuery.trim().toLowerCase();
   const displayedPhotos = needle
-    ? pendingFilteredPhotos.filter((p) => (p.title ?? '').toLowerCase().includes(needle))
-    : pendingFilteredPhotos;
+    ? projectFilteredPhotos.filter((p) => (p.title ?? '').toLowerCase().includes(needle))
+    : projectFilteredPhotos;
   const viewerPhoto = viewerPhotoId ? photos.find((p) => p.id === viewerPhotoId) ?? null : null;
   const tagPickerPhoto = tagPickerForId ? photos.find((p) => p.id === tagPickerForId) ?? null : null;
   const selectedPhotos = photos.filter((p) => selectedIds.has(p.id));
@@ -369,6 +377,10 @@ export default function PhotosScreen() {
           </Pressable>
         </View>
       </View>
+
+      {projects.length > 0 && (
+        <ProjectTabsRow projects={projects} selected={projectFilter} onSelect={setProjectFilter} />
+      )}
 
       {isSearching && (
         <View style={styles.searchRow}>

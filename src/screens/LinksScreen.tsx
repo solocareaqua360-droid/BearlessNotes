@@ -24,6 +24,7 @@ import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
 import ProjectPickerSheet from '../components/ProjectPickerSheet';
+import ProjectTabsRow, { NO_PROJECT_ID } from '../components/ProjectTabsRow';
 import CopyToNoteModal from '../components/CopyToNoteModal';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
@@ -123,6 +124,7 @@ export default function LinksScreen({ route, navigation }: Props) {
   const [tagPickerForId, setTagPickerForId] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [projectFilter, setProjectFilter] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkProjectPickerVisible, setBulkProjectPickerVisible] = useState(false);
@@ -161,10 +163,16 @@ export default function LinksScreen({ route, navigation }: Props) {
   }, []);
 
   const categoryLinks = filterPending(links.filter((link) => categoryOf(link) === category));
+  const projectFilteredLinks =
+    projectFilter === null
+      ? categoryLinks
+      : projectFilter === NO_PROJECT_ID
+        ? categoryLinks.filter((l) => !l.projectId)
+        : categoryLinks.filter((l) => l.projectId === projectFilter);
   const needle = searchQuery.trim().toLowerCase();
   const filteredLinks = needle
-    ? categoryLinks.filter((link) => (link.title || hostnameOf(link.url)).toLowerCase().includes(needle))
-    : categoryLinks;
+    ? projectFilteredLinks.filter((link) => (link.title || hostnameOf(link.url)).toLowerCase().includes(needle))
+    : projectFilteredLinks;
   const tagPickerLink = tagPickerForId ? links.find((l) => l.id === tagPickerForId) ?? null : null;
   const selectedLinks = categoryLinks.filter((l) => selectedIds.has(l.id));
 
@@ -387,6 +395,10 @@ export default function LinksScreen({ route, navigation }: Props) {
           </Pressable>
         </View>
       </View>
+
+      {projects.length > 0 && (
+        <ProjectTabsRow projects={projects} selected={projectFilter} onSelect={setProjectFilter} />
+      )}
 
       {isSearching && (
         <View style={styles.searchRow}>

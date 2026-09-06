@@ -28,6 +28,7 @@ import {
 import { db } from '../firebase';
 import { Block, Project } from '../types';
 import { RootStackParamList } from '../navigation';
+import ProjectTabsRow, { NO_PROJECT_ID } from '../components/ProjectTabsRow';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -63,6 +64,7 @@ export default function TasksScreen() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [groupByProject, setGroupByProject] = useState(false);
+  const [projectFilter, setProjectFilter] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [pickerTaskId, setPickerTaskId] = useState<string | null>(null);
   const [newProjectName, setNewProjectName] = useState('');
@@ -130,10 +132,16 @@ export default function TasksScreen() {
   // project was deleted) falls back to the "Без проекту" bucket here too,
   // rather than needing every affected task rewritten the moment a project
   // is deleted.
+  const filteredTasks = useMemo(() => {
+    if (projectFilter === null) return tasks;
+    if (projectFilter === NO_PROJECT_ID) return tasks.filter((t) => !t.projectId);
+    return tasks.filter((t) => t.projectId === projectFilter);
+  }, [tasks, projectFilter]);
+
   const groups = useMemo(() => {
     if (!groupByProject) return [];
     const byKey = new Map<string, { key: string; project: Project | null; tasks: Task[] }>();
-    tasks.forEach((t) => {
+    filteredTasks.forEach((t) => {
       const project = t.projectId ? projectsById[t.projectId] : undefined;
       const key = project ? project.id : NO_PROJECT_KEY;
       if (!byKey.has(key)) byKey.set(key, { key, project: project ?? null, tasks: [] });
@@ -151,7 +159,7 @@ export default function TasksScreen() {
         if (!b.project) return -1;
         return a.project.name.localeCompare(b.project.name);
       });
-  }, [groupByProject, tasks, projectsById]);
+  }, [groupByProject, filteredTasks, projectsById]);
 
   // The task doc is a mirror (see DocumentEditorScreen's syncTasksForDocument) -
   // the block inside the source document's own `blocks` array field is the
@@ -362,7 +370,7 @@ export default function TasksScreen() {
     );
   }
 
-  const todayTasks = tasks.filter((t) => t.todayMarkedDate === today);
+  const todayTasks = filteredTasks.filter((t) => t.todayMarkedDate === today);
 
   if (isLoading) {
     return (
@@ -398,6 +406,10 @@ export default function TasksScreen() {
         </Pressable>
       </View>
 
+      {projects.length > 0 && (
+        <ProjectTabsRow projects={projects} selected={projectFilter} onSelect={setProjectFilter} />
+      )}
+
       <ScrollView contentContainerStyle={styles.list}>
         {todayTasks.length > 0 &&
           renderSection({
@@ -423,9 +435,13 @@ export default function TasksScreen() {
               key: '__all__',
               title: null,
               color: null,
-              unfinished: tasks.filter((t) => !t.checked),
-              completed: tasks.filter((t) => t.checked),
+              unfinished: filteredTasks.filter((t) => !t.checked),
+              completed: filteredTasks.filter((t) => t.checked),
             })}
+
+        {filteredTasks.length === 0 && (
+          <Text style={styles.emptyFilterLabel}>Немає справ із цим фільтром</Text>
+        )}
       </ScrollView>
 
       <Modal visible={pickerTaskId !== null} transparent animationType="fade" onRequestClose={() => setPickerTaskId(null)}>
@@ -539,6 +555,12 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 15,
     color: '#111827',
+  },
+  emptyFilterLabel: {
+    textAlign: 'center',
+    marginTop: 24,
+    fontSize: 14,
+    color: '#9CA3AF',
   },
   emptyHint: {
     marginTop: 6,

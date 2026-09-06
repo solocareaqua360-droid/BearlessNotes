@@ -26,6 +26,7 @@ import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
 import ProjectPickerSheet from '../components/ProjectPickerSheet';
+import ProjectTabsRow, { NO_PROJECT_ID } from '../components/ProjectTabsRow';
 import CopyToNoteModal from '../components/CopyToNoteModal';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
@@ -77,6 +78,7 @@ export default function FilesScreen() {
   const [tagPickerForId, setTagPickerForId] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [projectFilter, setProjectFilter] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkProjectPickerVisible, setBulkProjectPickerVisible] = useState(false);
@@ -115,10 +117,16 @@ export default function FilesScreen() {
   }, []);
 
   const pendingFilteredFiles = filterPending(files);
+  const projectFilteredFiles =
+    projectFilter === null
+      ? pendingFilteredFiles
+      : projectFilter === NO_PROJECT_ID
+        ? pendingFilteredFiles.filter((f) => !f.projectId)
+        : pendingFilteredFiles.filter((f) => f.projectId === projectFilter);
   const needle = searchQuery.trim().toLowerCase();
   const displayedFiles = needle
-    ? pendingFilteredFiles.filter((f) => (f.title || f.fileName).toLowerCase().includes(needle))
-    : pendingFilteredFiles;
+    ? projectFilteredFiles.filter((f) => (f.title || f.fileName).toLowerCase().includes(needle))
+    : projectFilteredFiles;
   const tagPickerFile = tagPickerForId ? files.find((f) => f.id === tagPickerForId) ?? null : null;
   const selectedFiles = files.filter((f) => selectedIds.has(f.id));
 
@@ -331,6 +339,10 @@ export default function FilesScreen() {
           </Pressable>
         </View>
       </View>
+
+      {projects.length > 0 && (
+        <ProjectTabsRow projects={projects} selected={projectFilter} onSelect={setProjectFilter} />
+      )}
 
       {isSearching && (
         <View style={styles.searchRow}>
