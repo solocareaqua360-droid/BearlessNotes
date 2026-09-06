@@ -138,6 +138,21 @@ installed dev-client APK doesn't have, this needs the same kind of
 fresh build as the scanner did (web dashboard "Build from GitHub")
 before it can be tried on-device at all.
 
+**Follow-up idea, raised by the user, revisit once sketch (7) is fully
+done and confirmed on-device:** redesign the editor's toolbar to match
+Notion's mobile app - one persistent bar pinned above the keyboard
+(shown whenever the keyboard is open, not just on "/" or a text
+selection) that merges the current "/" block-type menu, the text-format
+toolbar, and the image/file/scan/sketch insert buttons into a single
+row, plus a "+" that expands into a full block-type sheet. Assessed as
+moderate difficulty, not a new technique - `DocumentEditorScreen.tsx`
+already tracks `keyboardHeight` and has a similar horizontal-ScrollView
+toolbar (just conditionally shown); the main risk flagged is Android
+keyboard show/hide timing, which this exact editor has already hit
+(hence the pencil-icon edit-mode toggle and the double-Enter workaround
+above) - so this needs care around not flickering/jumping as focus
+moves between blocks, more than new engineering.
+
 The Firebase project (`bearless-notes`, Spark plan) has Firestore
 (test-mode rules, region `eur3` — **rules must be locked down before real
 users touch this**, test mode is open for 30 days from creation) and
