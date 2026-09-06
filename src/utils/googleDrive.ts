@@ -88,6 +88,10 @@ async function ensureFolder(
     });
     const createJson = await createRes.json();
     folderId = createJson.id;
+    if (!folderId) {
+      console.warn('[googleDrive] failed to create folder', name, createRes.status, createJson);
+      throw new Error(`Drive folder creation failed for "${name}"`);
+    }
   }
 
   await AsyncStorage.setItem(storageKey, folderId!);
@@ -137,7 +141,10 @@ async function uploadFileToDrive(
     body,
   });
   const json = await response.json();
-  if (!json.id) throw new Error('Drive upload failed');
+  if (!json.id) {
+    console.warn('[googleDrive] upload failed', fileName, response.status, json);
+    throw new Error('Drive upload failed');
+  }
   return json.id as string;
 }
 
@@ -152,12 +159,16 @@ export async function backupFileToDrive(
   subFolder: DriveSubFolder
 ): Promise<string | null> {
   ensureConfigured();
-  if (!GoogleSignin.hasPreviousSignIn()) return null;
+  if (!GoogleSignin.hasPreviousSignIn()) {
+    console.warn('[googleDrive] backupFileToDrive skipped - not signed in', fileName);
+    return null;
+  }
   try {
     const accessToken = await getDriveAccessToken();
     const folderId = await ensureSubFolder(accessToken, subFolder);
     return await uploadFileToDrive(accessToken, folderId, localUri, fileName, mimeType);
-  } catch {
+  } catch (e) {
+    console.warn('[googleDrive] backupFileToDrive failed', fileName, e);
     return null;
   }
 }
@@ -174,8 +185,10 @@ export async function deleteFileFromDrive(driveFileId: string): Promise<boolean>
       method: 'DELETE',
       headers: { Authorization: `Bearer ${accessToken}` },
     });
+    if (!response.ok) console.warn('[googleDrive] deleteFileFromDrive failed', driveFileId, response.status);
     return response.ok;
-  } catch {
+  } catch (e) {
+    console.warn('[googleDrive] deleteFileFromDrive threw', driveFileId, e);
     return false;
   }
 }
