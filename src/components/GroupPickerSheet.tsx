@@ -9,18 +9,22 @@ const ACCENT = '#3B82F6';
 const GROUP_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
 const groupsCollection = collection(db, 'groups');
 
+export type GroupKind = Group['kind'];
+
 type Props = {
   visible: boolean;
+  kind: GroupKind;
   groups: Group[];
   onPick: (groupId: string | null) => void;
   onClose: () => void;
 };
 
-// Group assignment for Files/Photos/Links - deliberately its own `groups`
-// collection, separate from Tasks' `projects` (the user was explicit these
-// two shouldn't be the same thing, even though the sheet UI is nearly
-// identical to TasksScreen's own inline project picker).
-export default function GroupPickerSheet({ visible, groups, onPick, onClose }: Props) {
+// Group assignment for Files/Photos/Links - its own `groups` collection,
+// separate from Tasks' `projects` (the user was explicit these two
+// shouldn't be the same thing), AND separate PER DATABASE TYPE - a group
+// made while in Photos must not show up in Files or Links, so every group
+// carries a `kind` and every screen only ever queries/creates its own.
+export default function GroupPickerSheet({ visible, kind, groups, onPick, onClose }: Props) {
   const [newGroupName, setNewGroupName] = useState('');
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingGroupName, setEditingGroupName] = useState('');
@@ -29,7 +33,7 @@ export default function GroupPickerSheet({ visible, groups, onPick, onClose }: P
     const name = newGroupName.trim();
     if (!name) return;
     const color = GROUP_COLORS[groups.length % GROUP_COLORS.length];
-    await addDoc(groupsCollection, { name, color });
+    await addDoc(groupsCollection, { name, color, kind });
     setNewGroupName('');
   }
 

@@ -51,11 +51,17 @@ export interface Project {
 // Same shape as Project, but a deliberately separate concept and Firestore
 // collection ("групування", not "проєкт") - Files/Photos/Links group into
 // these, Tasks' own projects stay theirs, and the two are never meant to
-// mix even though a Group and a Project look identical on paper.
+// mix even though a Group and a Project look identical on paper. `kind`
+// additionally scopes a group to the one database it was created in - a
+// group made in Photos must never show up as an option in Files or Links.
+// Links split into their own video/geo/other kinds, same as TaggableKind
+// does for tags and for the same reason: a video's groups and a geo
+// point's groups are different vocabularies in practice.
 export interface Group {
   id: string;
   name: string;
   color: string;
+  kind: 'file' | 'photo' | 'link-video' | 'link-geo' | 'link-other';
 }
 
 // A database-object kind a tag can be attached to. Used both as the second

@@ -111,8 +111,17 @@ export default function FilesScreen() {
   }, []);
 
   useEffect(() => {
+    // Filtered client-side rather than with a `where('kind','==','file')`
+    // query - combining an equality filter with `orderBy` on a different
+    // field needs a composite index set up by hand in the Firebase
+    // console, which this app avoids everywhere else too (see
+    // TasksScreen's own comment on the same tradeoff).
     return onSnapshot(query(groupsCollection, orderBy('name')), (snapshot) => {
-      setGroups(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as { name: string; color: string }) })));
+      setGroups(
+        snapshot.docs
+          .map((d) => ({ id: d.id, ...(d.data() as { name: string; color: string; kind: Group['kind'] }) }))
+          .filter((g) => g.kind === 'file')
+      );
     });
   }, []);
 
@@ -422,6 +431,7 @@ export default function FilesScreen() {
 
       <GroupPickerSheet
         visible={bulkGroupPickerVisible}
+        kind="file"
         groups={groups}
         onPick={bulkAssignGroup}
         onClose={() => setBulkGroupPickerVisible(false)}

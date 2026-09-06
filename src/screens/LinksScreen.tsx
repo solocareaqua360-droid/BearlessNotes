@@ -23,7 +23,7 @@ import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
-import GroupPickerSheet from '../components/GroupPickerSheet';
+import GroupPickerSheet, { GroupKind } from '../components/GroupPickerSheet';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import CopyToNoteModal from '../components/CopyToNoteModal';
 import { usePendingDelete } from '../hooks/usePendingDelete';
@@ -102,6 +102,15 @@ const TAG_KIND_BY_CATEGORY: Record<LinkCategory, TaggableKind> = {
   other: 'link-other',
 };
 
+// Same split for groups (see the Group comment in types.ts) - a group made
+// while viewing "Геоточки" has no business showing up under "YouTube /
+// TikTok", even though they're all the same `links` collection underneath.
+const GROUP_KIND_BY_CATEGORY: Record<LinkCategory, GroupKind> = {
+  video: 'link-video',
+  geo: 'link-geo',
+  other: 'link-other',
+};
+
 function hostnameOf(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, '');
@@ -116,6 +125,7 @@ export default function LinksScreen({ route, navigation }: Props) {
   const { category } = route.params;
   const info = CATEGORY_INFO[category];
   const tagKind = TAG_KIND_BY_CATEGORY[category];
+  const groupKind = GROUP_KIND_BY_CATEGORY[category];
   const [links, setLinks] = useState<LinkItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [renamingLink, setRenamingLink] = useState<LinkItem | null>(null);
@@ -158,10 +168,19 @@ export default function LinksScreen({ route, navigation }: Props) {
   }, []);
 
   useEffect(() => {
+    // Filtered client-side rather than with a `where('kind','==',groupKind)`
+    // query - combining an equality filter with `orderBy` on a different
+    // field needs a composite index set up by hand in the Firebase
+    // console, which this app avoids everywhere else too (see
+    // TasksScreen's own comment on the same tradeoff).
     return onSnapshot(query(groupsCollection, orderBy('name')), (snapshot) => {
-      setGroups(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as { name: string; color: string }) })));
+      setGroups(
+        snapshot.docs
+          .map((d) => ({ id: d.id, ...(d.data() as { name: string; color: string; kind: Group['kind'] }) }))
+          .filter((g) => g.kind === groupKind)
+      );
     });
-  }, []);
+  }, [groupKind]);
 
   const categoryLinks = filterPending(links.filter((link) => categoryOf(link) === category));
   const groupFilteredLinks =
@@ -475,6 +494,7 @@ export default function LinksScreen({ route, navigation }: Props) {
 
       <GroupPickerSheet
         visible={bulkGroupPickerVisible}
+        kind={groupKind}
         groups={groups}
         onPick={bulkAssignGroup}
         onClose={() => setBulkGroupPickerVisible(false)}
