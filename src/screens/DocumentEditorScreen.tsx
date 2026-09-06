@@ -2086,14 +2086,10 @@ export default function DocumentEditorScreen(props: Props) {
     }
     const pages = result.scannedImages;
     if (result.status !== ScanDocumentResponseStatus.Success || !pages?.length) return;
-    if (pages.length === 1) {
-      await insertScannedImages(id, pages);
-      return;
-    }
     Alert.alert(`Відскановано сторінок: ${pages.length}`, 'Як зберегти?', [
       { text: 'Скасувати', style: 'cancel' },
-      { text: 'Окремі фото', onPress: () => insertScannedImages(id, pages) },
-      { text: 'Один PDF', onPress: () => insertScannedPdf(id, pages) },
+      { text: 'Як фото', onPress: () => insertScannedImages(id, pages) },
+      { text: 'Як PDF', onPress: () => insertScannedPdf(id, pages) },
     ]);
   }
 
