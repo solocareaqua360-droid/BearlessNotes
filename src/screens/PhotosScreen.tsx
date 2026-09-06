@@ -289,7 +289,11 @@ export default function PhotosScreen() {
 
   async function deletePhoto(photo: PhotoItem, alsoDeleteFromDrive: boolean) {
     deleteDoc(doc(db, 'photos', photo.id));
-    if (alsoDeleteFromDrive && photo.driveFileId) deleteFileFromDrive(photo.driveFileId);
+    if (alsoDeleteFromDrive && photo.driveFileId) {
+      deleteFileFromDrive(photo.driveFileId).then((error) => {
+        if (error) Alert.alert('Копія на Диску залишилась', error);
+      });
+    }
     await Promise.all(
       photo.tagIds.map((tagId) => {
         const tag = tags.find((t) => t.id === tagId);

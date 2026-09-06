@@ -221,7 +221,11 @@ export default function FilesScreen() {
 
   async function deleteFile(file: FileItem, alsoDeleteFromDrive: boolean) {
     deleteDoc(doc(db, 'files', file.id));
-    if (alsoDeleteFromDrive && file.driveFileId) deleteFileFromDrive(file.driveFileId);
+    if (alsoDeleteFromDrive && file.driveFileId) {
+      deleteFileFromDrive(file.driveFileId).then((error) => {
+        if (error) Alert.alert('Копія на Диску залишилась', error);
+      });
+    }
     await Promise.all(
       file.tagIds.map((tagId) => {
         const tag = tags.find((t) => t.id === tagId);

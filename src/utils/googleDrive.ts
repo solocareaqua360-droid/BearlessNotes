@@ -72,23 +72,41 @@ async function getDriveAccessToken(): Promise<string> {
   return accessToken;
 }
 
+// Every Drive call goes through here. Play Services caches access tokens,
+// and one minted before the drive.file consent was granted stays cached and
+// keeps coming back 401/403 long after the permission is in place - which is
+// exactly what left uploads working (fresh token right after the consent
+// screen) while a later delete still failed. clearCachedAccessToken forces
+// the next call to mint a new one, so one retry settles it.
+async function driveFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const send = (token: string) =>
+    fetch(url, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } });
+
+  const token = await getDriveAccessToken();
+  const response = await send(token);
+  if (response.status !== 401 && response.status !== 403) return response;
+
+  await GoogleSignin.clearCachedAccessToken(token);
+  return send(await getDriveAccessToken());
+}
+
 // Drive's error bodies are all shaped { error: { message, code } } - this
-// pulls the human-readable part out for the "Перевірити з'єднання" dialog,
-// which is the only place these ever reach the user.
+// pulls the human-readable part out for the dialogs that surface a failure
+// to the user, which is the only place these ever reach them.
 function describeApiError(json: unknown): string {
   const message = (json as { error?: { message?: string } })?.error?.message;
   return message ?? JSON.stringify(json);
 }
 
+async function describeFailedResponse(response: Response): Promise<string> {
+  const json = await response.json().catch(() => null);
+  return `HTTP ${response.status}: ${json ? describeApiError(json) : 'без деталей від Google'}`;
+}
+
 // Finds a folder by name (optionally under a given parent), creating it if
 // missing, and caches the result under `storageKey` so repeat uploads skip
 // the lookup round trip entirely.
-async function ensureFolder(
-  accessToken: string,
-  storageKey: string,
-  name: string,
-  parentId?: string
-): Promise<string> {
+async function ensureFolder(storageKey: string, name: string, parentId?: string): Promise<string> {
   const cached = await AsyncStorage.getItem(storageKey);
   if (cached) return cached;
 
@@ -96,27 +114,23 @@ async function ensureFolder(
   const query = encodeURIComponent(
     `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false${parentClause}`
   );
-  const listRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+  const listRes = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)`);
   const listJson = await listRes.json();
   let folderId: string | undefined = listJson.files?.[0]?.id;
 
   if (!folderId) {
     const metadata: Record<string, unknown> = { name, mimeType: 'application/vnd.google-apps.folder' };
     if (parentId) metadata.parents = [parentId];
-    const createRes = await fetch('https://www.googleapis.com/drive/v3/files?fields=id', {
+    const createRes = await driveFetch('https://www.googleapis.com/drive/v3/files?fields=id', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(metadata),
     });
     const createJson = await createRes.json();
     folderId = createJson.id;
     if (!folderId) {
       console.warn('[googleDrive] failed to create folder', name, createRes.status, createJson);
-      throw new Error(
-        `Не вдалося створити папку "${name}" (HTTP ${createRes.status}): ${describeApiError(createJson)}`
-      );
+      throw new Error(`Не вдалося створити папку "${name}" (HTTP ${createRes.status}): ${describeApiError(createJson)}`);
     }
   }
 
@@ -124,13 +138,13 @@ async function ensureFolder(
   return folderId!;
 }
 
-async function ensureAppFolder(accessToken: string): Promise<string> {
-  return ensureFolder(accessToken, FOLDER_ID_STORAGE_KEY, FOLDER_NAME);
+async function ensureAppFolder(): Promise<string> {
+  return ensureFolder(FOLDER_ID_STORAGE_KEY, FOLDER_NAME);
 }
 
-async function ensureSubFolder(accessToken: string, subFolder: DriveSubFolder): Promise<string> {
-  const parentId = await ensureAppFolder(accessToken);
-  return ensureFolder(accessToken, SUBFOLDER_ID_STORAGE_KEY[subFolder], subFolder, parentId);
+async function ensureSubFolder(subFolder: DriveSubFolder): Promise<string> {
+  const parentId = await ensureAppFolder();
+  return ensureFolder(SUBFOLDER_ID_STORAGE_KEY[subFolder], subFolder, parentId);
 }
 
 // Multipart upload (metadata + base64 content in one request) - the
@@ -139,7 +153,6 @@ async function ensureSubFolder(accessToken: string, subFolder: DriveSubFolder): 
 // part carry base64 text directly instead of needing raw binary in the
 // request body, which `fetch` on React Native can't build easily.
 async function uploadBase64ToDrive(
-  accessToken: string,
   folderId: string,
   fileName: string,
   mimeType: string,
@@ -157,14 +170,14 @@ async function uploadBase64ToDrive(
     `${base64Data}\r\n` +
     `--${boundary}--`;
 
-  const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': `multipart/related; boundary=${boundary}`,
-    },
-    body,
-  });
+  const response = await driveFetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+      body,
+    }
+  );
   const json = await response.json();
   if (!json.id) {
     console.warn('[googleDrive] upload failed', fileName, response.status, json);
@@ -174,14 +187,13 @@ async function uploadBase64ToDrive(
 }
 
 async function uploadFileToDrive(
-  accessToken: string,
   folderId: string,
   localUri: string,
   fileName: string,
   mimeType: string
 ): Promise<string> {
   const base64Data = await LegacyFileSystem.readAsStringAsync(localUri, { encoding: 'base64' });
-  return uploadBase64ToDrive(accessToken, folderId, fileName, mimeType, base64Data);
+  return uploadBase64ToDrive(folderId, fileName, mimeType, base64Data);
 }
 
 // Fire-and-forget entry point used right after attaching a new file/photo:
@@ -200,9 +212,8 @@ export async function backupFileToDrive(
     return null;
   }
   try {
-    const accessToken = await getDriveAccessToken();
-    const folderId = await ensureSubFolder(accessToken, subFolder);
-    return await uploadFileToDrive(accessToken, folderId, localUri, fileName, mimeType);
+    const folderId = await ensureSubFolder(subFolder);
+    return await uploadFileToDrive(folderId, localUri, fileName, mimeType);
   } catch (e) {
     console.warn('[googleDrive] backupFileToDrive failed', fileName, e);
     return null;
@@ -230,16 +241,9 @@ export async function runDriveDiagnostics(): Promise<string> {
     const granted = await requestDriveScope();
     if (!granted) return 'Дозвіл на Google Drive не надано — без нього копіювання файлів неможливе.';
   }
-  let accessToken: string;
   try {
-    accessToken = await getDriveAccessToken();
-  } catch (e) {
-    return `Не вдалося отримати токен доступу: ${e instanceof Error ? e.message : String(e)}`;
-  }
-  try {
-    const folderId = await ensureSubFolder(accessToken, 'Files');
+    const folderId = await ensureSubFolder('Files');
     const fileId = await uploadBase64ToDrive(
-      accessToken,
       folderId,
       `bearless-notes-test-${Date.now()}.txt`,
       'text/plain',
@@ -252,21 +256,24 @@ export async function runDriveDiagnostics(): Promise<string> {
 }
 
 // Used when the user chooses to also remove the Drive backup after deleting
-// a file/photo locally - never throws, since a failed cloud delete should
-// never block the local delete that already happened.
-export async function deleteFileFromDrive(driveFileId: string): Promise<boolean> {
+// a file/photo locally. Resolves to null on success, or to the reason it
+// failed - unlike a failed backup (silent on purpose), a failed delete has
+// to be surfaced: the whole point of choosing "Видалити з Диску" is knowing
+// the cloud copy is gone, and silently leaving it there is the one outcome
+// the user must never be misled about.
+export async function deleteFileFromDrive(driveFileId: string): Promise<string | null> {
   ensureConfigured();
-  if (!GoogleSignin.hasPreviousSignIn()) return false;
+  if (!GoogleSignin.hasPreviousSignIn()) return 'Google-акаунт не підключено.';
   try {
-    const accessToken = await getDriveAccessToken();
-    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}`, {
+    const response = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${accessToken}` },
     });
-    if (!response.ok) console.warn('[googleDrive] deleteFileFromDrive failed', driveFileId, response.status);
-    return response.ok;
+    if (response.ok) return null;
+    const reason = await describeFailedResponse(response);
+    console.warn('[googleDrive] deleteFileFromDrive failed', driveFileId, reason);
+    return reason;
   } catch (e) {
     console.warn('[googleDrive] deleteFileFromDrive threw', driveFileId, e);
-    return false;
+    return e instanceof Error ? e.message : String(e);
   }
 }
