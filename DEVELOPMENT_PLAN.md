@@ -637,20 +637,24 @@ EAS dev-client (нативні модулі, яких немає в Expo Go).
 почнеться тільки після того, як Етап 11 буде підтверджено на пристрої
 (не випереджати перевірку).
 
-- [ ] **Ізоляція від video bookmark — критично.** Той застосунок теж
+- [x] **Ізоляція від video bookmark — критично.** Той застосунок теж
       використовує Google-вхід (видно з його коду в гілці
       `claude/video-bookmark-app-structure-4s4vfm`), тож є реальний
       ризик повторити мультипроєктну помилку, яку вже мали з Expo
-      (спільний проєкт замість окремого). Потрібен **новий, окремий**
-      проєкт у Google Cloud Console спеціально для Bearless Notes — не
-      той, що вже може існувати для video bookmark
-- [ ] Увімкнути Google Drive API в цьому новому проєкті
-- [ ] Налаштувати OAuth consent screen і OAuth-клієнт для Android
-      (потрібні: package name `com.bearlessnotes.notes` і SHA-1
-      відбиток підпису — той самий upload keystore, що EAS уже
-      автоматично згенерував для dev-client збірок; відбиток можна
-      знайти на сторінці "Android & iOS credentials" проєкту на
-      expo.dev)
+      (спільний проєкт замість окремого). Створено **новий, окремий**
+      проєкт у Google Cloud Console спеціально для Bearless Notes
+      (назва проєкту: "Bearless Notes") — не той, що вже може існувати
+      для video bookmark
+- [x] Google Drive API увімкнено в цьому новому проєкті
+- [x] Налаштовано OAuth consent screen (External, "Bearless Notes",
+      контактна пошта користувача) і OAuth-клієнт для Android:
+      package `com.bearlessnotes.notes`, SHA-1 з upload keystore, що
+      EAS автоматично згенерував для dev-client збірок (сторінка
+      "Android & iOS credentials" → проєкт → застосувати ідентифікатор
+      → Build credentials). Android Client ID:
+      `502504187063-43gkm31fv518r2rk2os9dqcmun5gtaiq.apps.googleusercontent.com`.
+      Застосунок поки в статусі "Testing" — власна пошта користувача
+      додана в Test users, інакше Google блокує вхід
 - [ ] Бібліотека для входу — ще не обрано: імовірно
       `@react-native-google-signin/google-signin` (нативний, галузевий
       стандарт для Google-входу в RN-застосунках) — рішення разом із
