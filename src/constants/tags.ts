@@ -1,6 +1,17 @@
 // Colors offered when creating a tag - same swatch-picker pattern as
-// TasksScreen's PROJECT_COLORS.
-export const TAG_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308', '#DC2626'];
+// TasksScreen's PROJECT_COLORS. The harmonious muted palette from the
+// gradient-analysis reference, also used for the random document-card
+// color in documentColor.ts - one palette across the app's warm redesign
+// rather than a separate bright set just for tags.
+export const TAG_COLORS = [
+  '#DAA587', // Теплий Бежевий
+  '#84B799', // М'який Шорсткий Зелений
+  '#BE7657', // Теплий Теракотовий
+  '#69736E', // М'який Сірий Гекс
+  '#A0B4AF', // Блідо-М'ятний Зелений
+  '#556E78', // Глибокий Шорсткий Зелений
+  '#788782', // М'який Блідий Шорсткий Зелений
+];
 
 // A curated set of Ionicons outline glyphs offered when creating a tag -
 // not the full ~1300-icon library (no search-the-whole-set UI yet), but

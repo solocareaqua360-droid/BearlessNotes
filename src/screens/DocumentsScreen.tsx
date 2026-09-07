@@ -6,8 +6,10 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -28,12 +30,21 @@ import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 import TagsDrawer, { TagFilter, matchesTagFilter, removeTagFromFilter } from '../components/TagsDrawer';
 import DocumentCard from '../components/DocumentCard';
 import { extractPreview } from '../utils/documentPreview';
+import { FONT_REGULAR, FONT_BOLD, FONT_SEMIBOLD } from '../utils/fonts';
 
-const ACCENT = '#3B82F6';
+// Палітра №3 (Теплий Теракотовий) - the create/edit action color across
+// this redesign; replaces the old blue ACCENT wherever this screen used it.
+const ACCENT = '#BE7657';
 const documentsCollection = collection(db, 'documents');
 
 export default function DocumentsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  // react-native-svg's own "100%" width/height on the root <Svg> doesn't
+  // reliably re-measure when the window itself resizes at runtime (seen on
+  // a Fold: the gradient stayed sized to the folded width after unfolding)
+  // - useWindowDimensions re-renders on that resize, so passing explicit
+  // pixel width/height keeps the gradient's canvas in sync with it.
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<TagFilter | null>(null);
@@ -100,19 +111,46 @@ export default function DocumentsScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Page background: a fixed gradient (react-native-svg, already a
+          native dep for sketches - no new build needed) rather than
+          expo-linear-gradient, which would be a brand-new native module
+          and mean another EAS dev-client build. */}
+      <Svg width={windowWidth} height={windowHeight} style={StyleSheet.absoluteFill} pointerEvents="none">
+        <Defs>
+          {/* Dialed in via the gradient editor artifact - dark warm brown
+              at the top, gray-green through the middle, fading to black
+              over the bottom half. */}
+          <LinearGradient id="documentsBg" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0.03" stopColor="#705648" />
+            <Stop offset="0.52" stopColor="#69736E" />
+            <Stop offset="1" stopColor="#000000" />
+          </LinearGradient>
+        </Defs>
+        <Rect width={windowWidth} height={windowHeight} fill="url(#documentsBg)" />
+      </Svg>
+
       <View style={styles.headerRow}>
         <Text style={styles.header}>Документи</Text>
-        <Pressable style={styles.searchButton} onPress={() => navigation.navigate('Search')}>
-          <Ionicons name="search" size={17} color={ACCENT} />
-        </Pressable>
+        <View style={styles.headerButtons}>
+          <Pressable hitSlop={6} onPress={() => navigation.navigate('Search')}>
+            <Ionicons name="search" size={17} color="#fff" />
+          </Pressable>
+          <View style={styles.headerButtonsDivider} />
+          <Pressable
+            hitSlop={6}
+            onPress={() => navigation.navigate('Placeholder', { icon: 'ellipsis-horizontal-outline', label: 'Скоро' })}
+          >
+            <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
+          </Pressable>
+        </View>
       </View>
 
       {activeFilter && (
         <View style={styles.filterRow}>
           {activeFilter.type === 'untagged' ? (
-            <View style={styles.filterChip}>
+            <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
               <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
-              <Text style={styles.filterChipLabel}>Без тегів</Text>
+              <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без тегів</Text>
               <Pressable hitSlop={8} onPress={() => setActiveFilter(null)}>
                 <Ionicons name="close" size={14} color="#6B7280" />
               </Pressable>
@@ -122,7 +160,7 @@ export default function DocumentsScreen() {
               const tag = tags.find((t) => t.id === tagId);
               if (!tag) return null;
               return (
-                <View key={tagId} style={styles.filterChip}>
+                <View key={tagId} style={[styles.filterChip, { borderColor: tag.color }]}>
                   <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tag.color} />
                   <Text style={[styles.filterChipLabel, { color: tag.color }]}>{tag.path}</Text>
                   <Pressable hitSlop={8} onPress={() => setActiveFilter(removeTagFromFilter(activeFilter, tagId))}>
@@ -164,6 +202,7 @@ export default function DocumentsScreen() {
             const { imageUri, previewText } = extractPreview(item.blocks);
             return (
               <DocumentCard
+                id={item.id}
                 title={item.title}
                 updatedAt={item.updatedAt}
                 imageUri={imageUri}
@@ -188,33 +227,44 @@ export default function DocumentsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 56,
+    // Was 56 - pushed down to roughly the level a note's own title sits at
+    // in the editor (that title starts under its own back/undo/redo
+    // header row, ~90px down).
+    paddingTop: 90,
     paddingBottom: 8,
   },
   header: {
-    fontSize: 22,
+    // At least 2x the previous 22.
+    fontSize: 46,
     fontWeight: '700',
-    color: '#111827',
+    fontFamily: FONT_BOLD,
+    // The new gradient is dark top-to-bottom (no light edge left), so the
+    // title needs to sit on it in white now.
+    color: '#fff',
   },
-  searchButton: {
-    width: 38,
+  // Search + "..." (stub) merged into one elongated glass capsule instead
+  // of two separate circles.
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.14,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(20,20,20,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  headerButtonsDivider: {
+    width: 1,
+    height: 16,
+    backgroundColor: 'rgba(255,255,255,0.3)',
   },
   filterRow: {
     flexDirection: 'row',
@@ -223,20 +273,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 8,
   },
+  // White capsule, border in the tag's own (muted) color, text the same
+  // color - borderColor/color are set per-chip inline (tag.color), this
+  // just carries the shared shape.
   filterChip: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#EFF6FF',
-    borderRadius: 16,
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderRadius: 999,
     paddingVertical: 6,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
   },
   filterChipLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: ACCENT,
+    fontFamily: FONT_SEMIBOLD,
   },
   emptyState: {
     flex: 1,
@@ -247,7 +301,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 20,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: 'rgba(190,118,87,0.14)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -267,7 +321,8 @@ const styles = StyleSheet.create({
   emptyLabel: {
     marginTop: 16,
     fontSize: 15,
-    color: '#6B7280',
+    fontFamily: FONT_REGULAR,
+    color: 'rgba(255,255,255,0.85)',
   },
   list: {
     paddingVertical: 8,
@@ -279,14 +334,16 @@ const styles = StyleSheet.create({
     bottom: 100,
     width: 56,
     height: 56,
-    borderRadius: 28,
+    borderRadius: 18,
     backgroundColor: ACCENT,
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
+    // Colored shadow (matches the button's own hue) instead of a plain
+    // black one.
+    shadowColor: ACCENT,
+    shadowOpacity: 0.5,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 6,
   },
 });

@@ -83,6 +83,20 @@ export interface Block {
   // YYYY-MM-DD of the day it was marked "Сьогодні" - a mismatch with the
   // current date means "not today" without needing an active daily reset.
   todayMarkedDate?: string;
+  // Which Kanban column a task sits in - unset means "Вхідні" (the first
+  // column), so existing tasks don't need a migration. Only meaningful for
+  // starred (todayMarkedDate === today) tasks - Kanban only ever shows
+  // those.
+  kanbanStatus?: 'inbox' | 'inProgress' | 'paused' | 'done';
+  // 'checkbox' blocks only - a richer, optional alternative to just
+  // todayMarkedDate: a specific due date, and optionally a time that
+  // schedules a local notification (see utils/reminders.ts). Setting this
+  // to today's date also sets todayMarkedDate to today (the star shows);
+  // removing the star clears all three of these instead of only
+  // todayMarkedDate, per TasksScreen's toggleToday.
+  reminderDate?: string; // YYYY-MM-DD
+  reminderTime?: string; // HH:mm, local time - absent means date-only, no notification
+  reminderNotificationId?: string; // expo-notifications id, to cancel/reschedule
   // 'link' blocks only - a paragraph containing a bare URL auto-converts
   // into one of these. text holds the original URL. Preview fields are
   // best-effort (fetched once at conversion time) and absent when nothing

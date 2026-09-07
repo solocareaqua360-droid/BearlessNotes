@@ -71,6 +71,7 @@ export default function SearchScreen() {
           return (
             <DocumentCard
               key={item.id}
+              id={item.id}
               title={item.title}
               updatedAt={item.updatedAt}
               imageUri={imageUri}

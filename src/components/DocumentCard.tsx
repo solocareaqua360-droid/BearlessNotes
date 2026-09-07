@@ -1,9 +1,9 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { TextMatch, formatUpdatedAt } from '../utils/documentPreview';
+import { colorForDocument } from '../utils/documentColor';
+import { FONT_REGULAR, FONT_BOLD } from '../utils/fonts';
 
-const ACCENT = '#3B82F6';
-const DANGER = '#EF4444';
 const THUMB_SIZE = 72;
 
 function HighlightedLine({ match, style, highlightStyle }: { match: TextMatch; style: object; highlightStyle: object }) {
@@ -17,6 +17,7 @@ function HighlightedLine({ match, style, highlightStyle }: { match: TextMatch; s
 }
 
 type Props = {
+  id: string;
   title: string;
   updatedAt: number;
   imageUri: string | null;
@@ -35,9 +36,26 @@ type Props = {
 // icon when it has none), title, a two-line preview of the body text (or a
 // highlighted search-match snippet in its place), and the last-edited
 // timestamp.
-export default function DocumentCard({ title, updatedAt, imageUri, previewText, titleMatch, bodyMatch, onPress, onDelete }: Props) {
+//
+// The card's fill color comes from `colorForDocument(id)` - a fixed palette
+// picked deterministically from the document's own id (see that file for
+// why it isn't a random pick or a stored field), with the text/border/
+// delete-icon colors all derived to stay readable against whichever fill a
+// given document landed on.
+export default function DocumentCard({
+  id,
+  title,
+  updatedAt,
+  imageUri,
+  previewText,
+  titleMatch,
+  bodyMatch,
+  onPress,
+  onDelete,
+}: Props) {
+  const { background, text, textMuted } = colorForDocument(id);
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, { backgroundColor: background }]}>
       <Pressable style={styles.tap} onPress={onPress}>
         {imageUri ? (
           <Image source={{ uri: imageUri }} style={styles.thumb} resizeMode="cover" />
@@ -48,27 +66,27 @@ export default function DocumentCard({ title, updatedAt, imageUri, previewText, 
         )}
         <View style={styles.body}>
           {titleMatch ? (
-            <HighlightedLine match={titleMatch} style={styles.title} highlightStyle={styles.highlight} />
+            <HighlightedLine match={titleMatch} style={[styles.title, { color: text }]} highlightStyle={styles.highlight} />
           ) : (
-            <Text style={styles.title} numberOfLines={2}>
+            <Text style={[styles.title, { color: text }]} numberOfLines={2}>
               {title || 'Без назви'}
             </Text>
           )}
           {bodyMatch ? (
-            <HighlightedLine match={bodyMatch} style={styles.preview} highlightStyle={styles.highlight} />
+            <HighlightedLine match={bodyMatch} style={[styles.preview, { color: textMuted }]} highlightStyle={styles.highlight} />
           ) : (
             !!previewText && (
-              <Text style={styles.preview} numberOfLines={2}>
+              <Text style={[styles.preview, { color: textMuted }]} numberOfLines={2}>
                 {previewText}
               </Text>
             )
           )}
-          <Text style={styles.date}>{formatUpdatedAt(updatedAt)}</Text>
+          <Text style={[styles.date, { color: textMuted }]}>{formatUpdatedAt(updatedAt)}</Text>
         </View>
       </Pressable>
       {onDelete && (
         <Pressable hitSlop={8} onPress={onDelete} style={styles.deleteButton}>
-          <Ionicons name="trash-outline" size={20} color={DANGER} />
+          <Ionicons name="trash-outline" size={20} color={text} />
         </Pressable>
       )}
     </View>
@@ -79,9 +97,24 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    marginHorizontal: 20,
+    marginBottom: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     gap: 8,
+    borderRadius: 16,
+    // A thin, muted border so a light-colored card doesn't visually merge
+    // into the page's gradient background behind it - reads as an edge on
+    // both the warm and the cool end of that gradient.
+    borderWidth: 1,
+    borderColor: 'rgba(176,176,176,0.5)',
+    // Drop shadow onto the gradient behind the card - previously a flat
+    // row with no shadow at all.
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
   },
   tap: {
     flex: 1,
@@ -107,12 +140,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#111827',
+    fontFamily: FONT_BOLD,
   },
   preview: {
     fontSize: 13,
-    color: '#9CA3AF',
     lineHeight: 18,
+    fontFamily: FONT_REGULAR,
   },
   highlight: {
     backgroundColor: '#FEF08A',
@@ -120,8 +153,8 @@ const styles = StyleSheet.create({
   },
   date: {
     fontSize: 12,
-    color: '#9CA3AF',
     marginTop: 2,
+    fontFamily: FONT_REGULAR,
   },
   deleteButton: {
     padding: 4,

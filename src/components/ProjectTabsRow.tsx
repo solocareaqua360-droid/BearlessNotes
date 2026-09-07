@@ -49,10 +49,7 @@ export default function ProjectTabsRow({ items, selected, onSelect, unassignedLa
 
 function Tab({ label, color, active, onPress }: { label: string; color: string; active: boolean; onPress: () => void }) {
   return (
-    <Pressable
-      style={[styles.tab, active ? { backgroundColor: `${color}1A` } : styles.tabInactive]}
-      onPress={onPress}
-    >
+    <Pressable style={styles.tab} onPress={onPress}>
       {active && <View style={[styles.dot, { backgroundColor: color }]} />}
       <Text style={[styles.tabLabel, { color: active ? color : '#374151' }]} numberOfLines={1}>
         {label}
@@ -72,16 +69,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 10,
   },
+  // Frosted-glass capsule for every tab, active or not - a soft
+  // translucent fill and border rather than a flat color-tint/gray one.
+  // These screens have a plain white background (not the dark gradient
+  // Documents/Calendar/Databases got), so this is the light-glass variant
+  // of that same treatment: still translucent and bordered, just legible
+  // against white instead of a dark backdrop.
   tab: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingVertical: 7,
     paddingHorizontal: 13,
-    borderRadius: 16,
-  },
-  tabInactive: {
-    backgroundColor: '#F3F4F6',
+    borderRadius: 999,
+    backgroundColor: 'rgba(120,120,120,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
   },
   dot: {
     width: 6,

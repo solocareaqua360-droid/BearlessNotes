@@ -2,8 +2,6 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 
-const ACCENT = '#3B82F6';
-
 const ICON_BY_ROUTE: Record<string, keyof typeof Ionicons.glyphMap> = {
   Документи: 'document-text-outline',
   Календар: 'calendar-outline',
@@ -31,7 +29,7 @@ export default function FloatingIslandTabBar({ state, navigation }: BottomTabBar
                 if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
               }}
             >
-              <Ionicons name={icon} size={20} color={focused ? ACCENT : '#6B7280'} />
+              <Ionicons name={icon} size={20} color={focused ? '#111827' : '#6B7280'} />
             </Pressable>
           );
         })}
@@ -52,7 +50,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
     backgroundColor: '#fff',
-    borderRadius: 30,
+    borderRadius: 18,
     padding: 8,
     shadowColor: '#000',
     shadowOpacity: 0.16,
@@ -63,11 +61,11 @@ const styles = StyleSheet.create({
   button: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   buttonActive: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: '#F3F4F6',
   },
 });

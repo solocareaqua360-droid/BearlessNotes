@@ -64,7 +64,7 @@ export function findBodyMatch(blocks: Block[] | undefined, query: string): TextM
   const needle = query.trim().toLowerCase();
   if (!needle) return null;
   for (const block of blocks ?? []) {
-    const clean = stripFormatting(block.text ?? '');
+    const clean = stripFormatting(block.text ?? '') || (block.imageTitle ?? block.fileTitle ?? block.fileName ?? block.linkTitle ?? '');
     const idx = clean.toLowerCase().indexOf(needle);
     if (idx === -1) continue;
     const start = Math.max(0, idx - SNIPPET_RADIUS);
@@ -91,9 +91,21 @@ export function hasNoteContent(title: string, blocks: Block[] | undefined): bool
   });
 }
 
+// A block's own name/title, if it has one - image/file/link blocks all
+// carry theirs inline (imageTitle, fileTitle/fileName, linkTitle), so
+// matching against these needs no lookup into the photos/files/links
+// collections those blocks mirror into.
+function blockOwnTitle(b: Block): string | undefined {
+  return b.imageTitle ?? b.fileTitle ?? b.fileName ?? b.linkTitle;
+}
+
 export function documentMatchesQuery(title: string, blocks: Block[] | undefined, query: string): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return false;
   if (title.toLowerCase().includes(needle)) return true;
-  return (blocks ?? []).some((b) => stripFormatting(b.text ?? '').toLowerCase().includes(needle));
+  return (blocks ?? []).some(
+    (b) =>
+      stripFormatting(b.text ?? '').toLowerCase().includes(needle) ||
+      (blockOwnTitle(b) ?? '').toLowerCase().includes(needle)
+  );
 }

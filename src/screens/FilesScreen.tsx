@@ -411,9 +411,9 @@ export default function FilesScreen() {
       {tagFilter && (
         <View style={styles.filterRow}>
           {tagFilter.type === 'untagged' ? (
-            <View style={styles.filterChip}>
+            <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
               <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
-              <Text style={styles.filterChipLabel}>Без тегів</Text>
+              <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без тегів</Text>
               <Pressable hitSlop={8} onPress={() => setTagFilter(null)}>
                 <Ionicons name="close" size={14} color="#6B7280" />
               </Pressable>
@@ -423,7 +423,7 @@ export default function FilesScreen() {
               const tag = tags.find((t) => t.id === tagId);
               if (!tag) return null;
               return (
-                <View key={tagId} style={styles.filterChip}>
+                <View key={tagId} style={[styles.filterChip, { borderColor: tag.color }]}>
                   <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tag.color} />
                   <Text style={[styles.filterChipLabel, { color: tag.color }]}>{tag.path}</Text>
                   <Pressable hitSlop={8} onPress={() => setTagFilter(removeTagFromFilter(tagFilter, tagId))}>
@@ -577,20 +577,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 8,
   },
+  // White capsule, border + text in the tag's own color - same as
+  // DocumentsScreen's filterChip.
   filterChip: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#EFF6FF',
-    borderRadius: 16,
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderRadius: 999,
     paddingVertical: 6,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
   },
   filterChipLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: ACCENT,
   },
   rowCheckbox: {
     alignSelf: 'center',

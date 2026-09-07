@@ -23,7 +23,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
 import DocumentScanner, { ResponseType, ScanDocumentResponseStatus } from 'react-native-document-scanner-plugin';
 import * as Print from 'expo-print';
-import { dateKey } from '../utils/dateLocale';
+import { dateKey, formatShortDate, parseDateKey } from '../utils/dateLocale';
 // The new expo-file-system File/Directory API tracks read permission per
 // picked URI internally and rejects copying a URI it didn't hand out
 // itself ("Missing 'READ' permission") - the legacy module just wraps a
@@ -53,6 +53,9 @@ import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentTagsBlock from '../components/DocumentTagsBlock';
 import SketchEditor from '../components/SketchEditor';
+import EditorToolbar, { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolbar';
+import { BlockAction } from '../components/blockActions';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { backupFileToDrive } from '../utils/googleDrive';
 import { useTags } from '../hooks/useTags';
 import { linkDocId } from '../utils/linkId';
@@ -62,6 +65,9 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 const ACCENT = '#3B82F6';
+// Палітра №3 (Теплий Теракотовий) - just for the edit-mode FAB, matching
+// DocumentsScreen's "+"; the rest of the editor keeps its own ACCENT.
+const EDIT_FAB_COLOR = '#BE7657';
 const DANGER = '#EF4444';
 const AUTOSAVE_DELAY_MS = 600;
 const DRAG_LONG_PRESS_MS = 350;
@@ -69,8 +75,6 @@ const DOWNLOAD_DIR_STORAGE_KEY = 'bearlessNotes.downloadDirUri';
 
 // Small fixed palette rather than a full color picker - enough variety for
 // notes without the complexity of a hue/saturation UI.
-const TEXT_COLORS = ['#111827', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
-const HIGHLIGHT_COLORS = ['#FEF08A', '#BBF7D0', '#BFDBFE', '#FBCFE8', '#E9D5FF'];
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -91,6 +95,15 @@ function newBlock(): Block {
 }
 
 const LIST_TYPES: BlockType[] = ['bulleted', 'numbered', 'checkbox'];
+
+// Read-only mirror of TasksScreen's own formatReminderBadge - a checkbox
+// block only ever displays its reminder here (editing happens from the
+// Tasks screen, where the picker and the star/date rules live).
+function formatReminderBadge(item: Block): string | null {
+  if (!item.reminderDate) return null;
+  const label = formatShortDate(parseDateKey(item.reminderDate));
+  return item.reminderTime ? `${label} ${item.reminderTime}` : label;
+}
 
 // A generic document icon, tinted per extension so a PDF/Word/Excel
 // attachment is recognizable at a glance without needing per-brand icons.
@@ -675,7 +688,7 @@ function BlockRow({
             onBackspaceEmpty(item.id);
           }
         }}
-        placeholder={type === 'checkbox' ? 'Завдання…' : 'Пишіть тут… ("/" для меню)'}
+        placeholder={type === 'checkbox' ? 'Завдання…' : '…'}
         style={[styles.blockInput, item.checked && styles.checkedText]}
         multiline
       />
@@ -688,7 +701,7 @@ function BlockRow({
           {item.text ? (
             <FormattedText segments={parseFormattedText(item.text)} defaultColor="#111827" />
           ) : (
-            <Text style={styles.blockPlaceholder}>Пишіть тут…</Text>
+            <Text style={styles.blockPlaceholder}>…</Text>
           )}
         </Text>
       </View>
@@ -702,7 +715,9 @@ function BlockRow({
         </View>
       );
     } else if (type === 'checkbox') {
+      const reminderLabel = formatReminderBadge(item);
       content = (
+        <View style={styles.checkboxBlock}>
         <View style={styles.prefixedRow}>
           <Pressable hitSlop={8} onPress={() => onToggleChecked(item.id)}>
             <Ionicons
@@ -712,6 +727,13 @@ function BlockRow({
             />
           </Pressable>
           {textField}
+        </View>
+        {reminderLabel && (
+          <View style={styles.checkboxReminderRow}>
+            <Ionicons name="alarm-outline" size={11} color={ACCENT} />
+            <Text style={styles.checkboxReminderText}>{reminderLabel}</Text>
+          </View>
+        )}
         </View>
       );
     } else {
@@ -1196,12 +1218,20 @@ export default function DocumentEditorScreen(props: Props) {
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  // The window is drawn edge-to-edge (measured: window height === screen
+  // height with the keyboard both up and down), so nothing keeps the
+  // pinned toolbar clear of the gesture bar - or of the strip the
+  // keyboard's own top row occupies - unless this inset is added by hand.
+  const insets = useSafeAreaInsets();
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [activeSelection, setActiveSelection] = useState<{ blockId: string; start: number; end: number } | null>(
     null
   );
-  const [slashMenuBlockId, setSlashMenuBlockId] = useState<string | null>(null);
+  // The block the pinned toolbar currently acts on - null (title focused,
+  // or nothing) hides the bar entirely, since there's no block for its
+  // buttons to apply to.
+  const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
   const [viewerImageId, setViewerImageId] = useState<string | null>(null);
   const [imageRenameId, setImageRenameId] = useState<string | null>(null);
   const [sketchEditorBlockId, setSketchEditorBlockId] = useState<string | null>(null);
@@ -1506,15 +1536,28 @@ export default function DocumentEditorScreen(props: Props) {
   // android.softwareKeyboardLayoutMode, so the keyboard never resizes the
   // window here the way a real build's adjustResize would - the screen has
   // to track the keyboard itself and scroll the focused block above it.
+  // Measured on-device (dev-build, Android 15): the window does NOT resize
+  // under the keyboard even though app.json sets
+  // android.softwareKeyboardLayoutMode: "resize" - window height stays at
+  // the full screen height whether the keyboard is up or down, because
+  // edge-to-edge delivers the keyboard as an inset instead. So the manual
+  // scroll compensation below is still doing real work (it is not
+  // double-compensating), and anything pinned above the keyboard has to be
+  // positioned by hand from this height.
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      cancelDismissFallback();
       setKeyboardHeight(e.endCoordinates.height);
       scheduleScrollAdjust(e.endCoordinates.height);
     });
-    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      cancelDismissFallback();
+      setKeyboardHeight(0);
+    });
     return () => {
       showSub.remove();
       hideSub.remove();
+      cancelDismissFallback();
       if (scrollAdjustTimeoutRef.current) clearTimeout(scrollAdjustTimeoutRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1533,6 +1576,41 @@ export default function DocumentEditorScreen(props: Props) {
   // fire as two separate scrolls. 180ms comfortably covers that gap.
   const scrollAdjustTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Keyboard.dismiss() (a JS-triggered dismiss, as opposed to the user
+  // tapping away or hitting back - both of which fire keyboardDidHide
+  // reliably) doesn't reliably fire keyboardDidHide on Android - a known
+  // RN issue, and the same class of Android keyboard-timing bug this
+  // editor has already hit elsewhere (see the double-Enter workaround).
+  // Left unhandled, keyboardHeight can get stuck positive after "done",
+  // which keeps the pinned toolbar showing (or makes it reappear with no
+  // keyboard-rise delay the next time edit mode opens - it was already
+  // "up" as far as this state knew).
+  //
+  // The real events stay the source of truth for keyboardHeight - this is
+  // only a bounded safety net for when Android drops the hide event after
+  // OUR OWN dismiss() call: request one right after calling dismiss(),
+  // and if no real event arrives within the window, assume the hide
+  // succeeded silently and force the state itself. A genuine event
+  // arriving first (either direction - showing again counts too, e.g. the
+  // user reopened before the fallback fired) cancels it, so it never
+  // fights a real, current keyboard state.
+  const dismissFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function cancelDismissFallback() {
+    if (dismissFallbackRef.current) {
+      clearTimeout(dismissFallbackRef.current);
+      dismissFallbackRef.current = null;
+    }
+  }
+
+  function requestDismissFallback() {
+    cancelDismissFallback();
+    dismissFallbackRef.current = setTimeout(() => {
+      dismissFallbackRef.current = null;
+      setKeyboardHeight(0);
+    }, 350);
+  }
+
   function scheduleScrollAdjust(currentKeyboardHeight: number) {
     if (scrollAdjustTimeoutRef.current) clearTimeout(scrollAdjustTimeoutRef.current);
     scrollAdjustTimeoutRef.current = setTimeout(() => {
@@ -1540,12 +1618,26 @@ export default function DocumentEditorScreen(props: Props) {
     }, 180);
   }
 
+  // The pinned toolbar sits between the keyboard and the block list, so a
+  // block scrolled to sit just above the keyboard would end up hidden
+  // behind the bar - its height comes off the visible area too. Kept in a
+  // ref because the scroll runs from a debounced timer, not from render.
+  const toolbarHeightRef = useRef(0);
+
+  // Same condition EditorToolbar itself renders on - kept here because the
+  // list's bottom padding and the scroll maths above both need to know
+  // whether the bar is currently taking up room. Gated on the keyboard
+  // too: with it down the bar would just sit inert on the bottom edge.
+  const isToolbarVisible = keyboardHeight > 0 && focusedBlockId !== null;
+  toolbarHeightRef.current = isToolbarVisible ? EDITOR_TOOLBAR_HEIGHT : 0;
+
   function scrollFocusedBlockIntoView(currentKeyboardHeight: number) {
     const id = focusedBlockIdRef.current;
     const input = id ? inputRefs.current[id] : null;
     if (!input) return;
     input.measure((_x, _y, _width, height, _pageX, pageY) => {
-      const visibleBottom = Dimensions.get('window').height - currentKeyboardHeight;
+      const visibleBottom =
+        Dimensions.get('window').height - currentKeyboardHeight - toolbarHeightRef.current;
       const overflow = pageY + height - visibleBottom + 24;
       if (overflow > 0) {
         scrollViewRef.current?.scrollTo({ y: scrollOffsetRef.current + overflow, animated: true });
@@ -1555,10 +1647,23 @@ export default function DocumentEditorScreen(props: Props) {
 
   function handleBlockFocus(id: string) {
     focusedBlockIdRef.current = id;
+    setFocusedBlockId(id);
     if (keyboardHeight > 0) {
       scheduleScrollAdjust(keyboardHeight);
     }
   }
+
+  // The bar appearing/disappearing changes how much room is left above the
+  // keyboard, but nothing else re-runs the scroll compensation for that -
+  // a block focused right as the keyboard opens gets one scroll (from the
+  // keyboard event) computed against the bar's height already, but a block
+  // whose format row swaps in or out (selecting/deselecting text) needs
+  // its own pass. Only while the keyboard is actually up; with it down the
+  // bar just rests on the bottom edge, nothing to compensate.
+  useEffect(() => {
+    if (keyboardHeight > 0) scheduleScrollAdjust(keyboardHeight);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isToolbarVisible]);
 
   // Drives the formatting toolbar: it only shows for a real (non-empty)
   // selection, since there's nothing to apply Bold/Italic/etc. to otherwise.
@@ -1731,14 +1836,6 @@ export default function DocumentEditorScreen(props: Props) {
 
   function handleBlockChange(id: string, text: string) {
     snapshotForTyping();
-    // Typing "/" as the very first character of an empty block opens the
-    // quick-add menu; typing anything else (including deleting back to
-    // empty) closes it again if it was open for this block.
-    if (text === '/') {
-      setSlashMenuBlockId(id);
-    } else if (slashMenuBlockId === id) {
-      setSlashMenuBlockId(null);
-    }
     const currentType = blocks.find((b) => b.id === id)?.type ?? 'paragraph';
 
     // List items (bulleted/numbered/checkbox) continue the list on a
@@ -1953,7 +2050,6 @@ export default function DocumentEditorScreen(props: Props) {
   // since their whole point is typing a label into them.
   function convertBlockType(id: string, type: BlockType) {
     snapshotBeforeChange();
-    setSlashMenuBlockId(null);
     if (type === 'divider') {
       setBlocks((prev) => {
         const index = prev.findIndex((b) => b.id === id);
@@ -1998,7 +2094,6 @@ export default function DocumentEditorScreen(props: Props) {
   }
 
   async function pickImageForBlock(id: string) {
-    setSlashMenuBlockId(null);
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) return;
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -2029,7 +2124,6 @@ export default function DocumentEditorScreen(props: Props) {
   // and later opened, so this only works on the device the file was
   // attached from.
   async function pickFileForBlock(id: string) {
-    setSlashMenuBlockId(null);
     // copyToCacheDirectory: false keeps the raw content:// SAF URI instead
     // of the picker's own file:// cache copy. Traced through both modules'
     // Android source: expo-file-system's permission check unconditionally
@@ -2143,7 +2237,6 @@ export default function DocumentEditorScreen(props: Props) {
   }
 
   async function scanDocumentForBlock(id: string) {
-    setSlashMenuBlockId(null);
     let result;
     try {
       result = await DocumentScanner.scanDocument({ responseType: ResponseType.ImageFilePath });
@@ -2169,10 +2262,35 @@ export default function DocumentEditorScreen(props: Props) {
   const pendingNewSketchIdRef = useRef<string | null>(null);
 
   function addSketchBlock(id: string) {
-    setSlashMenuBlockId(null);
     pendingNewSketchIdRef.current = id;
     setBlocks((prev) => prev.map((b) => (b.id === id ? buildBlock(id, 'sketch', '') : b)));
     setSketchEditorBlockId(id);
+  }
+
+  // Single dispatcher for the toolbar's insert row - one BlockAction union
+  // instead of eight separate callback props, so a new block type only
+  // needs an entry in blockActions.tsx plus one case here, not a new prop
+  // threaded through the toolbar too.
+  function handleBlockAction(action: BlockAction, blockId: string) {
+    switch (action) {
+      case 'bulleted':
+      case 'numbered':
+      case 'checkbox':
+      case 'divider':
+        convertBlockType(blockId, action);
+        return;
+      case 'image':
+        pickImageForBlock(blockId);
+        return;
+      case 'file':
+        pickFileForBlock(blockId);
+        return;
+      case 'scan':
+        scanDocumentForBlock(blockId);
+        return;
+      case 'sketch':
+        addSketchBlock(blockId);
+    }
   }
 
   function openSketchBlock(id: string) {
@@ -2243,6 +2361,7 @@ export default function DocumentEditorScreen(props: Props) {
   function toggleEditMode() {
     if (isEditMode) {
       Keyboard.dismiss();
+      requestDismissFallback();
       setIsEditMode(false);
       setActiveSelection(null);
       return;
@@ -2302,59 +2421,45 @@ export default function DocumentEditorScreen(props: Props) {
   const imageRenameBlock = imageRenameId ? blocks.find((b) => b.id === imageRenameId) : null;
 
   if (!isLoaded) {
-    return <View style={styles.container} />;
+    return <View style={[styles.container, embedded && styles.containerEmbedded]} />;
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, embedded && styles.containerEmbedded]}>
       {!embedded && (
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={22} color="#111827" />
           </Pressable>
-          <Pressable hitSlop={8} onPress={undo} disabled={!canUndo}>
-            <Ionicons name="arrow-undo-outline" size={22} color={canUndo ? '#111827' : '#D1D5DB'} />
-          </Pressable>
-          <Pressable hitSlop={8} onPress={redo} disabled={!canRedo}>
-            <Ionicons name="arrow-redo-outline" size={22} color={canRedo ? '#111827' : '#D1D5DB'} />
-          </Pressable>
         </View>
         <Text style={styles.headerStatus}>
           {saveStatus === 'saving' ? 'Збереження…' : 'Збережено'}
         </Text>
         <View style={styles.headerRight}>
-          <Pressable hitSlop={8} onPress={toggleSelectMode}>
-            <Ionicons
-              name={isSelectMode ? 'close' : 'ellipse-outline'}
-              size={22}
-              color="#111827"
-            />
+          <Pressable hitSlop={6} onPress={toggleSelectMode}>
+            <Ionicons name={isSelectMode ? 'close' : 'ellipse-outline'} size={19} color="#fff" />
           </Pressable>
+          <View style={styles.headerRightDivider} />
           <Pressable
-            hitSlop={8}
+            hitSlop={6}
             onPress={() => navigation.navigate('Placeholder', { icon: 'ellipsis-horizontal-outline', label: 'Скоро' })}
           >
-            <Ionicons name="ellipsis-horizontal-outline" size={22} color="#111827" />
+            <Ionicons name="ellipsis-horizontal-outline" size={19} color="#fff" />
           </Pressable>
         </View>
       </View>
       )}
 
-      {/* Embedded (CalendarScreen): the same undo/redo/select-mode controls
-          the header carries in the full-screen editor, as one slim row -
-          the embedding screen owns the top of the screen, so there's no
-          header here to hang them off. */}
+      {/* Embedded (CalendarScreen): the select-mode control the header
+          carries in the full-screen editor, as one slim row - the
+          embedding screen owns the top of the screen, so there's no
+          header here to hang it off. Undo/redo live in the pinned toolbar
+          now (both here and in the full-screen header above), not here. */}
       {embedded && (
         <View style={styles.embeddedToolbar}>
           <Text style={styles.headerStatus}>{saveStatus === 'saving' ? 'Збереження…' : 'Збережено'}</Text>
           <View style={styles.embeddedToolbarButtons}>
-            <Pressable hitSlop={10} onPress={undo} disabled={!canUndo}>
-              <Ionicons name="arrow-undo-outline" size={20} color={canUndo ? '#111827' : '#D1D5DB'} />
-            </Pressable>
-            <Pressable hitSlop={10} onPress={redo} disabled={!canRedo}>
-              <Ionicons name="arrow-redo-outline" size={20} color={canRedo ? '#111827' : '#D1D5DB'} />
-            </Pressable>
             <Pressable hitSlop={10} onPress={toggleSelectMode}>
               <Ionicons name={isSelectMode ? 'close' : 'ellipse-outline'} size={20} color="#111827" />
             </Pressable>
@@ -2362,109 +2467,21 @@ export default function DocumentEditorScreen(props: Props) {
         </View>
       )}
 
-      {slashMenuBlockId && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.formatToolbar}
-          contentContainerStyle={styles.formatToolbarContent}
-          keyboardShouldPersistTaps="always"
-        >
-          <Pressable
-            style={styles.slashMenuItem}
-            hitSlop={6}
-            onPress={() => convertBlockType(slashMenuBlockId, 'bulleted')}
-          >
-            <Ionicons name="list-outline" size={20} color="#111827" />
-            <Text style={styles.slashMenuLabel}>Список</Text>
-          </Pressable>
-          <Pressable
-            style={styles.slashMenuItem}
-            hitSlop={6}
-            onPress={() => convertBlockType(slashMenuBlockId, 'numbered')}
-          >
-            <Ionicons name="list-outline" size={20} color="#111827" />
-            <Text style={styles.slashMenuLabel}>Нумерований список</Text>
-          </Pressable>
-          <Pressable
-            style={styles.slashMenuItem}
-            hitSlop={6}
-            onPress={() => convertBlockType(slashMenuBlockId, 'checkbox')}
-          >
-            <Ionicons name="checkbox-outline" size={20} color="#111827" />
-            <Text style={styles.slashMenuLabel}>Чекбокс</Text>
-          </Pressable>
-          <Pressable
-            style={styles.slashMenuItem}
-            hitSlop={6}
-            onPress={() => convertBlockType(slashMenuBlockId, 'divider')}
-          >
-            <Ionicons name="remove-outline" size={20} color="#111827" />
-            <Text style={styles.slashMenuLabel}>Лінія</Text>
-          </Pressable>
-          <Pressable style={styles.slashMenuItem} hitSlop={6} onPress={() => pickImageForBlock(slashMenuBlockId)}>
-            <Ionicons name="image-outline" size={20} color="#111827" />
-            <Text style={styles.slashMenuLabel}>Зображення</Text>
-          </Pressable>
-          <Pressable style={styles.slashMenuItem} hitSlop={6} onPress={() => pickFileForBlock(slashMenuBlockId)}>
-            <Ionicons name="document-outline" size={20} color="#111827" />
-            <Text style={styles.slashMenuLabel}>Файл</Text>
-          </Pressable>
-          <Pressable style={styles.slashMenuItem} hitSlop={6} onPress={() => scanDocumentForBlock(slashMenuBlockId)}>
-            <Ionicons name="scan-outline" size={20} color="#111827" />
-            <Text style={styles.slashMenuLabel}>Сканувати</Text>
-          </Pressable>
-          <Pressable style={styles.slashMenuItem} hitSlop={6} onPress={() => addSketchBlock(slashMenuBlockId)}>
-            <Ionicons name="brush-outline" size={20} color="#111827" />
-            <Text style={styles.slashMenuLabel}>Малюнок</Text>
-          </Pressable>
-        </ScrollView>
-      )}
-
-      {!slashMenuBlockId && activeSelection && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.formatToolbar}
-          contentContainerStyle={styles.formatToolbarContent}
-          keyboardShouldPersistTaps="always"
-        >
-          <Pressable hitSlop={6} onPress={() => applyMarkerToSelection('**', '**')}>
-            <Text style={[styles.formatButtonLabel, { fontWeight: '700' }]}>Ж</Text>
-          </Pressable>
-          <Pressable hitSlop={6} onPress={() => applyMarkerToSelection('*', '*')}>
-            <Text style={[styles.formatButtonLabel, { fontStyle: 'italic' }]}>К</Text>
-          </Pressable>
-          <Pressable hitSlop={6} onPress={() => applyMarkerToSelection('__', '__')}>
-            <Text style={[styles.formatButtonLabel, { textDecorationLine: 'underline' }]}>П</Text>
-          </Pressable>
-          <Pressable hitSlop={6} onPress={() => applyMarkerToSelection('~~', '~~')}>
-            <Text style={[styles.formatButtonLabel, { textDecorationLine: 'line-through' }]}>С</Text>
-          </Pressable>
-          <View style={styles.formatDivider} />
-          {TEXT_COLORS.map((color) => (
-            <Pressable key={color} hitSlop={6} onPress={() => applyColorToSelection('c', color)}>
-              <View style={[styles.colorSwatch, { backgroundColor: color }]} />
-            </Pressable>
-          ))}
-          <View style={styles.formatDivider} />
-          {HIGHLIGHT_COLORS.map((color) => (
-            <Pressable key={color} hitSlop={6} onPress={() => applyColorToSelection('h', color)}>
-              <View style={[styles.colorSwatch, styles.highlightSwatch, { backgroundColor: color }]} />
-            </Pressable>
-          ))}
-        </ScrollView>
-      )}
-
       <ScrollView
         ref={scrollViewRef}
         style={styles.scrollArea}
         contentContainerStyle={[
           embedded && styles.scrollAreaEmbedded,
-          // Embedded, with the keyboard down, the floating island and the
-          // tags-drawer button sit over the bottom of this list - the last
-          // block (and "Додати блок") has to be able to scroll clear of them.
-          { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 40 : embedded ? 120 : 40 },
+          // Embedded, with the keyboard down, the floating island sits over
+          // the bottom of this list - the last block (and "Додати блок")
+          // has to be able to scroll clear of it.
+          // The pinned toolbar covers its own strip above the keyboard on
+          // top of that, so it gets added whenever the bar is showing.
+          {
+            paddingBottom:
+              (keyboardHeight > 0 ? keyboardHeight + 40 : embedded ? 120 : 40) +
+              (isToolbarVisible ? EDITOR_TOOLBAR_HEIGHT : 0),
+          },
         ]}
         keyboardShouldPersistTaps="handled"
         onScroll={(e) => {
@@ -2477,6 +2494,9 @@ export default function DocumentEditorScreen(props: Props) {
           key={isEditMode ? 'editable' : 'locked'}
           value={title}
           onChangeText={handleTitleChange}
+          // The pinned toolbar acts on a block, not the title - hide it
+          // rather than have it apply to whatever block last had focus.
+          onFocus={() => setFocusedBlockId(null)}
           editable={isEditMode}
           pointerEvents={isEditMode ? 'auto' : 'none'}
           placeholder="Без назви"
@@ -2484,6 +2504,10 @@ export default function DocumentEditorScreen(props: Props) {
         />
         )}
 
+        {/* Calendar days deliberately have no tags at all - the user was
+            explicit: keeps the day-flipping simple, and a day never needed
+            them the way a real document does. */}
+        {!embedded && (
         <DocumentTagsBlock
           tagIds={tagIds}
           tags={tags}
@@ -2492,6 +2516,7 @@ export default function DocumentEditorScreen(props: Props) {
           onCreateAndAttach={handleCreateAndAttachTag}
           onRenameTag={renameTag}
         />
+        )}
 
         <BlockList
           blocks={blocks}
@@ -2526,7 +2551,7 @@ export default function DocumentEditorScreen(props: Props) {
           </Pressable>
         ) : (
           <Pressable style={styles.addBlock} onPress={addBlockAtEnd}>
-            <Ionicons name="add" size={18} color={ACCENT} />
+            <Ionicons name="add" size={18} color="#111827" />
             <Text style={styles.addBlockLabel}>Додати блок</Text>
           </Pressable>
         )}
@@ -2535,11 +2560,11 @@ export default function DocumentEditorScreen(props: Props) {
       <Pressable
         style={[
           styles.editModeFab,
-          // Embedded, this button has to dodge two things the full-screen
-          // editor never has under it: the floating island (keyboard down)
-          // and the keyboard itself - otherwise there's no way to tap
-          // "done" without dismissing the keyboard some other way first.
-          embedded && (keyboardHeight > 0 ? { bottom: keyboardHeight + 16 } : styles.editModeFabEmbedded),
+          // Embedded, the keyboard also has to be dodged - otherwise
+          // there's no way to tap "done" without dismissing it some other
+          // way first. (With the keyboard down, the base 100 already
+          // clears the floating island and the tags-drawer button.)
+          embedded && keyboardHeight > 0 && { bottom: keyboardHeight + 16 },
         ]}
         onPress={toggleEditMode}
       >
@@ -2600,6 +2625,37 @@ export default function DocumentEditorScreen(props: Props) {
             />
           </GestureHandlerRootView>
         </Modal>
+      )}
+
+      {/* Pinned directly above the keyboard, and only mounted while
+          isToolbarVisible - EditorToolbar itself only checks
+          focusedBlockId (title focus vs. a block), not the keyboard, so
+          without this the bar would just slide down to the bottom edge
+          and stay rendered there once the keyboard closes, instead of
+          disappearing with it. Confirmed on-device: keyboardDidHide does
+          fire reliably (this was mis-diagnosed as an event problem before
+          logging proved otherwise) - it was this render never having been
+          gated on it.
+          The window does NOT resize under the keyboard here (measured
+          on-device: window stays at the full screen height whether the
+          keyboard is up or down, since edge-to-edge delivers the keyboard
+          as an inset rather than honouring
+          android.softwareKeyboardLayoutMode), so the bar has to be placed
+          at `bottom: keyboardHeight` by hand - nothing lifts it for us. */}
+      {isToolbarVisible && (
+        <View style={[styles.pinnedToolbar, { bottom: keyboardHeight + insets.bottom }]} pointerEvents="box-none">
+          <EditorToolbar
+            focusedBlockId={focusedBlockId}
+            activeSelection={activeSelection}
+            onBlockAction={handleBlockAction}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onUndo={undo}
+            onRedo={redo}
+            onApplyMarker={applyMarkerToSelection}
+            onApplyColor={applyColorToSelection}
+          />
+        </View>
       )}
 
       <SketchEditor
@@ -2665,6 +2721,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
+  // Embedded (CalendarScreen): this white panel sits over the gradient
+  // background, not a plain white page - rounded top corners let that
+  // gradient show through the cut-away triangles instead of a hard edge.
+  containerEmbedded: {
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    overflow: 'hidden',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2694,76 +2758,58 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 18,
   },
+  // Select-mode toggle + "..." merged into one pill, filled the same color
+  // as the edit-mode FAB rather than two separate plain icon buttons.
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 10,
+    height: 34,
+    borderRadius: 17,
+    paddingHorizontal: 12,
+    backgroundColor: EDIT_FAB_COLOR,
+  },
+  headerRightDivider: {
+    width: 1,
+    height: 14,
+    backgroundColor: 'rgba(255,255,255,0.4)',
   },
   editModeFab: {
     position: 'absolute',
     right: 20,
-    bottom: 20,
+    // Same height off the bottom as DocumentsScreen's "+" - low enough to
+    // reach, high enough that the toolbar pinned along the bottom edge
+    // (keyboard down) doesn't cover it.
+    bottom: 100,
     width: 56,
     height: 56,
-    borderRadius: 28,
-    backgroundColor: ACCENT,
+    borderRadius: 18,
+    backgroundColor: EDIT_FAB_COLOR,
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-  },
-  // Embedded (CalendarScreen): the floating island + tags-drawer button
-  // stay on screen the whole time (unlike the normal full-screen editor,
-  // pushed over the whole Tab.Navigator, where nothing else is visible) -
-  // raised to clear them instead of overlapping.
-  editModeFabEmbedded: {
-    bottom: 100,
+    shadowColor: EDIT_FAB_COLOR,
+    shadowOpacity: 0.5,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 6,
   },
   scrollArea: {
     flex: 1,
   },
-  // Embedded (CalendarScreen): no header eating the top, so the tags block
-  // needs its own top breathing room instead of the title input providing it.
+  pinnedToolbar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+  },
+  // Embedded (CalendarScreen): no header and no title/tags block eating
+  // the top (calendar days have neither), so the block list needs its own
+  // small top breathing room instead.
   scrollAreaEmbedded: {
     paddingTop: 4,
   },
-  formatToolbar: {
-    flexGrow: 0,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  formatToolbarContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 18,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-  },
-  formatButtonLabel: {
-    fontSize: 17,
-    color: '#111827',
-    minWidth: 20,
-    textAlign: 'center',
-  },
-  formatDivider: {
-    width: 1,
-    height: 20,
-    backgroundColor: '#E5E7EB',
-  },
-  colorSwatch: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-  },
-  highlightSwatch: {
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
   titleInput: {
-    fontSize: 24,
+    // At least 2x the previous 24.
+    fontSize: 48,
     fontWeight: '600',
     color: '#111827',
     paddingHorizontal: 20,
@@ -2815,6 +2861,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+  },
+  checkboxBlock: {
+    flex: 1,
+  },
+  checkboxReminderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginLeft: 24,
+    marginTop: 2,
+  },
+  checkboxReminderText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: ACCENT,
   },
   bulletMark: {
     fontSize: 18,
@@ -3075,15 +3136,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
-  slashMenuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  slashMenuLabel: {
-    fontSize: 15,
-    color: '#111827',
-  },
   dropLine: {
     position: 'absolute',
     top: 0,
@@ -3102,7 +3154,7 @@ const styles = StyleSheet.create({
   },
   addBlockLabel: {
     fontSize: 15,
-    color: ACCENT,
+    color: '#111827',
   },
   deleteSelected: {
     flexDirection: 'row',

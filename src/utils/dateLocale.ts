@@ -84,3 +84,21 @@ export function getMonthGrid(year: number, month: number): MonthCell[] {
 export function formatBigDate(date: Date): string {
   return `${date.getDate()} ${MONTH_SHORT[date.getMonth()]} ${date.getFullYear()}`;
 }
+
+// ДД.ММ.РР - used as a diary sheet's "title" (see DiaryScreen) since the
+// day itself, not whatever's typed in the title field, is what identifies
+// a calendar sheet in that list.
+export function formatShortDate(date: Date): string {
+  const d = String(date.getDate()).padStart(2, '0');
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const y = String(date.getFullYear()).slice(-2);
+  return `${d}.${m}.${y}`;
+}
+
+// Parses a `dateKey`-shaped "YYYY-MM-DD" string back into a Date - the
+// inverse of dateKey, used when a screen only carries the key (e.g. a
+// diary sheet's `calendarDate` field or a "jump to this day" nav param).
+export function parseDateKey(key: string): Date {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}

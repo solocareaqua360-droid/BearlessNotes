@@ -8,19 +8,20 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { collection, doc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { RootStackParamList } from '../navigation';
-import { useTags } from '../hooks/useTags';
-import TagsDrawer from '../components/TagsDrawer';
 import DocumentEditorScreen from './DocumentEditorScreen';
 import { hasNoteContent } from '../utils/documentPreview';
+import { FONT_REGULAR, FONT_MEDIUM, FONT_SEMIBOLD, FONT_BOLD, FONT_EXTRABOLD } from '../utils/fonts';
 import {
   MONTH_FULL,
   WEEKDAY_FULL,
@@ -34,11 +35,13 @@ import {
   isoWeekNumber,
   mondayIndex,
   mondayOf,
+  parseDateKey,
 } from '../utils/dateLocale';
 
 const ACCENT = '#3B82F6';
 const PAGE_WIDTH = Dimensions.get('window').width;
 const documentsCollection = collection(db, 'documents');
+const tasksCollection = collection(db, 'tasks');
 const calendarPrefsDoc = doc(db, 'settings', 'calendarPrefs');
 
 // The week strip pages between exactly 3 in-memory weeks (prev/current/next)
@@ -67,8 +70,17 @@ const WEEKDAY_HEADER_HEIGHT = 22;
 
 export default function CalendarScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  // Nested-navigator params from DiaryScreen's "open this sheet" - see
+  // navigation.ts's Tabs type. Not typed through the tab navigator itself
+  // (created untyped, like the rest of this app's tab bar), so read
+  // loosely here rather than threading a param-list generic through it.
+  const route = useRoute();
+  const jumpToDate = (route.params as { jumpToDate?: string } | undefined)?.jumpToDate;
+  // See DocumentsScreen - react-native-svg's own "100%" doesn't reliably
+  // re-measure on a runtime window resize (a Fold unfolding), so the
+  // gradient's canvas is sized from this instead.
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const today = useMemo(() => new Date(), []);
-  const { tags } = useTags();
 
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
   const [selectedDate, setSelectedDate] = useState(() => new Date());
@@ -78,7 +90,19 @@ export default function CalendarScreen() {
     return { year: d.getFullYear(), month: d.getMonth() };
   });
   const [onlyFilledDays, setOnlyFilledDays] = useState(false);
-  const [filledDates, setFilledDates] = useState<Set<string>>(new Set());
+  const [noteFilledDates, setNoteFilledDates] = useState<Set<string>>(new Set());
+  const [reminderFilledDates, setReminderFilledDates] = useState<Set<string>>(new Set());
+  // A day counts as "filled" either because it has a real note or because
+  // a task's reminder is due that day (Варіант A - no synthetic diary
+  // documents get created for a reminder-only day, this merge is purely at
+  // render time) - the two queries below are independent live snapshots,
+  // so they're kept as separate sets and unioned here rather than one
+  // written into the other, which would risk one source's update wiping
+  // the other's entries for that render.
+  const filledDates = useMemo(
+    () => new Set([...noteFilledDates, ...reminderFilledDates]),
+    [noteFilledDates, reminderFilledDates]
+  );
   const [menuOpen, setMenuOpen] = useState(false);
   // The calendar folds away entirely while the keyboard is up: on a phone
   // the strip (let alone the month grid) plus the keyboard leaves almost
@@ -151,7 +175,28 @@ export default function CalendarScreen() {
         const data = docSnapshot.data();
         if (hasNoteContent(data.title ?? '', data.blocks ?? [])) filled.add(data.calendarDate as string);
       });
-      setFilledDates(filled);
+      setNoteFilledDates(filled);
+    });
+  }, [visibleMonth.year, visibleMonth.month]);
+
+  // Same range, same reasoning, but against tasks' own reminderDate - a day
+  // with a task due on it counts as "filled" too (see filledDates above),
+  // without writing an actual (empty) diary document for it.
+  useEffect(() => {
+    const monthStartKey = dateKey(addDays(new Date(visibleMonth.year, visibleMonth.month, 1), -7));
+    const monthEndKey = dateKey(addDays(new Date(visibleMonth.year, visibleMonth.month + 1, 0), 7));
+    const remindersQuery = query(
+      tasksCollection,
+      where('reminderDate', '>=', monthStartKey),
+      where('reminderDate', '<=', monthEndKey)
+    );
+    return onSnapshot(remindersQuery, (snapshot) => {
+      const filled = new Set<string>();
+      snapshot.docs.forEach((docSnapshot) => {
+        const reminderDate = docSnapshot.data().reminderDate;
+        if (reminderDate) filled.add(reminderDate as string);
+      });
+      setReminderFilledDates(filled);
     });
   }, [visibleMonth.year, visibleMonth.month]);
 
@@ -159,6 +204,19 @@ export default function CalendarScreen() {
     setSelectedDate(date);
     setWeekStart(mondayOf(date));
   }
+
+  // Jump straight to a day opened from DiaryScreen. Guarded by a ref (not
+  // just the effect's own dep array) so re-focusing this tab later - with
+  // the same still-current param, since nothing clears it - doesn't jump
+  // again and fight whatever day the user has since navigated to on their
+  // own.
+  const handledJumpRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (jumpToDate && jumpToDate !== handledJumpRef.current) {
+      handledJumpRef.current = jumpToDate;
+      selectDay(parseDateKey(jumpToDate));
+    }
+  }, [jumpToDate]);
 
   function handleWeekScrollEnd(e: NativeSyntheticEvent<NativeScrollEvent>) {
     const page = Math.round(e.nativeEvent.contentOffset.x / PAGE_WIDTH);
@@ -207,11 +265,31 @@ export default function CalendarScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Same fixed gradient as DocumentsScreen. The daily-note editor
+          below (`noteArea`) stays white on its own - it's the embedded
+          DocumentEditorScreen's own opaque white background, painted over
+          this gradient, not a separate override here. */}
+      <Svg width={windowWidth} height={windowHeight} style={StyleSheet.absoluteFill} pointerEvents="none">
+        <Defs>
+          <LinearGradient id="calendarBg" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0.03" stopColor="#705648" />
+            <Stop offset="0.52" stopColor="#69736E" />
+            <Stop offset="1" stopColor="#000000" />
+          </LinearGradient>
+        </Defs>
+        <Rect width={windowWidth} height={windowHeight} fill="url(#calendarBg)" />
+      </Svg>
+
       <View style={styles.headerRow}>
-        <Text style={styles.headerTitle}>Календар</Text>
-        <Pressable style={styles.menuButton} onPress={() => setMenuOpen((v) => !v)}>
-          <Ionicons name="ellipsis-horizontal" size={17} color={ACCENT} />
-        </Pressable>
+        <View style={styles.headerButtons}>
+          <Pressable hitSlop={6} onPress={() => navigation.navigate('Diary')}>
+            <Ionicons name="search" size={17} color="#fff" />
+          </Pressable>
+          <View style={styles.headerButtonsDivider} />
+          <Pressable hitSlop={6} onPress={() => setMenuOpen((v) => !v)}>
+            <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
+          </Pressable>
+        </View>
       </View>
 
       {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
@@ -226,17 +304,18 @@ export default function CalendarScreen() {
         </View>
       )}
 
+      <View style={styles.calendarPlate}>
       <Animated.View style={[styles.calendarWrap, calendarWrapStyle]}>
         <Animated.View style={[styles.monthNavWrap, monthNavStyle]}>
           <View style={styles.monthNav}>
             <Pressable hitSlop={10} onPress={() => changeVisibleMonth(-1)}>
-              <Ionicons name="chevron-back" size={18} color="#9CA3AF" />
+              <Ionicons name="chevron-back" size={18} color="rgba(255,255,255,0.7)" />
             </Pressable>
             <Text style={styles.monthNavLabel}>
               {MONTH_FULL[visibleMonth.month]} {visibleMonth.year}
             </Text>
             <Pressable hitSlop={10} onPress={() => changeVisibleMonth(1)}>
-              <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
             </Pressable>
           </View>
         </Animated.View>
@@ -312,6 +391,7 @@ export default function CalendarScreen() {
           </Animated.View>
         </Animated.View>
       </Animated.View>
+      </View>
 
       {!isWriting && (
         <View style={styles.expandRow}>
@@ -333,7 +413,7 @@ export default function CalendarScreen() {
           <Text style={styles.compactDateLabel}>
             {WEEKDAY_FULL[mondayIndex(selectedDate)]}, {formatBigDate(selectedDate)}
           </Text>
-          <Ionicons name="chevron-down" size={14} color="#9CA3AF" />
+          <Ionicons name="chevron-down" size={14} color="rgba(255,255,255,0.7)" />
         </Pressable>
       ) : (
         <View style={styles.dateHeader}>
@@ -361,8 +441,6 @@ export default function CalendarScreen() {
           extraFields={{ calendarDate: selectedKey }}
         />
       </View>
-
-      <TagsDrawer tags={tags} activeFilter={null} onSelectFilter={() => {}} />
     </View>
   );
 }
@@ -411,33 +489,32 @@ function DayCell({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     paddingHorizontal: 20,
     paddingTop: 56,
     paddingBottom: 8,
   },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  menuButton: {
-    width: 38,
+  // Search (→ DiaryScreen) + "..." (the only-filled-days menu) merged into
+  // one elongated glass capsule, same as DocumentsScreen's headerButtons.
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.14,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(20,20,20,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  headerButtonsDivider: {
+    width: 1,
+    height: 16,
+    backgroundColor: 'rgba(255,255,255,0.3)',
   },
   menuBackdrop: {
     position: 'absolute',
@@ -473,6 +550,7 @@ const styles = StyleSheet.create({
   menuRowLabel: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   switchTrack: {
@@ -500,7 +578,22 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
+  // The glass plate under the calendar's numbers - a separate, unanimated
+  // wrapper (see calendarPlate below) rather than styling this directly:
+  // calendarWrap's own height is animated (week strip <-> month grid), and
+  // padding added here would eat into that fixed height's content area
+  // instead of sitting outside it.
   calendarWrap: {
+    overflow: 'hidden',
+  },
+  // Flush with the header above (square top), rounded only at the bottom.
+  calendarPlate: {
+    backgroundColor: 'rgba(20,20,20,0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 22,
+    paddingTop: 6,
+    paddingBottom: 10,
     overflow: 'hidden',
   },
   monthNavWrap: {
@@ -516,7 +609,8 @@ const styles = StyleSheet.create({
   monthNavLabel: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#111827',
+    fontFamily: FONT_BOLD,
+    color: '#fff',
   },
   weekdayHeader: {
     height: WEEKDAY_HEADER_HEIGHT,
@@ -527,8 +621,9 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     fontSize: 12,
-    color: '#9CA3AF',
+    color: '#fff',
     fontWeight: '500',
+    fontFamily: FONT_MEDIUM,
   },
   gridClip: {
     overflow: 'hidden',
@@ -578,19 +673,23 @@ const styles = StyleSheet.create({
     borderColor: '#D1D5DB',
   },
   dayCircleToday: {
-    backgroundColor: '#EF4444',
-    borderColor: '#EF4444',
+    backgroundColor: '#fff',
+    borderColor: '#fff',
   },
   dayNum: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#111827',
+    fontFamily: FONT_SEMIBOLD,
+    color: '#fff',
   },
   dayNumMuted: {
-    color: '#D1D5DB',
+    // Was a light gray for "faint against white" - on the now-dark
+    // gradient that read backwards (brighter than the regular white
+    // dayNum), so muted is dim translucent white instead.
+    color: 'rgba(255,255,255,0.35)',
   },
   dayNumToday: {
-    color: '#fff',
+    color: '#111827',
   },
   expandRow: {
     flexDirection: 'row',
@@ -616,6 +715,7 @@ const styles = StyleSheet.create({
   compactDateLabel: {
     fontSize: 14,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: ACCENT,
   },
   dateHeader: {
@@ -631,6 +731,7 @@ const styles = StyleSheet.create({
   weekdayFull: {
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: ACCENT,
   },
   todayChip: {
@@ -642,7 +743,8 @@ const styles = StyleSheet.create({
   todayChipLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: ACCENT,
+    fontFamily: FONT_SEMIBOLD,
+    color: '#111827',
   },
   dateLine: {
     flexDirection: 'row',
@@ -652,11 +754,13 @@ const styles = StyleSheet.create({
   dateBig: {
     fontSize: 28,
     fontWeight: '800',
-    color: '#111827',
+    fontFamily: FONT_EXTRABOLD,
+    color: '#fff',
   },
   weekNum: {
     fontSize: 14,
-    color: '#9CA3AF',
+    fontFamily: FONT_REGULAR,
+    color: 'rgba(255,255,255,0.6)',
   },
   noteArea: {
     flex: 1,

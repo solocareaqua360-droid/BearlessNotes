@@ -1,4 +1,6 @@
+import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold } from '@expo-google-fonts/inter';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -16,6 +18,7 @@ import TagManageScreen from './src/screens/TagManageScreen';
 import TagItemsScreen from './src/screens/TagItemsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import SearchScreen from './src/screens/SearchScreen';
+import DiaryScreen from './src/screens/DiaryScreen';
 import DocumentEditorScreen from './src/screens/DocumentEditorScreen';
 import FloatingIslandTabBar from './src/components/FloatingIslandTabBar';
 import { RootStackParamList } from './src/navigation';
@@ -37,6 +40,19 @@ function Tabs() {
 }
 
 export default function App() {
+  // Only the redesigned surfaces (Documents/Calendar and the components
+  // they share) reference these family names in their own styles - the
+  // rest of the app keeps the system font, matching how this whole visual
+  // pass has stayed scoped rather than becoming an app-wide reskin.
+  const [fontsLoaded] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    Inter_800ExtraBold,
+  });
+  if (!fontsLoaded) return <View style={{ flex: 1, backgroundColor: '#fff' }} />;
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <NavigationContainer>
@@ -52,6 +68,7 @@ export default function App() {
           <Stack.Screen name="TagItems" component={TagItemsScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
           <Stack.Screen name="Search" component={SearchScreen} />
+          <Stack.Screen name="Diary" component={DiaryScreen} />
           <Stack.Screen name="Placeholder">
             {({ route }) => <PlaceholderScreen icon={route.params.icon} label={route.params.label} />}
           </Stack.Screen>

@@ -50,7 +50,7 @@ export default function DocumentTagsBlock({ tagIds, tags, onAttach, onDetach, on
         {appliedTags.map((tag) => (
           <Pressable
             key={tag.id}
-            style={[styles.chip, { backgroundColor: `${tag.color}1A` }]}
+            style={[styles.chip, { borderColor: tag.color }]}
             onPress={() => onDetach(tag)}
           >
             <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={12} color={tag.color} />
@@ -110,13 +110,12 @@ export default function DocumentTagsBlock({ tagIds, tags, onAttach, onDetach, on
 }
 
 const styles = StyleSheet.create({
+  // No boxed "zone" around the tags anymore - the "+ тег" input itself is
+  // the only cue that this is where you attach one.
   container: {
     marginHorizontal: 20,
     marginTop: 8,
     marginBottom: 4,
-    borderRadius: 14,
-    backgroundColor: '#F9FAFB',
-    padding: 10,
   },
   row: {
     flexDirection: 'row',
@@ -124,14 +123,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
+  // White capsule, border + text in the tag's own color - borderColor set
+  // per-chip inline (tag.color).
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    borderRadius: 8,
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderRadius: 999,
     paddingVertical: 4,
-    paddingHorizontal: 9,
-    paddingLeft: 7,
+    paddingHorizontal: 10,
   },
   chipLabel: {
     fontSize: 12,

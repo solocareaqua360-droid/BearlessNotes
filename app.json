@@ -30,7 +30,8 @@
         {
           "cameraPermission": "Bearless Notes потребує доступу до камери, щоб сканувати документи"
         }
-      ]
+      ],
+      "expo-notifications"
     ],
     "extra": {
       "eas": {

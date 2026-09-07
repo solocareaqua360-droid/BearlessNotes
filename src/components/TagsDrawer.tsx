@@ -3,8 +3,8 @@ import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Tag } from '../types';
+import { FONT_REGULAR, FONT_SEMIBOLD, FONT_BOLD, FONT_EXTRABOLD } from '../utils/fonts';
 
-const ACCENT = '#3B82F6';
 const DRAWER_WIDTH = Math.round(Dimensions.get('window').width * (2 / 3));
 // Matches FloatingIslandTabBar's own height (8px padding + 48px buttons) -
 // the open button is a standalone circle the same size as the island.
@@ -86,32 +86,34 @@ function TreeRow({
   const isSelected = !!node.tag && selectedIds.has(node.tag.id);
   const children = Array.from(node.children.values()).sort((a, b) => a.name.localeCompare(b.name));
 
+  // A branch-only node (a path segment with no tag of its own, just
+  // grouping children) has no color to draw from, so it - and the
+  // chevron/icon/text that go with it - stay neutral gray instead.
+  const tint = node.tag ? node.tag.color : '#9CA3AF';
+
   return (
-    <View>
-      <Pressable
-        style={[styles.treeRow, isSelected && styles.treeRowActive, { paddingLeft: 4 + depth * 20 }]}
-        onPress={() => (node.tag ? onToggleTag(node.tag) : onToggleExpand(node.fullPath))}
-      >
+    <View style={{ marginLeft: depth * 18 }}>
+      <Pressable style={[styles.treeRow, { borderColor: tint }]} onPress={() => (node.tag ? onToggleTag(node.tag) : onToggleExpand(node.fullPath))}>
         {hasChildren ? (
           <Pressable hitSlop={8} onPress={() => onToggleExpand(node.fullPath)}>
-            <Ionicons name={isExpanded ? 'chevron-down' : 'chevron-forward'} size={13} color="#9CA3AF" />
+            <Ionicons name={isExpanded ? 'chevron-down' : 'chevron-forward'} size={13} color={tint} />
           </Pressable>
         ) : (
           <View style={{ width: 13 }} />
         )}
-        {node.tag ? (
-          <View style={[styles.treeIcon, { backgroundColor: `${node.tag.color}1A` }]}>
-            <Ionicons name={node.tag.icon as keyof typeof Ionicons.glyphMap} size={12} color={node.tag.color} />
-          </View>
-        ) : (
-          <View style={styles.treeIcon}>
-            <Ionicons name="folder-outline" size={12} color="#9CA3AF" />
-          </View>
-        )}
-        <Text style={styles.treeLabel} numberOfLines={1}>
+        <Ionicons
+          name={(node.tag ? node.tag.icon : 'folder-outline') as keyof typeof Ionicons.glyphMap}
+          size={13}
+          color={tint}
+        />
+        <Text style={[styles.treeLabel, { color: tint }]} numberOfLines={1}>
           {node.name}
         </Text>
-        {isSelected && <Ionicons name="checkmark" size={16} color={ACCENT} />}
+        {/* Reserved always, populated only when selected - so picking a
+            tag doesn't add width to the pill and change its shape. */}
+        <View style={styles.treeCheckSlot}>
+          {isSelected && node.tag && <Ionicons name="checkmark" size={14} color={tint} />}
+        </View>
       </Pressable>
       {hasChildren &&
         isExpanded &&
@@ -237,32 +239,23 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
           <Text style={styles.title}>Теги</Text>
 
           <View style={styles.segmented}>
-            <Pressable
-              style={[styles.segmentButton, filterMode === 'multi' && styles.segmentButtonActive]}
-              onPress={() => selectFilterMode('multi')}
-            >
+            <Pressable style={styles.segmentButton} onPress={() => selectFilterMode('multi')}>
               <Text style={[styles.segmentLabel, filterMode === 'multi' && styles.segmentLabelActive]}>Мульти</Text>
             </Pressable>
-            <Pressable
-              style={[styles.segmentButton, filterMode === 'isolating' && styles.segmentButtonActive]}
-              onPress={() => selectFilterMode('isolating')}
-            >
+            <Pressable style={styles.segmentButton} onPress={() => selectFilterMode('isolating')}>
               <Text style={[styles.segmentLabel, filterMode === 'isolating' && styles.segmentLabelActive]}>
                 Ізолюючий
               </Text>
             </Pressable>
           </View>
 
-          <Pressable
-            style={[styles.untaggedRow, activeFilter?.type === 'untagged' && styles.untaggedRowActive]}
-            onPress={toggleUntagged}
-          >
-            <View style={styles.treeIcon}>
-              <Ionicons name="pricetag-outline" size={12} color="#9CA3AF" />
-            </View>
+          <Pressable style={styles.untaggedRow} onPress={toggleUntagged}>
+            <Ionicons name="pricetag-outline" size={13} color="#9CA3AF" />
             <Text style={styles.untaggedLabel}>Без тегів</Text>
+            <View style={styles.treeCheckSlot}>
+              {activeFilter?.type === 'untagged' && <Ionicons name="checkmark" size={14} color="#9CA3AF" />}
+            </View>
           </Pressable>
-          <View style={styles.divider} />
 
           <ScrollView style={styles.scroll}>
             {topLevel.map((node) => (
@@ -316,53 +309,60 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 19,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#111827',
     marginBottom: 12,
   },
   segmented: {
     flexDirection: 'row',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 10,
-    padding: 3,
+    gap: 8,
     marginBottom: 12,
   },
+  // Same height as a tag pill, wide enough for "Ізолюючий" - always a
+  // black-bordered white capsule; only the label's color (below) says
+  // which one is active.
   segmentButton: {
-    flex: 1,
     paddingVertical: 7,
+    paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 8,
-  },
-  segmentButtonActive: {
-    backgroundColor: ACCENT,
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#111827',
+    borderRadius: 999,
   },
   segmentLabel: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#6B7280',
+    fontFamily: FONT_SEMIBOLD,
+    color: '#9CA3AF',
   },
   segmentLabelActive: {
-    color: '#fff',
+    color: '#111827',
   },
+  // White capsule, border always in its own color (gray for "Без тегів" -
+  // it has none of its own) - not just when active. Selection shows as the
+  // checkmark in the reserved slot, not a shape/color change, so picking a
+  // tag never resizes its pill.
   untaggedRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingVertical: 9,
-    paddingHorizontal: 4,
-    borderRadius: 8,
-  },
-  untaggedRowActive: {
-    backgroundColor: '#EFF6FF',
+    alignSelf: 'flex-start',
+    gap: 8,
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#9CA3AF',
+    borderRadius: 999,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    marginBottom: 6,
+    maxWidth: DRAWER_WIDTH - 60,
   },
   untaggedLabel: {
     fontSize: 14,
-    color: '#6B7280',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#F3F4F6',
-    marginVertical: 6,
+    fontFamily: FONT_REGULAR,
+    color: '#9CA3AF',
+    flexShrink: 1,
   },
   scroll: {
     flex: 1,
@@ -370,26 +370,25 @@ const styles = StyleSheet.create({
   treeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingVertical: 9,
-    paddingRight: 4,
+    alignSelf: 'flex-start',
+    gap: 8,
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderRadius: 999,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    marginBottom: 6,
+    maxWidth: DRAWER_WIDTH - 60,
   },
-  treeRowActive: {
-    backgroundColor: '#EFF6FF',
-    borderRadius: 8,
-  },
-  treeIcon: {
-    width: 26,
-    height: 26,
-    borderRadius: 7,
-    backgroundColor: '#F3F4F6',
+  // Fixed-width slot for the checkmark, always rendered - see TreeRow.
+  treeCheckSlot: {
+    width: 14,
     alignItems: 'center',
-    justifyContent: 'center',
   },
   treeLabel: {
-    flex: 1,
     fontSize: 14,
-    color: '#111827',
+    fontFamily: FONT_REGULAR,
+    flexShrink: 1,
   },
   openButton: {
     position: 'absolute',
@@ -401,7 +400,7 @@ const styles = StyleSheet.create({
     bottom: 24,
     width: OPEN_BUTTON_SIZE,
     height: OPEN_BUTTON_SIZE,
-    borderRadius: OPEN_BUTTON_SIZE / 2,
+    borderRadius: 16,
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
@@ -414,6 +413,7 @@ const styles = StyleSheet.create({
   openButtonHash: {
     fontSize: 26,
     fontWeight: '700',
-    color: ACCENT,
+    fontFamily: FONT_EXTRABOLD,
+    color: '#111827',
   },
 });
