@@ -27,7 +27,6 @@ import { getVideoEmbedInfo } from '../utils/videoEmbed';
 
 const AUTOSAVE_DELAY_MS = 600;
 const DEFAULT_CARD_WIDTH = 160;
-const EXPANDED_DOCUMENT_WIDTH = 320;
 const MIN_SCALE = 0.4;
 const MAX_SCALE = 3;
 // A large fixed virtual canvas rather than an unbounded one - card x/y are
@@ -290,7 +289,7 @@ function DraggableCard({
       <Animated.View
         style={[
           styles.card,
-          { width: card.documentExpanded ? EXPANDED_DOCUMENT_WIDTH : card.width },
+          { width: card.width },
           // A plain (non-animated) style, not part of useAnimatedStyle -
           // isDragging only flips twice per drag (start/end), not per
           // frame, so it doesn't need to live on the UI thread. Elevation
