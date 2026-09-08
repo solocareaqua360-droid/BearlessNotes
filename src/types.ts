@@ -230,6 +230,12 @@ export interface BoardCard extends Omit<Block, 'type'> {
   // other reference card's display fields (fileTitle/imageTitle/linkTitle).
   documentId?: string;
   documentTitle?: string;
+  // 'document' cards only - a snapshot (at add-time, not live) of the first
+  // few lines of text and the first image block's uri, so the collapsed
+  // card can show a real preview without re-fetching the document on every
+  // render. Absent means an empty/text-free/image-free document.
+  documentPreviewText?: string;
+  documentPreviewImageUri?: string;
 }
 
 export interface BoardItem {

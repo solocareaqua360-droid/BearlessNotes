@@ -77,9 +77,13 @@ function cardFromExistingBlock(block: Block, index: number): BoardCard {
 // usedInDocuments concern for a document reference (it's just a documentId
 // pointer), so nothing stops the same document from being pinned to the
 // board more than once.
-function newDocumentCard(document: { id: string; title: string }, index: number): BoardCard {
+function newDocumentCard(
+  document: { id: string; title: string },
+  preview: { text?: string; imageUri?: string },
+  index: number
+): BoardCard {
   const jitter = (index % 6) * 24;
-  return {
+  const card: BoardCard = {
     id: generateId(),
     text: '',
     type: 'document',
@@ -90,6 +94,9 @@ function newDocumentCard(document: { id: string; title: string }, index: number)
     y: WORLD_CENTER - 60 + jitter,
     width: DEFAULT_CARD_WIDTH,
   };
+  if (preview.text) card.documentPreviewText = preview.text;
+  if (preview.imageUri) card.documentPreviewImageUri = preview.imageUri;
+  return card;
 }
 
 function fileIconFor(name: string): 'document-text-outline' | 'document-outline' {
@@ -117,6 +124,14 @@ function blocksToPreviewText(blocks: Block[]): string {
     })
     .filter((line): line is string => !!line)
     .join('\n');
+}
+
+function firstNLines(text: string, n: number): string {
+  return text.split('\n').slice(0, n).join('\n');
+}
+
+function firstImageUri(blocks: Block[]): string | undefined {
+  return blocks.find((b) => b.type === 'image' && b.imageUri)?.imageUri;
 }
 
 type DraggableCardProps = {
@@ -272,12 +287,21 @@ function DraggableCard({
       >
         {type === 'document' ? (
           <View style={styles.refCard}>
-            <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
-              <Ionicons name="document-text-outline" size={22} color="#6B7280" />
-            </View>
+            {card.documentPreviewImageUri ? (
+              <Image source={{ uri: card.documentPreviewImageUri }} style={styles.refThumb} resizeMode="cover" />
+            ) : (
+              <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
+                <Ionicons name="document-text-outline" size={22} color="#6B7280" />
+              </View>
+            )}
             <Text style={styles.refLabel} numberOfLines={2}>
               {card.documentTitle || 'Без назви'}
             </Text>
+            {!!card.documentPreviewText && (
+              <Text style={styles.documentPreviewText} numberOfLines={4}>
+                {card.documentPreviewText}
+              </Text>
+            )}
           </View>
         ) : type === 'paragraph' ? (
           <View style={[styles.stickyCard, { backgroundColor: card.color ?? STICKY_COLORS[0] }]}>
@@ -529,9 +553,19 @@ export default function BoardScreen() {
     setCards((prev) => [...prev, cardFromExistingBlock(block, prev.length)]);
   }
 
-  function addDocumentCard(document: { id: string; title: string }) {
+  async function addDocumentCard(document: { id: string; title: string }) {
     setExistingItemPickerVisible(false);
-    setCards((prev) => [...prev, newDocumentCard(document, prev.length)]);
+    // One extra read at add-time to snapshot a preview (first lines of
+    // text, first image) onto the card itself - AddExistingItemModal's own
+    // "Документи" tab only ever carries {id, title} for its list, not
+    // blocks, so there's nothing to preview from without this fetch.
+    const snapshot = await getDoc(doc(db, 'documents', document.id));
+    const blocks: Block[] = snapshot.data()?.blocks ?? [];
+    const preview = {
+      text: firstNLines(blocksToPreviewText(blocks), 4),
+      imageUri: firstImageUri(blocks),
+    };
+    setCards((prev) => [...prev, newDocumentCard(document, preview, prev.length)]);
   }
 
   async function openDocumentPreview(card: BoardCard) {
@@ -553,7 +587,11 @@ export default function BoardScreen() {
     const documentId = expandedCard.documentId;
     setExpandedCard(null);
     setExpandedPreview(null);
-    navigation.navigate('Editor', { documentId });
+    // The modal-presented registration of the same Editor screen (see
+    // App.tsx) - slides up over the board and swipes back down to it,
+    // rather than the sideways push/pop of a regular stack screen, so
+    // editing feels like it's still happening on the board.
+    navigation.navigate('EditorModal', { documentId });
   }
 
   function closeExpandedDocument() {
@@ -913,6 +951,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#111827',
+  },
+  documentPreviewText: {
+    fontSize: 11,
+    lineHeight: 15,
+    color: '#6B7280',
   },
   headerRow: {
     position: 'absolute',

@@ -62,6 +62,7 @@ export default function App() {
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="Tabs" component={Tabs} />
           <Stack.Screen name="Editor" component={DocumentEditorScreen} />
+          <Stack.Screen name="EditorModal" component={DocumentEditorScreen} options={{ presentation: 'modal' }} />
           <Stack.Screen name="Tasks" component={TasksScreen} />
           <Stack.Screen name="Links" component={LinksScreen} />
           <Stack.Screen name="Photos" component={PhotosScreen} />

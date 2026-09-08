@@ -1606,7 +1606,7 @@ function BlockList({
 // embedding screen (not a stub) since Links/Photos/Files/Placeholder are
 // all pushed from inside here exactly as from a normal document.
 type Props =
-  | NativeStackScreenProps<RootStackParamList, 'Editor'>
+  | NativeStackScreenProps<RootStackParamList, 'Editor' | 'EditorModal'>
   | {
       embedded: true;
       documentId: string;

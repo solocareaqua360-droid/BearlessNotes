@@ -8,6 +8,12 @@ export type RootStackParamList = {
   // params that tab screen gets).
   Tabs: undefined | { screen: 'Календар'; params: { jumpToDate: string } };
   Editor: { documentId: string };
+  // Same DocumentEditorScreen as `Editor`, registered a second time purely
+  // for its App.tsx presentation style (slide-up modal, swipe-down to
+  // dismiss) - used when opening a document FROM the board, so editing it
+  // feels like staying on the board rather than navigating away to a
+  // separate screen.
+  EditorModal: { documentId: string };
   Tasks: undefined;
   // Geo/video/other links all live in the one `links` mirror collection
   // (see DocumentEditorScreen's fetchLinkPreview) - this param is what
