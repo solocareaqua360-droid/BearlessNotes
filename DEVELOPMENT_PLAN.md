@@ -1067,7 +1067,12 @@ EAS dev-client (нативні модулі, яких немає в Expo Go).
       Справжній фікс - додати `baseUrl` (щоб WebView повідомляв реальний
       https-origin для цієї локальної сторінки) і перейти на
       `youtube-nocookie.com` (рекомендований Google домен для вбудовувань
-      третіх сторін, менш суворий до такої перевірки).
+      третіх сторін, менш суворий до такої перевірки). Окремий баг з
+      TikTok: embed-сторінка намагалась відкрити `intent://` (спроба
+      deep-link у застосунок TikTok), WebView такої схеми не розуміє -
+      падало з `net::ERR_UNKNOWN_URL_SCHEME`. Виправлено
+      `onShouldStartLoadWithRequest`, що блокує будь-яку навігацію, крім
+      звичайного http(s).
       `src/utils/videoEmbed.ts` (`getVideoEmbedInfo` - визначення
       YouTube/TikTok з самого URL, не з `siteName`, працює навіть якщо
       прев'ю ще не підвантажилось) + `src/components/VideoPlayerModal.tsx`
