@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -21,6 +21,7 @@ type Props = {
 // SearchScreen use) plus a "new document" row at the top.
 export default function CopyToNoteModal({ visible, onPickExisting, onPickNew, onClose }: Props) {
   const [documents, setDocuments] = useState<PickableDocument[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (!visible) return;
@@ -33,6 +34,18 @@ export default function CopyToNoteModal({ visible, onPickExisting, onPickNew, on
       );
     });
   }, [visible]);
+
+  // Reset between openings - a search left over from copying into one note
+  // shouldn't still be filtering the list the next time this sheet opens
+  // for something else entirely.
+  useEffect(() => {
+    if (!visible) setSearchQuery('');
+  }, [visible]);
+
+  const needle = searchQuery.trim().toLowerCase();
+  const filteredDocuments = needle
+    ? documents.filter((d) => (d.title || 'Без назви').toLowerCase().includes(needle))
+    : documents;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -48,8 +61,19 @@ export default function CopyToNoteModal({ visible, onPickExisting, onPickNew, on
             <Text style={[styles.rowText, { color: ACCENT, fontWeight: '600' }]}>Новий документ</Text>
           </Pressable>
 
+          <View style={styles.searchRow}>
+            <Ionicons name="search" size={14} color="#9CA3AF" />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Пошук за назвою"
+              placeholderTextColor="#9CA3AF"
+              style={styles.searchInput}
+            />
+          </View>
+
           <ScrollView style={styles.list}>
-            {documents.map((d) => (
+            {filteredDocuments.map((d) => (
               <Pressable key={d.id} style={styles.row} onPress={() => onPickExisting(d.id)}>
                 <View style={styles.docIcon}>
                   <Ionicons name="document-text-outline" size={16} color={ACCENT} />
@@ -59,6 +83,9 @@ export default function CopyToNoteModal({ visible, onPickExisting, onPickNew, on
                 </Text>
               </Pressable>
             ))}
+            {filteredDocuments.length === 0 && (
+              <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
+            )}
           </ScrollView>
         </Pressable>
       </Pressable>
@@ -94,6 +121,27 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#111827',
     marginBottom: 8,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 4,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#111827',
+  },
+  emptyLabel: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    paddingVertical: 16,
   },
   list: {
     maxHeight: 320,

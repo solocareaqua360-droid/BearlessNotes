@@ -1,5 +1,17 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -13,6 +25,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  setDoc,
   updateDoc,
   writeBatch,
 } from 'firebase/firestore';
@@ -31,13 +44,20 @@ import TagsDrawer, { TagFilter, matchesTagFilter, removeTagFromFilter } from '..
 import CopyToNoteModal from '../components/CopyToNoteModal';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
+import { useSortPref } from '../hooks/useSortPref';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 import { blockFromFile, copyObjectsToNote } from '../utils/copyToNote';
 import { deleteFileFromDrive } from '../utils/googleDrive';
+import { sortItems } from '../utils/sortItems';
+import { colorForDocument } from '../utils/documentColor';
+import SortMenuRows from '../components/SortMenuRows';
 
 const ACCENT = '#8B5CF6';
 const DANGER = '#EF4444';
 const groupsCollection = collection(db, 'groups');
+const filesPrefsDoc = doc(db, 'settings', 'filesPrefs');
+
+type ViewMode = 'list' | 'grid';
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -53,6 +73,9 @@ type FileItem = {
   tagIds: string[];
   groupId?: string;
   driveFileId?: string;
+  driveBytes?: number;
+  updatedAt: number;
+  createdAt?: number;
 };
 
 // Same tinting-by-extension used on the file block itself in
@@ -72,6 +95,7 @@ function fileIconColorFor(name: string): string {
 
 export default function FilesScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [files, setFiles] = useState<FileItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [renamingFile, setRenamingFile] = useState<FileItem | null>(null);
@@ -87,7 +111,11 @@ export default function FilesScreen() {
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
-  const { filterPending, requestDelete, requestDeleteMany, undo, toast } = usePendingDelete<FileItem>();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [cardMenuFileId, setCardMenuFileId] = useState<string | null>(null);
+  const { sortPref, selectSortField } = useSortPref('filesPrefs');
+  const { filterPending, requestDeleteMany, undo, toast } = usePendingDelete<FileItem>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
   const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, clear: clearSelection } =
     useMultiSelect();
@@ -108,10 +136,19 @@ export default function FilesScreen() {
             tagIds: data.tagIds ?? [],
             groupId: data.groupId,
             driveFileId: data.driveFileId,
+            driveBytes: data.driveBytes,
+            updatedAt: data.updatedAt ?? 0,
+            createdAt: data.createdAt,
           };
         })
       );
       setIsLoading(false);
+    });
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(filesPrefsDoc, (snapshot) => {
+      setViewMode((snapshot.data()?.viewMode as ViewMode | undefined) ?? 'list');
     });
   }, []);
 
@@ -143,10 +180,18 @@ export default function FilesScreen() {
   const usedTagIds = new Set(files.flatMap((f) => f.tagIds));
   const drawerTags = tags.filter((t) => usedTagIds.has(t.id));
   const needle = searchQuery.trim().toLowerCase();
-  const displayedFiles = needle
+  const searchedFiles = needle
     ? tagFilteredFiles.filter((f) => (f.title || f.fileName).toLowerCase().includes(needle))
     : tagFilteredFiles;
+  const displayedFiles = sortItems(
+    searchedFiles,
+    sortPref,
+    (f) => f.title || f.fileName,
+    (f) => f.createdAt,
+    (f) => f.updatedAt
+  );
   const tagPickerFile = tagPickerForId ? files.find((f) => f.id === tagPickerForId) ?? null : null;
+  const cardMenuFile = cardMenuFileId ? files.find((f) => f.id === cardMenuFileId) ?? null : null;
   const selectedFiles = files.filter((f) => selectedIds.has(f.id));
 
   async function openFile(file: FileItem) {
@@ -201,28 +246,10 @@ export default function FilesScreen() {
     );
   }
 
-  function confirmDeleteFile(file: FileItem) {
-    if (!file.driveFileId) {
-      requestDelete(file, 'Файл видалено', () => deleteFile(file, false));
-      return;
-    }
-    Alert.alert('Видалити копію з Google Диску?', undefined, [
-      {
-        text: 'Залишити на Диску',
-        onPress: () => requestDelete(file, 'Файл видалено', () => deleteFile(file, false)),
-      },
-      {
-        text: 'Видалити з Диску',
-        style: 'destructive',
-        onPress: () => requestDelete(file, 'Файл видалено', () => deleteFile(file, true)),
-      },
-    ]);
-  }
-
   async function deleteFile(file: FileItem, alsoDeleteFromDrive: boolean) {
     deleteDoc(doc(db, 'files', file.id));
     if (alsoDeleteFromDrive && file.driveFileId) {
-      deleteFileFromDrive(file.driveFileId).then((error) => {
+      deleteFileFromDrive(file.driveFileId, file.driveBytes).then((error) => {
         if (error) Alert.alert('Копія на Диску залишилась', error);
       });
     }
@@ -294,6 +321,11 @@ export default function FilesScreen() {
     clearSelection();
   }
 
+  async function changeViewMode(mode: ViewMode) {
+    setMenuOpen(false);
+    await setDoc(filesPrefsDoc, { viewMode: mode }, { merge: true });
+  }
+
   async function bulkAssignGroup(groupId: string | null) {
     setBulkGroupPickerVisible(false);
     const batch = writeBatch(db);
@@ -328,84 +360,146 @@ export default function FilesScreen() {
   }
 
   function renderFileRow(item: FileItem) {
-    const docCount = item.documentIds.length;
+    const { background, text, textMuted } = colorForDocument(item.id);
     return (
-      <View key={item.id} style={styles.row}>
+      <View key={item.id} style={[styles.row, { backgroundColor: background }]}>
         <Pressable
           style={styles.rowTap}
           onPress={() => (isSelectMode ? toggleSelected(item.id) : openFile(item))}
         >
-          {isSelectMode && (
-            <Ionicons
-              name={selectedIds.has(item.id) ? 'checkbox' : 'square-outline'}
-              size={22}
-              color={selectedIds.has(item.id) ? ACCENT : '#9CA3AF'}
-              style={styles.rowCheckbox}
-            />
-          )}
           <View style={[styles.thumbIcon, { backgroundColor: `${fileIconColorFor(item.fileName)}1A` }]}>
             <Ionicons name={fileIconFor(item.fileName)} size={20} color={fileIconColorFor(item.fileName)} />
           </View>
           <View style={styles.rowBody}>
-            <Text style={styles.rowTitle} numberOfLines={2}>
+            <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
               {item.title || item.fileName}
             </Text>
             <View style={styles.rowMeta}>
               <TagChips
                 tags={tags.filter((t) => item.tagIds.includes(t.id))}
                 onPress={() => setTagPickerForId(item.id)}
+                glass
               />
             </View>
           </View>
         </Pressable>
-        {!isSelectMode && (
-          <View style={styles.rowActions}>
-            <Pressable hitSlop={8} onPress={() => setRenamingFile(item)} style={styles.rowActionButton}>
-              <Ionicons name="pencil-outline" size={16} color="#9CA3AF" />
-            </Pressable>
-            <Pressable hitSlop={8} onPress={() => openDocumentIcon(item)} style={styles.rowDocButtonWrap}>
-              <View style={styles.rowDocButton}>
-                <Ionicons name="document-text-outline" size={16} color={ACCENT} />
-              </View>
-              {docCount > 1 && (
-                <View style={styles.rowDocBadge}>
-                  <Text style={styles.rowDocBadgeLabel}>{docCount}</Text>
-                </View>
-              )}
-            </Pressable>
-            <Pressable hitSlop={8} onPress={() => confirmDeleteFile(item)} style={styles.rowActionButton}>
-              <Ionicons name="trash-outline" size={16} color={DANGER} />
-            </Pressable>
-          </View>
+        {isSelectMode ? (
+          <Pressable hitSlop={8} onPress={() => toggleSelected(item.id)} style={styles.rowActionButton}>
+            <Ionicons
+              name={selectedIds.has(item.id) ? 'checkmark-circle' : 'ellipse-outline'}
+              size={22}
+              color={selectedIds.has(item.id) ? text : textMuted}
+            />
+          </Pressable>
+        ) : (
+          <Pressable hitSlop={8} onPress={() => setCardMenuFileId(item.id)} style={styles.rowActionButton}>
+            <Ionicons name="ellipsis-horizontal" size={16} color={textMuted} />
+          </Pressable>
         )}
       </View>
     );
   }
 
-  if (isLoading) {
+  // Compact grid variant - same shape as DocumentCard/LinksScreen's own
+  // grid layout.
+  function renderFileGridCell(item: FileItem) {
+    const { background, text, textMuted } = colorForDocument(item.id);
     return (
-      <View style={[styles.container, styles.emptyState]}>
-        <ActivityIndicator color={ACCENT} />
+      <View key={item.id} style={[styles.gridCard, { backgroundColor: background }]}>
+        <Pressable
+          style={styles.gridTap}
+          onPress={() => (isSelectMode ? toggleSelected(item.id) : openFile(item))}
+        >
+          <View style={[styles.gridThumb, { backgroundColor: `${fileIconColorFor(item.fileName)}1A` }]}>
+            <Ionicons name={fileIconFor(item.fileName)} size={26} color={fileIconColorFor(item.fileName)} />
+          </View>
+          <Text style={[styles.gridTitle, { color: text }]} numberOfLines={2}>
+            {item.title || item.fileName}
+          </Text>
+          <TagChips
+            tags={tags.filter((t) => item.tagIds.includes(t.id))}
+            onPress={() => setTagPickerForId(item.id)}
+            glass
+          />
+        </Pressable>
+        {isSelectMode ? (
+          <View style={styles.gridSelectBox} pointerEvents="none">
+            <Ionicons
+              name={selectedIds.has(item.id) ? 'checkmark-circle' : 'ellipse-outline'}
+              size={20}
+              color={selectedIds.has(item.id) ? text : '#fff'}
+            />
+          </View>
+        ) : (
+          <Pressable hitSlop={8} onPress={() => setCardMenuFileId(item.id)} style={styles.gridMenuButton}>
+            <Ionicons name="ellipsis-horizontal" size={14} color={textMuted} />
+          </Pressable>
+        )}
       </View>
     );
   }
 
+
   return (
     <View style={styles.container}>
+      <Svg
+        width={windowWidth + 2}
+        height={windowHeight + 2}
+        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
+        pointerEvents="none"
+      >
+        <Defs>
+          <LinearGradient id="filesBg" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0.03" stopColor="#705648" />
+            <Stop offset="0.52" stopColor="#69736E" />
+            <Stop offset="1" stopColor="#000000" />
+          </LinearGradient>
+        </Defs>
+        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#filesBg)" />
+      </Svg>
+
       <View style={styles.headerRow}>
-        <Text style={styles.header}>Файли</Text>
-        <View style={styles.headerButtons}>
-          <Pressable hitSlop={8} onPress={toggleSelectMode}>
-            <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={20} color="#6B7280" />
+        <View style={styles.headerLeft}>
+          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={24} color="#fff" />
           </Pressable>
+          <Text style={styles.header}>Файли</Text>
+        </View>
+        <View style={styles.headerButtons}>
+          <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
+            <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
+          </Pressable>
+          <View style={styles.headerButtonsDivider} />
+          <Pressable hitSlop={8} onPress={toggleSelectMode}>
+            <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
+          </Pressable>
+          <View style={styles.headerButtonsDivider} />
           <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
-            <Ionicons name={isSearching ? 'close' : 'search'} size={20} color="#6B7280" />
+            <Ionicons name={isSearching ? 'close' : 'search'} size={17} color="#fff" />
           </Pressable>
         </View>
       </View>
 
+      {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
+      {menuOpen && (
+        <View style={styles.menuPanel}>
+          <Text style={styles.menuSectionLabel}>Вигляд</Text>
+          <Pressable style={styles.menuRow} onPress={() => changeViewMode('list')}>
+            <Ionicons name="reorder-four-outline" size={17} color="#111827" />
+            <Text style={styles.menuRowLabel}>Список</Text>
+            {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+          </Pressable>
+          <Pressable style={styles.menuRow} onPress={() => changeViewMode('grid')}>
+            <Ionicons name="grid-outline" size={17} color="#111827" />
+            <Text style={styles.menuRowLabel}>Сітка</Text>
+            {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+          </Pressable>
+          <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
+        </View>
+      )}
+
       {groups.length > 0 && (
-        <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" />
+        <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" dark />
       )}
 
       {tagFilter && (
@@ -450,7 +544,11 @@ export default function FilesScreen() {
         </View>
       )}
 
-      {displayedFiles.length === 0 ? (
+      {isLoading ? (
+        <View style={styles.emptyState}>
+          <ActivityIndicator color="#fff" />
+        </View>
+      ) : displayedFiles.length === 0 ? (
         <View style={styles.emptyState}>
           <View style={styles.emptyIcon}>
             <Ionicons name="document-outline" size={32} color={ACCENT} />
@@ -462,11 +560,52 @@ export default function FilesScreen() {
             </Text>
           )}
         </View>
+      ) : viewMode === 'grid' ? (
+        <ScrollView contentContainerStyle={[styles.gridList, isSelectMode && styles.listWithBulkBar]}>
+          {displayedFiles.map(renderFileGridCell)}
+        </ScrollView>
       ) : (
         <ScrollView contentContainerStyle={[styles.list, isSelectMode && styles.listWithBulkBar]}>
           {displayedFiles.map(renderFileRow)}
         </ScrollView>
       )}
+
+      <Modal
+        visible={cardMenuFile !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCardMenuFileId(null)}
+      >
+        <Pressable style={styles.cardMenuBackdrop} onPress={() => setCardMenuFileId(null)}>
+          <Pressable style={styles.cardMenuSheet} onPress={() => {}}>
+            <View style={styles.cardMenuHandle} />
+            <Pressable
+              style={styles.cardMenuRow}
+              onPress={() => {
+                if (cardMenuFile) setRenamingFile(cardMenuFile);
+                setCardMenuFileId(null);
+              }}
+            >
+              <Ionicons name="pencil-outline" size={18} color="#111827" />
+              <Text style={styles.cardMenuRowLabel}>Редагувати назву</Text>
+            </Pressable>
+            {cardMenuFile && cardMenuFile.documentIds.length > 0 && (
+              <Pressable
+                style={styles.cardMenuRow}
+                onPress={() => {
+                  if (cardMenuFile) openDocumentIcon(cardMenuFile);
+                  setCardMenuFileId(null);
+                }}
+              >
+                <Ionicons name="document-text-outline" size={18} color="#111827" />
+                <Text style={styles.cardMenuRowLabel}>
+                  Документи{cardMenuFile.documentIds.length > 1 ? ` (${cardMenuFile.documentIds.length})` : ''}
+                </Text>
+              </Pressable>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <RenamePrompt
         visible={renamingFile !== null}
@@ -550,25 +689,90 @@ export default function FilesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 56,
+    // Matches Documents/Databases' own header capsule vertical position.
+    paddingTop: 90,
     paddingBottom: 8,
   },
-  header: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#111827',
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flexShrink: 1,
   },
+  header: {
+    // At least 2x the previous 22, matching Documents/Databases.
+    fontSize: 46,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  // One elongated glass capsule instead of three bare gray icons - matches
+  // Documents/Calendar's own header capsule.
   headerButtons: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
+    height: 38,
+    borderRadius: 19,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(20,20,20,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  headerButtonsDivider: {
+    width: 1,
+    height: 16,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  menuBackdrop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 5,
+  },
+  menuPanel: {
+    position: 'absolute',
+    top: 96,
+    right: 20,
+    width: 200,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+    zIndex: 6,
+  },
+  menuSectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.04,
+    textTransform: 'uppercase',
+    color: '#9CA3AF',
+    paddingHorizontal: 8,
+    paddingTop: 4,
+    paddingBottom: 2,
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+  },
+  menuRowLabel: {
+    flex: 1,
+    fontSize: 14,
+    color: '#111827',
   },
   filterRow: {
     flexDirection: 'row',
@@ -593,9 +797,6 @@ const styles = StyleSheet.create({
   filterChipLabel: {
     fontSize: 13,
     fontWeight: '600',
-  },
-  rowCheckbox: {
-    alignSelf: 'center',
   },
   searchRow: {
     flexDirection: 'row',
@@ -630,19 +831,26 @@ const styles = StyleSheet.create({
   emptyLabel: {
     marginTop: 16,
     fontSize: 15,
-    color: '#111827',
+    color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
   },
   emptyHint: {
     marginTop: 6,
     fontSize: 13,
-    color: '#9CA3AF',
+    color: 'rgba(255,255,255,0.55)',
     textAlign: 'center',
   },
   list: {
     paddingVertical: 8,
     paddingHorizontal: 20,
     gap: 10,
+  },
+  gridList: {
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
   },
   listWithBulkBar: {
     paddingBottom: 90,
@@ -651,9 +859,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 6,
-    backgroundColor: '#F9FAFB',
     borderRadius: 14,
     padding: 10,
+    // Thin border + drop shadow, same as DocumentCard - a light-colored
+    // card needs an edge to read against the gradient page behind it.
+    borderWidth: 1,
+    borderColor: 'rgba(176,176,176,0.5)',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
   },
   rowTap: {
     flex: 1,
@@ -676,7 +892,6 @@ const styles = StyleSheet.create({
   rowTitle: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#111827',
   },
   rowMeta: {
     flexDirection: 'row',
@@ -684,40 +899,88 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 2,
   },
-  rowActions: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 2,
-  },
   rowActionButton: {
     padding: 6,
   },
-  rowDocButtonWrap: {
-    position: 'relative',
+  gridCard: {
+    width: '48%',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(176,176,176,0.5)',
+    padding: 10,
+    gap: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
   },
-  rowDocButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 9,
-    backgroundColor: '#F5F3FF',
+  gridTap: {
+    gap: 4,
+  },
+  gridThumb: {
+    width: '100%',
+    height: 96,
+    borderRadius: 10,
+    marginBottom: 4,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rowDocBadge: {
-    position: 'absolute',
-    top: -5,
-    right: -5,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: ACCENT,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 3,
-  },
-  rowDocBadgeLabel: {
-    fontSize: 10,
+  gridTitle: {
+    fontSize: 13,
     fontWeight: '700',
-    color: '#fff',
+  },
+  gridSelectBox: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gridMenuButton: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardMenuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(17,24,39,0.45)',
+    justifyContent: 'flex-end',
+  },
+  cardMenuSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 28,
+  },
+  cardMenuHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  cardMenuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  cardMenuRowLabel: {
+    fontSize: 15,
+    color: '#111827',
   },
 });

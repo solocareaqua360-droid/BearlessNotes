@@ -15,17 +15,47 @@ function generateId(): string {
 // that feature) - so copying one reuses the SAME block id rather than
 // minting a new one, and the same mirror record ends up referenced from
 // both documents instead of being duplicated.
-export function blockFromFile(file: { id: string; fileUri: string; fileName: string; mimeType?: string; title?: string }): Block {
+export function blockFromFile(file: {
+  id: string;
+  fileUri: string;
+  fileName: string;
+  mimeType?: string;
+  title?: string;
+  createdAt?: number;
+  driveFileId?: string;
+  driveBytes?: number;
+}): Block {
   const block: Block = { id: file.id, text: '', type: 'file', fileUri: file.fileUri, fileName: file.fileName };
   if (file.mimeType) block.mimeType = file.mimeType;
   if (file.title) block.fileTitle = file.title;
+  if (file.createdAt) block.createdAt = file.createdAt;
+  // Carrying the source record's own driveFileId/driveBytes over (rather
+  // than leaving them unset) is what tells syncFilesForDocument this file
+  // is already backed up - without it, referencing an existing file from a
+  // second document would look like a brand-new attachment and trigger a
+  // duplicate upload to Drive.
+  if (file.driveFileId) block.driveFileId = file.driveFileId;
+  if (file.driveBytes) block.driveBytes = file.driveBytes;
   return block;
 }
 
-export function blockFromPhoto(photo: { id: string; imageUri: string; imageFit?: 'contain' | 'cover'; title?: string }): Block {
+export function blockFromPhoto(photo: {
+  id: string;
+  imageUri: string;
+  imageFit?: 'contain' | 'cover';
+  title?: string;
+  createdAt?: number;
+  driveFileId?: string;
+  driveBytes?: number;
+}): Block {
   const block: Block = { id: photo.id, text: '', type: 'image', imageUri: photo.imageUri };
   if (photo.imageFit) block.imageFit = photo.imageFit;
   if (photo.title) block.imageTitle = photo.title;
+  if (photo.createdAt) block.createdAt = photo.createdAt;
+  // See blockFromFile's identical comment on why this prevents a duplicate
+  // Drive upload when referencing an already-backed-up photo.
+  if (photo.driveFileId) block.driveFileId = photo.driveFileId;
+  if (photo.driveBytes) block.driveBytes = photo.driveBytes;
   return block;
 }
 
@@ -58,10 +88,12 @@ export async function copyObjectsToNote(
       updatedAt: Date.now(),
     });
   } else {
+    const now = Date.now();
     const newDocRef = await addDoc(documentsCollection, {
       title: 'Без назви',
       blocks,
-      updatedAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
     });
     documentId = newDocRef.id;
   }

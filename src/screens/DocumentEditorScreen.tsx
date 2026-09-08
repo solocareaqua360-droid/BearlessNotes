@@ -1,5 +1,6 @@
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import { ForwardedRef, ReactNode, forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
   Image,
@@ -23,7 +24,10 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
 import DocumentScanner, { ResponseType, ScanDocumentResponseStatus } from 'react-native-document-scanner-plugin';
 import * as Print from 'expo-print';
+import * as Clipboard from 'expo-clipboard';
 import { dateKey, formatShortDate, parseDateKey } from '../utils/dateLocale';
+import ReminderSheet from '../components/ReminderSheet';
+import { cancelReminder, scheduleReminder } from '../utils/reminders';
 // The new expo-file-system File/Directory API tracks read permission per
 // picked URI internally and rejects copying a URI it didn't hand out
 // itself ("Missing 'READ' permission") - the legacy module just wraps a
@@ -44,10 +48,10 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
-import { deleteDoc, deleteField, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { deleteDoc, deleteField, doc, getDoc, getDocFromCache, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
-import { Block, BlockType, SketchElement, Tag } from '../types';
+import { Block, BlockType, SketchElement, Tag, TableRow } from '../types';
 import { RootStackParamList } from '../navigation';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import RenamePrompt from '../components/RenamePrompt';
@@ -57,8 +61,12 @@ import EditorToolbar, { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolba
 import { BlockAction } from '../components/blockActions';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { backupFileToDrive } from '../utils/googleDrive';
+import { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags } from '../hooks/useTags';
 import { linkDocId } from '../utils/linkId';
+import { useDownloadToast } from '../hooks/useDownloadToast';
+import DownloadToast from '../components/DownloadToast';
+import AddExistingItemModal from '../components/AddExistingItemModal';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -85,8 +93,9 @@ function generateId(): string {
 // around - it never sets a field it doesn't need (checked only exists on
 // checkbox blocks) rather than setting that field to undefined.
 function buildBlock(id: string, type: BlockType, text: string): Block {
-  const block: Block = { id, text, type };
+  const block: Block = { id, text, type, createdAt: Date.now() };
   if (type === 'checkbox') block.checked = false;
+  if (type === 'table') block.tableRows = [{ cells: ['', ''] }, { cells: ['', ''] }];
   return block;
 }
 
@@ -246,9 +255,12 @@ async function getDownloadDirUri(forceReprompt = false): Promise<string | null> 
   return permission.directoryUri;
 }
 
-async function downloadToDevice(sourceUri: string, fileName: string, mimeType: string) {
+// Returns the saved file's own content:// URI (for the post-download
+// "Показати в папці" toast) or null if the user never granted/re-granted a
+// download folder.
+async function downloadToDevice(sourceUri: string, fileName: string, mimeType: string): Promise<string | null> {
   const dirUri = await getDownloadDirUri();
-  if (!dirUri) return;
+  if (!dirUri) return null;
   const dot = fileName.lastIndexOf('.');
   const nameWithoutExt = dot > 0 ? fileName.slice(0, dot) : fileName;
   const writeInto = async (targetDirUri: string) => {
@@ -259,16 +271,17 @@ async function downloadToDevice(sourceUri: string, fileName: string, mimeType: s
     );
     const content = await LegacyFileSystem.readAsStringAsync(sourceUri, { encoding: 'base64' });
     await LegacyFileSystem.writeAsStringAsync(destUri, content, { encoding: 'base64' });
+    return destUri;
   };
   try {
-    await writeInto(dirUri);
+    return await writeInto(dirUri);
   } catch {
     // The previously granted folder may have been revoked since (e.g. the
     // user cleared it from Android's settings) - ask once more instead of
     // silently failing on every future download.
     const freshDirUri = await getDownloadDirUri(true);
-    if (!freshDirUri) return;
-    await writeInto(freshDirUri);
+    if (!freshDirUri) return null;
+    return await writeInto(freshDirUri);
   }
 }
 
@@ -365,6 +378,288 @@ function parseFormattedInto(text: string, style: TextStyle, out: TextSegment[]) 
   flushPlain(text.length);
 }
 
+// Same segments FormattedText renders on-screen, reused so an exported
+// PDF keeps bold/italic/underline/strikethrough/color instead of showing
+// the raw **markers**.
+function plainTextOf(text: string): string {
+  return parseFormattedText(text)
+    .map((s) => s.text)
+    .join('');
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function segmentToHtml(seg: TextSegment): string {
+  let html = escapeHtml(seg.text);
+  if (seg.bold) html = `<b>${html}</b>`;
+  if (seg.italic) html = `<i>${html}</i>`;
+  if (seg.underline) html = `<u>${html}</u>`;
+  if (seg.strikethrough) html = `<s>${html}</s>`;
+  if (seg.highlight) html = `<span style="background:${seg.highlight}">${html}</span>`;
+  if (seg.color) html = `<span style="color:${seg.color}">${html}</span>`;
+  return html;
+}
+
+function textToHtml(text: string): string {
+  return parseFormattedText(text).map(segmentToHtml).join('') || '&nbsp;';
+}
+
+function formatSum(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
+// --- Table formulas -------------------------------------------------
+// A cell's raw text is either a plain value or a formula starting with
+// "=" that references other cells by A1-style address (e.g. "B3") or a
+// rectangular range ("B1:B3"). Support is deliberately small: either a
+// whole-cell SUM/AVERAGE/MIN/MAX/COUNT(range) call, or a plain
+// arithmetic expression (+ - * / and parens) with cell refs substituted
+// in - enough for "simple arithmetic, sum a column" without pulling in
+// a real formula-language parser. No eval/new Function (Hermes doesn't
+// reliably support dynamic code eval), so arithmetic is evaluated with
+// a small hand-written recursive-descent parser.
+
+function columnLetter(index: number): string {
+  let n = index + 1;
+  let s = '';
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    s = String.fromCharCode(65 + rem) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+function columnIndexFromLetters(letters: string): number {
+  let n = 0;
+  for (const ch of letters.toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
+}
+
+function parseCellRef(ref: string): { row: number; col: number } | null {
+  const m = /^([A-Za-z]+)([0-9]+)$/.exec(ref.trim());
+  if (!m) return null;
+  const row = parseInt(m[2], 10) - 1;
+  if (row < 0) return null;
+  return { row, col: columnIndexFromLetters(m[1]) };
+}
+
+function evaluateArithmetic(expr: string): number {
+  let i = 0;
+  const peek = () => expr[i];
+  function parseNumber(): number {
+    const start = i;
+    while (i < expr.length && /[0-9.]/.test(expr[i])) i++;
+    const n = parseFloat(expr.slice(start, i));
+    return Number.isNaN(n) ? 0 : n;
+  }
+  function parseFactor(): number {
+    while (peek() === ' ') i++;
+    if (peek() === '(') {
+      i++;
+      const v = parseExpr();
+      while (peek() === ' ') i++;
+      if (peek() === ')') i++;
+      return v;
+    }
+    if (peek() === '-') {
+      i++;
+      return -parseFactor();
+    }
+    if (peek() === '+') {
+      i++;
+      return parseFactor();
+    }
+    return parseNumber();
+  }
+  function parseTerm(): number {
+    let v = parseFactor();
+    for (;;) {
+      while (peek() === ' ') i++;
+      if (peek() === '*') {
+        i++;
+        v *= parseFactor();
+      } else if (peek() === '/') {
+        i++;
+        const d = parseFactor();
+        v = d !== 0 ? v / d : 0;
+      } else break;
+    }
+    return v;
+  }
+  function parseExpr(): number {
+    let v = parseTerm();
+    for (;;) {
+      while (peek() === ' ') i++;
+      if (peek() === '+') {
+        i++;
+        v += parseTerm();
+      } else if (peek() === '-') {
+        i++;
+        v -= parseTerm();
+      } else break;
+    }
+    return v;
+  }
+  const result = parseExpr();
+  return Number.isFinite(result) ? result : 0;
+}
+
+function evaluateRange(rangeExpr: string, rows: TableRow[], stack: Set<string>): number[] {
+  const [fromRaw, toRaw] = rangeExpr.split(':');
+  const from = parseCellRef(fromRaw ?? '');
+  const to = parseCellRef((toRaw ?? fromRaw) ?? '');
+  if (!from || !to) return [];
+  const values: number[] = [];
+  const rMin = Math.min(from.row, to.row);
+  const rMax = Math.max(from.row, to.row);
+  const cMin = Math.min(from.col, to.col);
+  const cMax = Math.max(from.col, to.col);
+  for (let r = rMin; r <= rMax; r++) {
+    for (let c = cMin; c <= cMax; c++) values.push(evaluateCell(rows, r, c, stack));
+  }
+  return values;
+}
+
+function evaluateFormula(expr: string, rows: TableRow[], stack: Set<string>): number {
+  const trimmed = expr.trim();
+  const fnMatch = /^([A-Za-z]+)\(([^()]*)\)$/.exec(trimmed);
+  if (fnMatch) {
+    const fn = fnMatch[1].toUpperCase();
+    const values = evaluateRange(fnMatch[2], rows, stack);
+    if (fn === 'SUM') return values.reduce((a, b) => a + b, 0);
+    if (fn === 'AVERAGE' || fn === 'AVG')
+      return values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+    if (fn === 'MIN') return values.length ? Math.min(...values) : 0;
+    if (fn === 'MAX') return values.length ? Math.max(...values) : 0;
+    if (fn === 'COUNT') return values.length;
+  }
+  const substituted = trimmed.replace(/[A-Za-z]+[0-9]+/g, (ref) => {
+    const parsed = parseCellRef(ref);
+    if (!parsed) return '0';
+    return String(evaluateCell(rows, parsed.row, parsed.col, stack));
+  });
+  return evaluateArithmetic(substituted);
+}
+
+// `stack` guards against a formula that (directly or transitively)
+// references its own cell - without it a cycle would recurse forever.
+function evaluateCell(rows: TableRow[], row: number, col: number, stack: Set<string>): number {
+  const key = `${row}:${col}`;
+  if (stack.has(key)) return 0;
+  const raw = (rows[row]?.cells[col] ?? '').trim();
+  if (!raw) return 0;
+  if (raw.startsWith('=')) {
+    stack.add(key);
+    const result = evaluateFormula(raw.slice(1), rows, stack);
+    stack.delete(key);
+    return result;
+  }
+  const n = parseFloat(raw.replace(',', '.'));
+  return Number.isNaN(n) ? 0 : n;
+}
+
+function displayValueOf(rows: TableRow[], row: number, col: number): string {
+  const raw = rows[row]?.cells[col] ?? '';
+  if (raw.trim().startsWith('=')) return formatSum(evaluateCell(rows, row, col, new Set()));
+  return raw;
+}
+
+// Builds one self-contained HTML document from the title + blocks, for
+// expo-print's HTML -> PDF (same approach as the scanner's own PDF
+// assembly - no native module needed). Images are inlined as base64 data
+// URIs since expo-print's WebView renderer can't reliably resolve local
+// file:// paths; files/links/sketches fall back to a plain placeholder
+// line rather than trying to render them.
+async function buildDocumentHtml(title: string, blocks: Block[]): Promise<string> {
+  const parts: string[] = [];
+  for (const block of blocks) {
+    const type = block.type ?? 'paragraph';
+    if (type === 'divider') {
+      parts.push('<hr/>');
+    } else if (type === 'checkbox') {
+      const style = block.checked ? 'text-decoration:line-through;opacity:0.6;' : '';
+      parts.push(`<p style="margin:4px 0;${style}">${block.checked ? '☑' : '☐'} ${textToHtml(block.text)}</p>`);
+    } else if (type === 'bulleted') {
+      parts.push(`<ul style="margin:2px 0;"><li>${textToHtml(block.text)}</li></ul>`);
+    } else if (type === 'numbered') {
+      parts.push(`<ol style="margin:2px 0;"><li>${textToHtml(block.text)}</li></ol>`);
+    } else if (type === 'image' && block.imageUri) {
+      try {
+        const base64 = await LegacyFileSystem.readAsStringAsync(block.imageUri, { encoding: 'base64' });
+        parts.push(`<img src="data:image/jpeg;base64,${base64}" style="max-width:100%;margin:8px 0;" />`);
+      } catch {
+        parts.push('<p>[Зображення]</p>');
+      }
+    } else if (type === 'file') {
+      parts.push(`<p>[Файл: ${escapeHtml(block.fileTitle || block.fileName || '')}]</p>`);
+    } else if (type === 'link') {
+      parts.push(
+        `<p><a href="${escapeHtml(block.linkUrl ?? '')}">${escapeHtml(block.linkTitle || block.linkUrl || '')}</a></p>`
+      );
+    } else if (type === 'sketch') {
+      parts.push('<p>[Малюнок]</p>');
+    } else if (type === 'table') {
+      const rows = block.tableRows ?? [];
+      const rowsHtml = rows
+        .map(
+          (row, r) =>
+            `<tr>${row.cells
+              .map(
+                (_, c) =>
+                  `<td style="border:1px solid #ccc;padding:4px 8px;">${escapeHtml(displayValueOf(rows, r, c))}</td>`
+              )
+              .join('')}</tr>`
+        )
+        .join('');
+      parts.push(`<table style="border-collapse:collapse;margin:8px 0;">${rowsHtml}</table>`);
+    } else if (block.text.trim()) {
+      parts.push(`<p style="margin:4px 0;">${textToHtml(block.text)}</p>`);
+    }
+  }
+  return `<html><body style="font-family:-apple-system,sans-serif;padding:24px;">
+    <h1>${escapeHtml(title || 'Без назви')}</h1>
+    ${parts.join('\n')}
+  </body></html>`;
+}
+
+// Plain-text equivalent for the .txt export - a table's columns become
+// tab-separated so pasting into a spreadsheet still lines up.
+function buildDocumentText(title: string, blocks: Block[]): string {
+  const lines: string[] = [title || 'Без назви', ''];
+  for (const block of blocks) {
+    const type = block.type ?? 'paragraph';
+    const plain = plainTextOf(block.text);
+    if (type === 'divider') {
+      lines.push('---');
+    } else if (type === 'checkbox') {
+      lines.push(`${block.checked ? '[x]' : '[ ]'} ${plain}`);
+    } else if (type === 'bulleted') {
+      lines.push(`- ${plain}`);
+    } else if (type === 'numbered') {
+      lines.push(`1. ${plain}`);
+    } else if (type === 'file') {
+      lines.push(`[Файл: ${block.fileTitle || block.fileName || ''}]`);
+    } else if (type === 'link') {
+      lines.push(`${block.linkTitle || ''} ${block.linkUrl || ''}`.trim());
+    } else if (type === 'sketch') {
+      lines.push('[Малюнок]');
+    } else if (type === 'table') {
+      const rows = block.tableRows ?? [];
+      rows.forEach((row, r) => lines.push(row.cells.map((_, c) => displayValueOf(rows, r, c)).join('\t')));
+    } else {
+      lines.push(plain);
+    }
+  }
+  return lines.join('\n');
+}
+
+function sanitizeFileName(name: string): string {
+  return name.replace(/[/\\]/g, '-').trim() || 'Без назви';
+}
+
 function FormattedText({ segments, defaultColor }: { segments: TextSegment[]; defaultColor: string }) {
   return (
     <>
@@ -407,6 +702,8 @@ type BlockRowProps = {
   onBackspaceEmpty: (id: string) => void;
   onToggleSelected: (id: string) => void;
   onToggleChecked: (id: string) => void;
+  onOpenReminder: (id: string) => void;
+  onUpdateBlock: (id: string, patch: Partial<Block>) => void;
   onFocus: (id: string) => void;
   onSelectionChange: (id: string, start: number, end: number) => void;
   onOpenImage: (id: string) => void;
@@ -420,6 +717,196 @@ type BlockRowProps = {
   inputRef: (ref: TextInput | null) => void;
 };
 
+// A simple editable grid - text-only cells (no rich-text markup inside a
+// cell), rows all kept the same length as columns are added/removed. The
+// sum row is computed here at render time from tableShowSum rather than
+// stored, so it can never drift out of sync with edited cells - parses
+// each cell as a number (comma or dot decimal), treating anything that
+// doesn't parse as 0.
+// Spreadsheet-style table: lettered column headers + numbered row gutter
+// (so a cell has an address to reference), tap-to-select cells, and a
+// formula bar above the grid for typing/editing a cell's raw text - a
+// full-width input beats squeezing formula text into a ~80px cell, and
+// keeps only one TextInput mounted instead of one per cell (this editor
+// has hit real Android keyboard/focus bugs with many TextInputs jammed
+// together before, see the sketch editor's text-tool history).
+function TableBlockContent({
+  block,
+  canEdit,
+  onUpdate,
+}: {
+  block: Block;
+  canEdit: boolean;
+  onUpdate: (patch: Partial<Block>) => void;
+}) {
+  const rows = block.tableRows && block.tableRows.length > 0 ? block.tableRows : [{ cells: ['', ''] }];
+  const columnCount = rows[0]?.cells.length ?? 0;
+  const [selected, setSelected] = useState<{ r: number; c: number } | null>(null);
+  // Whether the formula bar currently holds keyboard focus - reliable now
+  // that the grid's ScrollView has keyboardShouldPersistTaps="always"
+  // (tapping a cell no longer blurs the bar first), unlike when this only
+  // gated on the cell's raw text: that trapped a user on a formula cell
+  // forever, since every formula's text starts with "=" and there was no
+  // way to tell "still composing" from "done, tap normally now".
+  const [formulaFocused, setFormulaFocused] = useState(false);
+  const formulaInputRef = useRef<TextInput>(null);
+
+  function selectCell(r: number, c: number) {
+    setSelected({ r, c });
+    formulaInputRef.current?.focus();
+  }
+
+  function setCell(r: number, c: number, value: string) {
+    const next = rows.map((row) => ({ cells: [...row.cells] }));
+    next[r].cells[c] = value;
+    onUpdate({ tableRows: next });
+  }
+
+  // Excel-style tap-to-reference: while actively composing a formula
+  // (formula bar focused and the selected cell's own text is already
+  // "=..."), tapping another cell appends that cell's address instead of
+  // jumping the selection there - so building "=SUM(A1:A3)" is type
+  // "=SUM(", tap A1, type ":", tap A3, type ")" rather than typing every
+  // cell address by hand. The formula bar's own checkmark/"Done" key ends
+  // this mode so a finished formula can be left behind to select and edit
+  // other cells normally.
+  function handleCellPress(r: number, c: number) {
+    if (!canEdit) return;
+    if (selected && formulaFocused) {
+      const currentRaw = rows[selected.r]?.cells[selected.c] ?? '';
+      if (currentRaw.trim().startsWith('=')) {
+        setCell(selected.r, selected.c, currentRaw + columnLetter(c) + String(r + 1));
+        formulaInputRef.current?.focus();
+        return;
+      }
+    }
+    selectCell(r, c);
+  }
+
+  function confirmFormula() {
+    formulaInputRef.current?.blur();
+  }
+
+  function addRow() {
+    onUpdate({
+      tableRows: [...rows.map((row) => ({ cells: [...row.cells] })), { cells: Array(columnCount).fill('') }],
+    });
+  }
+
+  function addColumn() {
+    onUpdate({ tableRows: rows.map((row) => ({ cells: [...row.cells, ''] })) });
+  }
+
+  function removeRow(r: number) {
+    if (rows.length <= 1) return;
+    if (selected?.r === r) setSelected(null);
+    onUpdate({ tableRows: rows.filter((_, i) => i !== r) });
+  }
+
+  // Appends a real total row with an actual =SUM(...) formula per
+  // column, rather than a separate virtual display-only row - it's just
+  // another editable row, so it can be edited or deleted like any other.
+  function addSumRow() {
+    const lastRow = rows.length;
+    const sumCells = Array.from({ length: columnCount }, (_, c) => {
+      const letter = columnLetter(c);
+      return `=SUM(${letter}1:${letter}${lastRow})`;
+    });
+    onUpdate({ tableRows: [...rows.map((row) => ({ cells: [...row.cells] })), { cells: sumCells }] });
+  }
+
+  const selectedRaw = selected ? rows[selected.r]?.cells[selected.c] ?? '' : '';
+
+  return (
+    <View style={styles.tableBlock}>
+      {canEdit && (
+        <View style={styles.tableFormulaBar}>
+          <View style={styles.tableFormulaRefBadge}>
+            <Text style={styles.tableFormulaRefText}>
+              {selected ? `${columnLetter(selected.c)}${selected.r + 1}` : '—'}
+            </Text>
+          </View>
+          <TextInput
+            ref={formulaInputRef}
+            style={styles.tableFormulaInput}
+            value={selectedRaw}
+            editable={canEdit}
+            onChangeText={(value) => selected && setCell(selected.r, selected.c, value)}
+            onFocus={() => setFormulaFocused(true)}
+            onBlur={() => setFormulaFocused(false)}
+            placeholder={selected ? 'Значення або =SUM(A1:A3)' : 'Виберіть клітинку'}
+            placeholderTextColor="#9CA3AF"
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="done"
+            onSubmitEditing={confirmFormula}
+            blurOnSubmit
+          />
+          {formulaFocused && (
+            <Pressable hitSlop={8} onPress={confirmFormula} style={styles.tableFormulaDoneButton}>
+              <Ionicons name="checkmark" size={18} color="#fff" />
+            </Pressable>
+          )}
+        </View>
+      )}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always">
+        <View>
+          <View style={styles.tableHeaderRow}>
+            <View style={styles.tableGutterCell} />
+            {Array.from({ length: columnCount }, (_, c) => (
+              <View key={c} style={styles.tableColumnHeaderCell}>
+                <Text style={styles.tableColumnHeaderText}>{columnLetter(c)}</Text>
+              </View>
+            ))}
+          </View>
+          {rows.map((row, r) => (
+            <View key={r} style={styles.tableRow}>
+              <View style={styles.tableGutterCell}>
+                <Text style={styles.tableGutterText}>{r + 1}</Text>
+              </View>
+              {row.cells.map((_, c) => {
+                const isSelected = selected?.r === r && selected?.c === c;
+                return (
+                  <Pressable
+                    key={c}
+                    style={[styles.tableCell, isSelected && styles.tableCellSelected]}
+                    onPress={() => handleCellPress(r, c)}
+                  >
+                    <Text style={styles.tableCellText} numberOfLines={1}>
+                      {displayValueOf(rows, r, c)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+              {canEdit && rows.length > 1 && (
+                <Pressable hitSlop={8} onPress={() => removeRow(r)} style={styles.tableRowRemove}>
+                  <Ionicons name="close" size={14} color="#9CA3AF" />
+                </Pressable>
+              )}
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+      {canEdit && (
+        <View style={styles.tableControls}>
+          <Pressable style={styles.tableControlBtn} onPress={addRow}>
+            <Ionicons name="add" size={14} color="#6B7280" />
+            <Text style={styles.tableControlLabel}>Рядок</Text>
+          </Pressable>
+          <Pressable style={styles.tableControlBtn} onPress={addColumn}>
+            <Ionicons name="add" size={14} color="#6B7280" />
+            <Text style={styles.tableControlLabel}>Колонка</Text>
+          </Pressable>
+          <Pressable style={styles.tableControlBtn} onPress={addSumRow}>
+            <Ionicons name="calculator-outline" size={14} color="#6B7280" />
+            <Text style={styles.tableControlLabel}>Підсумок</Text>
+          </Pressable>
+        </View>
+      )}
+    </View>
+  );
+}
+
 function BlockRow({
   item,
   isSelected,
@@ -432,6 +919,8 @@ function BlockRow({
   onBackspaceEmpty,
   onToggleSelected,
   onToggleChecked,
+  onOpenReminder,
+  onUpdateBlock,
   onFocus,
   onSelectionChange,
   onOpenImage,
@@ -540,6 +1029,14 @@ function BlockRow({
           <Text style={styles.blockPlaceholder}>Порожній малюнок</Text>
         )}
       </Pressable>
+    );
+  } else if (type === 'table') {
+    content = (
+      <TableBlockContent
+        block={item}
+        canEdit={canEditText}
+        onUpdate={(patch) => onUpdateBlock(item.id, patch)}
+      />
     );
   } else if (type === 'file') {
     // No cloud upload yet - the URI is the file picker's own local cache
@@ -728,11 +1225,13 @@ function BlockRow({
           </Pressable>
           {textField}
         </View>
-        {reminderLabel && (
-          <View style={styles.checkboxReminderRow}>
-            <Ionicons name="alarm-outline" size={11} color={ACCENT} />
-            <Text style={styles.checkboxReminderText}>{reminderLabel}</Text>
-          </View>
+        {!isSelectMode && (
+          <Pressable style={styles.checkboxReminderRow} hitSlop={4} onPress={() => onOpenReminder(item.id)}>
+            <Ionicons name="alarm-outline" size={11} color={reminderLabel ? ACCENT : '#9CA3AF'} />
+            <Text style={[styles.checkboxReminderText, !reminderLabel && styles.checkboxReminderTextEmpty]}>
+              {reminderLabel ?? 'Нагадування'}
+            </Text>
+          </Pressable>
         )}
         </View>
       );
@@ -755,7 +1254,7 @@ function BlockRow({
         style={styles.dragHandle}
       >
         <Ionicons
-          name={isSelectMode ? (isSelected ? 'checkbox' : 'square-outline') : 'reorder-two-outline'}
+          name={isSelectMode ? (isSelected ? 'checkmark-circle' : 'ellipse-outline') : 'reorder-two-outline'}
           size={isSelectMode ? 26 : 20}
           color={isSelected ? ACCENT : '#9CA3AF'}
         />
@@ -794,6 +1293,8 @@ type SortableBlockRowProps = {
   onDragEnd: () => void;
   onToggleSelected: (id: string) => void;
   onToggleChecked: (id: string) => void;
+  onOpenReminder: (id: string) => void;
+  onUpdateBlock: (id: string, patch: Partial<Block>) => void;
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
   onFocus: (id: string) => void;
@@ -825,6 +1326,8 @@ function SortableBlockRow({
   onDragEnd,
   onToggleSelected,
   onToggleChecked,
+  onOpenReminder,
+  onUpdateBlock,
   onChangeText,
   onBackspaceEmpty,
   onFocus,
@@ -899,6 +1402,8 @@ function SortableBlockRow({
             onBackspaceEmpty={onBackspaceEmpty}
             onToggleSelected={onToggleSelected}
             onToggleChecked={onToggleChecked}
+            onOpenReminder={onOpenReminder}
+            onUpdateBlock={onUpdateBlock}
             onFocus={onFocus}
             onSelectionChange={onSelectionChange}
             onOpenImage={onOpenImage}
@@ -925,6 +1430,8 @@ type BlockListProps = {
   textVersions: Record<string, number>;
   onToggleSelected: (id: string) => void;
   onToggleChecked: (id: string) => void;
+  onOpenReminder: (id: string) => void;
+  onUpdateBlock: (id: string, patch: Partial<Block>) => void;
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
   onFocus: (id: string) => void;
@@ -949,6 +1456,8 @@ function BlockList({
   textVersions,
   onToggleSelected,
   onToggleChecked,
+  onOpenReminder,
+  onUpdateBlock,
   onChangeText,
   onBackspaceEmpty,
   onFocus,
@@ -1160,6 +1669,8 @@ function BlockList({
           onDragEnd={() => handleDragEnd(dragGroupFor(item.id))}
           onToggleSelected={onToggleSelected}
           onToggleChecked={onToggleChecked}
+          onOpenReminder={onOpenReminder}
+          onUpdateBlock={onUpdateBlock}
           onChangeText={onChangeText}
           onBackspaceEmpty={onBackspaceEmpty}
           onFocus={onFocus}
@@ -1201,17 +1712,31 @@ type Props =
       documentId: string;
       navigation: NativeStackNavigationProp<RootStackParamList>;
       extraFields?: Record<string, unknown>;
+      // CalendarScreen owns its own header capsule (select-mode toggle +
+      // save checkmark live there now, not in a separate row above the
+      // note) and has no other way to reach this instance's internal
+      // state - these mirror it out, and the ref below lets it drive the
+      // toggle without lifting isSelectMode into two-way controlled props.
+      onSelectModeChange?: (isSelectMode: boolean) => void;
+      onSaveStatusChange?: (status: 'saved' | 'saving') => void;
     };
 
-export default function DocumentEditorScreen(props: Props) {
+export type DocumentEditorHandle = {
+  toggleSelectMode: () => void;
+};
+
+function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHandle>) {
   const embedded = 'embedded' in props;
   const documentId = 'embedded' in props ? props.documentId : props.route.params.documentId;
   const navigation = props.navigation;
   const extraFields = 'embedded' in props ? (props.extraFields ?? {}) : {};
+  const onSelectModeChange = 'embedded' in props ? props.onSelectModeChange : undefined;
+  const onSaveStatusChange = 'embedded' in props ? props.onSaveStatusChange : undefined;
   const [title, setTitle] = useState('');
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [tagIds, setTagIds] = useState<string[]>([]);
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
+  const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
   const [isLoaded, setIsLoaded] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -1235,6 +1760,9 @@ export default function DocumentEditorScreen(props: Props) {
   const [viewerImageId, setViewerImageId] = useState<string | null>(null);
   const [imageRenameId, setImageRenameId] = useState<string | null>(null);
   const [sketchEditorBlockId, setSketchEditorBlockId] = useState<string | null>(null);
+  const [existingItemPickerBlockId, setExistingItemPickerBlockId] = useState<string | null>(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [reminderBlockId, setReminderBlockId] = useState<string | null>(null);
   const focusIdRef = useRef<string | null>(null);
   const focusToEndRef = useRef(false);
   const focusedBlockIdRef = useRef<string | null>(null);
@@ -1266,6 +1794,12 @@ export default function DocumentEditorScreen(props: Props) {
   // for a block be cancelled if the text changes again (or stops being a
   // bare URL) before it fires.
   const linkConversionTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  // Set from the initial load below (true only when the document didn't
+  // exist yet in Firestore - a fresh daily note, see the autosave effect's
+  // own comment on setDoc+merge). A regular document already exists by the
+  // time this screen opens, so this stays false and its own createdAt
+  // (set at DocumentsScreen's addDoc) is left untouched.
+  const isNewDocumentRef = useRef(false);
   const isMountedRef = useRef(true);
   useEffect(
     () => () => {
@@ -1290,8 +1824,23 @@ export default function DocumentEditorScreen(props: Props) {
 
   useEffect(() => {
     (async () => {
-      const snapshot = await getDoc(doc(db, 'documents', documentId));
+      // Opening a note almost always follows just having seen it in a list
+      // that's already live-subscribed to this same collection (Documents,
+      // Search, Diary) - Firestore's SDK shares one client-side cache
+      // across every query, so the doc is already sitting there. Try that
+      // first (near-instant, no round trip) and only fall back to a real
+      // fetch on a cache miss (e.g. opened from a state where the list was
+      // never loaded), instead of a network read every single time.
+      const docRef = doc(db, 'documents', documentId);
+      let snapshot;
+      try {
+        snapshot = await getDocFromCache(docRef);
+        if (!snapshot.exists()) throw new Error('not cached');
+      } catch {
+        snapshot = await getDoc(docRef);
+      }
       const data = snapshot.data();
+      isNewDocumentRef.current = !snapshot.exists();
       setTitle(data?.title ?? '');
       setTagIds(data?.tagIds ?? []);
       const loadedBlocks: Block[] = data?.blocks ?? [];
@@ -1344,10 +1893,22 @@ export default function DocumentEditorScreen(props: Props) {
       };
       // setDoc below replaces the whole document, so simply not including
       // these when the block doesn't have them is what clears a removed
-      // project/today assignment from the mirror - no explicit field
-      // deletion needed.
+      // project/today/kanban/reminder assignment from the mirror - no
+      // explicit field deletion needed. Every field TasksScreen writes onto
+      // a block has to be carried forward here too, or the very next edit
+      // anywhere in this document (this runs on every save, not just task
+      // edits) silently wipes it back out of the mirror.
       if (b.projectId) taskDoc.projectId = b.projectId;
       if (b.todayMarkedDate) taskDoc.todayMarkedDate = b.todayMarkedDate;
+      if (b.kanbanStatus) taskDoc.kanbanStatus = b.kanbanStatus;
+      if (b.reminderDate) taskDoc.reminderDate = b.reminderDate;
+      if (b.reminderTime) taskDoc.reminderTime = b.reminderTime;
+      if (b.reminderNotificationId) taskDoc.reminderNotificationId = b.reminderNotificationId;
+      // The block's own createdAt (set once at buildBlock, unaffected by
+      // later edits) - has to be carried forward on every write same as the
+      // fields above, since this setDoc has no {merge:true} and would
+      // otherwise wipe it back out on the task's very next edit.
+      if (b.createdAt) taskDoc.createdAt = b.createdAt;
       setDoc(doc(db, 'tasks', b.id), taskDoc);
     });
     knownTaskBlockIdsRef.current.forEach((id) => {
@@ -1391,6 +1952,10 @@ export default function DocumentEditorScreen(props: Props) {
       if (b.linkTitle) linkDocData.title = b.linkTitle;
       if (b.linkImageUrl) linkDocData.imageUrl = b.linkImageUrl;
       if (b.linkSiteName) linkDocData.siteName = b.linkSiteName;
+      // {merge:true} below never erases a field once set, so this only
+      // needs to be included once - re-sending the same value every sync is
+      // harmless.
+      if (b.createdAt) linkDocData.createdAt = b.createdAt;
       setDoc(doc(db, 'links', linkId), linkDocData, { merge: true });
     });
     knownLinkIdsRef.current.forEach((linkId) => {
@@ -1440,14 +2005,24 @@ export default function DocumentEditorScreen(props: Props) {
       };
       if (b.imageTitle) photoDoc.title = b.imageTitle;
       if (b.imageFit) photoDoc.imageFit = b.imageFit;
+      if (b.createdAt) photoDoc.createdAt = b.createdAt;
+      // Only on first sync, same guard as the Drive backup below - a
+      // genuinely new camera photo starts in the fixed "Фото" group, but
+      // re-saving the document on every edit must never force it back
+      // there after the user has since moved it to a different group.
+      const isNewPhoto = !knownPhotoBlockIdsRef.current.has(b.id);
+      if (isNewPhoto && b.imageSource === 'camera') photoDoc.groupId = CAMERA_PHOTOS_GROUP_ID;
       setDoc(doc(db, 'photos', b.id), photoDoc, { merge: true });
       // A genuinely new photo (not one already mirrored before this
       // render) also gets backed up to Google Drive, if connected -
       // fire-and-forget, since a failed/skipped backup must never block
-      // attaching the photo itself.
-      if (!knownPhotoBlockIdsRef.current.has(b.id)) {
-        backupFileToDrive(b.imageUri!, `${b.id}.jpg`, 'image/jpeg', 'Photos').then((driveFileId) => {
-          if (driveFileId) updateDoc(doc(db, 'photos', b.id), { driveFileId });
+      // attaching the photo itself. The extra !b.driveFileId guard is what
+      // stops this from re-uploading a duplicate when the block is instead
+      // a reference to a photo that already exists (and is already backed
+      // up) in a different document - see blockFromPhoto.
+      if (isNewPhoto && !b.driveFileId) {
+        backupFileToDrive(b.imageUri!, `${b.id}.jpg`, 'image/jpeg', 'Photos').then((result) => {
+          if (result) updateDoc(doc(db, 'photos', b.id), { driveFileId: result.fileId, driveBytes: result.bytes });
         });
       }
     });
@@ -1473,11 +2048,15 @@ export default function DocumentEditorScreen(props: Props) {
       };
       if (b.mimeType) fileDoc.mimeType = b.mimeType;
       if (b.fileTitle) fileDoc.title = b.fileTitle;
+      if (b.createdAt) fileDoc.createdAt = b.createdAt;
       setDoc(doc(db, 'files', b.id), fileDoc, { merge: true });
-      if (!knownFileBlockIdsRef.current.has(b.id)) {
+      // !b.driveFileId - see syncPhotosForDocument's identical guard: stops
+      // a reference to an already-backed-up file (a different document's
+      // existing file, just added here too) from re-uploading a duplicate.
+      if (!knownFileBlockIdsRef.current.has(b.id) && !b.driveFileId) {
         backupFileToDrive(b.fileUri!, b.fileName ?? b.id, b.mimeType ?? 'application/octet-stream', 'Files').then(
-          (driveFileId) => {
-            if (driveFileId) updateDoc(doc(db, 'files', b.id), { driveFileId });
+          (result) => {
+            if (result) updateDoc(doc(db, 'files', b.id), { driveFileId: result.fileId, driveBytes: result.bytes });
           }
         );
       }
@@ -1501,9 +2080,14 @@ export default function DocumentEditorScreen(props: Props) {
       // missing document. Harmless for a regular document, which already
       // exists by the time this screen opens (created by DocumentsScreen's
       // own "+" before navigating here).
+      // createdAt only on the very first save of a genuinely new document
+      // (a daily note that didn't exist yet) - {merge:true} means it's
+      // never touched again after that, same as every later autosave.
+      const createdAtField = isNewDocumentRef.current ? { createdAt: Date.now() } : {};
+      isNewDocumentRef.current = false;
       setDoc(
         doc(db, 'documents', documentId),
-        { title, blocks, updatedAt: Date.now(), ...extraFields },
+        { title, blocks, updatedAt: Date.now(), ...createdAtField, ...extraFields },
         { merge: true }
       ).then(() => setSaveStatus('saved'));
       syncTasksForDocument(blocks);
@@ -1726,6 +2310,19 @@ export default function DocumentEditorScreen(props: Props) {
 
   function handleTitleChange(text: string) {
     snapshotForTyping();
+    // The title field is multiline only so a long title soft-wraps instead
+    // of running off-screen - a hard Enter should still just move on to the
+    // document body instead of literally breaking the title onto two
+    // lines. Cuts the title at the first newline (anything typed after it
+    // in the same change, e.g. a multi-line paste, is dropped rather than
+    // kept in the title) and hands focus straight to the first block.
+    const newlineIndex = text.indexOf('\n');
+    if (newlineIndex !== -1) {
+      setTitle(text.slice(0, newlineIndex));
+      const firstBlock = blocks[0];
+      if (firstBlock) inputRefs.current[firstBlock.id]?.focus();
+      return;
+    }
     setTitle(text);
   }
 
@@ -2023,6 +2620,93 @@ export default function DocumentEditorScreen(props: Props) {
     setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, checked: !b.checked } : b)));
   }
 
+  // Generic patch for block-type-specific fields (currently just the table
+  // block's cells/sum toggle) - one callback instead of a new prop for
+  // every field a future block type might need.
+  function updateBlockFields(id: string, patch: Partial<Block>) {
+    snapshotBeforeChange();
+    setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+  }
+
+  // Android has no cross-app "reveal this file, highlighted, in Files"
+  // intent - the closest a normal app can get is opening the OS "open
+  // with" chooser directly on that file, the same mechanism this app
+  // already uses for opening attachments (see openFile/Sharing.shareAsync
+  // elsewhere in this file).
+  async function showDownloadedFileInFolder(uri: string, mimeType: string) {
+    dismissDownloadToast();
+    const available = await Sharing.isAvailableAsync();
+    if (!available) return;
+    await Sharing.shareAsync(uri, { mimeType });
+  }
+
+  async function exportAsPdf() {
+    setExportMenuOpen(false);
+    const html = await buildDocumentHtml(title, blocks);
+    const { uri } = await Print.printToFileAsync({ html });
+    const fileName = `${sanitizeFileName(title)}.pdf`;
+    const destUri = await downloadToDevice(uri, fileName, 'application/pdf');
+    if (destUri) showDownloadToast(fileName, destUri, 'application/pdf');
+  }
+
+  async function exportAsTxt() {
+    setExportMenuOpen(false);
+    const text = buildDocumentText(title, blocks);
+    const tempUri = `${LegacyFileSystem.cacheDirectory}${generateId()}.txt`;
+    await LegacyFileSystem.writeAsStringAsync(tempUri, text, { encoding: 'utf8' });
+    const fileName = `${sanitizeFileName(title)}.txt`;
+    const destUri = await downloadToDevice(tempUri, fileName, 'text/plain');
+    if (destUri) showDownloadToast(fileName, destUri, 'text/plain');
+  }
+
+  function openReminderBlock(id: string) {
+    setReminderBlockId(id);
+  }
+
+  // Unlike TasksScreen's version, this only ever touches this document's
+  // OWN blocks state - no separate write to the `tasks` mirror is needed,
+  // since the existing autosave effect already calls syncTasksForDocument
+  // on every blocks change and (now that it's fixed) carries these fields
+  // over on its own.
+  async function saveBlockReminder(reminderDate: string, reminderTime: string | null) {
+    const id = reminderBlockId;
+    setReminderBlockId(null);
+    const block = blocks.find((b) => b.id === id);
+    if (!block) return;
+    await cancelReminder(block.reminderNotificationId);
+    const notificationId = reminderTime ? await scheduleReminder(block.text, reminderDate, reminderTime) : undefined;
+    const becomesToday = reminderDate === dateKey(new Date());
+    snapshotBeforeChange();
+    setBlocks((prev) =>
+      prev.map((b) => {
+        if (b.id !== id) return b;
+        const next: Block = { ...b, reminderDate };
+        if (reminderTime) next.reminderTime = reminderTime;
+        else delete next.reminderTime;
+        if (notificationId) next.reminderNotificationId = notificationId;
+        else delete next.reminderNotificationId;
+        if (becomesToday) next.todayMarkedDate = dateKey(new Date());
+        return next;
+      })
+    );
+  }
+
+  async function clearBlockReminder() {
+    const id = reminderBlockId;
+    setReminderBlockId(null);
+    const block = blocks.find((b) => b.id === id);
+    if (!block) return;
+    await cancelReminder(block.reminderNotificationId);
+    snapshotBeforeChange();
+    setBlocks((prev) =>
+      prev.map((b) => {
+        if (b.id !== id) return b;
+        const { reminderDate: _d1, reminderTime: _d2, reminderNotificationId: _d3, ...rest } = b;
+        return rest;
+      })
+    );
+  }
+
   function toggleImageFit(id: string) {
     snapshotBeforeChange();
     setBlocks((prev) =>
@@ -2032,14 +2716,19 @@ export default function DocumentEditorScreen(props: Props) {
     );
   }
 
-  function downloadImageBlock(uri: string) {
-    downloadToDevice(uri, `photo-${Date.now()}.jpg`, 'image/jpeg');
+  async function downloadImageBlock(uri: string) {
+    const fileName = `photo-${Date.now()}.jpg`;
+    const destUri = await downloadToDevice(uri, fileName, 'image/jpeg');
+    if (destUri) showDownloadToast(fileName, destUri, 'image/jpeg');
   }
 
-  function downloadFileBlock(id: string) {
+  async function downloadFileBlock(id: string) {
     const block = blocks.find((b) => b.id === id);
     if (!block?.fileUri) return;
-    downloadToDevice(block.fileUri, block.fileName ?? 'file', block.mimeType ?? 'application/octet-stream');
+    const fileName = block.fileName ?? 'file';
+    const mimeType = block.mimeType ?? 'application/octet-stream';
+    const destUri = await downloadToDevice(block.fileUri, fileName, mimeType);
+    if (destUri) showDownloadToast(fileName, destUri, mimeType);
   }
 
   // Converts the block that triggered the "/" menu into the chosen type.
@@ -2067,7 +2756,18 @@ export default function DocumentEditorScreen(props: Props) {
       });
     } else {
       focusIdRef.current = id;
-      setBlocks((prev) => prev.map((b) => (b.id === id ? buildBlock(id, type, '') : b)));
+      setBlocks((prev) =>
+        prev.map((b) => {
+          if (b.id !== id) return b;
+          const currentType = b.type ?? 'paragraph';
+          // Tapping the same list/checkbox icon again on a block already of
+          // that type toggles it back to plain text instead of being a
+          // one-way conversion - and either way, the text already typed
+          // carries over rather than starting from a blank block.
+          const nextType = currentType === type ? 'paragraph' : type;
+          return buildBlock(id, nextType, b.text);
+        })
+      );
     }
   }
 
@@ -2093,6 +2793,52 @@ export default function DocumentEditorScreen(props: Props) {
     }
   }
 
+  // Shared by both the gallery picker and the camera below - same
+  // compress-then-splice-into-the-block-list logic either way, the only
+  // difference is where the source URI came from.
+  function insertImageIntoBlock(id: string, uri: string, source?: 'camera') {
+    snapshotBeforeChange();
+    setBlocks((prev) => {
+      const index = prev.findIndex((b) => b.id === id);
+      if (index === -1) return prev;
+      const next = [...prev];
+      next[index] = { ...buildBlock(id, 'image', ''), imageUri: uri, ...(source ? { imageSource: source } : {}) };
+      if (index === next.length - 1) {
+        const trailing = newBlock();
+        next.splice(index + 1, 0, trailing);
+        focusIdRef.current = trailing.id;
+      } else {
+        focusIdRef.current = next[index + 1].id;
+      }
+      return next;
+    });
+  }
+
+  // "З бази даних" (see AddExistingItemModal) - the picked block already
+  // carries the SAME id as the existing files/photos record it references
+  // (blockFromFile/blockFromPhoto) or, for a link, a fresh id tied back to
+  // the record by URL (blockFromLink) - either way this is a full replace
+  // of the placeholder block, not an in-place field update like
+  // insertImageIntoBlock/pickFileForBlock, since the id itself changes.
+  function insertExistingItemIntoBlock(placeholderId: string, item: Block) {
+    setExistingItemPickerBlockId(null);
+    snapshotBeforeChange();
+    setBlocks((prev) => {
+      const index = prev.findIndex((b) => b.id === placeholderId);
+      if (index === -1) return prev;
+      const next = [...prev];
+      next[index] = item;
+      if (index === next.length - 1) {
+        const trailing = newBlock();
+        next.splice(index + 1, 0, trailing);
+        focusIdRef.current = trailing.id;
+      } else {
+        focusIdRef.current = next[index + 1].id;
+      }
+      return next;
+    });
+  }
+
   async function pickImageForBlock(id: string) {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) return;
@@ -2103,21 +2849,24 @@ export default function DocumentEditorScreen(props: Props) {
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
     const uri = await compressPickedImage(asset.uri, asset.width, asset.height);
-    snapshotBeforeChange();
-    setBlocks((prev) => {
-      const index = prev.findIndex((b) => b.id === id);
-      if (index === -1) return prev;
-      const next = [...prev];
-      next[index] = { ...buildBlock(id, 'image', ''), imageUri: uri };
-      if (index === next.length - 1) {
-        const trailing = newBlock();
-        next.splice(index + 1, 0, trailing);
-        focusIdRef.current = trailing.id;
-      } else {
-        focusIdRef.current = next[index + 1].id;
-      }
-      return next;
+    insertImageIntoBlock(id, uri);
+  }
+
+  // The document scanner (see scanDocumentForBlock) already covers "capture
+  // a page to digitize" - this is the separate, simpler "just take a
+  // picture" case (no edge detection/cropping/multi-page), same as picking
+  // one from the gallery but from the camera instead.
+  async function takePhotoForBlock(id: string) {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) return;
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 1,
     });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    const uri = await compressPickedImage(asset.uri, asset.width, asset.height);
+    insertImageIntoBlock(id, uri, 'camera');
   }
 
   // No cloud upload yet - the picker's own cache copy is what gets stored
@@ -2282,6 +3031,9 @@ export default function DocumentEditorScreen(props: Props) {
       case 'image':
         pickImageForBlock(blockId);
         return;
+      case 'camera':
+        takePhotoForBlock(blockId);
+        return;
       case 'file':
         pickFileForBlock(blockId);
         return;
@@ -2290,6 +3042,12 @@ export default function DocumentEditorScreen(props: Props) {
         return;
       case 'sketch':
         addSketchBlock(blockId);
+        return;
+      case 'table':
+        convertBlockType(blockId, 'table');
+        return;
+      case 'existing':
+        setExistingItemPickerBlockId(blockId);
     }
   }
 
@@ -2338,6 +3096,20 @@ export default function DocumentEditorScreen(props: Props) {
     });
   }
 
+  async function copySelectedBlocks() {
+    const ordered = blocks.filter((b) => selectedIds.has(b.id));
+    const text = ordered
+      .map((b) => {
+        if ((b.type ?? 'paragraph') === 'table') {
+          const rows = b.tableRows ?? [];
+          return rows.map((row, r) => row.cells.map((_, c) => displayValueOf(rows, r, c)).join('\t')).join('\n');
+        }
+        return plainTextOf(b.text);
+      })
+      .join('\n');
+    await Clipboard.setStringAsync(text);
+  }
+
   function deleteSelectedBlocks() {
     snapshotBeforeChange();
     setBlocks((prev) => {
@@ -2352,6 +3124,16 @@ export default function DocumentEditorScreen(props: Props) {
     setIsSelectMode((prev) => !prev);
     setSelectedIds(new Set());
   }
+
+  useImperativeHandle(ref, () => ({ toggleSelectMode }));
+
+  useEffect(() => {
+    onSelectModeChange?.(isSelectMode);
+  }, [isSelectMode]);
+
+  useEffect(() => {
+    onSaveStatusChange?.(saveStatus);
+  }, [saveStatus]);
 
   // Outside edit mode a block's TextInput is pointerEvents: 'none' (see
   // BlockRow) so scrolling can reach through it - which means there's no
@@ -2421,7 +3203,15 @@ export default function DocumentEditorScreen(props: Props) {
   const imageRenameBlock = imageRenameId ? blocks.find((b) => b.id === imageRenameId) : null;
 
   if (!isLoaded) {
-    return <View style={[styles.container, embedded && styles.containerEmbedded]} />;
+    // Should resolve almost instantly now that the initial load tries the
+    // local cache first (see above) - this only shows at all on a genuine
+    // cache miss, and a spinner reads as "loading" rather than a stray
+    // blank flash.
+    return (
+      <View style={[styles.container, styles.loadingContainer, embedded && styles.containerEmbedded]}>
+        <ActivityIndicator color={ACCENT} />
+      </View>
+    );
   }
 
   return (
@@ -2433,39 +3223,46 @@ export default function DocumentEditorScreen(props: Props) {
             <Ionicons name="arrow-back" size={22} color="#111827" />
           </Pressable>
         </View>
-        <Text style={styles.headerStatus}>
-          {saveStatus === 'saving' ? 'Збереження…' : 'Збережено'}
-        </Text>
-        <View style={styles.headerRight}>
-          <Pressable hitSlop={6} onPress={toggleSelectMode}>
-            <Ionicons name={isSelectMode ? 'close' : 'ellipse-outline'} size={19} color="#fff" />
-          </Pressable>
-          <View style={styles.headerRightDivider} />
-          <Pressable
-            hitSlop={6}
-            onPress={() => navigation.navigate('Placeholder', { icon: 'ellipsis-horizontal-outline', label: 'Скоро' })}
-          >
-            <Ionicons name="ellipsis-horizontal-outline" size={19} color="#fff" />
-          </Pressable>
+        <View style={styles.headerRightGroup}>
+          {/* A separate circle, not a 4th chip inside the pill - matches
+              CalendarScreen's own saveDot treatment. */}
+          <View style={[styles.saveDot, saveStatus === 'saved' && styles.saveDotSaved]}>
+            <Ionicons name="checkmark" size={17} color={saveStatus === 'saved' ? '#171310' : '#fff'} />
+          </View>
+          <View style={styles.headerRight}>
+            <Pressable hitSlop={6} onPress={() => setExportMenuOpen((v) => !v)}>
+              <Ionicons name="ellipsis-horizontal-outline" size={19} color="#fff" />
+            </Pressable>
+            <View style={styles.headerRightDivider} />
+            <Pressable hitSlop={6} onPress={toggleSelectMode}>
+              <Ionicons name={isSelectMode ? 'close' : 'ellipse-outline'} size={19} color="#fff" />
+            </Pressable>
+          </View>
         </View>
       </View>
       )}
 
-      {/* Embedded (CalendarScreen): the select-mode control the header
-          carries in the full-screen editor, as one slim row - the
-          embedding screen owns the top of the screen, so there's no
-          header here to hang it off. Undo/redo live in the pinned toolbar
-          now (both here and in the full-screen header above), not here. */}
-      {embedded && (
-        <View style={styles.embeddedToolbar}>
-          <Text style={styles.headerStatus}>{saveStatus === 'saving' ? 'Збереження…' : 'Збережено'}</Text>
-          <View style={styles.embeddedToolbarButtons}>
-            <Pressable hitSlop={10} onPress={toggleSelectMode}>
-              <Ionicons name={isSelectMode ? 'close' : 'ellipse-outline'} size={20} color="#111827" />
-            </Pressable>
-          </View>
+      {exportMenuOpen && <Pressable style={styles.exportMenuBackdrop} onPress={() => setExportMenuOpen(false)} />}
+      {exportMenuOpen && (
+        <View style={styles.exportMenuPanel}>
+          <Text style={styles.exportMenuLabel}>Експорт</Text>
+          <Pressable style={styles.exportMenuRow} onPress={exportAsPdf}>
+            <Ionicons name="document-text-outline" size={17} color="#111827" />
+            <Text style={styles.exportMenuRowLabel}>У PDF</Text>
+          </Pressable>
+          <Pressable style={styles.exportMenuRow} onPress={exportAsTxt}>
+            <Ionicons name="reader-outline" size={17} color="#111827" />
+            <Text style={styles.exportMenuRowLabel}>У TXT</Text>
+          </Pressable>
         </View>
       )}
+
+      {/* Embedded (CalendarScreen): the select-mode toggle and save
+          checkmark both live in CalendarScreen's own header capsule now,
+          not in a row here - see onSelectModeChange/onSaveStatusChange and
+          the exposed toggleSelectMode ref method above. Undo/redo live in
+          the pinned toolbar (both here and in the full-screen header
+          above), not here either. */}
 
       <ScrollView
         ref={scrollViewRef}
@@ -2501,6 +3298,7 @@ export default function DocumentEditorScreen(props: Props) {
           pointerEvents={isEditMode ? 'auto' : 'none'}
           placeholder="Без назви"
           style={styles.titleInput}
+          multiline
         />
         )}
 
@@ -2527,6 +3325,8 @@ export default function DocumentEditorScreen(props: Props) {
           textVersions={textVersionsRef.current}
           onToggleSelected={toggleSelected}
           onToggleChecked={toggleChecked}
+          onOpenReminder={openReminderBlock}
+          onUpdateBlock={updateBlockFields}
           onChangeText={handleBlockChange}
           onBackspaceEmpty={handleBackspaceOnEmpty}
           onFocus={handleBlockFocus}
@@ -2544,12 +3344,7 @@ export default function DocumentEditorScreen(props: Props) {
           }}
         />
 
-        {selectedIds.size > 0 ? (
-          <Pressable style={styles.deleteSelected} onPress={deleteSelectedBlocks}>
-            <Ionicons name="trash-outline" size={18} color={DANGER} />
-            <Text style={styles.deleteSelectedLabel}>Видалити ({selectedIds.size})</Text>
-          </Pressable>
-        ) : (
+        {selectedIds.size === 0 && (
           <Pressable style={styles.addBlock} onPress={addBlockAtEnd}>
             <Ionicons name="add" size={18} color="#111827" />
             <Text style={styles.addBlockLabel}>Додати блок</Text>
@@ -2557,19 +3352,50 @@ export default function DocumentEditorScreen(props: Props) {
         )}
       </ScrollView>
 
-      <Pressable
-        style={[
-          styles.editModeFab,
-          // Embedded, the keyboard also has to be dodged - otherwise
-          // there's no way to tap "done" without dismissing it some other
-          // way first. (With the keyboard down, the base 100 already
-          // clears the floating island and the tags-drawer button.)
-          embedded && keyboardHeight > 0 && { bottom: keyboardHeight + 16 },
-        ]}
-        onPress={toggleEditMode}
-      >
-        <Ionicons name={isEditMode ? 'checkmark-outline' : 'create-outline'} size={24} color="#fff" />
-      </Pressable>
+      {selectedIds.size > 0 && (
+        // Same floating dark-glass capsule as BulkActionBar (Files/Photos/
+        // Links/Documents) - this screen has its own bespoke select-mode
+        // bar instead of that shared component (blocks aren't tag/group-
+        // able the way those rows are), but it was still a plain in-flow
+        // row with no capsule styling, and floated right under the
+        // edit-mode pencil FAB below.
+        <View
+          style={[
+            styles.selectedActionsWrap,
+            embedded && keyboardHeight > 0 && { bottom: keyboardHeight + 16 },
+          ]}
+          pointerEvents="box-none"
+        >
+          <View style={styles.selectedActionsCapsule}>
+            <Text style={styles.selectedActionsCount}>{selectedIds.size}</Text>
+            <View style={styles.selectedActionsDivider} />
+            <Pressable style={styles.selectedActionBtn} hitSlop={6} onPress={copySelectedBlocks}>
+              <Ionicons name="copy-outline" size={18} color="#fff" />
+              <Text style={styles.selectedActionLabel}>Копіювати</Text>
+            </Pressable>
+            <Pressable style={styles.selectedActionBtn} hitSlop={6} onPress={deleteSelectedBlocks}>
+              <Ionicons name="trash-outline" size={18} color="#fff" />
+              <Text style={styles.selectedActionLabel}>Видалити</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      {selectedIds.size === 0 && (
+        <Pressable
+          style={[
+            styles.editModeFab,
+            // Embedded, the keyboard also has to be dodged - otherwise
+            // there's no way to tap "done" without dismissing it some other
+            // way first. (With the keyboard down, the base 100 already
+            // clears the floating island and the tags-drawer button.)
+            embedded && keyboardHeight > 0 && { bottom: keyboardHeight + 16 },
+          ]}
+          onPress={toggleEditMode}
+        >
+          <Ionicons name={isEditMode ? 'checkmark-outline' : 'create-outline'} size={24} color="#fff" />
+        </Pressable>
+      )}
 
       {viewerBlock?.imageUri && (
         <Modal
@@ -2667,6 +3493,15 @@ export default function DocumentEditorScreen(props: Props) {
         onClose={closeSketchEditor}
       />
 
+      <ReminderSheet
+        visible={reminderBlockId !== null}
+        initialDate={reminderBlockId ? blocks.find((b) => b.id === reminderBlockId)?.reminderDate : undefined}
+        initialTime={reminderBlockId ? blocks.find((b) => b.id === reminderBlockId)?.reminderTime : undefined}
+        onClose={() => setReminderBlockId(null)}
+        onSave={saveBlockReminder}
+        onClear={clearBlockReminder}
+      />
+
       <RenamePrompt
         visible={imageRenameId !== null}
         title="Назва фото"
@@ -2712,14 +3547,41 @@ export default function DocumentEditorScreen(props: Props) {
           </View>
         </Modal>
       )}
+      {downloadToast && (
+        <DownloadToast
+          fileName={downloadToast.fileName}
+          onShowInFolder={() => showDownloadedFileInFolder(downloadToast.uri, downloadToast.mimeType)}
+          onIgnore={dismissDownloadToast}
+        />
+      )}
+      <AddExistingItemModal
+        visible={existingItemPickerBlockId !== null}
+        onPick={(item) => {
+          if (existingItemPickerBlockId) insertExistingItemIntoBlock(existingItemPickerBlockId, item);
+        }}
+        onClose={() => setExistingItemPickerBlockId(null)}
+        excludeIds={
+          new Set(
+            blocks
+              .filter((b) => ((b.type ?? 'paragraph') === 'file' && b.fileUri) || ((b.type ?? 'paragraph') === 'image' && b.imageUri))
+              .map((b) => b.id)
+          )
+        }
+      />
     </View>
   );
 }
+
+export default forwardRef(DocumentEditorScreen);
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   // Embedded (CalendarScreen): this white panel sits over the gradient
   // background, not a plain white page - rounded top corners let that
@@ -2737,29 +3599,18 @@ const styles = StyleSheet.create({
     paddingTop: 56,
     paddingBottom: 12,
   },
-  headerStatus: {
-    fontSize: 13,
-    color: '#9CA3AF',
-  },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
   },
-  embeddedToolbar: {
+  headerRightGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingBottom: 4,
-  },
-  embeddedToolbarButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 18,
+    gap: 8,
   },
   // Select-mode toggle + "..." merged into one pill, filled the same color
-  // as the edit-mode FAB rather than two separate plain icon buttons.
+  // as the edit-mode FAB rather than separate plain icon buttons.
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2773,6 +3624,67 @@ const styles = StyleSheet.create({
     width: 1,
     height: 14,
     backgroundColor: 'rgba(255,255,255,0.4)',
+  },
+  exportMenuBackdrop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 5,
+  },
+  exportMenuPanel: {
+    position: 'absolute',
+    top: 96,
+    right: 20,
+    width: 180,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+    zIndex: 6,
+  },
+  exportMenuLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    color: '#9CA3AF',
+    paddingHorizontal: 8,
+    paddingTop: 4,
+    paddingBottom: 2,
+  },
+  exportMenuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+  },
+  exportMenuRowLabel: {
+    fontSize: 14,
+    color: '#111827',
+  },
+  // A translucent-on-terracotta circle while saving, solid white once
+  // saved - replaces the old "Збереження…"/"Збережено" text label
+  // entirely. Diameter matches headerRight's own height so the circle and
+  // the pill read as a matched pair beside each other.
+  saveDot: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+  },
+  saveDotSaved: {
+    backgroundColor: '#fff',
+    borderColor: 'transparent',
   },
   editModeFab: {
     position: 'absolute',
@@ -2877,6 +3789,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: ACCENT,
   },
+  checkboxReminderTextEmpty: {
+    color: '#9CA3AF',
+    fontWeight: '500',
+  },
   bulletMark: {
     fontSize: 18,
     color: '#111827',
@@ -2888,6 +3804,114 @@ const styles = StyleSheet.create({
     backgroundColor: '#E5E7EB',
     marginVertical: 12,
     marginHorizontal: 4,
+  },
+  tableBlock: {
+    flex: 1,
+    gap: 6,
+    paddingVertical: 4,
+  },
+  tableFormulaBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  tableFormulaRefBadge: {
+    minWidth: 36,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+  },
+  tableFormulaRefText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6B7280',
+  },
+  tableFormulaInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#111827',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 6,
+  },
+  tableFormulaDoneButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: ACCENT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tableHeaderRow: {
+    flexDirection: 'row',
+    gap: 4,
+    marginBottom: 2,
+  },
+  tableGutterCell: {
+    width: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tableGutterText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#9CA3AF',
+  },
+  tableColumnHeaderCell: {
+    width: 84,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+  },
+  tableColumnHeaderText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#9CA3AF',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  tableCell: {
+    width: 84,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 6,
+  },
+  tableCellSelected: {
+    borderColor: ACCENT,
+    borderWidth: 2,
+    backgroundColor: '#EFF6FF',
+  },
+  tableCellText: {
+    fontSize: 14,
+    color: '#111827',
+  },
+  tableRowRemove: {
+    padding: 2,
+  },
+  tableControls: {
+    flexDirection: 'row',
+    gap: 14,
+    marginTop: 2,
+  },
+  tableControlBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  tableControlLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
   },
   blockImageWrap: {
     flex: 1,
@@ -3156,16 +4180,47 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#111827',
   },
-  deleteSelected: {
+  selectedActionsWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 100,
+    alignItems: 'center',
+  },
+  selectedActionsCapsule: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    gap: 14,
+    backgroundColor: 'rgba(20,20,20,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
   },
-  deleteSelectedLabel: {
-    fontSize: 15,
-    color: DANGER,
+  selectedActionsCount: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  selectedActionsDivider: {
+    width: 1,
+    height: 22,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  selectedActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  selectedActionLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#fff',
   },
 });

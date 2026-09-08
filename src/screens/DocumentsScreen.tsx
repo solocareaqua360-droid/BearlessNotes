@@ -17,17 +17,28 @@ import {
   addDoc,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   onSnapshot,
   orderBy,
   query,
+  setDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { DocumentItem } from '../types';
+import { DocumentItem, Group } from '../types';
 import { RootStackParamList } from '../navigation';
-import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
+import { useTags, detachTagFromDeletedItem, ITEMS_COLLECTION_BY_KIND } from '../hooks/useTags';
+import { useMultiSelect } from '../hooks/useMultiSelect';
+import { useSortPref } from '../hooks/useSortPref';
+import { sortItems } from '../utils/sortItems';
+import SortMenuRows from '../components/SortMenuRows';
 import TagsDrawer, { TagFilter, matchesTagFilter, removeTagFromFilter } from '../components/TagsDrawer';
+import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
+import GroupPickerSheet from '../components/GroupPickerSheet';
+import TagPicker from '../components/TagPicker';
+import BulkActionBar from '../components/BulkActionBar';
 import DocumentCard from '../components/DocumentCard';
 import { extractPreview } from '../utils/documentPreview';
 import { FONT_REGULAR, FONT_BOLD, FONT_SEMIBOLD } from '../utils/fonts';
@@ -36,6 +47,10 @@ import { FONT_REGULAR, FONT_BOLD, FONT_SEMIBOLD } from '../utils/fonts';
 // this redesign; replaces the old blue ACCENT wherever this screen used it.
 const ACCENT = '#BE7657';
 const documentsCollection = collection(db, 'documents');
+const groupsCollection = collection(db, 'groups');
+const documentsPrefsDoc = doc(db, 'settings', 'documentsPrefs');
+
+type ViewMode = 'list' | 'grid';
 
 export default function DocumentsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -48,7 +63,27 @@ export default function DocumentsScreen() {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<TagFilter | null>(null);
-  const { tags } = useTags();
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [groupFilter, setGroupFilter] = useState<string | null>(null);
+  const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
+  const {
+    isSelectMode,
+    selectedIds,
+    toggleSelectMode,
+    toggle: toggleSelected,
+    clear: clearSelection,
+  } = useMultiSelect();
+  const { sortPref, selectSortField } = useSortPref('documentsPrefs');
+  const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
+  const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    return onSnapshot(documentsPrefsDoc, (snapshot) => {
+      setViewMode((snapshot.data()?.viewMode as ViewMode | undefined) ?? 'list');
+    });
+  }, []);
 
   useEffect(() => {
     const documentsQuery = query(documentsCollection, orderBy('updatedAt', 'desc'));
@@ -64,37 +99,81 @@ export default function DocumentsScreen() {
             updatedAt: docSnapshot.data().updatedAt,
             tagIds: docSnapshot.data().tagIds ?? [],
             blocks: docSnapshot.data().blocks ?? [],
+            groupId: docSnapshot.data().groupId,
+            createdAt: docSnapshot.data().createdAt,
           }))
       );
       setIsLoading(false);
     });
   }, []);
 
-  const displayedDocuments = documents.filter((item) => matchesTagFilter(item.tagIds ?? [], activeFilter));
+  useEffect(() => {
+    // Filtered client-side rather than with a `where('kind','==','document')`
+    // query, same tradeoff as Files/Photos/Links - combining an equality
+    // filter with `orderBy` on a different field needs a hand-set-up
+    // composite index.
+    return onSnapshot(query(groupsCollection, orderBy('name')), (snapshot) => {
+      setGroups(
+        snapshot.docs
+          .map((d) => ({ id: d.id, ...(d.data() as { name: string; color: string; kind: Group['kind'] }) }))
+          .filter((g) => g.kind === 'document')
+      );
+    });
+  }, []);
+
+  const groupFilteredDocuments =
+    groupFilter === null
+      ? documents
+      : groupFilter === UNASSIGNED_ID
+        ? documents.filter((d) => !d.groupId)
+        : documents.filter((d) => d.groupId === groupFilter);
+  const tagFilteredDocuments = groupFilteredDocuments.filter((item) =>
+    matchesTagFilter(item.tagIds ?? [], activeFilter)
+  );
+  const displayedDocuments = sortItems(
+    tagFilteredDocuments,
+    sortPref,
+    (item) => item.title || 'Без назви',
+    (item) => item.createdAt,
+    (item) => item.updatedAt
+  );
+  const selectedDocuments = documents.filter((d) => selectedIds.has(d.id));
   // Only offer tags actually assigned to at least one document - not the
   // whole app-wide tag list - same "used tags" pruning Files/Photos/Links
   // already apply to their own drawers.
   const usedTagIds = new Set(documents.flatMap((d) => d.tagIds ?? []));
   const drawerTags = tags.filter((t) => usedTagIds.has(t.id));
 
+  // A new document created while a tag filter is active starts pre-tagged
+  // with whatever that filter selects - both an 'isolating' (AND) filter's
+  // several tags and a single selected tag in 'multi' (OR) mode land the
+  // note back under that same filter right away, instead of it vanishing
+  // from the currently-filtered view the moment it's created.
   async function createDocument() {
+    const now = Date.now();
     const newDoc = await addDoc(documentsCollection, {
       title: 'Без назви',
-      updatedAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
       blocks: [],
+      // A note created while a real group tab (not "Всі"/"Без групи") is
+      // selected starts pre-assigned to it, same idea as the tag filter
+      // below - it lands back in the currently-filtered view instead of
+      // vanishing into "Без групи" the moment it's created.
+      ...(groupFilter && groupFilter !== UNASSIGNED_ID ? { groupId: groupFilter } : {}),
     });
+    if (activeFilter?.type === 'tags') {
+      const filterTags = activeFilter.tagIds.map((id) => tags.find((t) => t.id === id)).filter((t) => t != null);
+      await Promise.all(
+        filterTags.map((tag) => attachTag(tag, 'document', newDoc.id, ITEMS_COLLECTION_BY_KIND.document))
+      );
+    }
     navigation.navigate('Editor', { documentId: newDoc.id });
   }
 
-  function deleteDocument(id: string) {
-    Alert.alert('Видалити документ?', undefined, [
-      { text: 'Скасувати', style: 'cancel' },
-      {
-        text: 'Видалити',
-        style: 'destructive',
-        onPress: () => confirmDeleteDocument(id),
-      },
-    ]);
+  async function changeViewMode(mode: ViewMode) {
+    setMenuOpen(false);
+    await setDoc(documentsPrefsDoc, { viewMode: mode }, { merge: true });
   }
 
   async function confirmDeleteDocument(id: string) {
@@ -109,13 +188,62 @@ export default function DocumentsScreen() {
     );
   }
 
+  function confirmDeleteSelected() {
+    const toDelete = selectedDocuments;
+    Alert.alert(toDelete.length === 1 ? 'Видалити документ?' : `Видалити документи (${toDelete.length})?`, undefined, [
+      { text: 'Скасувати', style: 'cancel' },
+      {
+        text: 'Видалити',
+        style: 'destructive',
+        onPress: async () => {
+          await Promise.all(toDelete.map((d) => confirmDeleteDocument(d.id)));
+          clearSelection();
+        },
+      },
+    ]);
+  }
+
+  async function bulkAttachTag(tag: Parameters<typeof attachTag>[0]) {
+    setBulkTagPickerVisible(false);
+    await Promise.all(selectedDocuments.map((d) => attachTag(tag, 'document', d.id, ITEMS_COLLECTION_BY_KIND.document)));
+    clearSelection();
+  }
+
+  async function bulkCreateAndAttachTag(path: string, icon: string, color: string) {
+    setBulkTagPickerVisible(false);
+    await Promise.all(
+      selectedDocuments.map((d) =>
+        createAndAttachTag(path, icon, color, 'document', d.id, ITEMS_COLLECTION_BY_KIND.document)
+      )
+    );
+    clearSelection();
+  }
+
+  async function bulkAssignGroup(groupId: string | null) {
+    setBulkGroupPickerVisible(false);
+    const batch = writeBatch(db);
+    selectedDocuments.forEach((d) => {
+      batch.update(doc(db, 'documents', d.id), { groupId: groupId ?? deleteField() });
+    });
+    await batch.commit();
+    clearSelection();
+  }
+
   return (
     <View style={styles.container}>
       {/* Page background: a fixed gradient (react-native-svg, already a
           native dep for sketches - no new build needed) rather than
           expo-linear-gradient, which would be a brand-new native module
           and mean another EAS dev-client build. */}
-      <Svg width={windowWidth} height={windowHeight} style={StyleSheet.absoluteFill} pointerEvents="none">
+      {/* 1px bled past every edge - windowWidth/Height can round to a hair
+          less than the actual screen, leaving a sliver of the default
+          white background visible at an edge otherwise. */}
+      <Svg
+        width={windowWidth + 2}
+        height={windowHeight + 2}
+        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
+        pointerEvents="none"
+      >
         <Defs>
           {/* Dialed in via the gradient editor artifact - dark warm brown
               at the top, gray-green through the middle, fading to black
@@ -126,7 +254,7 @@ export default function DocumentsScreen() {
             <Stop offset="1" stopColor="#000000" />
           </LinearGradient>
         </Defs>
-        <Rect width={windowWidth} height={windowHeight} fill="url(#documentsBg)" />
+        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#documentsBg)" />
       </Svg>
 
       <View style={styles.headerRow}>
@@ -136,14 +264,43 @@ export default function DocumentsScreen() {
             <Ionicons name="search" size={17} color="#fff" />
           </Pressable>
           <View style={styles.headerButtonsDivider} />
-          <Pressable
-            hitSlop={6}
-            onPress={() => navigation.navigate('Placeholder', { icon: 'ellipsis-horizontal-outline', label: 'Скоро' })}
-          >
+          <Pressable hitSlop={6} onPress={() => setMenuOpen((v) => !v)}>
             <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
+          </Pressable>
+          <View style={styles.headerButtonsDivider} />
+          <Pressable hitSlop={6} onPress={toggleSelectMode}>
+            <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
           </Pressable>
         </View>
       </View>
+
+      {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
+      {menuOpen && (
+        <View style={styles.menuPanel}>
+          <Text style={styles.menuSectionLabel}>Вигляд</Text>
+          <Pressable style={styles.menuRow} onPress={() => changeViewMode('list')}>
+            <Ionicons name="reorder-four-outline" size={17} color="#111827" />
+            <Text style={styles.menuRowLabel}>Список</Text>
+            {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+          </Pressable>
+          <Pressable style={styles.menuRow} onPress={() => changeViewMode('grid')}>
+            <Ionicons name="grid-outline" size={17} color="#111827" />
+            <Text style={styles.menuRowLabel}>Сітка</Text>
+            {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+          </Pressable>
+          <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
+        </View>
+      )}
+
+      {groups.length > 0 && (
+        <ProjectTabsRow
+          items={groups}
+          selected={groupFilter}
+          onSelect={setGroupFilter}
+          unassignedLabel="Без групи"
+          dark
+        />
+      )}
 
       {activeFilter && (
         <View style={styles.filterRow}>
@@ -195,31 +352,78 @@ export default function DocumentsScreen() {
         </View>
       ) : (
         <FlatList
+          // FlatList throws if numColumns changes on an already-mounted
+          // instance - key forces a clean remount when switching views.
+          key={viewMode}
           data={displayedDocuments}
           keyExtractor={(item) => item.id}
+          // FlatList only re-renders an already-mounted row when `data` or
+          // `extraData` changes - isSelectMode/selectedIds live outside
+          // `data`, so without this a card kept showing its pre-select-mode
+          // props (tapping it still navigated instead of toggling a
+          // checkbox) even though renderItem's own closure had the fresh
+          // values.
+          extraData={[isSelectMode, selectedIds]}
+          numColumns={viewMode === 'grid' ? 2 : 1}
+          columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => {
-            const { imageUri, previewText } = extractPreview(item.blocks);
+            const { imageUri, imageUris, previewText, checklistItems } = extractPreview(item.blocks);
             return (
               <DocumentCard
                 id={item.id}
                 title={item.title}
                 updatedAt={item.updatedAt}
                 imageUri={imageUri}
+                imageUris={imageUris}
                 previewText={previewText}
+                checklistItems={checklistItems}
                 onPress={() => navigation.navigate('Editor', { documentId: item.id })}
-                onDelete={() => deleteDocument(item.id)}
+                isSelectMode={isSelectMode}
+                isSelected={selectedIds.has(item.id)}
+                onToggleSelect={() => toggleSelected(item.id)}
+                layout={viewMode}
               />
             );
           }}
         />
       )}
 
-      <Pressable style={styles.fab} onPress={createDocument}>
-        <Ionicons name="add" size={28} color="#fff" />
-      </Pressable>
+      {!isSelectMode && (
+        <Pressable style={styles.fab} onPress={createDocument}>
+          <Ionicons name="add" size={28} color="#fff" />
+        </Pressable>
+      )}
 
-      <TagsDrawer tags={drawerTags} activeFilter={activeFilter} onSelectFilter={setActiveFilter} />
+      <TagsDrawer tags={drawerTags} activeFilter={activeFilter} onSelectFilter={setActiveFilter} hideOpenButton={isSelectMode} />
+
+      <TagPicker
+        visible={bulkTagPickerVisible}
+        kind="document"
+        tags={tags}
+        selectedTagIds={[]}
+        onAttach={bulkAttachTag}
+        onDetach={() => {}}
+        onCreateAndAttach={bulkCreateAndAttachTag}
+        onRenameTag={renameTag}
+        onClose={() => setBulkTagPickerVisible(false)}
+      />
+
+      <GroupPickerSheet
+        visible={bulkGroupPickerVisible}
+        kind="document"
+        groups={groups}
+        onPick={bulkAssignGroup}
+        onClose={() => setBulkGroupPickerVisible(false)}
+      />
+
+      <BulkActionBar
+        count={selectedIds.size}
+        onTag={() => setBulkTagPickerVisible(true)}
+        onGroup={() => setBulkGroupPickerVisible(true)}
+        onDelete={confirmDeleteSelected}
+        aboveTabBar
+      />
     </View>
   );
 }
@@ -265,6 +469,56 @@ const styles = StyleSheet.create({
     width: 1,
     height: 16,
     backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  menuBackdrop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 5,
+  },
+  menuPanel: {
+    position: 'absolute',
+    top: 96,
+    right: 20,
+    width: 200,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+    zIndex: 6,
+  },
+  menuSectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.04,
+    textTransform: 'uppercase',
+    color: '#9CA3AF',
+    paddingHorizontal: 8,
+    paddingTop: 4,
+    paddingBottom: 2,
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+  },
+  menuRowLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: FONT_REGULAR,
+    color: '#111827',
+  },
+  gridRow: {
+    gap: 12,
+    paddingHorizontal: 20,
   },
   filterRow: {
     flexDirection: 'row',

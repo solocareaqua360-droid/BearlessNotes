@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, Vibration, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   MONTH_FULL,
@@ -72,11 +72,16 @@ export default function ReminderSheet({ visible, initialDate, initialTime, onClo
     });
   }
 
+  // A short buzz per tap - Vibration is built into React Native core (no
+  // extra native module, unlike expo-haptics), which is what makes this a
+  // same-day fix rather than another rebuild-first feature.
   function stepHour(delta: number) {
+    Vibration.vibrate(10);
     setHour((h) => (h + delta + 24) % 24);
   }
 
   function stepMinute(delta: number) {
+    Vibration.vibrate(10);
     setMinute((m) => (m + delta + 60) % 60);
   }
 
@@ -158,22 +163,22 @@ export default function ReminderSheet({ visible, initialDate, initialTime, onClo
           {timeEnabled && (
             <View style={styles.stepperRow}>
               <View style={styles.stepper}>
-                <Pressable hitSlop={8} onPress={() => stepHour(1)}>
-                  <Ionicons name="chevron-up" size={18} color={ACCENT} />
+                <Pressable hitSlop={6} style={styles.stepperBtn} onPress={() => stepHour(-1)}>
+                  <Ionicons name="remove" size={22} color={ACCENT} />
                 </Pressable>
                 <Text style={styles.stepperValue}>{pad2(hour)}</Text>
-                <Pressable hitSlop={8} onPress={() => stepHour(-1)}>
-                  <Ionicons name="chevron-down" size={18} color={ACCENT} />
+                <Pressable hitSlop={6} style={styles.stepperBtn} onPress={() => stepHour(1)}>
+                  <Ionicons name="add" size={22} color={ACCENT} />
                 </Pressable>
               </View>
               <Text style={styles.stepperColon}>:</Text>
               <View style={styles.stepper}>
-                <Pressable hitSlop={8} onPress={() => stepMinute(5)}>
-                  <Ionicons name="chevron-up" size={18} color={ACCENT} />
+                <Pressable hitSlop={6} style={styles.stepperBtn} onPress={() => stepMinute(-5)}>
+                  <Ionicons name="remove" size={22} color={ACCENT} />
                 </Pressable>
                 <Text style={styles.stepperValue}>{pad2(minute)}</Text>
-                <Pressable hitSlop={8} onPress={() => stepMinute(-5)}>
-                  <Ionicons name="chevron-down" size={18} color={ACCENT} />
+                <Pressable hitSlop={6} style={styles.stepperBtn} onPress={() => stepMinute(5)}>
+                  <Ionicons name="add" size={22} color={ACCENT} />
                 </Pressable>
               </View>
             </View>
@@ -325,22 +330,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 14,
     paddingVertical: 10,
   },
+  // Buttons sit to the LEFT and RIGHT of the number, not stacked above/
+  // below it - a thumb tapping either one never covers the digits it's
+  // supposed to be changing.
   stepper: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 10,
+  },
+  stepperBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EFF6FF',
   },
   stepperValue: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '700',
     color: '#111827',
     fontVariant: ['tabular-nums'],
-    paddingVertical: 2,
+    width: 34,
+    textAlign: 'center',
   },
   stepperColon: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '700',
     color: '#111827',
   },

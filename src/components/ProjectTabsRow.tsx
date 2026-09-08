@@ -19,12 +19,23 @@ type Props = {
   // component only draws the pill row, so it doesn't care which; the
   // caller supplies the right wording for its "unassigned" tab.
   unassignedLabel?: string;
+  // Documents/Calendar/Databases sit on the dark gradient background
+  // instead of these screens' plain white - the dark-glass treatment
+  // already used for their own header capsules, applied here too so the
+  // pills stay legible instead of nearly invisible gray-on-dark.
+  dark?: boolean;
 };
 
 // Horizontal row of pills (see the videobookmark reference the user showed:
 // "Всі / Робота / Дім / Навчання") - a plain filter, not a toggle into
 // grouped sections.
-export default function ProjectTabsRow({ items, selected, onSelect, unassignedLabel = 'Без проєкту' }: Props) {
+export default function ProjectTabsRow({
+  items,
+  selected,
+  onSelect,
+  unassignedLabel = 'Без проєкту',
+  dark,
+}: Props) {
   return (
     <ScrollView
       horizontal
@@ -38,20 +49,60 @@ export default function ProjectTabsRow({ items, selected, onSelect, unassignedLa
       style={styles.scroll}
       contentContainerStyle={styles.row}
     >
-      <Tab label="Всі" color={MUTED} active={selected === null} onPress={() => onSelect(null)} />
+      <Tab label="Всі" color={MUTED} active={selected === null} onPress={() => onSelect(null)} dark={dark} />
       {items.map((p) => (
-        <Tab key={p.id} label={p.name} color={p.color} active={selected === p.id} onPress={() => onSelect(p.id)} />
+        <Tab
+          key={p.id}
+          label={p.name}
+          color={p.color}
+          active={selected === p.id}
+          onPress={() => onSelect(p.id)}
+          dark={dark}
+        />
       ))}
-      <Tab label={unassignedLabel} color={MUTED} active={selected === UNASSIGNED_ID} onPress={() => onSelect(UNASSIGNED_ID)} />
+      <Tab
+        label={unassignedLabel}
+        color={MUTED}
+        active={selected === UNASSIGNED_ID}
+        onPress={() => onSelect(UNASSIGNED_ID)}
+        dark={dark}
+      />
     </ScrollView>
   );
 }
 
-function Tab({ label, color, active, onPress }: { label: string; color: string; active: boolean; onPress: () => void }) {
+function Tab({
+  label,
+  color,
+  active,
+  onPress,
+  dark,
+}: {
+  label: string;
+  color: string;
+  active: boolean;
+  onPress: () => void;
+  dark?: boolean;
+}) {
+  // On the dark gradient, an active tab inverts to a solid white pill with
+  // dark text (matching CalendarScreen's own "Сьогодні" button) rather than
+  // just swapping to a barely-brighter glass tint - the light-glass screens
+  // keep their own subtler active treatment (the group's own color).
   return (
-    <Pressable style={styles.tab} onPress={onPress}>
-      {active && <View style={[styles.dot, { backgroundColor: color }]} />}
-      <Text style={[styles.tabLabel, { color: active ? color : '#374151' }]} numberOfLines={1}>
+    <Pressable
+      style={[styles.tab, dark && styles.tabDark, dark && active && styles.tabDarkActive]}
+      onPress={onPress}
+    >
+      {active && <View style={[styles.dot, { backgroundColor: dark ? '#171310' : color }]} />}
+      <Text
+        style={[
+          styles.tabLabel,
+          dark
+            ? { color: active ? '#171310' : 'rgba(255,255,255,0.75)' }
+            : { color: active ? color : '#374151' },
+        ]}
+        numberOfLines={1}
+      >
         {label}
       </Text>
     </Pressable>
@@ -61,6 +112,14 @@ function Tab({ label, color, active, onPress }: { label: string; color: string; 
 const styles = StyleSheet.create({
   scroll: {
     flexGrow: 0,
+    // Without this, a screen with more stacked siblings above the list
+    // than this component was originally tried on (Documents: header +
+    // this row + the tag-filter row, all before the list) can leave Yoga
+    // short on space and shrink this ScrollView below its own content
+    // height instead of shrinking the list below it - squishing every
+    // pill and clipping their text. flexGrow: 0 alone only stops it from
+    // stretching taller, not from being squeezed shorter.
+    flexShrink: 0,
   },
   row: {
     flexDirection: 'row',
@@ -85,6 +144,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(120,120,120,0.08)',
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.08)',
+  },
+  tabDark: {
+    backgroundColor: 'rgba(20,20,20,0.35)',
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  tabDarkActive: {
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderColor: 'transparent',
   },
   dot: {
     width: 6,

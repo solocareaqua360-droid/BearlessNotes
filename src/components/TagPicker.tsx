@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Tag, TaggableKind } from '../types';
 import { TAG_COLORS, TAG_ICONS } from '../constants/tags';
@@ -60,6 +60,19 @@ export default function TagPicker({
   const [selectedColor, setSelectedColor] = useState(TAG_COLORS[0]);
   const [renamingTag, setRenamingTag] = useState<Tag | null>(null);
   const { hiddenIds, hideTag } = useHiddenTags(kind);
+  // Same manual Keyboard-height tracking as TasksScreen's project-picker
+  // and GroupPickerSheet - this Android build doesn't resize the window
+  // under the keyboard, so without this the search/create inputs end up
+  // hidden behind it.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (visible) {
@@ -118,7 +131,7 @@ export default function TagPicker({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={() => {}}>
+        <Pressable style={[styles.sheet, { marginBottom: keyboardHeight }]} onPress={() => {}}>
           <View style={styles.handle} />
 
           {mode === 'list' ? (

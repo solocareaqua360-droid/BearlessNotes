@@ -35,7 +35,7 @@ const WIDE_TILE_KEY = 'tasks';
 const GRID_TILES: Tile[] = [
   { key: 'geo', label: 'Геоточки', icon: 'location-outline', linkCategory: 'geo' },
   { key: 'links', label: 'Посилання', icon: 'link-outline', linkCategory: 'other' },
-  { key: 'photos', label: 'Фото', icon: 'image-outline', route: 'Photos' },
+  { key: 'photos', label: 'Зображення', icon: 'image-outline', route: 'Photos' },
   { key: 'video', label: 'YouTube / TikTok', icon: 'videocam-outline', linkCategory: 'video' },
   { key: 'files', label: 'Файли', icon: 'document-outline', route: 'Files' },
   { key: 'tags', label: 'Теги', icon: 'pricetag-outline', route: 'Tags' },
@@ -86,8 +86,16 @@ export default function DatabasesScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Same fixed gradient as Documents/Calendar. */}
-      <Svg width={windowWidth} height={windowHeight} style={StyleSheet.absoluteFill} pointerEvents="none">
+      {/* Same fixed gradient as Documents/Calendar. 1px bled past every edge
+          (see the -1/+2 below) - windowWidth/Height can round to a hair
+          less than the actual screen, leaving a sliver of the default
+          white background visible at an edge otherwise. */}
+      <Svg
+        width={windowWidth + 2}
+        height={windowHeight + 2}
+        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
+        pointerEvents="none"
+      >
         <Defs>
           <LinearGradient id="databasesBg" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0.03" stopColor="#705648" />
@@ -95,7 +103,7 @@ export default function DatabasesScreen() {
             <Stop offset="1" stopColor="#000000" />
           </LinearGradient>
         </Defs>
-        <Rect width={windowWidth} height={windowHeight} fill="url(#databasesBg)" />
+        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#databasesBg)" />
       </Svg>
 
       <View style={styles.headerRow}>

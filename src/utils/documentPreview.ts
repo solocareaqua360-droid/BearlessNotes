@@ -29,19 +29,43 @@ export function formatUpdatedAt(timestamp: number): string {
   });
 }
 
+export type PreviewChecklistItem = { text: string; checked: boolean };
+
+const PREVIEW_CHECKLIST_LIMIT = 4;
+const PREVIEW_IMAGE_LIMIT = 4;
+
 // The document-card thumbnail is always the FIRST image block, regardless
 // of where it sits among other blocks - documents with no image at all get
 // a placeholder (a document icon on a plain box, same size) rather than no
 // thumbnail, so every row in the list keeps the same shape.
-export function extractPreview(blocks: Block[] | undefined): { imageUri: string | null; previewText: string } {
+//
+// checklistItems/imageUris are the "live content" preview (DocumentCard's
+// grid/list views show actual checkbox rows or a photo strip instead of
+// just previewText when a document has them) - capped short since a card
+// only ever has room for a handful, not a full copy of the document.
+export function extractPreview(blocks: Block[] | undefined): {
+  imageUri: string | null;
+  imageUris: string[];
+  previewText: string;
+  checklistItems: PreviewChecklistItem[];
+} {
   const list = blocks ?? [];
-  const imageBlock = list.find((b) => (b.type ?? 'paragraph') === 'image' && b.imageUri);
+  const imageBlocks = list.filter((b) => (b.type ?? 'paragraph') === 'image' && b.imageUri);
+  const checklistItems = list
+    .filter((b) => (b.type ?? 'paragraph') === 'checkbox' && b.text.trim() !== '')
+    .slice(0, PREVIEW_CHECKLIST_LIMIT)
+    .map((b) => ({ text: stripFormatting(b.text).trim(), checked: !!b.checked }));
   const previewText = list
     .map((b) => stripFormatting(b.text ?? '').trim())
     .filter((t) => t.length > 0)
     .join(' ')
     .slice(0, PREVIEW_LENGTH);
-  return { imageUri: imageBlock?.imageUri ?? null, previewText };
+  return {
+    imageUri: imageBlocks[0]?.imageUri ?? null,
+    imageUris: imageBlocks.slice(0, PREVIEW_IMAGE_LIMIT).map((b) => b.imageUri as string),
+    previewText,
+    checklistItems,
+  };
 }
 
 // A window of plain text around the first case-insensitive match of

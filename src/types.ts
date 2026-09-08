@@ -7,7 +7,8 @@ export type BlockType =
   | 'image'
   | 'file'
   | 'link'
-  | 'sketch';
+  | 'sketch'
+  | 'table';
 
 // One freehand stroke OR simple shape (line/rectangle/circle) in a
 // 'sketch' block - `d` is a plain SVG path `d` attribute. A freehand
@@ -58,12 +59,34 @@ export interface Block {
   // Absent/undefined means 'paragraph' - keeps every block already saved in
   // Firestore before block types existed valid without a migration.
   type?: BlockType;
+  // Set once, at creation (see buildBlock), and carried forward untouched by
+  // every later edit/type-conversion since it's just a spread of the
+  // existing block. Threaded into the tasks/links/photos/files mirror docs
+  // so those screens' "Дата створення" sort has a real value instead of
+  // falling back to updatedAt - absent on any block saved before this field
+  // existed, which is exactly when that fallback kicks in.
+  createdAt?: number;
   checked?: boolean; // 'checkbox' blocks only
   imageUri?: string; // 'image' blocks only
+  // 'image' blocks only - set once at creation, never touched again.
+  // 'camera' is what routes a genuinely new photo into the fixed "Фото"
+  // group in PhotosScreen (see syncPhotosForDocument) - absent (a gallery
+  // pick, or any image block from before this existed) leaves the group
+  // unassigned as before.
+  imageSource?: 'camera';
   // 'image' blocks only. Absent means 'contain' (real proportions, pale
   // gray letterboxing) - keeps images saved before this setting existed
   // displaying the same as they already did.
   imageFit?: 'contain' | 'cover';
+  // 'image'/'file' blocks only. Not written by the normal attach flow
+  // (Drive backup fills these in asynchronously after upload, on the
+  // Firestore mirror record only) - present on a Block only when
+  // referencing an EXISTING already-backed-up photo/file from another
+  // document (see blockFromFile/blockFromPhoto in copyToNote.ts), so
+  // syncFilesForDocument/syncPhotosForDocument know not to upload a
+  // duplicate.
+  driveFileId?: string;
+  driveBytes?: number;
   // 'image' blocks only - a user-given name, always renamable (see
   // PhotosScreen). Absent until the user names it; the photo grid falls
   // back to a generic "Без назви" label, never the raw local file path.
@@ -116,6 +139,18 @@ export interface Block {
   sketchElements?: SketchElement[];
   sketchWidth?: number;
   sketchHeight?: number;
+  // 'table' blocks only. tableRows[r].cells[c] is that cell's raw text -
+  // either a plain value or a formula starting with "=" (e.g.
+  // "=SUM(B1:B3)", referencing other cells by their A1-style address).
+  // Wrapped in a {cells} object rather than a plain string[][] because
+  // Firestore rejects arrays nested directly inside arrays. Formulas are
+  // evaluated at render time (never stored), so a result can never go
+  // stale against edited cells.
+  tableRows?: TableRow[];
+}
+
+export interface TableRow {
+  cells: string[];
 }
 
 export interface Project {
@@ -137,7 +172,7 @@ export interface Group {
   id: string;
   name: string;
   color: string;
-  kind: 'file' | 'photo' | 'link-video' | 'link-geo' | 'link-other';
+  kind: 'file' | 'photo' | 'link-video' | 'link-geo' | 'link-other' | 'document';
 }
 
 // A database-object kind a tag can be attached to. Used both as the second
@@ -180,4 +215,11 @@ export interface DocumentItem {
   // exclude any document carrying this field, so daily notes never leak
   // into the regular document list.
   calendarDate?: string;
+  // References a doc in the 'groups' collection (kind: 'document') - same
+  // one-group-at-a-time pattern as Files/Photos/Links, a separate
+  // namespace from theirs via that kind.
+  groupId?: string;
+  // Absent on any document created before the sort-by-creation-date feature
+  // shipped - see utils/sortItems.ts's fallback-to-updatedAt behavior.
+  createdAt?: number;
 }

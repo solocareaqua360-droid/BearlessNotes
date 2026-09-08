@@ -1,6 +1,10 @@
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
+import { doc, increment, setDoc } from 'firebase/firestore';
+import { db } from '../firebase';
+
+const driveStatsDoc = doc(db, 'settings', 'driveStats');
 
 // drive.file (not the full "drive" scope) - this app can only see/manage
 // files it creates itself, never the rest of the user's Drive.
@@ -186,26 +190,50 @@ async function uploadBase64ToDrive(
   return json.id as string;
 }
 
+// Current-usage counter for SettingsScreen - approximate byte size from the
+// base64 payload (3 bytes per 4 base64 chars) rather than a second read of
+// the original file. Best-effort: a failed stats write must never fail the
+// upload/delete that already succeeded. Shared by real backups, the
+// "Перевірити з'єднання" diagnostic upload, and deleteFileFromDrive (which
+// subtracts back out), so it reflects what's currently on the Drive, not a
+// running lifetime total.
+function adjustDriveStats(bytesDelta: number, fileCountDelta: number) {
+  setDoc(
+    driveStatsDoc,
+    { totalBytesStored: increment(bytesDelta), fileCount: increment(fileCountDelta) },
+    { merge: true }
+  ).catch(() => {});
+}
+
+function approxBase64Bytes(base64Data: string): number {
+  return Math.floor((base64Data.length * 3) / 4);
+}
+
 async function uploadFileToDrive(
   folderId: string,
   localUri: string,
   fileName: string,
   mimeType: string
-): Promise<string> {
+): Promise<{ fileId: string; bytes: number }> {
   const base64Data = await LegacyFileSystem.readAsStringAsync(localUri, { encoding: 'base64' });
-  return uploadBase64ToDrive(folderId, fileName, mimeType, base64Data);
+  const fileId = await uploadBase64ToDrive(folderId, fileName, mimeType, base64Data);
+  const bytes = approxBase64Bytes(base64Data);
+  adjustDriveStats(bytes, 1);
+  return { fileId, bytes };
 }
 
 // Fire-and-forget entry point used right after attaching a new file/photo:
 // resolves to null (never throws) whenever Drive sync isn't connected or
 // the upload itself fails, since a failed backup should never block
-// attaching the file locally.
+// attaching the file locally. The returned byte size is stored alongside
+// driveFileId on the file/photo's own document, so a later delete-from-Drive
+// knows exactly how much to subtract back out of the counter.
 export async function backupFileToDrive(
   localUri: string,
   fileName: string,
   mimeType: string,
   subFolder: DriveSubFolder
-): Promise<string | null> {
+): Promise<{ fileId: string; bytes: number } | null> {
   ensureConfigured();
   if (!GoogleSignin.hasPreviousSignIn()) {
     console.warn('[googleDrive] backupFileToDrive skipped - not signed in', fileName);
@@ -249,7 +277,12 @@ export async function runDriveDiagnostics(): Promise<string> {
       'text/plain',
       DIAGNOSTIC_FILE_BASE64
     );
-    return `Успішно. Тестовий файл завантажено в "Bearless Notes/Files" (id ${fileId}).`;
+    // Cleaned up right away rather than counted toward the storage-used
+    // counter - it's a connectivity check, not a real backup, and leaving
+    // it behind would silently inflate "скільки місця я займаю" with test
+    // cruft the user never asked to keep.
+    await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, { method: 'DELETE' });
+    return `Успішно. З'єднання з Google Диском працює.`;
   } catch (e) {
     return e instanceof Error ? e.message : String(e);
   }
@@ -260,15 +293,20 @@ export async function runDriveDiagnostics(): Promise<string> {
 // failed - unlike a failed backup (silent on purpose), a failed delete has
 // to be surfaced: the whole point of choosing "Видалити з Диску" is knowing
 // the cloud copy is gone, and silently leaving it there is the one outcome
-// the user must never be misled about.
-export async function deleteFileFromDrive(driveFileId: string): Promise<string | null> {
+// the user must never be misled about. `bytes` (the file's own stored
+// driveBytes, if known) is subtracted back out of the storage-used counter
+// on success, so it reflects what's actually still on the Drive.
+export async function deleteFileFromDrive(driveFileId: string, bytes?: number): Promise<string | null> {
   ensureConfigured();
   if (!GoogleSignin.hasPreviousSignIn()) return 'Google-акаунт не підключено.';
   try {
     const response = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}`, {
       method: 'DELETE',
     });
-    if (response.ok) return null;
+    if (response.ok) {
+      if (bytes) adjustDriveStats(-bytes, -1);
+      return null;
+    }
     const reason = await describeFailedResponse(response);
     console.warn('[googleDrive] deleteFileFromDrive failed', driveFileId, reason);
     return reason;

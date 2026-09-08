@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { addDoc, collection, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -8,6 +8,14 @@ import { Group } from '../types';
 const ACCENT = '#3B82F6';
 const GROUP_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
 const groupsCollection = collection(db, 'groups');
+
+// A fixed, non-deletable group (like "Всі"/"Без групи", but a real group
+// document rather than a pseudo-entry) - every image captured with the
+// in-app camera lands here automatically, per PhotosScreen's own
+// ensureCameraPhotosGroup. Deleting it would silently strand every camera
+// photo's groupId pointing at nothing, so it's exempted from the delete
+// button below the same way the two pseudo-entries never had one.
+export const CAMERA_PHOTOS_GROUP_ID = 'camera-photos';
 
 export type GroupKind = Group['kind'];
 
@@ -28,6 +36,20 @@ export default function GroupPickerSheet({ visible, kind, groups, onPick, onClos
   const [newGroupName, setNewGroupName] = useState('');
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingGroupName, setEditingGroupName] = useState('');
+  // This Android build doesn't resize the window under the keyboard
+  // (edge-to-edge delivers it as an inset, not a resize - confirmed on
+  // TasksScreen's own project-picker sheet, same bottom-sheet shape as
+  // this one), so the "Нова група" input needs the same manual
+  // Keyboard-height tracking to stay clear of it.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   async function addGroup() {
     const name = newGroupName.trim();
@@ -60,7 +82,7 @@ export default function GroupPickerSheet({ visible, kind, groups, onPick, onClos
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={() => {}}>
+        <Pressable style={[styles.sheet, { marginBottom: keyboardHeight }]} onPress={() => {}}>
           <View style={styles.handle} />
           <Text style={styles.title}>Групування</Text>
 
@@ -92,9 +114,11 @@ export default function GroupPickerSheet({ visible, kind, groups, onPick, onClos
                 <Pressable hitSlop={8} onPress={() => startEditGroup(g)}>
                   <Ionicons name="pencil-outline" size={16} color="#9CA3AF" />
                 </Pressable>
-                <Pressable hitSlop={8} onPress={() => confirmDeleteGroup(g)}>
-                  <Ionicons name="close" size={16} color="#9CA3AF" />
-                </Pressable>
+                {g.id !== CAMERA_PHOTOS_GROUP_ID && (
+                  <Pressable hitSlop={8} onPress={() => confirmDeleteGroup(g)}>
+                    <Ionicons name="close" size={16} color="#9CA3AF" />
+                  </Pressable>
+                )}
               </View>
             )
           )}

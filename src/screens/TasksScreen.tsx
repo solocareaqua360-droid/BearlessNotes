@@ -32,9 +32,12 @@ import { Block, Project } from '../types';
 import { RootStackParamList } from '../navigation';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import ReminderSheet from '../components/ReminderSheet';
+import SortMenuRows from '../components/SortMenuRows';
 import { useMultiSelect } from '../hooks/useMultiSelect';
+import { useSortPref } from '../hooks/useSortPref';
 import { cancelReminder, scheduleReminder } from '../utils/reminders';
 import { formatShortDate, parseDateKey } from '../utils/dateLocale';
+import { sortItems } from '../utils/sortItems';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -67,6 +70,8 @@ type Task = {
   reminderDate?: string;
   reminderTime?: string;
   reminderNotificationId?: string;
+  updatedAt: number;
+  createdAt?: number;
 };
 
 // A task counts as "today" either because it was quick-starred, or because
@@ -130,6 +135,8 @@ export default function TasksScreen() {
     toggle: toggleSelected,
     clear: clearSelection,
   } = useMultiSelect();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const { sortPref, selectSortField } = useSortPref('tasksPrefs');
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [pickerTaskId, setPickerTaskId] = useState<string | null>(null);
@@ -189,6 +196,8 @@ export default function TasksScreen() {
         reminderDate: docSnapshot.data().reminderDate,
         reminderTime: docSnapshot.data().reminderTime,
         reminderNotificationId: docSnapshot.data().reminderNotificationId,
+        updatedAt: docSnapshot.data().updatedAt ?? 0,
+        createdAt: docSnapshot.data().createdAt,
       }));
       loaded.sort((a, b) => Number(a.checked) - Number(b.checked));
       setTasks(loaded);
@@ -222,10 +231,23 @@ export default function TasksScreen() {
   // rather than needing every affected task rewritten the moment a project
   // is deleted.
   const filteredTasks = useMemo(() => {
-    if (projectFilter === null) return tasks;
-    if (projectFilter === UNASSIGNED_ID) return tasks.filter((t) => !t.projectId);
-    return tasks.filter((t) => t.projectId === projectFilter);
-  }, [tasks, projectFilter]);
+    const byProject =
+      projectFilter === null
+        ? tasks
+        : projectFilter === UNASSIGNED_ID
+          ? tasks.filter((t) => !t.projectId)
+          : tasks.filter((t) => t.projectId === projectFilter);
+    // Sorted once here rather than per-section below - every downstream
+    // .filter() (today/unfinished/completed/kanban column) preserves
+    // relative order, so this one sort is what all of them end up showing.
+    return sortItems(
+      byProject,
+      sortPref,
+      (t) => t.text || 'Без назви',
+      (t) => t.createdAt,
+      (t) => t.updatedAt
+    );
+  }, [tasks, projectFilter, sortPref]);
 
   // The task doc is a mirror (see DocumentEditorScreen's syncTasksForDocument) -
   // the block inside the source document's own `blocks` array field is the
@@ -531,7 +553,7 @@ export default function TasksScreen() {
         {isSelectMode && (
           <Pressable hitSlop={8} onPress={() => toggleSelected(item.id)} style={styles.rowDelete}>
             <Ionicons
-              name={isSelected ? 'checkbox' : 'square-outline'}
+              name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
               size={20}
               color={isSelected ? ACCENT : '#9CA3AF'}
             />
@@ -730,6 +752,15 @@ export default function TasksScreen() {
           <Pressable
             style={styles.headerButtonsCapsuleBtn}
             hitSlop={6}
+            onPress={() => setMenuOpen((v) => !v)}
+            accessibilityLabel="Меню"
+          >
+            <Ionicons name="ellipsis-horizontal" size={18} color="#6B7280" />
+          </Pressable>
+          <View style={styles.headerButtonsCapsuleDivider} />
+          <Pressable
+            style={styles.headerButtonsCapsuleBtn}
+            hitSlop={6}
             onPress={() =>
               setKanbanMode((v) => {
                 const next = !v;
@@ -763,6 +794,13 @@ export default function TasksScreen() {
           </Pressable>
         </View>
       </View>
+
+      {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
+      {menuOpen && (
+        <View style={styles.menuPanel}>
+          <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
+        </View>
+      )}
 
       {!kanbanMode && projects.length > 0 && (
         <ProjectTabsRow items={projects} selected={projectFilter} onSelect={setProjectFilter} />
@@ -930,6 +968,29 @@ const styles = StyleSheet.create({
     width: 1,
     height: 16,
     backgroundColor: 'rgba(0,0,0,0.08)',
+  },
+  menuBackdrop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 5,
+  },
+  menuPanel: {
+    position: 'absolute',
+    top: 94,
+    right: 20,
+    width: 200,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+    zIndex: 6,
   },
   selectionBar: {
     position: 'absolute',

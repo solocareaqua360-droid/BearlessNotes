@@ -16,15 +16,15 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from '
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { collection, doc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
+import { collection, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore';
 import { db } from '../firebase';
+import { Block } from '../types';
 import { RootStackParamList } from '../navigation';
-import DocumentEditorScreen from './DocumentEditorScreen';
+import DocumentEditorScreen, { DocumentEditorHandle } from './DocumentEditorScreen';
 import { hasNoteContent } from '../utils/documentPreview';
-import { FONT_REGULAR, FONT_MEDIUM, FONT_SEMIBOLD, FONT_BOLD, FONT_EXTRABOLD } from '../utils/fonts';
+import { FONT_REGULAR, FONT_MEDIUM, FONT_SEMIBOLD, FONT_BOLD } from '../utils/fonts';
 import {
   MONTH_FULL,
-  WEEKDAY_FULL,
   WEEKDAY_SHORT,
   addDays,
   dateKey,
@@ -32,7 +32,6 @@ import {
   getMonthGrid,
   getWeekDates,
   isSameDay,
-  isoWeekNumber,
   mondayIndex,
   mondayOf,
   parseDateKey,
@@ -40,6 +39,12 @@ import {
 
 const ACCENT = '#3B82F6';
 const PAGE_WIDTH = Dimensions.get('window').width;
+// calendarPlate carries its own marginHorizontal:16 on each side, so the
+// week strip's actual scrollable viewport is narrower than the raw device
+// width - every page inside it (and the paging math that scrolls between
+// them) has to size against this instead of PAGE_WIDTH, or the ScrollView's
+// real width and its pages' assumed width disagree and everything shifts.
+const STRIP_WIDTH = PAGE_WIDTH - 32;
 const documentsCollection = collection(db, 'documents');
 const tasksCollection = collection(db, 'tasks');
 const calendarPrefsDoc = doc(db, 'settings', 'calendarPrefs');
@@ -67,6 +72,12 @@ const WEEK_AREA_HEIGHT = ROW_HEIGHT;
 const MONTH_AREA_HEIGHT = ROW_HEIGHT * 6;
 const MONTH_NAV_HEIGHT = 36;
 const WEEKDAY_HEADER_HEIGHT = 22;
+// The "only filled days" strip has no weekday header (its dates aren't a
+// real calendar week, so weekday letters would be meaningless) - that
+// reclaimed height goes straight into taller day cells instead of just
+// being removed, which is also why the two heights sum to the same total
+// as WEEK_AREA_HEIGHT + WEEKDAY_HEADER_HEIGHT (see calendarWrapStyle).
+const FILLED_ROW_HEIGHT = ROW_HEIGHT + WEEKDAY_HEADER_HEIGHT;
 
 export default function CalendarScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -103,11 +114,36 @@ export default function CalendarScreen() {
     () => new Set([...noteFilledDates, ...reminderFilledDates]),
     [noteFilledDates, reminderFilledDates]
   );
+  // Sorted view of filledDates for the "only filled days" strip - date keys
+  // (YYYY-MM-DD) sort lexicographically the same as chronologically.
+  const filledDatesSorted = useMemo(() => Array.from(filledDates).sort(), [filledDates]);
+  const [dueReminders, setDueReminders] = useState<
+    { id: string; text: string; checked: boolean; documentId: string; reminderTime?: string }[]
+  >([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Mirrors the embedded note editor's own internal state (see
+  // DocumentEditorScreen's onSelectModeChange/onSaveStatusChange) so this
+  // screen's own header capsule can show the right icon/checkmark for
+  // whichever day's note is currently mounted - noteEditorRef is how the
+  // header's select button reaches back down to actually toggle it.
+  const [noteSelectMode, setNoteSelectMode] = useState(false);
+  const [noteSaveStatus, setNoteSaveStatus] = useState<'saved' | 'saving'>('saved');
+  const noteEditorRef = useRef<DocumentEditorHandle>(null);
   // The calendar folds away entirely while the keyboard is up: on a phone
   // the strip (let alone the month grid) plus the keyboard leaves almost
   // nothing for the note being written.
   const [isWriting, setIsWriting] = useState(false);
+  // Index into filledDatesSorted of the first cell of the currently shown
+  // page of the "only filled days" strip - same 3-page sliding-window idea
+  // as weekStart/WEEK_PAGE_OFFSETS below, just stepping by array index
+  // instead of calendar days, since these dates aren't a contiguous week.
+  const [filledPageStart, setFilledPageStart] = useState(0);
+  // Once the user has manually scrolled the strip, stop re-centering it on
+  // selectedDate every time the live filledDatesSorted list updates (e.g. a
+  // note is added elsewhere) - only the initial "jump to today's spot" on
+  // turning the toggle on should move the strip out from under them.
+  const userAdjustedFilledPageRef = useRef(false);
+  const filledScrollRef = useRef<ScrollView>(null);
 
   const weekScrollRef = useRef<ScrollView>(null);
   const expandAmount = useSharedValue(0); // 0 = week strip, 1 = month grid
@@ -144,8 +180,36 @@ export default function CalendarScreen() {
 
   // Recenters the 3-page week strip on the (possibly new) current week.
   useEffect(() => {
-    weekScrollRef.current?.scrollTo({ x: PAGE_WIDTH, animated: false });
+    weekScrollRef.current?.scrollTo({ x: STRIP_WIDTH, animated: false });
   }, [weekStart]);
+
+  // Same recentring for the "only filled days" strip's own 3-page window.
+  useEffect(() => {
+    filledScrollRef.current?.scrollTo({ x: STRIP_WIDTH, animated: false });
+  }, [filledPageStart]);
+
+  // Jumps the strip to whichever 7-slot page contains the selected day (or
+  // the next filled day after it, if the selected day itself has no note)
+  // the moment the toggle turns on or the list first loads - never again
+  // after the user has scrolled it themselves.
+  useEffect(() => {
+    if (!onlyFilledDays) {
+      userAdjustedFilledPageRef.current = false;
+      return;
+    }
+    if (userAdjustedFilledPageRef.current || filledDatesSorted.length === 0) return;
+    const key = dateKey(selectedDate);
+    let idx = filledDatesSorted.findIndex((k) => k >= key);
+    if (idx === -1) idx = filledDatesSorted.length - 1;
+    setFilledPageStart(Math.max(0, idx - (idx % 7)));
+  }, [onlyFilledDays, filledDatesSorted, selectedDate]);
+
+  // The month grid can never be reached while showing only filled days (see
+  // the expand button being hidden below) - if it was already open when the
+  // toggle turns on, fold it back to the strip instead of leaving it stuck.
+  useEffect(() => {
+    if (onlyFilledDays) setIsMonthExpanded(false);
+  }, [onlyFilledDays]);
 
   // The month grid follows whichever day is open, so collapsing back to the
   // week strip and expanding again always lands on the right month. Changing
@@ -155,15 +219,23 @@ export default function CalendarScreen() {
     setVisibleMonth({ year: selectedDate.getFullYear(), month: selectedDate.getMonth() });
   }, [selectedDate]);
 
-  // Which days already have a real note (the "only filled days" toggle) -
-  // padded a week past either end of the visible month so the week strip's
-  // own hidden-day check (below) stays correct even for a week that spans
-  // two months. calendarDate sorts the same as the date it represents
-  // (YYYY-MM-DD), so a plain range filter covers this with no composite
-  // index needed.
+  // Which days already have a real note (the dot indicator, and the "only
+  // filled days" toggle) - padded a week past either end of the visible
+  // month so the week strip's own boundary stays correct even for a week
+  // that spans two months. calendarDate sorts the same as the date it
+  // represents (YYYY-MM-DD), so a plain range filter covers this with no
+  // composite index needed. While the "only filled days" strip is active
+  // there's no single "visible month" to bound the query by anymore (the
+  // strip can be scrolled arbitrarily far into the past/future) - it widens
+  // to effectively unbounded instead. A personal note history is small
+  // enough that this is still one cheap query, not real pagination.
   useEffect(() => {
-    const monthStartKey = dateKey(addDays(new Date(visibleMonth.year, visibleMonth.month, 1), -7));
-    const monthEndKey = dateKey(addDays(new Date(visibleMonth.year, visibleMonth.month + 1, 0), 7));
+    const monthStartKey = onlyFilledDays
+      ? '0001-01-01'
+      : dateKey(addDays(new Date(visibleMonth.year, visibleMonth.month, 1), -7));
+    const monthEndKey = onlyFilledDays
+      ? '9999-12-31'
+      : dateKey(addDays(new Date(visibleMonth.year, visibleMonth.month + 1, 0), 7));
     const filledQuery = query(
       documentsCollection,
       where('calendarDate', '>=', monthStartKey),
@@ -177,14 +249,18 @@ export default function CalendarScreen() {
       });
       setNoteFilledDates(filled);
     });
-  }, [visibleMonth.year, visibleMonth.month]);
+  }, [visibleMonth.year, visibleMonth.month, onlyFilledDays]);
 
   // Same range, same reasoning, but against tasks' own reminderDate - a day
   // with a task due on it counts as "filled" too (see filledDates above),
   // without writing an actual (empty) diary document for it.
   useEffect(() => {
-    const monthStartKey = dateKey(addDays(new Date(visibleMonth.year, visibleMonth.month, 1), -7));
-    const monthEndKey = dateKey(addDays(new Date(visibleMonth.year, visibleMonth.month + 1, 0), 7));
+    const monthStartKey = onlyFilledDays
+      ? '0001-01-01'
+      : dateKey(addDays(new Date(visibleMonth.year, visibleMonth.month, 1), -7));
+    const monthEndKey = onlyFilledDays
+      ? '9999-12-31'
+      : dateKey(addDays(new Date(visibleMonth.year, visibleMonth.month + 1, 0), 7));
     const remindersQuery = query(
       tasksCollection,
       where('reminderDate', '>=', monthStartKey),
@@ -198,11 +274,20 @@ export default function CalendarScreen() {
       });
       setReminderFilledDates(filled);
     });
-  }, [visibleMonth.year, visibleMonth.month]);
+  }, [visibleMonth.year, visibleMonth.month, onlyFilledDays]);
 
   function selectDay(date: Date) {
     setSelectedDate(date);
     setWeekStart(mondayOf(date));
+  }
+
+  // The "Сьогодні" button is always visible now (not just when already on
+  // today), specifically so it can pull the week strip/month grid back
+  // after they've been paged away with a swipe - selectDay already resets
+  // both weekStart (recentres the week strip) and, via the effect watching
+  // selectedDate, visibleMonth too.
+  function jumpToToday() {
+    selectDay(new Date());
   }
 
   // Jump straight to a day opened from DiaryScreen. Guarded by a ref (not
@@ -219,11 +304,18 @@ export default function CalendarScreen() {
   }, [jumpToDate]);
 
   function handleWeekScrollEnd(e: NativeSyntheticEvent<NativeScrollEvent>) {
-    const page = Math.round(e.nativeEvent.contentOffset.x / PAGE_WIDTH);
+    const page = Math.round(e.nativeEvent.contentOffset.x / STRIP_WIDTH);
     if (page === 1) return;
     const deltaDays = (page - 1) * 7;
     setWeekStart((prev) => addDays(prev, deltaDays));
     setSelectedDate((prev) => addDays(prev, deltaDays));
+  }
+
+  function handleFilledScrollEnd(e: NativeSyntheticEvent<NativeScrollEvent>) {
+    const page = Math.round(e.nativeEvent.contentOffset.x / STRIP_WIDTH);
+    if (page === 1) return;
+    userAdjustedFilledPageRef.current = true;
+    setFilledPageStart((prev) => Math.max(0, prev + (page - 1) * 7));
   }
 
   function changeVisibleMonth(delta: number) {
@@ -238,21 +330,38 @@ export default function CalendarScreen() {
     await setDoc(calendarPrefsDoc, { onlyFilledDays: !onlyFilledDays }, { merge: true });
   }
 
+  // The row height that isn't the month grid - WEEK_AREA_HEIGHT normally,
+  // or the taller FILLED_ROW_HEIGHT (weekday header's space folded in) for
+  // the "only filled days" strip. Total calendarWrap height is unaffected
+  // either way - only how it's split between the header row and this one.
+  const weekRowHeight = onlyFilledDays ? FILLED_ROW_HEIGHT : WEEK_AREA_HEIGHT;
+  // calendarPlate's own border/padding used to be plain (non-animated)
+  // styling around calendarWrap - so even once calendarWrap's own height
+  // animated down to 0 while writing, this border+padding stayed put as a
+  // thin visible bar. Animating them down to 0 too here is what actually
+  // makes the whole plate disappear.
+  const calendarPlateStyle = useAnimatedStyle(() => ({
+    opacity: visibleAmount.value,
+    paddingTop: 6 * visibleAmount.value,
+    paddingBottom: 10 * visibleAmount.value,
+    borderWidth: visibleAmount.value,
+  }));
   const calendarWrapStyle = useAnimatedStyle(() => {
     const navHeight = MONTH_NAV_HEIGHT * expandAmount.value;
-    const gridHeight = WEEK_AREA_HEIGHT + (MONTH_AREA_HEIGHT - WEEK_AREA_HEIGHT) * expandAmount.value;
+    const gridHeight = weekRowHeight + (MONTH_AREA_HEIGHT - weekRowHeight) * expandAmount.value;
+    const weekdayHeight = onlyFilledDays ? 0 : WEEKDAY_HEADER_HEIGHT;
     return {
-      height: (navHeight + WEEKDAY_HEADER_HEIGHT + gridHeight) * visibleAmount.value,
+      height: (navHeight + weekdayHeight + gridHeight) * visibleAmount.value,
       opacity: visibleAmount.value,
     };
-  });
+  }, [weekRowHeight, onlyFilledDays]);
   const monthNavStyle = useAnimatedStyle(() => ({
     height: MONTH_NAV_HEIGHT * expandAmount.value,
     opacity: expandAmount.value,
   }));
   const gridClipStyle = useAnimatedStyle(() => ({
-    height: WEEK_AREA_HEIGHT + (MONTH_AREA_HEIGHT - WEEK_AREA_HEIGHT) * expandAmount.value,
-  }));
+    height: weekRowHeight + (MONTH_AREA_HEIGHT - weekRowHeight) * expandAmount.value,
+  }), [weekRowHeight]);
   const weekLayerStyle = useAnimatedStyle(() => ({ opacity: 1 - expandAmount.value }));
   const monthLayerStyle = useAnimatedStyle(() => ({ opacity: expandAmount.value }));
 
@@ -263,13 +372,57 @@ export default function CalendarScreen() {
   const selectedKey = dateKey(selectedDate);
   const dailyDocId = `day_${selectedKey}`;
 
+  // The actual tasks due on the selected day (not just whether the day
+  // counts as "filled") - a task written in a DIFFERENT document but
+  // reminder-dated to this one shows here, on the sheet for the day it's
+  // actually due, rather than only being visible back where it was typed.
+  useEffect(() => {
+    const dueQuery = query(tasksCollection, where('reminderDate', '==', selectedKey));
+    return onSnapshot(dueQuery, (snapshot) => {
+      setDueReminders(
+        snapshot.docs.map((docSnapshot) => ({
+          id: docSnapshot.id,
+          text: docSnapshot.data().text,
+          checked: !!docSnapshot.data().checked,
+          documentId: docSnapshot.data().documentId,
+          reminderTime: docSnapshot.data().reminderTime,
+        }))
+      );
+    });
+  }, [selectedKey]);
+
+  // Excludes a task physically written in this same day's own note - that
+  // one already renders inline as a checkbox block down in noteArea, so
+  // listing it here too would just be a duplicate.
+  const dueElsewhere = dueReminders.filter((r) => r.documentId !== dailyDocId);
+
+  async function toggleDueReminder(task: { id: string; checked: boolean; documentId: string }) {
+    const newChecked = !task.checked;
+    updateDoc(doc(db, 'tasks', task.id), { checked: newChecked });
+    const documentRef = doc(db, 'documents', task.documentId);
+    const snapshot = await getDoc(documentRef);
+    const data = snapshot.data();
+    if (!data) return;
+    const blocks: Block[] = data.blocks ?? [];
+    const updatedBlocks = blocks.map((b) => (b.id === task.id ? { ...b, checked: newChecked } : b));
+    updateDoc(documentRef, { blocks: updatedBlocks });
+  }
+
   return (
     <View style={styles.container}>
       {/* Same fixed gradient as DocumentsScreen. The daily-note editor
           below (`noteArea`) stays white on its own - it's the embedded
           DocumentEditorScreen's own opaque white background, painted over
           this gradient, not a separate override here. */}
-      <Svg width={windowWidth} height={windowHeight} style={StyleSheet.absoluteFill} pointerEvents="none">
+      {/* 1px bled past every edge - windowWidth/Height can round to a hair
+          less than the actual screen, leaving a sliver of the default
+          white background visible at an edge otherwise. */}
+      <Svg
+        width={windowWidth + 2}
+        height={windowHeight + 2}
+        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
+        pointerEvents="none"
+      >
         <Defs>
           <LinearGradient id="calendarBg" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0.03" stopColor="#705648" />
@@ -277,18 +430,45 @@ export default function CalendarScreen() {
             <Stop offset="1" stopColor="#000000" />
           </LinearGradient>
         </Defs>
-        <Rect width={windowWidth} height={windowHeight} fill="url(#calendarBg)" />
+        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#calendarBg)" />
       </Svg>
 
       <View style={styles.headerRow}>
-        <View style={styles.headerButtons}>
-          <Pressable hitSlop={6} onPress={() => navigation.navigate('Diary')}>
-            <Ionicons name="search" size={17} color="#fff" />
+        <View style={styles.headerLeft}>
+          <Pressable style={styles.todayButton} onPress={jumpToToday}>
+            <Text style={styles.todayButtonLabel}>Сьогодні</Text>
           </Pressable>
-          <View style={styles.headerButtonsDivider} />
-          <Pressable hitSlop={6} onPress={() => setMenuOpen((v) => !v)}>
-            <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
+          <Pressable
+            style={styles.headerDateTap}
+            disabled={!isWriting}
+            onPress={() => Keyboard.dismiss()}
+          >
+            <Text style={styles.headerDateLabel} numberOfLines={1}>
+              {WEEKDAY_SHORT[mondayIndex(selectedDate)]}, {formatBigDate(selectedDate)}
+            </Text>
+            {isWriting && <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.7)" />}
           </Pressable>
+        </View>
+        <View style={styles.headerRightGroup}>
+          {/* A separate circle, not a 4th icon inside the capsule - folded
+              into the pill it read as just another button, which it isn't
+              (nothing happens when you tap it). */}
+          <View style={[styles.saveDot, noteSaveStatus === 'saved' && styles.saveDotSaved]}>
+            <Ionicons name="checkmark" size={17} color={noteSaveStatus === 'saved' ? '#171310' : '#fff'} />
+          </View>
+          <View style={styles.headerButtons}>
+            <Pressable hitSlop={6} onPress={() => navigation.navigate('Diary')}>
+              <Ionicons name="search" size={17} color="#fff" />
+            </Pressable>
+            <View style={styles.headerButtonsDivider} />
+            <Pressable hitSlop={6} onPress={() => setMenuOpen((v) => !v)}>
+              <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
+            </Pressable>
+            <View style={styles.headerButtonsDivider} />
+            <Pressable hitSlop={6} onPress={() => noteEditorRef.current?.toggleSelectMode()}>
+              <Ionicons name={noteSelectMode ? 'close' : 'ellipse-outline'} size={17} color="#fff" />
+            </Pressable>
+          </View>
         </View>
       </View>
 
@@ -296,15 +476,14 @@ export default function CalendarScreen() {
       {menuOpen && (
         <View style={styles.menuPanel}>
           <Pressable style={styles.menuRow} onPress={toggleOnlyFilledDays}>
-            <Text style={styles.menuRowLabel}>Показувати лише заповнені дні</Text>
-            <View style={[styles.switchTrack, onlyFilledDays && styles.switchTrackOn]}>
-              <View style={styles.switchKnob} />
-            </View>
+            <Ionicons name="filter-outline" size={17} color="#111827" />
+            <Text style={styles.menuRowLabel}>Лише заповнені дні</Text>
+            {onlyFilledDays && <Ionicons name="checkmark" size={18} color={ACCENT} />}
           </Pressable>
         </View>
       )}
 
-      <View style={styles.calendarPlate}>
+      <Animated.View style={[styles.calendarPlate, calendarPlateStyle]}>
       <Animated.View style={[styles.calendarWrap, calendarWrapStyle]}>
         <Animated.View style={[styles.monthNavWrap, monthNavStyle]}>
           <View style={styles.monthNav}>
@@ -320,50 +499,92 @@ export default function CalendarScreen() {
           </View>
         </Animated.View>
 
-        <View style={styles.weekdayHeader}>
-          {WEEKDAY_SHORT.map((w) => (
-            <Text key={w} style={styles.weekdayHeaderLabel}>
-              {w}
-            </Text>
-          ))}
-        </View>
+        {!onlyFilledDays && (
+          // Hidden entirely (not just blanked) while showing only filled
+          // days - its dates aren't a real calendar week (they skip straight
+          // from one filled day to the next), so weekday letters above them
+          // would be meaningless. The reclaimed height goes to bigger day
+          // cells instead (see FILLED_ROW_HEIGHT).
+          <View style={styles.weekdayHeader}>
+            {WEEKDAY_SHORT.map((w) => (
+              <Text key={w} style={styles.weekdayHeaderLabel}>
+                {w}
+              </Text>
+            ))}
+          </View>
+        )}
 
         <Animated.View style={[styles.gridClip, gridClipStyle]}>
           <Animated.View
-            style={[styles.calendarLayer, { height: WEEK_AREA_HEIGHT }, weekLayerStyle]}
+            style={[styles.calendarLayer, { height: weekRowHeight }, weekLayerStyle]}
             pointerEvents={isMonthExpanded ? 'none' : 'auto'}
           >
-            <ScrollView
-              ref={weekScrollRef}
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              // RN gives every ScrollView flexGrow: 1, so without a fixed
-              // height here the strip stretches over all the free space.
-              style={styles.weekScroll}
-              contentOffset={{ x: PAGE_WIDTH, y: 0 }}
-              onLayout={() => weekScrollRef.current?.scrollTo({ x: PAGE_WIDTH, animated: false })}
-              onMomentumScrollEnd={handleWeekScrollEnd}
-            >
-              {WEEK_PAGE_OFFSETS.map((offset) => (
-                <View key={offset} style={styles.weekPage}>
-                  {getWeekDates(addDays(weekStart, offset)).map((date) => {
-                    const key = dateKey(date);
-                    const isToday = isSameDay(date, today);
-                    return (
-                      <DayCell
-                        key={key}
-                        date={date}
-                        isToday={isToday}
-                        isSelected={key === selectedKey}
-                        hidden={onlyFilledDays && !isToday && !filledDates.has(key)}
-                        onPress={() => selectDay(date)}
-                      />
-                    );
-                  })}
-                </View>
-              ))}
-            </ScrollView>
+            {onlyFilledDays ? (
+              <ScrollView
+                ref={filledScrollRef}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                style={[styles.weekScroll, { height: FILLED_ROW_HEIGHT }]}
+                contentOffset={{ x: STRIP_WIDTH, y: 0 }}
+                onLayout={() => filledScrollRef.current?.scrollTo({ x: STRIP_WIDTH, animated: false })}
+                onMomentumScrollEnd={handleFilledScrollEnd}
+              >
+                {WEEK_PAGE_OFFSETS.map((offset) => (
+                  <View key={offset} style={styles.weekPage}>
+                    {Array.from({ length: 7 }, (_, i) => {
+                      const idx = filledPageStart + offset + i;
+                      const dateStr = filledDatesSorted[idx];
+                      if (!dateStr) return <View key={i} style={styles.filledDayCell} />;
+                      const date = parseDateKey(dateStr);
+                      const isToday = isSameDay(date, today);
+                      return (
+                        <DayCell
+                          key={dateStr}
+                          date={date}
+                          isToday={isToday}
+                          isSelected={dateStr === selectedKey}
+                          compact
+                          onPress={() => selectDay(date)}
+                        />
+                      );
+                    })}
+                  </View>
+                ))}
+              </ScrollView>
+            ) : (
+              <ScrollView
+                ref={weekScrollRef}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                // RN gives every ScrollView flexGrow: 1, so without a fixed
+                // height here the strip stretches over all the free space.
+                style={styles.weekScroll}
+                contentOffset={{ x: STRIP_WIDTH, y: 0 }}
+                onLayout={() => weekScrollRef.current?.scrollTo({ x: STRIP_WIDTH, animated: false })}
+                onMomentumScrollEnd={handleWeekScrollEnd}
+              >
+                {WEEK_PAGE_OFFSETS.map((offset) => (
+                  <View key={offset} style={styles.weekPage}>
+                    {getWeekDates(addDays(weekStart, offset)).map((date) => {
+                      const key = dateKey(date);
+                      const isToday = isSameDay(date, today);
+                      return (
+                        <DayCell
+                          key={key}
+                          date={date}
+                          isToday={isToday}
+                          isSelected={key === selectedKey}
+                          filled={filledDates.has(key)}
+                          onPress={() => selectDay(date)}
+                        />
+                      );
+                    })}
+                  </View>
+                ))}
+              </ScrollView>
+            )}
           </Animated.View>
 
           <Animated.View
@@ -381,7 +602,7 @@ export default function CalendarScreen() {
                     isToday={isToday}
                     isSelected={key === selectedKey}
                     muted={!inMonth}
-                    hidden={onlyFilledDays && inMonth && !isToday && !filledDates.has(key)}
+                    filled={filledDates.has(key)}
                     inGrid
                     onPress={() => selectDay(date)}
                   />
@@ -391,9 +612,9 @@ export default function CalendarScreen() {
           </Animated.View>
         </Animated.View>
       </Animated.View>
-      </View>
+      </Animated.View>
 
-      {!isWriting && (
+      {!isWriting && !onlyFilledDays && (
         <View style={styles.expandRow}>
           <Pressable
             style={styles.expandButton}
@@ -405,40 +626,42 @@ export default function CalendarScreen() {
         </View>
       )}
 
-      {isWriting ? (
-        // One compact line while writing - which day this is still has to be
-        // visible, but the big date block would eat the space the keyboard
-        // already took.
-        <Pressable style={styles.compactDate} onPress={() => Keyboard.dismiss()}>
-          <Text style={styles.compactDateLabel}>
-            {WEEKDAY_FULL[mondayIndex(selectedDate)]}, {formatBigDate(selectedDate)}
-          </Text>
-          <Ionicons name="chevron-down" size={14} color="rgba(255,255,255,0.7)" />
-        </Pressable>
-      ) : (
-        <View style={styles.dateHeader}>
-          <View style={styles.weekdayRow}>
-            <Text style={styles.weekdayFull}>{WEEKDAY_FULL[mondayIndex(selectedDate)]}</Text>
-            {isSameDay(selectedDate, today) && (
-              <View style={styles.todayChip}>
-                <Text style={styles.todayChipLabel}>Сьогодні</Text>
-              </View>
-            )}
-          </View>
-          <View style={styles.dateLine}>
-            <Text style={styles.dateBig}>{formatBigDate(selectedDate)}</Text>
-            <Text style={styles.weekNum}>Тиждень {isoWeekNumber(selectedDate)}</Text>
-          </View>
+      {!isWriting && dueElsewhere.length > 0 && (
+        <View style={styles.dueCard}>
+          {dueElsewhere.map((task, index) => (
+            <Pressable
+              key={task.id}
+              style={[styles.dueRow, index > 0 && styles.dueRowDivider]}
+              onPress={() => navigation.navigate('Editor', { documentId: task.documentId })}
+            >
+              <Pressable hitSlop={6} onPress={() => toggleDueReminder(task)}>
+                <Ionicons
+                  name={task.checked ? 'checkbox' : 'square-outline'}
+                  size={18}
+                  color={task.checked ? ACCENT : '#9CA3AF'}
+                />
+              </Pressable>
+              <Text
+                style={[styles.dueReminderText, task.checked && styles.dueReminderTextChecked]}
+                numberOfLines={1}
+              >
+                {task.text}
+              </Text>
+            </Pressable>
+          ))}
         </View>
       )}
 
       <View style={styles.noteArea}>
         <DocumentEditorScreen
           key={dailyDocId}
+          ref={noteEditorRef}
           embedded
           documentId={dailyDocId}
           navigation={navigation}
           extraFields={{ calendarDate: selectedKey }}
+          onSelectModeChange={setNoteSelectMode}
+          onSaveStatusChange={setNoteSaveStatus}
         />
       </View>
     </View>
@@ -455,32 +678,50 @@ function DayCell({
   isToday,
   isSelected,
   muted,
-  hidden,
+  filled,
   inGrid,
+  compact,
   onPress,
 }: {
   date: Date;
   isToday: boolean;
   isSelected: boolean;
   muted?: boolean;
-  hidden?: boolean;
+  // Real note or reminder on this day - shown as a small dot under the
+  // number. Not meaningful in `compact` mode (the "only filled days" strip
+  // only ever shows filled days to begin with).
+  filled?: boolean;
   inGrid?: boolean;
+  // The "only filled days" strip's own cell shape: a day.month pill instead
+  // of a plain day-number circle, since these dates jump around freely and
+  // a bare "8" would be ambiguous about which month it's in.
+  compact?: boolean;
   onPress: () => void;
 }) {
+  const numColor = isToday ? styles.dayNumToday : muted ? styles.dayNumMuted : null;
   return (
-    <Pressable style={inGrid ? styles.gridCell : styles.dayCell} onPress={onPress}>
+    <Pressable style={compact ? styles.filledDayCell : inGrid ? styles.gridCell : styles.dayCell} onPress={onPress}>
       <View
         style={[
           styles.dayCircle,
+          compact && styles.dayPill,
           isSelected && !isToday && styles.dayCircleSelected,
           isToday && styles.dayCircleToday,
         ]}
       >
-        {!hidden && (
-          <Text style={[styles.dayNum, muted && styles.dayNumMuted, isToday && styles.dayNumToday]}>
-            {date.getDate()}
-          </Text>
+        {compact ? (
+          <>
+            <Text style={[styles.dayNum, styles.dayNumCompact, numColor]}>
+              {String(date.getDate()).padStart(2, '0')}
+            </Text>
+            <Text style={[styles.dayMonthCompact, numColor]}>
+              .{String(date.getMonth() + 1).padStart(2, '0')}
+            </Text>
+          </>
+        ) : (
+          <Text style={[styles.dayNum, numColor]}>{date.getDate()}</Text>
         )}
+        {filled && !compact && <View style={[styles.filledDot, isToday && styles.filledDotOnToday]} />}
       </View>
     </Pressable>
   );
@@ -493,10 +734,51 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 10,
     paddingHorizontal: 20,
-    paddingTop: 56,
+    // Matches DocumentsScreen's own header capsule's vertical position.
+    paddingTop: 90,
     paddingBottom: 8,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flexShrink: 1,
+  },
+  // Always visible (not just when already on today) - its job now is
+  // pulling the week strip/month grid back after paging away with a swipe,
+  // which only makes sense if it's there to tap regardless of where the
+  // calendar currently is.
+  todayButton: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 10,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+  },
+  todayButtonLabel: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    fontFamily: FONT_SEMIBOLD,
+    color: '#171310',
+  },
+  headerDateTap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 1,
+  },
+  headerDateLabel: {
+    fontSize: 14.5,
+    fontWeight: '700',
+    fontFamily: FONT_SEMIBOLD,
+    color: '#fff',
+  },
+  headerRightGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   // Search (→ DiaryScreen) + "..." (the only-filled-days menu) merged into
   // one elongated glass capsule, same as DocumentsScreen's headerButtons.
@@ -515,6 +797,24 @@ const styles = StyleSheet.create({
     width: 1,
     height: 16,
     backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  // Dark-glass circle while saving (matching the capsule beside it), solid
+  // white once saved - diameter equals the capsule's own height so the two
+  // shapes read as a matched pair, not a stray small dot next to a much
+  // taller pill.
+  saveDot: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(20,20,20,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  saveDotSaved: {
+    backgroundColor: '#fff',
+    borderColor: 'transparent',
   },
   menuBackdrop: {
     position: 'absolute',
@@ -553,31 +853,6 @@ const styles = StyleSheet.create({
     fontFamily: FONT_REGULAR,
     color: '#111827',
   },
-  switchTrack: {
-    width: 42,
-    height: 25,
-    borderRadius: 13,
-    backgroundColor: '#D1D5DB',
-    padding: 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-  },
-  switchTrackOn: {
-    backgroundColor: ACCENT,
-    justifyContent: 'flex-end',
-  },
-  switchKnob: {
-    width: 21,
-    height: 21,
-    borderRadius: 11,
-    backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
   // The glass plate under the calendar's numbers - a separate, unanimated
   // wrapper (see calendarPlate below) rather than styling this directly:
   // calendarWrap's own height is animated (week strip <-> month grid), and
@@ -589,11 +864,9 @@ const styles = StyleSheet.create({
   // Flush with the header above (square top), rounded only at the bottom.
   calendarPlate: {
     backgroundColor: 'rgba(20,20,20,0.25)',
-    borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.25)',
     borderRadius: 22,
-    paddingTop: 6,
-    paddingBottom: 10,
+    marginHorizontal: 16,
     overflow: 'hidden',
   },
   monthNavWrap: {
@@ -639,13 +912,21 @@ const styles = StyleSheet.create({
     height: WEEK_AREA_HEIGHT,
   },
   weekPage: {
-    width: PAGE_WIDTH,
+    width: STRIP_WIDTH,
     flexDirection: 'row',
     paddingHorizontal: 16,
   },
   dayCell: {
     flex: 1,
     height: ROW_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // The "only filled days" strip's own cell - taller, using the row height
+  // reclaimed from the hidden weekday header (see FILLED_ROW_HEIGHT).
+  filledDayCell: {
+    flex: 1,
+    height: FILLED_ROW_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -668,6 +949,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1.5,
     borderColor: 'transparent',
+    position: 'relative',
+  },
+  // The "only filled days" strip's cell - a rounded rect wide enough for
+  // "08" over ".09" instead of the plain week/month circle.
+  dayPill: {
+    width: 42,
+    height: 54,
+    borderRadius: 14,
   },
   dayCircleSelected: {
     borderColor: '#D1D5DB',
@@ -682,6 +971,16 @@ const styles = StyleSheet.create({
     fontFamily: FONT_SEMIBOLD,
     color: '#fff',
   },
+  dayNumCompact: {
+    fontSize: 18,
+    lineHeight: 21,
+  },
+  dayMonthCompact: {
+    fontSize: 12,
+    lineHeight: 14,
+    fontFamily: FONT_MEDIUM,
+    color: 'rgba(255,255,255,0.7)',
+  },
   dayNumMuted: {
     // Was a light gray for "faint against white" - on the now-dark
     // gradient that read backwards (brighter than the regular white
@@ -690,6 +989,23 @@ const styles = StyleSheet.create({
   },
   dayNumToday: {
     color: '#111827',
+  },
+  // A day with a real note or reminder - a small dot under its number,
+  // inside the same circle (there's no spare row height to place it below
+  // the circle without growing ROW_HEIGHT). White to match the ordinary
+  // white day number it sits under; on today's own white-filled circle the
+  // number is dark instead, so the dot switches to match it there too -
+  // otherwise it would vanish against that white background.
+  filledDot: {
+    position: 'absolute',
+    bottom: 4,
+    width: 3.5,
+    height: 3.5,
+    borderRadius: 2,
+    backgroundColor: '#fff',
+  },
+  filledDotOnToday: {
+    backgroundColor: '#111827',
   },
   expandRow: {
     flexDirection: 'row',
@@ -704,65 +1020,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  compactDate: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 20,
-    paddingTop: 4,
-    paddingBottom: 6,
+  noteArea: {
+    flex: 1,
+    marginHorizontal: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
   },
-  compactDateLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    fontFamily: FONT_SEMIBOLD,
-    color: ACCENT,
-  },
-  dateHeader: {
-    paddingHorizontal: 20,
-    paddingBottom: 4,
-  },
-  weekdayRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 2,
-  },
-  weekdayFull: {
-    fontSize: 15,
-    fontWeight: '600',
-    fontFamily: FONT_SEMIBOLD,
-    color: ACCENT,
-  },
-  todayChip: {
-    backgroundColor: '#EFF6FF',
-    borderRadius: 8,
-    paddingHorizontal: 8,
+  dueCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 4,
     paddingVertical: 2,
   },
-  todayChipLabel: {
-    fontSize: 11,
+  dueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  dueRowDivider: {
+    borderTopWidth: 1,
+    borderStyle: 'dashed',
+    borderTopColor: '#E5E1D8',
+  },
+  dueReminderText: {
+    flex: 1,
+    fontSize: 13.5,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
     color: '#111827',
   },
-  dateLine: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 10,
-  },
-  dateBig: {
-    fontSize: 28,
-    fontWeight: '800',
-    fontFamily: FONT_EXTRABOLD,
-    color: '#fff',
-  },
-  weekNum: {
-    fontSize: 14,
-    fontFamily: FONT_REGULAR,
-    color: 'rgba(255,255,255,0.6)',
-  },
-  noteArea: {
-    flex: 1,
+  dueReminderTextChecked: {
+    textDecorationLine: 'line-through',
+    opacity: 0.5,
   },
 });

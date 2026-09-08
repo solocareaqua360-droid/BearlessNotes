@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase';
 import {
   connectGoogleDrive,
   disconnectGoogleDrive,
@@ -11,10 +13,29 @@ import {
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
+const driveStatsDoc = doc(db, 'settings', 'driveStats');
+
+// 0 decimals under 10 (looks odd as "3.0 МБ"), 1 decimal otherwise - matches
+// how file sizes read most naturally at this app's typical attachment sizes.
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes / 1024 < 10 ? 1 : 0)} КБ`;
+  const mb = bytes / (1024 * 1024);
+  if (mb < 1024) return `${mb.toFixed(mb < 10 ? 1 : 0)} МБ`;
+  return `${(mb / 1024).toFixed(2)} ГБ`;
+}
 
 export default function SettingsScreen() {
   const [email, setEmail] = useState<string | null>(() => (isDriveConnected() ? getConnectedEmail() : null));
   const [busy, setBusy] = useState(false);
+  const [stats, setStats] = useState<{ totalBytesStored: number; fileCount: number } | null>(null);
+
+  useEffect(() => {
+    return onSnapshot(driveStatsDoc, (snapshot) => {
+      const data = snapshot.data();
+      setStats(data ? { totalBytesStored: data.totalBytesStored ?? 0, fileCount: data.fileCount ?? 0 } : null);
+    });
+  }, []);
 
   async function handleConnect() {
     setBusy(true);
@@ -79,6 +100,15 @@ export default function SettingsScreen() {
             <Text style={styles.cardHint}>
               Нові файли й фото автоматично копіюються в папку "Bearless Notes" на Диску.
             </Text>
+            {!!stats && stats.fileCount > 0 && (
+              <View style={styles.trafficRow}>
+                <Ionicons name="cloud-upload-outline" size={15} color="#6B7280" />
+                <Text style={styles.trafficLabel}>
+                  Використано на Диску: {formatBytes(stats.totalBytesStored)} ({stats.fileCount}{' '}
+                  {stats.fileCount === 1 ? 'файл' : 'файлів'})
+                </Text>
+              </View>
+            )}
             <Pressable style={styles.checkButton} onPress={handleCheckConnection} disabled={busy}>
               {busy ? <ActivityIndicator color={ACCENT} /> : <Text style={styles.checkLabel}>Перевірити з'єднання</Text>}
             </Pressable>
@@ -141,6 +171,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   cardHint: {
+    fontSize: 13,
+    color: '#6B7280',
+  },
+  trafficRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  trafficLabel: {
     fontSize: 13,
     color: '#6B7280',
   },

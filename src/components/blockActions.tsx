@@ -6,9 +6,12 @@ export type BlockAction =
   | 'checkbox'
   | 'divider'
   | 'image'
+  | 'camera'
   | 'file'
   | 'scan'
-  | 'sketch';
+  | 'sketch'
+  | 'table'
+  | 'existing';
 
 // Ionicons has no numbered-list glyph at all (only "list"/"list-circle"),
 // so bulleted and numbered used to share the very same icon - fine while
@@ -34,9 +37,12 @@ export const BLOCK_ACTIONS: BlockActionEntry[] = [
   { key: 'checkbox', family: 'ionicons', icon: 'checkbox-outline', label: 'Чекбокс' },
   { key: 'divider', family: 'ionicons', icon: 'remove-outline', label: 'Лінія' },
   { key: 'image', family: 'ionicons', icon: 'image-outline', label: 'Зображення' },
+  { key: 'camera', family: 'ionicons', icon: 'camera-outline', label: 'Камера' },
   { key: 'file', family: 'ionicons', icon: 'document-outline', label: 'Файл' },
   { key: 'scan', family: 'ionicons', icon: 'scan-outline', label: 'Сканувати' },
   { key: 'sketch', family: 'ionicons', icon: 'brush-outline', label: 'Малюнок' },
+  { key: 'table', family: 'ionicons', icon: 'grid-outline', label: 'Таблиця' },
+  { key: 'existing', family: 'ionicons', icon: 'search-outline', label: 'З бази даних' },
 ];
 
 // Both renderings (bar and sheet) draw icons through this, so neither has

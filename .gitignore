@@ -44,3 +44,6 @@ GoogleService-Info.plist
 # generated native folders
 /ios
 /android
+
+# downloaded EAS build artifacts
+*.apk

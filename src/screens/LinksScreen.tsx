@@ -1,5 +1,18 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Linking,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
@@ -11,6 +24,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  setDoc,
   updateDoc,
   writeBatch,
 } from 'firebase/firestore';
@@ -29,14 +43,20 @@ import TagsDrawer, { TagFilter, matchesTagFilter, removeTagFromFilter } from '..
 import CopyToNoteModal from '../components/CopyToNoteModal';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
+import { useSortPref } from '../hooks/useSortPref';
 import { useTags, detachTagFromDeletedItem, isTagAllowedForKind } from '../hooks/useTags';
 import { blockFromLink, copyObjectsToNote } from '../utils/copyToNote';
 import { linkDocId } from '../utils/linkId';
+import { sortItems } from '../utils/sortItems';
+import { colorForDocument } from '../utils/documentColor';
+import SortMenuRows from '../components/SortMenuRows';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
 const linksCollection = collection(db, 'links');
 const groupsCollection = collection(db, 'groups');
+
+type ViewMode = 'list' | 'grid';
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -55,6 +75,8 @@ type LinkItem = {
   documentIds: string[];
   tagIds: string[];
   groupId?: string;
+  updatedAt: number;
+  createdAt?: number;
 };
 
 type LinkCategory = 'video' | 'geo' | 'other';
@@ -125,6 +147,15 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Links'>;
 export default function LinksScreen({ route, navigation }: Props) {
   const { category } = route.params;
   const info = CATEGORY_INFO[category];
+  // Geo/video/other share this one screen's code, but each is its own
+  // "database" from the user's side - view mode (and sort, via useSortPref
+  // below) has to be kept per category, not one shared doc, or switching to
+  // grid in "Геоточки" would silently flip "YouTube / TikTok" too.
+  const linksPrefsKey = `linksPrefs_${category}`;
+  const linksPrefsDoc = doc(db, 'settings', linksPrefsKey);
+  // Same fixed gradient as Documents/Calendar/Databases - see DocumentsScreen's
+  // own comment on why react-native-svg over expo-linear-gradient.
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const tagKind = TAG_KIND_BY_CATEGORY[category];
   const groupKind = GROUP_KIND_BY_CATEGORY[category];
   const [links, setLinks] = useState<LinkItem[]>([]);
@@ -134,6 +165,9 @@ export default function LinksScreen({ route, navigation }: Props) {
     null
   );
   const [tagPickerForId, setTagPickerForId] = useState<string | null>(null);
+  // Per-card "..." menu (rename / documents) - one shared piece of state
+  // rather than per-row, since only ever one card's menu is open at a time.
+  const [cardMenuLinkId, setCardMenuLinkId] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
@@ -142,7 +176,10 @@ export default function LinksScreen({ route, navigation }: Props) {
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
-  const { filterPending, requestDelete, requestDeleteMany, undo, toast } = usePendingDelete<LinkItem>();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const { sortPref, selectSortField } = useSortPref(linksPrefsKey);
+  const { filterPending, requestDeleteMany, undo, toast } = usePendingDelete<LinkItem>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
   const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, clear: clearSelection } =
     useMultiSelect();
@@ -162,12 +199,20 @@ export default function LinksScreen({ route, navigation }: Props) {
             documentIds: Object.keys(data.usedInDocuments ?? {}),
             tagIds: data.tagIds ?? [],
             groupId: data.groupId,
+            updatedAt: data.updatedAt ?? 0,
+            createdAt: data.createdAt,
           };
         })
       );
       setIsLoading(false);
     });
   }, []);
+
+  useEffect(() => {
+    return onSnapshot(linksPrefsDoc, (snapshot) => {
+      setViewMode((snapshot.data()?.viewMode as ViewMode | undefined) ?? 'list');
+    });
+  }, [linksPrefsKey]);
 
   useEffect(() => {
     // Filtered client-side rather than with a `where('kind','==',groupKind)`
@@ -193,9 +238,16 @@ export default function LinksScreen({ route, navigation }: Props) {
         : categoryLinks.filter((l) => l.groupId === groupFilter);
   const tagFilteredLinks = groupFilteredLinks.filter((l) => matchesTagFilter(l.tagIds, tagFilter));
   const needle = searchQuery.trim().toLowerCase();
-  const filteredLinks = needle
+  const searchedLinks = needle
     ? tagFilteredLinks.filter((link) => (link.title || hostnameOf(link.url)).toLowerCase().includes(needle))
     : tagFilteredLinks;
+  const filteredLinks = sortItems(
+    searchedLinks,
+    sortPref,
+    (link) => link.title || hostnameOf(link.url),
+    (link) => link.createdAt,
+    (link) => link.updatedAt
+  );
   // Video/geo/other tags don't mix (see the TaggableKind comment in
   // types.ts) - the drawer here must only ever offer tags relevant to
   // whichever of the three link screens this is, and only ones actually
@@ -203,6 +255,7 @@ export default function LinksScreen({ route, navigation }: Props) {
   const usedTagIds = new Set(categoryLinks.flatMap((l) => l.tagIds));
   const drawerTags = tags.filter((t) => isTagAllowedForKind(t, tagKind) && usedTagIds.has(t.id));
   const tagPickerLink = tagPickerForId ? links.find((l) => l.id === tagPickerForId) ?? null : null;
+  const cardMenuLink = cardMenuLinkId ? links.find((l) => l.id === cardMenuLinkId) ?? null : null;
   const selectedLinks = categoryLinks.filter((l) => selectedIds.has(l.id));
 
   function openLinkUrl(url: string) {
@@ -259,10 +312,6 @@ export default function LinksScreen({ route, navigation }: Props) {
     );
   }
 
-  function confirmDeleteLink(link: LinkItem) {
-    requestDelete(link, 'Посилання видалено', () => deleteLink(link));
-  }
-
   async function deleteLink(link: LinkItem) {
     deleteDoc(doc(db, 'links', link.id));
     await Promise.all(
@@ -307,6 +356,11 @@ export default function LinksScreen({ route, navigation }: Props) {
     clearSelection();
   }
 
+  async function changeViewMode(mode: ViewMode) {
+    setMenuOpen(false);
+    await setDoc(linksPrefsDoc, { viewMode: mode }, { merge: true });
+  }
+
   async function bulkAssignGroup(groupId: string | null) {
     setBulkGroupPickerVisible(false);
     const batch = writeBatch(db);
@@ -342,21 +396,13 @@ export default function LinksScreen({ route, navigation }: Props) {
 
   function renderLinkRow(item: LinkItem) {
     const itemInfo = CATEGORY_INFO[categoryOf(item)];
-    const docCount = item.documentIds.length;
+    const { background, text, textMuted } = colorForDocument(item.id);
     return (
-      <View key={item.id} style={styles.row}>
+      <View key={item.id} style={[styles.row, { backgroundColor: background }]}>
         <Pressable
           style={styles.rowTap}
           onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkUrl(item.url))}
         >
-          {isSelectMode && (
-            <Ionicons
-              name={selectedIds.has(item.id) ? 'checkbox' : 'square-outline'}
-              size={22}
-              color={selectedIds.has(item.id) ? ACCENT : '#9CA3AF'}
-              style={styles.rowCheckbox}
-            />
-          )}
           {item.imageUrl ? (
             <Image source={{ uri: item.imageUrl }} style={styles.thumb} resizeMode="cover" />
           ) : (
@@ -365,68 +411,153 @@ export default function LinksScreen({ route, navigation }: Props) {
             </View>
           )}
           <View style={styles.rowBody}>
-            <Text style={styles.rowTitle} numberOfLines={2}>
+            <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
               {item.title || hostnameOf(item.url)}
             </Text>
-            <Text style={styles.rowCaption} numberOfLines={1}>
+            <Text style={[styles.rowCaption, { color: textMuted }]} numberOfLines={1}>
               {item.siteName ?? hostnameOf(item.url)}
             </Text>
             <View style={styles.rowMeta}>
               <TagChips
                 tags={tags.filter((t) => item.tagIds.includes(t.id))}
                 onPress={() => setTagPickerForId(item.id)}
+                glass
               />
             </View>
           </View>
         </Pressable>
-        {!isSelectMode && (
-          <View style={styles.rowActions}>
-            <Pressable hitSlop={8} onPress={() => setRenamingLink(item)} style={styles.rowActionButton}>
-              <Ionicons name="pencil-outline" size={16} color="#9CA3AF" />
-            </Pressable>
-            <Pressable hitSlop={8} onPress={() => openDocumentIcon(item)} style={styles.rowDocButtonWrap}>
-              <View style={styles.rowDocButton}>
-                <Ionicons name="document-text-outline" size={16} color={ACCENT} />
-              </View>
-              {docCount > 1 && (
-                <View style={styles.rowDocBadge}>
-                  <Text style={styles.rowDocBadgeLabel}>{docCount}</Text>
-                </View>
-              )}
-            </Pressable>
-            <Pressable hitSlop={8} onPress={() => confirmDeleteLink(item)} style={styles.rowActionButton}>
-              <Ionicons name="trash-outline" size={16} color={DANGER} />
-            </Pressable>
-          </View>
+        {isSelectMode ? (
+          <Pressable hitSlop={8} onPress={() => toggleSelected(item.id)} style={styles.rowActionButton}>
+            <Ionicons
+              name={selectedIds.has(item.id) ? 'checkmark-circle' : 'ellipse-outline'}
+              size={22}
+              color={selectedIds.has(item.id) ? text : textMuted}
+            />
+          </Pressable>
+        ) : (
+          <Pressable hitSlop={8} onPress={() => setCardMenuLinkId(item.id)} style={styles.rowActionButton}>
+            <Ionicons name="ellipsis-horizontal" size={16} color={textMuted} />
+          </Pressable>
         )}
       </View>
     );
   }
 
-  if (isLoading) {
+  // Compact grid variant - thumbnail on top instead of beside the text,
+  // select-checkbox as a corner overlay instead of a trailing icon, same
+  // shape as DocumentCard's own 'grid' layout.
+  function renderLinkGridCell(item: LinkItem) {
+    const itemInfo = CATEGORY_INFO[categoryOf(item)];
+    const { background, text, textMuted } = colorForDocument(item.id);
     return (
-      <View style={[styles.container, styles.emptyState]}>
-        <ActivityIndicator color={ACCENT} />
+      <View key={item.id} style={[styles.gridCard, { backgroundColor: background }]}>
+        <Pressable
+          style={styles.gridTap}
+          onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkUrl(item.url))}
+        >
+          {item.imageUrl ? (
+            <Image source={{ uri: item.imageUrl }} style={styles.gridThumb} resizeMode="cover" />
+          ) : (
+            <View style={[styles.gridThumb, styles.gridThumbIcon, { backgroundColor: `${itemInfo.color}1A` }]}>
+              <Ionicons name={itemInfo.icon} size={26} color={itemInfo.color} />
+            </View>
+          )}
+          <Text style={[styles.gridTitle, { color: text }]} numberOfLines={2}>
+            {item.title || hostnameOf(item.url)}
+          </Text>
+          <Text style={[styles.gridCaption, { color: textMuted }]} numberOfLines={1}>
+            {item.siteName ?? hostnameOf(item.url)}
+          </Text>
+          <TagChips
+            tags={tags.filter((t) => item.tagIds.includes(t.id))}
+            onPress={() => setTagPickerForId(item.id)}
+            glass
+          />
+        </Pressable>
+        {isSelectMode ? (
+          // pointerEvents="none" - a sibling View absolutely positioned in
+          // front of gridTap still intercepts touch even with no onPress of
+          // its own, which made tapping near the icon miss most taps (see
+          // DocumentCard's identical fix).
+          <View style={styles.gridSelectBox} pointerEvents="none">
+            <Ionicons
+              name={selectedIds.has(item.id) ? 'checkmark-circle' : 'ellipse-outline'}
+              size={20}
+              color={selectedIds.has(item.id) ? text : '#fff'}
+            />
+          </View>
+        ) : (
+          <Pressable hitSlop={8} onPress={() => setCardMenuLinkId(item.id)} style={styles.gridMenuButton}>
+            <Ionicons name="ellipsis-horizontal" size={14} color={textMuted} />
+          </Pressable>
+        )}
       </View>
     );
   }
 
+
   return (
     <View style={styles.container}>
+      <Svg
+        width={windowWidth + 2}
+        height={windowHeight + 2}
+        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
+        pointerEvents="none"
+      >
+        <Defs>
+          <LinearGradient id="linksBg" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0.03" stopColor="#705648" />
+            <Stop offset="0.52" stopColor="#69736E" />
+            <Stop offset="1" stopColor="#000000" />
+          </LinearGradient>
+        </Defs>
+        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#linksBg)" />
+      </Svg>
+
       <View style={styles.headerRow}>
-        <Text style={styles.header}>{info.title}</Text>
-        <View style={styles.headerButtons}>
-          <Pressable hitSlop={8} onPress={toggleSelectMode}>
-            <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={20} color="#6B7280" />
+        <View style={styles.headerLeft}>
+          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={24} color="#fff" />
           </Pressable>
+          <Text style={styles.header} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.4}>
+            {info.title}
+          </Text>
+        </View>
+        <View style={styles.headerButtons}>
+          <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
+            <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
+          </Pressable>
+          <View style={styles.headerButtonsDivider} />
+          <Pressable hitSlop={8} onPress={toggleSelectMode}>
+            <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
+          </Pressable>
+          <View style={styles.headerButtonsDivider} />
           <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
-            <Ionicons name={isSearching ? 'close' : 'search'} size={20} color="#6B7280" />
+            <Ionicons name={isSearching ? 'close' : 'search'} size={17} color="#fff" />
           </Pressable>
         </View>
       </View>
 
+      {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
+      {menuOpen && (
+        <View style={styles.menuPanel}>
+          <Text style={styles.menuSectionLabel}>Вигляд</Text>
+          <Pressable style={styles.menuRow} onPress={() => changeViewMode('list')}>
+            <Ionicons name="reorder-four-outline" size={17} color="#111827" />
+            <Text style={styles.menuRowLabel}>Список</Text>
+            {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+          </Pressable>
+          <Pressable style={styles.menuRow} onPress={() => changeViewMode('grid')}>
+            <Ionicons name="grid-outline" size={17} color="#111827" />
+            <Text style={styles.menuRowLabel}>Сітка</Text>
+            {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+          </Pressable>
+          <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
+        </View>
+      )}
+
       {groups.length > 0 && (
-        <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" />
+        <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" dark />
       )}
 
       {tagFilter && (
@@ -471,7 +602,11 @@ export default function LinksScreen({ route, navigation }: Props) {
         </View>
       )}
 
-      {filteredLinks.length === 0 ? (
+      {isLoading ? (
+        <View style={styles.emptyState}>
+          <ActivityIndicator color="#fff" />
+        </View>
+      ) : filteredLinks.length === 0 ? (
         <View style={styles.emptyState}>
           <View style={[styles.emptyIcon, { backgroundColor: `${info.color}1A` }]}>
             <Ionicons name={info.icon} size={32} color={info.color} />
@@ -479,11 +614,52 @@ export default function LinksScreen({ route, navigation }: Props) {
           <Text style={styles.emptyLabel}>{needle ? 'Нічого не знайдено' : 'Ще немає збережених посилань'}</Text>
           {!needle && <Text style={styles.emptyHint}>{info.emptyHint}</Text>}
         </View>
+      ) : viewMode === 'grid' ? (
+        <ScrollView contentContainerStyle={[styles.gridList, isSelectMode && styles.listWithBulkBar]}>
+          {filteredLinks.map(renderLinkGridCell)}
+        </ScrollView>
       ) : (
         <ScrollView contentContainerStyle={[styles.list, isSelectMode && styles.listWithBulkBar]}>
           {filteredLinks.map(renderLinkRow)}
         </ScrollView>
       )}
+
+      <Modal
+        visible={cardMenuLink !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCardMenuLinkId(null)}
+      >
+        <Pressable style={styles.cardMenuBackdrop} onPress={() => setCardMenuLinkId(null)}>
+          <Pressable style={styles.cardMenuSheet} onPress={() => {}}>
+            <View style={styles.cardMenuHandle} />
+            <Pressable
+              style={styles.cardMenuRow}
+              onPress={() => {
+                if (cardMenuLink) setRenamingLink(cardMenuLink);
+                setCardMenuLinkId(null);
+              }}
+            >
+              <Ionicons name="pencil-outline" size={18} color="#111827" />
+              <Text style={styles.cardMenuRowLabel}>Редагувати назву</Text>
+            </Pressable>
+            {cardMenuLink && cardMenuLink.documentIds.length > 0 && (
+              <Pressable
+                style={styles.cardMenuRow}
+                onPress={() => {
+                  if (cardMenuLink) openDocumentIcon(cardMenuLink);
+                  setCardMenuLinkId(null);
+                }}
+              >
+                <Ionicons name="document-text-outline" size={18} color="#111827" />
+                <Text style={styles.cardMenuRowLabel}>
+                  Документи{cardMenuLink.documentIds.length > 1 ? ` (${cardMenuLink.documentIds.length})` : ''}
+                </Text>
+              </Pressable>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <RenamePrompt
         visible={renamingLink !== null}
@@ -567,28 +743,96 @@ export default function LinksScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 10,
     paddingHorizontal: 20,
-    // 56, not 16 - this screen has no native header (headerShown: false on
-    // the stack), so its own top padding is what clears the status bar,
-    // matching TasksScreen/DocumentEditorScreen for the same reason.
-    paddingTop: 56,
+    // Matches Documents/Databases' own header capsule vertical position.
+    paddingTop: 90,
     paddingBottom: 8,
   },
-  header: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#111827',
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flexShrink: 1,
   },
+  header: {
+    // At least 2x the previous 22, matching Documents/Databases - but
+    // unlike "Документи", this title varies ("YouTube / TikTok" especially
+    // is long), so it needs to be able to shrink and give up space to the
+    // header capsule instead of pushing it off-screen.
+    flexShrink: 1,
+    fontSize: 46,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  // One elongated glass capsule instead of three bare gray icons - matches
+  // Documents/Calendar's own header capsule.
   headerButtons: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    flexShrink: 0,
+    gap: 12,
+    height: 38,
+    borderRadius: 19,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(20,20,20,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  headerButtonsDivider: {
+    width: 1,
+    height: 16,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  menuBackdrop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 5,
+  },
+  menuPanel: {
+    position: 'absolute',
+    top: 96,
+    right: 20,
+    width: 200,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+    zIndex: 6,
+  },
+  menuSectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.04,
+    textTransform: 'uppercase',
+    color: '#9CA3AF',
+    paddingHorizontal: 8,
+    paddingTop: 4,
+    paddingBottom: 2,
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+  },
+  menuRowLabel: {
+    flex: 1,
+    fontSize: 14,
+    color: '#111827',
   },
   filterRow: {
     flexDirection: 'row',
@@ -613,9 +857,6 @@ const styles = StyleSheet.create({
   filterChipLabel: {
     fontSize: 13,
     fontWeight: '600',
-  },
-  rowCheckbox: {
-    alignSelf: 'center',
   },
   searchRow: {
     flexDirection: 'row',
@@ -650,19 +891,85 @@ const styles = StyleSheet.create({
   emptyLabel: {
     marginTop: 16,
     fontSize: 15,
-    color: '#111827',
+    color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
   },
   emptyHint: {
     marginTop: 6,
     fontSize: 13,
-    color: '#9CA3AF',
+    color: 'rgba(255,255,255,0.55)',
     textAlign: 'center',
   },
   list: {
     paddingVertical: 8,
     paddingHorizontal: 20,
     gap: 10,
+  },
+  gridList: {
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  gridCard: {
+    // Fixed proportion, not flex:1 - a flex card stretches to fill
+    // whatever's left in its row, which breaks when a row has only one
+    // card left (a filter down to an odd count) - see DocumentCard's own
+    // fix for the identical bug.
+    width: '48%',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(176,176,176,0.5)',
+    padding: 10,
+    gap: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  gridTap: {
+    gap: 4,
+  },
+  gridThumb: {
+    width: '100%',
+    height: 96,
+    borderRadius: 10,
+    marginBottom: 4,
+  },
+  gridThumbIcon: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gridTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  gridCaption: {
+    fontSize: 11,
+  },
+  gridSelectBox: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gridMenuButton: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   listWithBulkBar: {
     paddingBottom: 90,
@@ -671,9 +978,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 6,
-    backgroundColor: '#F9FAFB',
     borderRadius: 14,
     padding: 10,
+    // Thin border + drop shadow, same as DocumentCard - a light-colored
+    // card needs an edge to read against the gradient page behind it.
+    borderWidth: 1,
+    borderColor: 'rgba(176,176,176,0.5)',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
   },
   rowTap: {
     flex: 1,
@@ -722,32 +1037,35 @@ const styles = StyleSheet.create({
   rowActionButton: {
     padding: 6,
   },
-  rowDocButtonWrap: {
-    position: 'relative',
+  cardMenuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(17,24,39,0.45)',
+    justifyContent: 'flex-end',
   },
-  rowDocButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 9,
-    backgroundColor: '#EFF6FF',
+  cardMenuSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 28,
+  },
+  cardMenuHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  cardMenuRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 12,
   },
-  rowDocBadge: {
-    position: 'absolute',
-    top: -5,
-    right: -5,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: ACCENT,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 3,
-  },
-  rowDocBadgeLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#fff',
+  cardMenuRowLabel: {
+    fontSize: 15,
+    color: '#111827',
   },
 });

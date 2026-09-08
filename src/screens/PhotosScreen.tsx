@@ -9,8 +9,10 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -27,6 +29,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  setDoc,
   updateDoc,
   writeBatch,
 } from 'firebase/firestore';
@@ -40,15 +43,20 @@ import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
-import GroupPickerSheet from '../components/GroupPickerSheet';
+import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import TagsDrawer, { TagFilter, matchesTagFilter, removeTagFromFilter } from '../components/TagsDrawer';
 import CopyToNoteModal from '../components/CopyToNoteModal';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
+import { useSortPref } from '../hooks/useSortPref';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
+import { useDownloadToast } from '../hooks/useDownloadToast';
 import { blockFromPhoto, copyObjectsToNote } from '../utils/copyToNote';
 import { deleteFileFromDrive } from '../utils/googleDrive';
+import { sortItems } from '../utils/sortItems';
+import DownloadToast from '../components/DownloadToast';
+import SortMenuRows from '../components/SortMenuRows';
 
 const ACCENT = '#EC4899';
 const groupsCollection = collection(db, 'groups');
@@ -66,28 +74,29 @@ type PhotoItem = {
   tagIds: string[];
   groupId?: string;
   driveFileId?: string;
+  driveBytes?: number;
+  updatedAt: number;
+  createdAt?: number;
 };
 
 // Same "pick a folder once, remember it" download flow already built for
 // image/file blocks in DocumentEditorScreen - duplicated here (rather than
 // exported and shared) since it's a handful of lines and the two screens
 // otherwise have nothing else in common worth coupling them for.
-async function downloadPhoto(uri: string) {
+async function downloadPhoto(uri: string): Promise<{ destUri: string; fileName: string } | null> {
   const stored = await AsyncStorage.getItem(DOWNLOAD_DIR_STORAGE_KEY);
   let dirUri = stored;
   if (!dirUri) {
     const permission = await LegacyFileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-    if (!permission.granted) return;
+    if (!permission.granted) return null;
     dirUri = permission.directoryUri;
     await AsyncStorage.setItem(DOWNLOAD_DIR_STORAGE_KEY, dirUri);
   }
-  const destUri = await LegacyFileSystem.StorageAccessFramework.createFileAsync(
-    dirUri,
-    `photo-${Date.now()}`,
-    'image/jpeg'
-  );
+  const fileName = `photo-${Date.now()}`;
+  const destUri = await LegacyFileSystem.StorageAccessFramework.createFileAsync(dirUri, fileName, 'image/jpeg');
   const content = await LegacyFileSystem.readAsStringAsync(uri, { encoding: 'base64' });
   await LegacyFileSystem.writeAsStringAsync(destUri, content, { encoding: 'base64' });
+  return { destUri, fileName: `${fileName}.jpg` };
 }
 
 function PhotoThumb({
@@ -124,7 +133,7 @@ function PhotoThumb({
             </View>
           )}
           <View style={styles.cellTagRow}>
-            <TagChips tags={tags} onPress={onTagPress} />
+            <TagChips tags={tags} onPress={onTagPress} glass />
           </View>
         </>
       )}
@@ -134,6 +143,7 @@ function PhotoThumb({
 
 export default function PhotosScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [viewerPhotoId, setViewerPhotoId] = useState<string | null>(null);
@@ -150,10 +160,25 @@ export default function PhotosScreen() {
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const { sortPref, selectSortField } = useSortPref('photosPrefs');
   const { filterPending, requestDelete, requestDeleteMany, undo, toast } = usePendingDelete<PhotoItem>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
   const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, clear: clearSelection } =
     useMultiSelect();
+  const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
+
+  async function handleDownloadPhoto(uri: string) {
+    const result = await downloadPhoto(uri);
+    if (result) showDownloadToast(result.fileName, result.destUri, 'image/jpeg');
+  }
+
+  async function showDownloadedFileInFolder(uri: string, mimeType: string) {
+    dismissDownloadToast();
+    const available = await Sharing.isAvailableAsync();
+    if (!available) return;
+    await Sharing.shareAsync(uri, { mimeType });
+  }
 
   useEffect(() => {
     const photosQuery = query(collection(db, 'photos'), orderBy('updatedAt', 'desc'));
@@ -169,6 +194,9 @@ export default function PhotosScreen() {
             tagIds: data.tagIds ?? [],
             groupId: data.groupId,
             driveFileId: data.driveFileId,
+            driveBytes: data.driveBytes,
+            updatedAt: data.updatedAt ?? 0,
+            createdAt: data.createdAt,
           };
         })
       );
@@ -191,6 +219,18 @@ export default function PhotosScreen() {
     });
   }, []);
 
+  // The fixed "Фото" group every camera capture lands in (see
+  // syncPhotosForDocument in DocumentEditorScreen) has to exist as a real
+  // group document for it to show up as a tab/option at all - {merge:true}
+  // makes this a harmless no-op on every mount after the first.
+  useEffect(() => {
+    setDoc(
+      doc(db, 'groups', CAMERA_PHOTOS_GROUP_ID),
+      { name: 'Фото', color: '#EC4899', kind: 'photo' },
+      { merge: true }
+    );
+  }, []);
+
   const pendingFilteredPhotos = filterPending(photos);
   const groupFilteredPhotos =
     groupFilter === null
@@ -204,9 +244,16 @@ export default function PhotosScreen() {
   const usedTagIds = new Set(photos.flatMap((p) => p.tagIds));
   const drawerTags = tags.filter((t) => usedTagIds.has(t.id));
   const needle = searchQuery.trim().toLowerCase();
-  const displayedPhotos = needle
+  const searchedPhotos = needle
     ? tagFilteredPhotos.filter((p) => (p.title ?? '').toLowerCase().includes(needle))
     : tagFilteredPhotos;
+  const displayedPhotos = sortItems(
+    searchedPhotos,
+    sortPref,
+    (p) => p.title || 'Без назви',
+    (p) => p.createdAt,
+    (p) => p.updatedAt
+  );
   const viewerPhoto = viewerPhotoId ? photos.find((p) => p.id === viewerPhotoId) ?? null : null;
   const tagPickerPhoto = tagPickerForId ? photos.find((p) => p.id === tagPickerForId) ?? null : null;
   const selectedPhotos = photos.filter((p) => selectedIds.has(p.id));
@@ -290,7 +337,7 @@ export default function PhotosScreen() {
   async function deletePhoto(photo: PhotoItem, alsoDeleteFromDrive: boolean) {
     deleteDoc(doc(db, 'photos', photo.id));
     if (alsoDeleteFromDrive && photo.driveFileId) {
-      deleteFileFromDrive(photo.driveFileId).then((error) => {
+      deleteFileFromDrive(photo.driveFileId, photo.driveBytes).then((error) => {
         if (error) Alert.alert('Копія на Диску залишилась', error);
       });
     }
@@ -419,7 +466,7 @@ export default function PhotosScreen() {
         key: 'download',
         icon: 'download-outline',
         label: 'Завантажити',
-        onPress: () => downloadPhoto(photo.imageUri),
+        onPress: () => handleDownloadPhoto(photo.imageUri),
       },
       {
         key: 'delete',
@@ -431,30 +478,55 @@ export default function PhotosScreen() {
     ];
   }
 
-  if (isLoading) {
-    return (
-      <View style={[styles.container, styles.emptyState]}>
-        <ActivityIndicator color={ACCENT} />
-      </View>
-    );
-  }
-
   return (
     <View style={styles.container}>
+      <Svg
+        width={windowWidth + 2}
+        height={windowHeight + 2}
+        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
+        pointerEvents="none"
+      >
+        <Defs>
+          <LinearGradient id="photosBg" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0.03" stopColor="#705648" />
+            <Stop offset="0.52" stopColor="#69736E" />
+            <Stop offset="1" stopColor="#000000" />
+          </LinearGradient>
+        </Defs>
+        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#photosBg)" />
+      </Svg>
+
       <View style={styles.headerRow}>
-        <Text style={styles.header}>Фото</Text>
-        <View style={styles.headerButtons}>
-          <Pressable hitSlop={8} onPress={toggleSelectMode}>
-            <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={20} color="#6B7280" />
+        <View style={styles.headerLeft}>
+          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={24} color="#fff" />
           </Pressable>
+          <Text style={styles.header}>Зображення</Text>
+        </View>
+        <View style={styles.headerButtons}>
+          <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
+            <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
+          </Pressable>
+          <View style={styles.headerButtonsDivider} />
+          <Pressable hitSlop={8} onPress={toggleSelectMode}>
+            <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
+          </Pressable>
+          <View style={styles.headerButtonsDivider} />
           <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
-            <Ionicons name={isSearching ? 'close' : 'search'} size={20} color="#6B7280" />
+            <Ionicons name={isSearching ? 'close' : 'search'} size={17} color="#fff" />
           </Pressable>
         </View>
       </View>
 
+      {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
+      {menuOpen && (
+        <View style={styles.menuPanel}>
+          <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
+        </View>
+      )}
+
       {groups.length > 0 && (
-        <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" />
+        <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" dark />
       )}
 
       {tagFilter && (
@@ -499,7 +571,11 @@ export default function PhotosScreen() {
         </View>
       )}
 
-      {displayedPhotos.length === 0 ? (
+      {isLoading ? (
+        <View style={styles.emptyState}>
+          <ActivityIndicator color="#fff" />
+        </View>
+      ) : displayedPhotos.length === 0 ? (
         <View style={styles.emptyState}>
           <View style={styles.emptyIcon}>
             <Ionicons name="image-outline" size={32} color={ACCENT} />
@@ -619,6 +695,13 @@ export default function PhotosScreen() {
       />
 
       {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
+      {downloadToast && (
+        <DownloadToast
+          fileName={downloadToast.fileName}
+          onShowInFolder={() => showDownloadedFileInFolder(downloadToast.uri, downloadToast.mimeType)}
+          onIgnore={dismissDownloadToast}
+        />
+      )}
     </View>
   );
 }
@@ -626,25 +709,64 @@ export default function PhotosScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 56,
+    paddingTop: 90,
     paddingBottom: 8,
   },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flexShrink: 1,
+  },
   header: {
-    fontSize: 22,
+    fontSize: 46,
     fontWeight: '700',
-    color: '#111827',
+    color: '#fff',
   },
   headerButtons: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
+    height: 38,
+    borderRadius: 19,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(20,20,20,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  headerButtonsDivider: {
+    width: 1,
+    height: 16,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  menuBackdrop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 5,
+  },
+  menuPanel: {
+    position: 'absolute',
+    top: 96,
+    right: 20,
+    width: 200,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+    zIndex: 6,
   },
   filterRow: {
     flexDirection: 'row',
@@ -703,13 +825,13 @@ const styles = StyleSheet.create({
   emptyLabel: {
     marginTop: 16,
     fontSize: 15,
-    color: '#111827',
+    color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
   },
   emptyHint: {
     marginTop: 6,
     fontSize: 13,
-    color: '#9CA3AF',
+    color: 'rgba(255,255,255,0.55)',
     textAlign: 'center',
   },
   grid: {
@@ -726,7 +848,7 @@ const styles = StyleSheet.create({
   cellCheckbox: {
     position: 'absolute',
     top: 8,
-    left: 8,
+    right: 8,
     width: 22,
     height: 22,
     borderRadius: 11,
