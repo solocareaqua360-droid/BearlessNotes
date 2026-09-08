@@ -47,6 +47,7 @@ import { useSortPref } from '../hooks/useSortPref';
 import { useTags, detachTagFromDeletedItem, isTagAllowedForKind } from '../hooks/useTags';
 import { blockFromLink, copyObjectsToNote } from '../utils/copyToNote';
 import { linkDocId } from '../utils/linkId';
+import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { sortItems } from '../utils/sortItems';
 import { colorForDocument } from '../utils/documentColor';
 import SortMenuRows from '../components/SortMenuRows';
@@ -85,11 +86,15 @@ type LinkCategory = 'video' | 'geo' | 'other';
 // (see DocumentEditorScreen) - the one `links` collection holds every kind
 // of link, and this is what splits it back into three separate-looking
 // databases without needing three separate collections.
-function categoryOf(link: LinkItem): LinkCategory {
-  const siteName = link.siteName ?? '';
-  if (siteName.includes('YouTube') || siteName.includes('TikTok')) return 'video';
-  if (siteName === 'Геоточка') return 'geo';
+function categoryFromSiteName(siteName?: string): LinkCategory {
+  const s = siteName ?? '';
+  if (s.includes('YouTube') || s.includes('TikTok')) return 'video';
+  if (s === 'Геоточка') return 'geo';
   return 'other';
+}
+
+function categoryOf(link: LinkItem): LinkCategory {
+  return categoryFromSiteName(link.siteName);
 }
 
 const CATEGORY_INFO: Record<
@@ -178,6 +183,9 @@ export default function LinksScreen({ route, navigation }: Props) {
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [addLinkUrlPromptVisible, setAddLinkUrlPromptVisible] = useState(false);
+  const [isAddingLink, setIsAddingLink] = useState(false);
+  const [addLinkTitlePrompt, setAddLinkTitlePrompt] = useState<{ url: string; preview: LinkPreview } | null>(null);
   const { sortPref, selectSortField } = useSortPref(linksPrefsKey);
   const { filterPending, requestDeleteMany, undo, toast } = usePendingDelete<LinkItem>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
@@ -282,6 +290,49 @@ export default function LinksScreen({ route, navigation }: Props) {
   function pickDocument(documentId: string) {
     setDocumentPicker(null);
     navigation.navigate('Editor', { documentId });
+  }
+
+  // The "+" button - a link straight into the database, no document
+  // involved at all (usedInDocuments starts empty). Same dedup/preview
+  // machinery as pasting a URL into a document (linkDocId + fetchLinkPreview
+  // from utils/), so a link added here and later pasted into a document (or
+  // vice versa) converge onto the exact same record instead of duplicating.
+  async function saveNewLink(url: string, preview: LinkPreview, title: string) {
+    const id = linkDocId(url);
+    const now = Date.now();
+    const data: Record<string, unknown> = { url, updatedAt: now, createdAt: now, usedInDocuments: {} };
+    if (title) data.title = title;
+    if (preview.imageUrl) data.imageUrl = preview.imageUrl;
+    if (preview.siteName) data.siteName = preview.siteName;
+    await setDoc(doc(db, 'links', id), data, { merge: true });
+    // A YouTube link added while viewing "Геоточки" (say) would otherwise
+    // just seem to vanish - it's really sitting in a different category's
+    // list. Jump the screen to wherever it actually landed.
+    const newCategory = categoryFromSiteName(preview.siteName);
+    if (newCategory !== category) navigation.setParams({ category: newCategory });
+  }
+
+  async function submitNewLinkUrl(rawUrl: string) {
+    setAddLinkUrlPromptVisible(false);
+    const url = rawUrl.trim();
+    if (!url) return;
+    setIsAddingLink(true);
+    const preview = await fetchLinkPreview(url);
+    setIsAddingLink(false);
+    if (preview.title) {
+      await saveNewLink(url, preview, preview.title);
+    } else {
+      // No title to show (a raw-coordinates Maps link, or a page with no
+      // fetchable og:title) - ask instead of quietly filing an unnamed link,
+      // same as the document-editor's own linkTitlePrompt.
+      setAddLinkTitlePrompt({ url, preview });
+    }
+  }
+
+  function confirmAddLinkTitle(title: string) {
+    const prompt = addLinkTitlePrompt;
+    setAddLinkTitlePrompt(null);
+    if (prompt && title.trim()) saveNewLink(prompt.url, prompt.preview, title.trim());
   }
 
   // A rename is always available, not just at first creation - it updates
@@ -524,6 +575,10 @@ export default function LinksScreen({ route, navigation }: Props) {
           </Text>
         </View>
         <View style={styles.headerButtons}>
+          <Pressable hitSlop={8} onPress={() => setAddLinkUrlPromptVisible(true)}>
+            <Ionicons name="add" size={19} color="#fff" />
+          </Pressable>
+          <View style={styles.headerButtonsDivider} />
           <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
             <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
           </Pressable>
@@ -671,6 +726,29 @@ export default function LinksScreen({ route, navigation }: Props) {
         }}
       />
 
+      <RenamePrompt
+        visible={addLinkUrlPromptVisible}
+        title="Нове посилання"
+        placeholder="https://…"
+        initialValue=""
+        onCancel={() => setAddLinkUrlPromptVisible(false)}
+        onSave={submitNewLinkUrl}
+      />
+
+      <RenamePrompt
+        visible={addLinkTitlePrompt !== null}
+        title="Назва посилання"
+        initialValue=""
+        onCancel={() => setAddLinkTitlePrompt(null)}
+        onSave={confirmAddLinkTitle}
+      />
+
+      {isAddingLink && (
+        <View style={styles.addLinkLoading}>
+          <ActivityIndicator color="#fff" />
+        </View>
+      )}
+
       <DocumentPickerModal
         visible={documentPicker !== null}
         subtitle={documentPicker?.link.title || (documentPicker ? hostnameOf(documentPicker.link.url) : undefined)}
@@ -743,6 +821,16 @@ export default function LinksScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  addLinkLoading: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)',
   },
   headerRow: {
     flexDirection: 'row',

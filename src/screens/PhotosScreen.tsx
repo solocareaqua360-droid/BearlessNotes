@@ -18,6 +18,8 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Sharing from 'expo-sharing';
+import * as ImagePicker from 'expo-image-picker';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -53,7 +55,7 @@ import { useSortPref } from '../hooks/useSortPref';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import { blockFromPhoto, copyObjectsToNote } from '../utils/copyToNote';
-import { deleteFileFromDrive } from '../utils/googleDrive';
+import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
 import { sortItems } from '../utils/sortItems';
 import DownloadToast from '../components/DownloadToast';
 import SortMenuRows from '../components/SortMenuRows';
@@ -161,6 +163,7 @@ export default function PhotosScreen() {
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [addPhotoSheetVisible, setAddPhotoSheetVisible] = useState(false);
   const { sortPref, selectSortField } = useSortPref('photosPrefs');
   const { filterPending, requestDelete, requestDeleteMany, undo, toast } = usePendingDelete<PhotoItem>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
@@ -257,6 +260,59 @@ export default function PhotosScreen() {
   const viewerPhoto = viewerPhotoId ? photos.find((p) => p.id === viewerPhotoId) ?? null : null;
   const tagPickerPhoto = tagPickerForId ? photos.find((p) => p.id === tagPickerForId) ?? null : null;
   const selectedPhotos = photos.filter((p) => selectedIds.has(p.id));
+
+  // Same resize-then-compress DocumentEditorScreen's own image blocks go
+  // through before ever being saved anywhere.
+  async function compressPickedImage(uri: string, width: number, height: number): Promise<string> {
+    const MAX_DIMENSION = 1600;
+    try {
+      const longest = Math.max(width, height);
+      let context = ImageManipulator.manipulate(uri);
+      if (longest > MAX_DIMENSION) {
+        const scale = MAX_DIMENSION / longest;
+        context = context.resize({ width: Math.round(width * scale), height: Math.round(height * scale) });
+      }
+      const rendered = await context.renderAsync();
+      const saved = await rendered.saveAsync({ compress: 0.7, format: SaveFormat.JPEG });
+      return saved.uri;
+    } catch {
+      return uri;
+    }
+  }
+
+  // The "+" button - a photo straight into the database, no document
+  // involved (usedInDocuments starts empty). A camera shot still lands in
+  // the fixed, non-deletable "Фото" group, same rule DocumentEditorScreen's
+  // own camera block applies - only the source (gallery vs camera) decides
+  // that, not whether a document happens to be open.
+  async function addPhotoDirectly(source: 'gallery' | 'camera') {
+    const permission =
+      source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+    const result =
+      source === 'camera'
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    const imageUri = await compressPickedImage(asset.uri, asset.width, asset.height);
+    const id = generateId();
+    const now = Date.now();
+    const data: Record<string, unknown> = {
+      imageUri,
+      imageFit: 'contain',
+      updatedAt: now,
+      createdAt: now,
+      usedInDocuments: {},
+    };
+    if (source === 'camera') data.groupId = CAMERA_PHOTOS_GROUP_ID;
+    await setDoc(doc(db, 'photos', id), data, { merge: true });
+    backupFileToDrive(imageUri, `${id}.jpg`, 'image/jpeg', 'Photos').then((uploaded) => {
+      if (uploaded) updateDoc(doc(db, 'photos', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+    });
+  }
 
   async function openDocumentIcon(photo: PhotoItem) {
     if (photo.documentIds.length === 0) return;
@@ -504,6 +560,10 @@ export default function PhotosScreen() {
           <Text style={styles.header}>Зображення</Text>
         </View>
         <View style={styles.headerButtons}>
+          <Pressable hitSlop={8} onPress={() => setAddPhotoSheetVisible(true)}>
+            <Ionicons name="add" size={19} color="#fff" />
+          </Pressable>
+          <View style={styles.headerButtonsDivider} />
           <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
             <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
           </Pressable>
@@ -630,6 +690,39 @@ export default function PhotosScreen() {
         }}
       />
 
+      <Modal
+        visible={addPhotoSheetVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAddPhotoSheetVisible(false)}
+      >
+        <Pressable style={styles.addPhotoBackdrop} onPress={() => setAddPhotoSheetVisible(false)}>
+          <Pressable style={styles.addPhotoSheet} onPress={() => {}}>
+            <View style={styles.addPhotoHandle} />
+            <Pressable
+              style={styles.addPhotoRow}
+              onPress={() => {
+                setAddPhotoSheetVisible(false);
+                addPhotoDirectly('gallery');
+              }}
+            >
+              <Ionicons name="image-outline" size={18} color="#111827" />
+              <Text style={styles.addPhotoRowLabel}>Галерея</Text>
+            </Pressable>
+            <Pressable
+              style={styles.addPhotoRow}
+              onPress={() => {
+                setAddPhotoSheetVisible(false);
+                addPhotoDirectly('camera');
+              }}
+            >
+              <Ionicons name="camera-outline" size={18} color="#111827" />
+              <Text style={styles.addPhotoRowLabel}>Камера</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <DocumentPickerModal
         visible={documentPicker !== null}
         subtitle={documentPicker?.photo.title}
@@ -709,6 +802,37 @@ export default function PhotosScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  addPhotoBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(17,24,39,0.45)',
+    justifyContent: 'flex-end',
+  },
+  addPhotoSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 28,
+  },
+  addPhotoHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  addPhotoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  addPhotoRowLabel: {
+    fontSize: 15,
+    color: '#111827',
   },
   headerRow: {
     flexDirection: 'row',

@@ -16,6 +16,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Sharing from 'expo-sharing';
+import * as DocumentPicker from 'expo-document-picker';
+import * as LegacyFileSystem from 'expo-file-system/legacy';
 import {
   collection,
   deleteDoc,
@@ -47,7 +49,7 @@ import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useSortPref } from '../hooks/useSortPref';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 import { blockFromFile, copyObjectsToNote } from '../utils/copyToNote';
-import { deleteFileFromDrive } from '../utils/googleDrive';
+import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
 import { sortItems } from '../utils/sortItems';
 import { colorForDocument } from '../utils/documentColor';
 import SortMenuRows from '../components/SortMenuRows';
@@ -193,6 +195,27 @@ export default function FilesScreen() {
   const tagPickerFile = tagPickerForId ? files.find((f) => f.id === tagPickerForId) ?? null : null;
   const cardMenuFile = cardMenuFileId ? files.find((f) => f.id === cardMenuFileId) ?? null : null;
   const selectedFiles = files.filter((f) => selectedIds.has(f.id));
+
+  // The "+" button - attaching a file straight into the database, no
+  // document involved (usedInDocuments starts empty). Same picker call and
+  // content://-preserving copy DocumentEditorScreen's own pickFileForBlock
+  // uses (see its comment on why copyToCacheDirectory stays false), and the
+  // same fire-and-forget Drive backup every new file block already gets.
+  async function addFileDirectly() {
+    const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: false });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    const id = generateId();
+    const fileUri = `${LegacyFileSystem.cacheDirectory}${id}-${asset.name}`;
+    await LegacyFileSystem.copyAsync({ from: asset.uri, to: fileUri });
+    const now = Date.now();
+    const data: Record<string, unknown> = { fileUri, fileName: asset.name, updatedAt: now, createdAt: now, usedInDocuments: {} };
+    if (asset.mimeType) data.mimeType = asset.mimeType;
+    await setDoc(doc(db, 'files', id), data, { merge: true });
+    backupFileToDrive(fileUri, asset.name, asset.mimeType ?? 'application/octet-stream', 'Files').then((uploaded) => {
+      if (uploaded) updateDoc(doc(db, 'files', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+    });
+  }
 
   async function openFile(file: FileItem) {
     const available = await Sharing.isAvailableAsync();
@@ -466,6 +489,10 @@ export default function FilesScreen() {
           <Text style={styles.header}>Файли</Text>
         </View>
         <View style={styles.headerButtons}>
+          <Pressable hitSlop={8} onPress={addFileDirectly}>
+            <Ionicons name="add" size={19} color="#fff" />
+          </Pressable>
+          <View style={styles.headerButtonsDivider} />
           <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
             <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
           </Pressable>
