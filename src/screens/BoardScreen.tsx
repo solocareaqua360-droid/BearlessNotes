@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { Image, Linking, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Alert, Image, Linking, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import Animated, { runOnJS, SharedValue, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { doc, getDoc, getDocFromCache, setDoc } from 'firebase/firestore';
@@ -25,6 +25,11 @@ const MAX_SCALE = 3;
 const WORLD_SIZE = 6000;
 const WORLD_CENTER = WORLD_SIZE / 2;
 const STICKY_COLORS = ['#FEF3C7', '#DBEAFE', '#DCFCE7', '#FCE7F3', '#EDE9FE', '#FFE4E6'];
+// Cards don't carry their own rendered height (only width) - close enough
+// for hit-testing the marquee-selection rectangle against, not meant to be
+// pixel-exact.
+const APPROX_CARD_HEIGHT = 140;
+const SELECTION_COLOR = '#2563EB';
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -80,12 +85,21 @@ function fileIconFor(name: string): 'document-text-outline' | 'document-outline'
 
 type DraggableCardProps = {
   card: BoardCard;
-  canvasScale: ReturnType<typeof useSharedValue<number>>;
+  canvasScale: SharedValue<number>;
   canvasPanGesture: ReturnType<typeof Gesture.Pan>;
   isDragging: boolean;
+  isSelected: boolean;
+  // True while this card is being dragged AND it's part of a multi-card
+  // selection - in that case the drag moves the whole selection together
+  // (via the shared groupOffsetX/Y) instead of just this one card.
+  isGroupDrag: boolean;
+  groupOffsetX: SharedValue<number>;
+  groupOffsetY: SharedValue<number>;
   onDragStart: (id: string) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
+  onGroupDragEnd: (dx: number, dy: number) => void;
   onTap: (card: BoardCard) => void;
+  onLongPress: (card: BoardCard) => void;
 };
 
 // One card's own drag.
@@ -117,9 +131,15 @@ function DraggableCard({
   canvasScale,
   canvasPanGesture,
   isDragging,
+  isSelected,
+  isGroupDrag,
+  groupOffsetX,
+  groupOffsetY,
   onDragStart,
   onDragEnd,
+  onGroupDragEnd,
   onTap,
+  onLongPress,
 }: DraggableCardProps) {
   const posX = useSharedValue(card.x);
   const posY = useSharedValue(card.y);
@@ -129,12 +149,20 @@ function DraggableCard({
   const reportedX = useSharedValue(card.x);
   const reportedY = useSharedValue(card.y);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (card.x === reportedX.value && card.y === reportedY.value) return;
     reportedX.value = card.x;
     reportedY.value = card.y;
     posX.value = card.x;
     posY.value = card.y;
+    // A group drag this card took part in (as a non-dragged, merely
+    // selected sibling) only ever moves it via groupOffsetX/Y, never posX/
+    // posY directly - reset that shared offset back to 0 in the same
+    // layout effect that adopts the new base position, so the two changes
+    // land in the same paint. Redundant (and harmless) for a plain solo
+    // drag, where the offset was never touched to begin with.
+    groupOffsetX.value = 0;
+    groupOffsetY.value = 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card.x, card.y]);
 
@@ -151,23 +179,41 @@ function DraggableCard({
     // translation) - the position accumulates in place, so there's no
     // separate "drag start" baseline to capture or reconcile afterwards.
     .onChange((e) => {
-      posX.value += e.changeX / canvasScale.value;
-      posY.value += e.changeY / canvasScale.value;
+      if (isGroupDrag) {
+        groupOffsetX.value += e.changeX / canvasScale.value;
+        groupOffsetY.value += e.changeY / canvasScale.value;
+      } else {
+        posX.value += e.changeX / canvasScale.value;
+        posY.value += e.changeY / canvasScale.value;
+      }
     })
     .onEnd(() => {
-      reportedX.value = posX.value;
-      reportedY.value = posY.value;
-      runOnJS(onDragEnd)(card.id, posX.value, posY.value);
+      if (isGroupDrag) {
+        runOnJS(onGroupDragEnd)(groupOffsetX.value, groupOffsetY.value);
+      } else {
+        reportedX.value = posX.value;
+        reportedY.value = posY.value;
+        runOnJS(onDragEnd)(card.id, posX.value, posY.value);
+      }
     });
 
   const tapGesture = Gesture.Tap().onEnd(() => {
     runOnJS(onTap)(card);
   });
 
-  const gesture = Gesture.Race(panGesture, tapGesture);
+  const longPressGesture = Gesture.LongPress()
+    .minDuration(500)
+    .onStart(() => {
+      runOnJS(onLongPress)(card);
+    });
+
+  const gesture = Gesture.Race(panGesture, tapGesture, longPressGesture);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: posX.value }, { translateY: posY.value }],
+    transform: [
+      { translateX: posX.value + (isSelected ? groupOffsetX.value : 0) },
+      { translateY: posY.value + (isSelected ? groupOffsetY.value : 0) },
+    ],
   }));
 
   const type = card.type ?? 'paragraph';
@@ -184,6 +230,7 @@ function DraggableCard({
           // is Android's own stacking mechanism (zIndex alone isn't always
           // enough there for sibling Views to reorder above one another).
           isDragging && styles.cardDragging,
+          isSelected && styles.cardSelected,
           animatedStyle,
         ]}
       >
@@ -254,6 +301,7 @@ export default function BoardScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { params } = useRoute<Props['route']>();
   const { boardId } = params;
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
   const [title, setTitle] = useState('');
   const [cards, setCards] = useState<BoardCard[]>([]);
@@ -265,6 +313,12 @@ export default function BoardScreen() {
   const [renamingTitle, setRenamingTitle] = useState(false);
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
   const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
+  // 'move' - single-finger drag pans the canvas (the original Stage 1
+  // behaviour). 'select' - single-finger drag instead draws a marquee
+  // rectangle over the world, selecting every card it overlaps, so several
+  // cards can be deleted or dragged as one group.
+  const [canvasTool, setCanvasTool] = useState<'move' | 'select'>('move');
+  const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
 
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
@@ -272,6 +326,22 @@ export default function BoardScreen() {
   const translateY = useSharedValue(0);
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
+  // Shared by every selected card (see DraggableCard's isGroupDrag branch) -
+  // whichever selected card is actually being dragged writes into this, and
+  // every OTHER selected card reads the same live value in its own animated
+  // style, which is what makes the whole selection visibly move together.
+  const groupOffsetX = useSharedValue(0);
+  const groupOffsetY = useSharedValue(0);
+  // The marquee-selection rectangle, in world coordinates (same space as
+  // card x/y) so it can be rendered inside the same transformed `world`
+  // container the cards live in and compared against their x/y directly -
+  // no screen<->world conversion needed except once, at the very start of
+  // the gesture (see selectGesture below).
+  const marqueeStartX = useSharedValue(0);
+  const marqueeStartY = useSharedValue(0);
+  const marqueeCurrentX = useSharedValue(0);
+  const marqueeCurrentY = useSharedValue(0);
+  const marqueeVisible = useSharedValue(false);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -323,16 +393,73 @@ export default function BoardScreen() {
       savedTranslateY.value = translateY.value;
     });
 
+  // A fresh marquee replaces whatever was selected before, rather than
+  // adding to it - simpler to reason about than shift-click-style additive
+  // selection, and matches what "draw a box around the things you want"
+  // reads as as a first pass.
+  function finishMarqueeSelection(x1: number, y1: number, x2: number, y2: number) {
+    const left = Math.min(x1, x2);
+    const right = Math.max(x1, x2);
+    const top = Math.min(y1, y2);
+    const bottom = Math.max(y1, y2);
+    const matched = cards.filter(
+      (c) => c.x < right && c.x + c.width > left && c.y < bottom && c.y + APPROX_CARD_HEIGHT > top
+    );
+    setSelectedCardIds(new Set(matched.map((c) => c.id)));
+  }
+
+  // Only active in 'select' mode (see canvasGesture below). `e.x`/`e.y` are
+  // reported relative to the view this gesture is attached to
+  // (`canvasSurface`, which fills the whole screen), so they're already
+  // absolute screen coordinates - converting the START point into world
+  // coordinates once is enough; every point after that is just that start
+  // plus the gesture's own cumulative translation (divided by scale, same
+  // trick card-dragging already uses), no repeated screen<->world math.
+  const selectGesture = Gesture.Pan()
+    .onStart((e) => {
+      const wx = (e.x - windowWidth / 2 - translateX.value) / scale.value + WORLD_CENTER;
+      const wy = (e.y - windowHeight / 2 - translateY.value) / scale.value + WORLD_CENTER;
+      marqueeStartX.value = wx;
+      marqueeStartY.value = wy;
+      marqueeCurrentX.value = wx;
+      marqueeCurrentY.value = wy;
+      marqueeVisible.value = true;
+    })
+    .onUpdate((e) => {
+      marqueeCurrentX.value = marqueeStartX.value + e.translationX / scale.value;
+      marqueeCurrentY.value = marqueeStartY.value + e.translationY / scale.value;
+    })
+    .onEnd(() => {
+      marqueeVisible.value = false;
+      runOnJS(finishMarqueeSelection)(
+        marqueeStartX.value,
+        marqueeStartY.value,
+        marqueeCurrentX.value,
+        marqueeCurrentY.value
+      );
+    });
+
   // Simultaneous here only combines the canvas's OWN pinch+pan with each
   // other. A card's Pan (see DraggableCard) sits on its own nested
-  // GestureDetector and explicitly calls `.blocksExternalGesture(panGesture)`
-  // against this exact gesture - gesture-handler's default is to treat
-  // gestures in separate GestureDetectors as fully independent (NOT
-  // exclusive), so without that explicit block this canvas Pan was free to
-  // also recognize a sliver of movement on a touch that started on a card,
-  // visible as a jitter once the touch lifted and that unwanted micro-pan
-  // committed.
-  const canvasGesture = Gesture.Simultaneous(pinchGesture, panGesture);
+  // GestureDetector and explicitly calls `.blocksExternalGesture(...)`
+  // against whichever of these two is currently active - gesture-handler's
+  // default is to treat gestures in separate GestureDetectors as fully
+  // independent (NOT exclusive), so without that explicit block this
+  // canvas gesture was free to also recognize a sliver of movement on a
+  // touch that started on a card, visible as a jitter once the touch
+  // lifted and that unwanted micro-pan committed. Pinch-zoom is
+  // deliberately unavailable while selecting - zoom first, then switch
+  // tools to draw the box.
+  const canvasBlockingGesture = canvasTool === 'select' ? selectGesture : panGesture;
+  const canvasGesture = canvasTool === 'select' ? selectGesture : Gesture.Simultaneous(pinchGesture, panGesture);
+
+  const marqueeAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: marqueeVisible.value ? 1 : 0,
+    left: Math.min(marqueeStartX.value, marqueeCurrentX.value),
+    top: Math.min(marqueeStartY.value, marqueeCurrentY.value),
+    width: Math.abs(marqueeCurrentX.value - marqueeStartX.value),
+    height: Math.abs(marqueeCurrentY.value - marqueeStartY.value),
+  }));
 
   const worldAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }, { translateY: translateY.value }, { scale: scale.value }],
@@ -388,6 +515,51 @@ export default function BoardScreen() {
     setDraggedCardId(null);
   }
 
+  // Dragging any one selected card moves the whole selection - see
+  // DraggableCard's isGroupDrag branch, which accumulates the shared delta
+  // instead of moving just itself.
+  function commitGroupDrag(dx: number, dy: number) {
+    setCards((prev) => prev.map((c) => (selectedCardIds.has(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
+  }
+
+  function handleCardLongPress(card: BoardCard) {
+    Alert.alert('Видалити картку?', undefined, [
+      { text: 'Скасувати', style: 'cancel' },
+      {
+        text: 'Видалити',
+        style: 'destructive',
+        onPress: () => {
+          setCards((prev) => prev.filter((c) => c.id !== card.id));
+          setSelectedCardIds((prev) => {
+            if (!prev.has(card.id)) return prev;
+            const next = new Set(prev);
+            next.delete(card.id);
+            return next;
+          });
+        },
+      },
+    ]);
+  }
+
+  function deleteSelectedCards() {
+    const count = selectedCardIds.size;
+    Alert.alert(count === 1 ? 'Видалити картку?' : `Видалити картки (${count})?`, undefined, [
+      { text: 'Скасувати', style: 'cancel' },
+      {
+        text: 'Видалити',
+        style: 'destructive',
+        onPress: () => {
+          setCards((prev) => prev.filter((c) => !selectedCardIds.has(c.id)));
+          setSelectedCardIds(new Set());
+        },
+      },
+    ]);
+  }
+
+  function toggleCanvasTool() {
+    setCanvasTool((prev) => (prev === 'move' ? 'select' : 'move'));
+  }
+
   function saveEditingText() {
     if (editingCard) {
       setCards((prev) => prev.map((c) => (c.id === editingCard.id ? { ...c, text: editingText } : c)));
@@ -412,18 +584,28 @@ export default function BoardScreen() {
       <GestureDetector gesture={canvasGesture}>
         <View style={[StyleSheet.absoluteFill, styles.canvasSurface]}>
           <Animated.View style={[styles.world, worldAnimatedStyle]}>
-            {cards.map((card) => (
-              <DraggableCard
-                key={card.id}
-                card={card}
-                canvasScale={scale}
-                canvasPanGesture={panGesture}
-                isDragging={card.id === draggedCardId}
-                onDragStart={handleDragStart}
-                onDragEnd={commitCardDrag}
-                onTap={handleCardTap}
-              />
-            ))}
+            {cards.map((card) => {
+              const isSelected = selectedCardIds.has(card.id);
+              return (
+                <DraggableCard
+                  key={card.id}
+                  card={card}
+                  canvasScale={scale}
+                  canvasPanGesture={canvasBlockingGesture}
+                  isDragging={card.id === draggedCardId}
+                  isSelected={isSelected}
+                  isGroupDrag={isSelected && selectedCardIds.size > 1}
+                  groupOffsetX={groupOffsetX}
+                  groupOffsetY={groupOffsetY}
+                  onDragStart={handleDragStart}
+                  onDragEnd={commitCardDrag}
+                  onGroupDragEnd={commitGroupDrag}
+                  onTap={handleCardTap}
+                  onLongPress={handleCardLongPress}
+                />
+              );
+            })}
+            <Animated.View style={[styles.marquee, marqueeAnimatedStyle]} pointerEvents="none" />
           </Animated.View>
         </View>
       </GestureDetector>
@@ -437,12 +619,40 @@ export default function BoardScreen() {
             {title || 'Без назви'}
           </Text>
         </Pressable>
-        <View style={{ width: 24 }} />
+        <Pressable
+          style={[styles.toolButton, canvasTool === 'select' && styles.toolButtonActive]}
+          onPress={toggleCanvasTool}
+        >
+          <MaterialCommunityIcons
+            name="cursor-move"
+            size={20}
+            color={canvasTool === 'select' ? '#fff' : '#111827'}
+          />
+        </Pressable>
       </View>
 
-      <Pressable style={styles.fab} onPress={() => setAddSheetVisible(true)}>
-        <Ionicons name="add" size={26} color="#fff" />
-      </Pressable>
+      {selectedCardIds.size > 0 ? (
+        <View style={styles.selectionBar}>
+          <Text style={styles.selectionBarLabel}>Обрано: {selectedCardIds.size}</Text>
+          <View style={styles.selectionBarActions}>
+            <Pressable style={styles.selectionBarButton} onPress={() => setSelectedCardIds(new Set())}>
+              <Ionicons name="close" size={16} color="#111827" />
+              <Text style={styles.selectionBarButtonLabel}>Скасувати</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.selectionBarButton, styles.selectionBarButtonDanger]}
+              onPress={deleteSelectedCards}
+            >
+              <Ionicons name="trash-outline" size={16} color="#fff" />
+              <Text style={[styles.selectionBarButtonLabel, styles.selectionBarButtonLabelDanger]}>Видалити</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : (
+        <Pressable style={styles.fab} onPress={() => setAddSheetVisible(true)}>
+          <Ionicons name="add" size={26} color="#fff" />
+        </Pressable>
+      )}
 
       <Modal visible={addSheetVisible} transparent animationType="fade" onRequestClose={() => setAddSheetVisible(false)}>
         <Pressable style={styles.sheetBackdrop} onPress={() => setAddSheetVisible(false)}>
@@ -554,6 +764,11 @@ const styles = StyleSheet.create({
     zIndex: 100,
     elevation: 12,
   },
+  cardSelected: {
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: SELECTION_COLOR,
+  },
   stickyCard: {
     borderRadius: 8,
     padding: 12,
@@ -634,6 +849,71 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     shadowRadius: 6,
     elevation: 6,
+  },
+  marquee: {
+    position: 'absolute',
+    backgroundColor: 'rgba(37,99,235,0.15)',
+    borderWidth: 1.5,
+    borderColor: SELECTION_COLOR,
+    borderRadius: 4,
+  },
+  toolButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.85)',
+  },
+  toolButtonActive: {
+    backgroundColor: SELECTION_COLOR,
+  },
+  selectionBar: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  selectionBarLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  selectionBarActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  selectionBarButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
+  },
+  selectionBarButtonDanger: {
+    backgroundColor: '#EF4444',
+  },
+  selectionBarButtonLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  selectionBarButtonLabelDanger: {
+    color: '#fff',
   },
   sheetBackdrop: {
     flex: 1,
