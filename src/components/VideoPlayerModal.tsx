@@ -8,6 +8,17 @@ type Props = {
   onClose: () => void;
 };
 
+// Navigating a WebView straight to youtube.com/embed/<id> reliably fails
+// on-device with YouTube's own "Помилка 153" (player configuration error) -
+// the IFrame player checks the page's origin/referrer, and a bare top-level
+// WebView navigation supplies none. Wrapping the same embed URL in a tiny
+// local HTML page (an actual <iframe>, not a direct navigation) gives it a
+// real page context to check against and is the standard fix for this
+// exact React Native + YouTube WebView failure.
+function htmlForYouTube(embedUrl: string): string {
+  return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" /><style>html,body{margin:0;padding:0;background:#000;height:100%;}iframe{position:fixed;top:0;left:0;width:100%;height:100%;border:0;}</style></head><body><iframe src="${embedUrl}" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe></body></html>`;
+}
+
 // In-app YouTube/TikTok playback - a WebView loading the provider's own
 // stripped-down embed player (see utils/videoEmbed.ts), same full-screen
 // backdrop + close button shape as ZoomableImageViewer. `url` doubles as
@@ -25,7 +36,7 @@ export default function VideoPlayerModal({ url, onClose }: Props) {
         </Pressable>
         <View style={styles.playerWrap}>
           <WebView
-            source={{ uri: info.embedUrl }}
+            source={info.provider === 'youtube' ? { html: htmlForYouTube(info.embedUrl) } : { uri: info.embedUrl }}
             style={styles.webview}
             allowsFullscreenVideo
             mediaPlaybackRequiresUserAction={false}
