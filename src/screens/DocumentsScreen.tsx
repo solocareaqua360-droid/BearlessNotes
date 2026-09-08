@@ -353,11 +353,11 @@ export default function DocumentsScreen() {
       )}
 
       <View style={styles.stickerStripHeader}>
-        <Pressable style={styles.stickerStripToggle} onPress={toggleStickersCollapsed}>
-          <Text style={styles.stickerStripLabel}>
-            Стікери {stickersCollapsed ? `(${freeStickers.length})` : `${freeStickers.length} / ${FREE_STICKER_LIMIT}`}
+        <Pressable style={styles.stickerToggleCapsule} onPress={toggleStickersCollapsed}>
+          <Text style={styles.stickerToggleLabel}>
+            Стікери{stickersCollapsed ? ` (${freeStickers.length})` : ''}
           </Text>
-          <Ionicons name={stickersCollapsed ? 'chevron-down' : 'chevron-up'} size={13} color="rgba(255,255,255,0.6)" />
+          <Ionicons name={stickersCollapsed ? 'chevron-down' : 'chevron-up'} size={14} color="rgba(255,255,255,0.75)" />
         </Pressable>
         <Pressable hitSlop={8} onPress={openStickerComposer}>
           <Ionicons name="add-circle-outline" size={18} color="rgba(255,255,255,0.85)" />
@@ -379,7 +379,7 @@ export default function DocumentsScreen() {
                   <Ionicons name="brush-outline" size={34} color={STICKER_DARK} />
                 </View>
               ) : (
-                <Text style={styles.stickerCardText} numberOfLines={7}>
+                <Text style={styles.stickerCardText} numberOfLines={6}>
                   {s.text || 'Порожній стікер'}
                 </Text>
               )}
@@ -613,16 +613,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingBottom: 6,
+    paddingBottom: 10,
   },
-  stickerStripToggle: {
+  // Same frosted-glass capsule as ProjectTabsRow's dark tabs (see
+  // tabDark/tab there) - kept in sync by eye rather than shared, since
+  // this one row doesn't otherwise need that component's scroll/multi-tab
+  // machinery.
+  stickerToggleCapsule: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
+    paddingVertical: 7,
+    paddingHorizontal: 13,
+    borderRadius: 999,
+    backgroundColor: 'rgba(20,20,20,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
   },
-  stickerStripLabel: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.7)',
+  stickerToggleLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.85)',
   },
   stickerStrip: {
     paddingHorizontal: 20,
@@ -636,6 +647,7 @@ const styles = StyleSheet.create({
     backgroundColor: STICKER_YELLOW,
     padding: 14,
     justifyContent: 'center',
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOpacity: 0.25,
     shadowOffset: { width: 0, height: 2 },
