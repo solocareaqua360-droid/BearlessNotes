@@ -172,7 +172,7 @@ export default function AddExistingItemModal({ visible, onPick, onClose, exclude
                 filteredFiles.map((f) => (
                   <Pressable key={f.id} style={styles.row} onPress={() => onPick(blockFromFile(f))}>
                     <View style={styles.docIcon}>
-                      <Ionicons name="document-outline" size={16} color={ACCENT} />
+                      <Ionicons name="document-outline" size={18} color={ACCENT} />
                     </View>
                     <Text style={styles.rowText} numberOfLines={1}>
                       {f.title || f.fileName}
@@ -187,7 +187,7 @@ export default function AddExistingItemModal({ visible, onPick, onClose, exclude
               ) : (
                 filteredPhotos.map((p) => (
                   <Pressable key={p.id} style={styles.row} onPress={() => onPick(blockFromPhoto(p))}>
-                    <Image source={{ uri: p.imageUri }} style={styles.photoThumb} resizeMode="cover" />
+                    <Image source={{ uri: p.imageUri }} style={styles.thumb} resizeMode="cover" />
                     <Text style={styles.rowText} numberOfLines={1}>
                       {p.title || 'Без назви'}
                     </Text>
@@ -201,9 +201,13 @@ export default function AddExistingItemModal({ visible, onPick, onClose, exclude
               ) : (
                 filteredVideoLinks.map((l) => (
                   <Pressable key={l.id} style={styles.row} onPress={() => onPick(blockFromLink(l))}>
-                    <View style={styles.docIcon}>
-                      <Ionicons name="videocam-outline" size={16} color={ACCENT} />
-                    </View>
+                    {l.imageUrl ? (
+                      <Image source={{ uri: l.imageUrl }} style={styles.thumb} resizeMode="cover" />
+                    ) : (
+                      <View style={styles.docIcon}>
+                        <Ionicons name="videocam-outline" size={18} color={ACCENT} />
+                      </View>
+                    )}
                     <Text style={styles.rowText} numberOfLines={1}>
                       {l.title || hostnameOf(l.url)}
                     </Text>
@@ -218,7 +222,7 @@ export default function AddExistingItemModal({ visible, onPick, onClose, exclude
                 filteredGeoLinks.map((l) => (
                   <Pressable key={l.id} style={styles.row} onPress={() => onPick(blockFromLink(l))}>
                     <View style={styles.docIcon}>
-                      <Ionicons name="location-outline" size={16} color={ACCENT} />
+                      <Ionicons name="location-outline" size={18} color={ACCENT} />
                     </View>
                     <Text style={styles.rowText} numberOfLines={1}>
                       {l.title || hostnameOf(l.url)}
@@ -233,9 +237,13 @@ export default function AddExistingItemModal({ visible, onPick, onClose, exclude
               ) : (
                 filteredOtherLinks.map((l) => (
                   <Pressable key={l.id} style={styles.row} onPress={() => onPick(blockFromLink(l))}>
-                    <View style={styles.docIcon}>
-                      <Ionicons name="link-outline" size={16} color={ACCENT} />
-                    </View>
+                    {l.imageUrl ? (
+                      <Image source={{ uri: l.imageUrl }} style={styles.thumb} resizeMode="cover" />
+                    ) : (
+                      <View style={styles.docIcon}>
+                        <Ionicons name="link-outline" size={18} color={ACCENT} />
+                      </View>
+                    )}
                     <Text style={styles.rowText} numberOfLines={1}>
                       {l.title || hostnameOf(l.url)}
                     </Text>
@@ -337,16 +345,19 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   docIcon: {
-    width: 28,
-    height: 28,
+    width: 40,
+    height: 40,
     borderRadius: 8,
     backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  photoThumb: {
-    width: 28,
-    height: 28,
+  // Real preview - photos, YouTube/TikTok thumbnails, and any "other" link
+  // with an Open Graph image all share this, same size as docIcon so a row
+  // doesn't jump around switching between an icon and an image.
+  thumb: {
+    width: 40,
+    height: 40,
     borderRadius: 8,
     backgroundColor: '#F3F4F6',
   },
