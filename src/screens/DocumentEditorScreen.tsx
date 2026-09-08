@@ -54,6 +54,7 @@ import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import { Block, BlockType, SketchElement, Tag, TableRow } from '../types';
 import { RootStackParamList } from '../navigation';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
+import VideoPlayerModal from '../components/VideoPlayerModal';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentTagsBlock from '../components/DocumentTagsBlock';
 import SketchEditor from '../components/SketchEditor';
@@ -64,6 +65,7 @@ import { backupFileToDrive } from '../utils/googleDrive';
 import { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags } from '../hooks/useTags';
 import { linkDocId } from '../utils/linkId';
+import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
 import AddExistingItemModal from '../components/AddExistingItemModal';
@@ -1758,6 +1760,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // buttons to apply to.
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
   const [viewerImageId, setViewerImageId] = useState<string | null>(null);
+  const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
   const [imageRenameId, setImageRenameId] = useState<string | null>(null);
   const [sketchEditorBlockId, setSketchEditorBlockId] = useState<string | null>(null);
   const [existingItemPickerBlockId, setExistingItemPickerBlockId] = useState<string | null>(null);
@@ -2564,6 +2567,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   async function openLinkBlock(url: string) {
+    // A YouTube/TikTok link plays right here (see VideoPlayerModal) instead
+    // of handing off to the YouTube/TikTok app or a browser tab - anything
+    // else keeps opening externally exactly as before.
+    if (getVideoEmbedInfo(url)) {
+      setPlayingVideoUrl(url);
+      return;
+    }
     try {
       await Linking.openURL(url);
     } catch {
@@ -3452,6 +3462,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           </GestureHandlerRootView>
         </Modal>
       )}
+
+      <VideoPlayerModal url={playingVideoUrl} onClose={() => setPlayingVideoUrl(null)} />
 
       {/* Pinned directly above the keyboard, and only mounted while
           isToolbarVisible - EditorToolbar itself only checks

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Linking, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
@@ -11,6 +11,8 @@ import { RootStackParamList } from '../navigation';
 import { Block, BoardCard } from '../types';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import RenamePrompt from '../components/RenamePrompt';
+import VideoPlayerModal from '../components/VideoPlayerModal';
+import { getVideoEmbedInfo } from '../utils/videoEmbed';
 
 const AUTOSAVE_DELAY_MS = 600;
 const DEFAULT_CARD_WIDTH = 160;
@@ -262,6 +264,7 @@ export default function BoardScreen() {
   const [editingText, setEditingText] = useState('');
   const [renamingTitle, setRenamingTitle] = useState(false);
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
+  const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
 
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
@@ -365,6 +368,14 @@ export default function BoardScreen() {
       setEditingText(card.text);
     } else if (type === 'document' && card.documentId) {
       navigation.navigate('Editor', { documentId: card.documentId });
+    } else if (type === 'link' && card.linkUrl) {
+      // A YouTube/TikTok card plays right here; any other link opens
+      // externally, same split DocumentEditorScreen's own link blocks use.
+      if (getVideoEmbedInfo(card.linkUrl)) {
+        setPlayingVideoUrl(card.linkUrl);
+      } else {
+        Linking.openURL(card.linkUrl).catch(() => {});
+      }
     }
   }
 
@@ -457,6 +468,8 @@ export default function BoardScreen() {
         includeDocuments
         onPickDocument={addDocumentCard}
       />
+
+      <VideoPlayerModal url={playingVideoUrl} onClose={() => setPlayingVideoUrl(null)} />
 
       <RenamePrompt
         visible={renamingTitle}
