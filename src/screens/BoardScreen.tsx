@@ -59,6 +59,7 @@ function fileIconFor(name: string): 'document-text-outline' | 'document-outline'
 type DraggableCardProps = {
   card: BoardCard;
   canvasScale: ReturnType<typeof useSharedValue<number>>;
+  canvasPanGesture: ReturnType<typeof Gesture.Pan>;
   onDragEnd: (id: string, x: number, y: number) => void;
   onTap: (card: BoardCard) => void;
 };
@@ -71,7 +72,7 @@ type DraggableCardProps = {
 // screen-space drag distance still feels 1:1 with the finger while the
 // canvas itself is pinch-zoomed. A Tap is raced against the Pan so a quick
 // tap (edit a sticky's text) and an actual drag never fight each other.
-function DraggableCard({ card, canvasScale, onDragEnd, onTap }: DraggableCardProps) {
+function DraggableCard({ card, canvasScale, canvasPanGesture, onDragEnd, onTap }: DraggableCardProps) {
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
 
@@ -89,7 +90,18 @@ function DraggableCard({ card, canvasScale, onDragEnd, onTap }: DraggableCardPro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card.x, card.y]);
 
+  // blocksExternalGesture is the load-bearing line: without it, RNGH's
+  // Gesture API treats gestures in separate (even nested) GestureDetectors
+  // as fully independent, so the canvas's own Pan (see BoardScreen) was
+  // free to also recognize a few pixels of movement on the very same touch
+  // that started this drag - a tiny, invisible-during-the-drag canvas pan
+  // that only became visible as a "correction" once the touch lifted and
+  // the canvas's Pan committed its own (unwanted) translateX/Y. This is
+  // exactly the risk flagged in DEVELOPMENT_PLAN.md's Stage 16 as needing
+  // on-device confirmation - it needed this explicit block, not gesture-
+  // handler's default behavior.
   const panGesture = Gesture.Pan()
+    .blocksExternalGesture(canvasPanGesture)
     .onUpdate((e) => {
       dragX.value = e.translationX / canvasScale.value;
       dragY.value = e.translationY / canvasScale.value;
@@ -244,12 +256,13 @@ export default function BoardScreen() {
 
   // Simultaneous here only combines the canvas's OWN pinch+pan with each
   // other. A card's Pan (see DraggableCard) sits on its own nested
-  // GestureDetector and is never composed with this one - relying on
-  // gesture-handler's default parent/child exclusivity (a touch starting on
-  // a card activates the card's Pan first) to keep dragging a card from
-  // also panning the canvas underneath it. This is the one part of Stage 1
-  // with no proven on-device precedent yet - confirm it feels right before
-  // building Stage 2 on top of it.
+  // GestureDetector and explicitly calls `.blocksExternalGesture(panGesture)`
+  // against this exact gesture - gesture-handler's default is to treat
+  // gestures in separate GestureDetectors as fully independent (NOT
+  // exclusive), so without that explicit block this canvas Pan was free to
+  // also recognize a sliver of movement on a touch that started on a card,
+  // visible as a jitter once the touch lifted and that unwanted micro-pan
+  // committed.
   const canvasGesture = Gesture.Simultaneous(pinchGesture, panGesture);
 
   const worldAnimatedStyle = useAnimatedStyle(() => ({
@@ -313,6 +326,7 @@ export default function BoardScreen() {
                 key={card.id}
                 card={card}
                 canvasScale={scale}
+                canvasPanGesture={panGesture}
                 onDragEnd={commitCardDrag}
                 onTap={handleCardTap}
               />
