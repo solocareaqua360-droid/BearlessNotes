@@ -114,6 +114,33 @@ Drive):
   build profile picked once by mistake, then cancelled) rather than a
   keystore generated in-session and handed to the user, which turned
   out to be unnecessary.
+- **Update (2026-09-08, adding react-native-webview/expo-local-
+  authentication/expo-audio/expo-haptics for a Board-feature video
+  player + future biometric lock/sounds/haptics):** this time a cloud
+  `eas build` hit the free plan's monthly Android-build cap (resets on
+  a rolling monthly date, shown in the CLI error) rather than the old
+  network-policy block, and this particular session turned out to be
+  running locally on the user's own Mac (`darwin-arm64`), not a cloud
+  sandbox — `eas build --local` worked from here. That needed a local
+  Android toolchain: the Android SDK (command-line tools, platforms,
+  build-tools, NDK, licenses) was already present at
+  `/opt/homebrew/share/android-commandlinetools` from some earlier,
+  unlogged setup, but Java was missing - `brew install --cask
+  temurin@17` failed outright (its installer needs an interactive sudo
+  password Claude Code can't supply); `brew install openjdk@17` (a
+  formula, not a cask, so no privileged installer step) worked.
+  `JAVA_HOME`/`ANDROID_HOME`/`ANDROID_SDK_ROOT`/`PATH` are now exported
+  from `~/.zprofile` on this Mac. The resulting APK isn't uploaded
+  anywhere (a local build has no expo.dev download link) - it was
+  handed to the phone by serving it over the local Wi-Fi (a scratch
+  `python3 -m http.server`, not the whole repo directory) and opening
+  `http://<Mac's LAN IP>:<port>/....apk` in the phone's browser, same
+  install-from-unknown-sources step as every prior build. Net effect:
+  local Android dev-client builds now work end-to-end from this Mac
+  without touching EAS's cloud build quota at all - prefer `eas build
+  --local` over the cloud profile for future native-module additions
+  here, unless a *cloud* Claude Code session (no local Android
+  toolchain) is doing the work instead.
 - Live reload ended up working after all: a second, separate Claude
   Code window opened directly on the local project folder runs
   `npm start`, and the phone connects over Wi-Fi. Needed
