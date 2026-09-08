@@ -288,6 +288,33 @@ export async function runDriveDiagnostics(): Promise<string> {
   }
 }
 
+// Real total usage on the connected Drive ACCOUNT (all of it, not just what
+// this app uploaded) - Google's own `about.get` endpoint, distinct from the
+// app-tracked totalBytesStored/fileCount above (which only ever sees its own
+// uploads and is an approximation from base64 length). `limit` is absent on
+// an account with unlimited storage. Best-effort: resolves to null on any
+// failure so a quota-check failure never breaks the rest of Settings.
+export interface DriveStorageQuota {
+  usage: number;
+  limit: number | null;
+}
+
+export async function getDriveStorageQuota(): Promise<DriveStorageQuota | null> {
+  ensureConfigured();
+  if (!GoogleSignin.hasPreviousSignIn()) return null;
+  try {
+    const response = await driveFetch('https://www.googleapis.com/drive/v3/about?fields=storageQuota');
+    if (!response.ok) return null;
+    const json = await response.json();
+    const quota = json.storageQuota;
+    if (!quota || quota.usage == null) return null;
+    return { usage: Number(quota.usage), limit: quota.limit != null ? Number(quota.limit) : null };
+  } catch (e) {
+    console.warn('[googleDrive] getDriveStorageQuota failed', e);
+    return null;
+  }
+}
+
 // Used when the user chooses to also remove the Drive backup after deleting
 // a file/photo locally. Resolves to null on success, or to the reason it
 // failed - unlike a failed backup (silent on purpose), a failed delete has

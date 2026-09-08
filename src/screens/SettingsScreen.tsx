@@ -6,7 +6,9 @@ import { db } from '../firebase';
 import {
   connectGoogleDrive,
   disconnectGoogleDrive,
+  DriveStorageQuota,
   getConnectedEmail,
+  getDriveStorageQuota,
   isDriveConnected,
   runDriveDiagnostics,
 } from '../utils/googleDrive';
@@ -29,6 +31,8 @@ export default function SettingsScreen() {
   const [email, setEmail] = useState<string | null>(() => (isDriveConnected() ? getConnectedEmail() : null));
   const [busy, setBusy] = useState(false);
   const [stats, setStats] = useState<{ totalBytesStored: number; fileCount: number } | null>(null);
+  const [quota, setQuota] = useState<DriveStorageQuota | null>(null);
+  const [quotaLoading, setQuotaLoading] = useState(false);
 
   useEffect(() => {
     return onSnapshot(driveStatsDoc, (snapshot) => {
@@ -36,6 +40,22 @@ export default function SettingsScreen() {
       setStats(data ? { totalBytesStored: data.totalBytesStored ?? 0, fileCount: data.fileCount ?? 0 } : null);
     });
   }, []);
+
+  async function loadQuota() {
+    setQuotaLoading(true);
+    try {
+      setQuota(await getDriveStorageQuota());
+    } finally {
+      setQuotaLoading(false);
+    }
+  }
+
+  // Real account-wide usage only means anything once connected - re-fetched
+  // whenever the connected account changes (including on connect).
+  useEffect(() => {
+    if (email) loadQuota();
+    else setQuota(null);
+  }, [email]);
 
   async function handleConnect() {
     setBusy(true);
@@ -100,11 +120,29 @@ export default function SettingsScreen() {
             <Text style={styles.cardHint}>
               Нові файли й фото автоматично копіюються в папку "Bearless Notes" на Диску.
             </Text>
+            <View style={styles.trafficRow}>
+              <Ionicons name="server-outline" size={15} color="#6B7280" />
+              {quotaLoading && !quota ? (
+                <ActivityIndicator size="small" color="#6B7280" />
+              ) : quota ? (
+                <Text style={styles.trafficLabel}>
+                  Диск: {formatBytes(quota.usage)}
+                  {quota.limit != null
+                    ? ` з ${formatBytes(quota.limit)} (${Math.round((quota.usage / quota.limit) * 100)}%)`
+                    : ' (без обмеження)'}
+                </Text>
+              ) : (
+                <Text style={styles.trafficLabel}>Не вдалося отримати дані про Диск</Text>
+              )}
+              <Pressable onPress={loadQuota} disabled={quotaLoading} hitSlop={8}>
+                <Ionicons name="refresh-outline" size={15} color={ACCENT} />
+              </Pressable>
+            </View>
             {!!stats && stats.fileCount > 0 && (
               <View style={styles.trafficRow}>
                 <Ionicons name="cloud-upload-outline" size={15} color="#6B7280" />
                 <Text style={styles.trafficLabel}>
-                  Використано на Диску: {formatBytes(stats.totalBytesStored)} ({stats.fileCount}{' '}
+                  Завантажено застосунком: {formatBytes(stats.totalBytesStored)} ({stats.fileCount}{' '}
                   {stats.fileCount === 1 ? 'файл' : 'файлів'})
                 </Text>
               </View>
@@ -180,6 +218,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   trafficLabel: {
+    flex: 1,
     fontSize: 13,
     color: '#6B7280',
   },
