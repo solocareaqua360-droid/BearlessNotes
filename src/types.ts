@@ -204,6 +204,30 @@ export interface Tag {
   usedIn: Record<string, true>;
 }
 
+// A card on a 'Дошка' (board) canvas. Deliberately just a `Block` (the same
+// type/text/imageUri/fileUri/linkUrl/etc. fields DocumentEditorScreen's
+// blocks already use) plus placement - a card referencing an existing file/
+// photo/link is produced by the exact same blockFromFile/blockFromPhoto/
+// blockFromLink helpers a document block is (see utils/copyToNote.ts), so a
+// future "convert cluster to document" only has to strip x/y/width/color and
+// use the result as-is for a new document's `blocks`.
+export interface BoardCard extends Block {
+  x: number;
+  y: number;
+  width: number;
+  // 'paragraph' (sticky-note) cards only - no other Block usage in the app
+  // has a per-block color, so this lives here rather than on Block itself.
+  color?: string;
+}
+
+export interface BoardItem {
+  id: string;
+  title: string;
+  cards: BoardCard[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface DocumentItem {
   id: string;
   title: string;

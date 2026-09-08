@@ -15,6 +15,8 @@ export type RootStackParamList = {
   Links: { category: 'video' | 'geo' | 'other' };
   Photos: undefined;
   Files: undefined;
+  BoardsList: undefined;
+  Board: { boardId: string };
   Tags: undefined;
   TagItems: { tagId: string };
   Settings: undefined;

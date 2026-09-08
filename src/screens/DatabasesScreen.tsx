@@ -20,7 +20,7 @@ type Tile = {
   // "Скоро" placeholder.
   linkCategory?: 'video' | 'geo' | 'other';
   // Set for tiles with their own dedicated (paramless) screen.
-  route?: 'Photos' | 'Files' | 'Tags' | 'Diary';
+  route?: 'Photos' | 'Files' | 'Tags' | 'Diary' | 'BoardsList';
 };
 
 // "Справи", the link-backed tiles, "Фото" and "Файли" are real, working
@@ -38,6 +38,7 @@ const GRID_TILES: Tile[] = [
   { key: 'photos', label: 'Зображення', icon: 'image-outline', route: 'Photos' },
   { key: 'video', label: 'YouTube / TikTok', icon: 'videocam-outline', linkCategory: 'video' },
   { key: 'files', label: 'Файли', icon: 'document-outline', route: 'Files' },
+  { key: 'board', label: 'Дошка', icon: 'apps-outline', route: 'BoardsList' },
   { key: 'tags', label: 'Теги', icon: 'pricetag-outline', route: 'Tags' },
   { key: 'diary', label: 'Щоденник', icon: 'book-outline', route: 'Diary' },
 ];
