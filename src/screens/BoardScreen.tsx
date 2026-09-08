@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -64,52 +64,65 @@ type DraggableCardProps = {
   onTap: (card: BoardCard) => void;
 };
 
-// One card's own drag - a Pan gesture animates it smoothly on the UI thread
-// (dragX/dragY shared values, no per-frame React state) and only commits the
-// final x/y into the parent's `cards` state once, on release, mirroring the
-// "animate live, commit on end" shape DocumentEditorScreen's own block-drag
-// already uses for reordering. `canvasScale` is read inside the worklet so a
-// screen-space drag distance still feels 1:1 with the finger while the
-// canvas itself is pinch-zoomed. A Tap is raced against the Pan so a quick
-// tap (edit a sticky's text) and an actual drag never fight each other.
+// One card's own drag.
+//
+// The position lives in `posX`/`posY` shared values and NOWHERE else - the
+// view's `left`/`top` stay pinned at 0 forever and the whole world offset
+// rides on the animated transform. That's the load-bearing decision here,
+// arrived at after two failed attempts at the "jitter on release" bug:
+// splitting a card's position across a layout prop (`left`/`top`, which
+// travels JS render -> shadow tree -> native commit) AND an animated
+// transform (which Reanimated writes straight to the view on the UI thread)
+// means the two halves land in different frames. Every "swap the offset
+// into the base position" scheme therefore had a 1-2 frame window showing
+// either base+offset+offset (a jump of exactly the drag distance) or
+// base+0 (a snap back to where the drag started) - which is precisely what
+// the jitter was. One value, one pipeline, no swap, no window.
+//
+// React state is then only a persistence concern: `onDragEnd` reports the
+// final position up so it reaches Firestore, and the `card.x`/`card.y`
+// props coming back down are deliberately ignored unless they differ from
+// what this card last reported (i.e. a genuinely external change), so a
+// re-render can never fight the gesture.
+//
+// `canvasScale` is read inside the worklet so a drag still tracks the
+// finger 1:1 while the canvas is pinch-zoomed. A Tap is raced against the
+// Pan so a quick tap (edit a sticky's text) and a real drag never fight.
 function DraggableCard({ card, canvasScale, canvasPanGesture, onDragEnd, onTap }: DraggableCardProps) {
-  const dragX = useSharedValue(0);
-  const dragY = useSharedValue(0);
+  const posX = useSharedValue(card.x);
+  const posY = useSharedValue(card.y);
+  // The last position this card itself put into the parent's state. Used
+  // only to tell "our own drag echoing back" (ignore) apart from a real
+  // external move (adopt).
+  const reportedX = useSharedValue(card.x);
+  const reportedY = useSharedValue(card.y);
 
-  // Resetting dragX/dragY inside onEnd (UI thread, immediate) used to snap
-  // the card back to its OLD position for a frame before the parent's
-  // `cards` state update (JS thread, one tick later) landed with the new
-  // base x/y - a visible "jitter" on release. Instead the offset is left
-  // in place after release (so the card visually stays exactly where it
-  // was dropped) and only zeroed once `card.x`/`card.y` actually reflect
-  // the drop, in the layout effect below - at that instant old+offset and
-  // new+0 are the same screen position, so nothing visibly moves.
-  useLayoutEffect(() => {
-    dragX.value = 0;
-    dragY.value = 0;
+  useEffect(() => {
+    if (card.x === reportedX.value && card.y === reportedY.value) return;
+    reportedX.value = card.x;
+    reportedY.value = card.y;
+    posX.value = card.x;
+    posY.value = card.y;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card.x, card.y]);
 
-  // blocksExternalGesture is the load-bearing line: without it, RNGH's
-  // Gesture API treats gestures in separate (even nested) GestureDetectors
-  // as fully independent, so the canvas's own Pan (see BoardScreen) was
-  // free to also recognize a few pixels of movement on the very same touch
-  // that started this drag - a tiny, invisible-during-the-drag canvas pan
-  // that only became visible as a "correction" once the touch lifted and
-  // the canvas's Pan committed its own (unwanted) translateX/Y. This is
-  // exactly the risk flagged in DEVELOPMENT_PLAN.md's Stage 16 as needing
-  // on-device confirmation - it needed this explicit block, not gesture-
-  // handler's default behavior.
+  // blocksExternalGesture: RNGH's Gesture API treats gestures in separate
+  // (even nested) GestureDetectors as fully independent, so without this
+  // the canvas's own Pan (see BoardScreen) also recognizes movement on the
+  // very same touch that is dragging a card, and both move at once.
   const panGesture = Gesture.Pan()
     .blocksExternalGesture(canvasPanGesture)
-    .onUpdate((e) => {
-      dragX.value = e.translationX / canvasScale.value;
-      dragY.value = e.translationY / canvasScale.value;
+    // onChange (per-event delta) rather than onUpdate (cumulative
+    // translation) - the position accumulates in place, so there's no
+    // separate "drag start" baseline to capture or reconcile afterwards.
+    .onChange((e) => {
+      posX.value += e.changeX / canvasScale.value;
+      posY.value += e.changeY / canvasScale.value;
     })
     .onEnd(() => {
-      const finalX = card.x + dragX.value;
-      const finalY = card.y + dragY.value;
-      runOnJS(onDragEnd)(card.id, finalX, finalY);
+      reportedX.value = posX.value;
+      reportedY.value = posY.value;
+      runOnJS(onDragEnd)(card.id, posX.value, posY.value);
     });
 
   const tapGesture = Gesture.Tap().onEnd(() => {
@@ -119,16 +132,14 @@ function DraggableCard({ card, canvasScale, canvasPanGesture, onDragEnd, onTap }
   const gesture = Gesture.Race(panGesture, tapGesture);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: dragX.value }, { translateY: dragY.value }],
+    transform: [{ translateX: posX.value }, { translateY: posY.value }],
   }));
 
   const type = card.type ?? 'paragraph';
 
   return (
     <GestureDetector gesture={gesture}>
-      <Animated.View
-        style={[styles.card, { left: card.x, top: card.y, width: card.width }, animatedStyle]}
-      >
+      <Animated.View style={[styles.card, { width: card.width }, animatedStyle]}>
         {type === 'paragraph' ? (
           <View style={[styles.stickyCard, { backgroundColor: card.color ?? STICKY_COLORS[0] }]}>
             <Text style={styles.stickyText} numberOfLines={6}>
@@ -443,8 +454,12 @@ const styles = StyleSheet.create({
     width: WORLD_SIZE,
     height: WORLD_SIZE,
   },
+  // left/top are pinned at 0 on purpose - a card's world position is carried
+  // entirely by its animated transform (see DraggableCard), never by layout.
   card: {
     position: 'absolute',
+    left: 0,
+    top: 0,
   },
   stickyCard: {
     borderRadius: 8,
