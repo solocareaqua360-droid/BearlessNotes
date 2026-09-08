@@ -11,7 +11,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
+import Svg, { Defs, LinearGradient, Stop, Rect, Path, Text as SvgText } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
@@ -410,6 +410,29 @@ export default function DocumentsScreen() {
             <Pressable key={s.id} style={styles.stickerCard} onPress={() => openFreeSticker(s)}>
               {s.type === 'image' && s.imageUri ? (
                 <Image source={{ uri: s.imageUri }} style={styles.stickerCardImage} resizeMode="cover" />
+              ) : s.type === 'sketch' && (s.sketchElements?.length ?? 0) > 0 ? (
+                // Same viewBox-reuses-the-capture-canvas-size approach as
+                // DocumentEditorScreen's own sketch block preview - the
+                // drawing scales correctly into this much smaller box.
+                <Svg width="100%" height="100%" viewBox={`0 0 ${s.sketchWidth || 1} ${s.sketchHeight || 1}`}>
+                  {(s.sketchElements ?? []).map((el, i) =>
+                    el.kind === 'text' ? (
+                      <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
+                        {el.text}
+                      </SvgText>
+                    ) : (
+                      <Path
+                        key={i}
+                        d={el.d}
+                        stroke={el.color}
+                        strokeWidth={el.width}
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    )
+                  )}
+                </Svg>
               ) : s.type === 'sketch' ? (
                 <View style={styles.stickerCardIconWrap}>
                   <Ionicons name="brush-outline" size={34} color={STICKER_DARK} />

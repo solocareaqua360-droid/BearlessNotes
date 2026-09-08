@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
+import Svg, { Defs, LinearGradient, Stop, Rect, Path, Text as SvgText } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -131,6 +131,26 @@ export default function StickersScreen() {
         <Pressable style={styles.cardTap} onPress={() => openSticker(item)}>
           {item.type === 'image' && item.imageUri ? (
             <Image source={{ uri: item.imageUri }} style={styles.cardImage} resizeMode="cover" />
+          ) : item.type === 'sketch' && (item.sketchElements?.length ?? 0) > 0 ? (
+            <Svg width="100%" height="100%" viewBox={`0 0 ${item.sketchWidth || 1} ${item.sketchHeight || 1}`}>
+              {(item.sketchElements ?? []).map((el, i) =>
+                el.kind === 'text' ? (
+                  <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
+                    {el.text}
+                  </SvgText>
+                ) : (
+                  <Path
+                    key={i}
+                    d={el.d}
+                    stroke={el.color}
+                    strokeWidth={el.width}
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                )
+              )}
+            </Svg>
           ) : item.type === 'sketch' ? (
             <View style={styles.cardIconWrap}>
               <Ionicons name="brush-outline" size={34} color={STICKER_DARK} />
