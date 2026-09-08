@@ -211,13 +211,25 @@ export interface Tag {
 // blockFromLink helpers a document block is (see utils/copyToNote.ts), so a
 // future "convert cluster to document" only has to strip x/y/width/color and
 // use the result as-is for a new document's `blocks`.
-export interface BoardCard extends Block {
+//
+// `type` widens BlockType with 'document' rather than adding 'document' to
+// BlockType itself - a card can reference a whole other document (opens it
+// in the real editor on tap), but a document can never nest as a block
+// INSIDE another document, so that fifth type only ever makes sense here on
+// the board, never in DocumentEditorScreen's own block list.
+export interface BoardCard extends Omit<Block, 'type'> {
+  type?: BlockType | 'document';
   x: number;
   y: number;
   width: number;
   // 'paragraph' (sticky-note) cards only - no other Block usage in the app
   // has a per-block color, so this lives here rather than on Block itself.
   color?: string;
+  // 'document' cards only - the referenced doc's id (Editor screen param)
+  // and a cached title for display, snapshotted at add-time same as every
+  // other reference card's display fields (fileTitle/imageTitle/linkTitle).
+  documentId?: string;
+  documentTitle?: string;
 }
 
 export interface BoardItem {

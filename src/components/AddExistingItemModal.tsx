@@ -10,13 +10,17 @@ const ACCENT = '#3B82F6';
 const filesCollection = collection(db, 'files');
 const photosCollection = collection(db, 'photos');
 const linksCollection = collection(db, 'links');
+const documentsCollection = collection(db, 'documents');
 
 // Links split into video/geo/other exactly like LinksScreen's own tabs
 // (see LinksScreen.tsx's categoryOf) - they're one Firestore collection but
 // three different-feeling databases in the rest of the app, so lumping them
 // into one "Посилання" tab here would be the one place in the app where
-// that split doesn't hold.
-type Tab = 'file' | 'photo' | 'video' | 'geo' | 'other';
+// that split doesn't hold. 'document' only ever shows up when the caller
+// opts in via `includeDocuments` (see Props) - DocumentEditorScreen's own
+// use of this modal never does, since a document can't nest as a block
+// inside another document.
+type Tab = 'file' | 'photo' | 'video' | 'geo' | 'other' | 'document';
 
 type FileRow = {
   id: string;
@@ -38,6 +42,7 @@ type PhotoRow = {
   driveBytes?: number;
 };
 type LinkRow = { id: string; url: string; title?: string; imageUrl?: string; siteName?: string };
+type DocumentRow = { id: string; title: string };
 
 function hostnameOf(url: string): string {
   try {
@@ -69,6 +74,12 @@ type Props = {
   // (blockFromLink), so they're never excluded here - re-adding one is just
   // a redundant card, not a collision.
   excludeIds?: Set<string>;
+  // Adds a "Документи" tab (regular documents, daily notes excluded - same
+  // filter DocumentsScreen/SearchScreen/CopyToNoteModal use) and routes a
+  // pick through `onPickDocument` instead of `onPick`, since a document
+  // reference isn't a `Block` - only BoardScreen sets this.
+  includeDocuments?: boolean;
+  onPickDocument?: (item: DocumentRow) => void;
 };
 
 // The reverse direction of CopyToNoteModal (Files/Photos/Links → a note) -
@@ -76,12 +87,20 @@ type Props = {
 // the "/" menu. Picking a row inserts a block referencing that SAME
 // underlying record (blockFromFile/blockFromPhoto/blockFromLink, the exact
 // helpers CopyToNoteModal already uses) rather than creating a duplicate.
-export default function AddExistingItemModal({ visible, onPick, onClose, excludeIds }: Props) {
+export default function AddExistingItemModal({
+  visible,
+  onPick,
+  onClose,
+  excludeIds,
+  includeDocuments,
+  onPickDocument,
+}: Props) {
   const [tab, setTab] = useState<Tab>('file');
   const [searchQuery, setSearchQuery] = useState('');
   const [files, setFiles] = useState<FileRow[]>([]);
   const [photos, setPhotos] = useState<PhotoRow[]>([]);
   const [links, setLinks] = useState<LinkRow[]>([]);
+  const [documents, setDocuments] = useState<DocumentRow[]>([]);
 
   useEffect(() => {
     if (!visible) return;
@@ -105,6 +124,17 @@ export default function AddExistingItemModal({ visible, onPick, onClose, exclude
   }, [visible]);
 
   useEffect(() => {
+    if (!visible || !includeDocuments) return;
+    return onSnapshot(query(documentsCollection, orderBy('updatedAt', 'desc')), (snapshot) => {
+      setDocuments(
+        snapshot.docs
+          .filter((d) => !d.data().calendarDate)
+          .map((d) => ({ id: d.id, title: (d.data().title as string) || 'Без назви' }))
+      );
+    });
+  }, [visible, includeDocuments]);
+
+  useEffect(() => {
     if (!visible) {
       setSearchQuery('');
       setTab('file');
@@ -122,6 +152,7 @@ export default function AddExistingItemModal({ visible, onPick, onClose, exclude
   const filteredVideoLinks = searchedLinks.filter((l) => categoryOf(l) === 'video');
   const filteredGeoLinks = searchedLinks.filter((l) => categoryOf(l) === 'geo');
   const filteredOtherLinks = searchedLinks.filter((l) => categoryOf(l) === 'other');
+  const filteredDocuments = documents.filter((d) => d.title.toLowerCase().includes(needle));
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -151,6 +182,11 @@ export default function AddExistingItemModal({ visible, onPick, onClose, exclude
             <Pressable style={[styles.tab, tab === 'other' && styles.tabActive]} onPress={() => setTab('other')}>
               <Text style={[styles.tabLabel, tab === 'other' && styles.tabLabelActive]}>Посилання</Text>
             </Pressable>
+            {includeDocuments && (
+              <Pressable style={[styles.tab, tab === 'document' && styles.tabActive]} onPress={() => setTab('document')}>
+                <Text style={[styles.tabLabel, tab === 'document' && styles.tabLabelActive]}>Документи</Text>
+              </Pressable>
+            )}
           </ScrollView>
 
           <View style={styles.searchRow}>
@@ -246,6 +282,22 @@ export default function AddExistingItemModal({ visible, onPick, onClose, exclude
                     )}
                     <Text style={styles.rowText} numberOfLines={1}>
                       {l.title || hostnameOf(l.url)}
+                    </Text>
+                  </Pressable>
+                ))
+              ))}
+
+            {tab === 'document' &&
+              (filteredDocuments.length === 0 ? (
+                <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
+              ) : (
+                filteredDocuments.map((d) => (
+                  <Pressable key={d.id} style={styles.row} onPress={() => onPickDocument?.(d)}>
+                    <View style={styles.docIcon}>
+                      <Ionicons name="document-text-outline" size={18} color={ACCENT} />
+                    </View>
+                    <Text style={styles.rowText} numberOfLines={1}>
+                      {d.title}
                     </Text>
                   </Pressable>
                 ))

@@ -52,6 +52,26 @@ function cardFromExistingBlock(block: Block, index: number): BoardCard {
   };
 }
 
+// A document card always gets a fresh id, unlike file/photo cards which
+// reuse the referenced record's own id - there's no Drive-dedup or
+// usedInDocuments concern for a document reference (it's just a documentId
+// pointer), so nothing stops the same document from being pinned to the
+// board more than once.
+function newDocumentCard(document: { id: string; title: string }, index: number): BoardCard {
+  const jitter = (index % 6) * 24;
+  return {
+    id: generateId(),
+    text: '',
+    type: 'document',
+    createdAt: Date.now(),
+    documentId: document.id,
+    documentTitle: document.title,
+    x: WORLD_CENTER - DEFAULT_CARD_WIDTH / 2 + jitter,
+    y: WORLD_CENTER - 60 + jitter,
+    width: DEFAULT_CARD_WIDTH,
+  };
+}
+
 function fileIconFor(name: string): 'document-text-outline' | 'document-outline' {
   return name.toLowerCase().endsWith('.pdf') ? 'document-text-outline' : 'document-outline';
 }
@@ -60,6 +80,8 @@ type DraggableCardProps = {
   card: BoardCard;
   canvasScale: ReturnType<typeof useSharedValue<number>>;
   canvasPanGesture: ReturnType<typeof Gesture.Pan>;
+  isDragging: boolean;
+  onDragStart: (id: string) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
   onTap: (card: BoardCard) => void;
 };
@@ -88,7 +110,15 @@ type DraggableCardProps = {
 // `canvasScale` is read inside the worklet so a drag still tracks the
 // finger 1:1 while the canvas is pinch-zoomed. A Tap is raced against the
 // Pan so a quick tap (edit a sticky's text) and a real drag never fight.
-function DraggableCard({ card, canvasScale, canvasPanGesture, onDragEnd, onTap }: DraggableCardProps) {
+function DraggableCard({
+  card,
+  canvasScale,
+  canvasPanGesture,
+  isDragging,
+  onDragStart,
+  onDragEnd,
+  onTap,
+}: DraggableCardProps) {
   const posX = useSharedValue(card.x);
   const posY = useSharedValue(card.y);
   // The last position this card itself put into the parent's state. Used
@@ -112,6 +142,9 @@ function DraggableCard({ card, canvasScale, canvasPanGesture, onDragEnd, onTap }
   // very same touch that is dragging a card, and both move at once.
   const panGesture = Gesture.Pan()
     .blocksExternalGesture(canvasPanGesture)
+    .onStart(() => {
+      runOnJS(onDragStart)(card.id);
+    })
     // onChange (per-event delta) rather than onUpdate (cumulative
     // translation) - the position accumulates in place, so there's no
     // separate "drag start" baseline to capture or reconcile afterwards.
@@ -139,8 +172,29 @@ function DraggableCard({ card, canvasScale, canvasPanGesture, onDragEnd, onTap }
 
   return (
     <GestureDetector gesture={gesture}>
-      <Animated.View style={[styles.card, { width: card.width }, animatedStyle]}>
-        {type === 'paragraph' ? (
+      <Animated.View
+        style={[
+          styles.card,
+          { width: card.width },
+          // A plain (non-animated) style, not part of useAnimatedStyle -
+          // isDragging only flips twice per drag (start/end), not per
+          // frame, so it doesn't need to live on the UI thread. Elevation
+          // is Android's own stacking mechanism (zIndex alone isn't always
+          // enough there for sibling Views to reorder above one another).
+          isDragging && styles.cardDragging,
+          animatedStyle,
+        ]}
+      >
+        {type === 'document' ? (
+          <View style={styles.refCard}>
+            <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
+              <Ionicons name="document-text-outline" size={22} color="#6B7280" />
+            </View>
+            <Text style={styles.refLabel} numberOfLines={2}>
+              {card.documentTitle || 'Без назви'}
+            </Text>
+          </View>
+        ) : type === 'paragraph' ? (
           <View style={[styles.stickyCard, { backgroundColor: card.color ?? STICKY_COLORS[0] }]}>
             <Text style={styles.stickyText} numberOfLines={6}>
               {card.text || 'Порожня картка'}
@@ -207,6 +261,7 @@ export default function BoardScreen() {
   const [editingCard, setEditingCard] = useState<BoardCard | null>(null);
   const [editingText, setEditingText] = useState('');
   const [renamingTitle, setRenamingTitle] = useState(false);
+  const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
 
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
@@ -298,14 +353,28 @@ export default function BoardScreen() {
     setCards((prev) => [...prev, cardFromExistingBlock(block, prev.length)]);
   }
 
+  function addDocumentCard(document: { id: string; title: string }) {
+    setExistingItemPickerVisible(false);
+    setCards((prev) => [...prev, newDocumentCard(document, prev.length)]);
+  }
+
   function handleCardTap(card: BoardCard) {
-    if ((card.type ?? 'paragraph') !== 'paragraph') return;
-    setEditingCard(card);
-    setEditingText(card.text);
+    const type = card.type ?? 'paragraph';
+    if (type === 'paragraph') {
+      setEditingCard(card);
+      setEditingText(card.text);
+    } else if (type === 'document' && card.documentId) {
+      navigation.navigate('Editor', { documentId: card.documentId });
+    }
+  }
+
+  function handleDragStart(id: string) {
+    setDraggedCardId(id);
   }
 
   function commitCardDrag(id: string, x: number, y: number) {
     setCards((prev) => prev.map((c) => (c.id === id ? { ...c, x, y } : c)));
+    setDraggedCardId(null);
   }
 
   function saveEditingText() {
@@ -338,6 +407,8 @@ export default function BoardScreen() {
                 card={card}
                 canvasScale={scale}
                 canvasPanGesture={panGesture}
+                isDragging={card.id === draggedCardId}
+                onDragStart={handleDragStart}
                 onDragEnd={commitCardDrag}
                 onTap={handleCardTap}
               />
@@ -383,6 +454,8 @@ export default function BoardScreen() {
         onPick={addExistingCard}
         onClose={() => setExistingItemPickerVisible(false)}
         excludeIds={existingItemExcludeIds}
+        includeDocuments
+        onPickDocument={addDocumentCard}
       />
 
       <RenamePrompt
@@ -460,6 +533,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     top: 0,
+    zIndex: 0,
+  },
+  // The card currently being dragged renders above every other card - see
+  // the isDragging comment where this is applied.
+  cardDragging: {
+    zIndex: 100,
+    elevation: 12,
   },
   stickyCard: {
     borderRadius: 8,
