@@ -1,12 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Image,
   Linking,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -29,6 +27,7 @@ import { getVideoEmbedInfo } from '../utils/videoEmbed';
 
 const AUTOSAVE_DELAY_MS = 600;
 const DEFAULT_CARD_WIDTH = 160;
+const EXPANDED_DOCUMENT_WIDTH = 320;
 const MIN_SCALE = 0.4;
 const MAX_SCALE = 3;
 // A large fixed virtual canvas rather than an unbounded one - card x/y are
@@ -103,12 +102,12 @@ function fileIconFor(name: string): 'document-text-outline' | 'document-outline'
   return name.toLowerCase().endsWith('.pdf') ? 'document-text-outline' : 'document-outline';
 }
 
-// A plain-text peek at a document's blocks for the expanded card preview -
-// not a real rendering of the editor's block types, just enough to tell
-// what's in there before deciding to open it for real. Text-bearing block
-// types show their text as-is; everything else gets a short bracketed tag
-// rather than being silently dropped, so an image/file/link-heavy document
-// doesn't preview as an empty page.
+// A plain-text peek at a document's blocks, cached onto the card at
+// add-time - not a real rendering of the editor's block types, just enough
+// to tell what's in there before deciding to open it for real. Text-bearing
+// block types show their text as-is; everything else gets a short
+// bracketed tag rather than being silently dropped, so an image/file/link-
+// heavy document doesn't preview as an empty page.
 function blocksToPreviewText(blocks: Block[]): string {
   const TEXT_TYPES = new Set(['paragraph', 'bulleted', 'numbered', 'checkbox', undefined]);
   return blocks
@@ -124,10 +123,6 @@ function blocksToPreviewText(blocks: Block[]): string {
     })
     .filter((line): line is string => !!line)
     .join('\n');
-}
-
-function firstNLines(text: string, n: number): string {
-  return text.split('\n').slice(0, n).join('\n');
 }
 
 function firstImageUri(blocks: Block[]): string | undefined {
@@ -151,6 +146,8 @@ type DraggableCardProps = {
   onGroupDragEnd: (dx: number, dy: number) => void;
   onTap: (card: BoardCard) => void;
   onLongPress: (card: BoardCard) => void;
+  // 'document' cards only, only reachable while expanded (see render below).
+  onEditDocument: (card: BoardCard) => void;
 };
 
 // One card's own drag.
@@ -191,6 +188,7 @@ function DraggableCard({
   onGroupDragEnd,
   onTap,
   onLongPress,
+  onEditDocument,
 }: DraggableCardProps) {
   const posX = useSharedValue(card.x);
   const posY = useSharedValue(card.y);
@@ -221,7 +219,12 @@ function DraggableCard({
   // (even nested) GestureDetectors as fully independent, so without this
   // the canvas's own Pan (see BoardScreen) also recognizes movement on the
   // very same touch that is dragging a card, and both move at once.
+  // Disabled (not omitted from the Race) while an expanded document card
+  // is showing its full text - it can grow tall enough to cover a good
+  // part of the canvas, and "you're reading it, not repositioning it"
+  // keeps that state predictable. Collapse the card to move it again.
   const panGesture = Gesture.Pan()
+    .enabled(!card.documentExpanded)
     .blocksExternalGesture(canvasPanGesture)
     .onStart(() => {
       runOnJS(onDragStart)(card.id);
@@ -260,6 +263,19 @@ function DraggableCard({
 
   const gesture = Gesture.Race(panGesture, tapGesture, longPressGesture);
 
+  // The "Редагувати" button rendered inside an expanded document card (see
+  // render below) needs its OWN Tap, not the outer `onTap` - a tap there
+  // has to open the editor, not also collapse the card back down the way
+  // any other tap on the card does. `blocksExternalGesture` is the same
+  // technique already used to stop the canvas's own Pan from stealing part
+  // of this card's drag - here it stops this card's outer Race from also
+  // firing for a touch that started on the button.
+  const editButtonGesture = Gesture.Tap()
+    .blocksExternalGesture(panGesture, tapGesture, longPressGesture)
+    .onEnd(() => {
+      runOnJS(onEditDocument)(card);
+    });
+
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: posX.value + (isSelected ? groupOffsetX.value : 0) },
@@ -274,7 +290,7 @@ function DraggableCard({
       <Animated.View
         style={[
           styles.card,
-          { width: card.width },
+          { width: card.documentExpanded ? EXPANDED_DOCUMENT_WIDTH : card.width },
           // A plain (non-animated) style, not part of useAnimatedStyle -
           // isDragging only flips twice per drag (start/end), not per
           // frame, so it doesn't need to live on the UI thread. Elevation
@@ -287,20 +303,29 @@ function DraggableCard({
       >
         {type === 'document' ? (
           <View style={styles.refCard}>
-            {card.documentPreviewImageUri ? (
-              <Image source={{ uri: card.documentPreviewImageUri }} style={styles.refThumb} resizeMode="cover" />
-            ) : (
-              <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
-                <Ionicons name="document-text-outline" size={22} color="#6B7280" />
-              </View>
-            )}
-            <Text style={styles.refLabel} numberOfLines={2}>
+            {!card.documentExpanded &&
+              (card.documentPreviewImageUri ? (
+                <Image source={{ uri: card.documentPreviewImageUri }} style={styles.refThumb} resizeMode="cover" />
+              ) : (
+                <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
+                  <Ionicons name="document-text-outline" size={22} color="#6B7280" />
+                </View>
+              ))}
+            <Text style={styles.refLabel} numberOfLines={card.documentExpanded ? undefined : 2}>
               {card.documentTitle || 'Без назви'}
             </Text>
             {!!card.documentPreviewText && (
-              <Text style={styles.documentPreviewText} numberOfLines={4}>
+              <Text style={styles.documentPreviewText} numberOfLines={card.documentExpanded ? undefined : 4}>
                 {card.documentPreviewText}
               </Text>
+            )}
+            {card.documentExpanded && (
+              <GestureDetector gesture={editButtonGesture}>
+                <View style={styles.documentEditButton}>
+                  <Ionicons name="create-outline" size={14} color="#fff" />
+                  <Text style={styles.documentEditButtonLabel}>Редагувати</Text>
+                </View>
+              </GestureDetector>
             )}
           </View>
         ) : type === 'paragraph' ? (
@@ -373,16 +398,6 @@ export default function BoardScreen() {
   const [renamingTitle, setRenamingTitle] = useState(false);
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
   const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
-  // A document card expands into a read-only preview instead of jumping
-  // straight to the Editor - documents can be long, and tapping a small
-  // canvas card shouldn't leave the board by surprise. `expandedCard` is
-  // the card itself (for its documentId/documentTitle), fetched separately
-  // into `expandedPreview` (title/text at the time it was opened - a
-  // one-off getDoc peek, not a live subscription, since this is meant to
-  // be a quick look, not a second copy of the editor).
-  const [expandedCard, setExpandedCard] = useState<BoardCard | null>(null);
-  const [expandedPreview, setExpandedPreview] = useState<{ title: string; text: string } | null>(null);
-  const [expandedLoading, setExpandedLoading] = useState(false);
   // 'move' - single-finger drag pans the canvas (the original Stage 1
   // behaviour). 'select' - single-finger drag instead draws a marquee
   // rectangle over the world, selecting every card it overlaps, so several
@@ -555,48 +570,42 @@ export default function BoardScreen() {
 
   async function addDocumentCard(document: { id: string; title: string }) {
     setExistingItemPickerVisible(false);
-    // One extra read at add-time to snapshot a preview (first lines of
-    // text, first image) onto the card itself - AddExistingItemModal's own
-    // "Документи" tab only ever carries {id, title} for its list, not
-    // blocks, so there's nothing to preview from without this fetch.
+    // One extra read at add-time to snapshot a preview (full text, first
+    // image) onto the card itself - AddExistingItemModal's own "Документи"
+    // tab only ever carries {id, title} for its list, not blocks, so
+    // there's nothing to preview from without this fetch. The full text is
+    // cached (capped defensively, not just 4 lines) so the card can later
+    // expand in place to show all of it without a second fetch - the
+    // collapsed view just clips the same string to 4 lines via
+    // `numberOfLines`.
     const snapshot = await getDoc(doc(db, 'documents', document.id));
     const blocks: Block[] = snapshot.data()?.blocks ?? [];
     const preview = {
-      text: firstNLines(blocksToPreviewText(blocks), 4),
+      text: blocksToPreviewText(blocks).slice(0, 20000),
       imageUri: firstImageUri(blocks),
     };
     setCards((prev) => [...prev, newDocumentCard(document, preview, prev.length)]);
   }
 
-  async function openDocumentPreview(card: BoardCard) {
-    if (!card.documentId) return;
-    setExpandedCard(card);
-    setExpandedPreview(null);
-    setExpandedLoading(true);
-    const snapshot = await getDoc(doc(db, 'documents', card.documentId));
-    const data = snapshot.data();
-    setExpandedPreview({
-      title: data?.title || card.documentTitle || 'Без назви',
-      text: blocksToPreviewText(data?.blocks ?? []),
-    });
-    setExpandedLoading(false);
+  // Tapping a document card toggles it in place (see BoardCard's
+  // documentExpanded) rather than opening a separate overlay - collapsed
+  // shows a 4-line peek, expanded shows the whole cached preview text and
+  // stays that way while the user keeps working with other cards, exactly
+  // like every other card's position: it's just a field, so it persists
+  // through the normal autosave and survives reopening the board.
+  function toggleDocumentExpanded(card: BoardCard) {
+    setCards((prev) =>
+      prev.map((c) => (c.id === card.id ? { ...c, documentExpanded: !c.documentExpanded } : c))
+    );
   }
 
-  function editExpandedDocument() {
-    if (!expandedCard?.documentId) return;
-    const documentId = expandedCard.documentId;
-    setExpandedCard(null);
-    setExpandedPreview(null);
+  function editDocumentCard(card: BoardCard) {
+    if (!card.documentId) return;
     // The modal-presented registration of the same Editor screen (see
     // App.tsx) - slides up over the board and swipes back down to it,
     // rather than the sideways push/pop of a regular stack screen, so
     // editing feels like it's still happening on the board.
-    navigation.navigate('EditorModal', { documentId });
-  }
-
-  function closeExpandedDocument() {
-    setExpandedCard(null);
-    setExpandedPreview(null);
+    navigation.navigate('EditorModal', { documentId: card.documentId });
   }
 
   function handleCardTap(card: BoardCard) {
@@ -604,8 +613,8 @@ export default function BoardScreen() {
     if (type === 'paragraph') {
       setEditingCard(card);
       setEditingText(card.text);
-    } else if (type === 'document' && card.documentId) {
-      openDocumentPreview(card);
+    } else if (type === 'document') {
+      toggleDocumentExpanded(card);
     } else if (type === 'link' && card.linkUrl) {
       // A YouTube/TikTok card plays right here; any other link opens
       // externally, same split DocumentEditorScreen's own link blocks use.
@@ -713,6 +722,7 @@ export default function BoardScreen() {
                   onGroupDragEnd={commitGroupDrag}
                   onTap={handleCardTap}
                   onLongPress={handleCardLongPress}
+                  onEditDocument={editDocumentCard}
                 />
               );
             })}
@@ -844,35 +854,6 @@ export default function BoardScreen() {
         </View>
       )}
 
-      {/* Same plain-overlay reasoning as the sticky text editor above -
-          not a Modal, not a child of the gesture-driven canvas. */}
-      {expandedCard && (
-        <View style={styles.expandedBackdrop}>
-          <View style={styles.expandedCard}>
-            <Text style={styles.expandedTitle} numberOfLines={2}>
-              {expandedPreview?.title || expandedCard.documentTitle || 'Без назви'}
-            </Text>
-            {expandedLoading ? (
-              <View style={styles.expandedLoading}>
-                <ActivityIndicator color="#8B5CF6" />
-              </View>
-            ) : (
-              <ScrollView style={styles.expandedScroll}>
-                <Text style={styles.expandedBody}>{expandedPreview?.text || 'Порожній документ'}</Text>
-              </ScrollView>
-            )}
-            <View style={styles.expandedButtons}>
-              <Pressable style={styles.expandedCloseButton} onPress={closeExpandedDocument}>
-                <Text style={styles.expandedCloseLabel}>Закрити</Text>
-              </Pressable>
-              <Pressable style={styles.expandedEditButton} onPress={editExpandedDocument}>
-                <Ionicons name="create-outline" size={16} color="#fff" />
-                <Text style={styles.expandedEditLabel}>Редагувати</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      )}
     </View>
   );
 }
@@ -956,6 +937,21 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 15,
     color: '#6B7280',
+  },
+  documentEditButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 4,
+    backgroundColor: '#8B5CF6',
+    borderRadius: 8,
+    paddingVertical: 8,
+  },
+  documentEditButtonLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#fff',
   },
   headerRow: {
     position: 'absolute',
@@ -1150,70 +1146,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   textEditSaveLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  expandedBackdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(17,24,39,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  expandedCard: {
-    width: '100%',
-    maxWidth: 420,
-    maxHeight: '80%',
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 18,
-    gap: 12,
-  },
-  expandedTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  expandedLoading: {
-    paddingVertical: 40,
-    alignItems: 'center',
-  },
-  expandedScroll: {
-    maxHeight: 320,
-  },
-  expandedBody: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: '#374151',
-  },
-  expandedButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-  },
-  expandedCloseButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-  },
-  expandedCloseLabel: {
-    fontSize: 15,
-    color: '#6B7280',
-  },
-  expandedEditButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#8B5CF6',
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-  },
-  expandedEditLabel: {
     fontSize: 15,
     fontWeight: '600',
     color: '#fff',
