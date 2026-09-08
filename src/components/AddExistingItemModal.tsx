@@ -11,7 +11,12 @@ const filesCollection = collection(db, 'files');
 const photosCollection = collection(db, 'photos');
 const linksCollection = collection(db, 'links');
 
-type Tab = 'file' | 'photo' | 'link';
+// Links split into video/geo/other exactly like LinksScreen's own tabs
+// (see LinksScreen.tsx's categoryOf) - they're one Firestore collection but
+// three different-feeling databases in the rest of the app, so lumping them
+// into one "Посилання" tab here would be the one place in the app where
+// that split doesn't hold.
+type Tab = 'file' | 'photo' | 'video' | 'geo' | 'other';
 
 type FileRow = {
   id: string;
@@ -40,6 +45,17 @@ function hostnameOf(url: string): string {
   } catch {
     return url;
   }
+}
+
+// Identical to LinksScreen.tsx's own categoryOf - kept as its own copy
+// rather than shared, same as that file's fileIconFor/fileIconColorFor
+// duplicates elsewhere, since the two call sites have nothing else in
+// common.
+function categoryOf(link: LinkRow): 'video' | 'geo' | 'other' {
+  const siteName = link.siteName ?? '';
+  if (siteName.includes('YouTube') || siteName.includes('TikTok')) return 'video';
+  if (siteName === 'Геоточка') return 'geo';
+  return 'other';
 }
 
 type Props = {
@@ -102,7 +118,10 @@ export default function AddExistingItemModal({ visible, onPick, onClose, exclude
   const filteredPhotos = photos.filter(
     (p) => !excludeIds?.has(p.id) && (p.title || 'Без назви').toLowerCase().includes(needle)
   );
-  const filteredLinks = links.filter((l) => (l.title || hostnameOf(l.url)).toLowerCase().includes(needle));
+  const searchedLinks = links.filter((l) => (l.title || hostnameOf(l.url)).toLowerCase().includes(needle));
+  const filteredVideoLinks = searchedLinks.filter((l) => categoryOf(l) === 'video');
+  const filteredGeoLinks = searchedLinks.filter((l) => categoryOf(l) === 'geo');
+  const filteredOtherLinks = searchedLinks.filter((l) => categoryOf(l) === 'other');
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -111,17 +130,28 @@ export default function AddExistingItemModal({ visible, onPick, onClose, exclude
           <View style={styles.handle} />
           <Text style={styles.title}>Додати з бази даних</Text>
 
-          <View style={styles.tabRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.tabRow}
+            contentContainerStyle={styles.tabRowContent}
+          >
             <Pressable style={[styles.tab, tab === 'file' && styles.tabActive]} onPress={() => setTab('file')}>
               <Text style={[styles.tabLabel, tab === 'file' && styles.tabLabelActive]}>Файли</Text>
             </Pressable>
             <Pressable style={[styles.tab, tab === 'photo' && styles.tabActive]} onPress={() => setTab('photo')}>
-              <Text style={[styles.tabLabel, tab === 'photo' && styles.tabLabelActive]}>Фото</Text>
+              <Text style={[styles.tabLabel, tab === 'photo' && styles.tabLabelActive]}>Зображення</Text>
             </Pressable>
-            <Pressable style={[styles.tab, tab === 'link' && styles.tabActive]} onPress={() => setTab('link')}>
-              <Text style={[styles.tabLabel, tab === 'link' && styles.tabLabelActive]}>Посилання</Text>
+            <Pressable style={[styles.tab, tab === 'video' && styles.tabActive]} onPress={() => setTab('video')}>
+              <Text style={[styles.tabLabel, tab === 'video' && styles.tabLabelActive]}>YouTube / TikTok</Text>
             </Pressable>
-          </View>
+            <Pressable style={[styles.tab, tab === 'geo' && styles.tabActive]} onPress={() => setTab('geo')}>
+              <Text style={[styles.tabLabel, tab === 'geo' && styles.tabLabelActive]}>Геоточки</Text>
+            </Pressable>
+            <Pressable style={[styles.tab, tab === 'other' && styles.tabActive]} onPress={() => setTab('other')}>
+              <Text style={[styles.tabLabel, tab === 'other' && styles.tabLabelActive]}>Посилання</Text>
+            </Pressable>
+          </ScrollView>
 
           <View style={styles.searchRow}>
             <Ionicons name="search" size={14} color="#9CA3AF" />
@@ -165,11 +195,43 @@ export default function AddExistingItemModal({ visible, onPick, onClose, exclude
                 ))
               ))}
 
-            {tab === 'link' &&
-              (filteredLinks.length === 0 ? (
+            {tab === 'video' &&
+              (filteredVideoLinks.length === 0 ? (
                 <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
               ) : (
-                filteredLinks.map((l) => (
+                filteredVideoLinks.map((l) => (
+                  <Pressable key={l.id} style={styles.row} onPress={() => onPick(blockFromLink(l))}>
+                    <View style={styles.docIcon}>
+                      <Ionicons name="videocam-outline" size={16} color={ACCENT} />
+                    </View>
+                    <Text style={styles.rowText} numberOfLines={1}>
+                      {l.title || hostnameOf(l.url)}
+                    </Text>
+                  </Pressable>
+                ))
+              ))}
+
+            {tab === 'geo' &&
+              (filteredGeoLinks.length === 0 ? (
+                <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
+              ) : (
+                filteredGeoLinks.map((l) => (
+                  <Pressable key={l.id} style={styles.row} onPress={() => onPick(blockFromLink(l))}>
+                    <View style={styles.docIcon}>
+                      <Ionicons name="location-outline" size={16} color={ACCENT} />
+                    </View>
+                    <Text style={styles.rowText} numberOfLines={1}>
+                      {l.title || hostnameOf(l.url)}
+                    </Text>
+                  </Pressable>
+                ))
+              ))}
+
+            {tab === 'other' &&
+              (filteredOtherLinks.length === 0 ? (
+                <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
+              ) : (
+                filteredOtherLinks.map((l) => (
                   <Pressable key={l.id} style={styles.row} onPress={() => onPick(blockFromLink(l))}>
                     <View style={styles.docIcon}>
                       <Ionicons name="link-outline" size={16} color={ACCENT} />
@@ -216,15 +278,20 @@ const styles = StyleSheet.create({
     color: '#111827',
     marginBottom: 10,
   },
+  // Horizontally scrollable now that links split into three tabs of their
+  // own (video/geo/other) alongside Files/Photos - five tabs no longer fit
+  // a fixed-width flex row.
   tabRow: {
-    flexDirection: 'row',
-    gap: 8,
     marginBottom: 10,
   },
+  tabRowContent: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   tab: {
-    flex: 1,
     alignItems: 'center',
     paddingVertical: 8,
+    paddingHorizontal: 14,
     borderRadius: 10,
     backgroundColor: '#F3F4F6',
   },
