@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -75,6 +75,20 @@ function DraggableCard({ card, canvasScale, onDragEnd, onTap }: DraggableCardPro
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
 
+  // Resetting dragX/dragY inside onEnd (UI thread, immediate) used to snap
+  // the card back to its OLD position for a frame before the parent's
+  // `cards` state update (JS thread, one tick later) landed with the new
+  // base x/y - a visible "jitter" on release. Instead the offset is left
+  // in place after release (so the card visually stays exactly where it
+  // was dropped) and only zeroed once `card.x`/`card.y` actually reflect
+  // the drop, in the layout effect below - at that instant old+offset and
+  // new+0 are the same screen position, so nothing visibly moves.
+  useLayoutEffect(() => {
+    dragX.value = 0;
+    dragY.value = 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card.x, card.y]);
+
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
       dragX.value = e.translationX / canvasScale.value;
@@ -83,8 +97,6 @@ function DraggableCard({ card, canvasScale, onDragEnd, onTap }: DraggableCardPro
     .onEnd(() => {
       const finalX = card.x + dragX.value;
       const finalY = card.y + dragY.value;
-      dragX.value = 0;
-      dragY.value = 0;
       runOnJS(onDragEnd)(card.id, finalX, finalY);
     });
 
