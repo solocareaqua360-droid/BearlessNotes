@@ -50,6 +50,15 @@ export default function VideoPlayerModal({ url, onClose }: Props) {
             originWhitelist={['*']}
             javaScriptEnabled
             domStorageEnabled
+            // TikTok's embed page tries to deep-link into the native TikTok
+            // app via an `intent://`/`snssdk...://` URL on Android - a bare
+            // WebView can't resolve that scheme at all and throws
+            // net::ERR_UNKNOWN_URL_SCHEME (Error Code -10), which looked
+            // like the whole player crashing. Blocking navigation to
+            // anything that isn't plain http(s) keeps the WebView on the
+            // embed page instead of trying (and failing) to hand off to an
+            // app - exactly what "play it in this app" is supposed to mean.
+            onShouldStartLoadWithRequest={(request) => /^https?:\/\//i.test(request.url)}
             allowsFullscreenVideo
             mediaPlaybackRequiresUserAction={false}
             renderLoading={() => (
