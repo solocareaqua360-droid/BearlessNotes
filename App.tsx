@@ -23,19 +23,35 @@ import SearchScreen from './src/screens/SearchScreen';
 import DiaryScreen from './src/screens/DiaryScreen';
 import DocumentEditorScreen from './src/screens/DocumentEditorScreen';
 import FloatingIslandTabBar from './src/components/FloatingIslandTabBar';
-import { RootStackParamList } from './src/navigation';
+import { BoardsStackParamList, RootStackParamList } from './src/navigation';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator<RootStackParamList>();
+const BoardsStackNav = createNativeStackNavigator<BoardsStackParamList>();
+
+// The "Дошки" tab's own nested stack (list of boards -> one board) - kept
+// separate from the root Stack precisely so switching tabs away and back
+// preserves it, landing back on whichever board (or the list) was open,
+// with no manual "remember the last board" code anywhere (see
+// navigation.ts's BoardsStackParamList comment).
+function BoardsStack() {
+  return (
+    <BoardsStackNav.Navigator screenOptions={{ headerShown: false }}>
+      <BoardsStackNav.Screen name="BoardsList" component={BoardsListScreen} />
+      <BoardsStackNav.Screen name="Board" component={BoardScreen} />
+    </BoardsStackNav.Navigator>
+  );
+}
 
 // "Пошук" isn't a tab anymore - it's a search icon on DocumentsScreen that
-// pushes its own stack screen (see navigation.ts) - and these three tabs
-// render through the floating-island tab bar instead of the default one.
+// pushes its own stack screen (see navigation.ts) - and these tabs render
+// through the floating-island tab bar instead of the default one.
 function Tabs() {
   return (
     <Tab.Navigator screenOptions={{ headerShown: false }} tabBar={(props) => <FloatingIslandTabBar {...props} />}>
       <Tab.Screen name="Документи" component={DocumentsScreen} />
       <Tab.Screen name="Календар" component={CalendarScreen} />
+      <Tab.Screen name="Дошки" component={BoardsStack} />
       <Tab.Screen name="Більше" component={DatabasesScreen} />
     </Tab.Navigator>
   );
@@ -67,8 +83,6 @@ export default function App() {
           <Stack.Screen name="Links" component={LinksScreen} />
           <Stack.Screen name="Photos" component={PhotosScreen} />
           <Stack.Screen name="Files" component={FilesScreen} />
-          <Stack.Screen name="BoardsList" component={BoardsListScreen} />
-          <Stack.Screen name="Board" component={BoardScreen} />
           <Stack.Screen name="Tags" component={TagManageScreen} />
           <Stack.Screen name="TagItems" component={TagItemsScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />

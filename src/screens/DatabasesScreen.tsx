@@ -20,7 +20,11 @@ type Tile = {
   // "Скоро" placeholder.
   linkCategory?: 'video' | 'geo' | 'other';
   // Set for tiles with their own dedicated (paramless) screen.
-  route?: 'Photos' | 'Files' | 'Tags' | 'Diary' | 'BoardsList';
+  route?: 'Photos' | 'Files' | 'Tags' | 'Diary';
+  // The board tile - unlike the others, this opens a bottom TAB (see
+  // App.tsx's BoardsStack), not a root-stack screen, so it goes through
+  // `navigation.navigate('Tabs', { screen: 'Дошки' })` instead of `route`.
+  opensBoardsTab?: boolean;
 };
 
 // "Справи", the link-backed tiles, "Фото" and "Файли" are real, working
@@ -38,7 +42,7 @@ const GRID_TILES: Tile[] = [
   { key: 'photos', label: 'Зображення', icon: 'image-outline', route: 'Photos' },
   { key: 'video', label: 'YouTube / TikTok', icon: 'videocam-outline', linkCategory: 'video' },
   { key: 'files', label: 'Файли', icon: 'document-outline', route: 'Files' },
-  { key: 'board', label: 'Дошка', icon: 'apps-outline', route: 'BoardsList' },
+  { key: 'board', label: 'Дошка', icon: 'apps-outline', opensBoardsTab: true },
   { key: 'tags', label: 'Теги', icon: 'pricetag-outline', route: 'Tags' },
   { key: 'diary', label: 'Щоденник', icon: 'book-outline', route: 'Diary' },
 ];
@@ -78,6 +82,8 @@ export default function DatabasesScreen() {
   function openTile(tile: Tile) {
     if (tile.linkCategory) {
       navigation.navigate('Links', { category: tile.linkCategory });
+    } else if (tile.opensBoardsTab) {
+      navigation.navigate('Tabs', { screen: 'Дошки' });
     } else if (tile.route) {
       navigation.navigate(tile.route);
     } else {

@@ -6,7 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { RootStackParamList } from '../navigation';
+import { BoardsStackParamList } from '../navigation';
 import { BoardItem } from '../types';
 import { colorForDocument } from '../utils/documentColor';
 import RenamePrompt from '../components/RenamePrompt';
@@ -19,7 +19,7 @@ const boardsCollection = collection(db, 'boards');
 // menu or bulk-select yet - a handful of boards doesn't need them, and
 // nothing in the brief for this stage asks for them.
 export default function BoardsListScreen() {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<NativeStackNavigationProp<BoardsStackParamList>>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [boards, setBoards] = useState<BoardItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -110,13 +110,13 @@ export default function BoardsListScreen() {
         <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#boardsBg)" />
       </Svg>
 
+      {/* No back-chevron here - this screen is the "Дошки" tab's own root
+          now (see App.tsx's BoardsStack), same as Документи/Календар/
+          Більше's headers, none of which have one either. BoardScreen's
+          own chevron (returning to this list) stays, since Board really
+          does have somewhere to go back to within the same nested stack. */}
       <View style={styles.headerRow}>
-        <View style={styles.headerLeft}>
-          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={24} color="#fff" />
-          </Pressable>
-          <Text style={styles.header}>Дошка</Text>
-        </View>
+        <Text style={styles.header}>Дошка</Text>
         <Pressable hitSlop={8} style={styles.addButton} onPress={createBoard}>
           <Ionicons name="add" size={20} color="#fff" />
         </Pressable>
@@ -192,12 +192,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 90,
     paddingBottom: 12,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flexShrink: 1,
   },
   header: {
     fontSize: 46,

@@ -18,7 +18,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { doc, getDoc, getDocFromCache, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { RootStackParamList } from '../navigation';
+import { BoardsStackParamList, RootStackParamList } from '../navigation';
 import { Block, BoardCard } from '../types';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import RenamePrompt from '../components/RenamePrompt';
@@ -375,7 +375,7 @@ function DraggableCard({
   );
 }
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Board'>;
+type Props = NativeStackScreenProps<BoardsStackParamList, 'Board'>;
 
 // Stage 1 of the "Дошка" feature (see DEVELOPMENT_PLAN.md / PROJECT_BRIEF.md):
 // a pannable/zoomable canvas of cards. A card is deliberately just a `Block`
@@ -383,7 +383,13 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Board'>;
 // existing file/photo/link comes straight out of AddExistingItemModal
 // unmodified, exactly like inserting one into a document does.
 export default function BoardScreen() {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  // Typed against BOTH param lists - this screen lives inside the "Дошки"
+  // tab's own nested BoardsStack (goBack to BoardsList) but also reaches
+  // UP into the root stack to open Editor/EditorModal, which React
+  // Navigation's navigate() resolves correctly at runtime by walking up
+  // the navigator tree regardless of which param list a call site is
+  // typed against.
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList & BoardsStackParamList>>();
   const { params } = useRoute<Props['route']>();
   const { boardId } = params;
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();

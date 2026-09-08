@@ -2,11 +2,15 @@ import { Ionicons } from '@expo/vector-icons';
 
 export type RootStackParamList = {
   // The plain `undefined` shape is how every existing navigate('Tabs')
-  // call already works; the second shape is only for jumping straight to
-  // a specific day from DiaryScreen (React Navigation's nested-navigator
-  // pattern: navigate to the stack screen, telling it which tab and which
-  // params that tab screen gets).
-  Tabs: undefined | { screen: 'Календар'; params: { jumpToDate: string } };
+  // call already works; the other two shapes are for jumping straight to
+  // a specific screen inside one of the bottom tabs (React Navigation's
+  // nested-navigator pattern: navigate to the stack screen, telling it
+  // which tab - and, for Календар, which params that tab screen gets).
+  // `{ screen: 'Дошки' }` alone (no nested `screen`/`params` inside it)
+  // just switches to that tab and lands wherever its own nested
+  // BoardsStack last was - see App.tsx's BoardsStack for why that's
+  // enough to satisfy "resume the last open board" with no extra code.
+  Tabs: undefined | { screen: 'Календар'; params: { jumpToDate: string } } | { screen: 'Дошки' };
   Editor: { documentId: string };
   // Same DocumentEditorScreen as `Editor`, registered a second time purely
   // for its App.tsx presentation style (slide-up modal, swipe-down to
@@ -21,8 +25,6 @@ export type RootStackParamList = {
   Links: { category: 'video' | 'geo' | 'other' };
   Photos: undefined;
   Files: undefined;
-  BoardsList: undefined;
-  Board: { boardId: string };
   Tags: undefined;
   TagItems: { tagId: string };
   Settings: undefined;
@@ -34,4 +36,15 @@ export type RootStackParamList = {
   // them.
   Diary: undefined;
   Placeholder: { icon: keyof typeof Ionicons.glyphMap; label: string };
+};
+
+// "Дошки" is its own bottom tab (see App.tsx's BoardsStack) rather than a
+// couple of root-stack screens, specifically so switching tabs away and
+// back preserves this nested stack's own history - React Navigation does
+// that automatically for a tab's nested navigator, which is exactly
+// "reopen the last board you were on, unless you'd gone back to the list"
+// with no manual "remember the last board id" tracking anywhere.
+export type BoardsStackParamList = {
+  BoardsList: undefined;
+  Board: { boardId: string };
 };
