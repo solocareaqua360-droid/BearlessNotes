@@ -560,10 +560,6 @@ export default function PhotosScreen() {
           <Text style={styles.header}>Зображення</Text>
         </View>
         <View style={styles.headerButtons}>
-          <Pressable hitSlop={8} onPress={() => setAddPhotoSheetVisible(true)}>
-            <Ionicons name="add" size={19} color="#fff" />
-          </Pressable>
-          <View style={styles.headerButtonsDivider} />
           <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
             <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
           </Pressable>
@@ -787,6 +783,12 @@ export default function PhotosScreen() {
         onDelete={confirmDeleteSelected}
       />
 
+      {!isSelectMode && (
+        <Pressable style={styles.fab} onPress={() => setAddPhotoSheetVisible(true)}>
+          <Ionicons name="add" size={28} color="#fff" />
+        </Pressable>
+      )}
+
       {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
       {downloadToast && (
         <DownloadToast
@@ -802,6 +804,23 @@ export default function PhotosScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  // Same floating "+" DocumentsScreen uses, not a header icon.
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 100,
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: ACCENT,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 4,
+    shadowColor: ACCENT,
+    shadowOpacity: 0.5,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 6,
   },
   addPhotoBackdrop: {
     flex: 1,
