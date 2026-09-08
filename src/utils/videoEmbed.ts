@@ -27,10 +27,15 @@ export function getVideoEmbedInfo(url: string): VideoEmbedInfo | null {
   const lower = url.toLowerCase();
   if (lower.includes('youtube.com') || lower.includes('youtu.be')) {
     const id = extractYouTubeId(url);
-    // Falls back to the raw watch URL (still opens in the WebView, just
-    // without the stripped-down embed player) if the id couldn't be
-    // parsed out - better than refusing to show anything.
-    const embedUrl = id ? `https://www.youtube.com/embed/${id}?playsinline=1&autoplay=1` : url;
+    // youtube-nocookie.com (not youtube.com) - the privacy-enhanced embed
+    // domain Google itself recommends for third-party embedding, and
+    // noticeably less prone to the IFrame player's origin/referrer checks
+    // rejecting a WebView-hosted embed (see VideoPlayerModal's baseUrl for
+    // the other half of that fix). Falls back to the raw watch URL (still
+    // opens in the WebView, just without the stripped-down embed player)
+    // if the id couldn't be parsed out - better than refusing to show
+    // anything.
+    const embedUrl = id ? `https://www.youtube-nocookie.com/embed/${id}?playsinline=1&autoplay=1` : url;
     return { provider: 'youtube', embedUrl };
   }
   if (lower.includes('tiktok.com')) {

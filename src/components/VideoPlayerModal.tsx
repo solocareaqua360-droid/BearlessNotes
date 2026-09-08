@@ -36,8 +36,20 @@ export default function VideoPlayerModal({ url, onClose }: Props) {
         </Pressable>
         <View style={styles.playerWrap}>
           <WebView
-            source={info.provider === 'youtube' ? { html: htmlForYouTube(info.embedUrl) } : { uri: info.embedUrl }}
+            source={
+              info.provider === 'youtube'
+                ? // `baseUrl` is the other half of the Error 153 fix: it makes
+                  // the WebView report a real https origin for this local
+                  // HTML page instead of `about:blank`, which is what the
+                  // IFrame player's origin check was actually rejecting -
+                  // wrapping the embed in an <iframe> alone wasn't enough.
+                  { html: htmlForYouTube(info.embedUrl), baseUrl: 'https://www.youtube-nocookie.com' }
+                : { uri: info.embedUrl }
+            }
             style={styles.webview}
+            originWhitelist={['*']}
+            javaScriptEnabled
+            domStorageEnabled
             allowsFullscreenVideo
             mediaPlaybackRequiresUserAction={false}
             renderLoading={() => (
