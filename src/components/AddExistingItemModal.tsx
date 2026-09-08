@@ -3,14 +3,16 @@ import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View 
 import { Ionicons } from '@expo/vector-icons';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Block } from '../types';
-import { blockFromFile, blockFromLink, blockFromPhoto } from '../utils/copyToNote';
+import { Block, SketchElement } from '../types';
+import { blockFromFile, blockFromLink, blockFromPhoto, blockFromSticker } from '../utils/copyToNote';
 
 const ACCENT = '#3B82F6';
+const STICKER_YELLOW = '#FBE97A';
 const filesCollection = collection(db, 'files');
 const photosCollection = collection(db, 'photos');
 const linksCollection = collection(db, 'links');
 const documentsCollection = collection(db, 'documents');
+const stickersCollection = collection(db, 'stickers');
 
 // Links split into video/geo/other exactly like LinksScreen's own tabs
 // (see LinksScreen.tsx's categoryOf) - they're one Firestore collection but
@@ -20,7 +22,7 @@ const documentsCollection = collection(db, 'documents');
 // opts in via `includeDocuments` (see Props) - DocumentEditorScreen's own
 // use of this modal never does, since a document can't nest as a block
 // inside another document.
-type Tab = 'file' | 'photo' | 'video' | 'geo' | 'other' | 'document';
+type Tab = 'file' | 'photo' | 'video' | 'geo' | 'other' | 'document' | 'sticker';
 
 type FileRow = {
   id: string;
@@ -43,6 +45,25 @@ type PhotoRow = {
 };
 type LinkRow = { id: string; url: string; title?: string; imageUrl?: string; siteName?: string };
 type DocumentRow = { id: string; title: string };
+type StickerRow = {
+  id: string;
+  type: 'paragraph' | 'image' | 'sketch';
+  text?: string;
+  imageUri?: string;
+  driveFileId?: string;
+  driveBytes?: number;
+  sketchElements?: SketchElement[];
+  sketchWidth?: number;
+  sketchHeight?: number;
+  createdAt?: number;
+  trashed?: boolean;
+};
+
+function labelForSticker(s: StickerRow): string {
+  if (s.type === 'paragraph') return s.text || 'Порожній стікер';
+  if (s.type === 'image') return 'Фото-стікер';
+  return 'Малюнок-стікер';
+}
 
 function hostnameOf(url: string): string {
   try {
@@ -101,6 +122,7 @@ export default function AddExistingItemModal({
   const [photos, setPhotos] = useState<PhotoRow[]>([]);
   const [links, setLinks] = useState<LinkRow[]>([]);
   const [documents, setDocuments] = useState<DocumentRow[]>([]);
+  const [stickers, setStickers] = useState<StickerRow[]>([]);
 
   useEffect(() => {
     if (!visible) return;
@@ -120,6 +142,20 @@ export default function AddExistingItemModal({
     if (!visible) return;
     return onSnapshot(query(linksCollection, orderBy('updatedAt', 'desc')), (snapshot) => {
       setLinks(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<LinkRow, 'id'>) })));
+    });
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    // Trashed is filtered client-side (same "avoid a composite index"
+    // convention used everywhere else in this app) rather than a
+    // `where('trashed','==',false)` query.
+    return onSnapshot(query(stickersCollection, orderBy('updatedAt', 'desc')), (snapshot) => {
+      setStickers(
+        snapshot.docs
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<StickerRow, 'id'>) }))
+          .filter((s) => !s.trashed)
+      );
     });
   }, [visible]);
 
@@ -153,6 +189,12 @@ export default function AddExistingItemModal({
   const filteredGeoLinks = searchedLinks.filter((l) => categoryOf(l) === 'geo');
   const filteredOtherLinks = searchedLinks.filter((l) => categoryOf(l) === 'other');
   const filteredDocuments = documents.filter((d) => d.title.toLowerCase().includes(needle));
+  // Same id-collision guard as files/photos - a sticker reuses its own
+  // record's id (see blockFromSticker), so re-picking one already present
+  // in this document would put two blocks on the same id.
+  const filteredStickers = stickers.filter(
+    (s) => !excludeIds?.has(s.id) && labelForSticker(s).toLowerCase().includes(needle)
+  );
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -181,6 +223,9 @@ export default function AddExistingItemModal({
             </Pressable>
             <Pressable style={[styles.tab, tab === 'other' && styles.tabActive]} onPress={() => setTab('other')}>
               <Text style={[styles.tabLabel, tab === 'other' && styles.tabLabelActive]}>Посилання</Text>
+            </Pressable>
+            <Pressable style={[styles.tab, tab === 'sticker' && styles.tabActive]} onPress={() => setTab('sticker')}>
+              <Text style={[styles.tabLabel, tab === 'sticker' && styles.tabLabelActive]}>Стікери</Text>
             </Pressable>
             {includeDocuments && (
               <Pressable style={[styles.tab, tab === 'document' && styles.tabActive]} onPress={() => setTab('document')}>
@@ -282,6 +327,30 @@ export default function AddExistingItemModal({
                     )}
                     <Text style={styles.rowText} numberOfLines={1}>
                       {l.title || hostnameOf(l.url)}
+                    </Text>
+                  </Pressable>
+                ))
+              ))}
+
+            {tab === 'sticker' &&
+              (filteredStickers.length === 0 ? (
+                <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
+              ) : (
+                filteredStickers.map((s) => (
+                  <Pressable key={s.id} style={styles.row} onPress={() => onPick(blockFromSticker(s))}>
+                    {s.type === 'image' && s.imageUri ? (
+                      <Image source={{ uri: s.imageUri }} style={[styles.thumb, { backgroundColor: STICKER_YELLOW }]} resizeMode="cover" />
+                    ) : (
+                      <View style={[styles.docIcon, { backgroundColor: STICKER_YELLOW }]}>
+                        <Ionicons
+                          name={s.type === 'sketch' ? 'brush-outline' : 'reader-outline'}
+                          size={18}
+                          color="#8a7a1f"
+                        />
+                      </View>
+                    )}
+                    <Text style={styles.rowText} numberOfLines={1}>
+                      {labelForSticker(s)}
                     </Text>
                   </Pressable>
                 ))

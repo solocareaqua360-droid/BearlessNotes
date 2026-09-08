@@ -700,7 +700,12 @@ export default function BoardScreen() {
 
   const existingItemExcludeIds = new Set(
     cards
-      .filter((c) => ((c.type ?? 'paragraph') === 'file' && c.fileUri) || ((c.type ?? 'paragraph') === 'image' && c.imageUri))
+      .filter(
+        (c) =>
+          ((c.type ?? 'paragraph') === 'file' && c.fileUri) ||
+          ((c.type ?? 'paragraph') === 'image' && c.imageUri) ||
+          c.isSticker
+      )
       .map((c) => c.id)
   );
 

@@ -66,6 +66,17 @@ export interface Block {
   // falling back to updatedAt - absent on any block saved before this field
   // existed, which is exactly when that fallback kicks in.
   createdAt?: number;
+  // 'paragraph'/'image'/'sketch' blocks only - set once, when the block is
+  // inserted from an existing sticker (see blockFromSticker in
+  // copyToNote.ts), never touched again. A sticker reuses these three
+  // ordinary block types for its own content rather than needing a
+  // dedicated BlockType (a sticker can never nest inside another sticker,
+  // so there's nothing a fifth type would buy here) - this flag is what
+  // lets syncStickersForDocument tell "this block came from a sticker"
+  // apart from an ordinary paragraph/image/sketch block, and what tells
+  // the block renderer to keep the sticker's yellow background even once
+  // it's embedded in a document.
+  isSticker?: boolean;
   checked?: boolean; // 'checkbox' blocks only
   imageUri?: string; // 'image' blocks only
   // 'image' blocks only - set once at creation, never touched again.

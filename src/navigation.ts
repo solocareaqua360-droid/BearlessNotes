@@ -25,6 +25,7 @@ export type RootStackParamList = {
   Links: { category: 'video' | 'geo' | 'other' };
   Photos: undefined;
   Files: undefined;
+  Stickers: undefined;
   Tags: undefined;
   TagItems: { tagId: string };
   Settings: undefined;

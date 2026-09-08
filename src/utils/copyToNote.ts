@@ -1,6 +1,6 @@
 import { addDoc, arrayUnion, collection, doc, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Block } from '../types';
+import { Block, SketchElement } from '../types';
 
 const documentsCollection = collection(db, 'documents');
 
@@ -56,6 +56,37 @@ export function blockFromPhoto(photo: {
   // Drive upload when referencing an already-backed-up photo.
   if (photo.driveFileId) block.driveFileId = photo.driveFileId;
   if (photo.driveBytes) block.driveBytes = photo.driveBytes;
+  return block;
+}
+
+// A sticker's content type (text/photo/sketch) reuses the ordinary
+// paragraph/image/sketch BlockType - it never needed a type of its own,
+// since a sticker can't nest inside another sticker. Keyed by the
+// sticker's own id, same as file/photo, so inserting the same sticker into
+// a second document reuses the one record instead of duplicating it.
+// `isSticker: true` is what lets syncStickersForDocument (and the block
+// renderer's yellow background) tell this apart from an ordinary block of
+// the same type.
+export function blockFromSticker(sticker: {
+  id: string;
+  type: 'paragraph' | 'image' | 'sketch';
+  text?: string;
+  imageUri?: string;
+  driveFileId?: string;
+  driveBytes?: number;
+  sketchElements?: SketchElement[];
+  sketchWidth?: number;
+  sketchHeight?: number;
+  createdAt?: number;
+}): Block {
+  const block: Block = { id: sticker.id, text: sticker.text ?? '', type: sticker.type, isSticker: true };
+  if (sticker.imageUri) block.imageUri = sticker.imageUri;
+  if (sticker.driveFileId) block.driveFileId = sticker.driveFileId;
+  if (sticker.driveBytes) block.driveBytes = sticker.driveBytes;
+  if (sticker.sketchElements) block.sketchElements = sticker.sketchElements;
+  if (sticker.sketchWidth) block.sketchWidth = sticker.sketchWidth;
+  if (sticker.sketchHeight) block.sketchHeight = sticker.sketchHeight;
+  if (sticker.createdAt) block.createdAt = sticker.createdAt;
   return block;
 }
 

@@ -3,7 +3,9 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -42,6 +44,7 @@ import BulkActionBar from '../components/BulkActionBar';
 import DocumentCard from '../components/DocumentCard';
 import { extractPreview } from '../utils/documentPreview';
 import { FONT_REGULAR, FONT_BOLD, FONT_SEMIBOLD } from '../utils/fonts';
+import StickerComposer from '../components/StickerComposer';
 
 // Палітра №3 (Теплий Теракотовий) - the create/edit action color across
 // this redesign; replaces the old blue ACCENT wherever this screen used it.
@@ -49,8 +52,21 @@ const ACCENT = '#BE7657';
 const documentsCollection = collection(db, 'documents');
 const groupsCollection = collection(db, 'groups');
 const documentsPrefsDoc = doc(db, 'settings', 'documentsPrefs');
+const stickersCollection = collection(db, 'stickers');
+const STICKER_YELLOW = '#FBE97A';
+const STICKER_DARK = '#4a3f05';
+const FREE_STICKER_LIMIT = 10;
 
 type ViewMode = 'list' | 'grid';
+
+type StripSticker = {
+  id: string;
+  type: 'paragraph' | 'image' | 'sketch';
+  text?: string;
+  imageUri?: string;
+  usedInDocuments?: Record<string, true>;
+  trashed?: boolean;
+};
 
 export default function DocumentsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -78,12 +94,46 @@ export default function DocumentsScreen() {
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [stickersCollapsed, setStickersCollapsed] = useState(false);
+  const [freeStickers, setFreeStickers] = useState<StripSticker[]>([]);
+  const [stickerComposerVisible, setStickerComposerVisible] = useState(false);
 
   useEffect(() => {
     return onSnapshot(documentsPrefsDoc, (snapshot) => {
-      setViewMode((snapshot.data()?.viewMode as ViewMode | undefined) ?? 'list');
+      const data = snapshot.data();
+      setViewMode((data?.viewMode as ViewMode | undefined) ?? 'list');
+      setStickersCollapsed(!!data?.stickersCollapsed);
     });
   }, []);
+
+  useEffect(() => {
+    // Filtered client-side (same "avoid a composite index" tradeoff as
+    // everywhere else in this app) - only stickers with nothing in
+    // usedInDocuments and not trashed belong in this "free stash" strip.
+    // The full "Стікери" database screen shows every sticker regardless.
+    return onSnapshot(query(stickersCollection, orderBy('updatedAt', 'desc')), (snapshot) => {
+      setFreeStickers(
+        snapshot.docs
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<StripSticker, 'id'>) }))
+          .filter((s) => !s.trashed && Object.keys(s.usedInDocuments ?? {}).length === 0)
+      );
+    });
+  }, []);
+
+  function toggleStickersCollapsed() {
+    setDoc(documentsPrefsDoc, { stickersCollapsed: !stickersCollapsed }, { merge: true });
+  }
+
+  function openStickerComposer() {
+    if (freeStickers.length >= FREE_STICKER_LIMIT) {
+      Alert.alert(
+        'Забагато вільних стікерів',
+        `Спершу розмісти якийсь із наявних ${FREE_STICKER_LIMIT} стікерів у документі чи календарі, щоб звільнити місце.`
+      );
+      return;
+    }
+    setStickerComposerVisible(true);
+  }
 
   useEffect(() => {
     const documentsQuery = query(documentsCollection, orderBy('updatedAt', 'desc'));
@@ -302,6 +352,44 @@ export default function DocumentsScreen() {
         />
       )}
 
+      <View style={styles.stickerStripHeader}>
+        <Pressable style={styles.stickerStripToggle} onPress={toggleStickersCollapsed}>
+          <Text style={styles.stickerStripLabel}>
+            Стікери {stickersCollapsed ? `(${freeStickers.length})` : `${freeStickers.length} / ${FREE_STICKER_LIMIT}`}
+          </Text>
+          <Ionicons name={stickersCollapsed ? 'chevron-down' : 'chevron-up'} size={13} color="rgba(255,255,255,0.6)" />
+        </Pressable>
+        <Pressable hitSlop={8} onPress={openStickerComposer}>
+          <Ionicons name="add-circle-outline" size={18} color="rgba(255,255,255,0.85)" />
+        </Pressable>
+      </View>
+
+      {!stickersCollapsed && freeStickers.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.stickerStrip}
+        >
+          {freeStickers.map((s) => (
+            <View key={s.id} style={styles.stickerCard}>
+              {s.type === 'image' && s.imageUri ? (
+                <Image source={{ uri: s.imageUri }} style={styles.stickerCardImage} resizeMode="cover" />
+              ) : s.type === 'sketch' ? (
+                <View style={styles.stickerCardIconWrap}>
+                  <Ionicons name="brush-outline" size={34} color={STICKER_DARK} />
+                </View>
+              ) : (
+                <Text style={styles.stickerCardText} numberOfLines={7}>
+                  {s.text || 'Порожній стікер'}
+                </Text>
+              )}
+            </View>
+          ))}
+        </ScrollView>
+      )}
+
+      <StickerComposer visible={stickerComposerVisible} onClose={() => setStickerComposerVisible(false)} />
+
       {activeFilter && (
         <View style={styles.filterRow}>
           {activeFilter.type === 'untagged' ? (
@@ -519,6 +607,55 @@ const styles = StyleSheet.create({
   gridRow: {
     gap: 12,
     paddingHorizontal: 20,
+  },
+  stickerStripHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 6,
+  },
+  stickerStripToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  stickerStripLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.7)',
+  },
+  stickerStrip: {
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+    gap: 10,
+  },
+  stickerCard: {
+    width: 150,
+    height: 150,
+    borderRadius: 6,
+    backgroundColor: STICKER_YELLOW,
+    padding: 14,
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  stickerCardImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 4,
+  },
+  stickerCardIconWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stickerCardText: {
+    fontSize: 14,
+    lineHeight: 19,
+    color: STICKER_DARK,
+    fontWeight: '500',
   },
   filterRow: {
     flexDirection: 'row',

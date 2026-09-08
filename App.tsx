@@ -14,6 +14,7 @@ import TasksScreen from './src/screens/TasksScreen';
 import LinksScreen from './src/screens/LinksScreen';
 import PhotosScreen from './src/screens/PhotosScreen';
 import FilesScreen from './src/screens/FilesScreen';
+import StickersScreen from './src/screens/StickersScreen';
 import BoardsListScreen from './src/screens/BoardsListScreen';
 import BoardScreen from './src/screens/BoardScreen';
 import TagManageScreen from './src/screens/TagManageScreen';
@@ -83,6 +84,7 @@ export default function App() {
           <Stack.Screen name="Links" component={LinksScreen} />
           <Stack.Screen name="Photos" component={PhotosScreen} />
           <Stack.Screen name="Files" component={FilesScreen} />
+          <Stack.Screen name="Stickers" component={StickersScreen} />
           <Stack.Screen name="Tags" component={TagManageScreen} />
           <Stack.Screen name="TagItems" component={TagItemsScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />

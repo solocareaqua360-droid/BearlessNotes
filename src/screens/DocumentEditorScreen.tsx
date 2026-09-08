@@ -1142,7 +1142,15 @@ function BlockRow({
 
   return (
     <View
-      style={[styles.blockRow, isSelected && styles.blockRowSelected, showBoundary && styles.blockRowBoundary]}
+      style={[
+        styles.blockRow,
+        isSelected && styles.blockRowSelected,
+        showBoundary && styles.blockRowBoundary,
+        // A sticker keeps its yellow background even once placed here -
+        // agreed explicitly: it should stay visibly "a sticker", not blend
+        // in as an ordinary paragraph/image/sketch block.
+        item.isSticker && styles.blockRowSticker,
+      ]}
     >
       {content}
       {/* On the right, under the header's select-mode toggle (also on the
@@ -1764,6 +1772,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       knownFileBlockIdsRef.current = new Set(
         loadedBlocks.filter((b) => (b.type ?? 'paragraph') === 'file' && b.fileUri).map((b) => b.id)
       );
+      knownStickerBlockIdsRef.current = new Set(loadedBlocks.filter((b) => b.isSticker).map((b) => b.id));
       setIsLoaded(true);
     })();
   }, [documentId]);
@@ -1970,6 +1979,56 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     knownFileBlockIdsRef.current = currentIds;
   }
 
+  // Unlike removeDocumentUsage (shared by links/photos/files, which
+  // deleteDoc's the record once usedInDocuments empties out), a sticker
+  // must never be hard-deleted - it just goes back to being "free" (shows
+  // up again in the Documents-screen strip / StickersScreen). So this
+  // clears only this document's own usedInDocuments key and stops there,
+  // deliberately not reusing removeDocumentUsage.
+  async function removeStickerUsage(recordId: string) {
+    try {
+      await updateDoc(doc(db, 'stickers', recordId), { [`usedInDocuments.${documentId}`]: deleteField() });
+    } catch {
+      // Already gone, or never existed (e.g. trashed and later - still
+      // never deleted, so this shouldn't normally happen, but a stale ref
+      // pointing at a genuinely missing doc must not crash the save).
+    }
+  }
+
+  // A sticker block is any paragraph/image/sketch block with `isSticker`
+  // set (see blockFromSticker) - its own `type` is one of those three
+  // ordinary types, so filtering by `type` the way syncPhotosForDocument/
+  // syncFilesForDocument do would also catch every ordinary block in the
+  // document. `isSticker` is what makes this safe.
+  const knownStickerBlockIdsRef = useRef<Set<string>>(new Set());
+
+  function syncStickersForDocument(currentBlocks: Block[]) {
+    const stickerBlocks = currentBlocks.filter((b) => b.isSticker);
+    const currentIds = new Set(stickerBlocks.map((b) => b.id));
+    stickerBlocks.forEach((b) => {
+      const stickerDoc: Record<string, unknown> = {
+        type: b.type ?? 'paragraph',
+        updatedAt: Date.now(),
+        usedInDocuments: { [documentId]: true },
+      };
+      if (b.text) stickerDoc.text = b.text;
+      if (b.imageUri) stickerDoc.imageUri = b.imageUri;
+      if (b.driveFileId) stickerDoc.driveFileId = b.driveFileId;
+      if (b.driveBytes) stickerDoc.driveBytes = b.driveBytes;
+      if (b.sketchElements) stickerDoc.sketchElements = b.sketchElements;
+      if (b.sketchWidth) stickerDoc.sketchWidth = b.sketchWidth;
+      if (b.sketchHeight) stickerDoc.sketchHeight = b.sketchHeight;
+      if (b.createdAt) stickerDoc.createdAt = b.createdAt;
+      setDoc(doc(db, 'stickers', b.id), stickerDoc, { merge: true });
+    });
+    knownStickerBlockIdsRef.current.forEach((id) => {
+      if (!currentIds.has(id)) {
+        removeStickerUsage(id);
+      }
+    });
+    knownStickerBlockIdsRef.current = currentIds;
+  }
+
   useEffect(() => {
     if (!isLoaded) return;
     setSaveStatus('saving');
@@ -1995,6 +2054,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       syncLinksForDocument(blocks);
       syncPhotosForDocument(blocks);
       syncFilesForDocument(blocks);
+      syncStickersForDocument(blocks);
     }, AUTOSAVE_DELAY_MS);
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -3473,7 +3533,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         excludeIds={
           new Set(
             blocks
-              .filter((b) => ((b.type ?? 'paragraph') === 'file' && b.fileUri) || ((b.type ?? 'paragraph') === 'image' && b.imageUri))
+              .filter(
+                (b) =>
+                  ((b.type ?? 'paragraph') === 'file' && b.fileUri) ||
+                  ((b.type ?? 'paragraph') === 'image' && b.imageUri) ||
+                  // A sticker block reuses its own record's id (any
+                  // content type - paragraph/image/sketch), same
+                  // collision risk as file/image above.
+                  b.isSticker
+              )
               .map((b) => b.id)
           )
         }
@@ -3656,6 +3724,12 @@ const styles = StyleSheet.create({
   },
   blockRowBoundary: {
     borderColor: '#E5E7EB',
+  },
+  // A sticker block keeps this even when selected/boundary-highlighted -
+  // it's later in the style array than both, so it wins over
+  // blockRowSelected's own background.
+  blockRowSticker: {
+    backgroundColor: '#FBE97A',
   },
   dragHandle: {
     padding: 6,
