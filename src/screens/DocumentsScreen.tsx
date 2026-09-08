@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
@@ -26,10 +27,11 @@ import {
   orderBy,
   query,
   setDoc,
+  updateDoc,
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { DocumentItem, Group } from '../types';
+import { DocumentItem, Group, SketchElement } from '../types';
 import { RootStackParamList } from '../navigation';
 import { useTags, detachTagFromDeletedItem, ITEMS_COLLECTION_BY_KIND } from '../hooks/useTags';
 import { useMultiSelect } from '../hooks/useMultiSelect';
@@ -45,6 +47,8 @@ import DocumentCard from '../components/DocumentCard';
 import { extractPreview } from '../utils/documentPreview';
 import { FONT_REGULAR, FONT_BOLD, FONT_SEMIBOLD } from '../utils/fonts';
 import StickerComposer from '../components/StickerComposer';
+import ZoomableImageViewer from '../components/ZoomableImageViewer';
+import SketchEditor from '../components/SketchEditor';
 
 // Палітра №3 (Теплий Теракотовий) - the create/edit action color across
 // this redesign; replaces the old blue ACCENT wherever this screen used it.
@@ -64,6 +68,9 @@ type StripSticker = {
   type: 'paragraph' | 'image' | 'sketch';
   text?: string;
   imageUri?: string;
+  sketchElements?: SketchElement[];
+  sketchWidth?: number;
+  sketchHeight?: number;
   usedInDocuments?: Record<string, true>;
   trashed?: boolean;
 };
@@ -97,6 +104,12 @@ export default function DocumentsScreen() {
   const [stickersCollapsed, setStickersCollapsed] = useState(false);
   const [freeStickers, setFreeStickers] = useState<StripSticker[]>([]);
   const [stickerComposerVisible, setStickerComposerVisible] = useState(false);
+  const [editingTextSticker, setEditingTextSticker] = useState<{ id: string; text: string } | null>(null);
+  const [viewerImageUri, setViewerImageUri] = useState<string | null>(null);
+  const [sketchEditing, setSketchEditing] = useState<StripSticker | null>(null);
+  // Visual feedback while the FAB's long-press-to-create-a-sticker gesture
+  // is armed - see the FAB's onLongPress/onPressOut below.
+  const [fabPressed, setFabPressed] = useState(false);
 
   useEffect(() => {
     return onSnapshot(documentsPrefsDoc, (snapshot) => {
@@ -132,7 +145,33 @@ export default function DocumentsScreen() {
       );
       return;
     }
+    setEditingTextSticker(null);
     setStickerComposerVisible(true);
+  }
+
+  // Tapping a sticker in the strip: text/sketch open for editing in place;
+  // a photo sticker only opens the enlarged viewer (same distinction
+  // StickersScreen's own database view makes).
+  function openFreeSticker(sticker: StripSticker) {
+    if (sticker.type === 'paragraph') {
+      setEditingTextSticker({ id: sticker.id, text: sticker.text ?? '' });
+      setStickerComposerVisible(true);
+    } else if (sticker.type === 'image' && sticker.imageUri) {
+      setViewerImageUri(sticker.imageUri);
+    } else if (sticker.type === 'sketch') {
+      setSketchEditing(sticker);
+    }
+  }
+
+  function saveSketchEdit(elements: SketchElement[], width: number, height: number) {
+    if (!sketchEditing) return;
+    updateDoc(doc(db, 'stickers', sketchEditing.id), {
+      sketchElements: elements,
+      sketchWidth: width,
+      sketchHeight: height,
+      updatedAt: Date.now(),
+    });
+    setSketchEditing(null);
   }
 
   useEffect(() => {
@@ -342,25 +381,21 @@ export default function DocumentsScreen() {
         </View>
       )}
 
-      {groups.length > 0 && (
-        <ProjectTabsRow
-          items={groups}
-          selected={groupFilter}
-          onSelect={setGroupFilter}
-          unassignedLabel="Без групи"
-          dark
-        />
-      )}
-
-      <View style={styles.stickerStripHeader}>
+      <View style={styles.groupsRow}>
+        <View style={styles.groupsScrollWrap}>
+          {groups.length > 0 && (
+            <ProjectTabsRow
+              items={groups}
+              selected={groupFilter}
+              onSelect={setGroupFilter}
+              unassignedLabel="Без групи"
+              dark
+            />
+          )}
+        </View>
         <Pressable style={styles.stickerToggleCapsule} onPress={toggleStickersCollapsed}>
-          <Text style={styles.stickerToggleLabel}>
-            Стікери{stickersCollapsed ? ` (${freeStickers.length})` : ''}
-          </Text>
+          <Text style={styles.stickerToggleLabel}>Стікери ({freeStickers.length})</Text>
           <Ionicons name={stickersCollapsed ? 'chevron-down' : 'chevron-up'} size={14} color="rgba(255,255,255,0.75)" />
-        </Pressable>
-        <Pressable hitSlop={8} onPress={openStickerComposer}>
-          <Ionicons name="add-circle-outline" size={18} color="rgba(255,255,255,0.85)" />
         </Pressable>
       </View>
 
@@ -368,10 +403,11 @@ export default function DocumentsScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
+          style={styles.stickerScroll}
           contentContainerStyle={styles.stickerStrip}
         >
           {freeStickers.map((s) => (
-            <View key={s.id} style={styles.stickerCard}>
+            <Pressable key={s.id} style={styles.stickerCard} onPress={() => openFreeSticker(s)}>
               {s.type === 'image' && s.imageUri ? (
                 <Image source={{ uri: s.imageUri }} style={styles.stickerCardImage} resizeMode="cover" />
               ) : s.type === 'sketch' ? (
@@ -383,12 +419,32 @@ export default function DocumentsScreen() {
                   {s.text || 'Порожній стікер'}
                 </Text>
               )}
-            </View>
+            </Pressable>
           ))}
         </ScrollView>
       )}
 
-      <StickerComposer visible={stickerComposerVisible} onClose={() => setStickerComposerVisible(false)} />
+      <StickerComposer
+        visible={stickerComposerVisible}
+        editingTextSticker={editingTextSticker}
+        onClose={() => {
+          setStickerComposerVisible(false);
+          setEditingTextSticker(null);
+        }}
+      />
+
+      {viewerImageUri && (
+        <GestureHandlerRootView style={StyleSheet.absoluteFill}>
+          <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />
+        </GestureHandlerRootView>
+      )}
+
+      <SketchEditor
+        visible={sketchEditing !== null}
+        initialElements={sketchEditing?.sketchElements ?? []}
+        onSave={saveSketchEdit}
+        onClose={() => setSketchEditing(null)}
+      />
 
       {activeFilter && (
         <View style={styles.filterRow}>
@@ -478,8 +534,17 @@ export default function DocumentsScreen() {
       )}
 
       {!isSelectMode && (
-        <Pressable style={styles.fab} onPress={createDocument}>
-          <Ionicons name="add" size={28} color="#fff" />
+        <Pressable
+          style={[styles.fab, fabPressed && styles.fabSticker]}
+          onPress={createDocument}
+          onLongPress={() => {
+            setFabPressed(true);
+            openStickerComposer();
+          }}
+          onPressOut={() => setFabPressed(false)}
+          delayLongPress={400}
+        >
+          <Ionicons name="add" size={28} color={fabPressed ? STICKER_DARK : '#fff'} />
         </Pressable>
       )}
 
@@ -608,23 +673,31 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 20,
   },
-  stickerStripHeader: {
+  // Groups (ProjectTabsRow) and the sticker toggle sit on the same visual
+  // line - the scroll wrap takes whatever width the capsule doesn't need
+  // (flex: 1), and alignItems: 'flex-start' lines up both children's tops
+  // since ProjectTabsRow's own bottom padding would otherwise throw off a
+  // center alignment.
+  groupsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    alignItems: 'flex-start',
     paddingBottom: 10,
+  },
+  groupsScrollWrap: {
+    flex: 1,
   },
   // Same frosted-glass capsule as ProjectTabsRow's dark tabs (see
   // tabDark/tab there) - kept in sync by eye rather than shared, since
   // this one row doesn't otherwise need that component's scroll/multi-tab
-  // machinery.
+  // machinery. Always shows the count (not just while collapsed) so its
+  // width never changes as the strip opens/closes.
   stickerToggleCapsule: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingVertical: 7,
     paddingHorizontal: 13,
+    marginRight: 20,
     borderRadius: 999,
     backgroundColor: 'rgba(20,20,20,0.35)',
     borderWidth: 1,
@@ -634,6 +707,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: 'rgba(255,255,255,0.85)',
+  },
+  // Without flexGrow/flexShrink: 0, this horizontal ScrollView competes for
+  // height with the documents FlatList below it and gets squeezed shorter
+  // than its own content (150px cards clipped) - same bug/fix as
+  // ProjectTabsRow's own `scroll` style documents.
+  stickerScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
   },
   stickerStrip: {
     paddingHorizontal: 20,
@@ -748,5 +829,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowOffset: { width: 0, height: 3 },
     shadowRadius: 6,
+  },
+  // Long-pressing the FAB switches it to sticker-creation mode - the color
+  // swap away from ACCENT is the only feedback the gesture has fired,
+  // since it fires while still held rather than on release.
+  fabSticker: {
+    backgroundColor: STICKER_YELLOW,
+    shadowColor: STICKER_YELLOW,
   },
 });
