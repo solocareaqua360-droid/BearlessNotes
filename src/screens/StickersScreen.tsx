@@ -50,6 +50,7 @@ export default function StickersScreen() {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [stickers, setStickers] = useState<StickerItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [viewingTrash, setViewingTrash] = useState(false);
   const [composerVisible, setComposerVisible] = useState(false);
   const [editingTextSticker, setEditingTextSticker] = useState<{ id: string; text: string } | null>(null);
   const [viewerImageUri, setViewerImageUri] = useState<string | null>(null);
@@ -57,18 +58,20 @@ export default function StickersScreen() {
   const [documentPicker, setDocumentPicker] = useState<{ documents: PickableDocument[] } | null>(null);
 
   useEffect(() => {
+    // Kept unfiltered here (unlike the free-strip query on DocumentsScreen)
+    // so the trash toggle below can switch views without a second
+    // subscription - trashed is never actually deleted, just hidden.
     const stickersQuery = query(stickersCollection, orderBy('updatedAt', 'desc'));
     return onSnapshot(stickersQuery, (snapshot) => {
-      setStickers(
-        snapshot.docs
-          .map((d) => ({ id: d.id, ...(d.data() as Omit<StickerItem, 'id'>) }))
-          .filter((s) => !s.trashed)
-      );
+      setStickers(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<StickerItem, 'id'>) })));
       setIsLoading(false);
     });
   }, []);
 
-  const freeCount = stickers.filter((s) => Object.keys(s.usedInDocuments ?? {}).length === 0).length;
+  const activeStickers = stickers.filter((s) => !s.trashed);
+  const trashedStickers = stickers.filter((s) => s.trashed);
+  const visibleStickers = viewingTrash ? trashedStickers : activeStickers;
+  const freeCount = activeStickers.filter((s) => Object.keys(s.usedInDocuments ?? {}).length === 0).length;
 
   function openCreate() {
     if (freeCount >= FREE_STICKER_LIMIT) {
@@ -84,6 +87,10 @@ export default function StickersScreen() {
 
   function trashSticker(sticker: StickerItem) {
     updateDoc(doc(db, 'stickers', sticker.id), { trashed: true });
+  }
+
+  function restoreSticker(sticker: StickerItem) {
+    updateDoc(doc(db, 'stickers', sticker.id), { trashed: false });
   }
 
   async function openSticker(sticker: StickerItem) {
@@ -162,7 +169,12 @@ export default function StickersScreen() {
           )}
         </Pressable>
         <View style={styles.cardFooter}>
-          {usageCount === 0 ? (
+          {item.trashed ? (
+            <Pressable style={styles.cardStatusRow} onPress={() => restoreSticker(item)}>
+              <Ionicons name="arrow-undo-outline" size={13} color={STICKER_DARK} />
+              <Text style={styles.cardStatus}>Відновити</Text>
+            </Pressable>
+          ) : usageCount === 0 ? (
             <Text style={styles.cardStatus}>вільний</Text>
           ) : (
             <Pressable style={styles.cardStatusRow} onPress={() => openUsage(item)}>
@@ -170,9 +182,11 @@ export default function StickersScreen() {
               <Text style={styles.cardStatus}>{usageCount > 1 ? `у ${usageCount} документах` : 'у документі'}</Text>
             </Pressable>
           )}
-          <Pressable hitSlop={8} onPress={() => trashSticker(item)}>
-            <Ionicons name="trash-outline" size={15} color={STICKER_DARK} />
-          </Pressable>
+          {!item.trashed && (
+            <Pressable hitSlop={8} onPress={() => trashSticker(item)}>
+              <Ionicons name="trash-outline" size={15} color={STICKER_DARK} />
+            </Pressable>
+          )}
         </View>
       </View>
     );
@@ -201,29 +215,44 @@ export default function StickersScreen() {
           <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
             <Ionicons name="chevron-back" size={24} color="#fff" />
           </Pressable>
-          <Text style={styles.header}>Стікери</Text>
+          <Text style={styles.header}>{viewingTrash ? 'Смітник' : 'Стікери'}</Text>
         </View>
+        <Pressable
+          hitSlop={8}
+          style={[styles.trashToggle, viewingTrash && styles.trashToggleActive]}
+          onPress={() => setViewingTrash((v) => !v)}
+        >
+          <Ionicons
+            name={viewingTrash ? 'close' : 'trash-outline'}
+            size={18}
+            color={viewingTrash ? STICKER_DARK : 'rgba(255,255,255,0.85)'}
+          />
+        </Pressable>
       </View>
 
       {isLoading ? (
         <View style={styles.emptyState}>
           <ActivityIndicator color="#fff" />
         </View>
-      ) : stickers.length === 0 ? (
+      ) : visibleStickers.length === 0 ? (
         <View style={styles.emptyState}>
           <View style={styles.emptyIcon}>
-            <Ionicons name="reader-outline" size={32} color={STICKER_DARK} />
+            <Ionicons name={viewingTrash ? 'trash-outline' : 'reader-outline'} size={32} color={STICKER_DARK} />
           </View>
-          <Text style={styles.emptyLabel}>Ще немає стікерів</Text>
-          <Text style={styles.emptyHint}>Короткий текст, одне фото або малюнок - як паперовий стікер</Text>
+          <Text style={styles.emptyLabel}>{viewingTrash ? 'Смітник порожній' : 'Ще немає стікерів'}</Text>
+          {!viewingTrash && (
+            <Text style={styles.emptyHint}>Короткий текст, одне фото або малюнок - як паперовий стікер</Text>
+          )}
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.grid}>{stickers.map(renderSticker)}</ScrollView>
+        <ScrollView contentContainerStyle={styles.grid}>{visibleStickers.map(renderSticker)}</ScrollView>
       )}
 
-      <Pressable style={styles.fab} onPress={openCreate}>
-        <Ionicons name="add" size={26} color={STICKER_DARK} />
-      </Pressable>
+      {!viewingTrash && (
+        <Pressable style={styles.fab} onPress={openCreate}>
+          <Ionicons name="add" size={26} color={STICKER_DARK} />
+        </Pressable>
+      )}
 
       <StickerComposer
         visible={composerVisible}
@@ -281,6 +310,23 @@ const styles = StyleSheet.create({
     fontSize: 46,
     fontWeight: '700',
     color: '#fff',
+  },
+  // Same frosted-glass round button as other dark-header icon toggles in
+  // this redesign; the active (viewing-trash) state inverts to a solid
+  // pill, matching ProjectTabsRow's own active-tab treatment.
+  trashToggle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(20,20,20,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  trashToggleActive: {
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderColor: 'transparent',
   },
   emptyState: {
     flex: 1,
