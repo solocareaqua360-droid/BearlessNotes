@@ -145,8 +145,6 @@ type DraggableCardProps = {
   onGroupDragEnd: (dx: number, dy: number) => void;
   onTap: (card: BoardCard) => void;
   onLongPress: (card: BoardCard) => void;
-  // 'document' cards only, only reachable while expanded (see render below).
-  onEditDocument: (card: BoardCard) => void;
 };
 
 // One card's own drag.
@@ -187,7 +185,6 @@ function DraggableCard({
   onGroupDragEnd,
   onTap,
   onLongPress,
-  onEditDocument,
 }: DraggableCardProps) {
   const posX = useSharedValue(card.x);
   const posY = useSharedValue(card.y);
@@ -217,13 +214,12 @@ function DraggableCard({
   // blocksExternalGesture: RNGH's Gesture API treats gestures in separate
   // (even nested) GestureDetectors as fully independent, so without this
   // the canvas's own Pan (see BoardScreen) also recognizes movement on the
-  // very same touch that is dragging a card, and both move at once.
-  // Disabled (not omitted from the Race) while an expanded document card
-  // is showing its full text - it can grow tall enough to cover a good
-  // part of the canvas, and "you're reading it, not repositioning it"
-  // keeps that state predictable. Collapse the card to move it again.
+  // very same touch that is dragging a card, and both move at once. An
+  // expanded document card drags exactly like a collapsed one - only the
+  // tap-to-edit interaction differs (see the selection bar's "Редагувати"
+  // button in BoardScreen, reached via long-press) now that there's no
+  // in-card button whose own gesture needed to win against this one.
   const panGesture = Gesture.Pan()
-    .enabled(!card.documentExpanded)
     .blocksExternalGesture(canvasPanGesture)
     .onStart(() => {
       runOnJS(onDragStart)(card.id);
@@ -261,19 +257,6 @@ function DraggableCard({
     });
 
   const gesture = Gesture.Race(panGesture, tapGesture, longPressGesture);
-
-  // The "Редагувати" button rendered inside an expanded document card (see
-  // render below) needs its OWN Tap, not the outer `onTap` - a tap there
-  // has to open the editor, not also collapse the card back down the way
-  // any other tap on the card does. `blocksExternalGesture` is the same
-  // technique already used to stop the canvas's own Pan from stealing part
-  // of this card's drag - here it stops this card's outer Race from also
-  // firing for a touch that started on the button.
-  const editButtonGesture = Gesture.Tap()
-    .blocksExternalGesture(panGesture, tapGesture, longPressGesture)
-    .onEnd(() => {
-      runOnJS(onEditDocument)(card);
-    });
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
@@ -317,14 +300,6 @@ function DraggableCard({
               <Text style={styles.documentPreviewText} numberOfLines={card.documentExpanded ? undefined : 4}>
                 {card.documentPreviewText}
               </Text>
-            )}
-            {card.documentExpanded && (
-              <GestureDetector gesture={editButtonGesture}>
-                <View style={styles.documentEditButton}>
-                  <Ionicons name="create-outline" size={14} color="#fff" />
-                  <Text style={styles.documentEditButtonLabel}>Редагувати</Text>
-                </View>
-              </GestureDetector>
             )}
           </View>
         ) : type === 'paragraph' ? (
@@ -647,23 +622,12 @@ export default function BoardScreen() {
     setCards((prev) => prev.map((c) => (selectedCardIds.has(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
   }
 
+  // Long-pressing a card selects just that one, which surfaces the same
+  // bottom action bar the marquee/select tool uses for a multi-card
+  // selection - "Редагувати" for a lone document card, "Видалити" either
+  // way - rather than jumping straight to a delete confirmation.
   function handleCardLongPress(card: BoardCard) {
-    Alert.alert('Видалити картку?', undefined, [
-      { text: 'Скасувати', style: 'cancel' },
-      {
-        text: 'Видалити',
-        style: 'destructive',
-        onPress: () => {
-          setCards((prev) => prev.filter((c) => c.id !== card.id));
-          setSelectedCardIds((prev) => {
-            if (!prev.has(card.id)) return prev;
-            const next = new Set(prev);
-            next.delete(card.id);
-            return next;
-          });
-        },
-      },
-    ]);
+    setSelectedCardIds(new Set([card.id]));
   }
 
   function deleteSelectedCards() {
@@ -709,6 +673,14 @@ export default function BoardScreen() {
       .map((c) => c.id)
   );
 
+  // Only offered in the selection bar when exactly one document card is
+  // selected - a lone sticky/link/file/etc. or any multi-card selection
+  // has no single "Редагувати" target.
+  const onlySelectedDocumentCard =
+    selectedCardIds.size === 1
+      ? cards.find((c) => selectedCardIds.has(c.id) && (c.type ?? 'paragraph') === 'document')
+      : undefined;
+
   return (
     <View style={styles.container}>
       <GestureDetector gesture={canvasGesture}>
@@ -732,7 +704,6 @@ export default function BoardScreen() {
                   onGroupDragEnd={commitGroupDrag}
                   onTap={handleCardTap}
                   onLongPress={handleCardLongPress}
-                  onEditDocument={editDocumentCard}
                 />
               );
             })}
@@ -766,8 +737,17 @@ export default function BoardScreen() {
         <View style={styles.selectionBar}>
           <Text style={styles.selectionBarLabel}>Обрано: {selectedCardIds.size}</Text>
           <View style={styles.selectionBarActions}>
+            {onlySelectedDocumentCard && (
+              <Pressable
+                style={styles.selectionBarButton}
+                onPress={() => editDocumentCard(onlySelectedDocumentCard)}
+              >
+                <Ionicons name="create-outline" size={16} color="#fff" />
+                <Text style={styles.selectionBarButtonLabel}>Редагувати</Text>
+              </Pressable>
+            )}
             <Pressable style={styles.selectionBarButton} onPress={() => setSelectedCardIds(new Set())}>
-              <Ionicons name="close" size={16} color="#111827" />
+              <Ionicons name="close" size={16} color="#fff" />
               <Text style={styles.selectionBarButtonLabel}>Скасувати</Text>
             </Pressable>
             <Pressable
@@ -775,7 +755,7 @@ export default function BoardScreen() {
               onPress={deleteSelectedCards}
             >
               <Ionicons name="trash-outline" size={16} color="#fff" />
-              <Text style={[styles.selectionBarButtonLabel, styles.selectionBarButtonLabelDanger]}>Видалити</Text>
+              <Text style={styles.selectionBarButtonLabel}>Видалити</Text>
             </Pressable>
           </View>
         </View>
@@ -948,21 +928,6 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     color: '#6B7280',
   },
-  documentEditButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 4,
-    backgroundColor: '#8B5CF6',
-    borderRadius: 8,
-    paddingVertical: 8,
-  },
-  documentEditButtonLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#fff',
-  },
   headerRow: {
     position: 'absolute',
     top: 56,
@@ -1020,6 +985,10 @@ const styles = StyleSheet.create({
   toolButtonActive: {
     backgroundColor: SELECTION_COLOR,
   },
+  // Same dark frosted-glass capsule as the shared BulkActionBar component
+  // (Documents/Files/Photos/Links' own multi-select bar) - kept local
+  // rather than reusing that component directly since its action set
+  // (tag/group/copy) doesn't apply to board cards.
   selectionBar: {
     position: 'absolute',
     left: 20,
@@ -1028,20 +997,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#fff',
-    borderRadius: 16,
+    backgroundColor: 'rgba(20,20,20,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    borderRadius: 20,
     paddingVertical: 12,
     paddingHorizontal: 16,
     shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 16,
+    elevation: 8,
   },
   selectionBarLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#111827',
+    color: '#fff',
   },
   selectionBarActions: {
     flexDirection: 'row',
@@ -1054,7 +1025,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 10,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: 'rgba(255,255,255,0.15)',
   },
   selectionBarButtonDanger: {
     backgroundColor: '#EF4444',
@@ -1062,9 +1033,6 @@ const styles = StyleSheet.create({
   selectionBarButtonLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#111827',
-  },
-  selectionBarButtonLabelDanger: {
     color: '#fff',
   },
   sheetBackdrop: {
