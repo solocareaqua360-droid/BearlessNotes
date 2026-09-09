@@ -1130,6 +1130,10 @@ function BlockRow({
         // for why (avoids a transient grow/shrink flicker on Enter-split).
         key={`editable-${textVersion}`}
         ref={inputRef}
+        // Mount-time focus is what reliably raises the keyboard on Android;
+        // this input only ever mounts as the active block, so that's exactly
+        // when it should. The screen's focus effect still places the cursor.
+        autoFocus
         value={item.text}
         onChangeText={(text) => onChangeText(item.id, text)}
         onFocus={() => onFocus(item.id)}
@@ -2229,6 +2233,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     focusIdRef.current = null;
   }, [blocks, focusedBlockId]);
 
+  // See keyboardDidHide below - a hide that is NOT followed by a show.
+  const deactivateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Expo Go's own manifest isn't affected by app.json's
   // android.softwareKeyboardLayoutMode, so the keyboard never resizes the
   // window here the way a real build's adjustResize would - the screen has
@@ -2244,6 +2251,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
       cancelDismissFallback();
+      if (deactivateTimeoutRef.current) {
+        clearTimeout(deactivateTimeoutRef.current);
+        deactivateTimeoutRef.current = null;
+      }
       setKeyboardHeight(e.endCoordinates.height);
       scheduleScrollAdjust(e.endCoordinates.height);
     });
@@ -2254,20 +2265,32 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // EditText on Android, so the active block would otherwise stay a
       // live input with the keyboard down - the one place a swipe still
       // wouldn't scroll. Keyboard down means nothing is being edited: hand
-      // the block (or title) back to plain text explicitly.
-      const activeId = focusedBlockIdRef.current;
-      if (activeId) {
-        inputRefs.current[activeId]?.blur();
-        focusedBlockIdRef.current = null;
-        setFocusedBlockId(null);
-        setActiveSelection(null);
-      }
-      setTitleActive(false);
+      // the block (or title) back to plain text.
+      //
+      // Deferred, NOT immediate: focus moving from one field to the next
+      // (the old input unmounting, the new one mounting a frame later)
+      // also fires a hide that a show follows within a moment - acting on
+      // that hide killed the block that had just been tapped. Only a hide
+      // with no show behind it is a real dismissal; keyboardDidShow above
+      // cancels this.
+      if (deactivateTimeoutRef.current) clearTimeout(deactivateTimeoutRef.current);
+      deactivateTimeoutRef.current = setTimeout(() => {
+        deactivateTimeoutRef.current = null;
+        const activeId = focusedBlockIdRef.current;
+        if (activeId) {
+          inputRefs.current[activeId]?.blur();
+          focusedBlockIdRef.current = null;
+          setFocusedBlockId(null);
+          setActiveSelection(null);
+        }
+        setTitleActive(false);
+      }, 400);
     });
     return () => {
       showSub.remove();
       hideSub.remove();
       cancelDismissFallback();
+      if (deactivateTimeoutRef.current) clearTimeout(deactivateTimeoutRef.current);
       if (scrollAdjustTimeoutRef.current) clearTimeout(scrollAdjustTimeoutRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2372,9 +2395,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
 
   // A tap on a locked block: make it the one live TextInput (the focus
   // effect above then focuses it once it has mounted, cursor at the end).
-  function handleActivateBlock(id: string) {
+  function handleActivateBlock(id: string, cursorAtEnd = true) {
     focusIdRef.current = id;
-    focusToEndRef.current = true;
+    focusToEndRef.current = cursorAtEnd;
     focusedBlockIdRef.current = id;
     setTitleActive(false);
     setFocusedBlockId(id);
@@ -2482,7 +2505,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     if (newlineIndex !== -1) {
       setTitle(text.slice(0, newlineIndex));
       const firstBlock = blocks[0];
-      if (firstBlock) inputRefs.current[firstBlock.id]?.focus();
+      if (firstBlock) handleActivateBlock(firstBlock.id, false);
       return;
     }
     setTitle(text);
