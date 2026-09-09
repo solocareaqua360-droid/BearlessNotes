@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Image,
   Linking,
@@ -816,12 +815,18 @@ export default function BoardScreen() {
   const [cardHeights, setCardHeights] = useState<Map<string, number>>(new Map());
   const [renamingColumn, setRenamingColumn] = useState<BoardColumn | null>(null);
   const [draggingColumnId, setDraggingColumnId] = useState<string | null>(null);
-  // Which of the three link menu entries opened the URL prompt - it only
-  // picks the prompt's wording; where the link actually gets filed comes
-  // from the URL itself (see saveNewLink).
-  const [linkPromptKind, setLinkPromptKind] = useState<'other' | 'video' | 'geo' | null>(null);
-  const [linkTitlePrompt, setLinkTitlePrompt] = useState<{ url: string; preview: LinkPreview } | null>(null);
-  const [isAddingLink, setIsAddingLink] = useState(false);
+  // Both steps of adding a link live in ONE piece of state so they can
+  // share ONE dialog: asking for the URL, waiting on its preview, then (if
+  // the page had no readable title) asking for a name. Two separate
+  // dialogs meant Android unmounting one modal and mounting another
+  // between the steps, which reads as a flicker. `kind` only picks the
+  // first step's wording - where the link is actually filed comes from the
+  // URL itself (see saveNewLink).
+  const [linkPrompt, setLinkPrompt] = useState<
+    | { step: 'url'; kind: 'other' | 'video' | 'geo'; busy: boolean }
+    | { step: 'title'; url: string; preview: LinkPreview }
+    | null
+  >(null);
 
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
@@ -1222,30 +1227,33 @@ export default function BoardScreen() {
   // YouTube/TikTok rather than being mis-filed.
   function openLinkPrompt(kind: 'other' | 'video' | 'geo') {
     setAddSheetVisible(false);
-    setLinkPromptKind(kind);
+    setLinkPrompt({ step: 'url', kind, busy: false });
   }
 
-  async function submitNewLinkUrl(rawUrl: string) {
-    setLinkPromptKind(null);
-    const url = rawUrl.trim();
+  // The dialog stays open the whole way through: it goes busy while the
+  // preview is fetched, then either closes (the page named itself) or
+  // turns into the name question.
+  async function submitLinkStep(value: string) {
+    if (!linkPrompt) return;
+    if (linkPrompt.step === 'title') {
+      const { url, preview } = linkPrompt;
+      setLinkPrompt(null);
+      saveNewLink(url, preview, value.trim());
+      return;
+    }
+    const url = value.trim();
     if (!url) return;
-    setIsAddingLink(true);
+    setLinkPrompt({ ...linkPrompt, busy: true });
     const preview = await fetchLinkPreview(url);
-    setIsAddingLink(false);
     if (preview.title) {
+      setLinkPrompt(null);
       saveNewLink(url, preview, preview.title);
     } else {
       // No title to read out of the page (a raw-coordinates Maps link, or
       // a page with no og:title) - ask rather than filing something
       // nameless nobody could find later. Same as LinksScreen's own "+".
-      setLinkTitlePrompt({ url, preview });
+      setLinkPrompt({ step: 'title', url, preview });
     }
-  }
-
-  function confirmLinkTitle(title: string) {
-    const prompt = linkTitlePrompt;
-    setLinkTitlePrompt(null);
-    if (prompt && title.trim()) saveNewLink(prompt.url, prompt.preview, title.trim());
   }
 
   async function saveNewLink(url: string, preview: LinkPreview, title: string) {
@@ -1850,34 +1858,25 @@ export default function BoardScreen() {
         }}
       />
 
+      {/* One dialog for both steps of adding a link - see linkPrompt's own
+          comment on why they can't be two. */}
       <RenamePrompt
-        visible={linkPromptKind !== null}
+        visible={linkPrompt !== null}
         title={
-          linkPromptKind === 'video'
-            ? 'Посилання на YouTube / TikTok'
-            : linkPromptKind === 'geo'
-              ? 'Посилання на місце'
-              : 'Нове посилання'
+          linkPrompt?.step === 'title'
+            ? 'Назва посилання'
+            : linkPrompt?.kind === 'video'
+              ? 'Посилання на YouTube / TikTok'
+              : linkPrompt?.kind === 'geo'
+                ? 'Посилання на місце'
+                : 'Нове посилання'
         }
-        placeholder="https://…"
+        placeholder={linkPrompt?.step === 'title' ? 'Назва' : 'https://…'}
         initialValue=""
-        onCancel={() => setLinkPromptKind(null)}
-        onSave={submitNewLinkUrl}
+        busy={linkPrompt?.step === 'url' && linkPrompt.busy}
+        onCancel={() => setLinkPrompt(null)}
+        onSave={submitLinkStep}
       />
-
-      <RenamePrompt
-        visible={linkTitlePrompt !== null}
-        title="Назва посилання"
-        initialValue=""
-        onCancel={() => setLinkTitlePrompt(null)}
-        onSave={confirmLinkTitle}
-      />
-
-      {isAddingLink && (
-        <View style={styles.addLinkLoading}>
-          <ActivityIndicator color="#fff" />
-        </View>
-      )}
 
       <RenamePrompt
         visible={renamingColumn !== null}
@@ -2066,18 +2065,6 @@ const styles = StyleSheet.create({
   // left/top come from each connection's own bounding box at render time.
   connection: {
     position: 'absolute',
-  },
-  // Covers the screen while a link preview is being fetched - the same
-  // treatment LinksScreen's own "+" uses for the same wait.
-  addLinkLoading: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(17,24,39,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   connectDraft: {
     position: 'absolute',

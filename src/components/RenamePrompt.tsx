@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 const ACCENT = '#3B82F6';
 
@@ -8,6 +8,12 @@ type Props = {
   title: string;
   initialValue: string;
   placeholder?: string;
+  // Shows a spinner in place of the buttons and locks the field, for a
+  // caller that has to go away and do something (fetch a link preview,
+  // say) before it knows what to ask next. Lets one dialog stay mounted
+  // across those steps instead of closing and reopening, which on Android
+  // reads as a flicker between two modals.
+  busy?: boolean;
   onCancel: () => void;
   onSave: (value: string) => void;
 };
@@ -16,12 +22,16 @@ type Props = {
 // screens (and DocumentEditorScreen's mandatory-name-on-conversion prompt
 // has its own copy of this same shape, since that one guards a different,
 // non-cancellable flow at the moment a link is first created).
-export default function RenamePrompt({ visible, title, initialValue, placeholder, onCancel, onSave }: Props) {
+export default function RenamePrompt({ visible, title, initialValue, placeholder, busy, onCancel, onSave }: Props) {
   const [value, setValue] = useState(initialValue);
 
+  // `title` is in here as well as `initialValue` because a caller that
+  // keeps this dialog open across two questions changes the heading to ask
+  // the second one - the field has to clear with it, or the answer to the
+  // first question is still sitting there.
   useEffect(() => {
     if (visible) setValue(initialValue);
-  }, [visible, initialValue]);
+  }, [visible, initialValue, title]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
@@ -30,23 +40,30 @@ export default function RenamePrompt({ visible, title, initialValue, placeholder
           <Text style={styles.title}>{title}</Text>
           <TextInput
             autoFocus
+            editable={!busy}
             value={value}
             onChangeText={setValue}
             placeholder={placeholder ?? 'Назва'}
-            style={styles.input}
+            style={[styles.input, busy && styles.inputBusy]}
           />
-          <View style={styles.buttons}>
-            <Pressable style={styles.cancelButton} onPress={onCancel}>
-              <Text style={styles.cancelLabel}>Скасувати</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.saveButton, !value.trim() && styles.saveButtonDisabled]}
-              disabled={!value.trim()}
-              onPress={() => onSave(value.trim())}
-            >
-              <Text style={styles.saveLabel}>Зберегти</Text>
-            </Pressable>
-          </View>
+          {busy ? (
+            <View style={styles.busyRow}>
+              <ActivityIndicator color={ACCENT} />
+            </View>
+          ) : (
+            <View style={styles.buttons}>
+              <Pressable style={styles.cancelButton} onPress={onCancel}>
+                <Text style={styles.cancelLabel}>Скасувати</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.saveButton, !value.trim() && styles.saveButtonDisabled]}
+                disabled={!value.trim()}
+                onPress={() => onSave(value.trim())}
+              >
+                <Text style={styles.saveLabel}>Зберегти</Text>
+              </Pressable>
+            </View>
+          )}
         </View>
       </View>
     </Modal>
@@ -82,6 +99,17 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 15,
     color: '#111827',
+  },
+  inputBusy: {
+    color: '#9CA3AF',
+  },
+  // Same height the buttons row occupies, so swapping to the spinner
+  // doesn't make the dialog jump.
+  busyRow: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    marginTop: 4,
   },
   buttons: {
     flexDirection: 'row',
