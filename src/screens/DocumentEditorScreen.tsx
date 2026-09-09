@@ -2209,6 +2209,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, blocks, coverImageUri, paperColorEnabled, groupId, isLoaded]);
 
+  // The keyboard's height from the last time it was up. Android's keyboard
+  // is a fixed size per device, so once seen it's known - which lets the
+  // block be moved above where the keyboard is ABOUT to be at the moment
+  // of the tap, in step with the keyboard sliding up, instead of a
+  // separate correction after it has arrived (that after-the-fact move,
+  // ~half a second after the tap, is what read as the document jumping).
+  const lastKeyboardHeightRef = useRef(0);
+
   // Whoever set focusIdRef wants that block to be the live input next. A
   // block only has a TextInput while it's the active one, so this first
   // makes it active (which mounts the input) and then, on the re-run that
@@ -2231,6 +2239,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       focusToEndRef.current = false;
     }
     focusIdRef.current = null;
+    // Pre-scroll against the keyboard that's about to appear (or is up).
+    // The toolbar's own height counts only while it isn't already being
+    // counted via toolbarHeightRef, i.e. while the keyboard is still down.
+    if (lastKeyboardHeightRef.current > 0) {
+      scrollFocusedBlockIntoView(
+        lastKeyboardHeightRef.current + (toolbarHeightRef.current ? 0 : EDITOR_TOOLBAR_HEIGHT)
+      );
+    }
   }, [blocks, focusedBlockId]);
 
   // See keyboardDidHide below - a hide that is NOT followed by a show.
@@ -2255,6 +2271,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         clearTimeout(deactivateTimeoutRef.current);
         deactivateTimeoutRef.current = null;
       }
+      lastKeyboardHeightRef.current = e.endCoordinates.height;
       setKeyboardHeight(e.endCoordinates.height);
       scheduleScrollAdjust(e.endCoordinates.height);
     });
@@ -2387,7 +2404,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       const visibleBottom =
         Dimensions.get('window').height - currentKeyboardHeight - toolbarHeightRef.current;
       const overflow = pageY + height - visibleBottom + 24;
-      if (overflow > 0) {
+      // A few px of slack: the pre-scroll at activation (see the focus
+      // effect) and the post-keyboard pass land within a pixel or two of
+      // each other, and a second scroll for that is a visible twitch.
+      if (overflow > 4) {
         scrollViewRef.current?.scrollTo({ y: scrollOffsetRef.current + overflow, animated: true });
       }
     });
@@ -4012,9 +4032,16 @@ const styles = StyleSheet.create({
   dragHandle: {
     padding: 6,
   },
+  // Metrically identical to blockDisplayText (same lineHeight, no Android
+  // font padding) so a block keeps its exact height when it switches
+  // between plain text and the live input - any difference there shows
+  // as the document twitching on every tap.
   blockInput: {
     flex: 1,
     fontSize: 16,
+    lineHeight: 22,
+    includeFontPadding: false,
+    textAlignVertical: 'top',
     color: '#111827',
     paddingHorizontal: 8,
     paddingVertical: 6,
@@ -4022,6 +4049,7 @@ const styles = StyleSheet.create({
   blockDisplayText: {
     fontSize: 16,
     lineHeight: 22,
+    includeFontPadding: false,
   },
   blockPlaceholder: {
     color: '#9CA3AF',
