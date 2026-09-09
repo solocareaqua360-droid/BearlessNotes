@@ -10,12 +10,11 @@ const GRID_THUMB_HEIGHT = 96;
 // thumbnail it doesn't have - well past the normal 2, since it's filling
 // space a thumbnail would otherwise have taken.
 const EXPANDED_TEXT_LINES = 8;
-// Keeps a nearly-empty document (a title and a couple words) from
-// rendering as a visibly stunted card next to its full-height,
-// image-bearing neighbors - roughly what a card WITH a thumbnail already
-// measures out to (thumb + title + a couple lines + date), so an
-// image-less card never reads as a different, smaller kind of tile.
-const GRID_CARD_MIN_HEIGHT = 190;
+// Every grid card is exactly this tall, image or not - 20% past what a
+// thumb + title + couple lines + date used to measure out to (~190).
+// Fixed rather than a minimum: uniform card height is what keeps the grid
+// gap-free without needing a masonry/waterfall layout at all.
+const GRID_CARD_HEIGHT = 228;
 
 function HighlightedLine({
   match,
@@ -226,12 +225,18 @@ export default function DocumentCard({
 
   if (isGrid) {
     return (
-      <View style={[styles.gridCard, { backgroundColor: background }, noImage && styles.gridCardNoImage]}>
+      <View style={[styles.gridCard, { backgroundColor: background }]}>
         <Pressable style={styles.gridTap} onPress={isSelectMode ? onToggleSelect : onPress}>
           {thumbNode}
           {titleNode}
           {previewBody}
-          <Text style={[styles.dateCompact, { color: textMuted }]}>{formatUpdatedAt(updatedAt)}</Text>
+          {/* marginTop: 'auto' on a flex-column child pins it to the
+              bottom regardless of how much (or little) is above it -
+              title/preview/thumb group at the top, the date always
+              anchors the card's own bottom edge. */}
+          <Text style={[styles.dateCompact, styles.dateCompactPinned, { color: textMuted }]}>
+            {formatUpdatedAt(updatedAt)}
+          </Text>
         </Pressable>
         {isSelectMode && (
           // Purely decorative overlay - pointerEvents="none" so it doesn't
@@ -375,21 +380,27 @@ const styles = StyleSheet.create({
     // result) stretches it across the full width instead of keeping the
     // usual half-width tile size.
     width: '48%',
+    height: GRID_CARD_HEIGHT,
     marginBottom: 10,
     padding: 10,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(176,176,176,0.5)',
+    // A fixed height is a hard ceiling, not just a look - clips rather
+    // than visually overflowing a card whose expanded text (no thumbnail)
+    // would otherwise run past it.
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOpacity: 0.18,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
     elevation: 4,
   },
-  gridCardNoImage: {
-    minHeight: GRID_CARD_MIN_HEIGHT,
-  },
+  // flex: 1 (fills the card's own fixed height) is what makes the date's
+  // marginTop: 'auto' below mean anything - without a bounded flex parent
+  // to push against, 'auto' has no extra space to consume.
   gridTap: {
+    flex: 1,
     gap: 4,
   },
   thumbGrid: {
@@ -413,6 +424,9 @@ const styles = StyleSheet.create({
     fontSize: 10,
     marginTop: 2,
     fontFamily: FONT_REGULAR,
+  },
+  dateCompactPinned: {
+    marginTop: 'auto',
   },
   gridSelectBox: {
     position: 'absolute',
