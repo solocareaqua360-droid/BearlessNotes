@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Linking,
@@ -23,7 +24,11 @@ import Animated, {
 import Svg, { Path } from 'react-native-svg';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
-import { doc, getDoc, getDocFromCache, setDoc } from 'firebase/firestore';
+import * as DocumentPicker from 'expo-document-picker';
+import * as LegacyFileSystem from 'expo-file-system/legacy';
+import * as ImagePicker from 'expo-image-picker';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import { addDoc, collection, doc, getDoc, getDocFromCache, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { BoardsStackParamList, RootStackParamList } from '../navigation';
 import { Block, BoardCard, BoardColumn, BoardConnection } from '../types';
@@ -31,6 +36,10 @@ import AddExistingItemModal from '../components/AddExistingItemModal';
 import RenamePrompt from '../components/RenamePrompt';
 import VideoPlayerModal from '../components/VideoPlayerModal';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
+import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
+import { linkDocId } from '../utils/linkId';
+import { blockFromFile, blockFromLink, blockFromPhoto } from '../utils/copyToNote';
+import { backupFileToDrive } from '../utils/googleDrive';
 
 const AUTOSAVE_DELAY_MS = 600;
 const DEFAULT_CARD_WIDTH = 160;
@@ -67,8 +76,31 @@ const CONNECTION_COLOR = '#8B5CF6';
 // connection is drawn into.
 const CONNECTION_PADDING = 24;
 
+const documentsCollection = collection(db, 'documents');
+
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+// Same resize-then-compress every other image-picking flow in this app
+// already goes through (PhotosScreen's own "+", StickerComposer) -
+// duplicated rather than shared, per this app's established convention for
+// small single-purpose helpers.
+async function compressPickedImage(uri: string, width: number, height: number): Promise<string> {
+  const MAX_DIMENSION = 1600;
+  try {
+    const longest = Math.max(width, height);
+    let context = ImageManipulator.manipulate(uri);
+    if (longest > MAX_DIMENSION) {
+      const scale = MAX_DIMENSION / longest;
+      context = context.resize({ width: Math.round(width * scale), height: Math.round(height * scale) });
+    }
+    const rendered = await context.renderAsync();
+    const saved = await rendered.saveAsync({ compress: 0.7, format: SaveFormat.JPEG });
+    return saved.uri;
+  } catch {
+    return uri;
+  }
 }
 
 function newTextCard(index: number): BoardCard {
@@ -784,6 +816,12 @@ export default function BoardScreen() {
   const [cardHeights, setCardHeights] = useState<Map<string, number>>(new Map());
   const [renamingColumn, setRenamingColumn] = useState<BoardColumn | null>(null);
   const [draggingColumnId, setDraggingColumnId] = useState<string | null>(null);
+  // Which of the three link menu entries opened the URL prompt - it only
+  // picks the prompt's wording; where the link actually gets filed comes
+  // from the URL itself (see saveNewLink).
+  const [linkPromptKind, setLinkPromptKind] = useState<'other' | 'video' | 'geo' | null>(null);
+  const [linkTitlePrompt, setLinkTitlePrompt] = useState<{ url: string; preview: LinkPreview } | null>(null);
+  const [isAddingLink, setIsAddingLink] = useState(false);
 
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
@@ -1075,6 +1113,143 @@ export default function BoardScreen() {
   function openExistingItemPicker() {
     setAddSheetVisible(false);
     setExistingItemPickerVisible(true);
+  }
+
+  // Everything below creates a BRAND NEW database record from the board and
+  // drops a card for it, rather than referencing something that already
+  // exists (that's openExistingItemPicker's job). Each one writes the same
+  // record shape its own database screen's "+" writes, `usedInDocuments`
+  // included: the object belongs to its database from the moment it's
+  // made, and the board card is a reference to it like any other.
+
+  async function createDocumentCard() {
+    setAddSheetVisible(false);
+    const now = Date.now();
+    const created = await addDoc(documentsCollection, {
+      title: 'Без назви',
+      createdAt: now,
+      updatedAt: now,
+      blocks: [],
+    });
+    setCards((prev) => [...prev, newDocumentCard({ id: created.id, title: 'Без назви' }, {}, prev.length)]);
+  }
+
+  // One flow behind all three link menu entries. The category a link ends
+  // up filed under (video / geo / other - separate databases as far as the
+  // UI is concerned) is derived from the fetched preview's siteName, NOT
+  // from which entry was tapped, exactly as LinksScreen does it: paste a
+  // YouTube URL under "Геоточка" and it still correctly lands in
+  // YouTube/TikTok rather than being mis-filed.
+  function openLinkPrompt(kind: 'other' | 'video' | 'geo') {
+    setAddSheetVisible(false);
+    setLinkPromptKind(kind);
+  }
+
+  async function submitNewLinkUrl(rawUrl: string) {
+    setLinkPromptKind(null);
+    const url = rawUrl.trim();
+    if (!url) return;
+    setIsAddingLink(true);
+    const preview = await fetchLinkPreview(url);
+    setIsAddingLink(false);
+    if (preview.title) {
+      saveNewLink(url, preview, preview.title);
+    } else {
+      // No title to read out of the page (a raw-coordinates Maps link, or
+      // a page with no og:title) - ask rather than filing something
+      // nameless nobody could find later. Same as LinksScreen's own "+".
+      setLinkTitlePrompt({ url, preview });
+    }
+  }
+
+  function confirmLinkTitle(title: string) {
+    const prompt = linkTitlePrompt;
+    setLinkTitlePrompt(null);
+    if (prompt && title.trim()) saveNewLink(prompt.url, prompt.preview, title.trim());
+  }
+
+  async function saveNewLink(url: string, preview: LinkPreview, title: string) {
+    // Keyed by the URL (linkDocId), not a fresh id - the same link saved
+    // twice is one record, which is what makes the databases dedupe.
+    const id = linkDocId(url);
+    const now = Date.now();
+    const data: Record<string, unknown> = { url, updatedAt: now, createdAt: now, usedInDocuments: {} };
+    if (title) data.title = title;
+    if (preview.imageUrl) data.imageUrl = preview.imageUrl;
+    if (preview.siteName) data.siteName = preview.siteName;
+    await setDoc(doc(db, 'links', id), data, { merge: true });
+    setCards((prev) => [
+      ...prev,
+      cardFromExistingBlock(blockFromLink({ url, title, imageUrl: preview.imageUrl, siteName: preview.siteName }), prev.length),
+    ]);
+  }
+
+  function createImageCard() {
+    setAddSheetVisible(false);
+    Alert.alert('Нове зображення', undefined, [
+      { text: 'Галерея', onPress: () => pickImage('gallery') },
+      { text: 'Камера', onPress: () => pickImage('camera') },
+      { text: 'Скасувати', style: 'cancel' },
+    ]);
+  }
+
+  async function pickImage(source: 'gallery' | 'camera') {
+    const permission =
+      source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+    const result =
+      source === 'camera'
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    const imageUri = await compressPickedImage(asset.uri, asset.width, asset.height);
+    const id = generateId();
+    const now = Date.now();
+    await setDoc(
+      doc(db, 'photos', id),
+      { imageUri, imageFit: 'contain', createdAt: now, updatedAt: now, usedInDocuments: {} },
+      { merge: true }
+    );
+    backupFileToDrive(imageUri, `${id}.jpg`, 'image/jpeg', 'Photos').then((uploaded) => {
+      if (uploaded) updateDoc(doc(db, 'photos', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+    });
+    setCards((prev) => [
+      ...prev,
+      cardFromExistingBlock(blockFromPhoto({ id, imageUri, imageFit: 'contain', createdAt: now }), prev.length),
+    ]);
+  }
+
+  async function createFileCard() {
+    setAddSheetVisible(false);
+    const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: false });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    const id = generateId();
+    const fileUri = `${LegacyFileSystem.cacheDirectory}${id}-${asset.name}`;
+    await LegacyFileSystem.copyAsync({ from: asset.uri, to: fileUri });
+    const now = Date.now();
+    const data: Record<string, unknown> = {
+      fileUri,
+      fileName: asset.name,
+      createdAt: now,
+      updatedAt: now,
+      usedInDocuments: {},
+    };
+    if (asset.mimeType) data.mimeType = asset.mimeType;
+    await setDoc(doc(db, 'files', id), data, { merge: true });
+    backupFileToDrive(fileUri, asset.name, asset.mimeType ?? 'application/octet-stream', 'Files').then((uploaded) => {
+      if (uploaded) updateDoc(doc(db, 'files', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+    });
+    setCards((prev) => [
+      ...prev,
+      cardFromExistingBlock(
+        blockFromFile({ id, fileUri, fileName: asset.name, mimeType: asset.mimeType, createdAt: now }),
+        prev.length
+      ),
+    ]);
   }
 
   function addExistingCard(block: Block) {
@@ -1537,6 +1712,30 @@ export default function BoardScreen() {
               <Ionicons name="text-outline" size={18} color="#111827" />
               <Text style={styles.sheetRowLabel}>Текст</Text>
             </Pressable>
+            <Pressable style={styles.sheetRow} onPress={createDocumentCard}>
+              <Ionicons name="document-text-outline" size={18} color="#111827" />
+              <Text style={styles.sheetRowLabel}>Документ</Text>
+            </Pressable>
+            <Pressable style={styles.sheetRow} onPress={() => openLinkPrompt('other')}>
+              <Ionicons name="link-outline" size={18} color="#111827" />
+              <Text style={styles.sheetRowLabel}>Посилання</Text>
+            </Pressable>
+            <Pressable style={styles.sheetRow} onPress={() => openLinkPrompt('video')}>
+              <Ionicons name="videocam-outline" size={18} color="#111827" />
+              <Text style={styles.sheetRowLabel}>YouTube / TikTok</Text>
+            </Pressable>
+            <Pressable style={styles.sheetRow} onPress={() => openLinkPrompt('geo')}>
+              <Ionicons name="location-outline" size={18} color="#111827" />
+              <Text style={styles.sheetRowLabel}>Геоточка</Text>
+            </Pressable>
+            <Pressable style={styles.sheetRow} onPress={createImageCard}>
+              <Ionicons name="image-outline" size={18} color="#111827" />
+              <Text style={styles.sheetRowLabel}>Зображення</Text>
+            </Pressable>
+            <Pressable style={styles.sheetRow} onPress={createFileCard}>
+              <Ionicons name="document-outline" size={18} color="#111827" />
+              <Text style={styles.sheetRowLabel}>Файл</Text>
+            </Pressable>
             <Pressable style={styles.sheetRow} onPress={openExistingItemPicker}>
               <Ionicons name="search-outline" size={18} color="#111827" />
               <Text style={styles.sheetRowLabel}>З бази даних</Text>
@@ -1570,6 +1769,35 @@ export default function BoardScreen() {
           setTitle(value);
         }}
       />
+
+      <RenamePrompt
+        visible={linkPromptKind !== null}
+        title={
+          linkPromptKind === 'video'
+            ? 'Посилання на YouTube / TikTok'
+            : linkPromptKind === 'geo'
+              ? 'Посилання на місце'
+              : 'Нове посилання'
+        }
+        placeholder="https://…"
+        initialValue=""
+        onCancel={() => setLinkPromptKind(null)}
+        onSave={submitNewLinkUrl}
+      />
+
+      <RenamePrompt
+        visible={linkTitlePrompt !== null}
+        title="Назва посилання"
+        initialValue=""
+        onCancel={() => setLinkTitlePrompt(null)}
+        onSave={confirmLinkTitle}
+      />
+
+      {isAddingLink && (
+        <View style={styles.addLinkLoading}>
+          <ActivityIndicator color="#fff" />
+        </View>
+      )}
 
       <RenamePrompt
         visible={renamingColumn !== null}
@@ -1758,6 +1986,18 @@ const styles = StyleSheet.create({
   // left/top come from each connection's own bounding box at render time.
   connection: {
     position: 'absolute',
+  },
+  // Covers the screen while a link preview is being fetched - the same
+  // treatment LinksScreen's own "+" uses for the same wait.
+  addLinkLoading: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(17,24,39,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   connectDraft: {
     position: 'absolute',
