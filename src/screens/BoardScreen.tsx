@@ -954,7 +954,10 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 32,
+    // Board is a screen inside the "Дошки" tab, so FloatingIslandTabBar's
+    // pill (bottom: 24, ~48 tall) is always showing underneath here - same
+    // clearance BulkActionBar's own aboveTabBar variant uses to clear it.
+    bottom: 104,
     width: 56,
     height: 56,
     borderRadius: 28,
@@ -993,7 +996,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 20,
     right: 20,
-    bottom: 32,
+    // Same clearance as the FAB above - the floating tab bar sits
+    // underneath this screen too.
+    bottom: 104,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
