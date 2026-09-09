@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -22,7 +22,7 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as DocumentPicker from 'expo-document-picker';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
@@ -914,6 +914,86 @@ export default function BoardScreen() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, cards, connections, columns, isLoaded]);
+
+  // Read by the focus-time preview refresh below, which must not re-run
+  // every time a card moves - so it reads the current cards through this
+  // rather than closing over them.
+  const cardsRef = useRef<BoardCard[]>(cards);
+  useEffect(() => {
+    cardsRef.current = cards;
+  }, [cards]);
+
+  // A document card's preview (title, text, first image) is snapshotted
+  // when the card is made, so editing the document leaves the card showing
+  // the old version. Re-reading every document card's source whenever the
+  // board comes back into focus is what catches that up: the only way a
+  // document changes while its card exists is that you left the board to
+  // edit it - including via the card's own "Редагувати", which opens the
+  // editor as a modal over this screen and blurs it.
+  const refreshDocumentPreviews = useCallback(async () => {
+    const documentIds = [
+      ...new Set(
+        cardsRef.current
+          .filter((c) => (c.type ?? 'paragraph') === 'document' && c.documentId)
+          .map((c) => c.documentId as string)
+      ),
+    ];
+    if (documentIds.length === 0) return;
+    const snapshots = await Promise.all(documentIds.map((id) => getDoc(doc(db, 'documents', id))));
+    const fresh = new Map<string, { title: string; text: string; imageUri?: string }>();
+    snapshots.forEach((snapshot, index) => {
+      // A document deleted elsewhere is left alone rather than blanked -
+      // the card keeps showing what it last knew instead of silently
+      // emptying itself.
+      if (!snapshot.exists()) return;
+      const data = snapshot.data();
+      const blocks: Block[] = data?.blocks ?? [];
+      fresh.set(documentIds[index], {
+        title: data?.title ?? 'Без назви',
+        text: blocksToPreviewText(blocks).slice(0, 20000),
+        imageUri: firstImageUri(blocks),
+      });
+    });
+    setCards((prev) => {
+      let changed = false;
+      const next = prev.map((card) => {
+        if (!card.documentId) return card;
+        const current = fresh.get(card.documentId);
+        if (!current) return card;
+        if (
+          card.documentTitle === current.title &&
+          (card.documentPreviewText ?? '') === current.text &&
+          card.documentPreviewImageUri === current.imageUri
+        ) {
+          return card;
+        }
+        changed = true;
+        const updated: BoardCard = { ...card, documentTitle: current.title };
+        // Written as key-deletes rather than undefined values: Firestore
+        // rejects undefined outright, and a document whose last image was
+        // removed has to lose the field, not carry a stale one.
+        if (current.text) updated.documentPreviewText = current.text;
+        else delete updated.documentPreviewText;
+        if (current.imageUri) updated.documentPreviewImageUri = current.imageUri;
+        else delete updated.documentPreviewImageUri;
+        return updated;
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isLoaded) return;
+      refreshDocumentPreviews();
+      // The editor saves on a 600ms debounce, so closing it right after
+      // typing hands focus back here before that write is even issued -
+      // the read above would then see the previous version. A second pass
+      // safely past that window catches it.
+      const timeout = setTimeout(refreshDocumentPreviews, 1000);
+      return () => clearTimeout(timeout);
+    }, [isLoaded, refreshDocumentPreviews])
+  );
 
   // Positions and measured heights outlive the cards they belong to
   // otherwise - both are keyed by card id in structures React doesn't
