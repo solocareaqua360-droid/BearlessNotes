@@ -61,6 +61,11 @@ const stickersCollection = collection(db, 'stickers');
 const STICKER_YELLOW = '#FBE97A';
 const STICKER_DARK = '#4a3f05';
 const FREE_STICKER_LIMIT = 10;
+// Card height (150) + the strip's own contentContainerStyle paddingBottom
+// (10) - the fixed height the floating strip below reserves, and the
+// amount of matching top padding the list gets so a card sits exactly
+// where it visually looks like it does today until you actually scroll.
+const STICKER_STRIP_HEIGHT = 160;
 
 type ViewMode = 'list' | 'grid';
 
@@ -233,6 +238,11 @@ export default function DocumentsScreen() {
   // already apply to their own drawers.
   const usedTagIds = new Set(documents.flatMap((d) => d.tagIds ?? []));
   const drawerTags = tags.filter((t) => usedTagIds.has(t.id));
+  // The sticker strip floats over the list rather than pushing it down (see
+  // the render below) - only reserve top clearance for it while it's
+  // actually shown, so scrolling the list up genuinely slides a document
+  // card behind the strip's translucent backing instead of leaving a gap.
+  const stickerStripVisible = !stickersCollapsed && freeStickers.length > 0;
 
   // A new document created while a tag filter is active starts pre-tagged
   // with whatever that filter selects - both an 'isolating' (AND) filter's
@@ -400,54 +410,6 @@ export default function DocumentsScreen() {
         </Pressable>
       </View>
 
-      {!stickersCollapsed && freeStickers.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.stickerScroll}
-          contentContainerStyle={styles.stickerStrip}
-        >
-          {freeStickers.map((s) => (
-            <Pressable key={s.id} style={styles.stickerCard} onPress={() => openFreeSticker(s)}>
-              {s.type === 'image' && s.imageUri ? (
-                <Image source={{ uri: s.imageUri }} style={styles.stickerCardImage} resizeMode="cover" />
-              ) : s.type === 'sketch' && (s.sketchElements?.length ?? 0) > 0 ? (
-                // Same viewBox-reuses-the-capture-canvas-size approach as
-                // DocumentEditorScreen's own sketch block preview - the
-                // drawing scales correctly into this much smaller box.
-                <Svg width="100%" height="100%" viewBox={`0 0 ${s.sketchWidth || 1} ${s.sketchHeight || 1}`}>
-                  {(s.sketchElements ?? []).map((el, i) =>
-                    el.kind === 'text' ? (
-                      <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
-                        {el.text}
-                      </SvgText>
-                    ) : (
-                      <Path
-                        key={i}
-                        d={el.d}
-                        stroke={el.color}
-                        strokeWidth={el.width}
-                        fill="none"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    )
-                  )}
-                </Svg>
-              ) : s.type === 'sketch' ? (
-                <View style={styles.stickerCardIconWrap}>
-                  <Ionicons name="brush-outline" size={34} color={STICKER_DARK} />
-                </View>
-              ) : (
-                <Text style={styles.stickerCardText} numberOfLines={6}>
-                  {s.text || 'Порожній стікер'}
-                </Text>
-              )}
-            </Pressable>
-          ))}
-        </ScrollView>
-      )}
-
       <StickerComposer
         visible={stickerComposerVisible}
         editingTextSticker={editingTextSticker}
@@ -508,6 +470,7 @@ export default function DocumentsScreen() {
         </View>
       )}
 
+      <View style={styles.listArea}>
       {isLoading ? (
         <View style={styles.emptyState}>
           <ActivityIndicator color={ACCENT} />
@@ -544,7 +507,7 @@ export default function DocumentsScreen() {
           extraData={[isSelectMode, selectedIds]}
           numColumns={viewMode === 'grid' ? 2 : 1}
           columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, stickerStripVisible && { paddingTop: STICKER_STRIP_HEIGHT }]}
           renderItem={({ item }) => {
             const { imageUri, imageUris, previewText, checklistItems } = extractPreview(item.blocks);
             return (
@@ -566,6 +529,65 @@ export default function DocumentsScreen() {
           }}
         />
       )}
+
+      {stickerStripVisible && (
+        // Floats over the top of the list above (position: absolute,
+        // rendered after it so it paints on top) instead of pushing it
+        // down - a card scrolled up now genuinely passes behind this
+        // translucent backing instead of being invisibly clipped by a
+        // squished sibling ScrollView (the previous, fragile layout).
+        // Plain semi-transparent tint for now, not a real gaussian blur
+        // (no expo-blur/new native module yet) - swap the backing's
+        // backgroundColor for a BlurView here if that's not soft enough.
+        <View style={styles.stickerStripOverlay}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.stickerScroll}
+            contentContainerStyle={styles.stickerStrip}
+          >
+            {freeStickers.map((s) => (
+              <Pressable key={s.id} style={styles.stickerCard} onPress={() => openFreeSticker(s)}>
+                {s.type === 'image' && s.imageUri ? (
+                  <Image source={{ uri: s.imageUri }} style={styles.stickerCardImage} resizeMode="cover" />
+                ) : s.type === 'sketch' && (s.sketchElements?.length ?? 0) > 0 ? (
+                  // Same viewBox-reuses-the-capture-canvas-size approach as
+                  // DocumentEditorScreen's own sketch block preview - the
+                  // drawing scales correctly into this much smaller box.
+                  <Svg width="100%" height="100%" viewBox={`0 0 ${s.sketchWidth || 1} ${s.sketchHeight || 1}`}>
+                    {(s.sketchElements ?? []).map((el, i) =>
+                      el.kind === 'text' ? (
+                        <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
+                          {el.text}
+                        </SvgText>
+                      ) : (
+                        <Path
+                          key={i}
+                          d={el.d}
+                          stroke={el.color}
+                          strokeWidth={el.width}
+                          fill="none"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      )
+                    )}
+                  </Svg>
+                ) : s.type === 'sketch' ? (
+                  <View style={styles.stickerCardIconWrap}>
+                    <Ionicons name="brush-outline" size={34} color={STICKER_DARK} />
+                  </View>
+                ) : (
+                  <Text style={styles.stickerCardText} numberOfLines={6}>
+                    {s.text || 'Порожній стікер'}
+                  </Text>
+                )}
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+      </View>
 
       {!isSelectMode && (
         <Pressable
@@ -742,10 +764,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: 'rgba(255,255,255,0.85)',
   },
-  // Without flexGrow/flexShrink: 0, this horizontal ScrollView competes for
-  // height with the documents FlatList below it and gets squeezed shorter
-  // than its own content (150px cards clipped) - same bug/fix as
-  // ProjectTabsRow's own `scroll` style documents.
+  // The list below this screen's header chrome - wrapped so the floating
+  // sticker strip overlay (stickerStripOverlay) has a positioned ancestor
+  // to sit on top of, rather than pushing the list down as a normal
+  // sibling (that was the previous layout, and a squished ScrollView there
+  // could clip its own 150px cards against the list underneath it).
+  listArea: {
+    flex: 1,
+  },
+  stickerStripOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: STICKER_STRIP_HEIGHT,
+    // Frosted/matte tint rather than a real gaussian blur (no expo-blur -
+    // that's a new native module needing a fresh dev-client build) - a
+    // document card scrolled up under here reads as dimmed, not sharp, but
+    // isn't a true blur yet.
+    backgroundColor: 'rgba(35,31,26,0.72)',
+  },
   stickerScroll: {
     flexGrow: 0,
     flexShrink: 0,
