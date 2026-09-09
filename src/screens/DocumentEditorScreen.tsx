@@ -103,6 +103,15 @@ const AUTOSAVE_DELAY_MS = 600;
 // tap - a tap on a block now starts editing it (see BlockRow), so the two
 // can't be allowed to blur into each other.
 const DRAG_LONG_PRESS_MS = 500;
+// A permanent gap kept clear of text on the right of every paragraph/
+// bulleted/numbered/checkbox block (see blockInput/blockDisplayText),
+// on top of the drag-handle icon's own column. A tall, multi-line block
+// used to leave only that icon's ~32px, vertically centered on the whole
+// block, as a safe place to grab for a swipe - everywhere else on that
+// same edge was live text, so a swipe starting a few px off would land on
+// a word and start text selection (while editing) instead of scrolling.
+// This reserves a wide, blank strip the full height of the block instead.
+const TEXT_SWIPE_MARGIN = 56;
 const DOWNLOAD_DIR_STORAGE_KEY = 'bearlessNotes.downloadDirUri';
 
 // Small fixed palette rather than a full color picker - enough variety for
@@ -340,7 +349,17 @@ function rawIndexForDisplayIndex(segments: TextSegment[], rawText: string, displ
 type TextLayoutLine = { text: string; x: number; y: number; width: number; height: number };
 
 function glyphWeight(ch: string): number {
-  if (/[ .,:;'!|iIlјjtfr()\-іїІ]/.test(ch)) return 0.55;
+  // A space is disproportionately wide here: blockDisplayText now renders
+  // justified (see TEXT_SWIPE_MARGIN), which stretches the gaps BETWEEN
+  // words on every non-final line to fill the line, while every other
+  // glyph keeps its natural width. There's no per-glyph metric available
+  // to measure the actual stretch, so this is a flat guess at its typical
+  // size under justification rather than the narrow width a space
+  // actually renders at - better than the alternative of ignoring it and
+  // having every space silently narrow the estimate for the rest of the
+  // line.
+  if (ch === ' ') return 2.2;
+  if (/[.,:;'!|iIlјjtfr()\-іїІ]/.test(ch)) return 0.55;
   if (/[mwMWшщжмюфШЩЖМЮФ@%]/.test(ch)) return 1.45;
   if (ch === ch.toUpperCase() && ch !== ch.toLowerCase()) return 1.2;
   return 1;
@@ -4267,14 +4286,18 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     includeFontPadding: false,
     textAlignVertical: 'top',
+    textAlign: 'justify',
     color: '#111827',
     paddingHorizontal: 8,
     paddingVertical: 6,
+    // See TEXT_SWIPE_MARGIN.
+    marginRight: TEXT_SWIPE_MARGIN,
   },
   blockDisplayText: {
     fontSize: 16,
     lineHeight: 22,
     includeFontPadding: false,
+    textAlign: 'justify',
   },
   blockPlaceholder: {
     color: '#9CA3AF',
