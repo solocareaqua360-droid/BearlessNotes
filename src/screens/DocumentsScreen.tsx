@@ -536,24 +536,10 @@ export default function DocumentsScreen() {
         // down - a card scrolled up now genuinely passes behind this
         // translucent backing instead of being invisibly clipped by a
         // squished sibling ScrollView (the previous, fragile layout).
-        // The tint fades in from transparent at the strip's own bottom
-        // edge (where a card is only just starting to pass under) up to
-        // full strength by the strip's middle, rather than a flat tint
-        // the card would hit abruptly - still a plain semi-transparent
-        // color, not a real gaussian blur (no expo-blur/new native module
-        // yet), applied via the same react-native-svg LinearGradient this
-        // screen's own page background already uses.
+        // Plain semi-transparent tint for now, not a real gaussian blur
+        // (no expo-blur/new native module yet) - swap the backing's
+        // backgroundColor for a BlurView here if that's not soft enough.
         <View style={styles.stickerStripOverlay}>
-          <Svg width={windowWidth} height={STICKER_STRIP_HEIGHT} style={StyleSheet.absoluteFill} pointerEvents="none">
-            <Defs>
-              <LinearGradient id="stickerFade" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor="rgba(35,31,26,0.72)" />
-                <Stop offset="0.5" stopColor="rgba(35,31,26,0.72)" />
-                <Stop offset="1" stopColor="rgba(35,31,26,0)" />
-              </LinearGradient>
-            </Defs>
-            <Rect width={windowWidth} height={STICKER_STRIP_HEIGHT} fill="url(#stickerFade)" />
-          </Svg>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -792,8 +778,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: STICKER_STRIP_HEIGHT,
-    // Background is the gradient Svg rendered as this View's first child
-    // (see the render below) - no flat backgroundColor here.
+    // Frosted/matte tint rather than a real gaussian blur (no expo-blur -
+    // that's a new native module needing a fresh dev-client build) - a
+    // document card scrolled up under here reads as dimmed, not sharp, but
+    // isn't a true blur yet.
+    backgroundColor: 'rgba(35,31,26,0.72)',
   },
   stickerScroll: {
     flexGrow: 0,
