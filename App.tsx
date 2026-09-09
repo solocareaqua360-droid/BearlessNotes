@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold } from '@expo-google-fonts/inter';
@@ -5,7 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import './src/firebase';
+import { ensureSignedIn } from './src/firebase';
 import DocumentsScreen from './src/screens/DocumentsScreen';
 import CalendarScreen from './src/screens/CalendarScreen';
 import PlaceholderScreen from './src/screens/PlaceholderScreen';
@@ -70,7 +71,11 @@ export default function App() {
     Inter_700Bold,
     Inter_800ExtraBold,
   });
-  if (!fontsLoaded) return <View style={{ flex: 1, backgroundColor: '#fff' }} />;
+  const [signedIn, setSignedIn] = useState(false);
+  useEffect(() => {
+    ensureSignedIn().then(() => setSignedIn(true));
+  }, []);
+  if (!fontsLoaded || !signedIn) return <View style={{ flex: 1, backgroundColor: '#fff' }} />;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

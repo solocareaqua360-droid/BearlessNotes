@@ -30,6 +30,7 @@
     "plugins": [
       "expo-dev-client",
       "@react-native-firebase/app",
+      "@react-native-firebase/auth",
       [
         "react-native-document-scanner-plugin",
         {

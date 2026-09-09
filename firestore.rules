@@ -1,0 +1,19 @@
+rules_version = '2';
+
+// Bearless Notes has no login screen and one shared database per the
+// product's current single-user model (see CLAUDE.md) - there's no owner
+// field to check anything against. This app signs every install in
+// anonymously (src/firebase.ts's ensureSignedIn) purely so these rules have
+// something to require: any signed-in request (even an anonymous one) may
+// read or write, anyone with no session at all is refused. That's not a
+// defense against a determined attacker who reads the app's own APK and
+// signs in anonymously themselves - it closes the "wide open to anyone who
+// finds the project id" gap that test-mode rules leave, which is what this
+// replaces (test mode expires 30 days after project creation either way).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{collection}/{docId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
