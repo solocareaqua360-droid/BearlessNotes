@@ -309,6 +309,105 @@ function ConnectDraftLine({
   return <Animated.View style={[styles.connectDraft, animatedStyle]} pointerEvents="none" />;
 }
 
+// A kanban lane, dragged by its own header. Same position architecture as
+// DraggableCard (the view's left/top pinned at 0, everything on an animated
+// transform), and the same shared-offset trick group drags use: this
+// column writes columnOffsetX/Y, and every card inside it reads the same
+// values, so the lane and its contents move together in one paint.
+function DraggableColumn({
+  column,
+  memberCount,
+  height,
+  isDragging,
+  canvasScale,
+  canvasPanGesture,
+  columnOffsetX,
+  columnOffsetY,
+  onDragStart,
+  onDragEnd,
+  onRename,
+  onDelete,
+}: {
+  column: BoardColumn;
+  memberCount: number;
+  height: number;
+  isDragging: boolean;
+  canvasScale: SharedValue<number>;
+  canvasPanGesture: ReturnType<typeof Gesture.Pan>;
+  columnOffsetX: SharedValue<number>;
+  columnOffsetY: SharedValue<number>;
+  onDragStart: (id: string) => void;
+  onDragEnd: (id: string, dx: number, dy: number) => void;
+  onRename: (column: BoardColumn) => void;
+  onDelete: (column: BoardColumn) => void;
+}) {
+  const posX = useSharedValue(column.x);
+  const posY = useSharedValue(column.y);
+  const reportedX = useSharedValue(column.x);
+  const reportedY = useSharedValue(column.y);
+
+  useLayoutEffect(() => {
+    if (column.x === reportedX.value && column.y === reportedY.value) return;
+    reportedX.value = column.x;
+    reportedY.value = column.y;
+    posX.value = column.x;
+    posY.value = column.y;
+    columnOffsetX.value = 0;
+    columnOffsetY.value = 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [column.x, column.y]);
+
+  const panGesture = Gesture.Pan()
+    .blocksExternalGesture(canvasPanGesture)
+    .onStart(() => {
+      runOnJS(onDragStart)(column.id);
+    })
+    .onChange((e) => {
+      columnOffsetX.value += e.changeX / canvasScale.value;
+      columnOffsetY.value += e.changeY / canvasScale.value;
+    })
+    .onEnd(() => {
+      runOnJS(onDragEnd)(column.id, columnOffsetX.value, columnOffsetY.value);
+    });
+
+  const tapGesture = Gesture.Tap().onEnd(() => {
+    runOnJS(onRename)(column);
+  });
+
+  const longPressGesture = Gesture.LongPress()
+    .minDuration(500)
+    .onStart(() => {
+      runOnJS(onDelete)(column);
+    });
+
+  const headerGesture = Gesture.Race(panGesture, tapGesture, longPressGesture);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: posX.value + (isDragging ? columnOffsetX.value : 0) },
+      { translateY: posY.value + (isDragging ? columnOffsetY.value : 0) },
+    ],
+  }));
+
+  return (
+    // box-none so only the header takes touches - the rest of the lane
+    // stays transparent to the canvas's own pan, and the cards sitting on
+    // top of it keep their own drags.
+    <Animated.View style={[styles.column, { height }, animatedStyle]} pointerEvents="box-none">
+      <GestureDetector gesture={headerGesture}>
+        <View style={styles.columnHeader}>
+          <View style={styles.columnTitleWrap}>
+            <Text style={styles.columnTitle} numberOfLines={1}>
+              {column.title}
+            </Text>
+          </View>
+          <Text style={styles.columnCount}>{memberCount}</Text>
+        </View>
+      </GestureDetector>
+    </Animated.View>
+  );
+}
+
 type DraggableCardProps = {
   card: BoardCard;
   canvasScale: SharedValue<number>;
@@ -321,6 +420,12 @@ type DraggableCardProps = {
   isGroupDrag: boolean;
   groupOffsetX: SharedValue<number>;
   groupOffsetY: SharedValue<number>;
+  // True while the column this card sits in is itself being dragged - the
+  // card then rides the column's own live offset, so the lane and its
+  // contents move as one piece instead of the cards catching up on drop.
+  followsColumnDrag: boolean;
+  columnOffsetX: SharedValue<number>;
+  columnOffsetY: SharedValue<number>;
   // False while the canvas is in 'connect' mode: a drag starting on a card
   // has to reach the canvas's own connect gesture to draw a link, and this
   // card's Pan would otherwise win that touch (it blocksExternalGesture)
@@ -370,6 +475,9 @@ function DraggableCard({
   isGroupDrag,
   groupOffsetX,
   groupOffsetY,
+  followsColumnDrag,
+  columnOffsetX,
+  columnOffsetY,
   dragEnabled,
   onMeasure,
   onDragStart,
@@ -400,6 +508,11 @@ function DraggableCard({
     // drag, where the offset was never touched to begin with.
     groupOffsetX.value = 0;
     groupOffsetY.value = 0;
+    // Same for a column drag this card rode along on - the committed
+    // position already includes that offset, so it has to go back to zero
+    // in the very paint that adopts it.
+    columnOffsetX.value = 0;
+    columnOffsetY.value = 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card.x, card.y]);
 
@@ -451,10 +564,25 @@ function DraggableCard({
 
   const gesture = Gesture.Race(panGesture, tapGesture, longPressGesture);
 
+  // Two shared offsets can apply on top of this card's own position: the
+  // group-drag one (a selected sibling is being dragged) and the column
+  // one (the column this card sits in is being dragged). Both work the
+  // same way - the thing actually under the finger writes the offset,
+  // everything moving with it reads the same value.
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateX: posX.value + (isSelected ? groupOffsetX.value : 0) },
-      { translateY: posY.value + (isSelected ? groupOffsetY.value : 0) },
+      {
+        translateX:
+          posX.value +
+          (isSelected ? groupOffsetX.value : 0) +
+          (followsColumnDrag ? columnOffsetX.value : 0),
+      },
+      {
+        translateY:
+          posY.value +
+          (isSelected ? groupOffsetY.value : 0) +
+          (followsColumnDrag ? columnOffsetY.value : 0),
+      },
     ],
   }));
 
@@ -588,6 +716,7 @@ export default function BoardScreen() {
   // reposition, but its OWN height still has to catch up.
   const [cardHeights, setCardHeights] = useState<Map<string, number>>(new Map());
   const [renamingColumn, setRenamingColumn] = useState<BoardColumn | null>(null);
+  const [draggingColumnId, setDraggingColumnId] = useState<string | null>(null);
 
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
@@ -601,6 +730,10 @@ export default function BoardScreen() {
   // style, which is what makes the whole selection visibly move together.
   const groupOffsetX = useSharedValue(0);
   const groupOffsetY = useSharedValue(0);
+  // The same idea one level up: written by the column being dragged, read
+  // by that column AND by every card inside it.
+  const columnOffsetX = useSharedValue(0);
+  const columnOffsetY = useSharedValue(0);
   // The marquee-selection rectangle, in world coordinates (same space as
   // card x/y) so it can be rendered inside the same transformed `world`
   // container the cards live in and compared against their x/y directly -
@@ -971,6 +1104,16 @@ export default function BoardScreen() {
     setAddSheetVisible(false);
   }
 
+  // Both the column and its cards take the drag's own delta, so nothing
+  // has to be recomputed from the column's new origin - and the reflow
+  // effect that follows (columns changed) lands on the same positions,
+  // which is what keeps the drop from visibly nudging anything.
+  function commitColumnDrag(id: string, dx: number, dy: number) {
+    setColumns((prev) => prev.map((c) => (c.id === id ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
+    setCards((prev) => prev.map((c) => (c.columnId === id ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
+    setDraggingColumnId(null);
+  }
+
   function renameColumn(column: BoardColumn, title: string) {
     setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, title: title.trim() || c.title } : c)));
     setRenamingColumn(null);
@@ -1078,11 +1221,14 @@ export default function BoardScreen() {
   // drag, its links are hidden outright and come back correctly shaped
   // once the drop commits the new position. A group drag moves every
   // selected card, so all of their links go too.
-  const movingCardIds = !draggedCardId
-    ? null
-    : selectedCardIds.has(draggedCardId) && selectedCardIds.size > 1
-      ? selectedCardIds
-      : new Set([draggedCardId]);
+  // Dragging a column moves every card in it, so their links go too.
+  const movingCardIds = draggingColumnId
+    ? new Set(cards.filter((c) => c.columnId === draggingColumnId).map((c) => c.id))
+    : !draggedCardId
+      ? null
+      : selectedCardIds.has(draggedCardId) && selectedCardIds.size > 1
+        ? selectedCardIds
+        : new Set([draggedCardId]);
   const selectionHasConnections = connections.some(
     (c) => selectedCardIds.has(c.fromCardId) || selectedCardIds.has(c.toCardId)
   );
@@ -1098,27 +1244,21 @@ export default function BoardScreen() {
             {columns.map((column) => {
               const members = columnMembers(cards, column.id);
               return (
-                <View
+                <DraggableColumn
                   key={column.id}
-                  style={[
-                    styles.column,
-                    { left: column.x, top: column.y, height: columnHeight(members, cardHeights) },
-                  ]}
-                  pointerEvents="box-none"
-                >
-                  <Pressable
-                    style={styles.columnHeader}
-                    onPress={() => setRenamingColumn(column)}
-                    onLongPress={() => confirmDeleteColumn(column)}
-                  >
-                    <View style={styles.columnTitleWrap}>
-                      <Text style={styles.columnTitle} numberOfLines={1}>
-                        {column.title}
-                      </Text>
-                    </View>
-                    <Text style={styles.columnCount}>{members.length}</Text>
-                  </Pressable>
-                </View>
+                  column={column}
+                  memberCount={members.length}
+                  height={columnHeight(members, cardHeights)}
+                  isDragging={column.id === draggingColumnId}
+                  canvasScale={scale}
+                  canvasPanGesture={canvasBlockingGesture}
+                  columnOffsetX={columnOffsetX}
+                  columnOffsetY={columnOffsetY}
+                  onDragStart={setDraggingColumnId}
+                  onDragEnd={commitColumnDrag}
+                  onRename={setRenamingColumn}
+                  onDelete={confirmDeleteColumn}
+                />
               );
             })}
 
@@ -1168,6 +1308,9 @@ export default function BoardScreen() {
                   isGroupDrag={isSelected && selectedCardIds.size > 1}
                   groupOffsetX={groupOffsetX}
                   groupOffsetY={groupOffsetY}
+                  followsColumnDrag={!!card.columnId && card.columnId === draggingColumnId}
+                  columnOffsetX={columnOffsetX}
+                  columnOffsetY={columnOffsetY}
                   dragEnabled={canvasTool !== 'connect'}
                   onMeasure={measureCard}
                   onDragStart={handleDragStart}
@@ -1494,8 +1637,12 @@ const styles = StyleSheet.create({
     height: 2,
     backgroundColor: CONNECTION_COLOR,
   },
+  // left/top pinned at 0 on purpose - the column's world position rides
+  // entirely on its animated transform, same as a card's.
   column: {
     position: 'absolute',
+    left: 0,
+    top: 0,
     width: COLUMN_WIDTH,
     borderRadius: 14,
     backgroundColor: 'rgba(17,24,39,0.05)',
