@@ -431,7 +431,13 @@ export default function CustomDatabaseScreen({}: Props) {
 
   function renderRowCard(item: CustomDatabaseRow) {
     const { background, text, textMuted } = colorForDocument(item.id);
-    const subtitleFields = database!.fields.slice(1, 3).filter((f) => displayValue(f, item.values[f.id]));
+    // Every filled field past the title, as icon + value. Naming each one
+    // on the card would be more label than data; the type icon carries
+    // enough to read the row at a glance.
+    const filledFields = database!.fields
+      .slice(1)
+      .map((f) => ({ field: f, shown: displayValue(f, item.values[f.id]) }))
+      .filter((entry) => entry.shown !== '');
     return (
       <View key={item.id} style={[styles.row, { backgroundColor: background }]}>
         <Pressable style={styles.rowTap} onPress={() => (isSelectMode ? toggleSelected(item.id) : openEditRow(item))}>
@@ -439,10 +445,17 @@ export default function CustomDatabaseScreen({}: Props) {
             <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
               {titleOf(item)}
             </Text>
-            {subtitleFields.length > 0 && (
-              <Text style={[styles.rowSubtitle, { color: textMuted }]} numberOfLines={1}>
-                {subtitleFields.map((f) => displayValue(f, item.values[f.id])).join(' · ')}
-              </Text>
+            {filledFields.length > 0 && (
+              <View style={styles.rowFieldChips}>
+                {filledFields.map(({ field, shown }) => (
+                  <View key={field.id} style={styles.rowFieldChip}>
+                    <Ionicons name={FIELD_TYPE_ICON[field.type]} size={11} color={textMuted} />
+                    <Text style={[styles.rowFieldChipValue, { color: textMuted }]} numberOfLines={1}>
+                      {shown}
+                    </Text>
+                  </View>
+                ))}
+              </View>
             )}
             <View style={styles.rowMeta}>
               <TagChips tags={tags.filter((t) => (item.tagIds ?? []).includes(t.id))} onPress={() => openEditRow(item)} glass />
@@ -1252,8 +1265,21 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  rowSubtitle: {
+  rowFieldChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 2,
+  },
+  rowFieldChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    maxWidth: '100%',
+  },
+  rowFieldChipValue: {
     fontSize: 12,
+    flexShrink: 1,
   },
   rowMeta: {
     flexDirection: 'row',
