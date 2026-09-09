@@ -196,9 +196,9 @@ export default function DocumentCard({
 
   const thumbNode = imageUri ? (
     <Image source={{ uri: imageUri }} style={isGrid ? styles.thumbGrid : styles.thumb} resizeMode="cover" />
-  ) : noImage ? null : (
-    <View style={[isGrid ? styles.thumbGrid : styles.thumb, styles.thumbPlaceholder]}>
-      <Ionicons name="document-text-outline" size={isGrid ? 26 : 22} color="#D1D5DB" />
+  ) : noImage ? null : ( // list layout only past this point - a grid card with no image is null, not a placeholder
+    <View style={[styles.thumb, styles.thumbPlaceholder]}>
+      <Ionicons name="document-text-outline" size={22} color="#D1D5DB" />
     </View>
   );
 
@@ -227,16 +227,26 @@ export default function DocumentCard({
     return (
       <View style={[styles.gridCard, { backgroundColor: background }]}>
         <Pressable style={styles.gridTap} onPress={isSelectMode ? onToggleSelect : onPress}>
+          {/* Bleeds flush to the card's own top/left/right edges - no
+              padding, no border-radius of its own. The card's overflow:
+              'hidden' + borderRadius clips its top corners to match; a
+              bottom border is the only boundary it gets (see thumbGrid),
+              rather than a frame on all four sides. Absent entirely (not
+              just empty space) when there's no image at all - see
+              DocumentCard's own noImage handling. */}
           {thumbNode}
-          {titleNode}
-          {previewBody}
-          {/* marginTop: 'auto' on a flex-column child pins it to the
-              bottom regardless of how much (or little) is above it -
-              title/preview/thumb group at the top, the date always
-              anchors the card's own bottom edge. */}
-          <Text style={[styles.dateCompact, styles.dateCompactPinned, { color: textMuted }]}>
-            {formatUpdatedAt(updatedAt)}
-          </Text>
+          <View style={styles.gridContent}>
+            {titleNode}
+            {previewBody}
+            {/* marginTop: 'auto' on a flex-column child pins it to the
+                bottom regardless of how much (or little) is above it -
+                title/preview group at the top, the date always anchors
+                this content block's own bottom edge (which, with no
+                thumbnail above it, is the whole card's bottom edge). */}
+            <Text style={[styles.dateCompact, styles.dateCompactPinned, { color: textMuted }]}>
+              {formatUpdatedAt(updatedAt)}
+            </Text>
+          </View>
         </Pressable>
         {isSelectMode && (
           // Purely decorative overlay - pointerEvents="none" so it doesn't
@@ -382,7 +392,9 @@ const styles = StyleSheet.create({
     width: '48%',
     height: GRID_CARD_HEIGHT,
     marginBottom: 10,
-    padding: 10,
+    // No padding here - the thumbnail (when there is one) needs to reach
+    // all four... well, three of this card's own edges. Text content gets
+    // its own padding one level in (see gridContent).
     borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(176,176,176,0.5)',
@@ -396,19 +408,29 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 4,
   },
-  // flex: 1 (fills the card's own fixed height) is what makes the date's
-  // marginTop: 'auto' below mean anything - without a bounded flex parent
-  // to push against, 'auto' has no extra space to consume.
+  // flex: 1 fills the card's own fixed height. No padding/gap of its own -
+  // the thumbnail (a direct child, when there is one) needs zero space
+  // around it; gridContent below carries the padding everything else gets.
   gridTap: {
     flex: 1,
-    gap: 4,
   },
   thumbGrid: {
     width: '100%',
     height: GRID_THUMB_HEIGHT,
-    borderRadius: 10,
     backgroundColor: '#F3F4F6',
-    marginBottom: 4,
+    // The only boundary this gets - no border-radius (the card's own
+    // overflow: 'hidden' + borderRadius already clips the top corners to
+    // match) and no margin (it sits flush against gridContent below).
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.12)',
+  },
+  // Everything that isn't the thumbnail - flex: 1 so it fills whatever
+  // height the thumbnail (if present) didn't take, which is what makes
+  // the date's marginTop: 'auto' below mean anything in either case.
+  gridContent: {
+    flex: 1,
+    padding: 10,
+    gap: 4,
   },
   titleCompact: {
     fontSize: 13,
