@@ -6,15 +6,57 @@ import { FONT_REGULAR, FONT_BOLD } from '../utils/fonts';
 
 const THUMB_SIZE = 72;
 const GRID_THUMB_HEIGHT = 96;
-// How many lines of text an image-less grid card shows instead of the
-// thumbnail it doesn't have - well past the normal 2, since it's filling
-// space a thumbnail would otherwise have taken.
-const EXPANDED_TEXT_LINES = 8;
 // Every grid card is exactly this tall, image or not - 20% past what a
 // thumb + title + couple lines + date used to measure out to (~190).
 // Fixed rather than a minimum: uniform card height is what keeps the grid
 // gap-free without needing a masonry/waterfall layout at all.
 const GRID_CARD_HEIGHT = 228;
+
+// The pixel budget below is what gridContent's own layout actually spends
+// (see its style) - kept as named constants, and lineHeight set EXPLICITLY
+// on titleCompact/dateCompact to match, rather than relying on each font's
+// own default metric, specifically so this arithmetic is trustworthy
+// instead of a guess dressed up as one.
+const GRID_CONTENT_PADDING = 10; // gridContent's own padding, top and bottom
+// The ONLY fixed gap in gridContent's own layout - titleCompact's own
+// marginBottom, between the title and the preview text below it. There's
+// deliberately no second one between the preview and the date: the date
+// sits on marginTop: 'auto' (see dateCompactPinned), which consumes
+// whatever space is left rather than adding a fixed amount on top of it -
+// counting a fixed gap THERE as well would double-count the same space
+// and undercount how many preview lines actually fit.
+const GRID_CONTENT_GAP = 4;
+const GRID_TITLE_MAX_LINES = 2;
+const GRID_TITLE_LINE_HEIGHT = 17;
+const GRID_DATE_LINE_HEIGHT = 13;
+const GRID_PREVIEW_LINE_HEIGHT = 15; // matches previewCompact.lineHeight below
+
+// gridContent (title + preview + date) always has to fit into whatever
+// height is LEFT after the reserved space passed in - GRID_CARD_HEIGHT
+// itself with no image, or GRID_CARD_HEIGHT minus the thumbnail (and its
+// own bottom border) with one. The title is counted at its own worst case
+// (2 full lines, not however many THIS title actually wraps to) so a
+// card's line count stays consistent from one document to the next
+// instead of shifting with how long a given title happens to be.
+function previewLinesFitting(reservedHeight: number): number {
+  const available =
+    GRID_CARD_HEIGHT -
+    reservedHeight -
+    GRID_CONTENT_PADDING * 2 -
+    GRID_TITLE_LINE_HEIGHT * GRID_TITLE_MAX_LINES -
+    GRID_CONTENT_GAP -
+    GRID_DATE_LINE_HEIGHT;
+  return Math.max(1, Math.floor(available / GRID_PREVIEW_LINE_HEIGHT));
+}
+
+// No image: gridContent fills the entire card, nothing reserved.
+const EXPANDED_TEXT_LINES = previewLinesFitting(0);
+// With one: reserves the thumbnail's own height plus its 1px bottom
+// border (see thumbGrid) - noticeably fewer lines fit, which is exactly
+// why this needed computing separately rather than reusing one constant
+// for both cases.
+const THUMB_BORDER_WIDTH = 1;
+const COMPACT_TEXT_LINES = previewLinesFitting(GRID_THUMB_HEIGHT + THUMB_BORDER_WIDTH);
 
 function HighlightedLine({
   match,
@@ -211,7 +253,7 @@ export default function DocumentCard({
       textColor={text}
       mutedColor={textMuted}
       compact={isGrid}
-      textLines={noImage ? EXPANDED_TEXT_LINES : 2}
+      textLines={isGrid ? (noImage ? EXPANDED_TEXT_LINES : COMPACT_TEXT_LINES) : 2}
     />
   );
 
@@ -421,19 +463,30 @@ const styles = StyleSheet.create({
     // The only boundary this gets - no border-radius (the card's own
     // overflow: 'hidden' + borderRadius already clips the top corners to
     // match) and no margin (it sits flush against gridContent below).
-    borderBottomWidth: 1,
+    // Width matches THUMB_BORDER_WIDTH above, which COMPACT_TEXT_LINES is
+    // computed against.
+    borderBottomWidth: THUMB_BORDER_WIDTH,
     borderBottomColor: 'rgba(0,0,0,0.12)',
   },
   // Everything that isn't the thumbnail - flex: 1 so it fills whatever
   // height the thumbnail (if present) didn't take, which is what makes
   // the date's marginTop: 'auto' below mean anything in either case.
+  // No gap here on purpose - see GRID_CONTENT_GAP's own comment on why the
+  // one fixed gap this layout has lives on titleCompact's own marginBottom
+  // instead, with nothing fixed between the preview and the date.
   gridContent: {
     flex: 1,
     padding: 10,
-    gap: 4,
   },
   titleCompact: {
     fontSize: 13,
+    // Explicit, matching GRID_TITLE_LINE_HEIGHT above - EXPANDED_TEXT_LINES
+    // is computed against this exact number, not whatever this font's own
+    // default metric happens to be.
+    lineHeight: 17,
+    // Matches GRID_CONTENT_GAP - the one fixed gap in this layout (see its
+    // own comment).
+    marginBottom: 4,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
   },
@@ -444,6 +497,13 @@ const styles = StyleSheet.create({
   },
   dateCompact: {
     fontSize: 10,
+    // Explicit, matching GRID_DATE_LINE_HEIGHT above - see titleCompact's
+    // identical reasoning. marginTop here is always overridden by
+    // dateCompactPinned's own 'auto' (this style is only ever used in the
+    // grid layout, combined with that one) - kept rather than removed
+    // since it's harmless and this is what a non-pinned instance would
+    // fall back to.
+    lineHeight: 13,
     marginTop: 2,
     fontFamily: FONT_REGULAR,
   },
