@@ -105,6 +105,9 @@ const AUTOSAVE_DELAY_MS = 600;
 // tap - a tap on a block now starts editing it (see BlockRow), so the two
 // can't be allowed to blur into each other.
 const DRAG_LONG_PRESS_MS = 500;
+// Shows the keyboard-synced scroll's numbers on screen - only while that
+// motion is being tuned on-device; flip off once it's settled.
+const KEYBOARD_SYNC_DEBUG = true;
 const DOWNLOAD_DIR_STORAGE_KEY = 'bearlessNotes.downloadDirUri';
 
 // Small fixed palette rather than a full color picker - enough variety for
@@ -2420,6 +2423,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const syncBaseOffset = useSharedValue(0);
   const syncShift = useSharedValue(0);
   const windowHeight = Dimensions.get('window').height;
+  // Temporary on-screen readout of the numbers behind the synced scroll,
+  // for checking on-device where the two motions come from.
+  const [keyboardDebug, setKeyboardDebug] = useState('');
   useEffect(() => {
     hasActiveBlockSV.value = focusedBlockId !== null;
   }, [focusedBlockId]);
@@ -2429,20 +2435,28 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         'worklet';
         syncShift.value = 0;
         if (e.progress !== 1) return; // closing - nothing to bring into view
-        // Grow the list's bottom padding NOW (it's keyed off keyboardHeight)
-        // - otherwise a block near the end can't scroll clear of the
-        // keyboard until keyboardDidShow lands, and the last stretch would
-        // happen after the fact again.
         runOnJS(setKeyboardHeight)(e.height);
-        if (!hasActiveBlockSV.value) return; // title: nothing to sync
+        if (!hasActiveBlockSV.value) {
+          if (KEYBOARD_SYNC_DEBUG) runOnJS(setKeyboardDebug)(`start kc=${e.height} no active block`);
+          return; // title: nothing to sync
+        }
         const row = measure(activeRowRef);
-        if (!row) return;
+        if (!row) {
+          if (KEYBOARD_SYNC_DEBUG) runOnJS(setKeyboardDebug)(`start kc=${e.height} measure=null`);
+          return;
+        }
         // Same target as scrollFocusedBlockIntoView: row bottom just above
         // the keyboard, with the toolbar (which the keyboard brings up
         // with it) taken off the visible area too.
         const visibleBottom = windowHeight - e.height - EDITOR_TOOLBAR_HEIGHT;
         syncBaseOffset.value = scrollOffsetSV.value;
         syncShift.value = Math.max(0, row.pageY + row.height - visibleBottom + 24);
+        if (KEYBOARD_SYNC_DEBUG) {
+          runOnJS(setKeyboardDebug)(
+            `start kc=${e.height} win=${windowHeight} rowBottom=${Math.round(row.pageY + row.height)} ` +
+              `base=${Math.round(syncBaseOffset.value)} shift=${Math.round(syncShift.value)}`
+          );
+        }
       },
       onMove: (e) => {
         'worklet';
@@ -2458,10 +2472,26 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           scrollTo(scrollViewRef, 0, syncBaseOffset.value + syncShift.value, false);
           syncShift.value = 0;
         }
+        if (KEYBOARD_SYNC_DEBUG) runOnJS(appendKeyboardDebug)(`end kc=${e.height} off=${Math.round(scrollOffsetSV.value)}`);
       },
     },
     [windowHeight]
   );
+  function appendKeyboardDebug(line: string) {
+    setKeyboardDebug((prev) => `${prev}\n${line}`);
+  }
+  // The room below the last block. Driven from the live keyboard height on
+  // the UI thread rather than from keyboardHeight state: the synced scroll
+  // above needs the content to already be tall enough on every frame of
+  // the keyboard's rise, and a padding that only grows once React has
+  // re-rendered lands too late for that - the list would hit its end
+  // mid-animation and the rest of the move would happen afterwards.
+  // Generous even with the keyboard down (160): the last line of a long
+  // document was ending up pinned against the bottom edge. Costs nothing
+  // on a short document, which doesn't scroll at all.
+  const bottomSpacerStyle = useAnimatedStyle(() => ({
+    height: Math.max(160, keyboardSV.value + 80 + EDITOR_TOOLBAR_HEIGHT),
+  }));
   // The pinned toolbar rides on the live height, so it comes up (and goes
   // down) glued to the keyboard's top edge rather than appearing at the
   // final position ahead of it.
@@ -2477,6 +2507,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       const visibleBottom =
         Dimensions.get('window').height - currentKeyboardHeight - toolbarHeightRef.current;
       const overflow = pageY + height - visibleBottom + 24;
+      if (KEYBOARD_SYNC_DEBUG) {
+        appendKeyboardDebug(
+          `post rn=${currentKeyboardHeight} tb=${toolbarHeightRef.current} inputBottom=${Math.round(pageY + height)} ` +
+            `off=${Math.round(scrollOffsetRef.current)} overflow=${Math.round(overflow)}`
+        );
+      }
       // A few px of slack: the pre-scroll at activation (see the focus
       // effect) and the post-keyboard pass land within a pixel or two of
       // each other, and a second scroll for that is a visible twitch.
@@ -3600,16 +3636,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // has to be able to scroll clear of it.
           // The pinned toolbar covers its own strip above the keyboard on
           // top of that, so it gets added whenever the bar is showing.
-          {
-            // Generous on purpose: the last line of a long document was
-            // ending up pinned against the bottom edge with nothing left to
-            // scroll, so it could never be brought up to a comfortable
-            // reading/typing position. Costs nothing on a short document,
-            // which doesn't scroll at all.
-            paddingBottom:
-              (keyboardHeight > 0 ? keyboardHeight + 80 : 160) +
-              (isToolbarVisible ? EDITOR_TOOLBAR_HEIGHT : 0),
-          },
+          // Bottom room is the animated spacer at the end of the list, not
+          // padding here - see bottomSpacerStyle.
         ]}
         keyboardShouldPersistTaps="handled"
         onScroll={(e) => {
@@ -3710,7 +3738,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             <Text style={[styles.addBlockLabel, paperColor && { color: paperColor.text }]}>Додати блок</Text>
           </Pressable>
         )}
+        <Animated.View style={bottomSpacerStyle} />
       </ScrollView>
+
+      {KEYBOARD_SYNC_DEBUG && keyboardDebug !== '' && (
+        <View style={styles.keyboardDebug} pointerEvents="none">
+          <Text style={styles.keyboardDebugText}>{keyboardDebug}</Text>
+        </View>
+      )}
 
       {selectedIds.size > 0 && (
         // Same floating dark-glass capsule as BulkActionBar (Files/Photos/
@@ -4059,6 +4094,20 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
+  },
+  keyboardDebug: {
+    position: 'absolute',
+    top: 100,
+    left: 8,
+    right: 8,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    borderRadius: 6,
+    padding: 6,
+  },
+  keyboardDebugText: {
+    color: '#fff',
+    fontSize: 11,
+    fontFamily: Platform.OS === 'android' ? 'monospace' : undefined,
   },
   // Embedded (CalendarScreen): no header and no title/tags block eating
   // the top (calendar days have neither), so the block list needs its own
