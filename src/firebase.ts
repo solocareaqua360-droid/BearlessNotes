@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { initializeFirestore } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache } from 'firebase/firestore';
 // `firebase/auth` doesn't forward the React Native build in this SDK version,
 // so the RN-only persistence helper has to come from the underlying package.
 // Its public .d.ts doesn't list this export even though the RN build ships it
@@ -20,7 +20,31 @@ const firebaseConfig = {
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
-export const db = initializeFirestore(app, {});
+// A cold app launch used to always wait on the network - the SDK's default
+// cache is memory-only, wiped on every restart, so even a document you
+// just had open has to be re-fetched before anything shows. persistentLocalCache
+// keeps it on disk instead, so a cold start can paint from what's already
+// there while Firestore syncs quietly in the background.
+//
+// This web SDK's persistent cache is built on IndexedDB, which doesn't
+// exist in React Native/Hermes - unverified here whether the RN build ships
+// a working substitute or would throw trying to open one. initializeFirestore
+// throws SYNCHRONOUSLY if the cache can't be set up, and this call is the
+// first thing the whole app does - a failure here with no fallback would
+// crash on every single launch, not just cost a redundant network round
+// trip. Falling back to the plain in-memory default (today's already-known-
+// working behavior) on any error keeps that from being a regression from
+// attempting this at all.
+function createFirestore() {
+  try {
+    return initializeFirestore(app, { localCache: persistentLocalCache() });
+  } catch (error) {
+    console.warn('Firestore persistent cache unavailable, falling back to memory-only:', error);
+    return initializeFirestore(app, {});
+  }
+}
+
+export const db = createFirestore();
 
 export const auth = initializeAuth(app, {
   persistence: getReactNativePersistence(AsyncStorage),
