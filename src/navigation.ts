@@ -11,13 +11,18 @@ export type RootStackParamList = {
   // BoardsStack last was - see App.tsx's BoardsStack for why that's
   // enough to satisfy "resume the last open board" with no extra code.
   Tabs: undefined | { screen: 'Календар'; params: { jumpToDate: string } } | { screen: 'Дошки' };
-  Editor: { documentId: string };
+  // autoFocusTitle: set only right after creating a brand-new document
+  // (DocumentsScreen's own addDoc) - focuses the title field and raises the
+  // keyboard the instant the editor opens, since a fresh "Без назви"
+  // document is always going to be named first. Absent (not just false) on
+  // every other navigation to this screen.
+  Editor: { documentId: string; autoFocusTitle?: boolean };
   // Same DocumentEditorScreen as `Editor`, registered a second time purely
   // for its App.tsx presentation style (slide-up modal, swipe-down to
   // dismiss) - used when opening a document FROM the board, so editing it
   // feels like staying on the board rather than navigating away to a
   // separate screen.
-  EditorModal: { documentId: string };
+  EditorModal: { documentId: string; autoFocusTitle?: boolean };
   Tasks: undefined;
   // Geo/video/other links all live in the one `links` mirror collection
   // (see DocumentEditorScreen's fetchLinkPreview) - this param is what

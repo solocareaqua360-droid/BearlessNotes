@@ -48,10 +48,22 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
-import { deleteDoc, deleteField, doc, getDoc, getDocFromCache, setDoc, updateDoc } from '@react-native-firebase/firestore';
+import {
+  collection,
+  deleteDoc,
+  deleteField,
+  doc,
+  getDoc,
+  getDocFromCache,
+  onSnapshot,
+  orderBy,
+  query,
+  setDoc,
+  updateDoc,
+} from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
-import { Block, BlockType, SketchElement, Tag, TableRow } from '../types';
+import { Block, BlockType, Group, SketchElement, Tag, TableRow } from '../types';
 import { RootStackParamList } from '../navigation';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import VideoPlayerModal from '../components/VideoPlayerModal';
@@ -62,7 +74,7 @@ import EditorToolbar, { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolba
 import { BlockAction } from '../components/blockActions';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { backupFileToDrive } from '../utils/googleDrive';
-import { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
+import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags } from '../hooks/useTags';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { linkDocId } from '../utils/linkId';
@@ -1678,6 +1690,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const extraFields = 'embedded' in props ? (props.extraFields ?? {}) : {};
   const onSelectModeChange = 'embedded' in props ? props.onSelectModeChange : undefined;
   const onSaveStatusChange = 'embedded' in props ? props.onSaveStatusChange : undefined;
+  // Only set right after DocumentsScreen creates a brand-new document - see
+  // navigation.ts's own comment on this param.
+  const autoFocusTitle = !embedded && !!props.route.params.autoFocusTitle;
   const [title, setTitle] = useState('');
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [tagIds, setTagIds] = useState<string[]>([]);
@@ -1694,6 +1709,24 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // identity across the whole app.
   const [paperColorEnabled, setPaperColorEnabled] = useState(false);
   const paperColor = paperColorEnabled ? colorForDocument(documentId) : null;
+  // Same `groups` collection DocumentsScreen's own group tabs/bulk-assign
+  // use (kind 'document') - this is just a second place to set the same
+  // field, so a document doesn't have to be re-selected from the list to
+  // be grouped while you're already writing it. Skipped in embedded mode
+  // (daily notes), same as cover/paper color above.
+  const [groupId, setGroupId] = useState<string | null>(null);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [groupPickerVisible, setGroupPickerVisible] = useState(false);
+  useEffect(() => {
+    if (embedded) return;
+    return onSnapshot(query(collection(db, 'groups'), orderBy('name')), (snapshot) => {
+      setGroups(
+        snapshot.docs
+          .map((d) => ({ id: d.id, ...(d.data() as { name: string; color: string; kind: string }) }))
+          .filter((g) => g.kind === 'document')
+      );
+    });
+  }, [embedded]);
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
   const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
   const [isLoaded, setIsLoaded] = useState(false);
@@ -1805,6 +1838,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       setTagIds(data?.tagIds ?? []);
       setCoverImageUri(data?.coverImageUri);
       setPaperColorEnabled(!!data?.paperColorEnabled);
+      setGroupId(data?.groupId ?? null);
       const loadedBlocks: Block[] = data?.blocks ?? [];
       setBlocks(loadedBlocks.length > 0 ? loadedBlocks : [newBlock()]);
       // Seed the "what does this document currently mirror" trackers from
@@ -1826,6 +1860,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         loadedBlocks.filter((b) => (b.type ?? 'paragraph') === 'file' && b.fileUri).map((b) => b.id)
       );
       knownStickerBlockIdsRef.current = new Set(loadedBlocks.filter((b) => b.isSticker).map((b) => b.id));
+      // The title TextInput remounts (its own `key` toggles editable/locked)
+      // exactly when isEditMode flips, which is what lets its `autoFocus`
+      // prop actually fire here instead of doing nothing (autoFocus only
+      // ever fires on a component's own first mount).
+      if (autoFocusTitle) setIsEditMode(true);
       setIsLoaded(true);
     })();
   }, [documentId]);
@@ -2110,6 +2149,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // having been set has to actually clear the field, not leave the
           // old uri sitting there under merge:true.
           coverImageUri: coverImageUri || deleteField(),
+          groupId: groupId ?? deleteField(),
           ...createdAtField,
           ...extraFields,
         },
@@ -2125,7 +2165,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, blocks, coverImageUri, paperColorEnabled, isLoaded]);
+  }, [title, blocks, coverImageUri, paperColorEnabled, groupId, isLoaded]);
 
   useEffect(() => {
     const id = focusIdRef.current;
@@ -3329,6 +3369,19 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             <Text style={styles.exportMenuRowLabel}>Колір паперу</Text>
             {paperColorEnabled && <Ionicons name="checkmark" size={18} color={ACCENT} />}
           </Pressable>
+          <Text style={styles.exportMenuLabel}>Організація</Text>
+          <Pressable
+            style={styles.exportMenuRow}
+            onPress={() => {
+              setExportMenuOpen(false);
+              setGroupPickerVisible(true);
+            }}
+          >
+            <Ionicons name="folder-outline" size={17} color="#111827" />
+            <Text style={styles.exportMenuRowLabel}>
+              {groups.find((g) => g.id === groupId)?.name ?? 'Додати в групу'}
+            </Text>
+          </Pressable>
           <Text style={styles.exportMenuLabel}>Експорт</Text>
           <Pressable style={styles.exportMenuRow} onPress={exportAsPdf}>
             <Ionicons name="document-text-outline" size={17} color="#111827" />
@@ -3379,6 +3432,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         {!embedded && (
         <TextInput
           key={isEditMode ? 'editable' : 'locked'}
+          autoFocus={autoFocusTitle}
           value={title}
           onChangeText={handleTitleChange}
           // The pinned toolbar acts on a block, not the title - hide it
@@ -3605,6 +3659,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           if (imageRenameId) renameImageBlock(imageRenameId, title);
           setImageRenameId(null);
         }}
+      />
+
+      <GroupPickerSheet
+        visible={groupPickerVisible}
+        kind="document"
+        groups={groups}
+        onPick={(id) => {
+          setGroupId(id);
+          setGroupPickerVisible(false);
+        }}
+        onClose={() => setGroupPickerVisible(false)}
       />
 
       {linkTitlePrompt && (

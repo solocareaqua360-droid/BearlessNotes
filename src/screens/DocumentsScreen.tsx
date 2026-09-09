@@ -259,7 +259,7 @@ export default function DocumentsScreen() {
         filterTags.map((tag) => attachTag(tag, 'document', newDoc.id, ITEMS_COLLECTION_BY_KIND.document))
       );
     }
-    navigation.navigate('Editor', { documentId: newDoc.id });
+    navigation.navigate('Editor', { documentId: newDoc.id, autoFocusTitle: true });
   }
 
   async function changeViewMode(mode: ViewMode) {

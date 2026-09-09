@@ -100,7 +100,7 @@ export default function TagItemsScreen({ route }: Props) {
     const now = Date.now();
     const newDoc = await addDoc(documentsCollection, { title: 'Без назви', createdAt: now, updatedAt: now, blocks: [] });
     await attachTag(tag, 'document', newDoc.id, 'documents');
-    navigation.navigate('Editor', { documentId: newDoc.id });
+    navigation.navigate('Editor', { documentId: newDoc.id, autoFocusTitle: true });
   }
 
   if (!tag) {
