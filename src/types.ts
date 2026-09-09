@@ -248,6 +248,11 @@ export interface BoardCard extends Omit<Block, 'type'> {
   // render. Absent means an empty/text-free/image-free document.
   documentPreviewText?: string;
   documentPreviewImageUri?: string;
+  // Set while the card sits in a kanban column (see BoardColumn) - the
+  // card's x/y are then owned by that column's own stacking rather than by
+  // wherever it was last dropped, and are recomputed whenever the column's
+  // contents change. Cleared by dragging the card out of every column.
+  columnId?: string;
   // 'document' cards only - toggled by tapping the card; persisted like
   // any other card field so a board reopens with the same cards expanded.
   // Pan-to-drag is disabled while expanded (see BoardScreen) rather than
@@ -267,11 +272,25 @@ export interface BoardConnection {
   toCardId: string;
 }
 
+// A kanban lane on the board. Cards dropped inside one stop floating
+// freely and stack down it in order (see BoardCard's columnId); dragging a
+// card back out releases it. Columns live on the same infinite canvas as
+// everything else, so `x`/`y` are plain world coordinates - set when the
+// column is created (each new one lands to the right of the last), not yet
+// draggable the way a card is.
+export interface BoardColumn {
+  id: string;
+  title: string;
+  x: number;
+  y: number;
+}
+
 export interface BoardItem {
   id: string;
   title: string;
   cards: BoardCard[];
   connections?: BoardConnection[];
+  columns?: BoardColumn[];
   createdAt: number;
   updatedAt: number;
 }

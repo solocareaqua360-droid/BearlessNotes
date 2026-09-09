@@ -20,7 +20,7 @@ import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-naviga
 import { doc, getDoc, getDocFromCache, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { BoardsStackParamList, RootStackParamList } from '../navigation';
-import { Block, BoardCard, BoardConnection } from '../types';
+import { Block, BoardCard, BoardColumn, BoardConnection } from '../types';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import RenamePrompt from '../components/RenamePrompt';
 import VideoPlayerModal from '../components/VideoPlayerModal';
@@ -42,11 +42,15 @@ const STICKY_COLORS = ['#FEF3C7', '#DBEAFE', '#DCFCE7', '#FCE7F3', '#EDE9FE', '#
 // pixel-exact.
 const APPROX_CARD_HEIGHT = 140;
 const SELECTION_COLOR = '#2563EB';
-// How close (in SCREEN pixels, converted to world units against the current
-// zoom so it feels the same at any scale) a dragged card's own top/bottom
-// edge has to come to another card's top/bottom before it snaps flush to
-// it. Only the vertical axis snaps - cards are free horizontally.
-const SNAP_THRESHOLD_PX = 10;
+// Kanban columns. A column is exactly wide enough for a default card plus
+// its own padding on both sides, so a card dropped in sits flush.
+const COLUMN_PADDING = 12;
+const COLUMN_WIDTH = DEFAULT_CARD_WIDTH + COLUMN_PADDING * 2;
+const COLUMN_HEADER_HEIGHT = 44;
+const COLUMN_CARD_GAP = 12;
+// A column with nothing in it still has to be a visible drop target.
+const COLUMN_MIN_HEIGHT = 220;
+const COLUMN_SPACING = 24;
 const CONNECTION_COLOR = '#8B5CF6';
 // Padding around a connection's own bounding box, so the curve's bulge and
 // the stroke width itself aren't clipped by the little Svg canvas each
@@ -139,6 +143,56 @@ function firstImageUri(blocks: Block[]): string | undefined {
   return blocks.find((b) => b.type === 'image' && b.imageUri)?.imageUri;
 }
 
+function columnSlotY(column: BoardColumn, index: number): number {
+  return column.y + COLUMN_HEADER_HEIGHT + index * (APPROX_CARD_HEIGHT + COLUMN_CARD_GAP);
+}
+
+function columnHeight(cardCount: number): number {
+  const filled = COLUMN_HEADER_HEIGHT + cardCount * (APPROX_CARD_HEIGHT + COLUMN_CARD_GAP) + COLUMN_PADDING;
+  return Math.max(COLUMN_MIN_HEIGHT, filled);
+}
+
+// A card belongs to whichever column its own centre point lands inside -
+// centre rather than top-left so a card is "in" the column it visually
+// sits in, not the one its corner happens to poke into.
+function columnAtPoint(columns: BoardColumn[], cards: BoardCard[], x: number, y: number): BoardColumn | undefined {
+  return columns.find((column) => {
+    const height = columnHeight(cards.filter((c) => c.columnId === column.id).length);
+    return x >= column.x && x <= column.x + COLUMN_WIDTH && y >= column.y && y <= column.y + height;
+  });
+}
+
+// A card in a column doesn't own its own position - the column stacks its
+// members top to bottom, in their current vertical order, so dropping one
+// higher than another genuinely reorders them. Cards outside every column
+// are left exactly where they were put.
+function reflowColumns(cards: BoardCard[], columns: BoardColumn[]): BoardCard[] {
+  const columnIds = new Set(columns.map((c) => c.id));
+  const slots = new Map<string, { x: number; y: number }>();
+  for (const column of columns) {
+    cards
+      .filter((c) => c.columnId === column.id)
+      .sort((a, b) => a.y - b.y)
+      .forEach((card, index) => {
+        slots.set(card.id, { x: column.x + COLUMN_PADDING, y: columnSlotY(column, index) });
+      });
+  }
+  return cards.map((card) => {
+    const slot = slots.get(card.id);
+    if (slot) return card.x === slot.x && card.y === slot.y ? card : { ...card, ...slot };
+    // Pointing at a column that's since been deleted releases the card. The
+    // key is dropped rather than set to undefined - Firestore rejects an
+    // undefined field value outright.
+    if (card.columnId && !columnIds.has(card.columnId)) return releaseFromColumn(card);
+    return card;
+  });
+}
+
+function releaseFromColumn(card: BoardCard): BoardCard {
+  const { columnId: _columnId, ...rest } = card;
+  return rest;
+}
+
 // Where a connection meets each of its two cards: the middle of whichever
 // vertical side faces the other card, so the line never has to cross back
 // over a card to reach it. Recomputed on every render rather than stored,
@@ -213,21 +267,11 @@ type DraggableCardProps = {
   isGroupDrag: boolean;
   groupOffsetX: SharedValue<number>;
   groupOffsetY: SharedValue<number>;
-  // Every OTHER card's top and bottom edge, in world coordinates - what
-  // this card's own edges snap flush to while being dragged. A plain array
-  // captured by the gesture's worklet: the other cards can't move during
-  // this card's drag, so a snapshot taken at render time is always current.
-  snapEdges: number[];
   // False while the canvas is in 'connect' mode: a drag starting on a card
   // has to reach the canvas's own connect gesture to draw a link, and this
   // card's Pan would otherwise win that touch (it blocksExternalGesture)
   // and just move the card instead.
   dragEnabled: boolean;
-  // Written by whichever card is currently snapped, read by the single
-  // guide line BoardScreen renders - so the snap is visible rather than
-  // feeling like the card jumped on its own.
-  snapGuideY: SharedValue<number>;
-  snapGuideVisible: SharedValue<boolean>;
   onDragStart: (id: string) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
   onGroupDragEnd: (dx: number, dy: number) => void;
@@ -268,10 +312,7 @@ function DraggableCard({
   isGroupDrag,
   groupOffsetX,
   groupOffsetY,
-  snapEdges,
   dragEnabled,
-  snapGuideY,
-  snapGuideVisible,
   onDragStart,
   onDragEnd,
   onGroupDragEnd,
@@ -280,12 +321,6 @@ function DraggableCard({
 }: DraggableCardProps) {
   const posX = useSharedValue(card.x);
   const posY = useSharedValue(card.y);
-  // The finger's own unsnapped position. posY is derived from this rather
-  // than accumulating the drag directly, so a snapped card releases again
-  // as soon as the finger moves past the threshold - accumulating into a
-  // snapped posY would re-snap it to the same edge every frame and the
-  // card could never be pulled free.
-  const rawY = useSharedValue(card.y);
   // The last position this card itself put into the parent's state. Used
   // only to tell "our own drag echoing back" (ignore) apart from a real
   // external move (adopt).
@@ -298,7 +333,6 @@ function DraggableCard({
     reportedY.value = card.y;
     posX.value = card.x;
     posY.value = card.y;
-    rawY.value = card.y;
     // A group drag this card took part in (as a non-dragged, merely
     // selected sibling) only ever moves it via groupOffsetX/Y, never posX/
     // posY directly - reset that shared offset back to 0 in the same
@@ -322,7 +356,6 @@ function DraggableCard({
     .enabled(dragEnabled)
     .blocksExternalGesture(canvasPanGesture)
     .onStart(() => {
-      rawY.value = posY.value;
       runOnJS(onDragStart)(card.id);
     })
     // onChange (per-event delta) rather than onUpdate (cumulative
@@ -332,59 +365,19 @@ function DraggableCard({
       if (isGroupDrag) {
         groupOffsetX.value += e.changeX / canvasScale.value;
         groupOffsetY.value += e.changeY / canvasScale.value;
-        return;
+      } else {
+        posX.value += e.changeX / canvasScale.value;
+        posY.value += e.changeY / canvasScale.value;
       }
-      posX.value += e.changeX / canvasScale.value;
-      rawY.value += e.changeY / canvasScale.value;
-
-      // Nearest edge wins, and only one snap is ever applied - checking
-      // this card's top and bottom separately against every other card's
-      // top and bottom covers all four alignments (tops flush, bottoms
-      // flush, stacked above, stacked below).
-      const threshold = SNAP_THRESHOLD_PX / canvasScale.value;
-      let bestShift = 0;
-      let bestEdge = 0;
-      let bestDistance = threshold;
-      let snapped = false;
-      for (let i = 0; i < snapEdges.length; i += 1) {
-        const edge = snapEdges[i];
-        const fromTop = edge - rawY.value;
-        if (Math.abs(fromTop) < bestDistance) {
-          bestDistance = Math.abs(fromTop);
-          bestShift = fromTop;
-          bestEdge = edge;
-          snapped = true;
-        }
-        const fromBottom = edge - (rawY.value + APPROX_CARD_HEIGHT);
-        if (Math.abs(fromBottom) < bestDistance) {
-          bestDistance = Math.abs(fromBottom);
-          bestShift = fromBottom;
-          bestEdge = edge;
-          snapped = true;
-        }
-      }
-      posY.value = rawY.value + bestShift;
-      snapGuideVisible.value = snapped;
-      // The guide sits on the edge that was matched, which after the shift
-      // is exactly where this card's own matching edge now is.
-      if (snapped) snapGuideY.value = bestEdge;
     })
     .onEnd(() => {
-      snapGuideVisible.value = false;
       if (isGroupDrag) {
         runOnJS(onGroupDragEnd)(groupOffsetX.value, groupOffsetY.value);
       } else {
-        rawY.value = posY.value;
         reportedX.value = posX.value;
         reportedY.value = posY.value;
         runOnJS(onDragEnd)(card.id, posX.value, posY.value);
       }
-    })
-    // onEnd doesn't run when a gesture is cancelled rather than released
-    // (another handler takes over, the finger leaves the surface) - without
-    // this the guide line would stay stranded across the board.
-    .onFinalize(() => {
-      snapGuideVisible.value = false;
     });
 
   const tapGesture = Gesture.Tap().onEnd(() => {
@@ -528,6 +521,8 @@ export default function BoardScreen() {
   const [canvasTool, setCanvasTool] = useState<'move' | 'select' | 'connect'>('move');
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const [connections, setConnections] = useState<BoardConnection[]>([]);
+  const [columns, setColumns] = useState<BoardColumn[]>([]);
+  const [renamingColumn, setRenamingColumn] = useState<BoardColumn | null>(null);
 
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
@@ -551,10 +546,6 @@ export default function BoardScreen() {
   const marqueeCurrentX = useSharedValue(0);
   const marqueeCurrentY = useSharedValue(0);
   const marqueeVisible = useSharedValue(false);
-  // The horizontal guide drawn at whichever edge a dragged card is
-  // currently snapped to (see DraggableCard's own snap logic).
-  const snapGuideY = useSharedValue(0);
-  const snapGuideVisible = useSharedValue(false);
   // The connect-drag's rubber-band line, in world coordinates like
   // everything else inside the transformed `world` container.
   const connectStartX = useSharedValue(0);
@@ -585,6 +576,7 @@ export default function BoardScreen() {
       setTitle(data?.title ?? 'Без назви');
       setCards(data?.cards ?? []);
       setConnections(data?.connections ?? []);
+      setColumns(data?.columns ?? []);
       setIsLoaded(true);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -594,13 +586,17 @@ export default function BoardScreen() {
     if (!isLoaded) return;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
-      setDoc(doc(db, 'boards', boardId), { title, cards, connections, updatedAt: Date.now() }, { merge: true });
+      setDoc(
+        doc(db, 'boards', boardId),
+        { title, cards, connections, columns, updatedAt: Date.now() },
+        { merge: true }
+      );
     }, AUTOSAVE_DELAY_MS);
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, cards, connections, isLoaded]);
+  }, [title, cards, connections, columns, isLoaded]);
 
   const pinchGesture = Gesture.Pinch()
     .onUpdate((e) => {
@@ -762,11 +758,6 @@ export default function BoardScreen() {
     transform: [{ translateX: translateX.value }, { translateY: translateY.value }, { scale: scale.value }],
   }));
 
-  const snapGuideAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: snapGuideVisible.value ? 1 : 0,
-    transform: [{ translateY: snapGuideY.value }],
-  }));
-
   function addTextCard() {
     setAddSheetVisible(false);
     const card = newTextCard(cards.length);
@@ -848,15 +839,68 @@ export default function BoardScreen() {
   }
 
   function commitCardDrag(id: string, x: number, y: number) {
-    setCards((prev) => prev.map((c) => (c.id === id ? { ...c, x, y } : c)));
+    setCards((prev) => {
+      const dropped = prev.map((c) => (c.id === id ? { ...c, x, y } : c));
+      const card = dropped.find((c) => c.id === id);
+      if (!card) return dropped;
+      // Hit-tested against the OTHER cards' membership, so a card being
+      // dragged out of a column doesn't count itself towards that column's
+      // height while deciding whether it landed back inside it.
+      const others = dropped.filter((c) => c.id !== id);
+      const target = columnAtPoint(columns, others, x + card.width / 2, y + APPROX_CARD_HEIGHT / 2);
+      const assigned = dropped.map((c) => {
+        if (c.id !== id) return c;
+        if (target) return { ...c, columnId: target.id };
+        return c.columnId ? releaseFromColumn(c) : c;
+      });
+      return reflowColumns(assigned, columns);
+    });
     setDraggedCardId(null);
   }
 
   // Dragging any one selected card moves the whole selection - see
   // DraggableCard's isGroupDrag branch, which accumulates the shared delta
-  // instead of moving just itself.
+  // instead of moving just itself. A group drag deliberately doesn't do any
+  // column assignment: several cards landing across different columns at
+  // once has no obvious right answer, and reflow would yank them apart
+  // mid-gesture.
   function commitGroupDrag(dx: number, dy: number) {
     setCards((prev) => prev.map((c) => (selectedCardIds.has(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
+    setDraggedCardId(null);
+  }
+
+  function addColumn() {
+    setColumns((prev) => {
+      const x =
+        prev.length === 0
+          ? WORLD_CENTER - COLUMN_WIDTH / 2
+          : Math.max(...prev.map((c) => c.x)) + COLUMN_WIDTH + COLUMN_SPACING;
+      const y = prev.length === 0 ? WORLD_CENTER - COLUMN_MIN_HEIGHT / 2 : prev[0].y;
+      return [...prev, { id: generateId(), title: `Стовпчик ${prev.length + 1}`, x, y }];
+    });
+    setAddSheetVisible(false);
+  }
+
+  function renameColumn(column: BoardColumn, title: string) {
+    setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, title: title.trim() || c.title } : c)));
+    setRenamingColumn(null);
+  }
+
+  function confirmDeleteColumn(column: BoardColumn) {
+    Alert.alert('Видалити стовпчик?', 'Картки з нього залишаться на дошці.', [
+      { text: 'Скасувати', style: 'cancel' },
+      {
+        text: 'Видалити',
+        style: 'destructive',
+        onPress: () => {
+          const remaining = columns.filter((c) => c.id !== column.id);
+          setColumns(remaining);
+          // Cards keep the position the column had them in; reflow only
+          // strips the now-dangling columnId.
+          setCards((prev) => reflowColumns(prev, remaining));
+        },
+      },
+    ]);
   }
 
   // Long-pressing a card selects just that one, which surfaces the same
@@ -875,7 +919,9 @@ export default function BoardScreen() {
         text: 'Видалити',
         style: 'destructive',
         onPress: () => {
-          setCards((prev) => prev.filter((c) => !selectedCardIds.has(c.id)));
+          // Reflowed after the removal so a column closes the gap its
+          // deleted card left behind.
+          setCards((prev) => reflowColumns(prev.filter((c) => !selectedCardIds.has(c.id)), columns));
           // A connection to a card that no longer exists would render as a
           // line into empty space, so they go with it.
           setConnections((prev) =>
@@ -931,28 +977,53 @@ export default function BoardScreen() {
       : undefined;
 
   const cardById = new Map(cards.map((c) => [c.id, c]));
+  // A dragged card's live position lives in its own shared values, which
+  // the connection lines (drawn from React state) can't see - so rather
+  // than leave a line anchored to where the card WAS for the length of the
+  // drag, its links are hidden outright and come back correctly shaped
+  // once the drop commits the new position. A group drag moves every
+  // selected card, so all of their links go too.
+  const movingCardIds = !draggedCardId
+    ? null
+    : selectedCardIds.has(draggedCardId) && selectedCardIds.size > 1
+      ? selectedCardIds
+      : new Set([draggedCardId]);
   const selectionHasConnections = connections.some(
     (c) => selectedCardIds.has(c.fromCardId) || selectedCardIds.has(c.toCardId)
   );
-
-  // Every card's top and bottom edge except the given card's own - what it
-  // snaps against while dragged. Recomputed per card per render, which is
-  // fine at board-sized card counts and keeps the edges honest without any
-  // cache to invalidate.
-  function snapEdgesExcluding(cardId: string): number[] {
-    const edges: number[] = [];
-    for (const c of cards) {
-      if (c.id === cardId) continue;
-      edges.push(c.y, c.y + APPROX_CARD_HEIGHT);
-    }
-    return edges;
-  }
 
   return (
     <View style={styles.container}>
       <GestureDetector gesture={canvasGesture}>
         <View style={[StyleSheet.absoluteFill, styles.canvasSurface]}>
           <Animated.View style={[styles.world, worldAnimatedStyle]}>
+            {/* Underneath everything - a column is a backdrop its cards sit
+                on. box-none so only the header takes touches and the rest
+                of the lane still pans the canvas. */}
+            {columns.map((column) => {
+              const count = cards.filter((c) => c.columnId === column.id).length;
+              return (
+                <View
+                  key={column.id}
+                  style={[styles.column, { left: column.x, top: column.y, height: columnHeight(count) }]}
+                  pointerEvents="box-none"
+                >
+                  <Pressable
+                    style={styles.columnHeader}
+                    onPress={() => setRenamingColumn(column)}
+                    onLongPress={() => confirmDeleteColumn(column)}
+                  >
+                    <View style={styles.columnTitleWrap}>
+                      <Text style={styles.columnTitle} numberOfLines={1}>
+                        {column.title}
+                      </Text>
+                    </View>
+                    <Text style={styles.columnCount}>{count}</Text>
+                  </Pressable>
+                </View>
+              );
+            })}
+
             {/* Before the cards, so a link passes UNDER the two cards it
                 joins rather than across their faces. Each connection gets
                 its own small Svg sized to that pair's bounding box - one
@@ -962,6 +1033,7 @@ export default function BoardScreen() {
               const from = cardById.get(connection.fromCardId);
               const to = cardById.get(connection.toCardId);
               if (!from || !to) return null;
+              if (movingCardIds && (movingCardIds.has(from.id) || movingCardIds.has(to.id))) return null;
               const { x1, y1, x2, y2 } = connectionEndpoints(from, to);
               const left = Math.min(x1, x2) - CONNECTION_PADDING;
               const top = Math.min(y1, y2) - CONNECTION_PADDING;
@@ -998,10 +1070,7 @@ export default function BoardScreen() {
                   isGroupDrag={isSelected && selectedCardIds.size > 1}
                   groupOffsetX={groupOffsetX}
                   groupOffsetY={groupOffsetY}
-                  snapEdges={snapEdgesExcluding(card.id)}
                   dragEnabled={canvasTool !== 'connect'}
-                  snapGuideY={snapGuideY}
-                  snapGuideVisible={snapGuideVisible}
                   onDragStart={handleDragStart}
                   onDragEnd={commitCardDrag}
                   onGroupDragEnd={commitGroupDrag}
@@ -1012,9 +1081,8 @@ export default function BoardScreen() {
             })}
 
             {/* The rubber-band line a connect-drag trails behind the
-                finger, and the alignment guide a snapped card sits on -
-                both live (shared values), so both are animated props
-                rather than plain React state. */}
+                finger - live (shared values), so an animated style rather
+                than plain React state. */}
             <ConnectDraftLine
               startX={connectStartX}
               startY={connectStartY}
@@ -1022,7 +1090,6 @@ export default function BoardScreen() {
               endY={connectEndY}
               visible={connectVisible}
             />
-            <Animated.View style={[styles.snapGuide, snapGuideAnimatedStyle]} pointerEvents="none" />
             <Animated.View style={[styles.marquee, marqueeAnimatedStyle]} pointerEvents="none" />
           </Animated.View>
         </View>
@@ -1103,6 +1170,10 @@ export default function BoardScreen() {
               <Ionicons name="search-outline" size={18} color="#111827" />
               <Text style={styles.sheetRowLabel}>З бази даних</Text>
             </Pressable>
+            <Pressable style={styles.sheetRow} onPress={addColumn}>
+              <MaterialCommunityIcons name="view-column-outline" size={18} color="#111827" />
+              <Text style={styles.sheetRowLabel}>Стовпчик</Text>
+            </Pressable>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1126,6 +1197,16 @@ export default function BoardScreen() {
         onSave={(value) => {
           setRenamingTitle(false);
           setTitle(value);
+        }}
+      />
+
+      <RenamePrompt
+        visible={renamingColumn !== null}
+        title="Назва стовпчика"
+        initialValue={renamingColumn?.title ?? ''}
+        onCancel={() => setRenamingColumn(null)}
+        onSave={(value) => {
+          if (renamingColumn) renameColumn(renamingColumn, value);
         }}
       />
 
@@ -1314,15 +1395,33 @@ const styles = StyleSheet.create({
     height: 2,
     backgroundColor: CONNECTION_COLOR,
   },
-  // Spans the whole world's width so the alignment it marks is readable
-  // however far apart the two cards are horizontally.
-  snapGuide: {
+  column: {
     position: 'absolute',
-    left: 0,
-    top: 0,
-    width: WORLD_SIZE,
-    height: 1,
-    backgroundColor: SELECTION_COLOR,
+    width: COLUMN_WIDTH,
+    borderRadius: 14,
+    backgroundColor: 'rgba(17,24,39,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.12)',
+  },
+  columnHeader: {
+    height: COLUMN_HEADER_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingHorizontal: COLUMN_PADDING,
+  },
+  columnTitleWrap: {
+    flex: 1,
+  },
+  columnTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#374151',
+  },
+  columnCount: {
+    fontSize: 11,
+    color: '#9CA3AF',
   },
   toolButton: {
     width: 36,
