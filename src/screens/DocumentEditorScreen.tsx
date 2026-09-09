@@ -42,8 +42,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // ScrollView's own scroll recognition and only the icon column can scroll.
 import { Gesture, GestureDetector, GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 import Animated, {
-  AnimatedRef,
-  measure,
   runOnJS,
   scrollTo,
   useAnimatedRef,
@@ -1306,7 +1304,6 @@ type SortableBlockRowProps = {
   inputRef: (ref: TextInput | null) => void;
   // Attached to the one active row only, so the screen's keyboard handler
   // can measure it on the UI thread the instant the keyboard starts rising.
-  activeRowRef: AnimatedRef<Animated.View>;
   paperColor: ReturnType<typeof colorForDocument> | null;
 };
 
@@ -1343,7 +1340,6 @@ function SortableBlockRow({
   onOpenLinkDatabase,
   onOpenSketch,
   inputRef,
-  activeRowRef,
   paperColor,
 }: SortableBlockRowProps) {
   // This gesture's whole job is JS-side (finding the nearest gap, updating
@@ -1392,7 +1388,7 @@ function SortableBlockRow({
   return (
     <View onLayout={onLayout}>
       <GestureDetector gesture={gesture}>
-        <Animated.View ref={isActive ? activeRowRef : undefined} style={compressStyle}>
+        <Animated.View style={compressStyle}>
           <BlockRow
             item={item}
             isSelected={isSelected}
@@ -1453,7 +1449,6 @@ type BlockListProps = {
   onOpenLinkDatabase: (block: Block) => void;
   onOpenSketch: (id: string) => void;
   onInputRef: (id: string, ref: TextInput | null) => void;
-  activeRowRef: AnimatedRef<Animated.View>;
   paperColor: ReturnType<typeof colorForDocument> | null;
 };
 
@@ -1483,7 +1478,6 @@ function BlockList({
   onOpenLinkDatabase,
   onOpenSketch,
   onInputRef,
-  activeRowRef,
   paperColor,
 }: BlockListProps) {
   const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
@@ -1700,7 +1694,6 @@ function BlockList({
           onOpenLinkDatabase={onOpenLinkDatabase}
           onOpenSketch={onOpenSketch}
           inputRef={(ref) => onInputRef(item.id, ref)}
-          activeRowRef={activeRowRef}
           paperColor={paperColor}
         />
         );
@@ -1849,7 +1842,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // Same offset, readable from a worklet - the synced scroll needs to know
   // where the list was the moment the keyboard started moving.
   const scrollOffsetSV = useSharedValue(0);
-  const activeRowRef = useAnimatedRef<Animated.View>();
   const undoStackRef = useRef<{ title: string; blocks: Block[] }[]>([]);
   const redoStackRef = useRef<{ title: string; blocks: Block[] }[]>([]);
   const isTypingBurstRef = useRef(false);
@@ -2250,6 +2242,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const input = inputRefs.current[id];
     if (!input) return;
     input.focus();
+    measureActiveInputForSync(input);
     if (KEYBOARD_SYNC_DEBUG) {
       beginKeyboardTrace();
       setKeyboardDebug('');
@@ -2425,16 +2418,31 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // keyboard then move as one motion, the way iOS does it. The old pass
   // stays as a safety net (it no-ops within a few px of the target).
   const keyboardSV = useSharedValue(0); // live keyboard height, mid-animation
-  const hasActiveBlockSV = useSharedValue(false);
   const syncBaseOffset = useSharedValue(0);
   const syncShift = useSharedValue(0);
+  // The active input's bottom edge (screen coords) and the list offset at
+  // the moment it was measured - taken with the plain RN measure right
+  // after activation (see the focus effect), which is the same call the
+  // safety-net pass uses, so both agree on the target. -1 = no valid
+  // measurement (title active, or the measure hasn't come back yet).
+  // Reanimated's own UI-thread measure() was tried first and resolved to
+  // the wrong view here (a 2500px-tall ancestor), so it isn't used.
+  const activeInputBottomSV = useSharedValue(-1);
+  const activeInputOffsetSV = useSharedValue(0);
   const windowHeight = Dimensions.get('window').height;
   // Temporary on-screen readout of the numbers behind the synced scroll,
   // for checking on-device where the two motions come from.
   const [keyboardDebug, setKeyboardDebug] = useState('');
   useEffect(() => {
-    hasActiveBlockSV.value = focusedBlockId !== null;
+    if (focusedBlockId === null) activeInputBottomSV.value = -1;
   }, [focusedBlockId]);
+  function measureActiveInputForSync(input: TextInput) {
+    activeInputBottomSV.value = -1;
+    input.measure((_x, _y, _width, height, _pageX, pageY) => {
+      activeInputBottomSV.value = pageY + height;
+      activeInputOffsetSV.value = scrollOffsetRef.current;
+    });
+  }
   useKeyboardHandler(
     {
       onStart: (e) => {
@@ -2446,25 +2454,23 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           runOnJS(logActiveInputJS)('startJS');
         }
         runOnJS(setKeyboardHeight)(e.height);
-        if (!hasActiveBlockSV.value) {
-          if (KEYBOARD_SYNC_DEBUG) runOnJS(appendKeyboardDebug)(`start kc=${Math.round(e.height)} no active block`);
-          return; // title: nothing to sync
+        if (activeInputBottomSV.value < 0) {
+          if (KEYBOARD_SYNC_DEBUG) runOnJS(appendKeyboardDebug)(`start kc=${Math.round(e.height)} no measurement`);
+          return; // title, or nothing measured yet: the safety net handles it
         }
-        const row = measure(activeRowRef);
-        if (!row) {
-          if (KEYBOARD_SYNC_DEBUG) runOnJS(appendKeyboardDebug)(`start kc=${Math.round(e.height)} measure=null`);
-          return;
-        }
-        // Same target as scrollFocusedBlockIntoView: row bottom just above
-        // the keyboard, with the toolbar (which the keyboard brings up
-        // with it) taken off the visible area too.
+        // Where the input's bottom is NOW: the activation-time measure,
+        // corrected for any scrolling since.
+        const inputBottom = activeInputBottomSV.value - (scrollOffsetSV.value - activeInputOffsetSV.value);
+        // Same target as scrollFocusedBlockIntoView: input bottom just
+        // above the keyboard, with the toolbar (which the keyboard brings
+        // up with it) taken off the visible area too.
         const visibleBottom = windowHeight - e.height - EDITOR_TOOLBAR_HEIGHT;
         syncBaseOffset.value = scrollOffsetSV.value;
-        syncShift.value = Math.max(0, row.pageY + row.height - visibleBottom + 24);
+        syncShift.value = Math.max(0, inputBottom - visibleBottom + 24);
         if (KEYBOARD_SYNC_DEBUG) {
           runOnJS(appendKeyboardDebug)(
-            `start kc=${Math.round(e.height)} win=${Math.round(windowHeight)} rowY=${Math.round(row.pageY)} rowH=${Math.round(row.height)} ` +
-              `y=${Math.round(row.y)} base=${Math.round(syncBaseOffset.value)} shift=${Math.round(syncShift.value)}`
+            `start kc=${Math.round(e.height)} win=${Math.round(windowHeight)} inputBottom=${Math.round(inputBottom)} ` +
+              `base=${Math.round(syncBaseOffset.value)} shift=${Math.round(syncShift.value)}`
           );
         }
       },
@@ -3686,6 +3692,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // padding here - see bottomSpacerStyle.
         ]}
         keyboardShouldPersistTaps="handled"
+        // Android's ScrollView scrolls on its own to "reveal" an EditText
+        // that gains focus (requestChildFocus / requestChildRectangleOnScreen).
+        // Here that fired for the freshly mounted, not-yet-laid-out input
+        // of a tapped block - it computed the reveal against an empty rect
+        // at the top and flung the whole list back to offset 0, then
+        // smooth-scrolled down to the input again, all before the keyboard
+        // had even started rising. Traced on-device: that was the first
+        // of the two jumps on every tap. This screen positions the active
+        // block itself (keyboard-synced scroll + safety net above), so the
+        // built-in behaviour is switched off.
+        scrollsChildToFocus={false}
         onScroll={(e) => {
           scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
           scrollOffsetSV.value = e.nativeEvent.contentOffset.y;
@@ -3778,7 +3795,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           onInputRef={(id, ref) => {
             inputRefs.current[id] = ref;
           }}
-          activeRowRef={activeRowRef}
           paperColor={paperColor}
         />
 
