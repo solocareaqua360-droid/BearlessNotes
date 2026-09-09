@@ -1,6 +1,9 @@
 import { Block } from '../types';
 
 const PREVIEW_LENGTH = 140;
+// What an image-less grid card asks extractPreview for instead - see its
+// own maxTextLength comment.
+export const EXPANDED_PREVIEW_LENGTH = 600;
 const SNIPPET_RADIUS = 30;
 
 export type TextMatch = { before: string; match: string; after: string };
@@ -47,9 +50,18 @@ const PREVIEW_IMAGE_LIMIT = 4;
 // grid/list views show actual checkbox rows or a photo strip instead of
 // just previewText when a document has them) - capped short since a card
 // only ever has room for a handful, not a full copy of the document.
+//
+// `maxTextLength` defaults to the usual short PREVIEW_LENGTH (Search,
+// Diary, Board, and a grid card that turns out to HAVE an image all want
+// that) - DocumentsScreen's own grid passes a much longer one for an
+// image-less card, which reclaims the thumbnail's space for text instead.
+// Harmless to request even when a card ends up showing an image after
+// all: the extra characters just sit unused, since what's actually
+// rendered is capped separately by numberOfLines, not by string length.
 export function extractPreview(
   blocks: Block[] | undefined,
-  coverImageUri?: string
+  coverImageUri?: string,
+  maxTextLength: number = PREVIEW_LENGTH
 ): {
   imageUri: string | null;
   imageUris: string[];
@@ -66,7 +78,7 @@ export function extractPreview(
     .map((b) => stripFormatting(b.text ?? '').trim())
     .filter((t) => t.length > 0)
     .join(' ')
-    .slice(0, PREVIEW_LENGTH);
+    .slice(0, maxTextLength);
   return {
     imageUri: coverImageUri ?? imageBlocks[0]?.imageUri ?? null,
     imageUris: imageBlocks.slice(0, PREVIEW_IMAGE_LIMIT).map((b) => b.imageUri as string),

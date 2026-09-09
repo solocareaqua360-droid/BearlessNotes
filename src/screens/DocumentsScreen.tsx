@@ -45,7 +45,7 @@ import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
 import DocumentCard from '../components/DocumentCard';
-import { extractPreview } from '../utils/documentPreview';
+import { extractPreview, EXPANDED_PREVIEW_LENGTH } from '../utils/documentPreview';
 import { FONT_REGULAR, FONT_BOLD, FONT_SEMIBOLD } from '../utils/fonts';
 import StickerComposer from '../components/StickerComposer';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
@@ -547,7 +547,15 @@ export default function DocumentsScreen() {
           columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => {
-            const { imageUri, imageUris, previewText, checklistItems } = extractPreview(item.blocks, item.coverImageUri);
+            // Grid cards reclaim the thumbnail's space for text when a
+            // document has no image (see DocumentCard's own noImage
+            // handling) - list rows are unaffected, so they keep the
+            // short default length.
+            const { imageUri, imageUris, previewText, checklistItems } = extractPreview(
+              item.blocks,
+              item.coverImageUri,
+              viewMode === 'grid' ? EXPANDED_PREVIEW_LENGTH : undefined
+            );
             return (
               <DocumentCard
                 id={item.id}

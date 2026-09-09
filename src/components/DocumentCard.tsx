@@ -6,10 +6,30 @@ import { FONT_REGULAR, FONT_BOLD } from '../utils/fonts';
 
 const THUMB_SIZE = 72;
 const GRID_THUMB_HEIGHT = 96;
+// How many lines of text an image-less grid card shows instead of the
+// thumbnail it doesn't have - well past the normal 2, since it's filling
+// space a thumbnail would otherwise have taken.
+const EXPANDED_TEXT_LINES = 8;
+// Keeps a nearly-empty document (a title and a couple words) from
+// rendering as a visibly stunted card next to its full-height,
+// image-bearing neighbors - roughly what a card WITH a thumbnail already
+// measures out to (thumb + title + a couple lines + date), so an
+// image-less card never reads as a different, smaller kind of tile.
+const GRID_CARD_MIN_HEIGHT = 190;
 
-function HighlightedLine({ match, style, highlightStyle }: { match: TextMatch; style: object; highlightStyle: object }) {
+function HighlightedLine({
+  match,
+  style,
+  highlightStyle,
+  numberOfLines = 2,
+}: {
+  match: TextMatch;
+  style: object;
+  highlightStyle: object;
+  numberOfLines?: number;
+}) {
   return (
-    <Text style={style} numberOfLines={2}>
+    <Text style={style} numberOfLines={numberOfLines}>
       {match.before}
       <Text style={highlightStyle}>{match.match}</Text>
       {match.after}
@@ -29,6 +49,7 @@ function PreviewBody({
   textColor,
   mutedColor,
   compact,
+  textLines = 2,
 }: {
   checklistItems: PreviewChecklistItem[];
   imageUris: string[];
@@ -37,6 +58,14 @@ function PreviewBody({
   textColor: string;
   mutedColor: string;
   compact: boolean;
+  // Only the plain-text branches below use this - a grid card with no
+  // thumbnail passes a much larger value to fill the space the thumbnail
+  // would have taken (see DocumentCard's own noImage handling). The
+  // checklist/photo-strip branches keep their own fixed limits regardless
+  // - extractPreview already caps what they're given to a handful of
+  // items, not proportional to a document's real length the way plain
+  // text is.
+  textLines?: number;
 }) {
   if (checklistItems.length > 0) {
     return (
@@ -78,12 +107,13 @@ function PreviewBody({
         match={bodyMatch}
         style={[compact ? styles.previewCompact : styles.preview, { color: mutedColor }]}
         highlightStyle={styles.highlight}
+        numberOfLines={textLines}
       />
     );
   }
   if (!previewText) return null;
   return (
-    <Text style={[compact ? styles.previewCompact : styles.preview, { color: mutedColor }]} numberOfLines={compact ? 2 : 2}>
+    <Text style={[compact ? styles.previewCompact : styles.preview, { color: mutedColor }]} numberOfLines={textLines}>
       {previewText}
     </Text>
   );
@@ -146,6 +176,12 @@ export default function DocumentCard({
 }: Props) {
   const { background, text, textMuted } = colorForDocument(id);
   const isGrid = layout === 'grid';
+  // A list row keeps its own square placeholder regardless (a small
+  // thumbnail beside text reads as "no photo yet", not as reserved cover
+  // space) - only the grid card's top-of-card image slot goes away
+  // entirely when there's nothing to show there, reclaiming that height
+  // for more preview text instead.
+  const noImage = isGrid && !imageUri;
 
   const titleNode = titleMatch ? (
     <HighlightedLine
@@ -161,7 +197,7 @@ export default function DocumentCard({
 
   const thumbNode = imageUri ? (
     <Image source={{ uri: imageUri }} style={isGrid ? styles.thumbGrid : styles.thumb} resizeMode="cover" />
-  ) : (
+  ) : noImage ? null : (
     <View style={[isGrid ? styles.thumbGrid : styles.thumb, styles.thumbPlaceholder]}>
       <Ionicons name="document-text-outline" size={isGrid ? 26 : 22} color="#D1D5DB" />
     </View>
@@ -176,6 +212,7 @@ export default function DocumentCard({
       textColor={text}
       mutedColor={textMuted}
       compact={isGrid}
+      textLines={noImage ? EXPANDED_TEXT_LINES : 2}
     />
   );
 
@@ -189,7 +226,7 @@ export default function DocumentCard({
 
   if (isGrid) {
     return (
-      <View style={[styles.gridCard, { backgroundColor: background }]}>
+      <View style={[styles.gridCard, { backgroundColor: background }, noImage && styles.gridCardNoImage]}>
         <Pressable style={styles.gridTap} onPress={isSelectMode ? onToggleSelect : onPress}>
           {thumbNode}
           {titleNode}
@@ -348,6 +385,9 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
     elevation: 4,
+  },
+  gridCardNoImage: {
+    minHeight: GRID_CARD_MIN_HEIGHT,
   },
   gridTap: {
     gap: 4,
