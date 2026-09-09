@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Bearless Notes",
+    "name": "mindEva",
     "slug": "bearless-notes",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,12 +9,12 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Bearless Notes використовує Face ID для захисту застосунку від стороннього доступу"
+        "NSFaceIDUsageDescription": "mindEva використовує Face ID для захисту застосунку від стороннього доступу"
       }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0F1839",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -34,7 +34,7 @@
       [
         "react-native-document-scanner-plugin",
         {
-          "cameraPermission": "Bearless Notes потребує доступу до камери, щоб сканувати документи"
+          "cameraPermission": "mindEva потребує доступу до камери, щоб сканувати документи"
         }
       ],
       "expo-notifications",
