@@ -62,14 +62,11 @@ const stickersCollection = collection(db, 'stickers');
 const STICKER_YELLOW = '#FBE97A';
 const STICKER_DARK = '#4a3f05';
 const FREE_STICKER_LIMIT = 10;
-// Exactly the sticker card's own height - the fixed height the floating
-// strip below reserves, and the matching top padding the list gets so a
-// card sits exactly where it visually looks like it does today until you
-// actually scroll. Deliberately NOT card height + extra breathing room:
-// a gap past the last card had nothing behind it to blur (no document
-// card has scrolled up that far yet at rest), so it just rendered as a
-// flat dark sliver under the stickers instead of blending in.
-const STICKER_STRIP_HEIGHT = 150;
+// Card height (150) + the strip's own contentContainerStyle paddingBottom
+// (10) - the fixed height the floating strip below reserves, and the
+// amount of matching top padding the list gets so a card sits exactly
+// where it visually looks like it does today until you actually scroll.
+const STICKER_STRIP_HEIGHT = 160;
 
 type ViewMode = 'list' | 'grid';
 
@@ -804,6 +801,7 @@ const styles = StyleSheet.create({
   },
   stickerStrip: {
     paddingHorizontal: 20,
+    paddingBottom: 10,
     gap: 10,
   },
   stickerCard: {
