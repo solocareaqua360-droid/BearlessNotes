@@ -2250,6 +2250,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const input = inputRefs.current[id];
     if (!input) return;
     input.focus();
+    if (KEYBOARD_SYNC_DEBUG) {
+      beginKeyboardTrace();
+      setKeyboardDebug('');
+      logActiveInputJS('act');
+    }
     if (focusToEndRef.current) {
       const block = blocks.find((b) => b.id === id);
       if (block) input.setSelection(block.text.length, block.text.length);
@@ -2436,15 +2441,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         'worklet';
         syncShift.value = 0;
         if (e.progress !== 1) return; // closing - nothing to bring into view
-        if (KEYBOARD_SYNC_DEBUG) runOnJS(beginKeyboardTrace)();
+        if (KEYBOARD_SYNC_DEBUG) {
+          runOnJS(traceKeyboardEvent)('START');
+          runOnJS(logActiveInputJS)('startJS');
+        }
         runOnJS(setKeyboardHeight)(e.height);
         if (!hasActiveBlockSV.value) {
-          if (KEYBOARD_SYNC_DEBUG) runOnJS(setKeyboardDebug)(`start kc=${e.height} no active block`);
+          if (KEYBOARD_SYNC_DEBUG) runOnJS(appendKeyboardDebug)(`start kc=${Math.round(e.height)} no active block`);
           return; // title: nothing to sync
         }
         const row = measure(activeRowRef);
         if (!row) {
-          if (KEYBOARD_SYNC_DEBUG) runOnJS(setKeyboardDebug)(`start kc=${e.height} measure=null`);
+          if (KEYBOARD_SYNC_DEBUG) runOnJS(appendKeyboardDebug)(`start kc=${Math.round(e.height)} measure=null`);
           return;
         }
         // Same target as scrollFocusedBlockIntoView: row bottom just above
@@ -2454,9 +2462,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         syncBaseOffset.value = scrollOffsetSV.value;
         syncShift.value = Math.max(0, row.pageY + row.height - visibleBottom + 24);
         if (KEYBOARD_SYNC_DEBUG) {
-          runOnJS(setKeyboardDebug)(
-            `start kc=${e.height} win=${windowHeight} rowBottom=${Math.round(row.pageY + row.height)} ` +
-              `base=${Math.round(syncBaseOffset.value)} shift=${Math.round(syncShift.value)}`
+          runOnJS(appendKeyboardDebug)(
+            `start kc=${Math.round(e.height)} win=${Math.round(windowHeight)} rowY=${Math.round(row.pageY)} rowH=${Math.round(row.height)} ` +
+              `y=${Math.round(row.y)} base=${Math.round(syncBaseOffset.value)} shift=${Math.round(syncShift.value)}`
           );
         }
       },
@@ -2500,6 +2508,22 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   function traceKeyboardEvent(label: string) {
     const dt = Date.now() - kbTraceStartRef.current;
     if (dt < 2500) kbTraceRef.current.push(`${dt}:${label}`);
+  }
+  // Plain RN measure of the active input (the same call the post pass
+  // uses), logged with the JS-side offset at that moment.
+  function logActiveInputJS(label: string) {
+    const id = focusedBlockIdRef.current;
+    const input = id ? inputRefs.current[id] : null;
+    if (!input) {
+      appendKeyboardDebug(`${label}: no input`);
+      return;
+    }
+    const at = Date.now() - kbTraceStartRef.current;
+    input.measure((_x, _y, _w, h, _px, py) => {
+      appendKeyboardDebug(
+        `${label}@${at}ms inputBottom=${Math.round(py + h)} off=${Math.round(scrollOffsetRef.current)} sv=${Math.round(scrollOffsetSV.value)}`
+      );
+    });
   }
   // The room below the last block. Driven from the live keyboard height on
   // the UI thread rather than from keyboardHeight state: the synced scroll
@@ -3668,6 +3692,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           if (KEYBOARD_SYNC_DEBUG) traceKeyboardEvent(String(Math.round(e.nativeEvent.contentOffset.y)));
         }}
         scrollEventThrottle={16}
+        onContentSizeChange={(_w, h) => {
+          if (KEYBOARD_SYNC_DEBUG) traceKeyboardEvent(`H${Math.round(h)}`);
+        }}
       >
         {!embedded && coverImageUri && (
           <Pressable onPress={openCoverImageOptions}>
