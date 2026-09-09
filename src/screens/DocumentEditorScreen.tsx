@@ -105,7 +105,7 @@ const AUTOSAVE_DELAY_MS = 600;
 const DRAG_LONG_PRESS_MS = 500;
 // Shows the keyboard-synced scroll's numbers on screen - only while that
 // motion is being tuned on-device; flip off once it's settled.
-const KEYBOARD_SYNC_DEBUG = true;
+const KEYBOARD_SYNC_DEBUG = false;
 const DOWNLOAD_DIR_STORAGE_KEY = 'bearlessNotes.downloadDirUri';
 
 // Small fixed palette rather than a full color picker - enough variety for
@@ -2555,8 +2555,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const input = id ? inputRefs.current[id] : null;
     if (!input) return;
     input.measure((_x, _y, _width, height, _pageX, pageY) => {
+      // RN's first keyboardDidShow can under-report the height by the
+      // suggestion strip (323 vs the real 338 on-device) - the synced
+      // scroll already targeted the real one, so measuring against the
+      // smaller value here would "correct" by those 15px for nothing.
+      const effectiveKeyboardHeight = Math.max(currentKeyboardHeight, keyboardSV.value);
       const visibleBottom =
-        Dimensions.get('window').height - currentKeyboardHeight - toolbarHeightRef.current;
+        Dimensions.get('window').height - effectiveKeyboardHeight - toolbarHeightRef.current;
       const overflow = pageY + height - visibleBottom + 24;
       if (KEYBOARD_SYNC_DEBUG) {
         appendKeyboardDebug(
