@@ -103,9 +103,6 @@ const AUTOSAVE_DELAY_MS = 600;
 // tap - a tap on a block now starts editing it (see BlockRow), so the two
 // can't be allowed to blur into each other.
 const DRAG_LONG_PRESS_MS = 500;
-// Shows the keyboard-synced scroll's numbers on screen - only while that
-// motion is being tuned on-device; flip off once it's settled.
-const KEYBOARD_SYNC_DEBUG = false;
 const DOWNLOAD_DIR_STORAGE_KEY = 'bearlessNotes.downloadDirUri';
 
 // Small fixed palette rather than a full color picker - enough variety for
@@ -2243,11 +2240,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     if (!input) return;
     input.focus();
     measureActiveInputForSync(input);
-    if (KEYBOARD_SYNC_DEBUG) {
-      beginKeyboardTrace();
-      setKeyboardDebug('');
-      logActiveInputJS('act');
-    }
     if (focusToEndRef.current) {
       const block = blocks.find((b) => b.id === id);
       if (block) input.setSelection(block.text.length, block.text.length);
@@ -2279,7 +2271,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         deactivateTimeoutRef.current = null;
       }
       setKeyboardHeight(e.endCoordinates.height);
-      if (KEYBOARD_SYNC_DEBUG) traceKeyboardEvent(`SHOW${Math.round(e.endCoordinates.height)}`);
       // RN's events stay the final word on the toolbar's resting position,
       // in case the frame-by-frame handler didn't run (older Android).
       keyboardSV.value = e.endCoordinates.height;
@@ -2430,9 +2421,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const activeInputBottomSV = useSharedValue(-1);
   const activeInputOffsetSV = useSharedValue(0);
   const windowHeight = Dimensions.get('window').height;
-  // Temporary on-screen readout of the numbers behind the synced scroll,
-  // for checking on-device where the two motions come from.
-  const [keyboardDebug, setKeyboardDebug] = useState('');
   useEffect(() => {
     if (focusedBlockId === null) activeInputBottomSV.value = -1;
   }, [focusedBlockId]);
@@ -2449,15 +2437,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         'worklet';
         syncShift.value = 0;
         if (e.progress !== 1) return; // closing - nothing to bring into view
-        if (KEYBOARD_SYNC_DEBUG) {
-          runOnJS(traceKeyboardEvent)('START');
-          runOnJS(logActiveInputJS)('startJS');
-        }
         runOnJS(setKeyboardHeight)(e.height);
-        if (activeInputBottomSV.value < 0) {
-          if (KEYBOARD_SYNC_DEBUG) runOnJS(appendKeyboardDebug)(`start kc=${Math.round(e.height)} no measurement`);
-          return; // title, or nothing measured yet: the safety net handles it
-        }
+        // Title, or nothing measured yet: the safety net handles it.
+        if (activeInputBottomSV.value < 0) return;
         // Where the input's bottom is NOW: the activation-time measure,
         // corrected for any scrolling since.
         const inputBottom = activeInputBottomSV.value - (scrollOffsetSV.value - activeInputOffsetSV.value);
@@ -2467,12 +2449,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         const visibleBottom = windowHeight - e.height - EDITOR_TOOLBAR_HEIGHT;
         syncBaseOffset.value = scrollOffsetSV.value;
         syncShift.value = Math.max(0, inputBottom - visibleBottom + 24);
-        if (KEYBOARD_SYNC_DEBUG) {
-          runOnJS(appendKeyboardDebug)(
-            `start kc=${Math.round(e.height)} win=${Math.round(windowHeight)} inputBottom=${Math.round(inputBottom)} ` +
-              `base=${Math.round(syncBaseOffset.value)} shift=${Math.round(syncShift.value)}`
-          );
-        }
       },
       onMove: (e) => {
         'worklet';
@@ -2488,49 +2464,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           scrollTo(scrollViewRef, 0, syncBaseOffset.value + syncShift.value, false);
           syncShift.value = 0;
         }
-        if (KEYBOARD_SYNC_DEBUG) {
-          runOnJS(appendKeyboardDebug)(`end kc=${Math.round(e.height)} off=${Math.round(scrollOffsetSV.value)}`);
-          runOnJS(traceKeyboardEvent)('END');
-        }
       },
     },
     [windowHeight]
   );
-  function appendKeyboardDebug(line: string) {
-    setKeyboardDebug((prev) => `${prev}\n${line}`);
-  }
-  // Scroll-offset trace for ~2.5s after the keyboard starts rising: every
-  // onScroll value with its ms-since-start, to see when (and after what)
-  // the list lands somewhere it wasn't scrolled to.
-  const kbTraceStartRef = useRef(0);
-  const kbTraceRef = useRef<string[]>([]);
-  function beginKeyboardTrace() {
-    kbTraceStartRef.current = Date.now();
-    kbTraceRef.current = [];
-    setTimeout(() => {
-      appendKeyboardDebug(`trace ${kbTraceRef.current.join(' ')}`);
-    }, 2500);
-  }
-  function traceKeyboardEvent(label: string) {
-    const dt = Date.now() - kbTraceStartRef.current;
-    if (dt < 2500) kbTraceRef.current.push(`${dt}:${label}`);
-  }
-  // Plain RN measure of the active input (the same call the post pass
-  // uses), logged with the JS-side offset at that moment.
-  function logActiveInputJS(label: string) {
-    const id = focusedBlockIdRef.current;
-    const input = id ? inputRefs.current[id] : null;
-    if (!input) {
-      appendKeyboardDebug(`${label}: no input`);
-      return;
-    }
-    const at = Date.now() - kbTraceStartRef.current;
-    input.measure((_x, _y, _w, h, _px, py) => {
-      appendKeyboardDebug(
-        `${label}@${at}ms inputBottom=${Math.round(py + h)} off=${Math.round(scrollOffsetRef.current)} sv=${Math.round(scrollOffsetSV.value)}`
-      );
-    });
-  }
   // The room below the last block. Driven from the live keyboard height on
   // the UI thread rather than from keyboardHeight state: the synced scroll
   // above needs the content to already be tall enough on every frame of
@@ -2563,13 +2500,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       const visibleBottom =
         Dimensions.get('window').height - effectiveKeyboardHeight - toolbarHeightRef.current;
       const overflow = pageY + height - visibleBottom + 24;
-      if (KEYBOARD_SYNC_DEBUG) {
-        appendKeyboardDebug(
-          `post rn=${Math.round(currentKeyboardHeight)} tb=${toolbarHeightRef.current} inputBottom=${Math.round(pageY + height)} ` +
-            `off=${Math.round(scrollOffsetRef.current)} overflow=${Math.round(overflow)}`
-        );
-        traceKeyboardEvent(`POST${Math.round(overflow)}`);
-      }
       // A few px of slack: the pre-scroll at activation (see the focus
       // effect) and the post-keyboard pass land within a pixel or two of
       // each other, and a second scroll for that is a visible twitch.
@@ -3711,12 +3641,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         onScroll={(e) => {
           scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
           scrollOffsetSV.value = e.nativeEvent.contentOffset.y;
-          if (KEYBOARD_SYNC_DEBUG) traceKeyboardEvent(String(Math.round(e.nativeEvent.contentOffset.y)));
         }}
         scrollEventThrottle={16}
-        onContentSizeChange={(_w, h) => {
-          if (KEYBOARD_SYNC_DEBUG) traceKeyboardEvent(`H${Math.round(h)}`);
-        }}
       >
         {!embedded && coverImageUri && (
           <Pressable onPress={openCoverImageOptions}>
@@ -3811,12 +3737,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         )}
         <Animated.View style={bottomSpacerStyle} />
       </ScrollView>
-
-      {KEYBOARD_SYNC_DEBUG && keyboardDebug !== '' && (
-        <View style={styles.keyboardDebug} pointerEvents="none">
-          <Text style={styles.keyboardDebugText}>{keyboardDebug}</Text>
-        </View>
-      )}
 
       {selectedIds.size > 0 && (
         // Same floating dark-glass capsule as BulkActionBar (Files/Photos/
@@ -4165,20 +4085,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-  },
-  keyboardDebug: {
-    position: 'absolute',
-    top: 100,
-    left: 8,
-    right: 8,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    borderRadius: 6,
-    padding: 6,
-  },
-  keyboardDebugText: {
-    color: '#fff',
-    fontSize: 11,
-    fontFamily: Platform.OS === 'android' ? 'monospace' : undefined,
   },
   // Embedded (CalendarScreen): no header and no title/tags block eating
   // the top (calendar days have neither), so the block list needs its own
