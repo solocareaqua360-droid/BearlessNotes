@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FieldDef, FieldOption, FieldType } from '../types';
@@ -45,6 +45,10 @@ export default function FieldsEditorSheet({ visible, fields, onSave, onClose }: 
   const [draft, setDraft] = useState<FieldDef[]>(fields);
   const [typeMenuFieldId, setTypeMenuFieldId] = useState<string | null>(null);
   const [newOptionText, setNewOptionText] = useState<Record<string, string>>({});
+  const scrollRef = useRef<ScrollView>(null);
+  // Each field card's own y inside the scroll list, filled in by its
+  // onLayout - openTypeMenu scrolls to it so the menu it opens is on screen.
+  const fieldOffsetsRef = useRef<Record<string, number>>({});
   // This Android build doesn't resize the window under the keyboard - it
   // arrives as an inset over the content, not a shrink - so the sheet has
   // to track its own height and push up by that much, same as
@@ -65,6 +69,20 @@ export default function FieldsEditorSheet({ visible, fields, onSave, onClose }: 
 
   function updateField(id: string, patch: Partial<FieldDef>) {
     setDraft((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)));
+  }
+
+  // The type list expands INSIDE the field's own card, so on a field near
+  // the bottom of the sheet it opens below the visible area and the tap
+  // reads as "nothing happened". Scrolling that card up to the top of the
+  // list makes room for the whole menu underneath it, rather than leaving
+  // the user to guess that there's something to scroll to.
+  function openTypeMenu(fieldId: string) {
+    const next = typeMenuFieldId === fieldId ? null : fieldId;
+    setTypeMenuFieldId(next);
+    if (!next) return;
+    const y = fieldOffsetsRef.current[fieldId];
+    if (y === undefined) return;
+    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: Math.max(0, y - 8), animated: true }));
   }
 
   // Firestore rejects `undefined` field values outright (same convention as
@@ -117,9 +135,19 @@ export default function FieldsEditorSheet({ visible, fields, onSave, onClose }: 
           <View style={styles.handle} />
           <Text style={styles.title}>Поля</Text>
 
-          <ScrollView style={styles.scroll}>
+          {/* Without keyboardShouldPersistTaps, the first tap on anything
+              here while the keyboard is open is swallowed just to dismiss
+              it - the button itself never fires, which reads as a dead
+              control. */}
+          <ScrollView ref={scrollRef} style={styles.scroll} keyboardShouldPersistTaps="handled">
             {draft.map((field, index) => (
-              <View key={field.id} style={styles.fieldCard}>
+              <View
+                key={field.id}
+                style={styles.fieldCard}
+                onLayout={(e) => {
+                  fieldOffsetsRef.current[field.id] = e.nativeEvent.layout.y;
+                }}
+              >
                 <View style={styles.fieldRow}>
                   <TextInput
                     style={styles.fieldNameInput}
@@ -128,7 +156,7 @@ export default function FieldsEditorSheet({ visible, fields, onSave, onClose }: 
                   />
                   <Pressable
                     style={styles.typeBadge}
-                    onPress={() => setTypeMenuFieldId(typeMenuFieldId === field.id ? null : field.id)}
+                    onPress={() => openTypeMenu(field.id)}
                   >
                     <Ionicons name={TYPE_ICON[field.type]} size={14} color="#6B7280" />
                     <Text style={styles.typeBadgeLabel}>{TYPE_LABEL[field.type]}</Text>

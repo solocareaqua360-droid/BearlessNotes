@@ -602,7 +602,11 @@ export default function CustomDatabaseScreen({}: Props) {
           <Pressable style={[styles.editorSheet, { marginBottom: keyboardHeight }]} onPress={() => {}}>
             <View style={styles.handle} />
             <Text style={styles.title}>{rowEditor?.mode === 'new' ? 'Новий запис' : 'Редагувати запис'}</Text>
-            <ScrollView style={styles.editorScroll}>
+            {/* keyboardShouldPersistTaps: without it, tapping "Теги" (or
+                any other control here) while the keyboard is up only
+                dismisses the keyboard - the tap never reaches the control,
+                so the picker appears not to open at all. */}
+            <ScrollView style={styles.editorScroll} keyboardShouldPersistTaps="handled">
               {database.fields.map((field) => (
                 <View key={field.id} style={styles.editorField}>
                   <Text style={styles.editorFieldLabel}>{field.name}</Text>

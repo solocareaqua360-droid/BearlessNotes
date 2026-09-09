@@ -156,7 +156,7 @@ export default function TagPicker({
                 />
               </View>
 
-              <ScrollView style={styles.list}>
+              <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
                 {matches.map((tag) => {
                   const selected = selectedTagIds.includes(tag.id);
                   return (
@@ -243,7 +243,7 @@ export default function TagPicker({
                   style={styles.iconSearchInput}
                 />
               </View>
-              <ScrollView style={styles.iconGridScroll}>
+              <ScrollView style={styles.iconGridScroll} keyboardShouldPersistTaps="handled">
                 <View style={styles.iconGrid}>
                   {filteredIcons.map((name) => (
                     <Pressable

@@ -2268,6 +2268,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     }, 180);
   }
 
+  // Typing needs a THROTTLE, not scheduleScrollAdjust's debounce: a debounce
+  // that restarts on every keystroke never fires at all while someone keeps
+  // typing, which is exactly when the caret is drifting down behind the
+  // keyboard line by line. This runs at most ~4x/second during a continuous
+  // burst, and scrollFocusedBlockIntoView itself no-ops unless the block
+  // has actually overflowed the visible area, so it stays cheap.
+  const typingScrollAtRef = useRef(0);
+  function keepCaretVisibleWhileTyping() {
+    if (keyboardHeight <= 0) return;
+    const now = Date.now();
+    if (now - typingScrollAtRef.current < 250) return;
+    typingScrollAtRef.current = now;
+    scrollFocusedBlockIntoView(keyboardHeight);
+  }
+
   // The pinned toolbar sits between the keyboard and the block list, so a
   // block scrolled to sit just above the keyboard would end up hidden
   // behind the bar - its height comes off the visible area too. Kept in a
@@ -2499,6 +2514,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
 
   function handleBlockChange(id: string, text: string) {
     snapshotForTyping();
+    keepCaretVisibleWhileTyping();
     const currentType = blocks.find((b) => b.id === id)?.type ?? 'paragraph';
 
     // List items (bulleted/numbered/checkbox) continue the list on a

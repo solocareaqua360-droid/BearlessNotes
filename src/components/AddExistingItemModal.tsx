@@ -206,6 +206,7 @@ export default function AddExistingItemModal({
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
             style={styles.tabRow}
             contentContainerStyle={styles.tabRowContent}
           >
@@ -245,7 +246,7 @@ export default function AddExistingItemModal({
             />
           </View>
 
-          <ScrollView style={styles.list}>
+          <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
             {tab === 'file' &&
               (filteredFiles.length === 0 ? (
                 <Text style={styles.emptyLabel}>Нічого не знайдено</Text>

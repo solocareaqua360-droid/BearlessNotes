@@ -72,7 +72,7 @@ export default function CopyToNoteModal({ visible, onPickExisting, onPickNew, on
             />
           </View>
 
-          <ScrollView style={styles.list}>
+          <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
             {filteredDocuments.map((d) => (
               <Pressable key={d.id} style={styles.row} onPress={() => onPickExisting(d.id)}>
                 <View style={styles.docIcon}>
