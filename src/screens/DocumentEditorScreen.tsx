@@ -77,7 +77,6 @@ import DocumentTagsBlock from '../components/DocumentTagsBlock';
 import SketchEditor from '../components/SketchEditor';
 import EditorToolbar, { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolbar';
 import { BlockAction } from '../components/blockActions';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { backupFileToDrive } from '../utils/googleDrive';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags } from '../hooks/useTags';
@@ -1900,11 +1899,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // autoFocusTitle), which is what raises the keyboard onto it right away.
   const [titleActive, setTitleActive] = useState(autoFocusTitle);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-  // The window is drawn edge-to-edge (measured: window height === screen
-  // height with the keyboard both up and down), so nothing keeps the
-  // pinned toolbar clear of the gesture bar - or of the strip the
-  // keyboard's own top row occupies - unless this inset is added by hand.
-  const insets = useSafeAreaInsets();
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [activeSelection, setActiveSelection] = useState<{ blockId: string; start: number; end: number } | null>(
@@ -2601,8 +2595,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // The pinned toolbar rides on the live height, so it comes up (and goes
   // down) glued to the keyboard's top edge rather than appearing at the
   // final position ahead of it.
+  //
+  // bottom is keyboardSV.value alone - NOT + insets.bottom. It used to add
+  // the bottom safe-area inset (a leftover from a plain keyboardHeight
+  // state, meant to clear the gesture bar), but the scroll math in
+  // scrollFocusedBlockIntoView (visibleBottom) has only ever measured
+  // against the bare keyboard height, with no such inset - so the bar sat
+  // insets.bottom higher than where content was actually being scrolled
+  // clear to, leaving a gap of exactly that height between the bar and
+  // the keyboard with the next block's text showing through it.
   const pinnedToolbarStyle = useAnimatedStyle(() => ({
-    bottom: keyboardSV.value + insets.bottom,
+    bottom: keyboardSV.value,
   }));
 
   function scrollFocusedBlockIntoView(currentKeyboardHeight: number) {
