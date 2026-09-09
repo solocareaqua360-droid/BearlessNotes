@@ -9,7 +9,7 @@ import RenamePrompt from './RenamePrompt';
 
 const ACCENT = '#3B82F6';
 
-const KIND_LABELS: Record<TaggableKind, string> = {
+const KIND_LABELS: Record<string, string> = {
   file: 'Файли',
   photo: 'Фото',
   'link-video': 'Відео',
@@ -17,6 +17,13 @@ const KIND_LABELS: Record<TaggableKind, string> = {
   'link-other': 'Посилання',
   document: 'Документи',
 };
+
+// Every custom database mints its own `customRow:${id}` kind (see
+// types.ts's TaggableKind comment) - KIND_LABELS has no entry per database,
+// so this is the fallback for any kind it doesn't recognize.
+function kindLabel(kind: TaggableKind): string {
+  return KIND_LABELS[kind] ?? 'База';
+}
 
 type Props = {
   visible: boolean;
@@ -164,7 +171,7 @@ export default function TagPicker({
                         <View style={styles.rowBody}>
                           <Text style={styles.rowLabel}>{tag.path}</Text>
                           <Text style={styles.rowMeta}>
-                            {Object.keys(tag.usedIn).length} елем. · {tag.types.map((t) => KIND_LABELS[t]).join(', ')}
+                            {Object.keys(tag.usedIn).length} елем. · {tag.types.map(kindLabel).join(', ')}
                           </Text>
                         </View>
                         <View style={selected ? styles.checkFilled : styles.checkEmpty}>
@@ -257,7 +264,7 @@ export default function TagPicker({
               <Text style={styles.sectionLabel}>ТИП</Text>
               <View style={styles.typeRow}>
                 <View style={styles.typeChip}>
-                  <Text style={styles.typeChipLabel}>{KIND_LABELS[kind]}</Text>
+                  <Text style={styles.typeChipLabel}>{kindLabel(kind)}</Text>
                 </View>
                 <Text style={styles.typeHint}>- звідки створюєш</Text>
               </View>

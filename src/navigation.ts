@@ -26,6 +26,11 @@ export type RootStackParamList = {
   Photos: undefined;
   Files: undefined;
   Stickers: undefined;
+  // A user-created database (DatabasesScreen's dynamic tiles, one per
+  // Firestore doc in `customDatabases`) - unlike Photos/Files/Stickers,
+  // there's no fixed number of these, so one shared screen keyed by id
+  // instead of one RootStackParamList entry per database.
+  CustomDatabase: { databaseId: string };
   Tags: undefined;
   TagItems: { tagId: string };
   Settings: undefined;

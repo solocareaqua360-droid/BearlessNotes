@@ -25,9 +25,16 @@ function usedInKey(kind: TaggableKind, itemId: string): string {
 // cross-tag - see the TaggableKind comment in types.ts.
 const MUTUALLY_EXCLUSIVE_KINDS: TaggableKind[] = ['link-video', 'link-geo', 'link-other'];
 
+function isCustomRowKind(kind: TaggableKind): boolean {
+  return kind.startsWith('customRow:');
+}
+
 // The Firestore collection each kind's items live in - video/geo/"other"
 // links all share the one `links` collection (see LinksScreen's
-// categoryOf), so this is a many-to-one map, not a 1:1 rename.
+// categoryOf), so this is a many-to-one map, not a 1:1 rename. Every custom
+// database's rows (kind `customRow:${databaseId}`) also share one
+// collection - handled dynamically in itemsCollectionForKind below rather
+// than one static entry per database.
 export const ITEMS_COLLECTION_BY_KIND: Record<TaggableKind, string> = {
   file: 'files',
   photo: 'photos',
@@ -36,6 +43,11 @@ export const ITEMS_COLLECTION_BY_KIND: Record<TaggableKind, string> = {
   'link-other': 'links',
   document: 'documents',
 };
+
+export function itemsCollectionForKind(kind: TaggableKind): string | undefined {
+  if (isCustomRowKind(kind)) return 'customDatabaseRows';
+  return ITEMS_COLLECTION_BY_KIND[kind];
+}
 
 export function parseUsedInKey(key: string): { kind: TaggableKind; itemId: string } {
   const separatorIndex = key.indexOf(':');
@@ -48,6 +60,15 @@ export function parseUsedInKey(key: string): { kind: TaggableKind; itemId: strin
 // item) is hidden; everything else (including a brand-new tag, or one
 // shared with file/photo) is allowed.
 export function isTagAllowedForKind(tag: Tag, kind: TaggableKind): boolean {
+  // Every custom database is its own vocabulary, same reasoning as the
+  // link sub-categories below - a "recipes" database's tags shouldn't leak
+  // into a "books" database's suggestions. Unlike the link kinds, a
+  // customRow tag is still freely shared with file/photo/document's own
+  // pool (only OTHER customRow kinds are excluded), so a database can still
+  // reuse a tag that's already used across the rest of the app.
+  if (isCustomRowKind(kind)) {
+    return !tag.types.some((t) => isCustomRowKind(t) && t !== kind);
+  }
   if (!MUTUALLY_EXCLUSIVE_KINDS.includes(kind)) return true;
   return !tag.types.some((t) => t !== kind && MUTUALLY_EXCLUSIVE_KINDS.includes(t));
 }
@@ -172,7 +193,7 @@ export function useTags() {
     const batch = writeBatch(db);
     Object.keys(tag.usedIn).forEach((key) => {
       const { kind, itemId } = parseUsedInKey(key);
-      const itemsCollection = ITEMS_COLLECTION_BY_KIND[kind];
+      const itemsCollection = itemsCollectionForKind(kind);
       if (itemsCollection) batch.update(doc(db, itemsCollection, itemId), { tagIds: arrayRemove(tag.id) });
     });
     batch.delete(doc(db, 'tags', tag.id));

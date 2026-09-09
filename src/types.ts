@@ -183,7 +183,11 @@ export interface Group {
   id: string;
   name: string;
   color: string;
-  kind: 'file' | 'photo' | 'link-video' | 'link-geo' | 'link-other' | 'document';
+  // Widened to `string` (was the same closed six-literal union as
+  // TaggableKind) so a custom database can mint its own `customRow:${id}`
+  // kind - GroupPickerSheet/screens only ever compare/store this as an
+  // opaque string, nothing relies on the closed set.
+  kind: string;
 }
 
 // A database-object kind a tag can be attached to. Used both as the second

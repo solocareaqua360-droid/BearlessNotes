@@ -7,11 +7,11 @@ import { addDoc, collection, doc, getDoc } from '@react-native-firebase/firestor
 import { db } from '../firebase';
 import { RootStackParamList } from '../navigation';
 import { TaggableKind } from '../types';
-import { useTags, ITEMS_COLLECTION_BY_KIND, parseUsedInKey } from '../hooks/useTags';
+import { useTags, itemsCollectionForKind, parseUsedInKey } from '../hooks/useTags';
 
 const documentsCollection = collection(db, 'documents');
 
-const KIND_ICON: Record<TaggableKind, { icon: keyof typeof Ionicons.glyphMap; color: string }> = {
+const KIND_ICON: Record<string, { icon: keyof typeof Ionicons.glyphMap; color: string }> = {
   file: { icon: 'document-outline', color: '#8B5CF6' },
   photo: { icon: 'image-outline', color: '#EC4899' },
   'link-video': { icon: 'videocam-outline', color: '#EF4444' },
@@ -19,6 +19,10 @@ const KIND_ICON: Record<TaggableKind, { icon: keyof typeof Ionicons.glyphMap; co
   'link-other': { icon: 'link-outline', color: '#3B82F6' },
   document: { icon: 'document-text-outline', color: '#3B82F6' },
 };
+// Every custom database shares this one fallback (KIND_ICON has no entry
+// per database id) - good enough here since this screen only needs an
+// icon/color to draw a row, not the database's own identity.
+const CUSTOM_ROW_ICON = { icon: 'grid-outline' as const, color: '#F97316' };
 
 type ResolvedItem = {
   key: string;
@@ -51,12 +55,17 @@ export default function TagItemsScreen({ route }: Props) {
       const resolved = await Promise.all(
         Object.keys(tag.usedIn).map(async (key): Promise<ResolvedItem | null> => {
           const { kind, itemId } = parseUsedInKey(key);
-          const itemsCollection = ITEMS_COLLECTION_BY_KIND[kind];
+          const itemsCollection = itemsCollectionForKind(kind);
           if (!itemsCollection) return null;
           const snapshot = await getDoc(doc(db, itemsCollection, itemId));
           const data = snapshot.data();
           if (!data) return null;
-          const title = data.title || data.fileName || data.url || 'Без назви';
+          // A custom-database row has no title/fileName/url field of its
+          // own - its display name is whichever value sits in fields[0],
+          // and this screen doesn't have that database's field schema
+          // loaded. The first entry in `values` is close enough for a row
+          // in a list here (fields[0] is normally inserted first).
+          const title = data.title || data.fileName || data.url || Object.values(data.values ?? {})[0] || 'Без назви';
           return { key, kind, itemId, title };
         })
       );
@@ -124,7 +133,7 @@ export default function TagItemsScreen({ route }: Props) {
       ) : (
         <ScrollView contentContainerStyle={styles.list}>
           {items.map((item) => {
-            const info = KIND_ICON[item.kind];
+            const info = KIND_ICON[item.kind] ?? CUSTOM_ROW_ICON;
             return (
               <Pressable key={item.key} style={styles.row} onPress={() => openItem(item)}>
                 <View style={[styles.rowIcon, { backgroundColor: `${info.color}1A` }]}>

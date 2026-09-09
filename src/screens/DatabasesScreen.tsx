@@ -4,11 +4,14 @@ import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { doc, onSnapshot, setDoc } from '@react-native-firebase/firestore';
+import { addDoc, collection, doc, onSnapshot, orderBy, query, setDoc } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import { RootStackParamList } from '../navigation';
+import { CustomDatabase } from '../types';
 import { TAG_COLORS } from '../constants/tags';
 import { FONT_REGULAR, FONT_MEDIUM, FONT_BOLD } from '../utils/fonts';
+import { colorForDocument } from '../utils/documentColor';
+import RenamePrompt from '../components/RenamePrompt';
 
 type Tile = {
   key: string;
@@ -64,12 +67,37 @@ export default function DatabasesScreen() {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [tileColors, setTileColors] = useState<Record<string, string>>({});
   const [colorMenuKey, setColorMenuKey] = useState<string | null>(null);
+  const [customDatabases, setCustomDatabases] = useState<CustomDatabase[]>([]);
+  const [creatingDatabase, setCreatingDatabase] = useState(false);
 
   useEffect(() => {
     return onSnapshot(tileColorsDoc, (snapshot) => {
       setTileColors((snapshot.data() as Record<string, string> | undefined) ?? {});
     });
   }, []);
+
+  useEffect(() => {
+    return onSnapshot(query(collection(db, 'customDatabases'), orderBy('name')), (snapshot) => {
+      setCustomDatabases(
+        snapshot.docs.map((d) => {
+          const data = d.data();
+          return { id: d.id, name: data.name, icon: data.icon, color: data.color, fields: data.fields ?? [], createdAt: data.createdAt, updatedAt: data.updatedAt };
+        })
+      );
+    });
+  }, []);
+
+  async function createDatabase(name: string) {
+    setCreatingDatabase(false);
+    const now = Date.now();
+    const ref = await addDoc(collection(db, 'customDatabases'), {
+      name,
+      fields: [{ id: `${now}-title`, name: 'Назва', type: 'text' }],
+      createdAt: now,
+      updatedAt: now,
+    });
+    navigation.navigate('CustomDatabase', { databaseId: ref.id });
+  }
 
   function colorFor(key: string): string {
     return tileColors[key] ?? defaultColorFor(key);
@@ -160,15 +188,37 @@ export default function DatabasesScreen() {
             </Pressable>
           ))}
 
-          <Pressable
-            style={[styles.tile, styles.newTile]}
-            onPress={() => navigation.navigate('Placeholder', { icon: 'add-outline', label: 'Скоро' })}
-          >
+          {customDatabases.map((cdb) => {
+            const color = cdb.color ?? colorForDocument(cdb.id).background;
+            return (
+              <Pressable
+                key={cdb.id}
+                style={styles.tile}
+                onPress={() => navigation.navigate('CustomDatabase', { databaseId: cdb.id })}
+              >
+                <Ionicons name={(cdb.icon as keyof typeof Ionicons.glyphMap) ?? 'grid-outline'} size={22} color={color} />
+                <Text style={[styles.tileLabel, { color }]} numberOfLines={1}>
+                  {cdb.name}
+                </Text>
+              </Pressable>
+            );
+          })}
+
+          <Pressable style={[styles.tile, styles.newTile]} onPress={() => setCreatingDatabase(true)}>
             <Ionicons name="add" size={22} color="rgba(255,255,255,0.6)" />
             <Text style={styles.newTileLabel}>Нова база</Text>
           </Pressable>
         </View>
       </ScrollView>
+
+      <RenamePrompt
+        visible={creatingDatabase}
+        title="Нова база"
+        initialValue=""
+        placeholder="Назва бази"
+        onCancel={() => setCreatingDatabase(false)}
+        onSave={createDatabase}
+      />
 
       {/* Color picker - only the harmonious palette is offered. */}
       <Modal visible={colorMenuKey !== null} transparent animationType="fade" onRequestClose={() => setColorMenuKey(null)}>
