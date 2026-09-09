@@ -111,7 +111,7 @@ const DRAG_LONG_PRESS_MS = 500;
 // same edge was live text, so a swipe starting a few px off would land on
 // a word and start text selection (while editing) instead of scrolling.
 // This reserves a wide, blank strip the full height of the block instead.
-const TEXT_SWIPE_MARGIN = 46;
+const TEXT_SWIPE_MARGIN = 24;
 const DOWNLOAD_DIR_STORAGE_KEY = 'bearlessNotes.downloadDirUri';
 
 // Small fixed palette rather than a full color picker - enough variety for
