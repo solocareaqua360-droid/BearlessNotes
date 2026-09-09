@@ -277,7 +277,10 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 20,
-    paddingBottom: 24,
+    // Clears FloatingIslandTabBar (bottom: 24, ~64 tall) so the last tile
+    // can be scrolled out from under it - same 120 DocumentsScreen's own
+    // list already uses.
+    paddingBottom: 120,
   },
   // White capsule tiles felt right on a plain page; on the gradient the
   // same glass surfaces as the rest of this redesign hold together better

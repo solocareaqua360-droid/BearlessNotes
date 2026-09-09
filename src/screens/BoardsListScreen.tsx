@@ -238,6 +238,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 20,
     gap: 10,
+    // Clears FloatingIslandTabBar the same way DocumentsScreen's list does -
+    // without it the last board sits permanently under the island.
+    paddingBottom: 120,
   },
   row: {
     flexDirection: 'row',

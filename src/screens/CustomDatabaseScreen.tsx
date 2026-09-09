@@ -1232,9 +1232,12 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 20,
     gap: 10,
+    // Clears the floating "+" (bottom: 100, 56 tall) so the last row can be
+    // scrolled out from under it.
+    paddingBottom: 170,
   },
   listWithBulkBar: {
-    paddingBottom: 90,
+    paddingBottom: 170,
   },
   row: {
     flexDirection: 'row',

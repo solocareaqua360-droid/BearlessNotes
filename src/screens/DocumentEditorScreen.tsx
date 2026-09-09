@@ -3428,8 +3428,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // The pinned toolbar covers its own strip above the keyboard on
           // top of that, so it gets added whenever the bar is showing.
           {
+            // Generous on purpose: the last line of a long document was
+            // ending up pinned against the bottom edge with nothing left to
+            // scroll, so it could never be brought up to a comfortable
+            // reading/typing position. Costs nothing on a short document,
+            // which doesn't scroll at all.
             paddingBottom:
-              (keyboardHeight > 0 ? keyboardHeight + 40 : embedded ? 120 : 40) +
+              (keyboardHeight > 0 ? keyboardHeight + 80 : 160) +
               (isToolbarVisible ? EDITOR_TOOLBAR_HEIGHT : 0),
           },
         ]}
