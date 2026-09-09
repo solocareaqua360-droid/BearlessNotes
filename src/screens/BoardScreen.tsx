@@ -13,7 +13,13 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS, SharedValue, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import Animated, {
+  makeMutable,
+  runOnJS,
+  SharedValue,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -251,15 +257,18 @@ function releaseFromColumn(card: BoardCard): BoardCard {
 // vertical side faces the other card, so the line never has to cross back
 // over a card to reach it. Recomputed on every render rather than stored,
 // which is what lets dragging a card past its partner flip the routing.
-function connectionEndpoints(from: BoardCard, to: BoardCard) {
+function connectionEndpoints(from: BoardCard, to: BoardCard, heights: Map<string, number>) {
   const fromCenterX = from.x + from.width / 2;
   const toCenterX = to.x + to.width / 2;
   const fromIsLeft = fromCenterX <= toCenterX;
   return {
     x1: fromIsLeft ? from.x + from.width : from.x,
-    y1: from.y + APPROX_CARD_HEIGHT / 2,
+    // The measured height, matching what LiveConnectionLine uses - taking
+    // the rough constant here instead would make the line jump vertically
+    // the moment a drag ended on any card that isn't exactly that tall.
+    y1: from.y + heightOf(from, heights) / 2,
     x2: fromIsLeft ? to.x : to.x + to.width,
-    y2: to.y + APPROX_CARD_HEIGHT / 2,
+    y2: to.y + heightOf(to, heights) / 2,
   };
 }
 
@@ -302,6 +311,58 @@ function ConnectDraftLine({
       transform: [
         { translateX: (startX.value + endX.value) / 2 - length / 2 },
         { translateY: (startY.value + endY.value) / 2 - 1 },
+        { rotateZ: `${Math.atan2(dy, dx)}rad` },
+      ],
+    };
+  });
+  return <Animated.View style={[styles.connectDraft, animatedStyle]} pointerEvents="none" />;
+}
+
+// One endpoint of a live connection: a card's position shared value plus
+// whichever shared drag offsets currently apply to it, so the line tracks
+// a card being dragged on its own, as part of a selection, or inside a
+// column being moved.
+type LiveEndpoint = {
+  posX: SharedValue<number>;
+  posY: SharedValue<number>;
+  offsetX: SharedValue<number> | null;
+  offsetY: SharedValue<number> | null;
+  columnOffsetX: SharedValue<number> | null;
+  columnOffsetY: SharedValue<number> | null;
+  width: number;
+  height: number;
+};
+
+// The version of a connection drawn while either of its cards is moving.
+// Deliberately a straight rotated View rather than the resting state's
+// Svg curve: the curve's canvas would have to be resized every frame to
+// keep up with the endpoints, and a fixed one big enough for any drag
+// distance runs into Android's own view-size limits. A straight line
+// needs nothing but a transform, and the curve comes back the moment the
+// card is dropped.
+function LiveConnectionLine({ from, to }: { from: LiveEndpoint; to: LiveEndpoint }) {
+  const animatedStyle = useAnimatedStyle(() => {
+    const fromX = from.posX.value + (from.offsetX?.value ?? 0) + (from.columnOffsetX?.value ?? 0);
+    const fromY = from.posY.value + (from.offsetY?.value ?? 0) + (from.columnOffsetY?.value ?? 0);
+    const toX = to.posX.value + (to.offsetX?.value ?? 0) + (to.columnOffsetX?.value ?? 0);
+    const toY = to.posY.value + (to.offsetY?.value ?? 0) + (to.columnOffsetY?.value ?? 0);
+
+    // Same "leave from the side that faces the other card" rule the
+    // resting curve uses, so the line doesn't jump sides on release.
+    const fromIsLeft = fromX + from.width / 2 <= toX + to.width / 2;
+    const x1 = fromIsLeft ? fromX + from.width : fromX;
+    const y1 = fromY + from.height / 2;
+    const x2 = fromIsLeft ? toX : toX + to.width;
+    const y2 = toY + to.height / 2;
+
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    return {
+      width: length,
+      transform: [
+        { translateX: (x1 + x2) / 2 - length / 2 },
+        { translateY: (y1 + y2) / 2 - 1 },
         { rotateZ: `${Math.atan2(dy, dx)}rad` },
       ],
     };
@@ -410,6 +471,12 @@ function DraggableColumn({
 
 type DraggableCardProps = {
   card: BoardCard;
+  // This card's live world position. Owned by BoardScreen (see
+  // cardPositions) rather than created here, so the connection lines can
+  // read it while a drag is in flight - the card itself still treats it
+  // exactly as it did when it was local state.
+  posX: SharedValue<number>;
+  posY: SharedValue<number>;
   canvasScale: SharedValue<number>;
   canvasPanGesture: ReturnType<typeof Gesture.Pan>;
   isDragging: boolean;
@@ -468,6 +535,8 @@ type DraggableCardProps = {
 // Pan so a quick tap (edit a sticky's text) and a real drag never fight.
 function DraggableCard({
   card,
+  posX,
+  posY,
   canvasScale,
   canvasPanGesture,
   isDragging,
@@ -486,8 +555,6 @@ function DraggableCard({
   onTap,
   onLongPress,
 }: DraggableCardProps) {
-  const posX = useSharedValue(card.x);
-  const posY = useSharedValue(card.y);
   // The last position this card itself put into the parent's state. Used
   // only to tell "our own drag echoing back" (ignore) apart from a real
   // external move (adopt).
@@ -759,6 +826,20 @@ export default function BoardScreen() {
   // still read as whatever it was when the gesture was built. The ref is
   // read on the JS thread inside finishConnection, where it's current.
   const connectingFromIdRef = useRef<string | null>(null);
+  // Every card's live world position, keyed by card id. Lifted out of the
+  // cards themselves so a connection line can read both of its endpoints
+  // while they're being dragged - a card's own component can't hand its
+  // position to a sibling. Created with makeMutable rather than
+  // useSharedValue because the set of cards is dynamic and hooks can't be.
+  const cardPositions = useRef<Map<string, { x: SharedValue<number>; y: SharedValue<number> }>>(new Map());
+
+  function positionOf(card: BoardCard) {
+    const existing = cardPositions.current.get(card.id);
+    if (existing) return existing;
+    const created = { x: makeMutable(card.x), y: makeMutable(card.y) };
+    cardPositions.current.set(card.id, created);
+    return created;
+  }
 
   useEffect(() => {
     (async () => {
@@ -795,6 +876,21 @@ export default function BoardScreen() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, cards, connections, columns, isLoaded]);
+
+  // Positions and measured heights outlive the cards they belong to
+  // otherwise - both are keyed by card id in structures React doesn't
+  // clean up for us.
+  useEffect(() => {
+    if (!isLoaded) return;
+    const live = new Set(cards.map((c) => c.id));
+    for (const id of cardPositions.current.keys()) {
+      if (!live.has(id)) cardPositions.current.delete(id);
+    }
+    setCardHeights((prev) => {
+      if (![...prev.keys()].some((id) => !live.has(id))) return prev;
+      return new Map([...prev].filter(([id]) => live.has(id)));
+    });
+  }, [cards, isLoaded]);
 
   // Re-lays every column out whenever a card's measured height changes or
   // the columns themselves do. Deliberately does NOT depend on `cards`:
@@ -1221,6 +1317,24 @@ export default function BoardScreen() {
   // drag, its links are hidden outright and come back correctly shaped
   // once the drop commits the new position. A group drag moves every
   // selected card, so all of their links go too.
+  // Which shared offsets currently apply to this card, so a live line can
+  // add exactly the same ones the card's own animated style does.
+  function liveEndpointFor(card: BoardCard): LiveEndpoint {
+    const inGroupDrag = selectedCardIds.has(card.id);
+    const inColumnDrag = !!card.columnId && card.columnId === draggingColumnId;
+    const position = positionOf(card);
+    return {
+      posX: position.x,
+      posY: position.y,
+      offsetX: inGroupDrag ? groupOffsetX : null,
+      offsetY: inGroupDrag ? groupOffsetY : null,
+      columnOffsetX: inColumnDrag ? columnOffsetX : null,
+      columnOffsetY: inColumnDrag ? columnOffsetY : null,
+      width: card.width,
+      height: heightOf(card, cardHeights),
+    };
+  }
+
   // Dragging a column moves every card in it, so their links go too.
   const movingCardIds = draggingColumnId
     ? new Set(cards.filter((c) => c.columnId === draggingColumnId).map((c) => c.id))
@@ -1271,8 +1385,20 @@ export default function BoardScreen() {
               const from = cardById.get(connection.fromCardId);
               const to = cardById.get(connection.toCardId);
               if (!from || !to) return null;
-              if (movingCardIds && (movingCardIds.has(from.id) || movingCardIds.has(to.id))) return null;
-              const { x1, y1, x2, y2 } = connectionEndpoints(from, to);
+              // While either end is in motion the line is drawn live off
+              // the cards' own shared positions instead - the resting
+              // curve below is computed from React state, which doesn't
+              // update until the drop commits.
+              if (movingCardIds && (movingCardIds.has(from.id) || movingCardIds.has(to.id))) {
+                return (
+                  <LiveConnectionLine
+                    key={connection.id}
+                    from={liveEndpointFor(from)}
+                    to={liveEndpointFor(to)}
+                  />
+                );
+              }
+              const { x1, y1, x2, y2 } = connectionEndpoints(from, to, cardHeights);
               const left = Math.min(x1, x2) - CONNECTION_PADDING;
               const top = Math.min(y1, y2) - CONNECTION_PADDING;
               const width = Math.abs(x2 - x1) + CONNECTION_PADDING * 2;
@@ -1297,10 +1423,13 @@ export default function BoardScreen() {
 
             {cards.map((card) => {
               const isSelected = selectedCardIds.has(card.id);
+              const position = positionOf(card);
               return (
                 <DraggableCard
                   key={card.id}
                   card={card}
+                  posX={position.x}
+                  posY={position.y}
                   canvasScale={scale}
                   canvasPanGesture={canvasBlockingGesture}
                   isDragging={card.id === draggedCardId}
