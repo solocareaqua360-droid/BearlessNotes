@@ -54,6 +54,7 @@ import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useSortPref } from '../hooks/useSortPref';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 import { useDownloadToast } from '../hooks/useDownloadToast';
+import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { blockFromPhoto, copyObjectsToNote } from '../utils/copyToNote';
 import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
 import { sortItems } from '../utils/sortItems';
@@ -103,6 +104,7 @@ async function downloadPhoto(uri: string): Promise<{ destUri: string; fileName: 
 
 function PhotoThumb({
   uri,
+  driveFileId,
   docCount,
   tags,
   onTagPress,
@@ -110,15 +112,31 @@ function PhotoThumb({
   isSelected,
 }: {
   uri: string;
+  driveFileId?: string;
   docCount: number;
   tags: Tag[];
   onTagPress: () => void;
   isSelectMode: boolean;
   isSelected: boolean;
 }) {
+  // This device may never have had the actual bytes (a fresh install, a
+  // different device than the one the photo was taken/picked on) - quietly
+  // re-pulled from the Drive backup the first time it's rendered here, same
+  // as DocumentEditorScreen's own image blocks.
+  const cacheStatus = useCachedAttachment(uri, driveFileId);
   return (
     <View style={styles.cellImageWrap}>
-      <Image source={{ uri }} style={styles.cellImage} resizeMode="cover" />
+      {cacheStatus === 'ready' ? (
+        <Image source={{ uri }} style={styles.cellImage} resizeMode="cover" />
+      ) : (
+        <View style={[styles.cellImage, styles.cellImageStatus]}>
+          {cacheStatus === 'missing' ? (
+            <Ionicons name="cloud-offline-outline" size={22} color="#9CA3AF" />
+          ) : (
+            <ActivityIndicator color="#9CA3AF" />
+          )}
+        </View>
+      )}
       {isSelectMode ? (
         <View style={styles.cellCheckbox}>
           <Ionicons
@@ -653,6 +671,7 @@ export default function PhotosScreen() {
             >
               <PhotoThumb
                 uri={photo.imageUri}
+                driveFileId={photo.driveFileId}
                 docCount={photo.documentIds.length}
                 tags={tags.filter((t) => photo.tagIds.includes(t.id))}
                 onTagPress={() => setTagPickerForId(photo.id)}
@@ -1012,6 +1031,11 @@ const styles = StyleSheet.create({
   cellImage: {
     width: '100%',
     height: '100%',
+  },
+  cellImageStatus: {
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cellBadge: {
     position: 'absolute',

@@ -248,6 +248,39 @@ export async function backupFileToDrive(
   }
 }
 
+// Restores a file/photo's local cache copy from its Drive backup when the
+// device no longer has it (a fresh install, a different device, or Android
+// having purged app cache under storage pressure) - the inverse of
+// uploadFileToDrive. `downloadAsync` (not a fetch+base64 round trip) writes
+// the response straight to disk, which is what actually matters for a
+// possibly-large photo/file. Returns false (never throws) on any failure -
+// callers show a plain "unavailable" state rather than surfacing an error,
+// since a missing local copy with no working Drive fallback is an expected,
+// recoverable-by-network state, not a bug.
+export async function downloadFileFromDrive(driveFileId: string, destUri: string): Promise<boolean> {
+  ensureConfigured();
+  if (!GoogleSignin.hasPreviousSignIn()) return false;
+  const url = `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`;
+  try {
+    const token = await getDriveAccessToken();
+    const result = await LegacyFileSystem.downloadAsync(url, destUri, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (result.status === 401 || result.status === 403) {
+      await GoogleSignin.clearCachedAccessToken(token);
+      const retryToken = await getDriveAccessToken();
+      const retryResult = await LegacyFileSystem.downloadAsync(url, destUri, {
+        headers: { Authorization: `Bearer ${retryToken}` },
+      });
+      return retryResult.status === 200;
+    }
+    return result.status === 200;
+  } catch (e) {
+    console.warn('[googleDrive] downloadFileFromDrive failed', driveFileId, e);
+    return false;
+  }
+}
+
 // "Bearless Notes Drive test" as base64 - the diagnostic below uploads this
 // tiny file rather than a real attachment, so it needs no picker and no
 // local file to read.

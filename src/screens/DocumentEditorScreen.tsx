@@ -64,6 +64,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { backupFileToDrive } from '../utils/googleDrive';
 import { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags } from '../hooks/useTags';
+import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
@@ -852,22 +853,15 @@ function BlockRow({
   // color - see BlockRowProps.paperColor.
   const rowPaperColor = item.isSticker ? null : paperColor;
 
-  // There's no cloud copy yet, so the cache file IS the only copy - Android
-  // can purge app cache under storage pressure, which would silently orphan
-  // the block. Checking on each mount (not just trusting that attaching it
-  // succeeded) is what makes the badge an honest confirmation rather than a
-  // decoration that's still green after the file is actually gone.
-  const [fileCached, setFileCached] = useState<boolean | null>(null);
-  useEffect(() => {
-    if (type !== 'file' || !item.fileUri) return;
-    let cancelled = false;
-    LegacyFileSystem.getInfoAsync(item.fileUri).then((info) => {
-      if (!cancelled) setFileCached(info.exists);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [type, item.fileUri]);
+  // A file/image block only ever stores a local URI - Android can purge app
+  // cache under storage pressure, and a different device never had it in
+  // the first place. useCachedAttachment checks on each mount (not just
+  // trusting that attaching it once succeeded) and quietly re-downloads
+  // from the Drive backup when there is one, so the badge below is an
+  // honest confirmation rather than a decoration that's still green after
+  // the file is actually gone.
+  const fileCacheStatus = useCachedAttachment(type === 'file' ? item.fileUri : undefined, item.driveFileId);
+  const imageCacheStatus = useCachedAttachment(type === 'image' ? item.imageUri : undefined, item.driveFileId);
 
   let content: ReactNode;
   if (type === 'divider') {
@@ -879,7 +873,19 @@ function BlockRow({
     // cropping whatever doesn't fit. The small corner button switches
     // between the two per image.
     const fit = item.imageFit ?? 'contain';
-    content = item.imageUri ? (
+    content = !item.imageUri ? (
+      <Text style={styles.blockPlaceholder}>Немає зображення</Text>
+    ) : imageCacheStatus === 'restoring' || imageCacheStatus === 'checking' ? (
+      <View style={[styles.blockImageWrap, styles.attachmentStatusBox]}>
+        <ActivityIndicator color="#9CA3AF" />
+        {imageCacheStatus === 'restoring' && <Text style={styles.attachmentStatusLabel}>Відновлення з Диску…</Text>}
+      </View>
+    ) : imageCacheStatus === 'missing' ? (
+      <View style={[styles.blockImageWrap, styles.attachmentStatusBox]}>
+        <Ionicons name="cloud-offline-outline" size={22} color="#9CA3AF" />
+        <Text style={styles.attachmentStatusLabel}>Недоступно на цьому пристрої</Text>
+      </View>
+    ) : (
       <View style={styles.blockImageWrap}>
         <Pressable
           disabled={isSelectMode}
@@ -898,8 +904,6 @@ function BlockRow({
           </Pressable>
         )}
       </View>
-    ) : (
-      <Text style={styles.blockPlaceholder}>Немає зображення</Text>
     );
   } else if (type === 'sketch') {
     // viewBox reuses the exact canvas size the elements were captured
@@ -948,36 +952,45 @@ function BlockRow({
       />
     );
   } else if (type === 'file') {
-    // No cloud upload yet - the URI is the file picker's own local cache
-    // copy, so opening it (via the OS's "open with" sheet) works instantly
-    // and offline on this device, but the block won't resolve on another one.
+    // fileCacheStatus 'restoring' means it was missing locally but is being
+    // quietly re-pulled from its Drive backup right now (useCachedAttachment) -
+    // 'missing' means either that failed or there never was a backup, in
+    // which case opening/downloading it can't work until the device that
+    // still has it re-syncs.
     content = (
       <View style={styles.fileBlockRow}>
         <Pressable
-          disabled={isSelectMode}
+          disabled={isSelectMode || fileCacheStatus !== 'ready'}
           onPress={() => onOpenFile(item.id)}
           style={styles.fileBlockTap}
         >
           <View style={styles.fileIconWrap}>
             <Ionicons name={fileIconFor(item.fileName)} size={22} color={fileIconColorFor(item.fileName)} />
-            {fileCached !== null && (
-              <View style={[styles.fileCacheBadge, !fileCached && styles.fileCacheBadgeMissing]}>
-                <Ionicons name={fileCached ? 'checkmark' : 'close'} size={9} color="#fff" />
+            {fileCacheStatus === 'restoring' || fileCacheStatus === 'checking' ? (
+              <View style={styles.fileCacheBadge}>
+                <ActivityIndicator size="small" color="#fff" style={styles.fileCacheBadgeSpinner} />
+              </View>
+            ) : (
+              <View style={[styles.fileCacheBadge, fileCacheStatus === 'missing' && styles.fileCacheBadgeMissing]}>
+                <Ionicons name={fileCacheStatus === 'ready' ? 'checkmark' : 'close'} size={9} color="#fff" />
               </View>
             )}
           </View>
           <Text style={styles.fileBlockName} numberOfLines={1}>
             {item.fileName ?? 'Файл'}
           </Text>
+          {fileCacheStatus === 'missing' && <Text style={styles.attachmentStatusLabel}>Недоступно тут</Text>}
         </Pressable>
         {!isSelectMode && (
           <>
             <Pressable hitSlop={8} onPress={onOpenFileDatabase} style={styles.fileDbButton}>
               <Ionicons name="server-outline" size={16} color="#6B7280" />
             </Pressable>
-            <Pressable hitSlop={8} onPress={() => onDownloadFile(item.id)}>
-              <Ionicons name="download-outline" size={18} color="#6B7280" />
-            </Pressable>
+            {fileCacheStatus === 'ready' && (
+              <Pressable hitSlop={8} onPress={() => onDownloadFile(item.id)}>
+                <Ionicons name="download-outline" size={18} color="#6B7280" />
+              </Pressable>
+            )}
           </>
         )}
       </View>
@@ -4077,6 +4090,18 @@ const styles = StyleSheet.create({
   },
   fileCacheBadgeMissing: {
     backgroundColor: '#DC2626',
+  },
+  fileCacheBadgeSpinner: {
+    transform: [{ scale: 0.6 }],
+  },
+  attachmentStatusBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  attachmentStatusLabel: {
+    fontSize: 11,
+    color: '#9CA3AF',
   },
   linkCardVideo: {
     flex: 1,
