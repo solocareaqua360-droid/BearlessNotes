@@ -95,7 +95,10 @@ const ACCENT = '#3B82F6';
 const EDIT_FAB_COLOR = '#BE7657';
 const DANGER = '#EF4444';
 const AUTOSAVE_DELAY_MS = 600;
-const DRAG_LONG_PRESS_MS = 350;
+// Long enough that a deliberate press-and-hold reads clearly apart from a
+// tap - a tap on a block now starts editing it (see BlockRow), so the two
+// can't be allowed to blur into each other.
+const DRAG_LONG_PRESS_MS = 500;
 const DOWNLOAD_DIR_STORAGE_KEY = 'bearlessNotes.downloadDirUri';
 
 // Small fixed palette rather than a full color picker - enough variety for
@@ -608,10 +611,18 @@ type BlockRowProps = {
   item: Block;
   isSelected: boolean;
   isSelectMode: boolean;
-  isEditMode: boolean;
+  // Only the one block being written in is a live TextInput - every other
+  // block is plain Text a swipe scrolls straight through, and a tap on it
+  // calls onActivate to make it the live one. This replaces the old
+  // whole-document edit mode (the pencil button): Android can't let a
+  // TextInput and a scroll gesture share a touch, so the way to have both
+  // is to only ever have one TextInput on screen.
+  isActive: boolean;
   showBoundary: boolean;
   listNumber?: number;
   textVersion: number;
+  onActivate: (id: string) => void;
+  onBlur: (id: string) => void;
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
   onToggleSelected: (id: string) => void;
@@ -829,10 +840,12 @@ function BlockRow({
   item,
   isSelected,
   isSelectMode,
-  isEditMode,
+  isActive,
   showBoundary,
   listNumber,
   textVersion,
+  onActivate,
+  onBlur,
   onChangeText,
   onBackspaceEmpty,
   onToggleSelected,
@@ -859,7 +872,7 @@ function BlockRow({
   // exactly what was blocking swipe-to-scroll over blocks. With no
   // TextInput to compete with, a swipe anywhere reaches the ScrollView
   // just like it already did over the icon column.
-  const canEditText = isEditMode && !isSelectMode;
+  const canEditText = isActive && !isSelectMode;
   const type = item.type ?? 'paragraph';
   // A sticker keeps its own yellow regardless of the document's paper
   // color - see BlockRowProps.paperColor.
@@ -956,12 +969,21 @@ function BlockRow({
       </Pressable>
     );
   } else if (type === 'table') {
-    content = (
+    const table = (
       <TableBlockContent
         block={item}
         canEdit={canEditText}
         onUpdate={(patch) => onUpdateBlock(item.id, patch)}
       />
+    );
+    // Locked, the table is display-only that a swipe scrolls through (its
+    // cells are inert to touch); a tap wakes it for editing, same as text.
+    content = canEditText ? (
+      table
+    ) : (
+      <Pressable onPress={() => (isSelectMode ? onToggleSelected(item.id) : onActivate(item.id))}>
+        <View pointerEvents="none">{table}</View>
+      </Pressable>
     );
   } else if (type === 'file') {
     // fileCacheStatus 'restoring' means it was missing locally but is being
@@ -1111,6 +1133,7 @@ function BlockRow({
         value={item.text}
         onChangeText={(text) => onChangeText(item.id, text)}
         onFocus={() => onFocus(item.id)}
+        onBlur={() => onBlur(item.id)}
         onSelectionChange={({ nativeEvent }) =>
           onSelectionChange(item.id, nativeEvent.selection.start, nativeEvent.selection.end)
         }
@@ -1125,10 +1148,16 @@ function BlockRow({
         multiline
       />
     ) : (
-      // Outside edit mode, formatting markers (**bold** etc.) are parsed
-      // into styled runs instead of showing as raw text - and a plain
-      // Text has no touch handling of its own to fight the ScrollView.
-      <View key="locked" style={styles.blockInput} pointerEvents="none">
+      // While not the active block, formatting markers (**bold** etc.) are
+      // parsed into styled runs instead of showing as raw text - and a
+      // plain Text has no touch handling of its own to fight the
+      // ScrollView, so a swipe here scrolls the document. A tap makes this
+      // the active block (a real TextInput, keyboard up).
+      <Pressable
+        key="locked"
+        style={styles.blockInput}
+        onPress={() => (isSelectMode ? onToggleSelected(item.id) : onActivate(item.id))}
+      >
         <Text style={[styles.blockDisplayText, item.checked && styles.checkedText]}>
           {item.text ? (
             <FormattedText
@@ -1139,7 +1168,7 @@ function BlockRow({
             <Text style={[styles.blockPlaceholder, rowPaperColor && { color: rowPaperColor.textMuted }]}>…</Text>
           )}
         </Text>
-      </View>
+      </Pressable>
     );
 
     if (type === 'bulleted' || type === 'numbered') {
@@ -1233,7 +1262,9 @@ type SortableBlockRowProps = {
   item: Block;
   isSelected: boolean;
   isSelectMode: boolean;
-  isEditMode: boolean;
+  isActive: boolean;
+  onActivate: (id: string) => void;
+  onBlur: (id: string) => void;
   isDragging: boolean;
   isDragActive: boolean;
   compressTowardOffset: number;
@@ -1267,7 +1298,9 @@ function SortableBlockRow({
   item,
   isSelected,
   isSelectMode,
-  isEditMode,
+  isActive,
+  onActivate,
+  onBlur,
   isDragging,
   isDragActive,
   compressTowardOffset,
@@ -1312,12 +1345,11 @@ function SortableBlockRow({
   // text itself. Gesture.Native() + Simultaneous tells gesture-handler to
   // let our gesture and the TextInput's own handling run at the same time
   // instead of waiting for one to fail before trying the other. This
-  // operates below React Native's own pointerEvents, so it has to be left
-  // out of the composition entirely outside edit mode - otherwise it keeps
-  // deferring to the text field's native touch handling even though that
-  // field is pointerEvents: 'none', which is exactly what was still
-  // blocking the ScrollView from ever seeing a swipe over a block.
-  const canEditText = isEditMode && !isSelectMode;
+  // operates below React Native's own pointerEvents, so it's only composed
+  // in for the one active block (the only one that has a TextInput) -
+  // for every other block the plain drag gesture is all there is, which
+  // is what lets the ScrollView see a swipe over them.
+  const canEditText = isActive && !isSelectMode;
   const gesture = canEditText ? Gesture.Simultaneous(dragGesture, Gesture.Native()) : dragGesture;
 
   // Every row currently being dragged - whether it's the one lone block or
@@ -1348,7 +1380,9 @@ function SortableBlockRow({
             item={item}
             isSelected={isSelected}
             isSelectMode={isSelectMode}
-            isEditMode={isEditMode}
+            isActive={isActive}
+            onActivate={onActivate}
+            onBlur={onBlur}
             showBoundary={isDragActive}
             paperColor={paperColor}
             listNumber={listNumber}
@@ -1381,7 +1415,9 @@ type BlockListProps = {
   onReorder: (blocks: Block[]) => void;
   selectedIds: Set<string>;
   isSelectMode: boolean;
-  isEditMode: boolean;
+  focusedBlockId: string | null;
+  onActivate: (id: string) => void;
+  onBlur: (id: string) => void;
   textVersions: Record<string, number>;
   onToggleSelected: (id: string) => void;
   onToggleChecked: (id: string) => void;
@@ -1408,7 +1444,9 @@ function BlockList({
   onReorder,
   selectedIds,
   isSelectMode,
-  isEditMode,
+  focusedBlockId,
+  onActivate,
+  onBlur,
   textVersions,
   onToggleSelected,
   onToggleChecked,
@@ -1612,7 +1650,9 @@ function BlockList({
           item={item}
           isSelected={selectedIds.has(item.id)}
           isSelectMode={isSelectMode}
-          isEditMode={isEditMode}
+          isActive={focusedBlockId === item.id}
+          onActivate={onActivate}
+          onBlur={onBlur}
           isDragging={draggingIds?.includes(item.id) ?? false}
           isDragActive={draggingIds !== null}
           listNumber={item.type === 'numbered' ? runningNumber : undefined}
@@ -1733,7 +1773,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSelectMode, setIsSelectMode] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(false);
+  // The title behaves like a block: plain text until tapped, a live input
+  // while being edited. Starts active only for a brand-new document (see
+  // autoFocusTitle), which is what raises the keyboard onto it right away.
+  const [titleActive, setTitleActive] = useState(autoFocusTitle);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   // The window is drawn edge-to-edge (measured: window height === screen
   // height with the keyboard both up and down), so nothing keeps the
@@ -1860,11 +1903,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         loadedBlocks.filter((b) => (b.type ?? 'paragraph') === 'file' && b.fileUri).map((b) => b.id)
       );
       knownStickerBlockIdsRef.current = new Set(loadedBlocks.filter((b) => b.isSticker).map((b) => b.id));
-      // The title TextInput remounts (its own `key` toggles editable/locked)
-      // exactly when isEditMode flips, which is what lets its `autoFocus`
-      // prop actually fire here instead of doing nothing (autoFocus only
-      // ever fires on a component's own first mount).
-      if (autoFocusTitle) setIsEditMode(true);
       setIsLoaded(true);
     })();
   }, [documentId]);
@@ -2167,20 +2205,29 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, blocks, coverImageUri, paperColorEnabled, groupId, isLoaded]);
 
+  // Whoever set focusIdRef wants that block to be the live input next. A
+  // block only has a TextInput while it's the active one, so this first
+  // makes it active (which mounts the input) and then, on the re-run that
+  // follows, focuses it and places the cursor.
   useEffect(() => {
     const id = focusIdRef.current;
     if (!id) return;
+    if (focusedBlockId !== id) {
+      focusedBlockIdRef.current = id;
+      setTitleActive(false);
+      setFocusedBlockId(id);
+      return;
+    }
     const input = inputRefs.current[id];
-    input?.focus();
+    if (!input) return;
+    input.focus();
     if (focusToEndRef.current) {
       const block = blocks.find((b) => b.id === id);
-      if (block) {
-        input?.setSelection(block.text.length, block.text.length);
-      }
+      if (block) input.setSelection(block.text.length, block.text.length);
       focusToEndRef.current = false;
     }
     focusIdRef.current = null;
-  }, [blocks]);
+  }, [blocks, focusedBlockId]);
 
   // Expo Go's own manifest isn't affected by app.json's
   // android.softwareKeyboardLayoutMode, so the keyboard never resizes the
@@ -2203,6 +2250,19 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
       cancelDismissFallback();
       setKeyboardHeight(0);
+      // Back-gesture dismissal hides the keyboard WITHOUT blurring the
+      // EditText on Android, so the active block would otherwise stay a
+      // live input with the keyboard down - the one place a swipe still
+      // wouldn't scroll. Keyboard down means nothing is being edited: hand
+      // the block (or title) back to plain text explicitly.
+      const activeId = focusedBlockIdRef.current;
+      if (activeId) {
+        inputRefs.current[activeId]?.blur();
+        focusedBlockIdRef.current = null;
+        setFocusedBlockId(null);
+        setActiveSelection(null);
+      }
+      setTitleActive(false);
     });
     return () => {
       showSub.remove();
@@ -2308,6 +2368,27 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         scrollViewRef.current?.scrollTo({ y: scrollOffsetRef.current + overflow, animated: true });
       }
     });
+  }
+
+  // A tap on a locked block: make it the one live TextInput (the focus
+  // effect above then focuses it once it has mounted, cursor at the end).
+  function handleActivateBlock(id: string) {
+    focusIdRef.current = id;
+    focusToEndRef.current = true;
+    focusedBlockIdRef.current = id;
+    setTitleActive(false);
+    setFocusedBlockId(id);
+  }
+
+  // The keyboard going away (back gesture, "done") or focus moving on to
+  // another block returns this one to plain, scroll-through text. Guarded
+  // on the ref so a blur that lands after the NEXT block has already taken
+  // over doesn't knock that block back out.
+  function handleBlockBlur(id: string) {
+    if (focusedBlockIdRef.current !== id) return;
+    focusedBlockIdRef.current = null;
+    setFocusedBlockId(null);
+    setActiveSelection(null);
   }
 
   function handleBlockFocus(id: string) {
@@ -3257,34 +3338,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     onSaveStatusChange?.(saveStatus);
   }, [saveStatus]);
 
-  // Outside edit mode a block's TextInput is pointerEvents: 'none' (see
-  // BlockRow) so scrolling can reach through it - which means there's no
-  // per-block tap to "start editing here"; the pencil button is the only
-  // way in, and it always resumes at the end of the last block, cursor and
-  // all, like continuing a line you were already writing.
-  function toggleEditMode() {
-    if (isEditMode) {
-      Keyboard.dismiss();
-      requestDismissFallback();
-      setIsEditMode(false);
-      setActiveSelection(null);
-      return;
-    }
-    setIsEditMode(true);
-    if (blocks.length === 0) return;
-    const last = blocks[blocks.length - 1];
-    requestAnimationFrame(() => {
-      const input = inputRefs.current[last.id];
-      input?.focus();
-      input?.setSelection(last.text.length, last.text.length);
-    });
-  }
-
   function addBlockAtEnd() {
     snapshotBeforeChange();
     const created = newBlock();
     focusIdRef.current = created.id;
-    setIsEditMode(true);
     setBlocks((prev) => [...prev, created]);
   }
 
@@ -3450,22 +3507,38 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           </Pressable>
         )}
 
-        {!embedded && (
+        {!embedded && titleActive && (
         <TextInput
-          key={isEditMode ? 'editable' : 'locked'}
-          autoFocus={autoFocusTitle}
+          autoFocus
           value={title}
           onChangeText={handleTitleChange}
           // The pinned toolbar acts on a block, not the title - hide it
           // rather than have it apply to whatever block last had focus.
-          onFocus={() => setFocusedBlockId(null)}
-          editable={isEditMode}
-          pointerEvents={isEditMode ? 'auto' : 'none'}
+          onFocus={() => {
+            focusedBlockIdRef.current = null;
+            setFocusedBlockId(null);
+          }}
+          onBlur={() => setTitleActive(false)}
           placeholder="Без назви"
           placeholderTextColor={paperColor?.textMuted}
           style={[styles.titleInput, paperColor && { color: paperColor.text }]}
           multiline
         />
+        )}
+        {!embedded && !titleActive && (
+        // Same locked/active split as a block: plain text a swipe scrolls
+        // through, a tap turns it into the input above.
+        <Pressable onPress={() => setTitleActive(true)}>
+          <Text
+            style={[
+              styles.titleInput,
+              paperColor && { color: paperColor.text },
+              !title && { color: paperColor?.textMuted ?? '#9CA3AF' },
+            ]}
+          >
+            {title || 'Без назви'}
+          </Text>
+        </Pressable>
         )}
 
         {/* Calendar days deliberately have no tags at all - the user was
@@ -3487,7 +3560,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           onReorder={handleReorderBlocks}
           selectedIds={selectedIds}
           isSelectMode={isSelectMode}
-          isEditMode={isEditMode}
+          focusedBlockId={focusedBlockId}
+          onActivate={handleActivateBlock}
+          onBlur={handleBlockBlur}
           textVersions={textVersionsRef.current}
           onToggleSelected={toggleSelected}
           onToggleChecked={toggleChecked}
@@ -3546,22 +3621,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             </Pressable>
           </View>
         </View>
-      )}
-
-      {selectedIds.size === 0 && (
-        <Pressable
-          style={[
-            styles.editModeFab,
-            // Embedded, the keyboard also has to be dodged - otherwise
-            // there's no way to tap "done" without dismissing it some other
-            // way first. (With the keyboard down, the base 100 already
-            // clears the floating island and the tags-drawer button.)
-            embedded && keyboardHeight > 0 && { bottom: keyboardHeight + 16 },
-          ]}
-          onPress={toggleEditMode}
-        >
-          <Ionicons name={isEditMode ? 'checkmark-outline' : 'create-outline'} size={24} color="#fff" />
-        </Pressable>
       )}
 
       {viewerBlock?.imageUri && (
@@ -3797,8 +3856,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  // Select-mode toggle + "..." merged into one pill, filled the same color
-  // as the edit-mode FAB rather than separate plain icon buttons.
+  // Select-mode toggle + "..." merged into one pill, filled with the
+  // editor's accent rather than separate plain icon buttons.
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3874,25 +3933,6 @@ const styles = StyleSheet.create({
   saveDotSaved: {
     backgroundColor: '#fff',
     borderColor: 'transparent',
-  },
-  editModeFab: {
-    position: 'absolute',
-    right: 20,
-    // Same height off the bottom as DocumentsScreen's "+" - low enough to
-    // reach, high enough that the toolbar pinned along the bottom edge
-    // (keyboard down) doesn't cover it.
-    bottom: 100,
-    width: 56,
-    height: 56,
-    borderRadius: 18,
-    backgroundColor: EDIT_FAB_COLOR,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 4,
-    shadowColor: EDIT_FAB_COLOR,
-    shadowOpacity: 0.5,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 6,
   },
   scrollArea: {
     flex: 1,
