@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Props = {
   count: number;
@@ -25,9 +26,19 @@ type Props = {
 // made it hard to tell apart from a plain toolbar and, on Documents, put it
 // at the same height as the tab island underneath.
 export default function BulkActionBar({ count, onTag, onGroup, onCopy, onDelete, aboveTabBar }: Props) {
+  // The device's own gesture-nav strip isn't accounted for by a plain
+  // hardcoded bottom offset - on a phone with a tall gesture inset, that
+  // let this bar render partly behind/under the system bar rather than
+  // fully on-screen. Adding the real inset on top of the base offset
+  // keeps it clear on every device instead of just the ones this was
+  // eyeballed on.
+  const insets = useSafeAreaInsets();
   if (count === 0) return null;
   return (
-    <View style={[styles.wrap, aboveTabBar && styles.wrapAboveTabBar]} pointerEvents="box-none">
+    <View
+      style={[styles.wrap, { bottom: (aboveTabBar ? 104 : 24) + insets.bottom }]}
+      pointerEvents="box-none"
+    >
       <View style={styles.capsule}>
         <Text style={styles.count}>{count}</Text>
         <View style={styles.divider} />
@@ -55,16 +66,13 @@ export default function BulkActionBar({ count, onTag, onGroup, onCopy, onDelete,
 }
 
 const styles = StyleSheet.create({
+  // `bottom` is set inline (base offset + the device's real safe-area
+  // inset) rather than here - see the component body.
   wrap: {
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 24,
     alignItems: 'center',
-  },
-  // 88 (island's own bottom + height) + 16 clearance.
-  wrapAboveTabBar: {
-    bottom: 104,
   },
   capsule: {
     flexDirection: 'row',
