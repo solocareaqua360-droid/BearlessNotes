@@ -51,6 +51,10 @@ const COLUMN_CARD_GAP = 12;
 // A column with nothing in it still has to be a visible drop target.
 const COLUMN_MIN_HEIGHT = 220;
 const COLUMN_SPACING = 24;
+// How far outside a column's own bounds a dropped card still gets pulled
+// into it. Generous on purpose - dropping a card "at" a column shouldn't
+// require landing inside its box.
+const COLUMN_SNAP_MARGIN = 90;
 const CONNECTION_COLOR = '#8B5CF6';
 // Padding around a connection's own bounding box, so the curve's bulge and
 // the stroke width itself aren't clipped by the little Svg canvas each
@@ -143,49 +147,99 @@ function firstImageUri(blocks: Block[]): string | undefined {
   return blocks.find((b) => b.type === 'image' && b.imageUri)?.imageUri;
 }
 
-function columnSlotY(column: BoardColumn, index: number): number {
-  return column.y + COLUMN_HEADER_HEIGHT + index * (APPROX_CARD_HEIGHT + COLUMN_CARD_GAP);
+// A card's real rendered height, reported by its own onLayout (see
+// DraggableCard's onMeasure). Falls back to the rough constant only for a
+// card that hasn't been laid out yet - stacking a column by the constant
+// is what made tall cards overflow their column and overlap each other.
+function heightOf(card: BoardCard, heights: Map<string, number>): number {
+  return heights.get(card.id) ?? APPROX_CARD_HEIGHT;
 }
 
-function columnHeight(cardCount: number): number {
-  const filled = COLUMN_HEADER_HEIGHT + cardCount * (APPROX_CARD_HEIGHT + COLUMN_CARD_GAP) + COLUMN_PADDING;
-  return Math.max(COLUMN_MIN_HEIGHT, filled);
+// A column's cards, top to bottom in their current vertical order - which
+// is what makes dropping a card above another genuinely reorder them.
+function columnMembers(cards: BoardCard[], columnId: string): BoardCard[] {
+  return cards.filter((c) => c.columnId === columnId).sort((a, b) => a.y - b.y);
 }
 
-// A card belongs to whichever column its own centre point lands inside -
-// centre rather than top-left so a card is "in" the column it visually
-// sits in, not the one its corner happens to poke into.
-function columnAtPoint(columns: BoardColumn[], cards: BoardCard[], x: number, y: number): BoardColumn | undefined {
-  return columns.find((column) => {
-    const height = columnHeight(cards.filter((c) => c.columnId === column.id).length);
-    return x >= column.x && x <= column.x + COLUMN_WIDTH && y >= column.y && y <= column.y + height;
-  });
+function columnHeight(members: BoardCard[], heights: Map<string, number>): number {
+  const filled = members.reduce((sum, card) => sum + heightOf(card, heights) + COLUMN_CARD_GAP, 0);
+  return Math.max(COLUMN_MIN_HEIGHT, COLUMN_HEADER_HEIGHT + filled + COLUMN_PADDING);
+}
+
+// The column a card dropped at this point belongs to: the nearest one
+// whose box the point is inside or within COLUMN_SNAP_MARGIN of. Nearest
+// rather than first-match because with a margin that generous, two
+// neighbouring columns' catch areas overlap.
+function columnAtPoint(
+  columns: BoardColumn[],
+  cards: BoardCard[],
+  heights: Map<string, number>,
+  x: number,
+  y: number
+): BoardColumn | undefined {
+  let best: BoardColumn | undefined;
+  let bestDistance = COLUMN_SNAP_MARGIN;
+  for (const column of columns) {
+    const height = columnHeight(columnMembers(cards, column.id), heights);
+    // Distance from the point to the column's rectangle - zero anywhere
+    // inside it, so a card actually dropped in always wins.
+    const dx = Math.max(column.x - x, 0, x - (column.x + COLUMN_WIDTH));
+    const dy = Math.max(column.y - y, 0, y - (column.y + height));
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    if (distance <= bestDistance) {
+      bestDistance = distance;
+      best = column;
+    }
+  }
+  return best;
 }
 
 // A card in a column doesn't own its own position - the column stacks its
-// members top to bottom, in their current vertical order, so dropping one
-// higher than another genuinely reorders them. Cards outside every column
-// are left exactly where they were put.
-function reflowColumns(cards: BoardCard[], columns: BoardColumn[]): BoardCard[] {
+// members top to bottom, each below the real height of the one above it.
+// Cards outside every column are left exactly where they were put.
+//
+// Returns the ORIGINAL array when nothing actually moved: this runs from
+// onLayout, and a fresh array every time would re-render and re-save the
+// board on every measurement.
+function reflowColumns(
+  cards: BoardCard[],
+  columns: BoardColumn[],
+  heights: Map<string, number>
+): BoardCard[] {
   const columnIds = new Set(columns.map((c) => c.id));
   const slots = new Map<string, { x: number; y: number }>();
   for (const column of columns) {
-    cards
-      .filter((c) => c.columnId === column.id)
-      .sort((a, b) => a.y - b.y)
-      .forEach((card, index) => {
-        slots.set(card.id, { x: column.x + COLUMN_PADDING, y: columnSlotY(column, index) });
-      });
+    const members = columnMembers(cards, column.id);
+    // Until every card in the column has reported its height, leave the
+    // column alone: the positions it was saved with are already correct,
+    // and laying it out against the fallback constant would visibly yank
+    // every card the moment the board opened, only to correct itself a
+    // frame later once the real measurements arrived.
+    if (members.some((card) => !heights.has(card.id))) continue;
+    let y = column.y + COLUMN_HEADER_HEIGHT;
+    for (const card of members) {
+      slots.set(card.id, { x: column.x + COLUMN_PADDING, y });
+      y += heightOf(card, heights) + COLUMN_CARD_GAP;
+    }
   }
-  return cards.map((card) => {
+  let changed = false;
+  const next = cards.map((card) => {
     const slot = slots.get(card.id);
-    if (slot) return card.x === slot.x && card.y === slot.y ? card : { ...card, ...slot };
+    if (slot) {
+      if (card.x === slot.x && card.y === slot.y) return card;
+      changed = true;
+      return { ...card, ...slot };
+    }
     // Pointing at a column that's since been deleted releases the card. The
     // key is dropped rather than set to undefined - Firestore rejects an
     // undefined field value outright.
-    if (card.columnId && !columnIds.has(card.columnId)) return releaseFromColumn(card);
+    if (card.columnId && !columnIds.has(card.columnId)) {
+      changed = true;
+      return releaseFromColumn(card);
+    }
     return card;
   });
+  return changed ? next : cards;
 }
 
 function releaseFromColumn(card: BoardCard): BoardCard {
@@ -272,6 +326,10 @@ type DraggableCardProps = {
   // card's Pan would otherwise win that touch (it blocksExternalGesture)
   // and just move the card instead.
   dragEnabled: boolean;
+  // Reports this card's real rendered height, which is what a column
+  // stacks by. Layout is measured before the canvas's own scale transform
+  // is applied, so this is already in world units.
+  onMeasure: (id: string, height: number) => void;
   onDragStart: (id: string) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
   onGroupDragEnd: (dx: number, dy: number) => void;
@@ -313,6 +371,7 @@ function DraggableCard({
   groupOffsetX,
   groupOffsetY,
   dragEnabled,
+  onMeasure,
   onDragStart,
   onDragEnd,
   onGroupDragEnd,
@@ -404,6 +463,7 @@ function DraggableCard({
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View
+        onLayout={(e) => onMeasure(card.id, e.nativeEvent.layout.height)}
         style={[
           styles.card,
           { width: card.width },
@@ -522,6 +582,11 @@ export default function BoardScreen() {
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const [connections, setConnections] = useState<BoardConnection[]>([]);
   const [columns, setColumns] = useState<BoardColumn[]>([]);
+  // Each card's real rendered height, reported by its own onLayout - what
+  // a column stacks by. State rather than a ref specifically so a height
+  // change re-renders: a column whose single card grew has nothing to
+  // reposition, but its OWN height still has to catch up.
+  const [cardHeights, setCardHeights] = useState<Map<string, number>>(new Map());
   const [renamingColumn, setRenamingColumn] = useState<BoardColumn | null>(null);
 
   const scale = useSharedValue(1);
@@ -597,6 +662,18 @@ export default function BoardScreen() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, cards, connections, columns, isLoaded]);
+
+  // Re-lays every column out whenever a card's measured height changes or
+  // the columns themselves do. Deliberately does NOT depend on `cards`:
+  // the two places that change cards in a way a column cares about
+  // (dropping one in, deleting one) reflow explicitly, and depending on
+  // cards here would mean reflowing on every unrelated edit. reflowColumns
+  // returns the same array when nothing moved, so this can't loop.
+  useEffect(() => {
+    if (!isLoaded) return;
+    setCards((prev) => reflowColumns(prev, columns, cardHeights));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardHeights, columns, isLoaded]);
 
   const pinchGesture = Gesture.Pinch()
     .onUpdate((e) => {
@@ -838,6 +915,18 @@ export default function BoardScreen() {
     setDraggedCardId(id);
   }
 
+  function measureCard(id: string, height: number) {
+    setCardHeights((prev) => {
+      const previous = prev.get(id);
+      // Returning the same Map is what stops measure -> reflow -> layout ->
+      // measure from looping once the height has settled.
+      if (previous !== undefined && Math.abs(previous - height) < 1) return prev;
+      const next = new Map(prev);
+      next.set(id, height);
+      return next;
+    });
+  }
+
   function commitCardDrag(id: string, x: number, y: number) {
     setCards((prev) => {
       const dropped = prev.map((c) => (c.id === id ? { ...c, x, y } : c));
@@ -847,13 +936,14 @@ export default function BoardScreen() {
       // dragged out of a column doesn't count itself towards that column's
       // height while deciding whether it landed back inside it.
       const others = dropped.filter((c) => c.id !== id);
-      const target = columnAtPoint(columns, others, x + card.width / 2, y + APPROX_CARD_HEIGHT / 2);
+      const centreY = y + heightOf(card, cardHeights) / 2;
+      const target = columnAtPoint(columns, others, cardHeights, x + card.width / 2, centreY);
       const assigned = dropped.map((c) => {
         if (c.id !== id) return c;
         if (target) return { ...c, columnId: target.id };
         return c.columnId ? releaseFromColumn(c) : c;
       });
-      return reflowColumns(assigned, columns);
+      return reflowColumns(assigned, columns, cardHeights);
     });
     setDraggedCardId(null);
   }
@@ -893,11 +983,10 @@ export default function BoardScreen() {
         text: 'Видалити',
         style: 'destructive',
         onPress: () => {
-          const remaining = columns.filter((c) => c.id !== column.id);
-          setColumns(remaining);
-          // Cards keep the position the column had them in; reflow only
-          // strips the now-dangling columnId.
-          setCards((prev) => reflowColumns(prev, remaining));
+          // Cards keep the position the column had them in - the reflow
+          // effect below strips the now-dangling columnId when `columns`
+          // changes.
+          setColumns((prev) => prev.filter((c) => c.id !== column.id));
         },
       },
     ]);
@@ -921,7 +1010,13 @@ export default function BoardScreen() {
         onPress: () => {
           // Reflowed after the removal so a column closes the gap its
           // deleted card left behind.
-          setCards((prev) => reflowColumns(prev.filter((c) => !selectedCardIds.has(c.id)), columns));
+          setCards((prev) =>
+            reflowColumns(
+              prev.filter((c) => !selectedCardIds.has(c.id)),
+              columns,
+              cardHeights
+            )
+          );
           // A connection to a card that no longer exists would render as a
           // line into empty space, so they go with it.
           setConnections((prev) =>
@@ -1001,11 +1096,14 @@ export default function BoardScreen() {
                 on. box-none so only the header takes touches and the rest
                 of the lane still pans the canvas. */}
             {columns.map((column) => {
-              const count = cards.filter((c) => c.columnId === column.id).length;
+              const members = columnMembers(cards, column.id);
               return (
                 <View
                   key={column.id}
-                  style={[styles.column, { left: column.x, top: column.y, height: columnHeight(count) }]}
+                  style={[
+                    styles.column,
+                    { left: column.x, top: column.y, height: columnHeight(members, cardHeights) },
+                  ]}
                   pointerEvents="box-none"
                 >
                   <Pressable
@@ -1018,7 +1116,7 @@ export default function BoardScreen() {
                         {column.title}
                       </Text>
                     </View>
-                    <Text style={styles.columnCount}>{count}</Text>
+                    <Text style={styles.columnCount}>{members.length}</Text>
                   </Pressable>
                 </View>
               );
@@ -1071,6 +1169,7 @@ export default function BoardScreen() {
                   groupOffsetX={groupOffsetX}
                   groupOffsetY={groupOffsetY}
                   dragEnabled={canvasTool !== 'connect'}
+                  onMeasure={measureCard}
                   onDragStart={handleDragStart}
                   onDragEnd={commitCardDrag}
                   onGroupDragEnd={commitGroupDrag}
