@@ -17,7 +17,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
-  addDoc,
   collection,
   deleteDoc,
   deleteField,
@@ -57,7 +56,7 @@ function generateId(): string {
 }
 
 type ViewMode = 'list' | 'table';
-type RowEditorState = { mode: 'new' } | { mode: 'edit'; row: CustomDatabaseRow };
+type RowEditorState = { mode: 'new'; id: string } | { mode: 'edit'; row: CustomDatabaseRow };
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CustomDatabase'>;
 
@@ -219,10 +218,24 @@ export default function CustomDatabaseScreen({}: Props) {
     navigation.goBack();
   }
 
-  function openNewRow() {
+  // The draft row is written to Firestore immediately (empty values), not
+  // deferred to "Зберегти" - creating a brand-new tag from inside this form
+  // needs a real document to attach its usedIn entry to (createAndAttachTag
+  // calls update() on it, which fails outright on a doc that doesn't exist
+  // yet). cancelRowEditor cleans this up again if the user backs out.
+  async function openNewRow() {
+    const id = generateId();
+    const now = Date.now();
+    await setDoc(doc(db, 'customDatabaseRows', id), {
+      databaseId,
+      values: {},
+      tagIds: [],
+      createdAt: now,
+      updatedAt: now,
+    });
     setDraftValues({});
     setDraftTagIds([]);
-    setRowEditor({ mode: 'new' });
+    setRowEditor({ mode: 'new', id });
   }
 
   function openEditRow(row: CustomDatabaseRow) {
@@ -232,24 +245,20 @@ export default function CustomDatabaseScreen({}: Props) {
     setRowMenuId(null);
   }
 
+  function cancelRowEditor() {
+    if (rowEditor?.mode === 'new') deleteDoc(doc(db, 'customDatabaseRows', rowEditor.id));
+    setRowEditor(null);
+  }
+
   async function saveRow() {
     if (!rowEditor) return;
     const now = Date.now();
-    if (rowEditor.mode === 'new') {
-      await addDoc(collection(db, 'customDatabaseRows'), {
-        databaseId,
-        values: draftValues,
-        tagIds: draftTagIds,
-        createdAt: now,
-        updatedAt: now,
-      });
-    } else {
-      await updateDoc(doc(db, 'customDatabaseRows', rowEditor.row.id), {
-        values: draftValues,
-        tagIds: draftTagIds,
-        updatedAt: now,
-      });
-    }
+    const id = rowEditor.mode === 'new' ? rowEditor.id : rowEditor.row.id;
+    await updateDoc(doc(db, 'customDatabaseRows', id), {
+      values: draftValues,
+      tagIds: draftTagIds,
+      updatedAt: now,
+    });
     setRowEditor(null);
   }
 
@@ -588,8 +597,8 @@ export default function CustomDatabaseScreen({}: Props) {
         </View>
       </Modal>
 
-      <Modal visible={rowEditor !== null} transparent animationType="fade" onRequestClose={() => setRowEditor(null)}>
-        <Pressable style={styles.backdrop} onPress={() => setRowEditor(null)}>
+      <Modal visible={rowEditor !== null} transparent animationType="fade" onRequestClose={cancelRowEditor}>
+        <Pressable style={styles.backdrop} onPress={cancelRowEditor}>
           <Pressable style={[styles.editorSheet, { marginBottom: keyboardHeight }]} onPress={() => {}}>
             <View style={styles.handle} />
             <Text style={styles.title}>{rowEditor?.mode === 'new' ? 'Новий запис' : 'Редагувати запис'}</Text>
@@ -612,7 +621,7 @@ export default function CustomDatabaseScreen({}: Props) {
               </View>
             </ScrollView>
             <View style={styles.buttons}>
-              <Pressable style={styles.cancelButton} onPress={() => setRowEditor(null)}>
+              <Pressable style={styles.cancelButton} onPress={cancelRowEditor}>
                 <Text style={styles.cancelLabel}>Скасувати</Text>
               </Pressable>
               <Pressable style={styles.saveButton} onPress={saveRow}>

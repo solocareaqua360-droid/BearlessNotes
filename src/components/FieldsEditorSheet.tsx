@@ -67,12 +67,20 @@ export default function FieldsEditorSheet({ visible, fields, onSave, onClose }: 
     setDraft((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)));
   }
 
+  // Firestore rejects `undefined` field values outright (same convention as
+  // everywhere else in this app) - switching a field AWAY from select/
+  // multiSelect has to drop the `options` key entirely, not set it to
+  // undefined, or the whole "Зберегти" write silently fails.
   function changeType(id: string, type: FieldType) {
     setTypeMenuFieldId(null);
-    updateField(id, {
-      type,
-      options: type === 'select' || type === 'multiSelect' ? [] : undefined,
-    });
+    setDraft((prev) =>
+      prev.map((f) => {
+        if (f.id !== id) return f;
+        if (type === 'select' || type === 'multiSelect') return { ...f, type, options: f.options ?? [] };
+        const { options: _options, ...rest } = f;
+        return { ...rest, type };
+      })
+    );
   }
 
   function addField() {
