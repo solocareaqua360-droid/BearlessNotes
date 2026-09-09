@@ -486,7 +486,7 @@ export default function CustomDatabaseScreen({}: Props) {
     return (
       <View style={styles.tableWrap}>
         <View style={styles.tableHeaderRow}>
-          <View style={[styles.tableFrozen, { width: TABLE_HANDLE_WIDTH + TABLE_COLUMN_WIDTH }]}>
+          <View style={[styles.tableFrozenHeader, { width: TABLE_HANDLE_WIDTH + TABLE_COLUMN_WIDTH }]}>
             <View style={styles.tableRowHandle} />
             <View style={[styles.tableHeaderCell, { width: TABLE_COLUMN_WIDTH }]}>
               <Ionicons name={FIELD_TYPE_ICON[firstField.type]} size={12} color="rgba(255,255,255,0.65)" />
@@ -509,7 +509,7 @@ export default function CustomDatabaseScreen({}: Props) {
 
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.tableBody}>
           <View style={styles.tableBodyRow}>
-            <View style={[styles.tableFrozen, { width: TABLE_HANDLE_WIDTH + TABLE_COLUMN_WIDTH }]}>
+            <View style={[styles.tableFrozenColumn, { width: TABLE_HANDLE_WIDTH + TABLE_COLUMN_WIDTH }]}>
               {displayedRows.map((row) => (
                 <View key={row.id} style={styles.tableRow}>
                   {/* Tapping a cell edits that one cell; this button is the
@@ -1343,10 +1343,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     backgroundColor: 'rgba(255,255,255,0.15)',
   },
-  // Both the header's and the body's frozen block - a plain row that simply
-  // isn't inside either horizontal scroller.
-  tableFrozen: {
+  // The header's frozen block is one row (handle + first column's title);
+  // the body's is a COLUMN of rows. They were briefly the same style, which
+  // laid every row out side by side instead of stacked.
+  tableFrozenHeader: {
     flexDirection: 'row',
+  },
+  tableFrozenColumn: {
+    overflow: 'hidden',
   },
   tableBody: {
     paddingBottom: 170,
