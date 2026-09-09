@@ -11,6 +11,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView as RNScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -41,12 +42,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // ScrollView's own scroll recognition and only the icon column can scroll.
 import { Gesture, GestureDetector, GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 import Animated, {
+  AnimatedRef,
+  measure,
   runOnJS,
+  scrollTo,
+  useAnimatedRef,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import { useKeyboardHandler } from 'react-native-keyboard-controller';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   collection,
@@ -1295,6 +1301,9 @@ type SortableBlockRowProps = {
   onOpenLinkDatabase: (block: Block) => void;
   onOpenSketch: (id: string) => void;
   inputRef: (ref: TextInput | null) => void;
+  // Attached to the one active row only, so the screen's keyboard handler
+  // can measure it on the UI thread the instant the keyboard starts rising.
+  activeRowRef: AnimatedRef<Animated.View>;
   paperColor: ReturnType<typeof colorForDocument> | null;
 };
 
@@ -1331,6 +1340,7 @@ function SortableBlockRow({
   onOpenLinkDatabase,
   onOpenSketch,
   inputRef,
+  activeRowRef,
   paperColor,
 }: SortableBlockRowProps) {
   // This gesture's whole job is JS-side (finding the nearest gap, updating
@@ -1379,7 +1389,7 @@ function SortableBlockRow({
   return (
     <View onLayout={onLayout}>
       <GestureDetector gesture={gesture}>
-        <Animated.View style={compressStyle}>
+        <Animated.View ref={isActive ? activeRowRef : undefined} style={compressStyle}>
           <BlockRow
             item={item}
             isSelected={isSelected}
@@ -1440,6 +1450,7 @@ type BlockListProps = {
   onOpenLinkDatabase: (block: Block) => void;
   onOpenSketch: (id: string) => void;
   onInputRef: (id: string, ref: TextInput | null) => void;
+  activeRowRef: AnimatedRef<Animated.View>;
   paperColor: ReturnType<typeof colorForDocument> | null;
 };
 
@@ -1469,6 +1480,7 @@ function BlockList({
   onOpenLinkDatabase,
   onOpenSketch,
   onInputRef,
+  activeRowRef,
   paperColor,
 }: BlockListProps) {
   const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
@@ -1685,6 +1697,7 @@ function BlockList({
           onOpenLinkDatabase={onOpenLinkDatabase}
           onOpenSketch={onOpenSketch}
           inputRef={(ref) => onInputRef(item.id, ref)}
+          activeRowRef={activeRowRef}
           paperColor={paperColor}
         />
         );
@@ -1823,8 +1836,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
   const inputRefs = useRef<Record<string, TextInput | null>>({});
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scrollViewRef = useRef<ScrollView>(null);
+  // An animated ref (not a plain useRef) so the keyboard-synced scroll below
+  // can drive it from the UI thread; `.current` still works for the plain
+  // JS scrollTo calls elsewhere.
+  // Typed as the RN instance (what gesture-handler's ScrollView forwards
+  // its ref to) - gesture-handler's own `ScrollView` type is the component.
+  const scrollViewRef = useAnimatedRef<RNScrollView>();
   const scrollOffsetRef = useRef(0);
+  // Same offset, readable from a worklet - the synced scroll needs to know
+  // where the list was the moment the keyboard started moving.
+  const scrollOffsetSV = useSharedValue(0);
+  const activeRowRef = useAnimatedRef<Animated.View>();
   const undoStackRef = useRef<{ title: string; blocks: Block[] }[]>([]);
   const redoStackRef = useRef<{ title: string; blocks: Block[] }[]>([]);
   const isTypingBurstRef = useRef(false);
@@ -2256,11 +2278,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         deactivateTimeoutRef.current = null;
       }
       setKeyboardHeight(e.endCoordinates.height);
+      // RN's events stay the final word on the toolbar's resting position,
+      // in case the frame-by-frame handler didn't run (older Android).
+      keyboardSV.value = e.endCoordinates.height;
       scheduleScrollAdjust(e.endCoordinates.height);
     });
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
       cancelDismissFallback();
       setKeyboardHeight(0);
+      keyboardSV.value = 0;
       // Back-gesture dismissal hides the keyboard WITHOUT blurring the
       // EditText on Android, so the active block would otherwise stay a
       // live input with the keyboard down - the one place a swipe still
@@ -2378,6 +2404,70 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // too: with it down the bar would just sit inert on the bottom edge.
   const isToolbarVisible = keyboardHeight > 0 && focusedBlockId !== null;
   toolbarHeightRef.current = isToolbarVisible ? EDITOR_TOOLBAR_HEIGHT : 0;
+
+  // Keyboard-synced scroll. The post-keyboard pass below
+  // (scrollFocusedBlockIntoView) can only run once the keyboard has
+  // finished rising, so the block used to sit still while the keyboard
+  // came up and then hop into place afterwards - the "jump" the user kept
+  // seeing. react-native-keyboard-controller reports the keyboard's own
+  // animation frame by frame on the UI thread; this measures the active
+  // row at the first frame, works out how far it has to move, and scrolls
+  // that distance in step with the keyboard's progress. The block and the
+  // keyboard then move as one motion, the way iOS does it. The old pass
+  // stays as a safety net (it no-ops within a few px of the target).
+  const keyboardSV = useSharedValue(0); // live keyboard height, mid-animation
+  const hasActiveBlockSV = useSharedValue(false);
+  const syncBaseOffset = useSharedValue(0);
+  const syncShift = useSharedValue(0);
+  const windowHeight = Dimensions.get('window').height;
+  useEffect(() => {
+    hasActiveBlockSV.value = focusedBlockId !== null;
+  }, [focusedBlockId]);
+  useKeyboardHandler(
+    {
+      onStart: (e) => {
+        'worklet';
+        syncShift.value = 0;
+        if (e.progress !== 1) return; // closing - nothing to bring into view
+        // Grow the list's bottom padding NOW (it's keyed off keyboardHeight)
+        // - otherwise a block near the end can't scroll clear of the
+        // keyboard until keyboardDidShow lands, and the last stretch would
+        // happen after the fact again.
+        runOnJS(setKeyboardHeight)(e.height);
+        if (!hasActiveBlockSV.value) return; // title: nothing to sync
+        const row = measure(activeRowRef);
+        if (!row) return;
+        // Same target as scrollFocusedBlockIntoView: row bottom just above
+        // the keyboard, with the toolbar (which the keyboard brings up
+        // with it) taken off the visible area too.
+        const visibleBottom = windowHeight - e.height - EDITOR_TOOLBAR_HEIGHT;
+        syncBaseOffset.value = scrollOffsetSV.value;
+        syncShift.value = Math.max(0, row.pageY + row.height - visibleBottom + 24);
+      },
+      onMove: (e) => {
+        'worklet';
+        keyboardSV.value = e.height;
+        if (syncShift.value > 0) {
+          scrollTo(scrollViewRef, 0, syncBaseOffset.value + syncShift.value * e.progress, false);
+        }
+      },
+      onEnd: (e) => {
+        'worklet';
+        keyboardSV.value = e.height;
+        if (syncShift.value > 0) {
+          scrollTo(scrollViewRef, 0, syncBaseOffset.value + syncShift.value, false);
+          syncShift.value = 0;
+        }
+      },
+    },
+    [windowHeight]
+  );
+  // The pinned toolbar rides on the live height, so it comes up (and goes
+  // down) glued to the keyboard's top edge rather than appearing at the
+  // final position ahead of it.
+  const pinnedToolbarStyle = useAnimatedStyle(() => ({
+    bottom: keyboardSV.value + insets.bottom,
+  }));
 
   function scrollFocusedBlockIntoView(currentKeyboardHeight: number) {
     const id = focusedBlockIdRef.current;
@@ -3524,6 +3614,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         keyboardShouldPersistTaps="handled"
         onScroll={(e) => {
           scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+          scrollOffsetSV.value = e.nativeEvent.contentOffset.y;
         }}
         scrollEventThrottle={16}
       >
@@ -3609,6 +3700,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           onInputRef={(id, ref) => {
             inputRefs.current[id] = ref;
           }}
+          activeRowRef={activeRowRef}
           paperColor={paperColor}
         />
 
@@ -3723,7 +3815,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           android.softwareKeyboardLayoutMode), so the bar has to be placed
           at `bottom: keyboardHeight` by hand - nothing lifts it for us. */}
       {isToolbarVisible && (
-        <View style={[styles.pinnedToolbar, { bottom: keyboardHeight + insets.bottom }]} pointerEvents="box-none">
+        <Animated.View style={[styles.pinnedToolbar, pinnedToolbarStyle]} pointerEvents="box-none">
           <EditorToolbar
             focusedBlockId={focusedBlockId}
             activeSelection={activeSelection}
@@ -3735,7 +3827,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             onApplyMarker={applyMarkerToSelection}
             onApplyColor={applyColorToSelection}
           />
-        </View>
+        </Animated.View>
       )}
 
       <SketchEditor
