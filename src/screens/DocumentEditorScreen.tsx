@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  GestureResponderEvent,
   Image,
   Keyboard,
   LayoutAnimation,
@@ -227,19 +228,24 @@ type TextStyle = {
   highlight?: string;
 };
 
-type TextSegment = TextStyle & { text: string };
+// rawStart: where this segment's text begins in the raw (marker-bearing)
+// block text - what lets a position in the DISPLAYED text be mapped back
+// to a cursor position in the TextInput, see rawIndexForDisplayIndex.
+type TextSegment = TextStyle & { text: string; rawStart: number };
 
 function parseFormattedText(text: string): TextSegment[] {
   const segments: TextSegment[] = [];
-  parseFormattedInto(text, {}, segments);
+  parseFormattedInto(text, {}, segments, 0);
   return segments;
 }
 
-function parseFormattedInto(text: string, style: TextStyle, out: TextSegment[]) {
+// `base` is the raw-text index that `text[0]` sits at (this is called
+// recursively on the inside of each marker pair).
+function parseFormattedInto(text: string, style: TextStyle, out: TextSegment[], base: number) {
   let i = 0;
   let plainStart = 0;
   const flushPlain = (end: number) => {
-    if (end > plainStart) out.push({ text: text.slice(plainStart, end), ...style });
+    if (end > plainStart) out.push({ text: text.slice(plainStart, end), rawStart: base + plainStart, ...style });
   };
   while (i < text.length) {
     const rest = text.slice(i);
@@ -248,28 +254,28 @@ function parseFormattedInto(text: string, style: TextStyle, out: TextSegment[]) 
       const close = rest.indexOf('**', 2);
       if (close !== -1) {
         flushPlain(i);
-        parseFormattedInto(rest.slice(2, close), { ...style, bold: true }, out);
+        parseFormattedInto(rest.slice(2, close), { ...style, bold: true }, out, base + i + 2);
         consumed = close + 2;
       }
     } else if (rest.startsWith('__')) {
       const close = rest.indexOf('__', 2);
       if (close !== -1) {
         flushPlain(i);
-        parseFormattedInto(rest.slice(2, close), { ...style, underline: true }, out);
+        parseFormattedInto(rest.slice(2, close), { ...style, underline: true }, out, base + i + 2);
         consumed = close + 2;
       }
     } else if (rest.startsWith('~~')) {
       const close = rest.indexOf('~~', 2);
       if (close !== -1) {
         flushPlain(i);
-        parseFormattedInto(rest.slice(2, close), { ...style, strikethrough: true }, out);
+        parseFormattedInto(rest.slice(2, close), { ...style, strikethrough: true }, out, base + i + 2);
         consumed = close + 2;
       }
     } else if (rest.startsWith('*')) {
       const close = rest.indexOf('*', 1);
       if (close !== -1) {
         flushPlain(i);
-        parseFormattedInto(rest.slice(1, close), { ...style, italic: true }, out);
+        parseFormattedInto(rest.slice(1, close), { ...style, italic: true }, out, base + i + 1);
         consumed = close + 1;
       }
     } else if (COLOR_OPEN.test(rest)) {
@@ -277,7 +283,7 @@ function parseFormattedInto(text: string, style: TextStyle, out: TextSegment[]) 
       const close = rest.indexOf(COLOR_CLOSE, m[0].length);
       if (close !== -1) {
         flushPlain(i);
-        parseFormattedInto(rest.slice(m[0].length, close), { ...style, color: m[1] }, out);
+        parseFormattedInto(rest.slice(m[0].length, close), { ...style, color: m[1] }, out, base + i + m[0].length);
         consumed = close + COLOR_CLOSE.length;
       }
     } else if (HIGHLIGHT_OPEN.test(rest)) {
@@ -285,7 +291,7 @@ function parseFormattedInto(text: string, style: TextStyle, out: TextSegment[]) 
       const close = rest.indexOf(HIGHLIGHT_CLOSE, m[0].length);
       if (close !== -1) {
         flushPlain(i);
-        parseFormattedInto(rest.slice(m[0].length, close), { ...style, highlight: m[1] }, out);
+        parseFormattedInto(rest.slice(m[0].length, close), { ...style, highlight: m[1] }, out, base + i + m[0].length);
         consumed = close + HIGHLIGHT_CLOSE.length;
       }
     }
@@ -310,6 +316,75 @@ function plainTextOf(text: string): string {
 
 function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Cursor position in the raw text for a position in the displayed
+// (marker-free) text. Past the end -> end of the raw text.
+function rawIndexForDisplayIndex(segments: TextSegment[], rawText: string, displayIndex: number): number {
+  let displayStart = 0;
+  for (const seg of segments) {
+    if (displayIndex <= displayStart + seg.text.length) {
+      return seg.rawStart + (displayIndex - displayStart);
+    }
+    displayStart += seg.text.length;
+  }
+  return rawText.length;
+}
+
+// Tap-to-cursor for a locked block. Android gives no way to ask "which
+// character is under this point" of a plain Text, so this estimates it from
+// the line layout Text reports (onTextLayout): the LINE is exact (by y);
+// the position within it is proportional to width, with a rough per-glyph
+// weight so narrow letters/punctuation don't push the estimate right. Off
+// by a character or so in practice - close enough that a second tap in the
+// now-live input (which Android places exactly) is rarely needed.
+type TextLayoutLine = { text: string; x: number; y: number; width: number; height: number };
+
+function glyphWeight(ch: string): number {
+  if (/[ .,:;'!|iIlјjtfr()\-іїІ]/.test(ch)) return 0.55;
+  if (/[mwMWшщжмюфШЩЖМЮФ@%]/.test(ch)) return 1.45;
+  if (ch === ch.toUpperCase() && ch !== ch.toLowerCase()) return 1.2;
+  return 1;
+}
+
+function displayIndexForTouch(lines: TextLayoutLine[], displayText: string, x: number, y: number): number {
+  if (lines.length === 0) return displayText.length;
+  let line = lines[lines.length - 1];
+  for (const l of lines) {
+    if (y < l.y + l.height) {
+      line = l;
+      break;
+    }
+  }
+  // Where this line's text starts in the whole string: searched rather
+  // than summed, since a wrapped line's reported text may or may not
+  // carry the space it broke on.
+  let lineStart = 0;
+  let cursor = 0;
+  for (const l of lines) {
+    const at = displayText.indexOf(l.text, cursor);
+    const start = at === -1 ? cursor : at;
+    if (l === line) {
+      lineStart = start;
+      break;
+    }
+    cursor = start + l.text.length;
+  }
+  const chars = Array.from(line.text);
+  const total = chars.reduce((sum, ch) => sum + glyphWeight(ch), 0);
+  const target = total > 0 && line.width > 0 ? ((x - line.x) / line.width) * total : 0;
+  let acc = 0;
+  let index = 0;
+  for (; index < chars.length; index++) {
+    const w = glyphWeight(chars[index]);
+    if (acc + w / 2 >= target) break;
+    acc += w;
+  }
+  // Don't land after the break character of a wrapped line - that's the
+  // start of the next line visually.
+  const trimmed = line.text.replace(/\s+$/, '');
+  index = Math.min(index, Array.from(trimmed).length);
+  return Math.min(displayText.length, lineStart + chars.slice(0, index).join('').length);
 }
 
 function segmentToHtml(seg: TextSegment): string {
@@ -625,7 +700,9 @@ type BlockRowProps = {
   showBoundary: boolean;
   listNumber?: number;
   textVersion: number;
-  onActivate: (id: string) => void;
+  // cursorIndex: raw-text position to place the cursor at (from a tap on
+  // the locked text); omitted = end of the text.
+  onActivate: (id: string, cursorIndex?: number) => void;
   onBlur: (id: string) => void;
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
@@ -891,6 +968,31 @@ function BlockRow({
   // the file is actually gone.
   const fileCacheStatus = useCachedAttachment(type === 'file' ? item.fileUri : undefined, item.driveFileId);
   const imageCacheStatus = useCachedAttachment(type === 'image' ? item.imageUri : undefined, item.driveFileId);
+
+  // Tap-to-cursor on the locked text (see displayIndexForTouch): the Text's
+  // line layout, and the Text itself to turn the tap's page coordinates
+  // into coordinates inside it.
+  const lockedTextRef = useRef<Text>(null);
+  const lockedLinesRef = useRef<TextLayoutLine[]>([]);
+  function activateAtTouch(e: GestureResponderEvent) {
+    const { pageX, pageY } = e.nativeEvent;
+    const textNode = lockedTextRef.current;
+    if (!textNode || !item.text) {
+      onActivate(item.id);
+      return;
+    }
+    textNode.measure((_x, _y, _w, _h, textPageX, textPageY) => {
+      const segments = parseFormattedText(item.text);
+      const displayText = segments.map((s) => s.text).join('');
+      const displayIndex = displayIndexForTouch(
+        lockedLinesRef.current,
+        displayText,
+        pageX - textPageX,
+        pageY - textPageY
+      );
+      onActivate(item.id, rawIndexForDisplayIndex(segments, item.text, displayIndex));
+    });
+  }
 
   let content: ReactNode;
   if (type === 'divider') {
@@ -1164,9 +1266,15 @@ function BlockRow({
       <Pressable
         key="locked"
         style={styles.blockInput}
-        onPress={() => (isSelectMode ? onToggleSelected(item.id) : onActivate(item.id))}
+        onPress={(e) => (isSelectMode ? onToggleSelected(item.id) : activateAtTouch(e))}
       >
-        <Text style={[styles.blockDisplayText, item.checked && styles.checkedText]}>
+        <Text
+          ref={lockedTextRef}
+          onTextLayout={(e) => {
+            lockedLinesRef.current = e.nativeEvent.lines;
+          }}
+          style={[styles.blockDisplayText, item.checked && styles.checkedText]}
+        >
           {item.text ? (
             <FormattedText
               segments={parseFormattedText(item.text)}
@@ -1271,7 +1379,9 @@ type SortableBlockRowProps = {
   isSelected: boolean;
   isSelectMode: boolean;
   isActive: boolean;
-  onActivate: (id: string) => void;
+  // cursorIndex: raw-text position to place the cursor at (from a tap on
+  // the locked text); omitted = end of the text.
+  onActivate: (id: string, cursorIndex?: number) => void;
   onBlur: (id: string) => void;
   isDragging: boolean;
   isDragActive: boolean;
@@ -1426,7 +1536,9 @@ type BlockListProps = {
   selectedIds: Set<string>;
   isSelectMode: boolean;
   focusedBlockId: string | null;
-  onActivate: (id: string) => void;
+  // cursorIndex: raw-text position to place the cursor at (from a tap on
+  // the locked text); omitted = end of the text.
+  onActivate: (id: string, cursorIndex?: number) => void;
   onBlur: (id: string) => void;
   textVersions: Record<string, number>;
   onToggleSelected: (id: string) => void;
@@ -1811,6 +1923,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const [reminderBlockId, setReminderBlockId] = useState<string | null>(null);
   const focusIdRef = useRef<string | null>(null);
   const focusToEndRef = useRef(false);
+  const focusCursorIndexRef = useRef<number | null>(null);
   const focusedBlockIdRef = useRef<string | null>(null);
   // A block whose text gets truncated by splitting off a new block below it
   // (Enter in a list item, or the paragraph double-Enter) keeps the SAME
@@ -2244,6 +2357,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       const block = blocks.find((b) => b.id === id);
       if (block) input.setSelection(block.text.length, block.text.length);
       focusToEndRef.current = false;
+    } else if (focusCursorIndexRef.current !== null) {
+      const block = blocks.find((b) => b.id === id);
+      const index = Math.min(focusCursorIndexRef.current, block?.text.length ?? 0);
+      input.setSelection(index, index);
+      focusCursorIndexRef.current = null;
     }
     focusIdRef.current = null;
   }, [blocks, focusedBlockId]);
@@ -2510,10 +2628,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   // A tap on a locked block: make it the one live TextInput (the focus
-  // effect above then focuses it once it has mounted, cursor at the end).
-  function handleActivateBlock(id: string, cursorAtEnd = true) {
+  // effect above then focuses it once it has mounted and places the
+  // cursor - at cursorIndex when the tap position gave one, else at the
+  // end).
+  function handleActivateBlock(id: string, cursorIndex?: number) {
     focusIdRef.current = id;
-    focusToEndRef.current = cursorAtEnd;
+    focusToEndRef.current = cursorIndex === undefined;
+    focusCursorIndexRef.current = cursorIndex ?? null;
     focusedBlockIdRef.current = id;
     setTitleActive(false);
     setFocusedBlockId(id);
@@ -2621,7 +2742,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     if (newlineIndex !== -1) {
       setTitle(text.slice(0, newlineIndex));
       const firstBlock = blocks[0];
-      if (firstBlock) handleActivateBlock(firstBlock.id, false);
+      if (firstBlock) handleActivateBlock(firstBlock.id, 0);
       return;
     }
     setTitle(text);
