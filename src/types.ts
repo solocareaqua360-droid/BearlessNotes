@@ -256,10 +256,22 @@ export interface BoardCard extends Omit<Block, 'type'> {
   documentExpanded?: boolean;
 }
 
+// A mindmap-style link between two board cards. Which SIDE of each card the
+// line attaches to is deliberately NOT stored - it's derived from where the
+// two cards currently sit (the line always leaves the source on the side
+// facing the target), so dragging a card to the other side of its partner
+// re-routes the line instead of leaving it crossing back over itself.
+export interface BoardConnection {
+  id: string;
+  fromCardId: string;
+  toCardId: string;
+}
+
 export interface BoardItem {
   id: string;
   title: string;
   cards: BoardCard[];
+  connections?: BoardConnection[];
   createdAt: number;
   updatedAt: number;
 }

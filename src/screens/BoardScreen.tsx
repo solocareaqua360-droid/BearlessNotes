@@ -14,12 +14,13 @@ import {
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, SharedValue, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import Svg, { Path } from 'react-native-svg';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { doc, getDoc, getDocFromCache, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { BoardsStackParamList, RootStackParamList } from '../navigation';
-import { Block, BoardCard } from '../types';
+import { Block, BoardCard, BoardConnection } from '../types';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import RenamePrompt from '../components/RenamePrompt';
 import VideoPlayerModal from '../components/VideoPlayerModal';
@@ -41,6 +42,16 @@ const STICKY_COLORS = ['#FEF3C7', '#DBEAFE', '#DCFCE7', '#FCE7F3', '#EDE9FE', '#
 // pixel-exact.
 const APPROX_CARD_HEIGHT = 140;
 const SELECTION_COLOR = '#2563EB';
+// How close (in SCREEN pixels, converted to world units against the current
+// zoom so it feels the same at any scale) a dragged card's own top/bottom
+// edge has to come to another card's top/bottom before it snaps flush to
+// it. Only the vertical axis snaps - cards are free horizontally.
+const SNAP_THRESHOLD_PX = 10;
+const CONNECTION_COLOR = '#8B5CF6';
+// Padding around a connection's own bounding box, so the curve's bulge and
+// the stroke width itself aren't clipped by the little Svg canvas each
+// connection is drawn into.
+const CONNECTION_PADDING = 24;
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -128,6 +139,68 @@ function firstImageUri(blocks: Block[]): string | undefined {
   return blocks.find((b) => b.type === 'image' && b.imageUri)?.imageUri;
 }
 
+// Where a connection meets each of its two cards: the middle of whichever
+// vertical side faces the other card, so the line never has to cross back
+// over a card to reach it. Recomputed on every render rather than stored,
+// which is what lets dragging a card past its partner flip the routing.
+function connectionEndpoints(from: BoardCard, to: BoardCard) {
+  const fromCenterX = from.x + from.width / 2;
+  const toCenterX = to.x + to.width / 2;
+  const fromIsLeft = fromCenterX <= toCenterX;
+  return {
+    x1: fromIsLeft ? from.x + from.width : from.x,
+    y1: from.y + APPROX_CARD_HEIGHT / 2,
+    x2: fromIsLeft ? to.x : to.x + to.width,
+    y2: to.y + APPROX_CARD_HEIGHT / 2,
+  };
+}
+
+// A mindmap S-curve: control points pushed straight out sideways from each
+// end, so the line leaves and arrives horizontally regardless of the
+// vertical distance between the two cards.
+function curvePath(x1: number, y1: number, x2: number, y2: number): string {
+  const bend = Math.max(30, Math.abs(x2 - x1) / 2);
+  const direction = x2 >= x1 ? 1 : -1;
+  return `M ${x1} ${y1} C ${x1 + bend * direction} ${y1} ${x2 - bend * direction} ${y2} ${x2} ${y2}`;
+}
+
+// The straight rubber band a connect-drag trails behind the finger, drawn
+// as one rotated View rather than an Svg: it has to follow the finger on
+// the UI thread, and an Svg big enough to cover anywhere the finger might
+// go is the whole 6000px world. A plain View takes a transform just as
+// well and costs nothing when idle.
+function ConnectDraftLine({
+  startX,
+  startY,
+  endX,
+  endY,
+  visible,
+}: {
+  startX: SharedValue<number>;
+  startY: SharedValue<number>;
+  endX: SharedValue<number>;
+  endY: SharedValue<number>;
+  visible: SharedValue<boolean>;
+}) {
+  const animatedStyle = useAnimatedStyle(() => {
+    const dx = endX.value - startX.value;
+    const dy = endY.value - startY.value;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    return {
+      opacity: visible.value ? 1 : 0,
+      width: length,
+      // Positioned by its midpoint, then rotated about its own centre -
+      // which after that translation is exactly the line's midpoint.
+      transform: [
+        { translateX: (startX.value + endX.value) / 2 - length / 2 },
+        { translateY: (startY.value + endY.value) / 2 - 1 },
+        { rotateZ: `${Math.atan2(dy, dx)}rad` },
+      ],
+    };
+  });
+  return <Animated.View style={[styles.connectDraft, animatedStyle]} pointerEvents="none" />;
+}
+
 type DraggableCardProps = {
   card: BoardCard;
   canvasScale: SharedValue<number>;
@@ -140,6 +213,21 @@ type DraggableCardProps = {
   isGroupDrag: boolean;
   groupOffsetX: SharedValue<number>;
   groupOffsetY: SharedValue<number>;
+  // Every OTHER card's top and bottom edge, in world coordinates - what
+  // this card's own edges snap flush to while being dragged. A plain array
+  // captured by the gesture's worklet: the other cards can't move during
+  // this card's drag, so a snapshot taken at render time is always current.
+  snapEdges: number[];
+  // False while the canvas is in 'connect' mode: a drag starting on a card
+  // has to reach the canvas's own connect gesture to draw a link, and this
+  // card's Pan would otherwise win that touch (it blocksExternalGesture)
+  // and just move the card instead.
+  dragEnabled: boolean;
+  // Written by whichever card is currently snapped, read by the single
+  // guide line BoardScreen renders - so the snap is visible rather than
+  // feeling like the card jumped on its own.
+  snapGuideY: SharedValue<number>;
+  snapGuideVisible: SharedValue<boolean>;
   onDragStart: (id: string) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
   onGroupDragEnd: (dx: number, dy: number) => void;
@@ -180,6 +268,10 @@ function DraggableCard({
   isGroupDrag,
   groupOffsetX,
   groupOffsetY,
+  snapEdges,
+  dragEnabled,
+  snapGuideY,
+  snapGuideVisible,
   onDragStart,
   onDragEnd,
   onGroupDragEnd,
@@ -188,6 +280,12 @@ function DraggableCard({
 }: DraggableCardProps) {
   const posX = useSharedValue(card.x);
   const posY = useSharedValue(card.y);
+  // The finger's own unsnapped position. posY is derived from this rather
+  // than accumulating the drag directly, so a snapped card releases again
+  // as soon as the finger moves past the threshold - accumulating into a
+  // snapped posY would re-snap it to the same edge every frame and the
+  // card could never be pulled free.
+  const rawY = useSharedValue(card.y);
   // The last position this card itself put into the parent's state. Used
   // only to tell "our own drag echoing back" (ignore) apart from a real
   // external move (adopt).
@@ -200,6 +298,7 @@ function DraggableCard({
     reportedY.value = card.y;
     posX.value = card.x;
     posY.value = card.y;
+    rawY.value = card.y;
     // A group drag this card took part in (as a non-dragged, merely
     // selected sibling) only ever moves it via groupOffsetX/Y, never posX/
     // posY directly - reset that shared offset back to 0 in the same
@@ -220,8 +319,10 @@ function DraggableCard({
   // button in BoardScreen, reached via long-press) now that there's no
   // in-card button whose own gesture needed to win against this one.
   const panGesture = Gesture.Pan()
+    .enabled(dragEnabled)
     .blocksExternalGesture(canvasPanGesture)
     .onStart(() => {
+      rawY.value = posY.value;
       runOnJS(onDragStart)(card.id);
     })
     // onChange (per-event delta) rather than onUpdate (cumulative
@@ -231,19 +332,59 @@ function DraggableCard({
       if (isGroupDrag) {
         groupOffsetX.value += e.changeX / canvasScale.value;
         groupOffsetY.value += e.changeY / canvasScale.value;
-      } else {
-        posX.value += e.changeX / canvasScale.value;
-        posY.value += e.changeY / canvasScale.value;
+        return;
       }
+      posX.value += e.changeX / canvasScale.value;
+      rawY.value += e.changeY / canvasScale.value;
+
+      // Nearest edge wins, and only one snap is ever applied - checking
+      // this card's top and bottom separately against every other card's
+      // top and bottom covers all four alignments (tops flush, bottoms
+      // flush, stacked above, stacked below).
+      const threshold = SNAP_THRESHOLD_PX / canvasScale.value;
+      let bestShift = 0;
+      let bestEdge = 0;
+      let bestDistance = threshold;
+      let snapped = false;
+      for (let i = 0; i < snapEdges.length; i += 1) {
+        const edge = snapEdges[i];
+        const fromTop = edge - rawY.value;
+        if (Math.abs(fromTop) < bestDistance) {
+          bestDistance = Math.abs(fromTop);
+          bestShift = fromTop;
+          bestEdge = edge;
+          snapped = true;
+        }
+        const fromBottom = edge - (rawY.value + APPROX_CARD_HEIGHT);
+        if (Math.abs(fromBottom) < bestDistance) {
+          bestDistance = Math.abs(fromBottom);
+          bestShift = fromBottom;
+          bestEdge = edge;
+          snapped = true;
+        }
+      }
+      posY.value = rawY.value + bestShift;
+      snapGuideVisible.value = snapped;
+      // The guide sits on the edge that was matched, which after the shift
+      // is exactly where this card's own matching edge now is.
+      if (snapped) snapGuideY.value = bestEdge;
     })
     .onEnd(() => {
+      snapGuideVisible.value = false;
       if (isGroupDrag) {
         runOnJS(onGroupDragEnd)(groupOffsetX.value, groupOffsetY.value);
       } else {
+        rawY.value = posY.value;
         reportedX.value = posX.value;
         reportedY.value = posY.value;
         runOnJS(onDragEnd)(card.id, posX.value, posY.value);
       }
+    })
+    // onEnd doesn't run when a gesture is cancelled rather than released
+    // (another handler takes over, the finger leaves the surface) - without
+    // this the guide line would stay stranded across the board.
+    .onFinalize(() => {
+      snapGuideVisible.value = false;
     });
 
   const tapGesture = Gesture.Tap().onEnd(() => {
@@ -382,8 +523,11 @@ export default function BoardScreen() {
   // behaviour). 'select' - single-finger drag instead draws a marquee
   // rectangle over the world, selecting every card it overlaps, so several
   // cards can be deleted or dragged as one group.
-  const [canvasTool, setCanvasTool] = useState<'move' | 'select'>('move');
+  // 'connect' - a single-finger drag from one card to another links them
+  // with a mindmap line instead of panning or selecting.
+  const [canvasTool, setCanvasTool] = useState<'move' | 'select' | 'connect'>('move');
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
+  const [connections, setConnections] = useState<BoardConnection[]>([]);
 
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
@@ -407,8 +551,25 @@ export default function BoardScreen() {
   const marqueeCurrentX = useSharedValue(0);
   const marqueeCurrentY = useSharedValue(0);
   const marqueeVisible = useSharedValue(false);
+  // The horizontal guide drawn at whichever edge a dragged card is
+  // currently snapped to (see DraggableCard's own snap logic).
+  const snapGuideY = useSharedValue(0);
+  const snapGuideVisible = useSharedValue(false);
+  // The connect-drag's rubber-band line, in world coordinates like
+  // everything else inside the transformed `world` container.
+  const connectStartX = useSharedValue(0);
+  const connectStartY = useSharedValue(0);
+  const connectEndX = useSharedValue(0);
+  const connectEndY = useSharedValue(0);
+  const connectVisible = useSharedValue(false);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The card a connect-drag started on. A ref, not state, because the
+  // gesture's own worklet closure is captured at creation time - by the
+  // time onEnd fires, a state value set during the same gesture would
+  // still read as whatever it was when the gesture was built. The ref is
+  // read on the JS thread inside finishConnection, where it's current.
+  const connectingFromIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -423,6 +584,7 @@ export default function BoardScreen() {
       const data = snapshot.data();
       setTitle(data?.title ?? 'Без назви');
       setCards(data?.cards ?? []);
+      setConnections(data?.connections ?? []);
       setIsLoaded(true);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -432,13 +594,13 @@ export default function BoardScreen() {
     if (!isLoaded) return;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
-      setDoc(doc(db, 'boards', boardId), { title, cards, updatedAt: Date.now() }, { merge: true });
+      setDoc(doc(db, 'boards', boardId), { title, cards, connections, updatedAt: Date.now() }, { merge: true });
     }, AUTOSAVE_DELAY_MS);
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, cards, isLoaded]);
+  }, [title, cards, connections, isLoaded]);
 
   const pinchGesture = Gesture.Pinch()
     .onUpdate((e) => {
@@ -472,6 +634,70 @@ export default function BoardScreen() {
     );
     setSelectedCardIds(new Set(matched.map((c) => c.id)));
   }
+
+  function cardAt(worldX: number, worldY: number): BoardCard | undefined {
+    // Last match wins - cards later in the array paint on top of earlier
+    // ones, so where they overlap the visually topmost is the one meant.
+    return cards
+      .filter(
+        (c) =>
+          worldX >= c.x &&
+          worldX <= c.x + c.width &&
+          worldY >= c.y &&
+          worldY <= c.y + APPROX_CARD_HEIGHT
+      )
+      .pop();
+  }
+
+  function beginConnection(worldX: number, worldY: number) {
+    const source = cardAt(worldX, worldY);
+    connectingFromIdRef.current = source ? source.id : null;
+  }
+
+  function finishConnection(worldX: number, worldY: number) {
+    const fromId = connectingFromIdRef.current;
+    connectingFromIdRef.current = null;
+    if (!fromId) return;
+    const target = cardAt(worldX, worldY);
+    if (!target || target.id === fromId) return;
+    setConnections((prev) => {
+      // Links are undirected as far as the user is concerned, so a pair
+      // that's already joined (in either direction) isn't joined twice.
+      const exists = prev.some(
+        (c) =>
+          (c.fromCardId === fromId && c.toCardId === target.id) ||
+          (c.fromCardId === target.id && c.toCardId === fromId)
+      );
+      if (exists) return prev;
+      return [...prev, { id: generateId(), fromCardId: fromId, toCardId: target.id }];
+    });
+  }
+
+  // Same screen->world conversion the marquee does, for the same reason -
+  // once at the start, then the gesture's own translation from there.
+  const connectGesture = Gesture.Pan()
+    .onStart((e) => {
+      const wx = (e.x - windowWidth / 2 - translateX.value) / scale.value + WORLD_CENTER;
+      const wy = (e.y - windowHeight / 2 - translateY.value) / scale.value + WORLD_CENTER;
+      connectStartX.value = wx;
+      connectStartY.value = wy;
+      connectEndX.value = wx;
+      connectEndY.value = wy;
+      connectVisible.value = true;
+      runOnJS(beginConnection)(wx, wy);
+    })
+    .onUpdate((e) => {
+      connectEndX.value = connectStartX.value + e.translationX / scale.value;
+      connectEndY.value = connectStartY.value + e.translationY / scale.value;
+    })
+    .onEnd(() => {
+      runOnJS(finishConnection)(connectEndX.value, connectEndY.value);
+    })
+    // Same reason as the card drag's own onFinalize - a cancelled gesture
+    // never reaches onEnd, and the rubber band would hang there.
+    .onFinalize(() => {
+      connectVisible.value = false;
+    });
 
   // Only active in 'select' mode (see canvasGesture below). `e.x`/`e.y` are
   // reported relative to the view this gesture is attached to
@@ -515,8 +741,14 @@ export default function BoardScreen() {
   // lifted and that unwanted micro-pan committed. Pinch-zoom is
   // deliberately unavailable while selecting - zoom first, then switch
   // tools to draw the box.
-  const canvasBlockingGesture = canvasTool === 'select' ? selectGesture : panGesture;
-  const canvasGesture = canvasTool === 'select' ? selectGesture : Gesture.Simultaneous(pinchGesture, panGesture);
+  const canvasBlockingGesture =
+    canvasTool === 'select' ? selectGesture : canvasTool === 'connect' ? connectGesture : panGesture;
+  const canvasGesture =
+    canvasTool === 'select'
+      ? selectGesture
+      : canvasTool === 'connect'
+        ? connectGesture
+        : Gesture.Simultaneous(pinchGesture, panGesture);
 
   const marqueeAnimatedStyle = useAnimatedStyle(() => ({
     opacity: marqueeVisible.value ? 1 : 0,
@@ -528,6 +760,11 @@ export default function BoardScreen() {
 
   const worldAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }, { translateY: translateY.value }, { scale: scale.value }],
+  }));
+
+  const snapGuideAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: snapGuideVisible.value ? 1 : 0,
+    transform: [{ translateY: snapGuideY.value }],
   }));
 
   function addTextCard() {
@@ -639,14 +876,26 @@ export default function BoardScreen() {
         style: 'destructive',
         onPress: () => {
           setCards((prev) => prev.filter((c) => !selectedCardIds.has(c.id)));
+          // A connection to a card that no longer exists would render as a
+          // line into empty space, so they go with it.
+          setConnections((prev) =>
+            prev.filter((c) => !selectedCardIds.has(c.fromCardId) && !selectedCardIds.has(c.toCardId))
+          );
           setSelectedCardIds(new Set());
         },
       },
     ]);
   }
 
+  function disconnectSelectedCards() {
+    setConnections((prev) =>
+      prev.filter((c) => !selectedCardIds.has(c.fromCardId) && !selectedCardIds.has(c.toCardId))
+    );
+    setSelectedCardIds(new Set());
+  }
+
   function toggleCanvasTool() {
-    setCanvasTool((prev) => (prev === 'move' ? 'select' : 'move'));
+    setCanvasTool((prev) => (prev === 'move' ? 'select' : prev === 'select' ? 'connect' : 'move'));
   }
 
   function saveEditingText() {
@@ -681,11 +930,61 @@ export default function BoardScreen() {
       ? cards.find((c) => selectedCardIds.has(c.id) && (c.type ?? 'paragraph') === 'document')
       : undefined;
 
+  const cardById = new Map(cards.map((c) => [c.id, c]));
+  const selectionHasConnections = connections.some(
+    (c) => selectedCardIds.has(c.fromCardId) || selectedCardIds.has(c.toCardId)
+  );
+
+  // Every card's top and bottom edge except the given card's own - what it
+  // snaps against while dragged. Recomputed per card per render, which is
+  // fine at board-sized card counts and keeps the edges honest without any
+  // cache to invalidate.
+  function snapEdgesExcluding(cardId: string): number[] {
+    const edges: number[] = [];
+    for (const c of cards) {
+      if (c.id === cardId) continue;
+      edges.push(c.y, c.y + APPROX_CARD_HEIGHT);
+    }
+    return edges;
+  }
+
   return (
     <View style={styles.container}>
       <GestureDetector gesture={canvasGesture}>
         <View style={[StyleSheet.absoluteFill, styles.canvasSurface]}>
           <Animated.View style={[styles.world, worldAnimatedStyle]}>
+            {/* Before the cards, so a link passes UNDER the two cards it
+                joins rather than across their faces. Each connection gets
+                its own small Svg sized to that pair's bounding box - one
+                canvas the size of the whole 6000px world would be a lot to
+                hand the renderer for a handful of thin curves. */}
+            {connections.map((connection) => {
+              const from = cardById.get(connection.fromCardId);
+              const to = cardById.get(connection.toCardId);
+              if (!from || !to) return null;
+              const { x1, y1, x2, y2 } = connectionEndpoints(from, to);
+              const left = Math.min(x1, x2) - CONNECTION_PADDING;
+              const top = Math.min(y1, y2) - CONNECTION_PADDING;
+              const width = Math.abs(x2 - x1) + CONNECTION_PADDING * 2;
+              const height = Math.abs(y2 - y1) + CONNECTION_PADDING * 2;
+              return (
+                <Svg
+                  key={connection.id}
+                  style={[styles.connection, { left, top }]}
+                  width={width}
+                  height={height}
+                  pointerEvents="none"
+                >
+                  <Path
+                    d={curvePath(x1 - left, y1 - top, x2 - left, y2 - top)}
+                    stroke={CONNECTION_COLOR}
+                    strokeWidth={2}
+                    fill="none"
+                  />
+                </Svg>
+              );
+            })}
+
             {cards.map((card) => {
               const isSelected = selectedCardIds.has(card.id);
               return (
@@ -699,6 +998,10 @@ export default function BoardScreen() {
                   isGroupDrag={isSelected && selectedCardIds.size > 1}
                   groupOffsetX={groupOffsetX}
                   groupOffsetY={groupOffsetY}
+                  snapEdges={snapEdgesExcluding(card.id)}
+                  dragEnabled={canvasTool !== 'connect'}
+                  snapGuideY={snapGuideY}
+                  snapGuideVisible={snapGuideVisible}
                   onDragStart={handleDragStart}
                   onDragEnd={commitCardDrag}
                   onGroupDragEnd={commitGroupDrag}
@@ -707,6 +1010,19 @@ export default function BoardScreen() {
                 />
               );
             })}
+
+            {/* The rubber-band line a connect-drag trails behind the
+                finger, and the alignment guide a snapped card sits on -
+                both live (shared values), so both are animated props
+                rather than plain React state. */}
+            <ConnectDraftLine
+              startX={connectStartX}
+              startY={connectStartY}
+              endX={connectEndX}
+              endY={connectEndY}
+              visible={connectVisible}
+            />
+            <Animated.View style={[styles.snapGuide, snapGuideAnimatedStyle]} pointerEvents="none" />
             <Animated.View style={[styles.marquee, marqueeAnimatedStyle]} pointerEvents="none" />
           </Animated.View>
         </View>
@@ -721,14 +1037,18 @@ export default function BoardScreen() {
             {title || 'Без назви'}
           </Text>
         </Pressable>
+        {/* One button cycling move -> select -> connect, each with its own
+            icon, rather than three buttons crowding the header. */}
         <Pressable
-          style={[styles.toolButton, canvasTool === 'select' && styles.toolButtonActive]}
+          style={[styles.toolButton, canvasTool !== 'move' && styles.toolButtonActive]}
           onPress={toggleCanvasTool}
         >
           <MaterialCommunityIcons
-            name="cursor-move"
+            name={
+              canvasTool === 'select' ? 'selection-drag' : canvasTool === 'connect' ? 'vector-line' : 'cursor-move'
+            }
             size={20}
-            color={canvasTool === 'select' ? '#fff' : '#111827'}
+            color={canvasTool !== 'move' ? '#fff' : '#111827'}
           />
         </Pressable>
       </View>
@@ -744,6 +1064,12 @@ export default function BoardScreen() {
               >
                 <Ionicons name="create-outline" size={16} color="#fff" />
                 <Text style={styles.selectionBarButtonLabel}>Редагувати</Text>
+              </Pressable>
+            )}
+            {selectionHasConnections && (
+              <Pressable style={styles.selectionBarButton} onPress={disconnectSelectedCards}>
+                <MaterialCommunityIcons name="vector-line" size={16} color="#fff" />
+                <Text style={styles.selectionBarButtonLabel}>Відʼєднати</Text>
               </Pressable>
             )}
             <Pressable style={styles.selectionBarButton} onPress={() => setSelectedCardIds(new Set())}>
@@ -976,6 +1302,27 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: SELECTION_COLOR,
     borderRadius: 4,
+  },
+  // left/top come from each connection's own bounding box at render time.
+  connection: {
+    position: 'absolute',
+  },
+  connectDraft: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    height: 2,
+    backgroundColor: CONNECTION_COLOR,
+  },
+  // Spans the whole world's width so the alignment it marks is readable
+  // however far apart the two cards are horizontally.
+  snapGuide: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: WORLD_SIZE,
+    height: 1,
+    backgroundColor: SELECTION_COLOR,
   },
   toolButton: {
     width: 36,
