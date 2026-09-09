@@ -963,7 +963,10 @@ export default function BoardScreen() {
       fresh.set(documentIds[index], {
         title: data?.title ?? 'Без назви',
         text: blocksToPreviewText(blocks).slice(0, 20000),
-        imageUri: firstImageUri(blocks),
+        // The cover image (DocumentEditorScreen's "..." menu) takes
+        // priority over a body image block, same rule extractPreview
+        // uses for the Documents/Search/Diary list cards.
+        imageUri: data?.coverImageUri ?? firstImageUri(blocks),
       });
     });
     setCards((prev) => {
@@ -1363,10 +1366,13 @@ export default function BoardScreen() {
     // collapsed view just clips the same string to 4 lines via
     // `numberOfLines`.
     const snapshot = await getDoc(doc(db, 'documents', document.id));
-    const blocks: Block[] = snapshot.data()?.blocks ?? [];
+    const data = snapshot.data();
+    const blocks: Block[] = data?.blocks ?? [];
     const preview = {
       text: blocksToPreviewText(blocks).slice(0, 20000),
-      imageUri: firstImageUri(blocks),
+      // Cover image takes priority over a body image block - see
+      // refreshDocumentPreviews' identical rule.
+      imageUri: data?.coverImageUri ?? firstImageUri(blocks),
     };
     setCards((prev) => [...prev, newDocumentCard(document, preview, prev.length)]);
   }

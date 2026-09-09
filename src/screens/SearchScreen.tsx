@@ -35,6 +35,7 @@ export default function SearchScreen() {
             title: docSnapshot.data().title,
             updatedAt: docSnapshot.data().updatedAt,
             blocks: docSnapshot.data().blocks ?? [],
+            coverImageUri: docSnapshot.data().coverImageUri,
           }))
       );
     });
@@ -67,7 +68,7 @@ export default function SearchScreen() {
         {matches.map((item) => {
           const titleMatch = findTitleMatch(item.title ?? '', needle);
           const bodyMatch = titleMatch ? null : findBodyMatch(item.blocks, needle);
-          const { imageUri, previewText } = extractPreview(item.blocks);
+          const { imageUri, previewText } = extractPreview(item.blocks, item.coverImageUri);
           return (
             <DocumentCard
               key={item.id}

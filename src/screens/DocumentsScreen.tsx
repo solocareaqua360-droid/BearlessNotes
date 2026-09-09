@@ -191,6 +191,7 @@ export default function DocumentsScreen() {
             blocks: docSnapshot.data().blocks ?? [],
             groupId: docSnapshot.data().groupId,
             createdAt: docSnapshot.data().createdAt,
+            coverImageUri: docSnapshot.data().coverImageUri,
           }))
       );
       setIsLoading(false);
@@ -546,7 +547,7 @@ export default function DocumentsScreen() {
           columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => {
-            const { imageUri, imageUris, previewText, checklistItems } = extractPreview(item.blocks);
+            const { imageUri, imageUris, previewText, checklistItems } = extractPreview(item.blocks, item.coverImageUri);
             return (
               <DocumentCard
                 id={item.id}

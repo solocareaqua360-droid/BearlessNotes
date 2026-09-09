@@ -34,16 +34,23 @@ export type PreviewChecklistItem = { text: string; checked: boolean };
 const PREVIEW_CHECKLIST_LIMIT = 4;
 const PREVIEW_IMAGE_LIMIT = 4;
 
-// The document-card thumbnail is always the FIRST image block, regardless
-// of where it sits among other blocks - documents with no image at all get
-// a placeholder (a document icon on a plain box, same size) rather than no
-// thumbnail, so every row in the list keeps the same shape.
+// The document-card thumbnail is the document's own cover image
+// (DocumentEditorScreen's "..." menu) when it has one, else the FIRST image
+// block regardless of where it sits among other blocks - documents with no
+// image at all get a placeholder (a document icon on a plain box, same
+// size) rather than no thumbnail, so every row in the list keeps the same
+// shape. The cover only ever affects this single thumbnail slot, never
+// `imageUris` (the photo-strip preview below it) - that stays exactly what
+// the body's own image blocks show, cover or not.
 //
 // checklistItems/imageUris are the "live content" preview (DocumentCard's
 // grid/list views show actual checkbox rows or a photo strip instead of
 // just previewText when a document has them) - capped short since a card
 // only ever has room for a handful, not a full copy of the document.
-export function extractPreview(blocks: Block[] | undefined): {
+export function extractPreview(
+  blocks: Block[] | undefined,
+  coverImageUri?: string
+): {
   imageUri: string | null;
   imageUris: string[];
   previewText: string;
@@ -61,7 +68,7 @@ export function extractPreview(blocks: Block[] | undefined): {
     .join(' ')
     .slice(0, PREVIEW_LENGTH);
   return {
-    imageUri: imageBlocks[0]?.imageUri ?? null,
+    imageUri: coverImageUri ?? imageBlocks[0]?.imageUri ?? null,
     imageUris: imageBlocks.slice(0, PREVIEW_IMAGE_LIMIT).map((b) => b.imageUri as string),
     previewText,
     checklistItems,

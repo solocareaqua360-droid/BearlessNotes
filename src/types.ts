@@ -313,4 +313,8 @@ export interface DocumentItem {
   // Absent on any document created before the sort-by-creation-date feature
   // shipped - see utils/sortItems.ts's fallback-to-updatedAt behavior.
   createdAt?: number;
+  // Set via the editor's own "..." menu (DocumentEditorScreen) - takes
+  // priority over any image block as the document's card thumbnail (see
+  // extractPreview's own coverImageUri parameter).
+  coverImageUri?: string;
 }
