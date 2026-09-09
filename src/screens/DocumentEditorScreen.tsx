@@ -2281,6 +2281,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         deactivateTimeoutRef.current = null;
       }
       setKeyboardHeight(e.endCoordinates.height);
+      if (KEYBOARD_SYNC_DEBUG) traceKeyboardEvent(`SHOW${Math.round(e.endCoordinates.height)}`);
       // RN's events stay the final word on the toolbar's resting position,
       // in case the frame-by-frame handler didn't run (older Android).
       keyboardSV.value = e.endCoordinates.height;
@@ -2435,6 +2436,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         'worklet';
         syncShift.value = 0;
         if (e.progress !== 1) return; // closing - nothing to bring into view
+        if (KEYBOARD_SYNC_DEBUG) runOnJS(beginKeyboardTrace)();
         runOnJS(setKeyboardHeight)(e.height);
         if (!hasActiveBlockSV.value) {
           if (KEYBOARD_SYNC_DEBUG) runOnJS(setKeyboardDebug)(`start kc=${e.height} no active block`);
@@ -2472,13 +2474,32 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           scrollTo(scrollViewRef, 0, syncBaseOffset.value + syncShift.value, false);
           syncShift.value = 0;
         }
-        if (KEYBOARD_SYNC_DEBUG) runOnJS(appendKeyboardDebug)(`end kc=${e.height} off=${Math.round(scrollOffsetSV.value)}`);
+        if (KEYBOARD_SYNC_DEBUG) {
+          runOnJS(appendKeyboardDebug)(`end kc=${Math.round(e.height)} off=${Math.round(scrollOffsetSV.value)}`);
+          runOnJS(traceKeyboardEvent)('END');
+        }
       },
     },
     [windowHeight]
   );
   function appendKeyboardDebug(line: string) {
     setKeyboardDebug((prev) => `${prev}\n${line}`);
+  }
+  // Scroll-offset trace for ~2.5s after the keyboard starts rising: every
+  // onScroll value with its ms-since-start, to see when (and after what)
+  // the list lands somewhere it wasn't scrolled to.
+  const kbTraceStartRef = useRef(0);
+  const kbTraceRef = useRef<string[]>([]);
+  function beginKeyboardTrace() {
+    kbTraceStartRef.current = Date.now();
+    kbTraceRef.current = [];
+    setTimeout(() => {
+      appendKeyboardDebug(`trace ${kbTraceRef.current.join(' ')}`);
+    }, 2500);
+  }
+  function traceKeyboardEvent(label: string) {
+    const dt = Date.now() - kbTraceStartRef.current;
+    if (dt < 2500) kbTraceRef.current.push(`${dt}:${label}`);
   }
   // The room below the last block. Driven from the live keyboard height on
   // the UI thread rather than from keyboardHeight state: the synced scroll
@@ -2509,9 +2530,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       const overflow = pageY + height - visibleBottom + 24;
       if (KEYBOARD_SYNC_DEBUG) {
         appendKeyboardDebug(
-          `post rn=${currentKeyboardHeight} tb=${toolbarHeightRef.current} inputBottom=${Math.round(pageY + height)} ` +
+          `post rn=${Math.round(currentKeyboardHeight)} tb=${toolbarHeightRef.current} inputBottom=${Math.round(pageY + height)} ` +
             `off=${Math.round(scrollOffsetRef.current)} overflow=${Math.round(overflow)}`
         );
+        traceKeyboardEvent(`POST${Math.round(overflow)}`);
       }
       // A few px of slack: the pre-scroll at activation (see the focus
       // effect) and the post-keyboard pass land within a pixel or two of
@@ -3643,6 +3665,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         onScroll={(e) => {
           scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
           scrollOffsetSV.value = e.nativeEvent.contentOffset.y;
+          if (KEYBOARD_SYNC_DEBUG) traceKeyboardEvent(String(Math.round(e.nativeEvent.contentOffset.y)));
         }}
         scrollEventThrottle={16}
       >
