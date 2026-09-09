@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -264,9 +265,14 @@ export default function StickersScreen() {
       />
 
       {viewerImageUri && (
-        <GestureHandlerRootView style={StyleSheet.absoluteFill}>
-          <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />
-        </GestureHandlerRootView>
+        // See DocumentsScreen's own copy of this fix - Modal, not a plain
+        // absolute overlay, or the real status bar shows through as a
+        // solid black strip above the viewer.
+        <Modal visible transparent animationType="fade" onRequestClose={() => setViewerImageUri(null)}>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />
+          </GestureHandlerRootView>
+        </Modal>
       )}
 
       <SketchEditor

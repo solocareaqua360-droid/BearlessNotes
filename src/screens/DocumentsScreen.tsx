@@ -4,6 +4,7 @@ import {
   Alert,
   FlatList,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -457,9 +458,19 @@ export default function DocumentsScreen() {
       />
 
       {viewerImageUri && (
-        <GestureHandlerRootView style={StyleSheet.absoluteFill}>
-          <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />
-        </GestureHandlerRootView>
+        // Modal (its own native window on Android) rather than a plain
+        // absolute-positioned overlay - without it this rendered inside the
+        // Documents tab's own layout and left the real status bar showing
+        // as a solid black strip above it, instead of the immersive
+        // full-screen viewer this needs (see the same pattern's own
+        // comment in DocumentEditorScreen). GestureHandlerRootView has to
+        // be re-declared inside the Modal for its own separate native
+        // window - the app-level one in App.tsx doesn't reach in here.
+        <Modal visible transparent animationType="fade" onRequestClose={() => setViewerImageUri(null)}>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />
+          </GestureHandlerRootView>
+        </Modal>
       )}
 
       <SketchEditor
