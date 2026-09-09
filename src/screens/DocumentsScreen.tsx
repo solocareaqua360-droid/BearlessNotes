@@ -62,14 +62,13 @@ const stickersCollection = collection(db, 'stickers');
 const STICKER_YELLOW = '#FBE97A';
 const STICKER_DARK = '#4a3f05';
 const FREE_STICKER_LIMIT = 10;
-// Exactly the sticker card's own height - the fixed height the floating
-// strip below reserves, and the matching top padding the list gets so a
-// card sits exactly where it visually looks like it does today until you
-// actually scroll. Deliberately NOT card height + extra breathing room:
-// a gap past the last card had nothing behind it to blur (no document
-// card has scrolled up that far yet at rest), so it just rendered as a
-// flat dark sliver under the stickers instead of blending in.
+// The sticker card's own height - the fixed height the floating strip
+// below reserves.
 const STICKER_STRIP_HEIGHT = 150;
+// How much shorter the list's own top padding is than STICKER_STRIP_HEIGHT
+// - see the contentContainerStyle comment below for why this needs to be
+// > 0 rather than matching exactly.
+const STICKER_STRIP_OVERLAP = 20;
 
 type ViewMode = 'list' | 'grid';
 
@@ -511,7 +510,17 @@ export default function DocumentsScreen() {
           extraData={[isSelectMode, selectedIds]}
           numColumns={viewMode === 'grid' ? 2 : 1}
           columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
-          contentContainerStyle={[styles.list, stickerStripVisible && { paddingTop: STICKER_STRIP_HEIGHT }]}
+          contentContainerStyle={[
+            styles.list,
+            // Intentionally less than STICKER_STRIP_HEIGHT (by
+            // STICKER_STRIP_OVERLAP) - the list's top padding puts the
+            // first card a little UNDER the overlay's bottom edge at
+            // rest, on purpose, so the blur always has a real card behind
+            // it there instead of just the page background (which is
+            // what a matching padding produced: an untouched sliver at
+            // the bottom of the overlay reading as a flat dark band).
+            stickerStripVisible && { paddingTop: STICKER_STRIP_HEIGHT - STICKER_STRIP_OVERLAP },
+          ]}
           renderItem={({ item }) => {
             const { imageUri, imageUris, previewText, checklistItems } = extractPreview(item.blocks);
             return (
