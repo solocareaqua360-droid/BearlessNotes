@@ -22,6 +22,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as DocumentPicker from 'expo-document-picker';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
@@ -787,6 +788,11 @@ export default function BoardScreen() {
   const { params } = useRoute<Props['route']>();
   const { boardId } = params;
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  // Added on top of the fixed 104 the FAB/selection bar already clear the
+  // floating tab bar by - a device with a tall gesture-nav inset needs more
+  // than that fixed number to keep either from sitting partly behind it.
+  // Same fix as BulkActionBar's own bottom offset.
+  const bottomInset = useSafeAreaInsets().bottom;
 
   const [title, setTitle] = useState('');
   const [cards, setCards] = useState<BoardCard[]>([]);
@@ -1755,7 +1761,7 @@ export default function BoardScreen() {
       </View>
 
       {selectedCardIds.size > 0 ? (
-        <View style={styles.selectionBar}>
+        <View style={[styles.selectionBar, { bottom: 104 + bottomInset }]}>
           <Text style={styles.selectionBarLabel}>Обрано: {selectedCardIds.size}</Text>
           <View style={styles.selectionBarActions}>
             {onlySelectedDocumentCard && (
@@ -1787,7 +1793,7 @@ export default function BoardScreen() {
           </View>
         </View>
       ) : (
-        <Pressable style={styles.fab} onPress={() => setAddSheetVisible(true)}>
+        <Pressable style={[styles.fab, { bottom: 104 + bottomInset }]} onPress={() => setAddSheetVisible(true)}>
           <Ionicons name="add" size={26} color="#fff" />
         </Pressable>
       )}
@@ -2036,13 +2042,14 @@ const styles = StyleSheet.create({
     color: '#111827',
     textAlign: 'center',
   },
+  // `bottom` is set inline (104 + the device's real safe-area inset) -
+  // see the component body. Board is a screen inside the "Дошки" tab, so
+  // FloatingIslandTabBar's pill (bottom: 24, ~48 tall) is always showing
+  // underneath here - 104 is the fixed clearance BulkActionBar's own
+  // aboveTabBar variant uses for the same pill.
   fab: {
     position: 'absolute',
     right: 20,
-    // Board is a screen inside the "Дошки" tab, so FloatingIslandTabBar's
-    // pill (bottom: 24, ~48 tall) is always showing underneath here - same
-    // clearance BulkActionBar's own aboveTabBar variant uses to clear it.
-    bottom: 104,
     width: 56,
     height: 56,
     borderRadius: 28,
@@ -2120,13 +2127,11 @@ const styles = StyleSheet.create({
   // (Documents/Files/Photos/Links' own multi-select bar) - kept local
   // rather than reusing that component directly since its action set
   // (tag/group/copy) doesn't apply to board cards.
+  // `bottom` is set inline, same as the FAB above.
   selectionBar: {
     position: 'absolute',
     left: 20,
     right: 20,
-    // Same clearance as the FAB above - the floating tab bar sits
-    // underneath this screen too.
-    bottom: 104,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
