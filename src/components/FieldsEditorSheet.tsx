@@ -11,7 +11,7 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-const TYPE_LABEL: Record<FieldType, string> = {
+export const FIELD_TYPE_LABEL: Record<FieldType, string> = {
   text: 'Текст',
   number: 'Число',
   date: 'Дата',
@@ -19,13 +19,18 @@ const TYPE_LABEL: Record<FieldType, string> = {
   multiSelect: 'Множинний список',
 };
 
-const TYPE_ICON: Record<FieldType, keyof typeof Ionicons.glyphMap> = {
+// Shared with CustomDatabaseScreen's table header / row form, so a field's
+// type is readable at a glance even before it's been named.
+export const FIELD_TYPE_ICON: Record<FieldType, keyof typeof Ionicons.glyphMap> = {
   text: 'text-outline',
   number: 'calculator-outline',
   date: 'calendar-outline',
   select: 'chevron-down-circle-outline',
   multiSelect: 'list-outline',
 };
+
+const TYPE_LABEL = FIELD_TYPE_LABEL;
+const TYPE_ICON = FIELD_TYPE_ICON;
 
 const TYPE_ORDER: FieldType[] = ['text', 'number', 'date', 'select', 'multiSelect'];
 

@@ -32,7 +32,7 @@ import { db } from '../firebase';
 import { CustomDatabase, CustomDatabaseRow, FieldDef, Group } from '../types';
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
-import FieldsEditorSheet from '../components/FieldsEditorSheet';
+import FieldsEditorSheet, { FIELD_TYPE_ICON } from '../components/FieldsEditorSheet';
 import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
@@ -97,6 +97,14 @@ export default function CustomDatabaseScreen({}: Props) {
   const [rowMenuId, setRowMenuId] = useState<string | null>(null);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
+  // Table view edits ONE cell at a time (tap a cell, type, done) - the full
+  // row form is opened deliberately from the row's own button instead, so
+  // entering a single number never means facing every field at once.
+  const [editingCell, setEditingCell] = useState<{ rowId: string; fieldId: string } | null>(null);
+  const [cellDraft, setCellDraft] = useState('');
+  // Date/select/multiSelect cells can't be typed into - they open their own
+  // picker against that row+field rather than against the row form's draft.
+  const [cellPicker, setCellPicker] = useState<{ rowId: string; field: FieldDef } | null>(null);
   // This Android build doesn't resize the window under the keyboard - it
   // arrives as an inset over the content, not a shrink - so a bottom sheet
   // needs to track its height itself and push up by that much, same as
@@ -306,6 +314,44 @@ export default function CustomDatabaseScreen({}: Props) {
     setDraftValues((prev) => ({ ...prev, [fieldId]: value }));
   }
 
+  // Writes a single cell straight to its row, by nested field path, so
+  // editing one value never rewrites the rest of the row's `values` map.
+  async function writeRowValue(rowId: string, fieldId: string, value: string | number | string[]) {
+    await updateDoc(doc(db, 'customDatabaseRows', rowId), {
+      [`values.${fieldId}`]: value,
+      updatedAt: Date.now(),
+    });
+  }
+
+  function beginCellEdit(row: CustomDatabaseRow, field: FieldDef) {
+    if (isSelectMode) {
+      toggleSelected(row.id);
+      return;
+    }
+    if (field.type === 'date' || field.type === 'select' || field.type === 'multiSelect') {
+      setCellPicker({ rowId: row.id, field });
+      return;
+    }
+    const current = row.values[field.id];
+    setCellDraft(current === undefined || current === null ? '' : String(current));
+    setEditingCell({ rowId: row.id, fieldId: field.id });
+  }
+
+  function commitCellEdit() {
+    if (!editingCell) return;
+    const { rowId, fieldId } = editingCell;
+    const field = database!.fields.find((f) => f.id === fieldId);
+    setEditingCell(null);
+    if (!field) return;
+    const value =
+      field.type === 'number'
+        ? cellDraft.trim() === ''
+          ? ''
+          : Number(cellDraft.replace(',', '.')) || 0
+        : cellDraft;
+    writeRowValue(rowId, fieldId, value);
+  }
+
   function displayValue(field: FieldDef, value: string | number | string[] | undefined): string {
     if (value === undefined || value === null || value === '') return '';
     if (field.type === 'date' && typeof value === 'string') {
@@ -426,30 +472,73 @@ export default function CustomDatabaseScreen({}: Props) {
       <ScrollView horizontal contentContainerStyle={isSelectMode ? styles.listWithBulkBar : undefined}>
         <View>
           <View style={styles.tableHeaderRow}>
+            {/* Sits above each row's own open-card button. */}
+            <View style={styles.tableRowHandle} />
             {database!.fields.map((field) => (
-              <Text key={field.id} style={[styles.tableHeaderCell, { width: columnWidth }]} numberOfLines={1}>
-                {field.name}
-              </Text>
+              <View key={field.id} style={[styles.tableHeaderCell, { width: columnWidth }]}>
+                <Ionicons name={FIELD_TYPE_ICON[field.type]} size={12} color="rgba(255,255,255,0.65)" />
+                <Text style={styles.tableHeaderLabel} numberOfLines={1}>
+                  {field.name}
+                </Text>
+              </View>
             ))}
           </View>
-          <ScrollView>
+          <ScrollView keyboardShouldPersistTaps="handled">
             {displayedRows.map((row) => (
-              <Pressable
-                key={row.id}
-                style={styles.tableRow}
-                onPress={() => (isSelectMode ? toggleSelected(row.id) : openEditRow(row))}
-                onLongPress={() => setRowMenuId(row.id)}
-              >
-                {database!.fields.map((field) => (
-                  <Text key={field.id} style={[styles.tableCell, { width: columnWidth }]} numberOfLines={1}>
-                    {displayValue(field, row.values[field.id]) || '—'}
-                  </Text>
-                ))}
-              </Pressable>
+              <View key={row.id} style={styles.tableRow}>
+                {/* Tapping a cell edits that one cell; this button is the
+                    way to open the whole row as a card, per the user's own
+                    "a cell for one value, the card when I want them all". */}
+                <Pressable
+                  style={styles.tableRowHandle}
+                  onPress={() => (isSelectMode ? toggleSelected(row.id) : openEditRow(row))}
+                  onLongPress={() => setRowMenuId(row.id)}
+                >
+                  <Ionicons
+                    name={
+                      isSelectMode
+                        ? selectedIds.has(row.id)
+                          ? 'checkmark-circle'
+                          : 'ellipse-outline'
+                        : 'open-outline'
+                    }
+                    size={16}
+                    color="rgba(255,255,255,0.75)"
+                  />
+                </Pressable>
+                {database!.fields.map((field) => renderTableCell(row, field, columnWidth))}
+              </View>
             ))}
           </ScrollView>
         </View>
       </ScrollView>
+    );
+  }
+
+  function renderTableCell(row: CustomDatabaseRow, field: FieldDef, width: number) {
+    const isEditing = editingCell?.rowId === row.id && editingCell.fieldId === field.id;
+    if (isEditing) {
+      return (
+        <TextInput
+          key={field.id}
+          style={[styles.tableCellInput, { width }]}
+          value={cellDraft}
+          onChangeText={setCellDraft}
+          keyboardType={field.type === 'number' ? 'numeric' : 'default'}
+          autoFocus
+          onBlur={commitCellEdit}
+          onSubmitEditing={commitCellEdit}
+          returnKeyType="done"
+        />
+      );
+    }
+    const shown = displayValue(field, row.values[field.id]);
+    return (
+      <Pressable key={field.id} style={[styles.tableCellTap, { width }]} onPress={() => beginCellEdit(row, field)}>
+        <Text style={shown ? styles.tableCell : styles.tableCellEmpty} numberOfLines={1}>
+          {shown || '—'}
+        </Text>
+      </Pressable>
     );
   }
 
@@ -609,7 +698,10 @@ export default function CustomDatabaseScreen({}: Props) {
             <ScrollView style={styles.editorScroll} keyboardShouldPersistTaps="handled">
               {database.fields.map((field) => (
                 <View key={field.id} style={styles.editorField}>
-                  <Text style={styles.editorFieldLabel}>{field.name}</Text>
+                  <View style={styles.editorFieldLabelRow}>
+                    <Ionicons name={FIELD_TYPE_ICON[field.type]} size={12} color="#6B7280" />
+                    <Text style={styles.editorFieldLabel}>{field.name}</Text>
+                  </View>
                   {renderFieldInput(field)}
                 </View>
               ))}
@@ -648,46 +740,38 @@ export default function CustomDatabaseScreen({}: Props) {
       )}
 
       {selectPickerField && (
-        <Modal visible transparent animationType="fade" onRequestClose={() => setSelectPickerFieldId(null)}>
-          <Pressable style={styles.backdrop} onPress={() => setSelectPickerFieldId(null)}>
-            <Pressable style={styles.sheet} onPress={() => {}}>
-              <View style={styles.handle} />
-              <Text style={styles.title}>{selectPickerField.name}</Text>
-              {(selectPickerField.options ?? []).map((option) => {
-                const current = draftValues[selectPickerField.id];
-                const isMulti = selectPickerField.type === 'multiSelect';
-                const currentIds = isMulti ? (Array.isArray(current) ? current : []) : current ? [current as string] : [];
-                const selected = currentIds.includes(option.id);
-                return (
-                  <Pressable
-                    key={option.id}
-                    style={styles.optionPickerRow}
-                    onPress={() => {
-                      if (isMulti) {
-                        setDraftValue(
-                          selectPickerField.id,
-                          selected ? currentIds.filter((id) => id !== option.id) : [...currentIds, option.id]
-                        );
-                      } else {
-                        setDraftValue(selectPickerField.id, option.id);
-                        setSelectPickerFieldId(null);
-                      }
-                    }}
-                  >
-                    <View style={[styles.optionDot, { backgroundColor: option.color }]} />
-                    <Text style={styles.optionPickerLabel}>{option.label}</Text>
-                    {selected && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-                  </Pressable>
-                );
-              })}
-              {selectPickerField.type === 'multiSelect' && (
-                <Pressable style={styles.saveButton} onPress={() => setSelectPickerFieldId(null)}>
-                  <Text style={styles.saveLabel}>Готово</Text>
-                </Pressable>
-              )}
-            </Pressable>
-          </Pressable>
-        </Modal>
+        <OptionPickerSheet
+          field={selectPickerField}
+          value={draftValues[selectPickerField.id]}
+          onChange={(value) => setDraftValue(selectPickerField.id, value)}
+          onClose={() => setSelectPickerFieldId(null)}
+        />
+      )}
+
+      {/* The same two pickers again, but driven by a tapped table cell and
+          writing straight to that row instead of into the form's draft. */}
+      {cellPicker?.field.type === 'date' && (
+        <MiniDatePicker
+          value={
+            typeof rows.find((r) => r.id === cellPicker.rowId)?.values[cellPicker.field.id] === 'string'
+              ? (rows.find((r) => r.id === cellPicker.rowId)?.values[cellPicker.field.id] as string)
+              : undefined
+          }
+          onPick={(key) => {
+            writeRowValue(cellPicker.rowId, cellPicker.field.id, key);
+            setCellPicker(null);
+          }}
+          onClose={() => setCellPicker(null)}
+        />
+      )}
+
+      {cellPicker && cellPicker.field.type !== 'date' && (
+        <OptionPickerSheet
+          field={cellPicker.field}
+          value={rows.find((r) => r.id === cellPicker.rowId)?.values[cellPicker.field.id]}
+          onChange={(value) => writeRowValue(cellPicker.rowId, cellPicker.field.id, value)}
+          onClose={() => setCellPicker(null)}
+        />
       )}
 
       <TagPicker
@@ -785,6 +869,75 @@ export default function CustomDatabaseScreen({}: Props) {
 
       {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
     </View>
+  );
+}
+
+// One option list serving both the row form and a tapped table cell - the
+// caller decides where the picked value goes (a local draft, or straight
+// to that row's document), this only knows the field and its current value.
+function OptionPickerSheet({
+  field,
+  value,
+  onChange,
+  onClose,
+}: {
+  field: FieldDef;
+  value: string | number | string[] | undefined;
+  onChange: (value: string | string[]) => void;
+  onClose: () => void;
+}) {
+  const isMulti = field.type === 'multiSelect';
+  const currentIds = isMulti
+    ? Array.isArray(value)
+      ? value
+      : []
+    : value
+      ? [value as string]
+      : [];
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable style={styles.sheet} onPress={() => {}}>
+          <View style={styles.handle} />
+          <Text style={styles.title}>{field.name}</Text>
+          {(field.options ?? []).length === 0 && (
+            <Text style={styles.optionPickerEmpty}>
+              У цього поля ще немає варіантів - додайте їх у "..." → "Поля".
+            </Text>
+          )}
+          {(field.options ?? []).map((option) => {
+            const selected = currentIds.includes(option.id);
+            return (
+              <Pressable
+                key={option.id}
+                style={styles.optionPickerRow}
+                onPress={() => {
+                  if (isMulti) {
+                    onChange(selected ? currentIds.filter((id) => id !== option.id) : [...currentIds, option.id]);
+                  } else {
+                    // Tapping the already-chosen option clears it, so a
+                    // single-select field can be emptied without a separate
+                    // "none" row.
+                    onChange(selected ? '' : option.id);
+                    onClose();
+                  }
+                }}
+              >
+                <View style={[styles.optionDot, { backgroundColor: option.color }]} />
+                <Text style={styles.optionPickerLabel}>{option.label}</Text>
+                {selected && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+              </Pressable>
+            );
+          })}
+          {isMulti && (
+            <Pressable style={styles.saveButton} onPress={onClose}>
+              <Text style={styles.saveLabel}>Готово</Text>
+            </Pressable>
+          )}
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -1113,27 +1266,56 @@ const styles = StyleSheet.create({
   },
   tableHeaderRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 10,
     backgroundColor: 'rgba(255,255,255,0.15)',
   },
   tableHeaderCell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+  },
+  tableHeaderLabel: {
+    flex: 1,
     fontSize: 12,
     fontWeight: '700',
     color: '#fff',
-    paddingHorizontal: 8,
   },
   tableRow: {
     flexDirection: 'row',
+    alignItems: 'stretch',
     paddingHorizontal: 12,
-    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.12)',
+  },
+  // The narrow leading column: opens the row as a full card (and doubles as
+  // the checkbox in select mode).
+  tableRowHandle: {
+    width: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tableCellTap: {
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 12,
   },
   tableCell: {
     fontSize: 13,
     color: '#fff',
+  },
+  tableCellEmpty: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.35)',
+  },
+  tableCellInput: {
+    fontSize: 13,
+    color: '#fff',
     paddingHorizontal: 8,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   backdrop: {
     flex: 1,
@@ -1178,11 +1360,21 @@ const styles = StyleSheet.create({
   editorField: {
     marginBottom: 14,
   },
+  editorFieldLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 6,
+  },
   editorFieldLabel: {
     fontSize: 12,
     fontWeight: '600',
     color: '#6B7280',
-    marginBottom: 6,
+  },
+  optionPickerEmpty: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    paddingVertical: 12,
   },
   fieldInput: {
     borderWidth: 1,
