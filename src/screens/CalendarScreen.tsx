@@ -592,22 +592,34 @@ export default function CalendarScreen() {
             pointerEvents={isMonthExpanded ? 'auto' : 'none'}
           >
             <View style={styles.monthGrid}>
-              {monthGrid.map(({ date, inMonth }) => {
-                const key = dateKey(date);
-                const isToday = isSameDay(date, today);
-                return (
-                  <DayCell
-                    key={key}
-                    date={date}
-                    isToday={isToday}
-                    isSelected={key === selectedKey}
-                    muted={!inMonth}
-                    filled={filledDates.has(key)}
-                    inGrid
-                    onPress={() => selectDay(date)}
-                  />
-                );
-              })}
+              {/* One explicit row per week, each cell flex:1 - not a single
+                  flexWrap container with hardcoded `100/7%` cell widths.
+                  Yoga rounds each cell's percentage width to a whole pixel,
+                  and on most screen widths 7 * round(100/7%) overshoots the
+                  row by a pixel, so the 7th cell (Sunday) wrapped onto the
+                  next visual row instead of staying in this one - the same
+                  flex:1-per-row technique the week strip below already uses
+                  safely (dayCell), just applied per week instead of once. */}
+              {Array.from({ length: 6 }, (_, row) => (
+                <View key={row} style={styles.monthGridRow}>
+                  {monthGrid.slice(row * 7, row * 7 + 7).map(({ date, inMonth }) => {
+                    const key = dateKey(date);
+                    const isToday = isSameDay(date, today);
+                    return (
+                      <DayCell
+                        key={key}
+                        date={date}
+                        isToday={isToday}
+                        isSelected={key === selectedKey}
+                        muted={!inMonth}
+                        filled={filledDates.has(key)}
+                        inGrid
+                        onPress={() => selectDay(date)}
+                      />
+                    );
+                  })}
+                </View>
+              ))}
             </View>
           </Animated.View>
         </Animated.View>
@@ -931,12 +943,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   monthGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     paddingHorizontal: 16,
   },
+  monthGridRow: {
+    flexDirection: 'row',
+  },
   gridCell: {
-    width: `${100 / 7}%`,
+    flex: 1,
     height: ROW_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',

@@ -196,7 +196,12 @@ export interface Group {
 // different vocabularies in practice, so useTags.isTagAllowedForKind keeps
 // their suggestion pools from mixing, unlike file/photo/link which freely
 // cross-tag by design.
-export type TaggableKind = 'file' | 'photo' | 'link-video' | 'link-geo' | 'link-other' | 'document';
+// Widened to `string` (was a closed union of the six literals below) so a
+// custom database can mint its own per-database kind (`customRow:${id}`) -
+// every existing call site already just threads this through as a plain
+// string, nothing structural relied on the closed set:
+// 'file' | 'photo' | 'link-video' | 'link-geo' | 'link-other' | 'document'.
+export type TaggableKind = string;
 
 export interface Tag {
   id: string;
@@ -317,4 +322,57 @@ export interface DocumentItem {
   // priority over any image block as the document's card thumbnail (see
   // extractPreview's own coverImageUri parameter).
   coverImageUri?: string;
+}
+
+// A user-created database (CustomDatabaseScreen), Notion-style: the user
+// defines its own fields rather than picking from this app's fixed set
+// (Tasks/Links/Photos/Files). fields[0] is always type 'text' and acts as
+// the row's title everywhere (list view, row picker) - it can be renamed
+// but never removed or retyped.
+export type FieldType = 'text' | 'number' | 'date' | 'select' | 'multiSelect';
+
+export interface FieldOption {
+  id: string;
+  label: string;
+  color: string;
+}
+
+export interface FieldDef {
+  id: string;
+  name: string;
+  type: FieldType;
+  // 'select'/'multiSelect' only.
+  options?: FieldOption[];
+}
+
+export interface CustomDatabase {
+  id: string;
+  name: string;
+  icon?: string; // an Ionicons glyph name, shown on its DatabasesScreen tile
+  color?: string;
+  fields: FieldDef[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+// One row lives in its own document in the flat `customDatabaseRows`
+// collection (client-side filtered by databaseId), not embedded as an array
+// on the database doc the way BoardItem.cards is - a database can grow to
+// many rows, and rewriting the whole array on every single-row edit would
+// repeat the exact scaling problem documents already ran into once.
+export interface CustomDatabaseRow {
+  id: string;
+  databaseId: string;
+  // Keyed by FieldDef.id. 'select' stores one FieldOption.id, 'multiSelect'
+  // an array of them, 'number' a number, 'text'/'date' a string (date as an
+  // ISO string). A field added after this row exists simply has no key here
+  // yet - rendered as empty, not backfilled.
+  values: Record<string, string | number | string[]>;
+  // Tags/groups are scoped per-database (kind/GroupKind `customRow:${databaseId}`),
+  // not shared across every custom database - see useTags.ts and
+  // GroupPickerSheet.tsx.
+  tagIds?: string[];
+  groupId?: string;
+  createdAt: number;
+  updatedAt: number;
 }
