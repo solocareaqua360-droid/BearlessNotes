@@ -802,18 +802,18 @@ const styles = StyleSheet.create({
   listArea: {
     flex: 1,
   },
+  // Deliberately carries NO overflow: 'hidden' and no border/radius:
+  // Android's blur engine (Dimezis, behind expo-blur's
+  // experimentalBlurMethod) captures what's behind the view into a
+  // bitmap, and a clipping/bordered container makes that capture come
+  // back empty - which renders as a solid black rectangle instead of
+  // blurred content.
   stickerStripOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     height: STICKER_STRIP_HEIGHT,
-    overflow: 'hidden',
-    // Hairline light edge along the bottom - the same detail that makes
-    // ProjectTabsRow's/BulkActionBar's own "matte glass" pills read as
-    // glass rather than a flat translucent block.
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.25)',
   },
   stickerScroll: {
     flexGrow: 0,
@@ -821,7 +821,6 @@ const styles = StyleSheet.create({
   },
   stickerStrip: {
     paddingHorizontal: 20,
-    paddingBottom: 10,
     gap: 10,
   },
   stickerCard: {
