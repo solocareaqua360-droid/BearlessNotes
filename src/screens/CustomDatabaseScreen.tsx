@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -55,6 +55,13 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+const TABLE_COLUMN_WIDTH = 150;
+const TABLE_HANDLE_WIDTH = 34;
+// Every cell is exactly this tall so the frozen column and the scrolling
+// columns line up row for row - they're two separate stacks, nothing else
+// keeps them in step.
+const TABLE_ROW_HEIGHT = 46;
+
 type ViewMode = 'list' | 'table';
 type RowEditorState = { mode: 'new'; id: string } | { mode: 'edit'; row: CustomDatabaseRow };
 
@@ -97,14 +104,12 @@ export default function CustomDatabaseScreen({}: Props) {
   const [rowMenuId, setRowMenuId] = useState<string | null>(null);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
-  // Table view edits ONE cell at a time (tap a cell, type, done) - the full
-  // row form is opened deliberately from the row's own button instead, so
-  // entering a single number never means facing every field at once.
-  const [editingCell, setEditingCell] = useState<{ rowId: string; fieldId: string } | null>(null);
-  const [cellDraft, setCellDraft] = useState('');
   // Date/select/multiSelect cells can't be typed into - they open their own
   // picker against that row+field rather than against the row form's draft.
   const [cellPicker, setCellPicker] = useState<{ rowId: string; field: FieldDef } | null>(null);
+  // The header scrolls sideways only as a mirror of the body's own offset.
+  const headerScrollRef = useRef<ScrollView>(null);
+  const bodyScrollRef = useRef<ScrollView>(null);
   // This Android build doesn't resize the window under the keyboard - it
   // arrives as an inset over the content, not a shrink - so a bottom sheet
   // needs to track its height itself and push up by that much, same as
@@ -328,28 +333,15 @@ export default function CustomDatabaseScreen({}: Props) {
       toggleSelected(row.id);
       return;
     }
-    if (field.type === 'date' || field.type === 'select' || field.type === 'multiSelect') {
-      setCellPicker({ rowId: row.id, field });
-      return;
-    }
-    const current = row.values[field.id];
-    setCellDraft(current === undefined || current === null ? '' : String(current));
-    setEditingCell({ rowId: row.id, fieldId: field.id });
+    setCellPicker({ rowId: row.id, field });
   }
 
-  function commitCellEdit() {
-    if (!editingCell) return;
-    const { rowId, fieldId } = editingCell;
-    const field = database!.fields.find((f) => f.id === fieldId);
-    setEditingCell(null);
-    if (!field) return;
-    const value =
-      field.type === 'number'
-        ? cellDraft.trim() === ''
-          ? ''
-          : Number(cellDraft.replace(',', '.')) || 0
-        : cellDraft;
-    writeRowValue(rowId, fieldId, value);
+  function commitCellText(row: CustomDatabaseRow, field: FieldDef, text: string) {
+    const value = field.type === 'number' ? (text.trim() === '' ? '' : Number(text.replace(',', '.')) || 0) : text;
+    // Leaving a cell without having changed it shouldn't cost a write (and
+    // shouldn't bump the row's updatedAt, which drives the default sort).
+    if (String(row.values[field.id] ?? '') === String(value)) return;
+    writeRowValue(row.id, field.id, value);
   }
 
   function displayValue(field: FieldDef, value: string | number | string[] | undefined): string {
@@ -479,75 +471,124 @@ export default function CustomDatabaseScreen({}: Props) {
     );
   }
 
+  // The first field stays put while the rest scroll sideways, and the header
+  // stays put while rows scroll down - a spreadsheet's two fixed edges. That
+  // needs the table split in two: a frozen left block (row button + first
+  // field) and a horizontally scrolling block holding EVERY row's remaining
+  // cells as one stack, so one scroll offset moves all rows together. The
+  // header's own scroller is driven from the body's offset (and is itself
+  // scrollEnabled={false}), which keeps them in lockstep with no feedback
+  // loop between two scrollables.
   function renderTable() {
-    const columnWidth = 150;
+    const fields = database!.fields;
+    const firstField = fields[0];
+    const restFields = fields.slice(1);
     return (
-      <ScrollView horizontal contentContainerStyle={isSelectMode ? styles.listWithBulkBar : undefined}>
-        <View>
-          <View style={styles.tableHeaderRow}>
-            {/* Sits above each row's own open-card button. */}
+      <View style={styles.tableWrap}>
+        <View style={styles.tableHeaderRow}>
+          <View style={[styles.tableFrozen, { width: TABLE_HANDLE_WIDTH + TABLE_COLUMN_WIDTH }]}>
             <View style={styles.tableRowHandle} />
-            {database!.fields.map((field) => (
-              <View key={field.id} style={[styles.tableHeaderCell, { width: columnWidth }]}>
+            <View style={[styles.tableHeaderCell, { width: TABLE_COLUMN_WIDTH }]}>
+              <Ionicons name={FIELD_TYPE_ICON[firstField.type]} size={12} color="rgba(255,255,255,0.65)" />
+              <Text style={styles.tableHeaderLabel} numberOfLines={1}>
+                {firstField.name}
+              </Text>
+            </View>
+          </View>
+          <ScrollView horizontal ref={headerScrollRef} scrollEnabled={false} showsHorizontalScrollIndicator={false}>
+            {restFields.map((field) => (
+              <View key={field.id} style={[styles.tableHeaderCell, { width: TABLE_COLUMN_WIDTH }]}>
                 <Ionicons name={FIELD_TYPE_ICON[field.type]} size={12} color="rgba(255,255,255,0.65)" />
                 <Text style={styles.tableHeaderLabel} numberOfLines={1}>
                   {field.name}
                 </Text>
               </View>
             ))}
-          </View>
-          <ScrollView keyboardShouldPersistTaps="handled">
-            {displayedRows.map((row) => (
-              <View key={row.id} style={styles.tableRow}>
-                {/* Tapping a cell edits that one cell; this button is the
-                    way to open the whole row as a card, per the user's own
-                    "a cell for one value, the card when I want them all". */}
-                <Pressable
-                  style={styles.tableRowHandle}
-                  onPress={() => (isSelectMode ? toggleSelected(row.id) : openEditRow(row))}
-                  onLongPress={() => setRowMenuId(row.id)}
-                >
-                  <Ionicons
-                    name={
-                      isSelectMode
-                        ? selectedIds.has(row.id)
-                          ? 'checkmark-circle'
-                          : 'ellipse-outline'
-                        : 'open-outline'
-                    }
-                    size={16}
-                    color="rgba(255,255,255,0.75)"
-                  />
-                </Pressable>
-                {database!.fields.map((field) => renderTableCell(row, field, columnWidth))}
-              </View>
-            ))}
           </ScrollView>
         </View>
-      </ScrollView>
+
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.tableBody}>
+          <View style={styles.tableBodyRow}>
+            <View style={[styles.tableFrozen, { width: TABLE_HANDLE_WIDTH + TABLE_COLUMN_WIDTH }]}>
+              {displayedRows.map((row) => (
+                <View key={row.id} style={styles.tableRow}>
+                  {/* Tapping a cell edits that one cell; this button is the
+                      way to open the whole row as a card, per the user's own
+                      "a cell for one value, the card when I want them all". */}
+                  <Pressable
+                    style={styles.tableRowHandle}
+                    onPress={() => (isSelectMode ? toggleSelected(row.id) : openEditRow(row))}
+                    onLongPress={() => setRowMenuId(row.id)}
+                  >
+                    <Ionicons
+                      name={
+                        isSelectMode
+                          ? selectedIds.has(row.id)
+                            ? 'checkmark-circle'
+                            : 'ellipse-outline'
+                          : 'open-outline'
+                      }
+                      size={16}
+                      color="rgba(255,255,255,0.75)"
+                    />
+                  </Pressable>
+                  {renderTableCell(row, firstField)}
+                </View>
+              ))}
+            </View>
+
+            <ScrollView
+              horizontal
+              ref={bodyScrollRef}
+              keyboardShouldPersistTaps="handled"
+              scrollEventThrottle={16}
+              onScroll={(e) =>
+                headerScrollRef.current?.scrollTo({ x: e.nativeEvent.contentOffset.x, animated: false })
+              }
+            >
+              <View>
+                {displayedRows.map((row) => (
+                  <View key={row.id} style={styles.tableRow}>
+                    {restFields.map((field) => renderTableCell(row, field))}
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        </ScrollView>
+      </View>
     );
   }
 
-  function renderTableCell(row: CustomDatabaseRow, field: FieldDef, width: number) {
-    const isEditing = editingCell?.rowId === row.id && editingCell.fieldId === field.id;
-    if (isEditing) {
+  function renderTableCell(row: CustomDatabaseRow, field: FieldDef) {
+    const raw = row.values[field.id];
+    // Text/number cells are live inputs rather than a tap-to-swap Pressable:
+    // swapping the component on tap remounted it mid-layout, which is what
+    // threw the horizontal scroll back to the first column. Uncontrolled
+    // (defaultValue + commit when editing ends) so typing doesn't write on
+    // every keystroke; the key re-seeds it if the stored value changes.
+    if (!isSelectMode && (field.type === 'text' || field.type === 'number')) {
+      const asText = raw === undefined || raw === null ? '' : String(raw);
       return (
         <TextInput
-          key={field.id}
-          style={[styles.tableCellInput, { width }]}
-          value={cellDraft}
-          onChangeText={setCellDraft}
+          key={`${field.id}:${asText}`}
+          style={[styles.tableCellInput, { width: TABLE_COLUMN_WIDTH }]}
+          defaultValue={asText}
+          placeholder="—"
+          placeholderTextColor="rgba(255,255,255,0.3)"
           keyboardType={field.type === 'number' ? 'numeric' : 'default'}
-          autoFocus
-          onBlur={commitCellEdit}
-          onSubmitEditing={commitCellEdit}
           returnKeyType="done"
+          onEndEditing={(e) => commitCellText(row, field, e.nativeEvent.text)}
         />
       );
     }
-    const shown = displayValue(field, row.values[field.id]);
+    const shown = displayValue(field, raw);
     return (
-      <Pressable key={field.id} style={[styles.tableCellTap, { width }]} onPress={() => beginCellEdit(row, field)}>
+      <Pressable
+        key={field.id}
+        style={[styles.tableCellTap, { width: TABLE_COLUMN_WIDTH }]}
+        onPress={() => beginCellEdit(row, field)}
+      >
         <Text style={shown ? styles.tableCell : styles.tableCellEmpty} numberOfLines={1}>
           {shown || '—'}
         </Text>
@@ -1293,12 +1334,25 @@ const styles = StyleSheet.create({
   rowActionButton: {
     padding: 6,
   },
+  tableWrap: {
+    flex: 1,
+  },
   tableHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
     paddingVertical: 10,
     backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  // Both the header's and the body's frozen block - a plain row that simply
+  // isn't inside either horizontal scroller.
+  tableFrozen: {
+    flexDirection: 'row',
+  },
+  tableBody: {
+    paddingBottom: 170,
+  },
+  tableBodyRow: {
+    flexDirection: 'row',
   },
   tableHeaderCell: {
     flexDirection: 'row',
@@ -1315,21 +1369,20 @@ const styles = StyleSheet.create({
   tableRow: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    paddingHorizontal: 12,
+    height: TABLE_ROW_HEIGHT,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.12)',
   },
   // The narrow leading column: opens the row as a full card (and doubles as
   // the checkbox in select mode).
   tableRowHandle: {
-    width: 34,
+    width: TABLE_HANDLE_WIDTH,
     alignItems: 'center',
     justifyContent: 'center',
   },
   tableCellTap: {
     justifyContent: 'center',
     paddingHorizontal: 8,
-    paddingVertical: 12,
   },
   tableCell: {
     fontSize: 13,
@@ -1340,11 +1393,11 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.35)',
   },
   tableCellInput: {
+    height: TABLE_ROW_HEIGHT - 1,
     fontSize: 13,
     color: '#fff',
     paddingHorizontal: 8,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    paddingVertical: 0,
   },
   backdrop: {
     flex: 1,
