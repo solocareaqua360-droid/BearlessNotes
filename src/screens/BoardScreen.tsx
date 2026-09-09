@@ -1761,34 +1761,38 @@ export default function BoardScreen() {
       </View>
 
       {selectedCardIds.size > 0 ? (
-        <View style={[styles.selectionBar, { bottom: 104 + bottomInset }]}>
-          <Text style={styles.selectionBarLabel}>Обрано: {selectedCardIds.size}</Text>
-          <View style={styles.selectionBarActions}>
+        // Compact, content-hugging, centred capsule - same look as the
+        // shared BulkActionBar component (Documents/Files/Photos/Links'
+        // own multi-select bar), kept local rather than reusing that
+        // component directly since its action set (tag/group/copy)
+        // doesn't apply to board cards.
+        <View style={[styles.selectionBarWrap, { bottom: 104 + bottomInset }]} pointerEvents="box-none">
+          <View style={styles.selectionBarCapsule}>
+            <Text style={styles.selectionBarCount}>{selectedCardIds.size}</Text>
+            <View style={styles.selectionBarDivider} />
             {onlySelectedDocumentCard && (
               <Pressable
-                style={styles.selectionBarButton}
+                style={styles.selectionBarAction}
+                hitSlop={6}
                 onPress={() => editDocumentCard(onlySelectedDocumentCard)}
               >
-                <Ionicons name="create-outline" size={16} color="#fff" />
-                <Text style={styles.selectionBarButtonLabel}>Редагувати</Text>
+                <Ionicons name="create-outline" size={18} color="#fff" />
+                <Text style={styles.selectionBarActionLabel}>Редагувати</Text>
               </Pressable>
             )}
             {selectionHasConnections && (
-              <Pressable style={styles.selectionBarButton} onPress={disconnectSelectedCards}>
-                <MaterialCommunityIcons name="vector-line" size={16} color="#fff" />
-                <Text style={styles.selectionBarButtonLabel}>Відʼєднати</Text>
+              <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={disconnectSelectedCards}>
+                <MaterialCommunityIcons name="vector-line" size={18} color="#fff" />
+                <Text style={styles.selectionBarActionLabel}>Відʼєднати</Text>
               </Pressable>
             )}
-            <Pressable style={styles.selectionBarButton} onPress={() => setSelectedCardIds(new Set())}>
-              <Ionicons name="close" size={16} color="#fff" />
-              <Text style={styles.selectionBarButtonLabel}>Скасувати</Text>
+            <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={() => setSelectedCardIds(new Set())}>
+              <Ionicons name="close" size={18} color="#fff" />
+              <Text style={styles.selectionBarActionLabel}>Скасувати</Text>
             </Pressable>
-            <Pressable
-              style={[styles.selectionBarButton, styles.selectionBarButtonDanger]}
-              onPress={deleteSelectedCards}
-            >
-              <Ionicons name="trash-outline" size={16} color="#fff" />
-              <Text style={styles.selectionBarButtonLabel}>Видалити</Text>
+            <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={deleteSelectedCards}>
+              <Ionicons name="trash-outline" size={18} color="#fff" />
+              <Text style={styles.selectionBarActionLabel}>Видалити</Text>
             </Pressable>
           </View>
         </View>
@@ -2123,53 +2127,49 @@ const styles = StyleSheet.create({
   toolButtonActive: {
     backgroundColor: SELECTION_COLOR,
   },
-  // Same dark frosted-glass capsule as the shared BulkActionBar component
-  // (Documents/Files/Photos/Links' own multi-select bar) - kept local
-  // rather than reusing that component directly since its action set
-  // (tag/group/copy) doesn't apply to board cards.
-  // `bottom` is set inline, same as the FAB above.
-  selectionBar: {
+  // Same compact, content-hugging dark-glass pill as the shared
+  // BulkActionBar component (Documents/Files/Photos/Links' own
+  // multi-select bar) - kept local rather than reusing that component
+  // directly since its action set (tag/group/copy) doesn't apply to board
+  // cards. `bottom` is set inline, same as the FAB above.
+  selectionBarWrap: {
     position: 'absolute',
-    left: 20,
-    right: 20,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  selectionBarCapsule: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 14,
     backgroundColor: 'rgba(20,20,20,0.55)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.35)',
-    borderRadius: 20,
-    paddingVertical: 12,
+    borderRadius: 24,
     paddingHorizontal: 16,
+    paddingVertical: 10,
     shadowColor: '#000',
     shadowOpacity: 0.3,
     shadowOffset: { width: 0, height: 6 },
     shadowRadius: 16,
     elevation: 8,
   },
-  selectionBarLabel: {
+  selectionBarCount: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '800',
     color: '#fff',
   },
-  selectionBarActions: {
-    flexDirection: 'row',
-    gap: 8,
+  selectionBarDivider: {
+    width: 1,
+    height: 22,
+    backgroundColor: 'rgba(255,255,255,0.3)',
   },
-  selectionBarButton: {
-    flexDirection: 'row',
+  selectionBarAction: {
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    gap: 3,
   },
-  selectionBarButtonDanger: {
-    backgroundColor: '#EF4444',
-  },
-  selectionBarButtonLabel: {
-    fontSize: 13,
+  selectionBarActionLabel: {
+    fontSize: 9.5,
     fontWeight: '600',
     color: '#fff',
   },
