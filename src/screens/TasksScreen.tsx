@@ -26,7 +26,7 @@ import {
   orderBy,
   query,
   updateDoc,
-} from 'firebase/firestore';
+} from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import { Block, Project } from '../types';
 import { RootStackParamList } from '../navigation';

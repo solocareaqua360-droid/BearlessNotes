@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { addDoc, collection, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, updateDoc } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import { Group } from '../types';
 

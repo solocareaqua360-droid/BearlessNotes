@@ -21,13 +21,15 @@
       },
       "predictiveBackGestureEnabled": false,
       "softwareKeyboardLayoutMode": "resize",
-      "package": "com.bearlessnotes.notes"
+      "package": "com.bearlessnotes.notes",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-dev-client",
+      "@react-native-firebase/app",
       [
         "react-native-document-scanner-plugin",
         {

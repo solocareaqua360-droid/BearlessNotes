@@ -11,7 +11,7 @@ import {
   query,
   updateDoc,
   writeBatch,
-} from 'firebase/firestore';
+} from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import { Tag, TaggableKind } from '../types';
 

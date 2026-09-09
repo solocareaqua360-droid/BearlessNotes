@@ -27,7 +27,7 @@ import {
   setDoc,
   updateDoc,
   writeBatch,
-} from 'firebase/firestore';
+} from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import { Block, Group, TaggableKind } from '../types';
 import { RootStackParamList } from '../navigation';

@@ -1,4 +1,4 @@
-import { addDoc, arrayUnion, collection, doc, setDoc, updateDoc } from 'firebase/firestore';
+import { addDoc, arrayUnion, collection, doc, setDoc, updateDoc } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import { Block, SketchElement } from '../types';
 

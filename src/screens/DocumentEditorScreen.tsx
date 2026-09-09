@@ -48,7 +48,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
-import { deleteDoc, deleteField, doc, getDoc, getDocFromCache, setDoc, updateDoc } from 'firebase/firestore';
+import { deleteDoc, deleteField, doc, getDoc, getDocFromCache, setDoc, updateDoc } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import { Block, BlockType, SketchElement, Tag, TableRow } from '../types';
