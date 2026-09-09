@@ -123,13 +123,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  // White capsule, border + text in the tag's own color - borderColor set
-  // per-chip inline (tag.color).
+  // Transparent capsule, border + text in the tag's own color - borderColor
+  // set per-chip inline (tag.color). Deliberately no fill (not even white)
+  // so it sits correctly on a document's own "paper color" as well as the
+  // plain white default, rather than a fixed color that only worked on one
+  // of the two.
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#fff',
+    backgroundColor: 'transparent',
     borderWidth: 1.5,
     borderRadius: 999,
     paddingVertical: 4,
