@@ -67,6 +67,7 @@ import { useTags } from '../hooks/useTags';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
+import { colorForDocument } from '../utils/documentColor';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
 import AddExistingItemModal from '../components/AddExistingItemModal';
@@ -615,6 +616,10 @@ type BlockRowProps = {
   onOpenLinkDatabase: (block: Block) => void;
   onOpenSketch: (id: string) => void;
   inputRef: (ref: TextInput | null) => void;
+  // null when "Колір паперу" is off, OR for a sticker block specifically -
+  // a sticker keeps its own yellow/dark treatment regardless of the
+  // document's paper color (see the isSticker comment in types.ts).
+  paperColor: ReturnType<typeof colorForDocument> | null;
 };
 
 // A simple editable grid - text-only cells (no rich-text markup inside a
@@ -832,6 +837,7 @@ function BlockRow({
   onOpenLinkDatabase,
   onOpenSketch,
   inputRef,
+  paperColor,
 }: BlockRowProps) {
   // Outside edit mode (or while selecting), the text field is completely
   // inert to touch (pointerEvents: 'none') rather than merely
@@ -842,6 +848,9 @@ function BlockRow({
   // just like it already did over the icon column.
   const canEditText = isEditMode && !isSelectMode;
   const type = item.type ?? 'paragraph';
+  // A sticker keeps its own yellow regardless of the document's paper
+  // color - see BlockRowProps.paperColor.
+  const rowPaperColor = item.isSticker ? null : paperColor;
 
   // There's no cloud copy yet, so the cache file IS the only copy - Android
   // can purge app cache under storage pressure, which would silently orphan
@@ -1086,7 +1095,8 @@ function BlockRow({
           }
         }}
         placeholder={type === 'checkbox' ? 'Завдання…' : '…'}
-        style={[styles.blockInput, item.checked && styles.checkedText]}
+        placeholderTextColor={rowPaperColor?.textMuted}
+        style={[styles.blockInput, item.checked && styles.checkedText, rowPaperColor && { color: rowPaperColor.text }]}
         multiline
       />
     ) : (
@@ -1096,9 +1106,12 @@ function BlockRow({
       <View key="locked" style={styles.blockInput} pointerEvents="none">
         <Text style={[styles.blockDisplayText, item.checked && styles.checkedText]}>
           {item.text ? (
-            <FormattedText segments={parseFormattedText(item.text)} defaultColor="#111827" />
+            <FormattedText
+              segments={parseFormattedText(item.text)}
+              defaultColor={rowPaperColor?.text ?? '#111827'}
+            />
           ) : (
-            <Text style={styles.blockPlaceholder}>…</Text>
+            <Text style={[styles.blockPlaceholder, rowPaperColor && { color: rowPaperColor.textMuted }]}>…</Text>
           )}
         </Text>
       </View>
@@ -1150,6 +1163,12 @@ function BlockRow({
         // agreed explicitly: it should stay visibly "a sticker", not blend
         // in as an ordinary paragraph/image/sketch block.
         item.isSticker && styles.blockRowSticker,
+        // Blends the row into the colored page instead of keeping its own
+        // white card look - skipped while selected, whose own light-blue
+        // highlight is a stronger, more important affordance than the
+        // paper color. showBoundary only draws a border (see
+        // blockRowBoundary), so it stays visible over the transparent fill.
+        rowPaperColor && !isSelected && { backgroundColor: 'transparent' },
       ]}
     >
       {content}
@@ -1216,6 +1235,7 @@ type SortableBlockRowProps = {
   onOpenLinkDatabase: (block: Block) => void;
   onOpenSketch: (id: string) => void;
   inputRef: (ref: TextInput | null) => void;
+  paperColor: ReturnType<typeof colorForDocument> | null;
 };
 
 function SortableBlockRow({
@@ -1249,6 +1269,7 @@ function SortableBlockRow({
   onOpenLinkDatabase,
   onOpenSketch,
   inputRef,
+  paperColor,
 }: SortableBlockRowProps) {
   // This gesture's whole job is JS-side (finding the nearest gap, updating
   // React state) - there's no per-frame UI-thread animation to protect
@@ -1304,6 +1325,7 @@ function SortableBlockRow({
             isSelectMode={isSelectMode}
             isEditMode={isEditMode}
             showBoundary={isDragActive}
+            paperColor={paperColor}
             listNumber={listNumber}
             textVersion={textVersion}
             onChangeText={onChangeText}
@@ -1353,6 +1375,7 @@ type BlockListProps = {
   onOpenLinkDatabase: (block: Block) => void;
   onOpenSketch: (id: string) => void;
   onInputRef: (id: string, ref: TextInput | null) => void;
+  paperColor: ReturnType<typeof colorForDocument> | null;
 };
 
 function BlockList({
@@ -1379,6 +1402,7 @@ function BlockList({
   onOpenLinkDatabase,
   onOpenSketch,
   onInputRef,
+  paperColor,
 }: BlockListProps) {
   const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
   // The block actually long-pressed to start the drag - the rest of a
@@ -1592,6 +1616,7 @@ function BlockList({
           onOpenLinkDatabase={onOpenLinkDatabase}
           onOpenSketch={onOpenSketch}
           inputRef={(ref) => onInputRef(item.id, ref)}
+          paperColor={paperColor}
         />
         );
       })}
@@ -1643,6 +1668,19 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const [title, setTitle] = useState('');
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [tagIds, setTagIds] = useState<string[]>([]);
+  // Cover image and "paper color" (below) - see the "..." menu. Both are
+  // local-only settings (no cloud backup for the cover, same as any other
+  // image block before its own async Drive upload finishes) and both are
+  // skipped entirely in embedded mode (CalendarScreen's daily notes),
+  // matching the header/title/tags block right above them.
+  const [coverImageUri, setCoverImageUri] = useState<string | undefined>(undefined);
+  // Recolors the page to this document's OWN card color (colorForDocument)
+  // - the same color already shown for it everywhere else in the app
+  // (Documents grid, Files/Links/BoardsList tiles) - rather than a
+  // separately-picked color, so a document always has exactly one color
+  // identity across the whole app.
+  const [paperColorEnabled, setPaperColorEnabled] = useState(false);
+  const paperColor = paperColorEnabled ? colorForDocument(documentId) : null;
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
   const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
   const [isLoaded, setIsLoaded] = useState(false);
@@ -1752,6 +1790,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       isNewDocumentRef.current = !snapshot.exists();
       setTitle(data?.title ?? '');
       setTagIds(data?.tagIds ?? []);
+      setCoverImageUri(data?.coverImageUri);
+      setPaperColorEnabled(!!data?.paperColorEnabled);
       const loadedBlocks: Block[] = data?.blocks ?? [];
       setBlocks(loadedBlocks.length > 0 ? loadedBlocks : [newBlock()]);
       // Seed the "what does this document currently mirror" trackers from
@@ -2047,7 +2087,19 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       isNewDocumentRef.current = false;
       setDoc(
         doc(db, 'documents', documentId),
-        { title, blocks, updatedAt: Date.now(), ...createdAtField, ...extraFields },
+        {
+          title,
+          blocks,
+          updatedAt: Date.now(),
+          paperColorEnabled,
+          // deleteField() rather than omitting the key or writing undefined
+          // (which Firestore rejects outright) - a cover removed after
+          // having been set has to actually clear the field, not leave the
+          // old uri sitting there under merge:true.
+          coverImageUri: coverImageUri || deleteField(),
+          ...createdAtField,
+          ...extraFields,
+        },
         { merge: true }
       ).then(() => setSaveStatus('saved'));
       syncTasksForDocument(blocks);
@@ -2060,7 +2112,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, blocks, isLoaded]);
+  }, [title, blocks, coverImageUri, paperColorEnabled, isLoaded]);
 
   useEffect(() => {
     const id = focusIdRef.current;
@@ -2807,6 +2859,39 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     });
   }
 
+  // Same pick -> compress path as a block's own image (pickImageForBlock
+  // right below), just storing the result as the document's own
+  // coverImageUri instead of inserting a block - no separate mirror
+  // record and no Drive backup, exactly like a cover has nowhere else in
+  // the app to show up.
+  function openCoverImageOptions() {
+    setExportMenuOpen(false);
+    Alert.alert(coverImageUri ? 'Змінити заставку' : 'Додати заставку', undefined, [
+      { text: 'Галерея', onPress: () => pickCoverImage('gallery') },
+      { text: 'Камера', onPress: () => pickCoverImage('camera') },
+      ...(coverImageUri
+        ? [{ text: 'Прибрати заставку', style: 'destructive' as const, onPress: () => setCoverImageUri(undefined) }]
+        : []),
+      { text: 'Скасувати', style: 'cancel' as const },
+    ]);
+  }
+
+  async function pickCoverImage(source: 'gallery' | 'camera') {
+    const permission =
+      source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+    const result =
+      source === 'camera'
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    const uri = await compressPickedImage(asset.uri, asset.width, asset.height);
+    setCoverImageUri(uri);
+  }
+
   async function pickImageForBlock(id: string) {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) return;
@@ -3183,12 +3268,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   return (
-    <View style={[styles.container, embedded && styles.containerEmbedded]}>
+    <View
+      style={[
+        styles.container,
+        embedded && styles.containerEmbedded,
+        paperColor && { backgroundColor: paperColor.background },
+      ]}
+    >
       {!embedded && (
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={22} color="#111827" />
+            <Ionicons name="arrow-back" size={22} color={paperColor?.text ?? '#111827'} />
           </Pressable>
         </View>
         <View style={styles.headerRightGroup}>
@@ -3213,6 +3304,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       {exportMenuOpen && <Pressable style={styles.exportMenuBackdrop} onPress={() => setExportMenuOpen(false)} />}
       {exportMenuOpen && (
         <View style={styles.exportMenuPanel}>
+          <Text style={styles.exportMenuLabel}>Оформлення</Text>
+          <Pressable style={styles.exportMenuRow} onPress={openCoverImageOptions}>
+            <Ionicons name="image-outline" size={17} color="#111827" />
+            <Text style={styles.exportMenuRowLabel}>
+              {coverImageUri ? 'Змінити заставку' : 'Додати заставку'}
+            </Text>
+          </Pressable>
+          <Pressable style={styles.exportMenuRow} onPress={() => setPaperColorEnabled((v) => !v)}>
+            <Ionicons name="color-palette-outline" size={17} color="#111827" />
+            <Text style={styles.exportMenuRowLabel}>Колір паперу</Text>
+            {paperColorEnabled && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+          </Pressable>
           <Text style={styles.exportMenuLabel}>Експорт</Text>
           <Pressable style={styles.exportMenuRow} onPress={exportAsPdf}>
             <Ionicons name="document-text-outline" size={17} color="#111827" />
@@ -3254,6 +3357,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         }}
         scrollEventThrottle={16}
       >
+        {!embedded && coverImageUri && (
+          <Pressable onPress={openCoverImageOptions}>
+            <Image source={{ uri: coverImageUri }} style={styles.coverImage} resizeMode="cover" />
+          </Pressable>
+        )}
+
         {!embedded && (
         <TextInput
           key={isEditMode ? 'editable' : 'locked'}
@@ -3265,7 +3374,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           editable={isEditMode}
           pointerEvents={isEditMode ? 'auto' : 'none'}
           placeholder="Без назви"
-          style={styles.titleInput}
+          placeholderTextColor={paperColor?.textMuted}
+          style={[styles.titleInput, paperColor && { color: paperColor.text }]}
           multiline
         />
         )}
@@ -3310,12 +3420,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           onInputRef={(id, ref) => {
             inputRefs.current[id] = ref;
           }}
+          paperColor={paperColor}
         />
 
         {selectedIds.size === 0 && (
           <Pressable style={styles.addBlock} onPress={addBlockAtEnd}>
-            <Ionicons name="add" size={18} color="#111827" />
-            <Text style={styles.addBlockLabel}>Додати блок</Text>
+            <Ionicons name="add" size={18} color={paperColor?.text ?? '#111827'} />
+            <Text style={[styles.addBlockLabel, paperColor && { color: paperColor.text }]}>Додати блок</Text>
           </Pressable>
         )}
       </ScrollView>
@@ -3643,6 +3754,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   exportMenuRowLabel: {
+    flex: 1,
     fontSize: 14,
     color: '#111827',
   },
@@ -3696,6 +3808,10 @@ const styles = StyleSheet.create({
   // small top breathing room instead.
   scrollAreaEmbedded: {
     paddingTop: 4,
+  },
+  coverImage: {
+    width: '100%',
+    height: 180,
   },
   titleInput: {
     // At least 2x the previous 24.
