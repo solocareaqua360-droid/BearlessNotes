@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   Modal,
   Pressable,
   ScrollView,
@@ -97,6 +98,19 @@ export default function CustomDatabaseScreen({}: Props) {
   const [rowMenuId, setRowMenuId] = useState<string | null>(null);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
+  // This Android build doesn't resize the window under the keyboard - it
+  // arrives as an inset over the content, not a shrink - so a bottom sheet
+  // needs to track its height itself and push up by that much, same as
+  // GroupPickerSheet's own "Нова група" input.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const { sortPref, selectSortField } = useSortPref(prefsKey);
   const { filterPending, requestDeleteMany, undo, toast } = usePendingDelete<CustomDatabaseRow>();
@@ -576,7 +590,7 @@ export default function CustomDatabaseScreen({}: Props) {
 
       <Modal visible={rowEditor !== null} transparent animationType="fade" onRequestClose={() => setRowEditor(null)}>
         <Pressable style={styles.backdrop} onPress={() => setRowEditor(null)}>
-          <Pressable style={styles.editorSheet} onPress={() => {}}>
+          <Pressable style={[styles.editorSheet, { marginBottom: keyboardHeight }]} onPress={() => {}}>
             <View style={styles.handle} />
             <Text style={styles.title}>{rowEditor?.mode === 'new' ? 'Новий запис' : 'Редагувати запис'}</Text>
             <ScrollView style={styles.editorScroll}>

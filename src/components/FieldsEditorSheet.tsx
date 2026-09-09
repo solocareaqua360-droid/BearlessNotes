@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FieldDef, FieldOption, FieldType } from '../types';
 import { TAG_COLORS } from '../constants/tags';
@@ -45,6 +45,19 @@ export default function FieldsEditorSheet({ visible, fields, onSave, onClose }: 
   const [draft, setDraft] = useState<FieldDef[]>(fields);
   const [typeMenuFieldId, setTypeMenuFieldId] = useState<string | null>(null);
   const [newOptionText, setNewOptionText] = useState<Record<string, string>>({});
+  // This Android build doesn't resize the window under the keyboard - it
+  // arrives as an inset over the content, not a shrink - so the sheet has
+  // to track its own height and push up by that much, same as
+  // GroupPickerSheet's "Нова група" input.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (visible) setDraft(fields);
@@ -92,7 +105,7 @@ export default function FieldsEditorSheet({ visible, fields, onSave, onClose }: 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={() => {}}>
+        <Pressable style={[styles.sheet, { marginBottom: keyboardHeight }]} onPress={() => {}}>
           <View style={styles.handle} />
           <Text style={styles.title}>Поля</Text>
 
