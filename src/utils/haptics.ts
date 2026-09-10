@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Platform, Vibration } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
 // Haptic feedback, named for what happened rather than for how it should
@@ -68,21 +68,17 @@ export function hapticWarning() {
   android(Haptics.AndroidHaptics.Reject, () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning));
 }
 
-// A new document opening. There's no "page turn" in the system's set - it
-// is semantic (confirm/reject/tick/toggle), not skeuomorphic - so this
-// composes one out of two impacts: a firm one, then a softer settle a
-// moment later, which reads as a sheet lifting and landing rather than as
-// a single click.
+// A new document opening: a short pulse, a pause, then a longer one -
+// a sheet lifting and landing.
 //
-// Impact styles rather than the Android constants used elsewhere here on
-// purpose: the tick constants (Segment_Tick, Clock_Tick) are the lightest
-// effects the system has - meant for scrolling one notch - and were too
-// faint to tell apart. Heavy/Medium are the loudest thing available
-// without dropping to the raw motor (Vibration.vibrate), which buzzes
-// instead of tapping.
+// This one deliberately uses the raw motor (Vibration) rather than the
+// haptic effects everything else here uses. Samsung attenuates the
+// system's tactile effects heavily - even Heavy impacts were barely
+// distinguishable on the user's device, and the tick constants were
+// invisible - and the motor is the only thing left that is reliably
+// FELT. The cost is honest: this buzzes where a haptic effect taps.
+// Durations in ms, alternating pause/vibrate as Android's pattern format
+// requires.
 export function hapticPageTurn() {
-  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
-  setTimeout(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-  }, 70);
+  Vibration.vibrate([0, 22, 55, 45]);
 }
