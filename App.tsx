@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold } from '@expo-google-fonts/inter';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { ShareIntentProvider } from 'expo-share-intent';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -27,6 +28,8 @@ import SearchScreen from './src/screens/SearchScreen';
 import DiaryScreen from './src/screens/DiaryScreen';
 import DocumentEditorScreen from './src/screens/DocumentEditorScreen';
 import FloatingIslandTabBar from './src/components/FloatingIslandTabBar';
+import ShareIntentHandler from './src/components/ShareIntentHandler';
+import { navigationRef } from './src/navigationRef';
 import { BoardsStackParamList, RootStackParamList } from './src/navigation';
 
 const Tab = createBottomTabNavigator();
@@ -77,38 +80,51 @@ export default function App() {
   useEffect(() => {
     ensureSignedIn().then(() => setSignedIn(true));
   }, []);
-  if (!fontsLoaded || !signedIn) return <View style={{ flex: 1, backgroundColor: '#fff' }} />;
 
+  // ShareIntentProvider wraps BOTH branches below as one stable instance
+  // (rather than each branch mounting its own) - a share can arrive while
+  // the app is still on the splash view, and the provider needs to keep
+  // holding it across the splash -> ready transition, not capture it once
+  // and then get remounted from scratch right as ShareIntentHandler
+  // (which only renders once signedIn, since it writes to Firestore)
+  // would otherwise need to read it.
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      {/* Feeds the document editor per-frame keyboard progress (see
-          DocumentEditorScreen's useKeyboardHandler), so the block being
-          edited can ride up in the same motion as the keyboard instead of
-          jumping after it has finished. */}
-      <KeyboardProvider>
-      <NavigationContainer>
-        <StatusBar style="auto" />
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="Tabs" component={Tabs} />
-          <Stack.Screen name="Editor" component={DocumentEditorScreen} />
-          <Stack.Screen name="EditorModal" component={DocumentEditorScreen} options={{ presentation: 'modal' }} />
-          <Stack.Screen name="Tasks" component={TasksScreen} />
-          <Stack.Screen name="Links" component={LinksScreen} />
-          <Stack.Screen name="Photos" component={PhotosScreen} />
-          <Stack.Screen name="Files" component={FilesScreen} />
-          <Stack.Screen name="Stickers" component={StickersScreen} />
-          <Stack.Screen name="CustomDatabase" component={CustomDatabaseScreen} />
-          <Stack.Screen name="Tags" component={TagManageScreen} />
-          <Stack.Screen name="TagItems" component={TagItemsScreen} />
-          <Stack.Screen name="Settings" component={SettingsScreen} />
-          <Stack.Screen name="Search" component={SearchScreen} />
-          <Stack.Screen name="Diary" component={DiaryScreen} />
-          <Stack.Screen name="Placeholder">
-            {({ route }) => <PlaceholderScreen icon={route.params.icon} label={route.params.label} />}
-          </Stack.Screen>
-        </Stack.Navigator>
-      </NavigationContainer>
-      </KeyboardProvider>
-    </GestureHandlerRootView>
+    <ShareIntentProvider>
+      {!fontsLoaded || !signedIn ? (
+        <View style={{ flex: 1, backgroundColor: '#fff' }} />
+      ) : (
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          {/* Feeds the document editor per-frame keyboard progress (see
+              DocumentEditorScreen's useKeyboardHandler), so the block being
+              edited can ride up in the same motion as the keyboard instead of
+              jumping after it has finished. */}
+          <KeyboardProvider>
+          <NavigationContainer ref={navigationRef}>
+            <StatusBar style="auto" />
+            <ShareIntentHandler />
+            <Stack.Navigator screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="Tabs" component={Tabs} />
+              <Stack.Screen name="Editor" component={DocumentEditorScreen} />
+              <Stack.Screen name="EditorModal" component={DocumentEditorScreen} options={{ presentation: 'modal' }} />
+              <Stack.Screen name="Tasks" component={TasksScreen} />
+              <Stack.Screen name="Links" component={LinksScreen} />
+              <Stack.Screen name="Photos" component={PhotosScreen} />
+              <Stack.Screen name="Files" component={FilesScreen} />
+              <Stack.Screen name="Stickers" component={StickersScreen} />
+              <Stack.Screen name="CustomDatabase" component={CustomDatabaseScreen} />
+              <Stack.Screen name="Tags" component={TagManageScreen} />
+              <Stack.Screen name="TagItems" component={TagItemsScreen} />
+              <Stack.Screen name="Settings" component={SettingsScreen} />
+              <Stack.Screen name="Search" component={SearchScreen} />
+              <Stack.Screen name="Diary" component={DiaryScreen} />
+              <Stack.Screen name="Placeholder">
+                {({ route }) => <PlaceholderScreen icon={route.params.icon} label={route.params.label} />}
+              </Stack.Screen>
+            </Stack.Navigator>
+          </NavigationContainer>
+          </KeyboardProvider>
+        </GestureHandlerRootView>
+      )}
+    </ShareIntentProvider>
   );
 }

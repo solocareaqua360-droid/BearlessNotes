@@ -3,6 +3,7 @@
     "name": "mindEva",
     "slug": "bearless-notes",
     "version": "1.0.0",
+    "scheme": "mindeva",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -44,7 +45,19 @@
         }
       ],
       "expo-notifications",
-      "expo-audio"
+      "expo-audio",
+      [
+        "expo-share-intent",
+        {
+          // "*/*" alone already matches every single-item share (text,
+          // links, photos, PDFs, whatever else) - this is Android-only
+          // for now (the app has no iOS build), so the iOS-specific
+          // options above this (activation rules, extension name) are
+          // left at their defaults and never exercised.
+          "androidIntentFilters": ["*/*"],
+          "androidMultiIntentFilters": ["image/*", "video/*", "*/*"]
+        }
+      ]
     ],
     "extra": {
       "eas": {
