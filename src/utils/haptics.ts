@@ -34,3 +34,36 @@ export function hapticSnapTick() {
 export function hapticDrop() {
   android(Haptics.AndroidHaptics.Gesture_End, () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
 }
+
+// A checkbox (a document's checkbox block, a task) changed state. Two
+// different effects on purpose - ticking something off should not feel the
+// same as un-ticking it.
+export function hapticToggle(on: boolean) {
+  android(on ? Haptics.AndroidHaptics.Toggle_On : Haptics.AndroidHaptics.Toggle_Off, () =>
+    Haptics.impactAsync(on ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light)
+  );
+}
+
+// Select mode turned on or off - a mode change, so heavier than the ticks
+// that follow inside it.
+export function hapticSelectMode() {
+  android(Haptics.AndroidHaptics.Context_Click, () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid));
+}
+
+// One item checked/unchecked while in select mode. The lightest effect
+// available: a bulk selection is often a dozen taps in a row.
+export function hapticSelectItem() {
+  android(Haptics.AndroidHaptics.Segment_Tick, () => Haptics.selectionAsync());
+}
+
+// An operation finished and produced something - a group imported onto a
+// board, a record saved.
+export function hapticSuccess() {
+  android(Haptics.AndroidHaptics.Confirm, () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
+}
+
+// Something was destroyed or refused - a delete, or a limit that stopped
+// the tap from doing anything.
+export function hapticWarning() {
+  android(Haptics.AndroidHaptics.Reject, () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning));
+}

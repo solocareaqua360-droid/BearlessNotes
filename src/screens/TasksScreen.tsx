@@ -29,6 +29,7 @@ import {
 } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import { Block, Project } from '../types';
+import { hapticToggle } from '../utils/haptics';
 import { RootStackParamList } from '../navigation';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import ReminderSheet from '../components/ReminderSheet';
@@ -254,6 +255,7 @@ export default function TasksScreen() {
   // real record, so every change here has to update both, not just this mirror.
   async function toggleTask(task: Task) {
     const newChecked = !task.checked;
+    hapticToggle(newChecked);
     updateDoc(doc(db, 'tasks', task.id), { checked: newChecked });
     const documentRef = doc(db, 'documents', task.documentId);
     const snapshot = await getDoc(documentRef);

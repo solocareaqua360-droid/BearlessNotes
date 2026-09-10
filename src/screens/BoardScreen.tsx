@@ -33,6 +33,7 @@ import { db } from '../firebase';
 import { BoardsStackParamList, RootStackParamList } from '../navigation';
 import { Block, BoardCard, BoardColumn, BoardConnection } from '../types';
 import CustomRowBlockCard from '../components/CustomRowBlockCard';
+import { hapticDrop, hapticPickUp } from '../utils/haptics';
 import {
   APPROX_CARD_HEIGHT,
   COLUMN_CARD_GAP,
@@ -1434,6 +1435,7 @@ export default function BoardScreen() {
   }
 
   function handleDragStart(id: string) {
+    hapticPickUp();
     setDraggedCardId(id);
   }
 
@@ -1460,6 +1462,10 @@ export default function BoardScreen() {
       const others = dropped.filter((c) => c.id !== id);
       const centreY = y + heightOf(card, cardHeights) / 2;
       const target = columnAtPoint(columns, others, cardHeights, x + card.width / 2, centreY);
+      // Only a card that actually came to rest in a column gets the
+      // "landed" feedback - one dropped on open canvas has nothing to
+      // confirm, same rule the document editor's own drop follows.
+      if (target && card.columnId !== target.id) hapticDrop();
       const assigned = dropped.map((c) => {
         if (c.id !== id) return c;
         if (target) return { ...c, columnId: target.id };

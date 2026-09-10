@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { hapticWarning } from '../utils/haptics';
 
 const UNDO_WINDOW_MS = 4000;
 
@@ -54,12 +55,14 @@ export function usePendingDelete<T extends { id: string }>() {
   }
 
   function requestDelete(item: T, message: string, commit: () => void) {
+    hapticWarning();
     startPending(item.id, [item.id], message, commit);
   }
 
   // Same idea as requestDelete, for N items under one undo window - deleting
   // them one at a time would mean N separate toasts racing each other.
   function requestDeleteMany(items: T[], message: string, commit: () => void) {
+    hapticWarning();
     startPending(`batch-${Date.now()}`, items.map((item) => item.id), message, commit);
   }
 

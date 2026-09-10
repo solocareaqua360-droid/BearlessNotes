@@ -40,6 +40,7 @@ import {
 import { db } from '../firebase';
 import { CustomDatabase, CustomDatabaseRow, FieldDef, Group } from '../types';
 import { groupAppliesTo } from '../utils/groups';
+import { hapticSuccess } from '../utils/haptics';
 import CustomRowCard, { RelationThumb } from '../components/CustomRowCard';
 import {
   buildRowDisplay,
@@ -411,6 +412,7 @@ export default function CustomDatabaseScreen({}: Props) {
       tagIds: draftTagIds,
       updatedAt: now,
     });
+    hapticSuccess();
     setRowEditor(null);
   }
 

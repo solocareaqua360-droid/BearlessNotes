@@ -82,7 +82,7 @@ import { backupFileToDrive } from '../utils/googleDrive';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags } from '../hooks/useTags';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
-import { hapticDrop, hapticPickUp, hapticSnapTick } from '../utils/haptics';
+import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
@@ -3151,6 +3151,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
 
   function toggleChecked(id: string) {
     snapshotBeforeChange();
+    hapticToggle(!blocksRef.current.find((b) => b.id === id)?.checked);
     setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, checked: !b.checked } : b)));
   }
 
