@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 const ACCENT = '#3B82F6';
 
@@ -35,7 +45,16 @@ export default function RenamePrompt({ visible, title, initialValue, placeholder
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <View style={styles.backdrop}>
+      {/* A transparent Modal renders in its own Android window, outside the
+          activity's own resize handling - the keyboard just overlaps it
+          instead of pushing it up, which is what buried the buttons under
+          it. KeyboardAvoidingView is the fix Android still needs here even
+          though the rest of the app relies on windowSoftInputMode for
+          every non-Modal screen. */}
+      <KeyboardAvoidingView
+        style={styles.backdrop}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
         <View style={styles.card}>
           <Text style={styles.title}>{title}</Text>
           <TextInput
@@ -65,7 +84,7 @@ export default function RenamePrompt({ visible, title, initialValue, placeholder
             </View>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

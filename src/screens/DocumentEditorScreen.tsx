@@ -6,6 +6,7 @@ import {
   GestureResponderEvent,
   Image,
   Keyboard,
+  KeyboardAvoidingView,
   LayoutAnimation,
   LayoutChangeEvent,
   Linking,
@@ -4126,7 +4127,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
 
       {linkTitlePrompt && (
         <Modal visible transparent animationType="fade" onRequestClose={cancelLinkTitlePrompt}>
-          <View style={styles.linkPromptBackdrop}>
+          {/* A transparent Modal opens its own Android window, outside the
+              screen's normal keyboard-resize handling - same fix as
+              RenamePrompt's own copy of this dialog shape. */}
+          <KeyboardAvoidingView
+            style={styles.linkPromptBackdrop}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
             <View style={styles.linkPromptCard}>
               <Text style={styles.linkPromptTitle}>Назва посилання</Text>
               <Text style={styles.linkPromptHint}>
@@ -4155,7 +4162,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                 </Pressable>
               </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
       )}
       {downloadToast && (
