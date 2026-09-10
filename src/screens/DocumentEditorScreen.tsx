@@ -1528,10 +1528,13 @@ function SortableBlockRow({
     compress.value = withTiming(isDragging ? 1 : 0, { duration: 150 });
   }, [isDragging]);
   const compressStyle = useAnimatedStyle(() => ({
-    opacity: 1 - compress.value * 0.65,
+    opacity: 1 - compress.value * 0.45,
     transform: [
       { translateY: compressTowardOffset * compress.value },
-      { scaleY: 1 - compress.value * 0.8 },
+      // Shrinks evenly on every side rather than flattening vertically -
+      // a picked-up card reads as "lifted away", where the old scaleY-only
+      // squash made an image block look like it was being crushed.
+      { scale: 1 - compress.value * 0.3 },
     ],
   }));
 
