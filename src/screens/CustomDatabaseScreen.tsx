@@ -110,6 +110,7 @@ const TABLE_HANDLE_WIDTH = 34;
 const TABLE_ROW_HEIGHT = 46;
 
 type ViewMode = 'list' | 'table' | 'cards';
+type ChipLayout = { x: number; y: number; width: number };
 type RowEditorState = { mode: 'new'; id: string } | { mode: 'edit'; row: CustomDatabaseRow };
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CustomDatabase'>;
@@ -146,6 +147,10 @@ export default function CustomDatabaseScreen({}: Props) {
   // Which field's values the filter dropdown is currently showing. null is
   // its top level, the list of fields.
   const [filterFieldId, setFilterFieldId] = useState<string | null>(null);
+  // Where each capsule sits, so the list can be drawn over the screen at
+  // that exact spot instead of inside the capsule's own one-pill-tall row.
+  const [stripY, setStripY] = useState(0);
+  const [chipLayouts, setChipLayouts] = useState<Record<string, ChipLayout>>({});
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingDatabase, setRenamingDatabase] = useState(false);
@@ -418,6 +423,7 @@ export default function CustomDatabaseScreen({}: Props) {
       )
     : [];
   const sortFields = sortableFieldsOf(database);
+  const openChipLayout = openParam ? chipLayouts[openParam] ?? null : null;
   const selectedRows = rows.filter((r) => selectedIds.has(r.id));
   const rowMenuRow = rowMenuId ? rows.find((r) => r.id === rowMenuId) ?? null : null;
 
@@ -435,6 +441,24 @@ export default function CustomDatabaseScreen({}: Props) {
 
   function applyFilters(next: RowFilter[]) {
     setDoc(prefsDoc, { rowFilters: next }, { merge: true });
+  }
+
+  function rememberChip(key: string, layout: ChipLayout) {
+    setChipLayouts((prev) =>
+      prev[key] && prev[key].x === layout.x && prev[key].y === layout.y && prev[key].width === layout.width
+        ? prev
+        : { ...prev, [key]: { x: layout.x, y: layout.y, width: layout.width } }
+    );
+  }
+
+  function openParamList(key: 'view' | 'sort' | 'filter') {
+    setFilterFieldId(null);
+    setOpenParam((prev) => (prev === key ? null : key));
+  }
+
+  function closeParamList() {
+    setOpenParam(null);
+    setFilterFieldId(null);
   }
 
   function toggleParamsCollapsed() {
@@ -971,84 +995,113 @@ export default function CustomDatabaseScreen({}: Props) {
         </View>
       )}
 
-      {/* Closes an open list on a tap anywhere else. It sits BEFORE the
-          strip so the strip (and the list itself) still draw above it. */}
-      {openParam !== null && (
-        <Pressable
-          style={styles.menuBackdrop}
-          onPress={() => {
-            setOpenParam(null);
-            setFilterFieldId(null);
-          }}
-        />
-      )}
-
       {!paramsCollapsed && (
-        <View style={styles.paramsStrip}>
-          <View style={styles.paramGroup}>
-            {/* The collapsed pill stays in the layout to hold the row's
-                shape; the open state is drawn over it, anchored to the
-                same corner, so the capsule reads as stretching downward
-                instead of a separate panel appearing under it - and the
-                cards below never move. */}
-            <View style={styles.paramChip}>
-              <Ionicons name={VIEW_ICONS[viewMode]} size={13} color="rgba(255,255,255,0.85)" />
+        <View style={styles.paramsStrip} onLayout={(e) => setStripY(e.nativeEvent.layout.y)}>
+          <Pressable
+            style={styles.paramChip}
+            onLayout={(e) => rememberChip('view', e.nativeEvent.layout)}
+            onPress={() => openParamList('view')}
+          >
+            <Ionicons name={VIEW_ICONS[viewMode]} size={13} color="rgba(255,255,255,0.85)" />
+            <Text style={styles.paramChipLabel} numberOfLines={1}>
+              {VIEW_LABELS[viewMode]}
+            </Text>
+            <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
+          </Pressable>
+
+          <Pressable
+            style={styles.paramChip}
+            onLayout={(e) => rememberChip('sort', e.nativeEvent.layout)}
+            onPress={() => openParamList('sort')}
+          >
+            <Ionicons name="swap-vertical-outline" size={13} color="rgba(255,255,255,0.85)" />
+            <Text style={styles.paramChipLabel} numberOfLines={1}>
+              {sortLabelFor(sortPref, database)} {sortPref.dir === 'asc' ? '↑' : '↓'}
+            </Text>
+            <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
+          </Pressable>
+
+          {filterFields.length > 0 && (
+            <Pressable
+              style={[styles.paramChip, filters.length > 0 && styles.paramChipActive]}
+              onLayout={(e) => rememberChip('filter', e.nativeEvent.layout)}
+              onPress={() => openParamList('filter')}
+            >
+              <Ionicons name="funnel-outline" size={13} color="rgba(255,255,255,0.85)" />
               <Text style={styles.paramChipLabel} numberOfLines={1}>
-                {VIEW_LABELS[viewMode]}
+                {filters.length > 0 ? `Фільтр · ${filters.length}` : 'Фільтр'}
               </Text>
               <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
-            </View>
-            <Pressable
-              style={StyleSheet.absoluteFill}
-              onPress={() => setOpenParam((prev) => (prev === 'view' ? null : 'view'))}
-            />
+            </Pressable>
+          )}
+        </View>
+      )}
+
+      {/* An open list is drawn HERE, over the whole screen, rather than
+          inside the capsule it belongs to - even though it's positioned to
+          look like it grows straight out of that capsule.
+
+          It has to be: the capsule's own row is one pill tall, and Android
+          only dispatches a touch to a view whose ANCESTORS all contain the
+          touch point. A list hanging below a 44px-tall row is outside them,
+          so its ScrollView never saw the drag and refused to scroll -
+          while taps kept working, because React Native hit-tests those
+          against its own tree instead of Android's bounds. Anchored to the
+          capsule's measured position, so it still reads as the capsule
+          stretching downward. */}
+      {openParam !== null && openChipLayout && (
+        <View style={styles.paramOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeParamList} />
+          <View
+            style={[
+              styles.paramExpanded,
+              { top: stripY + openChipLayout.y, minWidth: openChipLayout.width },
+              // The filter is the last capsule in the row, so its list is
+              // anchored to its RIGHT edge - growing rightward would run
+              // off the screen.
+              openParam === 'filter'
+                ? { right: Math.max(8, windowWidth - openChipLayout.x - openChipLayout.width) }
+                : { left: openChipLayout.x },
+            ]}
+          >
             {openParam === 'view' && (
-              <View style={styles.paramExpanded}>
-                <Pressable style={styles.paramExpandedHead} onPress={() => setOpenParam(null)}>
+              <>
+                <Pressable style={styles.paramExpandedHead} onPress={closeParamList}>
                   <Ionicons name={VIEW_ICONS[viewMode]} size={13} color="#fff" />
                   <Text style={styles.paramChipLabel} numberOfLines={1}>
                     {VIEW_LABELS[viewMode]}
                   </Text>
                   <Ionicons name="chevron-up" size={12} color="rgba(255,255,255,0.6)" />
                 </Pressable>
-                {(['list', 'cards', 'table'] as ViewMode[]).map((mode) => (
-                  <Pressable
-                    key={mode}
-                    style={styles.paramOption}
-                    onPress={() => {
-                      changeViewMode(mode);
-                      setOpenParam(null);
-                    }}
-                  >
-                    <Ionicons
-                      name={VIEW_ICONS[mode]}
-                      size={14}
-                      color={viewMode === mode ? '#fff' : 'rgba(255,255,255,0.7)'}
-                    />
-                    <Text style={[styles.paramOptionLabel, viewMode === mode && styles.paramOptionLabelActive]}>
-                      {VIEW_LABELS[mode]}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
+                <View style={styles.paramScrollWrap}>
+                  <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+                    {(['list', 'cards', 'table'] as ViewMode[]).map((mode) => (
+                      <Pressable
+                        key={mode}
+                        style={styles.paramOption}
+                        onPress={() => {
+                          changeViewMode(mode);
+                          closeParamList();
+                        }}
+                      >
+                        <Ionicons
+                          name={VIEW_ICONS[mode]}
+                          size={14}
+                          color={viewMode === mode ? '#fff' : 'rgba(255,255,255,0.7)'}
+                        />
+                        <Text style={[styles.paramOptionLabel, viewMode === mode && styles.paramOptionLabelActive]}>
+                          {VIEW_LABELS[mode]}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+              </>
             )}
-          </View>
 
-          <View style={styles.paramGroup}>
-            <View style={styles.paramChip}>
-              <Ionicons name="swap-vertical-outline" size={13} color="rgba(255,255,255,0.85)" />
-              <Text style={styles.paramChipLabel} numberOfLines={1}>
-                {sortLabelFor(sortPref, database)} {sortPref.dir === 'asc' ? '↑' : '↓'}
-              </Text>
-              <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
-            </View>
-            <Pressable
-              style={StyleSheet.absoluteFill}
-              onPress={() => setOpenParam((prev) => (prev === 'sort' ? null : 'sort'))}
-            />
             {openParam === 'sort' && (
-              <View style={styles.paramExpanded}>
-                <Pressable style={styles.paramExpandedHead} onPress={() => setOpenParam(null)}>
+              <>
+                <Pressable style={styles.paramExpandedHead} onPress={closeParamList}>
                   <Ionicons name="swap-vertical-outline" size={13} color="#fff" />
                   <Text style={styles.paramChipLabel} numberOfLines={1}>
                     {sortLabelFor(sortPref, database)} {sortPref.dir === 'asc' ? '↑' : '↓'}
@@ -1056,87 +1109,61 @@ export default function CustomDatabaseScreen({}: Props) {
                   <Ionicons name="chevron-up" size={12} color="rgba(255,255,255,0.6)" />
                 </Pressable>
                 <View style={styles.paramScrollWrap}>
-                <ScrollView style={styles.paramScroll} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
-                  {BUILT_IN_SORT_FIELDS.map((field) => (
-                    <SortOption
-                      key={field}
-                      label={BUILT_IN_SORT_LABELS[field]}
-                      active={sortPref.field === field}
-                      dir={sortPref.dir}
-                      onPress={() => {
-                        selectSortField(field);
-                        if (sortPref.field !== field) setOpenParam(null);
-                      }}
-                    />
-                  ))}
-                  {/* The database's own fields continue the same list under
-                      a divider - sorting by "Дата зйомки" is the same kind
-                      of choice as sorting by "Змінено", just not one every
-                      database has. */}
-                  {sortFields.length > 0 && <View style={styles.paramDivider} />}
-                  {sortFields.map((field) => (
-                    <SortOption
-                      key={field.id}
-                      label={field.name}
-                      icon={FIELD_TYPE_ICON[field.type]}
-                      active={sortPref.field === field.id}
-                      dir={sortPref.dir}
-                      onPress={() => {
-                        selectSortField(field.id);
-                        if (sortPref.field !== field.id) setOpenParam(null);
-                      }}
-                    />
-                  ))}
-                </ScrollView>
+                  <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+                    {BUILT_IN_SORT_FIELDS.map((field) => (
+                      <SortOption
+                        key={field}
+                        label={BUILT_IN_SORT_LABELS[field]}
+                        active={sortPref.field === field}
+                        dir={sortPref.dir}
+                        onPress={() => {
+                          selectSortField(field);
+                          if (sortPref.field !== field) closeParamList();
+                        }}
+                      />
+                    ))}
+                    {/* The database's own fields continue the same list
+                        under a divider - sorting by "Дата зйомки" is the
+                        same kind of choice as sorting by "Змінено", just
+                        not one every database has. */}
+                    {sortFields.length > 0 && <View style={styles.paramDivider} />}
+                    {sortFields.map((field) => (
+                      <SortOption
+                        key={field.id}
+                        label={field.name}
+                        icon={FIELD_TYPE_ICON[field.type]}
+                        active={sortPref.field === field.id}
+                        dir={sortPref.dir}
+                        onPress={() => {
+                          selectSortField(field.id);
+                          if (sortPref.field !== field.id) closeParamList();
+                        }}
+                      />
+                    ))}
+                  </ScrollView>
                 </View>
-              </View>
+              </>
             )}
-          </View>
 
-          {filterFields.length > 0 && (
-            <View style={styles.paramGroup}>
-              <View style={[styles.paramChip, filters.length > 0 && styles.paramChipActive]}>
-                <Ionicons name="funnel-outline" size={13} color="rgba(255,255,255,0.85)" />
-                <Text style={styles.paramChipLabel} numberOfLines={1}>
-                  {filters.length > 0 ? `Фільтр · ${filters.length}` : 'Фільтр'}
-                </Text>
-                <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
-              </View>
-              <Pressable
-                style={StyleSheet.absoluteFill}
-                onPress={() =>
-                  setOpenParam((prev) => {
-                    setFilterFieldId(null);
-                    return prev === 'filter' ? null : 'filter';
-                  })
-                }
-              />
-              {openParam === 'filter' && (
-                // Anchored to its RIGHT edge, unlike the other two: it's
-                // the last capsule in the row, so a list growing rightward
-                // would run off the screen.
-                <View style={[styles.paramExpanded, styles.paramExpandedRight]}>
-                  <Pressable
-                    style={styles.paramExpandedHead}
-                    onPress={() => {
-                      // Backing out of a field's values returns to the
-                      // field list rather than closing the whole capsule.
-                      if (openFilterField) setFilterFieldId(null);
-                      else setOpenParam(null);
-                    }}
-                  >
-                    <Ionicons
-                      name={openFilterField ? 'chevron-back' : 'funnel-outline'}
-                      size={13}
-                      color="#fff"
-                    />
-                    <Text style={styles.paramChipLabel} numberOfLines={1}>
-                      {openFilterField ? openFilterField.name : 'Фільтр'}
-                    </Text>
-                    <Ionicons name="chevron-up" size={12} color="rgba(255,255,255,0.6)" />
-                  </Pressable>
-                  <View style={styles.paramScrollWrap}>
-                  <ScrollView style={styles.paramScroll} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+            {openParam === 'filter' && (
+              <>
+                <Pressable
+                  style={styles.paramExpandedHead}
+                  onPress={() => {
+                    // Backing out of a field's values returns to the field
+                    // list rather than closing the whole capsule.
+                    if (openFilterField) setFilterFieldId(null);
+                    else closeParamList();
+                  }}
+                >
+                  <Ionicons name={openFilterField ? 'chevron-back' : 'funnel-outline'} size={13} color="#fff" />
+                  <Text style={styles.paramChipLabel} numberOfLines={1}>
+                    {openFilterField ? openFilterField.name : 'Фільтр'}
+                  </Text>
+                  <Ionicons name="chevron-up" size={12} color="rgba(255,255,255,0.6)" />
+                </Pressable>
+                <View style={styles.paramScrollWrap}>
+                  <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
                     {!openFilterField &&
                       filterFields.map((field) => {
                         const active = activeFilterFor(filters, field.id);
@@ -1179,7 +1206,10 @@ export default function CustomDatabaseScreen({}: Props) {
                                 size={15}
                                 color={on ? '#fff' : 'rgba(255,255,255,0.5)'}
                               />
-                              <Text style={[styles.paramOptionLabel, on && styles.paramOptionLabelActive]} numberOfLines={1}>
+                              <Text
+                                style={[styles.paramOptionLabel, on && styles.paramOptionLabelActive]}
+                                numberOfLines={1}
+                              >
                                 {facet.label}
                               </Text>
                               <Text style={styles.paramOptionCount}>{facet.count}</Text>
@@ -1218,11 +1248,10 @@ export default function CustomDatabaseScreen({}: Props) {
                       </>
                     )}
                   </ScrollView>
-                  </View>
                 </View>
-              )}
-            </View>
-          )}
+              </>
+            )}
+          </View>
         </View>
       )}
 
@@ -2135,10 +2164,6 @@ const styles = StyleSheet.create({
   // Holds a capsule and the list it opens. The list is positioned against
   // this, so it lands directly under its own capsule and inherits its
   // left edge whichever capsule was tapped.
-  paramGroup: {
-    alignItems: 'flex-start',
-    zIndex: 20,
-  },
   // Marks the filter capsule when something is actually filtered - the
   // count alone is easy to miss, and a filtered list looks identical to a
   // short one.
@@ -2167,18 +2192,19 @@ const styles = StyleSheet.create({
   },
   // The open capsule: the same glass body as the pill, just taller and
   // squarer, drawn over the collapsed one it replaces.
-  paramExpandedRight: {
-    left: undefined,
+  // Covers the screen, so every list drawn inside it is within its
+  // ancestors' bounds and Android will hand a drag to its ScrollView.
+  paramOverlay: {
+    position: 'absolute',
+    left: 0,
     right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 30,
   },
   paramExpanded: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    // At least as wide as the pill it grows out of, and no wider unless a
-    // label needs it - a fixed width made it noticeably broader than the
-    // capsule it's supposed to be a continuation of.
-    minWidth: '100%',
+    // top/left/minWidth come from the capsule's measured layout.
     backgroundColor: 'rgba(20,20,20,0.92)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
@@ -2226,9 +2252,6 @@ const styles = StyleSheet.create({
   paramScrollWrap: {
     maxHeight: 260,
     overflow: 'hidden',
-  },
-  paramScroll: {
-    flexGrow: 0,
   },
   paramOptionLabelActive: {
     color: '#fff',
