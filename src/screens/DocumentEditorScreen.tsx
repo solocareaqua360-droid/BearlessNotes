@@ -82,6 +82,7 @@ import { backupFileToDrive } from '../utils/googleDrive';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags } from '../hooks/useTags';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
+import { hapticDrop, hapticPickUp, hapticSnapTick } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
@@ -1719,6 +1720,7 @@ function BlockList({
   }
 
   function handleDragStart(anchorId: string, ids: string[]) {
+    hapticPickUp();
     setDraggingIds(ids);
     setDragAnchorId(anchorId);
     const layout = rowLayouts.current[anchorId];
@@ -1738,6 +1740,7 @@ function BlockList({
     const currentY = layout.y + translationY + layout.height / 2;
     const targetIndex = computeInsertIndex(currentY, draggingSet);
     if (targetIndex !== insertIndexRef.current) {
+      hapticSnapTick();
       setInsertIndex(targetIndex);
       // overshootClamping stops it swinging past the target and settling
       // back - the "rocking like a boat" feeling - while keeping the same
@@ -1763,6 +1766,7 @@ function BlockList({
       next.splice(targetIndex, 0, ...draggedBlocks);
       const changed = next.some((b, i) => b.id !== list[i]?.id);
       if (changed) {
+        hapticDrop();
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         onReorder(next);
       }
