@@ -10,7 +10,6 @@ import { BoardsStackParamList } from '../navigation';
 import { BoardItem } from '../types';
 import { colorForDocument } from '../utils/documentColor';
 import RenamePrompt from '../components/RenamePrompt';
-import { hapticDiscard } from '../utils/haptics';
 
 const ACCENT = '#8B5CF6';
 const boardsCollection = collection(db, 'boards');
@@ -71,7 +70,6 @@ export default function BoardsListScreen() {
         text: 'Видалити',
         style: 'destructive',
         onPress: () => {
-          hapticDiscard();
           deleteDoc(doc(db, 'boards', board.id));
         },
       },

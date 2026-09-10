@@ -34,7 +34,7 @@ import {
 import { db } from '../firebase';
 import { DocumentItem, Group, SketchElement } from '../types';
 import { groupAppliesTo } from '../utils/groups';
-import { hapticCreate, hapticDiscard } from '../utils/haptics';
+import { hapticCreate } from '../utils/haptics';
 import { RootStackParamList } from '../navigation';
 import { useTags, detachTagFromDeletedItem, ITEMS_COLLECTION_BY_KIND } from '../hooks/useTags';
 import { useMultiSelect } from '../hooks/useMultiSelect';
@@ -273,7 +273,6 @@ export default function DocumentsScreen() {
   async function confirmDeleteDocument(id: string) {
     const snapshot = await getDoc(doc(db, 'documents', id));
     const docTagIds: string[] = snapshot.data()?.tagIds ?? [];
-    hapticDiscard();
     deleteDoc(doc(db, 'documents', id));
     await Promise.all(
       docTagIds.map((tagId) => {

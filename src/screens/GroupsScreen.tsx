@@ -21,7 +21,7 @@ import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import GroupImportSheet from '../components/GroupImportSheet';
 import { createBoardForGroup, importGroupToBoard } from '../utils/importGroupToBoard';
-import { hapticDiscard, hapticSuccess } from '../utils/haptics';
+import { hapticSuccess } from '../utils/haptics';
 import { groupKindFields, kindsOf, labelForKind } from '../utils/groups';
 import { rowTitleOf } from '../utils/customRowDisplay';
 
@@ -199,7 +199,6 @@ export default function GroupsScreen() {
         style: 'destructive',
         onPress: async () => {
           setOpenGroupId(null);
-          hapticDiscard();
           await deleteDoc(doc(db, 'groups', group.id));
         },
       },

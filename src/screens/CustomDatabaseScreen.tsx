@@ -40,7 +40,7 @@ import {
 import { db } from '../firebase';
 import { CustomDatabase, CustomDatabaseRow, FieldDef, Group } from '../types';
 import { groupAppliesTo } from '../utils/groups';
-import { hapticDiscard, hapticSuccess } from '../utils/haptics';
+import { hapticSuccess } from '../utils/haptics';
 import CustomRowCard, { RelationThumb } from '../components/CustomRowCard';
 import {
   buildRowDisplay,
@@ -364,7 +364,6 @@ export default function CustomDatabaseScreen({}: Props) {
 
   async function deleteDatabaseConfirmed() {
     setDeletingDatabase(false);
-    hapticDiscard();
     const batch = writeBatch(db);
     rows.forEach((r) => batch.delete(doc(db, 'customDatabaseRows', r.id)));
     batch.delete(doc(db, 'customDatabases', databaseId));
@@ -418,7 +417,6 @@ export default function CustomDatabaseScreen({}: Props) {
   }
 
   async function deleteRow(row: CustomDatabaseRow) {
-    hapticDiscard();
     await deleteDoc(doc(db, 'customDatabaseRows', row.id));
     await Promise.all(
       (row.tagIds ?? []).map((tagId) => {

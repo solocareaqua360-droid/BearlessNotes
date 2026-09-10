@@ -29,7 +29,7 @@ import {
 } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import { Block, Project } from '../types';
-import { hapticDiscard, hapticToggle } from '../utils/haptics';
+import { hapticToggle } from '../utils/haptics';
 import { RootStackParamList } from '../navigation';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import ReminderSheet from '../components/ReminderSheet';
@@ -446,7 +446,6 @@ export default function TasksScreen() {
         text: 'Видалити',
         style: 'destructive',
         onPress: () => {
-          hapticDiscard();
           deleteDoc(doc(db, 'projects', project.id));
         },
       },
@@ -468,7 +467,6 @@ export default function TasksScreen() {
   // one document it was typed into. So deleting it here has to remove that
   // block from its source document too, not just this mirror.
   async function deleteTask(task: Task) {
-    hapticDiscard();
     deleteDoc(doc(db, 'tasks', task.id));
     const documentRef = doc(db, 'documents', task.documentId);
     const snapshot = await getDoc(documentRef);
