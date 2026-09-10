@@ -34,7 +34,7 @@ import {
 import { db } from '../firebase';
 import { DocumentItem, Group, SketchElement } from '../types';
 import { groupAppliesTo } from '../utils/groups';
-import { hapticCreate } from '../utils/haptics';
+import { hapticButtonDown, hapticButtonUp } from '../utils/haptics';
 import { RootStackParamList } from '../navigation';
 import { useTags, detachTagFromDeletedItem, ITEMS_COLLECTION_BY_KIND } from '../hooks/useTags';
 import { useMultiSelect } from '../hooks/useMultiSelect';
@@ -243,7 +243,6 @@ export default function DocumentsScreen() {
   // note back under that same filter right away, instead of it vanishing
   // from the currently-filtered view the moment it's created.
   async function createDocument() {
-    hapticCreate();
     const now = Date.now();
     const newDoc = await addDoc(documentsCollection, {
       title: 'Без назви',
@@ -583,11 +582,17 @@ export default function DocumentsScreen() {
         <Pressable
           style={[styles.fab, fabPressed && styles.fabSticker]}
           onPress={createDocument}
+          // The two halves of a mechanical key: resistance under the
+          // finger, rebound when it lifts (see hapticButtonDown/Up).
+          onPressIn={hapticButtonDown}
           onLongPress={() => {
             setFabPressed(true);
             openStickerComposer();
           }}
-          onPressOut={() => setFabPressed(false)}
+          onPressOut={() => {
+            hapticButtonUp();
+            setFabPressed(false);
+          }}
           delayLongPress={400}
         >
           <Ionicons name="add" size={28} color={fabPressed ? STICKER_DARK : '#fff'} />

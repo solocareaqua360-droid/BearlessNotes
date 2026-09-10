@@ -68,12 +68,20 @@ export function hapticWarning() {
   android(Haptics.AndroidHaptics.Reject, () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning));
 }
 
-// A new document created. Deliberately the SAME effect as picking a block
-// up, not one of its own: a composed two-pulse "page turn" was
-// imperceptible through the system's tactile effects on the user's
-// Samsung (which attenuates them heavily), and buzzy through the raw
-// motor. The drag effect is what reads clearly on that hardware, so a
-// creation gets it too.
-export function hapticCreate() {
-  android(Haptics.AndroidHaptics.Drag_Start, () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
+// The two halves of a mechanical button. Fired from a Pressable's
+// onPressIn and onPressOut rather than both at press time: what makes a
+// physical key feel physical is that the resistance arrives while the
+// finger is pushing and the rebound when it lifts, so the gap between
+// them is the user's own movement, not a timer. Composing the pair on a
+// timer instead reads as two knocks, which is exactly how several
+// attempts at other composed effects failed on this hardware.
+//
+// Virtual_Key / Virtual_Key_Release are the pair Android itself uses for
+// on-screen keys, so they're already calibrated as one press.
+export function hapticButtonDown() {
+  android(Haptics.AndroidHaptics.Virtual_Key, () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid));
+}
+
+export function hapticButtonUp() {
+  android(Haptics.AndroidHaptics.Virtual_Key_Release, () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft));
 }
