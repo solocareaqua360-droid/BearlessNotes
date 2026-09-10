@@ -1956,7 +1956,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
   },
-  tabsTunnelOvalNear: { left: 0 },
+  // Fainter border on the near half: the tabs that cover it are glass
+  // too, so at full strength the line still showed through them.
+  tabsTunnelOvalNear: { left: 0, borderColor: 'rgba(255,255,255,0.18)' },
   tabsTunnelOvalFar: { right: 0 },
   paramsStrip: {
     flexDirection: 'row',
