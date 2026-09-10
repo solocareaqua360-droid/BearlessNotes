@@ -832,6 +832,23 @@ export default function CustomDatabaseScreen({}: Props) {
             {database.name}
           </Text>
         </View>
+      </View>
+
+      {/* Groups and the whole control capsule share one row - the title
+          keeps the line above to itself. The capsule's fourth button, the
+          gear, is what shows the view/sort capsules below. */}
+      <View style={styles.controlsRow}>
+        <View style={styles.controlsTabs}>
+          {groups.length > 0 && (
+            <ProjectTabsRow
+              items={groups}
+              selected={groupFilter}
+              onSelect={setGroupFilter}
+              unassignedLabel="Без групи"
+              dark
+            />
+          )}
+        </View>
         <View style={styles.headerButtons}>
           <Pressable hitSlop={6} onPress={() => setMenuOpen((v) => !v)}>
             <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
@@ -854,6 +871,10 @@ export default function CustomDatabaseScreen({}: Props) {
           <View style={styles.headerButtonsDivider} />
           <Pressable hitSlop={6} onPress={toggleSelectMode}>
             <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
+          </Pressable>
+          <View style={styles.headerButtonsDivider} />
+          <Pressable hitSlop={6} onPress={toggleParamsCollapsed}>
+            <Ionicons name={paramsCollapsed ? 'settings-outline' : 'settings'} size={17} color="#fff" />
           </Pressable>
         </View>
       </View>
@@ -898,59 +919,38 @@ export default function CustomDatabaseScreen({}: Props) {
         </View>
       )}
 
-      {/* Groups and the parameters toggle share one row: both are ways of
-          narrowing what's below, and stacking them cost a line each on a
-          screen that also carries a header and sometimes a search field.
-          The toggle takes the header capsule's own measured width so the
-          two line up exactly. */}
-      <View style={styles.controlsRow}>
-        <View style={styles.controlsTabs}>
-          {groups.length > 0 && (
-            <ProjectTabsRow
-              items={groups}
-              selected={groupFilter}
-              onSelect={setGroupFilter}
-              unassignedLabel="Без групи"
-              dark
-            />
-          )}
-        </View>
-        <Pressable style={styles.paramsToggle} onPress={toggleParamsCollapsed}>
-          <Text style={styles.paramsToggleLabel}>Параметри</Text>
-          <Ionicons
-            name={paramsCollapsed ? 'chevron-down' : 'chevron-up'}
-            size={14}
-            color="rgba(255,255,255,0.75)"
-          />
-        </Pressable>
-      </View>
-
       {/* Closes an open list on a tap anywhere else. It sits BEFORE the
           strip so the strip (and the list itself) still draw above it. */}
       {openParam !== null && <Pressable style={styles.menuBackdrop} onPress={() => setOpenParam(null)} />}
 
       {!paramsCollapsed && (
-        // One capsule per parameter, each opening its own list beneath
-        // itself rather than laying every option out at once: the row
-        // stays short, and the capsule keeps showing what's chosen.
         <View style={styles.paramsStrip}>
           <View style={styles.paramGroup}>
-            <Pressable
-              style={[styles.paramChip, openParam === 'view' && styles.paramChipOpen]}
-              onPress={() => setOpenParam((prev) => (prev === 'view' ? null : 'view'))}
-            >
+            {/* The collapsed pill stays in the layout to hold the row's
+                shape; the open state is drawn over it, anchored to the
+                same corner, so the capsule reads as stretching downward
+                instead of a separate panel appearing under it - and the
+                cards below never move. */}
+            <View style={styles.paramChip}>
               <Ionicons name={VIEW_ICONS[viewMode]} size={13} color="rgba(255,255,255,0.85)" />
               <Text style={styles.paramChipLabel} numberOfLines={1}>
                 {VIEW_LABELS[viewMode]}
               </Text>
-              <Ionicons
-                name={openParam === 'view' ? 'chevron-up' : 'chevron-down'}
-                size={12}
-                color="rgba(255,255,255,0.6)"
-              />
-            </Pressable>
+              <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
+            </View>
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={() => setOpenParam((prev) => (prev === 'view' ? null : 'view'))}
+            />
             {openParam === 'view' && (
-              <View style={styles.paramDropdown}>
+              <View style={styles.paramExpanded}>
+                <Pressable style={styles.paramExpandedHead} onPress={() => setOpenParam(null)}>
+                  <Ionicons name={VIEW_ICONS[viewMode]} size={13} color="#fff" />
+                  <Text style={styles.paramChipLabel} numberOfLines={1}>
+                    {VIEW_LABELS[viewMode]}
+                  </Text>
+                  <Ionicons name="chevron-up" size={12} color="rgba(255,255,255,0.6)" />
+                </Pressable>
                 {(['list', 'cards', 'table'] as ViewMode[]).map((mode) => (
                   <Pressable
                     key={mode}
@@ -960,7 +960,11 @@ export default function CustomDatabaseScreen({}: Props) {
                       setOpenParam(null);
                     }}
                   >
-                    <Ionicons name={VIEW_ICONS[mode]} size={14} color={viewMode === mode ? ACCENT : '#111827'} />
+                    <Ionicons
+                      name={VIEW_ICONS[mode]}
+                      size={14}
+                      color={viewMode === mode ? '#fff' : 'rgba(255,255,255,0.7)'}
+                    />
                     <Text style={[styles.paramOptionLabel, viewMode === mode && styles.paramOptionLabelActive]}>
                       {VIEW_LABELS[mode]}
                     </Text>
@@ -971,31 +975,35 @@ export default function CustomDatabaseScreen({}: Props) {
           </View>
 
           <View style={styles.paramGroup}>
-            <Pressable
-              style={[styles.paramChip, openParam === 'sort' && styles.paramChipOpen]}
-              onPress={() => setOpenParam((prev) => (prev === 'sort' ? null : 'sort'))}
-            >
+            <View style={styles.paramChip}>
               <Ionicons name="swap-vertical-outline" size={13} color="rgba(255,255,255,0.85)" />
               <Text style={styles.paramChipLabel} numberOfLines={1}>
                 {SORT_LABELS[sortPref.field]} {sortPref.dir === 'asc' ? '↑' : '↓'}
               </Text>
-              <Ionicons
-                name={openParam === 'sort' ? 'chevron-up' : 'chevron-down'}
-                size={12}
-                color="rgba(255,255,255,0.6)"
-              />
-            </Pressable>
+              <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
+            </View>
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={() => setOpenParam((prev) => (prev === 'sort' ? null : 'sort'))}
+            />
             {openParam === 'sort' && (
-              <View style={styles.paramDropdown}>
+              <View style={styles.paramExpanded}>
+                <Pressable style={styles.paramExpandedHead} onPress={() => setOpenParam(null)}>
+                  <Ionicons name="swap-vertical-outline" size={13} color="#fff" />
+                  <Text style={styles.paramChipLabel} numberOfLines={1}>
+                    {SORT_LABELS[sortPref.field]} {sortPref.dir === 'asc' ? '↑' : '↓'}
+                  </Text>
+                  <Ionicons name="chevron-up" size={12} color="rgba(255,255,255,0.6)" />
+                </Pressable>
                 {(['title', 'createdAt', 'updatedAt'] as SortField[]).map((field) => {
                   const active = sortPref.field === field;
                   return (
                     <Pressable
                       key={field}
                       style={styles.paramOption}
-                      // Tapping the chosen one flips its direction instead
-                      // of closing on a no-op, which is how the sort menu
-                      // this replaced already behaved.
+                      // Tapping the chosen field flips its direction rather
+                      // than closing on a no-op, as the sort menu this
+                      // replaced already did.
                       onPress={() => {
                         selectSortField(field);
                         if (!active) setOpenParam(null);
@@ -1005,11 +1013,7 @@ export default function CustomDatabaseScreen({}: Props) {
                         {SORT_LABELS[field]}
                       </Text>
                       {active && (
-                        <Ionicons
-                          name={sortPref.dir === 'asc' ? 'arrow-up' : 'arrow-down'}
-                          size={14}
-                          color={ACCENT}
-                        />
+                        <Ionicons name={sortPref.dir === 'asc' ? 'arrow-up' : 'arrow-down'} size={14} color="#fff" />
                       )}
                     </Pressable>
                   );
@@ -1884,28 +1888,6 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  paramsToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(20,20,20,0.35)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-    borderRadius: 999,
-    // A group tab's own metrics, so this sits on the same line as them at
-    // the same height instead of as a smaller pill beside them.
-    paddingVertical: 7,
-    paddingHorizontal: 13,
-    // The tabs row carries this much padding under its pills; matching it
-    // keeps the two vertically centred on each other.
-    marginBottom: 10,
-  },
-  paramsToggleLabel: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.85)',
-    fontWeight: '600',
-  },
   paramsStrip: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1937,50 +1919,47 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     paddingHorizontal: 13,
   },
-  paramChipOpen: {
-    borderColor: '#fff',
-  },
   paramChipLabel: {
     fontSize: 13,
     color: 'rgba(255,255,255,0.85)',
     fontWeight: '600',
   },
-  paramDropdown: {
-    // Floats over the content rather than taking part in the layout -
-    // '100%' is the capsule's own height, so the list hangs off its
-    // bottom edge no matter how tall the capsule renders.
+  // The open capsule: the same glass body as the pill, just taller and
+  // squarer, drawn over the collapsed one it replaces.
+  paramExpanded: {
     position: 'absolute',
-    top: '100%',
+    top: 0,
     left: 0,
-    marginTop: 6,
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    paddingVertical: 4,
-    minWidth: 150,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    // Elevation, not just zIndex: on Android that's what actually decides
-    // which sibling draws on top, and the cards below carry elevation of
-    // their own.
+    minWidth: 160,
+    backgroundColor: 'rgba(20,20,20,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    borderRadius: 18,
+    paddingBottom: 4,
     elevation: 12,
     zIndex: 50,
+  },
+  paramExpandedHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 7,
+    paddingHorizontal: 13,
   },
   paramOption: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingVertical: 9,
+    paddingHorizontal: 13,
   },
   paramOptionLabel: {
     flex: 1,
     fontSize: 14,
-    color: '#111827',
+    color: 'rgba(255,255,255,0.7)',
   },
   paramOptionLabelActive: {
-    color: ACCENT,
+    color: '#fff',
     fontWeight: '700',
   },
   searchRow: {
