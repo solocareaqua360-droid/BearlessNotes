@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 // gesture-handler's ScrollView, not the core RN one: a drag that starts on
 // a field's name input (every row here has one) never reaches an RN
 // ScrollView's scroll recognition on Android, so this list only scrolled
@@ -81,6 +81,7 @@ export default function FieldsEditorSheet({ visible, fields, otherDatabases, onS
   // to track its own height and push up by that much, same as
   // GroupPickerSheet's "Нова група" input.
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const { height: windowHeight } = useWindowDimensions();
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
     const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
@@ -195,7 +196,18 @@ export default function FieldsEditorSheet({ visible, fields, otherDatabases, onS
           scrolling. A tap outside the sheet still closes it. */}
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={[styles.sheet, { marginBottom: keyboardHeight }]}>
+        {/* Same keyboard-aware height as the row editor: sheet + keyboard
+            must fit the screen, or the top of the list ends up above the
+            screen edge with nothing able to scroll it back. */}
+        <View
+          style={[
+            styles.sheet,
+            {
+              marginBottom: keyboardHeight,
+              maxHeight: Math.min(windowHeight * 0.8, windowHeight - keyboardHeight - 48),
+            },
+          ]}
+        >
           <View style={styles.handle} />
           <Text style={styles.title}>Поля</Text>
 
@@ -387,7 +399,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   scroll: {
-    maxHeight: 420,
+    // See the sheet's own maxHeight - this takes what's left of it rather
+    // than a fixed height the keyboard can push off-screen.
+    flexShrink: 1,
   },
   fieldCard: {
     borderWidth: 1,

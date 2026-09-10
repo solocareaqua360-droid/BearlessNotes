@@ -898,7 +898,20 @@ export default function CustomDatabaseScreen({}: Props) {
             tap outside the sheet still closes it. */}
         <View style={styles.backdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={cancelRowEditor} />
-          <View style={[styles.editorSheet, { marginBottom: keyboardHeight }]}>
+          {/* maxHeight has to account for the keyboard this sheet is
+              lifted above: at a flat 85% of the screen, sheet + keyboard
+              added up to more than the screen, and the top of the form
+              (title, first fields) ended up above the screen edge with no
+              way to scroll back to it. */}
+          <View
+            style={[
+              styles.editorSheet,
+              {
+                marginBottom: keyboardHeight,
+                maxHeight: Math.min(windowHeight * 0.85, windowHeight - keyboardHeight - 48),
+              },
+            ]}
+          >
             <View style={styles.handle} />
             <Text style={styles.title}>{rowEditor?.mode === 'new' ? 'Новий запис' : 'Редагувати запис'}</Text>
             {/* keyboardShouldPersistTaps: without it, tapping "Теги" (or
@@ -1713,7 +1726,10 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   editorScroll: {
-    maxHeight: 440,
+    // Shrinks to whatever the sheet's own (keyboard-aware) maxHeight
+    // leaves after the title and buttons, rather than a fixed height that
+    // can't adapt when the keyboard takes half the screen.
+    flexShrink: 1,
   },
   editorField: {
     marginBottom: 14,
