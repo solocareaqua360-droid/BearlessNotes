@@ -1055,7 +1055,8 @@ export default function CustomDatabaseScreen({}: Props) {
                   </Text>
                   <Ionicons name="chevron-up" size={12} color="rgba(255,255,255,0.6)" />
                 </Pressable>
-                <ScrollView style={styles.paramScroll} keyboardShouldPersistTaps="handled">
+                <View style={styles.paramScrollWrap}>
+                <ScrollView style={styles.paramScroll} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
                   {BUILT_IN_SORT_FIELDS.map((field) => (
                     <SortOption
                       key={field}
@@ -1087,6 +1088,7 @@ export default function CustomDatabaseScreen({}: Props) {
                     />
                   ))}
                 </ScrollView>
+                </View>
               </View>
             )}
           </View>
@@ -1133,7 +1135,8 @@ export default function CustomDatabaseScreen({}: Props) {
                     </Text>
                     <Ionicons name="chevron-up" size={12} color="rgba(255,255,255,0.6)" />
                   </Pressable>
-                  <ScrollView style={styles.paramScroll} keyboardShouldPersistTaps="handled">
+                  <View style={styles.paramScrollWrap}>
+                  <ScrollView style={styles.paramScroll} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
                     {!openFilterField &&
                       filterFields.map((field) => {
                         const active = activeFilterFor(filters, field.id);
@@ -1215,6 +1218,7 @@ export default function CustomDatabaseScreen({}: Props) {
                       </>
                     )}
                   </ScrollView>
+                  </View>
                 </View>
               )}
             </View>
@@ -2213,9 +2217,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.15)',
   },
   // A database with many fields, or a field with many distinct values,
-  // would otherwise grow the dropdown past the bottom of the screen.
-  paramScroll: {
+  // would otherwise grow the dropdown past the bottom of the screen. The
+  // maxHeight lives on this WRAPPING View, not on the ScrollView itself -
+  // a ScrollView given only its own maxHeight, with no ancestor of fixed
+  // size above it (this whole panel is position:'absolute', auto-height),
+  // rendered at its full, unclipped content height on Android instead of
+  // capping there: nothing was hidden, so nothing scrolled.
+  paramScrollWrap: {
     maxHeight: 260,
+    overflow: 'hidden',
+  },
+  paramScroll: {
+    flexGrow: 0,
   },
   paramOptionLabelActive: {
     color: '#fff',
