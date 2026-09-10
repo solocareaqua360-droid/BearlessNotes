@@ -114,6 +114,8 @@ export default function CustomDatabaseScreen({}: Props) {
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [renamingDatabase, setRenamingDatabase] = useState(false);
   const [editingFields, setEditingFields] = useState(false);
   const [deletingDatabase, setDeletingDatabase] = useState(false);
@@ -338,8 +340,21 @@ export default function CustomDatabaseScreen({}: Props) {
       : groupFilter === UNASSIGNED_ID
         ? pendingFilteredRows.filter((r) => !r.groupId)
         : pendingFilteredRows.filter((r) => r.groupId === groupFilter);
+  // Searches the whole row, not just its name: every field's DISPLAYED
+  // value, so a select matches by its option's label and a relation by
+  // the title of what it points at, rather than by the ids those actually
+  // store. Hidden fields are searched too - hiding is about the view, and
+  // a value you can't see is exactly the kind you'd go looking for.
+  const needle = searchQuery.trim().toLowerCase();
+  const searchedRows = needle
+    ? groupFilteredRows.filter((row) =>
+        database!.fields.some((field) =>
+          displayFieldValue(field, row.values[field.id], displayContext).toLowerCase().includes(needle)
+        )
+      )
+    : groupFilteredRows;
   const displayedRows = sortItems(
-    groupFilteredRows,
+    searchedRows,
     sortPref,
     titleOf,
     (r) => r.createdAt,
@@ -772,6 +787,21 @@ export default function CustomDatabaseScreen({}: Props) {
             <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
           </Pressable>
           <View style={styles.headerButtonsDivider} />
+          <Pressable
+            hitSlop={6}
+            onPress={() => {
+              // Closing the search clears it too - leaving a filter
+              // applied behind a hidden input is how a database looks
+              // half-empty for no visible reason.
+              setIsSearching((prev) => {
+                if (prev) setSearchQuery('');
+                return !prev;
+              });
+            }}
+          >
+            <Ionicons name={isSearching ? 'close' : 'search'} size={17} color="#fff" />
+          </Pressable>
+          <View style={styles.headerButtonsDivider} />
           <Pressable hitSlop={6} onPress={toggleSelectMode}>
             <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
           </Pressable>
@@ -832,6 +862,20 @@ export default function CustomDatabaseScreen({}: Props) {
         </View>
       )}
 
+      {isSearching && (
+        <View style={styles.searchRow}>
+          <Ionicons name="search" size={14} color="#9CA3AF" />
+          <TextInput
+            autoFocus
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Пошук у базі"
+            placeholderTextColor="#9CA3AF"
+            style={styles.searchInput}
+          />
+        </View>
+      )}
+
       {groups.length > 0 && (
         <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" dark />
       )}
@@ -845,8 +889,10 @@ export default function CustomDatabaseScreen({}: Props) {
           <View style={styles.emptyIcon}>
             <Ionicons name="grid-outline" size={32} color={ACCENT} />
           </View>
-          <Text style={styles.emptyLabel}>Ще немає записів</Text>
-          <Text style={styles.emptyHint}>Натисніть "+", щоб додати перший запис</Text>
+          <Text style={styles.emptyLabel}>{needle ? 'Нічого не знайдено' : 'Ще немає записів'}</Text>
+          <Text style={styles.emptyHint}>
+            {needle ? 'Спробуйте інше слово' : 'Натисніть "+", щоб додати перший запис'}
+          </Text>
         </View>
       ) : viewMode === 'table' ? (
         renderTable()
@@ -1645,6 +1691,22 @@ const styles = StyleSheet.create({
     // Clears the floating "+" (bottom: 100, 56 tall) so the last row can be
     // scrolled out from under it.
     paddingBottom: 170,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 8,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#111827',
   },
   cardGrid: {
     flexDirection: 'row',
