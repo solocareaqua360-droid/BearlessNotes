@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+// gesture-handler's ScrollView, not the core RN one: a drag that starts on
+// a field's name input (every row here has one) never reaches an RN
+// ScrollView's scroll recognition on Android, so this list only scrolled
+// when a finger happened to land between two cards. Same fix and same
+// reason as DocumentEditorScreen's block list.
+import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { FieldDef, FieldOption, FieldType, RelationTarget } from '../types';
 import { TAG_COLORS } from '../constants/tags';
@@ -179,6 +185,10 @@ export default function FieldsEditorSheet({ visible, fields, otherDatabases, onS
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      {/* RN's Modal is its own native window on Android, outside App.tsx's
+          GestureHandlerRootView - the ScrollView above needs a root
+          re-declared here or it doesn't scroll at all. */}
+      <GestureHandlerRootView style={{ flex: 1 }}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={[styles.sheet, { marginBottom: keyboardHeight }]} onPress={() => {}}>
           <View style={styles.handle} />
@@ -337,6 +347,7 @@ export default function FieldsEditorSheet({ visible, fields, otherDatabases, onS
           </View>
         </Pressable>
       </Pressable>
+      </GestureHandlerRootView>
     </Modal>
   );
 }

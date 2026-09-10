@@ -13,6 +13,14 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+// gesture-handler's own ScrollView (not the core RN one) for the row-editor
+// sheet: a drag that starts on one of its TextInput/Pressable fields never
+// reaches an RN ScrollView's scroll recognition on Android, so that form
+// only scrolled when a finger happened to land in the gap between two
+// fields. Same fix (and same reason) as DocumentEditorScreen's block list.
+// Everything else on this screen stays on the RN ScrollView it already
+// scrolled fine with.
+import { GestureHandlerRootView, ScrollView as GestureScrollView } from 'react-native-gesture-handler';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -936,6 +944,11 @@ export default function CustomDatabaseScreen({}: Props) {
       </Modal>
 
       <Modal visible={rowEditor !== null} transparent animationType="fade" onRequestClose={cancelRowEditor}>
+        {/* RN's Modal renders into its own native window on Android, outside
+            the app-level GestureHandlerRootView in App.tsx - the
+            GestureScrollView below needs its own root re-declared inside it
+            or it silently doesn't scroll at all. */}
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <Pressable style={styles.backdrop} onPress={cancelRowEditor}>
           <Pressable style={[styles.editorSheet, { marginBottom: keyboardHeight }]} onPress={() => {}}>
             <View style={styles.handle} />
@@ -944,7 +957,7 @@ export default function CustomDatabaseScreen({}: Props) {
                 any other control here) while the keyboard is up only
                 dismisses the keyboard - the tap never reaches the control,
                 so the picker appears not to open at all. */}
-            <ScrollView style={styles.editorScroll} keyboardShouldPersistTaps="handled">
+            <GestureScrollView style={styles.editorScroll} keyboardShouldPersistTaps="handled">
               {database.fields.map((field) => (
                 <View key={field.id} style={styles.editorField}>
                   <View style={styles.editorFieldLabelRow}>
@@ -964,7 +977,7 @@ export default function CustomDatabaseScreen({}: Props) {
                   )}
                 </Pressable>
               </View>
-            </ScrollView>
+            </GestureScrollView>
             <View style={styles.buttons}>
               <Pressable style={styles.cancelButton} onPress={cancelRowEditor}>
                 <Text style={styles.cancelLabel}>Скасувати</Text>
@@ -975,6 +988,7 @@ export default function CustomDatabaseScreen({}: Props) {
             </View>
           </Pressable>
         </Pressable>
+        </GestureHandlerRootView>
       </Modal>
 
       {datePickerField && (
