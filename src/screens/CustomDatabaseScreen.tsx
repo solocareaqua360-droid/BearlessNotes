@@ -61,6 +61,7 @@ import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
+import TabsTunnel from '../components/TabsTunnel';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
@@ -838,21 +839,8 @@ export default function CustomDatabaseScreen({}: Props) {
           keeps the line above to itself. The capsule's fourth button, the
           gear, is what shows the view/sort capsules below. */}
       <View style={styles.controlsRow}>
-        <View style={styles.controlsTabs}>
-          {/* A capsule squeezed to a line at the point where the scrolling
-              tabs run out of room - the "tunnel" they slide into rather
-              than being cut off mid-word. It's one oval drawn as two
-              halves on either side of the tabs: the near half sits UNDER
-              them (a tab covers its edge as it arrives), the far half sits
-              OVER them (its edge covers the tab as it leaves) - which is
-              what makes it read as a tunnel rather than a pill next to
-              the row. Purely visual - neither half catches touches. */}
-          {groups.length > 0 && (
-            <View style={styles.tabsTunnelNear} pointerEvents="none">
-              <View style={[styles.tabsTunnelOval, styles.tabsTunnelOvalNear]} />
-            </View>
-          )}
-          {groups.length > 0 && (
+        {groups.length > 0 ? (
+          <TabsTunnel>
             <ProjectTabsRow
               items={groups}
               selected={groupFilter}
@@ -860,13 +848,10 @@ export default function CustomDatabaseScreen({}: Props) {
               unassignedLabel="Без групи"
               dark
             />
-          )}
-          {groups.length > 0 && (
-            <View style={styles.tabsTunnelFar} pointerEvents="none">
-              <View style={[styles.tabsTunnelOval, styles.tabsTunnelOvalFar]} />
-            </View>
-          )}
-        </View>
+          </TabsTunnel>
+        ) : (
+          <View style={styles.controlsSpacer} />
+        )}
         <View style={[styles.headerButtons, groups.length > 0 && styles.controlsCapsuleOffset]}>
           <Pressable hitSlop={6} onPress={() => setMenuOpen((v) => !v)}>
             <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
@@ -1751,9 +1736,6 @@ const miniStyles = StyleSheet.create({
   },
 });
 
-// The tunnel oval the group tabs slide into (see tabsTunnelNear/Far).
-const TUNNEL_WIDTH = 10;
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1909,57 +1891,11 @@ const styles = StyleSheet.create({
   controlsCapsuleOffset: {
     marginBottom: 10,
   },
-  // The tabs take whatever the toggle leaves, and scroll within it -
-  // minWidth: 0 is what lets a flex child actually shrink below its
-  // content instead of pushing the toggle off the row.
-  controlsTabs: {
+  // Pushes the control capsule to the right when there are no groups to
+  // fill the row's left side.
+  controlsSpacer: {
     flex: 1,
-    minWidth: 0,
   },
-  // The two clipping windows the tunnel oval is drawn through - each
-  // shows exactly one half of it, so the halves never overlap (two layers
-  // of the same glass would paint a visibly darker seam down the middle).
-  // Both hang 2px PAST the tabs ScrollView's right edge, which is what
-  // clips the tabs: a tab therefore runs out of view under the far half,
-  // 2px inside the oval's far border, never against its near one.
-  // Overhang a tab by 4px at each end so the oval reads as the thing the
-  // tabs disappear into, not as another pill. (The row carries 10px of
-  // padding under its pills, hence the asymmetric top/bottom.)
-  tabsTunnelNear: {
-    position: 'absolute',
-    right: TUNNEL_WIDTH / 2 - 2,
-    top: -4,
-    bottom: 6,
-    width: TUNNEL_WIDTH / 2,
-    overflow: 'hidden',
-  },
-  tabsTunnelFar: {
-    position: 'absolute',
-    right: -2,
-    top: -4,
-    bottom: 6,
-    width: TUNNEL_WIDTH / 2,
-    overflow: 'hidden',
-  },
-  // The oval itself, at full width inside each half-width window - the
-  // window's overflow clip is what leaves only one half of it visible.
-  // Same glass as every other capsule here, deliberately: an opaque one
-  // did hide the tab, but at the near edge, which read as the tab simply
-  // ending early.
-  tabsTunnelOval: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: TUNNEL_WIDTH,
-    borderRadius: 999,
-    backgroundColor: 'rgba(20,20,20,0.35)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-  },
-  // Fainter border on the near half: the tabs that cover it are glass
-  // too, so at full strength the line still showed through them.
-  tabsTunnelOvalNear: { left: 0, borderColor: 'rgba(255,255,255,0.18)' },
-  tabsTunnelOvalFar: { right: 0 },
   paramsStrip: {
     flexDirection: 'row',
     alignItems: 'flex-start',

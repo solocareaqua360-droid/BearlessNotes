@@ -42,6 +42,7 @@ import { useSortPref } from '../hooks/useSortPref';
 import { sortItems } from '../utils/sortItems';
 import SortMenuRows from '../components/SortMenuRows';
 import TagsDrawer, { TagFilter, matchesTagFilter, removeTagFromFilter } from '../components/TagsDrawer';
+import TabsTunnel from '../components/TabsTunnel';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
@@ -352,19 +353,6 @@ export default function DocumentsScreen() {
 
       <View style={styles.headerRow}>
         <Text style={styles.header}>Документи</Text>
-        <View style={styles.headerButtons}>
-          <Pressable hitSlop={6} onPress={() => navigation.navigate('Search')}>
-            <Ionicons name="search" size={17} color="#fff" />
-          </Pressable>
-          <View style={styles.headerButtonsDivider} />
-          <Pressable hitSlop={6} onPress={() => setMenuOpen((v) => !v)}>
-            <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
-          </Pressable>
-          <View style={styles.headerButtonsDivider} />
-          <Pressable hitSlop={6} onPress={toggleSelectMode}>
-            <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
-          </Pressable>
-        </View>
       </View>
 
       {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
@@ -385,9 +373,13 @@ export default function DocumentsScreen() {
         </View>
       )}
 
+      {/* Groups and the whole control capsule share one row - the title
+          keeps the line above to itself, same as CustomDatabaseScreen.
+          The capsule's fourth button is what shows/hides the sticker
+          strip below. */}
       <View style={styles.groupsRow}>
-        <View style={styles.groupsScrollWrap}>
-          {groups.length > 0 && (
+        {groups.length > 0 ? (
+          <TabsTunnel>
             <ProjectTabsRow
               items={groups}
               selected={groupFilter}
@@ -395,12 +387,27 @@ export default function DocumentsScreen() {
               unassignedLabel="Без групи"
               dark
             />
-          )}
+          </TabsTunnel>
+        ) : (
+          <View style={styles.groupsSpacer} />
+        )}
+        <View style={[styles.headerButtons, groups.length > 0 && styles.headerButtonsOffset]}>
+          <Pressable hitSlop={6} onPress={() => navigation.navigate('Search')}>
+            <Ionicons name="search" size={17} color="#fff" />
+          </Pressable>
+          <View style={styles.headerButtonsDivider} />
+          <Pressable hitSlop={6} onPress={() => setMenuOpen((v) => !v)}>
+            <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
+          </Pressable>
+          <View style={styles.headerButtonsDivider} />
+          <Pressable hitSlop={6} onPress={toggleSelectMode}>
+            <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
+          </Pressable>
+          <View style={styles.headerButtonsDivider} />
+          <Pressable hitSlop={6} onPress={toggleStickersCollapsed}>
+            <Ionicons name={stickersCollapsed ? 'albums-outline' : 'albums'} size={17} color="#fff" />
+          </Pressable>
         </View>
-        <Pressable style={styles.stickerToggleCapsule} onPress={toggleStickersCollapsed}>
-          <Text style={styles.stickerToggleLabel}>Стікери ({freeStickers.length})</Text>
-          <Ionicons name={stickersCollapsed ? 'chevron-down' : 'chevron-up'} size={14} color="rgba(255,255,255,0.75)" />
-        </Pressable>
       </View>
 
       {!stickersCollapsed && freeStickers.length > 0 && (
@@ -662,12 +669,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    height: 38,
-    borderRadius: 19,
+    // Same height as a group pill next to it (see ProjectTabsRow's tab).
+    paddingVertical: 7,
     paddingHorizontal: 14,
+    marginRight: 20,
+    borderRadius: 999,
     backgroundColor: 'rgba(20,20,20,0.35)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
+  },
+  // The tabs row's own bottom padding would otherwise leave the capsule
+  // sitting lower than the pills it stands next to.
+  headerButtonsOffset: {
+    marginBottom: 10,
   },
   headerButtonsDivider: {
     width: 1,
@@ -724,40 +738,16 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 20,
   },
-  // Groups (ProjectTabsRow) and the sticker toggle sit on the same visual
-  // line - the scroll wrap takes whatever width the capsule doesn't need
-  // (flex: 1), and alignItems: 'flex-start' lines up both children's tops
-  // since ProjectTabsRow's own bottom padding would otherwise throw off a
-  // center alignment.
+  // Groups on the left, the control capsule on the right, one line.
   groupsRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingBottom: 10,
-  },
-  groupsScrollWrap: {
-    flex: 1,
-  },
-  // Same frosted-glass capsule as ProjectTabsRow's dark tabs (see
-  // tabDark/tab there) - kept in sync by eye rather than shared, since
-  // this one row doesn't otherwise need that component's scroll/multi-tab
-  // machinery. Always shows the count (not just while collapsed) so its
-  // width never changes as the strip opens/closes.
-  stickerToggleCapsule: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 7,
-    paddingHorizontal: 13,
-    marginRight: 20,
-    borderRadius: 999,
-    backgroundColor: 'rgba(20,20,20,0.35)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
+    paddingBottom: 6,
   },
-  stickerToggleLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.85)',
+  // Pushes the capsule to the right when there are no groups to fill the
+  // row's left side.
+  groupsSpacer: {
+    flex: 1,
   },
   // Without flexGrow/flexShrink: 0, this horizontal ScrollView competes for
   // height with the documents FlatList below it and gets squeezed shorter
