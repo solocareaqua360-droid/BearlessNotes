@@ -7,6 +7,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { HistoryItem, HistoryItemKind } from '../hooks/useDayHistory';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
+import { colorForDocument } from '../utils/documentColor';
 import ZoomableImageViewer from './ZoomableImageViewer';
 import VideoPlayerModal from './VideoPlayerModal';
 
@@ -114,25 +115,31 @@ export default function DayHistoryList({ items }: { items: HistoryItem[] }) {
         // being the main thing on screen (the note collapsed specifically
         // to make room for it), so it must never depend on how much space
         // whatever surrounds it happens to leave.
-        <ScrollView style={styles.list} nestedScrollEnabled>
-          {items.map((item) => (
-            <View key={`${item.kind}-${item.id}`} style={styles.row}>
-              <Pressable
-                style={styles.rowTap}
-                onPress={() => openNaturally(item).catch((e) => Alert.alert('Не вдалося відкрити', String(e)))}
-              >
-                <Ionicons name={ICON_BY_KIND[item.kind]} size={16} color="rgba(255,255,255,0.85)" />
-                <Text style={styles.rowTitle} numberOfLines={1}>
-                  {item.title}
-                </Text>
-              </Pressable>
-              {SHOW_IN_DATABASE_KINDS.includes(item.kind) && (
-                <Pressable hitSlop={8} style={styles.dbButton} onPress={() => showInDatabase(item)}>
-                  <Ionicons name="server-outline" size={15} color="rgba(255,255,255,0.5)" />
+        <ScrollView style={styles.list} nestedScrollEnabled contentContainerStyle={styles.listContent}>
+          {items.map((item) => {
+            // Same deterministic per-id palette every card in the app uses
+            // (CustomRowCard, DocumentCard) - a database's own row keeps
+            // its colour here too, since it's still the same id.
+            const { background, text, textMuted } = colorForDocument(item.id);
+            return (
+              <View key={`${item.kind}-${item.id}`} style={[styles.card, { backgroundColor: background }]}>
+                <Pressable
+                  style={styles.cardTap}
+                  onPress={() => openNaturally(item).catch((e) => Alert.alert('Не вдалося відкрити', String(e)))}
+                >
+                  <Ionicons name={ICON_BY_KIND[item.kind]} size={16} color={textMuted} />
+                  <Text style={[styles.cardTitle, { color: text }]} numberOfLines={2}>
+                    {item.title}
+                  </Text>
                 </Pressable>
-              )}
-            </View>
-          ))}
+                {SHOW_IN_DATABASE_KINDS.includes(item.kind) && (
+                  <Pressable hitSlop={8} style={styles.dbButton} onPress={() => showInDatabase(item)}>
+                    <Ionicons name="server-outline" size={15} color={textMuted} />
+                  </Pressable>
+                )}
+              </View>
+            );
+          })}
         </ScrollView>
       )}
 
@@ -165,25 +172,40 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.85)',
   },
   list: {
-    maxHeight: 260,
+    maxHeight: 320,
   },
-  row: {
+  listContent: {
+    gap: 8,
+    paddingTop: 8,
+    paddingBottom: 2,
+  },
+  // Same card shape as CustomRowCard's own `row` style - border, shadow and
+  // radius, just without that component's cover-image slot, which no
+  // history kind here has a use for.
+  card: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
+    borderRadius: 14,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(176,176,176,0.5)',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
   },
-  rowTap: {
+  cardTap: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  rowTitle: {
+  cardTitle: {
     flex: 1,
     fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
+    fontWeight: '600',
   },
   dbButton: {
     padding: 4,
