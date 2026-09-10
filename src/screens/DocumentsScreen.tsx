@@ -742,6 +742,9 @@ const styles = StyleSheet.create({
   groupsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    // Same breathing room between the tunnel and the capsule as
+    // CustomDatabaseScreen's controlsRow.
+    gap: 8,
     paddingBottom: 6,
   },
   // Pushes the capsule to the right when there are no groups to fill the
