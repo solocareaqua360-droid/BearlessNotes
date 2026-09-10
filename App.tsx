@@ -92,7 +92,11 @@ export default function App() {
   return (
     <ShareIntentProvider>
       {!fontsLoaded || !signedIn ? (
-        <View style={{ flex: 1, backgroundColor: '#fff' }} />
+        // The same colour the first screen's gradient starts with, not
+        // white: this view stands in for the app while fonts and the
+        // anonymous sign-in resolve, and a white one made the handover
+        // read as a flash of a different screen.
+        <View style={{ flex: 1, backgroundColor: '#705648' }} />
       ) : (
         <GestureHandlerRootView style={{ flex: 1 }}>
           {/* Feeds the document editor per-frame keyboard progress (see
@@ -104,7 +108,11 @@ export default function App() {
             <StatusBar style="auto" />
             <ShareIntentHandler />
             <Stack.Navigator screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="Tabs" component={Tabs} />
+              {/* animation: 'none' only on the root screen - the navigator
+                  mounts after the splash view above hands over, and its
+                  entry animation played as a blink at startup. Pushes from
+                  here (Editor and the rest) keep their own animation. */}
+              <Stack.Screen name="Tabs" component={Tabs} options={{ animation: 'none' }} />
               <Stack.Screen name="Editor" component={DocumentEditorScreen} />
               <Stack.Screen name="EditorModal" component={DocumentEditorScreen} options={{ presentation: 'modal' }} />
               <Stack.Screen name="Tasks" component={TasksScreen} />
