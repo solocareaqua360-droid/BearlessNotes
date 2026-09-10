@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { FieldDef, FieldOption, FieldType } from '../types';
+import { FieldDef, FieldOption, FieldType, RelationTarget } from '../types';
 import { TAG_COLORS } from '../constants/tags';
 
 const ACCENT = '#3B82F6';
@@ -17,6 +17,7 @@ export const FIELD_TYPE_LABEL: Record<FieldType, string> = {
   date: 'Дата',
   select: 'Список',
   multiSelect: 'Множинний список',
+  relation: 'Пов’язана база',
 };
 
 // Shared with CustomDatabaseScreen's table header / row form, so a field's
@@ -27,16 +28,28 @@ export const FIELD_TYPE_ICON: Record<FieldType, keyof typeof Ionicons.glyphMap> 
   date: 'calendar-outline',
   select: 'chevron-down-circle-outline',
   multiSelect: 'list-outline',
+  relation: 'git-network-outline',
 };
 
 const TYPE_LABEL = FIELD_TYPE_LABEL;
 const TYPE_ICON = FIELD_TYPE_ICON;
 
-const TYPE_ORDER: FieldType[] = ['text', 'number', 'date', 'select', 'multiSelect'];
+const TYPE_ORDER: FieldType[] = ['text', 'number', 'date', 'select', 'multiSelect', 'relation'];
+
+function relationTargetLabel(
+  target: RelationTarget | undefined,
+  otherDatabases: { id: string; name: string }[]
+): string {
+  if (!target || target.kind === 'photos') return 'Фото';
+  return otherDatabases.find((d) => d.id === target.databaseId)?.name ?? 'База';
+}
 
 type Props = {
   visible: boolean;
   fields: FieldDef[];
+  // Every OTHER custom database (this one excluded) - what a 'relation'
+  // field can point at besides the built-in "Фото".
+  otherDatabases: { id: string; name: string }[];
   onSave: (fields: FieldDef[]) => void;
   onClose: () => void;
 };
@@ -46,9 +59,12 @@ type Props = {
 // writes back on "Зберегти" (onSave), same "edit a copy, commit at the end"
 // shape as GroupPickerSheet's inline rename, just for a whole list at once
 // instead of one row.
-export default function FieldsEditorSheet({ visible, fields, onSave, onClose }: Props) {
+export default function FieldsEditorSheet({ visible, fields, otherDatabases, onSave, onClose }: Props) {
   const [draft, setDraft] = useState<FieldDef[]>(fields);
   const [typeMenuFieldId, setTypeMenuFieldId] = useState<string | null>(null);
+  // Which field's relation-target list ("Фото" vs another database) is
+  // currently expanded - same one-at-a-time idea as typeMenuFieldId.
+  const [relationMenuFieldId, setRelationMenuFieldId] = useState<string | null>(null);
   const [newOptionText, setNewOptionText] = useState<Record<string, string>>({});
   const scrollRef = useRef<ScrollView>(null);
   // Each field card's own y inside the scroll list, filled in by its
@@ -92,16 +108,44 @@ export default function FieldsEditorSheet({ visible, fields, onSave, onClose }: 
 
   // Firestore rejects `undefined` field values outright (same convention as
   // everywhere else in this app) - switching a field AWAY from select/
-  // multiSelect has to drop the `options` key entirely, not set it to
-  // undefined, or the whole "Зберегти" write silently fails.
+  // multiSelect (or relation) has to drop that type's own keys entirely,
+  // not set them to undefined, or the whole "Зберегти" write silently
+  // fails.
   function changeType(id: string, type: FieldType) {
     setTypeMenuFieldId(null);
+    setRelationMenuFieldId(null);
     setDraft((prev) =>
       prev.map((f) => {
         if (f.id !== id) return f;
-        if (type === 'select' || type === 'multiSelect') return { ...f, type, options: f.options ?? [] };
-        const { options: _options, ...rest } = f;
+        if (type === 'select' || type === 'multiSelect') {
+          const { relationTarget: _rt, isCover: _ic, ...rest } = f;
+          return { ...rest, type, options: f.options ?? [] };
+        }
+        if (type === 'relation') {
+          const { options: _options, ...rest } = f;
+          return { ...rest, type, relationTarget: f.relationTarget ?? { kind: 'photos' } };
+        }
+        const { options: _options2, relationTarget: _rt2, isCover: _ic2, ...rest } = f;
         return { ...rest, type };
+      })
+    );
+  }
+
+  function setRelationTarget(id: string, target: RelationTarget) {
+    setRelationMenuFieldId(null);
+    updateField(id, { relationTarget: target });
+  }
+
+  // Only one field per database can be the cover - tapping the already-on
+  // one turns it off, tapping another moves it there. Only ever touches
+  // the tapped field plus whichever other one currently holds the flag
+  // (never every field in the list, most of which never had it).
+  function toggleCoverField(id: string) {
+    setDraft((prev) =>
+      prev.map((f) => {
+        if (f.id === id) return { ...f, isCover: !f.isCover };
+        if (f.isCover) return { ...f, isCover: false };
+        return f;
       })
     );
   }
@@ -212,6 +256,66 @@ export default function FieldsEditorSheet({ visible, fields, onSave, onClose }: 
                         <Ionicons name="add-circle" size={22} color={ACCENT} />
                       </Pressable>
                     </View>
+                  </View>
+                )}
+
+                {field.type === 'relation' && (
+                  <View style={styles.optionsBox}>
+                    <Pressable
+                      style={styles.relationTargetRow}
+                      onPress={() => setRelationMenuFieldId(relationMenuFieldId === field.id ? null : field.id)}
+                    >
+                      <Ionicons name="link-outline" size={13} color="#6B7280" />
+                      <Text style={styles.relationTargetLabel}>
+                        Ціль: {relationTargetLabel(field.relationTarget, otherDatabases)}
+                      </Text>
+                      <Ionicons
+                        name={relationMenuFieldId === field.id ? 'chevron-up' : 'chevron-down'}
+                        size={14}
+                        color="#9CA3AF"
+                      />
+                    </Pressable>
+                    {relationMenuFieldId === field.id && (
+                      <View style={styles.typeMenu}>
+                        <Pressable
+                          style={styles.typeMenuRow}
+                          onPress={() => setRelationTarget(field.id, { kind: 'photos' })}
+                        >
+                          <Ionicons name="image-outline" size={15} color="#111827" />
+                          <Text style={styles.typeMenuLabel}>Фото</Text>
+                          {(field.relationTarget?.kind ?? 'photos') === 'photos' && (
+                            <Ionicons name="checkmark" size={16} color={ACCENT} />
+                          )}
+                        </Pressable>
+                        {otherDatabases.map((odb) => (
+                          <Pressable
+                            key={odb.id}
+                            style={styles.typeMenuRow}
+                            onPress={() => setRelationTarget(field.id, { kind: 'customDb', databaseId: odb.id })}
+                          >
+                            <Ionicons name="grid-outline" size={15} color="#111827" />
+                            <Text style={styles.typeMenuLabel} numberOfLines={1}>
+                              {odb.name}
+                            </Text>
+                            {field.relationTarget?.kind === 'customDb' &&
+                              field.relationTarget.databaseId === odb.id && (
+                                <Ionicons name="checkmark" size={16} color={ACCENT} />
+                              )}
+                          </Pressable>
+                        ))}
+                        {otherDatabases.length === 0 && (
+                          <Text style={styles.relationEmptyHint}>Інших власних баз поки немає.</Text>
+                        )}
+                      </View>
+                    )}
+                    <Pressable style={styles.coverToggleRow} onPress={() => toggleCoverField(field.id)}>
+                      <Ionicons
+                        name={field.isCover ? 'checkbox' : 'square-outline'}
+                        size={18}
+                        color={field.isCover ? ACCENT : '#9CA3AF'}
+                      />
+                      <Text style={styles.coverToggleLabel}>Використовувати як заставку</Text>
+                    </Pressable>
                   </View>
                 )}
               </View>
@@ -356,6 +460,36 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
+  },
+  relationTargetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    width: '100%',
+  },
+  relationTargetLabel: {
+    flex: 1,
+    fontSize: 13,
+    color: '#111827',
+  },
+  relationEmptyHint: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    paddingVertical: 6,
+  },
+  coverToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  coverToggleLabel: {
+    fontSize: 13,
+    color: '#111827',
   },
   addFieldRow: {
     flexDirection: 'row',

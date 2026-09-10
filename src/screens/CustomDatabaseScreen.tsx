@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Keyboard,
   Modal,
   Pressable,
@@ -41,6 +42,7 @@ import GroupPickerSheet from '../components/GroupPickerSheet';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
+import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { useSortPref } from '../hooks/useSortPref';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 import { sortItems } from '../utils/sortItems';
@@ -101,12 +103,31 @@ export default function CustomDatabaseScreen({}: Props) {
   const [tagPickerVisible, setTagPickerVisible] = useState(false);
   const [datePickerFieldId, setDatePickerFieldId] = useState<string | null>(null);
   const [selectPickerFieldId, setSelectPickerFieldId] = useState<string | null>(null);
+  const [relationPickerFieldId, setRelationPickerFieldId] = useState<string | null>(null);
   const [rowMenuId, setRowMenuId] = useState<string | null>(null);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
-  // Date/select/multiSelect cells can't be typed into - they open their own
-  // picker against that row+field rather than against the row form's draft.
+  // Date/select/multiSelect/relation cells can't be typed into - they open
+  // their own picker against that row+field rather than against the row
+  // form's draft.
   const [cellPicker, setCellPicker] = useState<{ rowId: string; field: FieldDef } | null>(null);
+  // 'relation' fields (see FieldsEditorSheet) resolve against these three
+  // caches. photosList is every "Фото" item (id/uri/title only, no full
+  // PhotoItem shape) - a relation targeting Photos is the common case, so
+  // this is always subscribed, same as tags/groups already are regardless
+  // of whether this particular database happens to use them.
+  // otherDatabases lists every OTHER custom database, for the "Ціль"
+  // picker in FieldsEditorSheet. relatedDatabases/relatedRows hold the
+  // field defs + rows of whichever OTHER databases a relation field here
+  // actually points at - see the effect below that keeps them in sync
+  // with the current field list instead of subscribing to every database
+  // in the app up front.
+  const [photosList, setPhotosList] = useState<
+    { id: string; imageUri: string; title?: string; driveFileId?: string }[]
+  >([]);
+  const [otherDatabases, setOtherDatabases] = useState<{ id: string; name: string }[]>([]);
+  const [relatedDatabases, setRelatedDatabases] = useState<Record<string, CustomDatabase>>({});
+  const [relatedRows, setRelatedRows] = useState<Record<string, CustomDatabaseRow[]>>({});
   // The header scrolls sideways only as a mirror of the body's own offset.
   const headerScrollRef = useRef<ScrollView>(null);
   const bodyScrollRef = useRef<ScrollView>(null);
@@ -173,6 +194,85 @@ export default function CustomDatabaseScreen({}: Props) {
     });
   }, [customRowKind]);
 
+  // See photosList's own comment above - unconditional, same as groups/tags.
+  useEffect(() => {
+    return onSnapshot(collection(db, 'photos'), (snapshot) => {
+      setPhotosList(
+        snapshot.docs.map((d) => {
+          const data = d.data();
+          return { id: d.id, imageUri: data.imageUri, title: data.title, driveFileId: data.driveFileId };
+        })
+      );
+    });
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(collection(db, 'customDatabases'), (snapshot) => {
+      setOtherDatabases(
+        snapshot.docs.filter((d) => d.id !== databaseId).map((d) => ({ id: d.id, name: d.data().name ?? 'База' }))
+      );
+    });
+  }, [databaseId]);
+
+  // Which OTHER databases a 'relation' field here actually points at right
+  // now - recomputed on every render (cheap: just a filter/map over this
+  // database's own field list), and the two effects below keep exactly
+  // those (and only those) databases' field defs + rows subscribed.
+  const referencedDbIds = Array.from(
+    new Set(
+      (database?.fields ?? [])
+        .filter((f) => f.type === 'relation' && f.relationTarget?.kind === 'customDb')
+        .map((f) => (f.relationTarget as { kind: 'customDb'; databaseId: string }).databaseId)
+    )
+  );
+  const referencedDbIdsKey = referencedDbIds.join(',');
+
+  useEffect(() => {
+    if (referencedDbIds.length === 0) return;
+    const unsubs = referencedDbIds.map((id) =>
+      onSnapshot(doc(db, 'customDatabases', id), (snapshot) => {
+        const data = snapshot.data();
+        if (!data) return;
+        setRelatedDatabases((prev) => ({
+          ...prev,
+          [id]: { id, name: data.name, icon: data.icon, color: data.color, fields: data.fields ?? [], createdAt: data.createdAt, updatedAt: data.updatedAt },
+        }));
+      })
+    );
+    return () => unsubs.forEach((u) => u());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [referencedDbIdsKey]);
+
+  useEffect(() => {
+    if (referencedDbIds.length === 0) {
+      setRelatedRows({});
+      return;
+    }
+    // One listener over the whole flat collection (same "avoid a composite
+    // index" tradeoff as this screen's own rows effect above), split by
+    // databaseId client-side rather than one listener per referenced
+    // database.
+    return onSnapshot(collection(db, 'customDatabaseRows'), (snapshot) => {
+      const grouped: Record<string, CustomDatabaseRow[]> = {};
+      snapshot.docs.forEach((d) => {
+        const data = d.data();
+        if (!referencedDbIds.includes(data.databaseId)) return;
+        const row: CustomDatabaseRow = {
+          id: d.id,
+          databaseId: data.databaseId,
+          values: data.values ?? {},
+          tagIds: data.tagIds ?? [],
+          groupId: data.groupId,
+          createdAt: data.createdAt ?? 0,
+          updatedAt: data.updatedAt ?? 0,
+        };
+        (grouped[data.databaseId] ??= []).push(row);
+      });
+      setRelatedRows(grouped);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [referencedDbIdsKey]);
+
   useEffect(() => {
     return onSnapshot(prefsDoc, (snapshot) => {
       setViewMode((snapshot.data()?.viewMode as ViewMode | undefined) ?? 'list');
@@ -189,6 +289,44 @@ export default function CustomDatabaseScreen({}: Props) {
 
   const titleField = database.fields[0];
   const titleOf = (row: CustomDatabaseRow) => String(row.values[titleField?.id] ?? '').trim() || 'Без назви';
+  // The one relation field (if any) marked as this database's cover - see
+  // FieldDef.isCover. Shown as a thumbnail in both the list and table
+  // views, ahead of the plain "Фаза 2" card view this is really for.
+  const coverField = database.fields.find((f) => f.type === 'relation' && f.isCover) ?? null;
+
+  // What a relation field's stored target id (row.values[field.id]) should
+  // actually show - a label, and a thumbnail when one is available.
+  // Resolving a 'customDb' target one level for its OWN cover (rather than
+  // just its title) is deliberate: it's what lets a relation-to-a-relation
+  // chain still surface a real photo instead of just a name, without
+  // recursing any further than that one extra hop (see the plan discussed
+  // with the user - no deeper chains for now).
+  function resolveRelation(
+    field: FieldDef,
+    targetId: string | undefined
+  ): { label: string; thumbUri?: string; driveFileId?: string } | null {
+    if (!targetId) return null;
+    const target = field.relationTarget;
+    if (!target || target.kind === 'photos') {
+      const photo = photosList.find((p) => p.id === targetId);
+      if (!photo) return { label: 'Фото' };
+      return { label: photo.title || 'Фото', thumbUri: photo.imageUri, driveFileId: photo.driveFileId };
+    }
+    const targetDb = relatedDatabases[target.databaseId];
+    const targetRow = relatedRows[target.databaseId]?.find((r) => r.id === targetId);
+    if (!targetDb || !targetRow) return { label: 'Запис' };
+    const titleFieldId = targetDb.fields[0]?.id;
+    const label = String(targetRow.values[titleFieldId ?? ''] ?? '').trim() || 'Без назви';
+    const targetCoverField = targetDb.fields.find((f) => f.type === 'relation' && f.isCover);
+    if (targetCoverField?.relationTarget?.kind === 'photos') {
+      const coverTargetId = targetRow.values[targetCoverField.id];
+      if (typeof coverTargetId === 'string') {
+        const photo = photosList.find((p) => p.id === coverTargetId);
+        if (photo) return { label, thumbUri: photo.imageUri, driveFileId: photo.driveFileId };
+      }
+    }
+    return { label };
+  }
 
   const pendingFilteredRows = filterPending(rows);
   const groupFilteredRows =
@@ -358,6 +496,9 @@ export default function CustomDatabaseScreen({}: Props) {
         .filter(Boolean)
         .join(', ');
     }
+    if (field.type === 'relation' && typeof value === 'string') {
+      return resolveRelation(field, value)?.label ?? '';
+    }
     return String(value);
   }
 
@@ -394,6 +535,24 @@ export default function CustomDatabaseScreen({}: Props) {
         </Pressable>
       );
     }
+    if (field.type === 'relation') {
+      const resolved = typeof value === 'string' ? resolveRelation(field, value) : null;
+      return (
+        <Pressable style={styles.fieldPressable} onPress={() => setRelationPickerFieldId(field.id)}>
+          {resolved ? (
+            <View style={styles.relationValueRow}>
+              {resolved.thumbUri && <RelationThumb uri={resolved.thumbUri} driveFileId={resolved.driveFileId} size={28} />}
+              <Text style={styles.fieldPressableValue} numberOfLines={1}>
+                {resolved.label}
+              </Text>
+            </View>
+          ) : (
+            <Text style={styles.fieldPressablePlaceholder}>Обрати</Text>
+          )}
+          <Ionicons name="chevron-down" size={16} color="#9CA3AF" />
+        </Pressable>
+      );
+    }
     // select / multiSelect
     const selectedIdsForField = field.type === 'multiSelect' ? (Array.isArray(value) ? value : []) : value ? [value as string] : [];
     return (
@@ -420,19 +579,34 @@ export default function CustomDatabaseScreen({}: Props) {
 
   const datePickerField = database.fields.find((f) => f.id === datePickerFieldId) ?? null;
   const selectPickerField = database.fields.find((f) => f.id === selectPickerFieldId) ?? null;
+  const relationPickerField = database.fields.find((f) => f.id === relationPickerFieldId) ?? null;
 
   function renderRowCard(item: CustomDatabaseRow) {
     const { background, text, textMuted } = colorForDocument(item.id);
-    // Every filled field past the title, as icon + value. Naming each one
-    // on the card would be more label than data; the type icon carries
-    // enough to read the row at a glance.
+    // Every filled field past the title, as icon + value - except the
+    // cover field itself (if any), which gets its own thumbnail below
+    // instead of repeating as a text chip. Naming each one on the card
+    // would be more label than data; the type icon carries enough to read
+    // the row at a glance.
     const filledFields = database!.fields
       .slice(1)
+      .filter((f) => f.id !== coverField?.id)
       .map((f) => ({ field: f, shown: displayValue(f, item.values[f.id]) }))
       .filter((entry) => entry.shown !== '');
+    const coverRaw = coverField ? item.values[coverField.id] : undefined;
+    const coverResolved = coverField && typeof coverRaw === 'string' ? resolveRelation(coverField, coverRaw) : null;
     return (
       <View key={item.id} style={[styles.row, { backgroundColor: background }]}>
         <Pressable style={styles.rowTap} onPress={() => (isSelectMode ? toggleSelected(item.id) : openEditRow(item))}>
+          {coverField && (
+            coverResolved?.thumbUri ? (
+              <RelationThumb uri={coverResolved.thumbUri} driveFileId={coverResolved.driveFileId} size={56} radius={12} />
+            ) : (
+              <View style={styles.rowCoverPlaceholder}>
+                <Ionicons name="image-outline" size={20} color="#9CA3AF" />
+              </View>
+            )
+          )}
           <View style={styles.rowBody}>
             <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
               {titleOf(item)}
@@ -582,6 +756,21 @@ export default function CustomDatabaseScreen({}: Props) {
         />
       );
     }
+    if (field.type === 'relation') {
+      const resolved = typeof raw === 'string' ? resolveRelation(field, raw) : null;
+      return (
+        <Pressable
+          key={field.id}
+          style={[styles.tableCellTap, styles.tableCellRelation, { width: TABLE_COLUMN_WIDTH }]}
+          onPress={() => beginCellEdit(row, field)}
+        >
+          {resolved?.thumbUri && <RelationThumb uri={resolved.thumbUri} driveFileId={resolved.driveFileId} size={22} radius={5} />}
+          <Text style={resolved ? styles.tableCell : styles.tableCellEmpty} numberOfLines={1}>
+            {resolved?.label || '—'}
+          </Text>
+        </Pressable>
+      );
+    }
     const shown = displayValue(field, raw);
     return (
       <Pressable
@@ -721,7 +910,13 @@ export default function CustomDatabaseScreen({}: Props) {
         onSave={renameDatabase}
       />
 
-      <FieldsEditorSheet visible={editingFields} fields={database.fields} onSave={saveFields} onClose={() => setEditingFields(false)} />
+      <FieldsEditorSheet
+        visible={editingFields}
+        fields={database.fields}
+        otherDatabases={otherDatabases}
+        onSave={saveFields}
+        onClose={() => setEditingFields(false)}
+      />
 
       <Modal visible={deletingDatabase} transparent animationType="fade" onRequestClose={() => setDeletingDatabase(false)}>
         <View style={styles.glassConfirmBackdrop}>
@@ -802,7 +997,27 @@ export default function CustomDatabaseScreen({}: Props) {
         />
       )}
 
-      {/* The same two pickers again, but driven by a tapped table cell and
+      {relationPickerField && (
+        <RelationPickerSheet
+          field={relationPickerField}
+          value={draftValues[relationPickerField.id]}
+          photos={photosList}
+          relatedDatabase={
+            relationPickerField.relationTarget?.kind === 'customDb'
+              ? (relatedDatabases[relationPickerField.relationTarget.databaseId] ?? null)
+              : null
+          }
+          relatedRows={
+            relationPickerField.relationTarget?.kind === 'customDb'
+              ? (relatedRows[relationPickerField.relationTarget.databaseId] ?? [])
+              : []
+          }
+          onChange={(value) => setDraftValue(relationPickerField.id, value)}
+          onClose={() => setRelationPickerFieldId(null)}
+        />
+      )}
+
+      {/* The same pickers again, but driven by a tapped table cell and
           writing straight to that row instead of into the form's draft. */}
       {cellPicker?.field.type === 'date' && (
         <MiniDatePicker
@@ -819,7 +1034,27 @@ export default function CustomDatabaseScreen({}: Props) {
         />
       )}
 
-      {cellPicker && cellPicker.field.type !== 'date' && (
+      {cellPicker?.field.type === 'relation' && (
+        <RelationPickerSheet
+          field={cellPicker.field}
+          value={rows.find((r) => r.id === cellPicker.rowId)?.values[cellPicker.field.id]}
+          photos={photosList}
+          relatedDatabase={
+            cellPicker.field.relationTarget?.kind === 'customDb'
+              ? (relatedDatabases[cellPicker.field.relationTarget.databaseId] ?? null)
+              : null
+          }
+          relatedRows={
+            cellPicker.field.relationTarget?.kind === 'customDb'
+              ? (relatedRows[cellPicker.field.relationTarget.databaseId] ?? [])
+              : []
+          }
+          onChange={(value) => writeRowValue(cellPicker.rowId, cellPicker.field.id, value)}
+          onClose={() => setCellPicker(null)}
+        />
+      )}
+
+      {cellPicker && cellPicker.field.type !== 'date' && cellPicker.field.type !== 'relation' && (
         <OptionPickerSheet
           field={cellPicker.field}
           value={rows.find((r) => r.id === cellPicker.rowId)?.values[cellPicker.field.id]}
@@ -989,6 +1224,155 @@ function OptionPickerSheet({
               <Text style={styles.saveLabel}>Готово</Text>
             </Pressable>
           )}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// A small square thumbnail for a resolved relation target - same
+// checking/ready/missing states as PhotosScreen's own PhotoThumb, just
+// without the tag row/select-mode chrome that only makes sense on that
+// screen's grid.
+function RelationThumb({ uri, driveFileId, size, radius = 6 }: { uri: string; driveFileId?: string; size: number; radius?: number }) {
+  const status = useCachedAttachment(uri, driveFileId);
+  return (
+    <View style={[styles.relationThumbWrap, { width: size, height: size, borderRadius: radius }]}>
+      {status === 'ready' ? (
+        <Image source={{ uri }} style={styles.relationThumbImage} resizeMode="cover" />
+      ) : (
+        <View style={[styles.relationThumbImage, styles.relationThumbStatus]}>
+          {status === 'missing' ? (
+            <Ionicons name="cloud-offline-outline" size={Math.round(size * 0.45)} color="#9CA3AF" />
+          ) : (
+            <ActivityIndicator color="#9CA3AF" size="small" />
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
+// One picker serving a 'relation' field's value, wherever it's edited from
+// (the row form's draft, or a tapped table cell - same split OptionPickerSheet
+// already makes). Target "Фото" shows a searchable thumbnail grid; target
+// another custom database shows a searchable list of its rows by title
+// (its own fields[0], same convention as this screen's own titleOf).
+function RelationPickerSheet({
+  field,
+  value,
+  photos,
+  relatedDatabase,
+  relatedRows,
+  onChange,
+  onClose,
+}: {
+  field: FieldDef;
+  value: string | number | string[] | undefined;
+  photos: { id: string; imageUri: string; title?: string; driveFileId?: string }[];
+  relatedDatabase: CustomDatabase | null;
+  relatedRows: CustomDatabaseRow[];
+  onChange: (value: string) => void;
+  onClose: () => void;
+}) {
+  const [search, setSearch] = useState('');
+  const currentId = typeof value === 'string' ? value : undefined;
+  const isPhotos = (field.relationTarget?.kind ?? 'photos') === 'photos';
+  const needle = search.trim().toLowerCase();
+
+  const clearRow = currentId ? (
+    <Pressable
+      style={styles.optionPickerRow}
+      onPress={() => {
+        onChange('');
+        onClose();
+      }}
+    >
+      <Ionicons name="close-circle-outline" size={18} color={DANGER} />
+      <Text style={[styles.optionPickerLabel, { color: DANGER }]}>Прибрати</Text>
+    </Pressable>
+  ) : null;
+
+  if (isPhotos) {
+    const filtered = needle ? photos.filter((p) => (p.title ?? '').toLowerCase().includes(needle)) : photos;
+    return (
+      <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+        <Pressable style={styles.backdrop} onPress={onClose}>
+          <Pressable style={styles.sheet} onPress={() => {}}>
+            <View style={styles.handle} />
+            <Text style={styles.title}>{field.name}</Text>
+            <TextInput
+              style={styles.relationSearchInput}
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Пошук фото"
+            />
+            {clearRow}
+            <ScrollView style={styles.relationPickerScroll} keyboardShouldPersistTaps="handled">
+              <View style={styles.relationPhotoGrid}>
+                {filtered.map((photo) => (
+                  <Pressable
+                    key={photo.id}
+                    style={styles.relationPhotoCell}
+                    onPress={() => {
+                      onChange(photo.id);
+                      onClose();
+                    }}
+                  >
+                    <RelationThumb uri={photo.imageUri} driveFileId={photo.driveFileId} size={72} radius={10} />
+                    {photo.id === currentId && (
+                      <View style={styles.relationPhotoCheck}>
+                        <Ionicons name="checkmark-circle" size={18} color={ACCENT} />
+                      </View>
+                    )}
+                  </Pressable>
+                ))}
+                {filtered.length === 0 && <Text style={styles.optionPickerEmpty}>Немає фото.</Text>}
+              </View>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    );
+  }
+
+  const titleFieldId = relatedDatabase?.fields[0]?.id;
+  const rowsFiltered = needle
+    ? relatedRows.filter((r) => String(r.values[titleFieldId ?? ''] ?? '').toLowerCase().includes(needle))
+    : relatedRows;
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable style={styles.sheet} onPress={() => {}}>
+          <View style={styles.handle} />
+          <Text style={styles.title}>{field.name}</Text>
+          <TextInput
+            style={styles.relationSearchInput}
+            value={search}
+            onChangeText={setSearch}
+            placeholder={relatedDatabase ? `Пошук у "${relatedDatabase.name}"` : 'Пошук'}
+          />
+          {clearRow}
+          <ScrollView style={styles.relationPickerScroll} keyboardShouldPersistTaps="handled">
+            {rowsFiltered.map((r) => {
+              const title = String(r.values[titleFieldId ?? ''] ?? '').trim() || 'Без назви';
+              return (
+                <Pressable
+                  key={r.id}
+                  style={styles.optionPickerRow}
+                  onPress={() => {
+                    onChange(r.id);
+                    onClose();
+                  }}
+                >
+                  <Text style={styles.optionPickerLabel}>{title}</Text>
+                  {r.id === currentId && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+                </Pressable>
+              );
+            })}
+            {rowsFiltered.length === 0 && <Text style={styles.optionPickerEmpty}>Нічого не знайдено.</Text>}
+          </ScrollView>
         </Pressable>
       </Pressable>
     </Modal>
@@ -1520,6 +1904,67 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: '#111827',
+  },
+  relationValueRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 0,
+  },
+  relationThumbWrap: {
+    overflow: 'hidden',
+    backgroundColor: '#F3F4F6',
+  },
+  relationThumbImage: {
+    width: '100%',
+    height: '100%',
+  },
+  relationThumbStatus: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tableCellRelation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  rowCoverPlaceholder: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  relationSearchInput: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: '#111827',
+    marginBottom: 4,
+  },
+  relationPickerScroll: {
+    maxHeight: 340,
+  },
+  relationPhotoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  relationPhotoCell: {
+    position: 'relative',
+  },
+  relationPhotoCheck: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: '#fff',
+    borderRadius: 10,
   },
   buttons: {
     flexDirection: 'row',

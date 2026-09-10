@@ -333,7 +333,7 @@ export interface DocumentItem {
 // (Tasks/Links/Photos/Files). fields[0] is always type 'text' and acts as
 // the row's title everywhere (list view, row picker) - it can be renamed
 // but never removed or retyped.
-export type FieldType = 'text' | 'number' | 'date' | 'select' | 'multiSelect';
+export type FieldType = 'text' | 'number' | 'date' | 'select' | 'multiSelect' | 'relation';
 
 export interface FieldOption {
   id: string;
@@ -341,12 +341,27 @@ export interface FieldOption {
   color: string;
 }
 
+// What a 'relation' field points at - the built-in Photos database, or
+// another user-created one. A row's value for such a field is just the
+// target's id as a plain string (CustomDatabaseRow.values already allows a
+// string there, same shape 'select' already uses for its one chosen
+// FieldOption.id - no new value shape needed).
+export type RelationTarget = { kind: 'photos' } | { kind: 'customDb'; databaseId: string };
+
 export interface FieldDef {
   id: string;
   name: string;
   type: FieldType;
   // 'select'/'multiSelect' only.
   options?: FieldOption[];
+  // 'relation' only.
+  relationTarget?: RelationTarget;
+  // 'relation' only - marks this as THE field whose value renders as a
+  // thumbnail cover in list/table (and, later, card) views, instead of a
+  // plain text value. At most one field per database should carry this -
+  // FieldsEditorSheet enforces that by clearing every other field's flag
+  // the moment one is turned on.
+  isCover?: boolean;
 }
 
 export interface CustomDatabase {
