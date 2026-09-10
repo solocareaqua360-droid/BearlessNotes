@@ -79,19 +79,25 @@ export function hapticCreate() {
 }
 
 // Something thrown away. A single pulse can't read as a "whoosh" - that
-// needs a tail - so this fires four impacts that get weaker as the gaps
-// between them stretch: a decay curve, which the hand reads as one thing
-// moving past and away rather than as four taps. Deliberately allowed to
-// blur together; the blur IS the effect here, unlike everywhere else in
-// this file where two pulses had to stay distinct.
+// needs a tail - so this fires a series that starts moderate and fades,
+// with the gaps between pulses widening as it goes. The widening is what
+// makes it recede rather than just stop: even, equal gaps read as a
+// stutter, lengthening ones as something moving away.
+//
+// Starts at Medium rather than Heavy on purpose: the first pulse is the
+// throw, not an impact, and a hard one made it read as hitting something.
+// The tail runs ~280ms - three times its first version, which was over
+// before it could be felt as a movement at all.
+const DISCARD_TAIL: [number, Haptics.ImpactFeedbackStyle][] = [
+  [55, Haptics.ImpactFeedbackStyle.Light],
+  [120, Haptics.ImpactFeedbackStyle.Light],
+  [195, Haptics.ImpactFeedbackStyle.Soft],
+  [280, Haptics.ImpactFeedbackStyle.Soft],
+];
+
 export function hapticDiscard() {
-  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
-  const tail: [number, Haptics.ImpactFeedbackStyle][] = [
-    [35, Haptics.ImpactFeedbackStyle.Medium],
-    [65, Haptics.ImpactFeedbackStyle.Light],
-    [90, Haptics.ImpactFeedbackStyle.Soft],
-  ];
-  tail.forEach(([delay, style]) => {
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+  DISCARD_TAIL.forEach(([delay, style]) => {
     setTimeout(() => Haptics.impactAsync(style).catch(() => {}), delay);
   });
 }
