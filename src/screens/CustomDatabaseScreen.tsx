@@ -56,6 +56,7 @@ import {
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import FieldsEditorSheet, { FIELD_TYPE_ICON } from '../components/FieldsEditorSheet';
+import ImportTableSheet from '../components/ImportTableSheet';
 import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
@@ -176,6 +177,7 @@ export default function CustomDatabaseScreen({}: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingDatabase, setRenamingDatabase] = useState(false);
   const [editingFields, setEditingFields] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [deletingDatabase, setDeletingDatabase] = useState(false);
   const [rowEditor, setRowEditor] = useState<RowEditorState | null>(null);
   const [draftValues, setDraftValues] = useState<Record<string, string | number | string[]>>({});
@@ -1245,6 +1247,16 @@ export default function CustomDatabaseScreen({}: Props) {
             style={styles.menuRow}
             onPress={() => {
               setMenuOpen(false);
+              setImporting(true);
+            }}
+          >
+            <Ionicons name="download-outline" size={17} color="#111827" />
+            <Text style={styles.menuRowLabel}>Імпортувати таблицю</Text>
+          </Pressable>
+          <Pressable
+            style={styles.menuRow}
+            onPress={() => {
+              setMenuOpen(false);
               setDeletingDatabase(true);
             }}
           >
@@ -1701,6 +1713,17 @@ export default function CustomDatabaseScreen({}: Props) {
         onSave={(name) =>
           viewPrompt?.mode === 'rename' ? renameSavedView(viewPrompt.view, name) : saveCurrentAsView(name)
         }
+      />
+
+      <ImportTableSheet
+        visible={importing}
+        targetDatabase={database ? { id: databaseId, name: database.name, fields: database.fields } : null}
+        otherDatabases={otherDatabases}
+        onClose={() => setImporting(false)}
+        onDone={(_id, rowCount) => {
+          setImporting(false);
+          Alert.alert('Імпортовано', `Додано записів: ${rowCount}`);
+        }}
       />
 
       <FieldsEditorSheet

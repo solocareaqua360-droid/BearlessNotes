@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -12,6 +12,7 @@ import { TAG_COLORS } from '../constants/tags';
 import { FONT_REGULAR, FONT_MEDIUM, FONT_BOLD } from '../utils/fonts';
 import { colorForDocument } from '../utils/documentColor';
 import RenamePrompt from '../components/RenamePrompt';
+import ImportTableSheet from '../components/ImportTableSheet';
 
 type Tile = {
   key: string;
@@ -70,6 +71,7 @@ export default function DatabasesScreen() {
   const [colorMenuKey, setColorMenuKey] = useState<string | null>(null);
   const [customDatabases, setCustomDatabases] = useState<CustomDatabase[]>([]);
   const [creatingDatabase, setCreatingDatabase] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     return onSnapshot(tileColorsDoc, (snapshot) => {
@@ -209,8 +211,24 @@ export default function DatabasesScreen() {
             <Ionicons name="add" size={22} color="rgba(255,255,255,0.6)" />
             <Text style={styles.newTileLabel}>Нова база</Text>
           </Pressable>
+
+          <Pressable style={[styles.tile, styles.newTile]} onPress={() => setImporting(true)}>
+            <Ionicons name="download-outline" size={22} color="rgba(255,255,255,0.6)" />
+            <Text style={styles.newTileLabel}>Імпорт таблиці</Text>
+          </Pressable>
         </View>
       </ScrollView>
+
+      <ImportTableSheet
+        visible={importing}
+        otherDatabases={customDatabases.map((d) => ({ id: d.id, name: d.name }))}
+        onClose={() => setImporting(false)}
+        onDone={(databaseId, rowCount) => {
+          setImporting(false);
+          Alert.alert('Імпортовано', `Додано записів: ${rowCount}`);
+          navigation.navigate('CustomDatabase', { databaseId });
+        }}
+      />
 
       <RenamePrompt
         visible={creatingDatabase}
