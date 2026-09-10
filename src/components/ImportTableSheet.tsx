@@ -424,9 +424,15 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
 
                     {openMenuColumn === index && (
                       <View style={styles.menu}>
-                        <Pressable style={styles.menuRow} onPress={() => setMapping(index, { kind: 'skip' })}>
-                          <Text style={styles.menuRowLabel}>Пропустити</Text>
-                        </Pressable>
+                        {/* The name column is the one column that can't be
+                            skipped - every row needs a name. Pick another
+                            column as the name first, then this one is free
+                            to be skipped like any other. */}
+                        {!(index === titleColumn && !targetDatabase) && (
+                          <Pressable style={styles.menuRow} onPress={() => setMapping(index, { kind: 'skip' })}>
+                            <Text style={styles.menuRowLabel}>Пропустити</Text>
+                          </Pressable>
+                        )}
 
                         {targetDatabase
                           ? targetDatabase.fields
