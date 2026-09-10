@@ -48,6 +48,7 @@ import {
   coverFieldOf,
   displayFieldValue,
   resolveRelationValue,
+  resolveBacklinkRows,
   rowTitleOf,
   visibleFieldsOf,
   RowDisplayContext,
@@ -183,6 +184,10 @@ export default function CustomDatabaseScreen({}: Props) {
   const [datePickerFieldId, setDatePickerFieldId] = useState<string | null>(null);
   const [selectPickerFieldId, setSelectPickerFieldId] = useState<string | null>(null);
   const [relationPickerFieldId, setRelationPickerFieldId] = useState<string | null>(null);
+  // Which 'backlink' field's "додати" picker is open. Picking there writes
+  // the OTHER row's relation field, never anything on this row - that one
+  // field stays the only place the link is stored.
+  const [backlinkPickerFieldId, setBacklinkPickerFieldId] = useState<string | null>(null);
   const [rowMenuId, setRowMenuId] = useState<string | null>(null);
   const [documentPicker, setDocumentPicker] = useState<{ row: CustomDatabaseRow; documents: PickableDocument[] } | null>(
     null
@@ -312,11 +317,17 @@ export default function CustomDatabaseScreen({}: Props) {
   // database's own field list), and the two effects below keep exactly
   // those (and only those) databases' field defs + rows subscribed.
   const referencedDbIds = Array.from(
-    new Set(
-      (database?.fields ?? [])
+    new Set([
+      ...(database?.fields ?? [])
         .filter((f) => f.type === 'relation' && f.relationTarget?.kind === 'customDb')
-        .map((f) => (f.relationTarget as { kind: 'customDb'; databaseId: string }).databaseId)
-    )
+        .map((f) => (f.relationTarget as { kind: 'customDb'; databaseId: string }).databaseId),
+      // A 'backlink' field points the other way: the rows that matter live
+      // in the database that points AT us, so that one has to be loaded
+      // too. Same two subscriptions, one more id in the set.
+      ...(database?.fields ?? [])
+        .filter((f) => f.type === 'backlink' && f.backlinkSource)
+        .map((f) => f.backlinkSource!.databaseId),
+    ])
   );
   const referencedDbIdsKey = referencedDbIds.join(',');
 
@@ -602,6 +613,94 @@ export default function CustomDatabaseScreen({}: Props) {
     return id;
   }
 
+  // Links an existing row of the source database to the row being edited,
+  // by writing that row's own relation field. Unlinking clears the same
+  // field. Both are single-field writes on the other row.
+  async function linkBacklinkRow(field: FieldDef, sourceRowId: string, myRowId: string) {
+    const source = field.backlinkSource;
+    if (!source) return;
+    await updateDoc(doc(db, 'customDatabaseRows', sourceRowId), {
+      [`values.${source.fieldId}`]: myRowId,
+      updatedAt: Date.now(),
+    });
+  }
+
+  async function unlinkBacklinkRow(field: FieldDef, sourceRowId: string) {
+    const source = field.backlinkSource;
+    if (!source) return;
+    await updateDoc(doc(db, 'customDatabaseRows', sourceRowId), {
+      [`values.${source.fieldId}`]: deleteField(),
+      updatedAt: Date.now(),
+    });
+  }
+
+  // "Створити «X»" from the backlink side: the new row is born already
+  // pointing back here, so it shows up in this list immediately.
+  async function createBacklinkRow(field: FieldDef, title: string, myRowId: string): Promise<string> {
+    const source = field.backlinkSource;
+    if (!source) return '';
+    const sourceDb = relatedDatabases[source.databaseId];
+    const titleFieldId = sourceDb?.fields[0]?.id;
+    if (!titleFieldId) return '';
+    const id = generateId();
+    const now = Date.now();
+    await setDoc(doc(db, 'customDatabaseRows', id), {
+      databaseId: source.databaseId,
+      values: { [titleFieldId]: title, [source.fieldId]: myRowId },
+      tagIds: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    return id;
+  }
+
+  // Whether the target database currently carries a 'backlink' field
+  // pointing back at this relation - the state of its "показувати з іншого
+  // боку" switch.
+  function isBacklinkEnabled(field: FieldDef): boolean {
+    if (field.relationTarget?.kind !== 'customDb') return false;
+    const target = relatedDatabases[field.relationTarget.databaseId];
+    return (target?.fields ?? []).some(
+      (f) =>
+        f.type === 'backlink' &&
+        f.backlinkSource?.databaseId === databaseId &&
+        f.backlinkSource?.fieldId === field.id
+    );
+  }
+
+  // Adds or removes that field in the OTHER database. Nothing is written to
+  // any ROW either way: a backlink is computed from the relation values
+  // that already exist, so switching it off is just as free as switching
+  // it on, and can't strand data.
+  async function toggleBacklink(field: FieldDef, enabled: boolean) {
+    if (field.relationTarget?.kind !== 'customDb') return;
+    const targetId = field.relationTarget.databaseId;
+    const target = relatedDatabases[targetId];
+    if (!target) return;
+    const without = target.fields.filter(
+      (f) =>
+        !(
+          f.type === 'backlink' &&
+          f.backlinkSource?.databaseId === databaseId &&
+          f.backlinkSource?.fieldId === field.id
+        )
+    );
+    const next: FieldDef[] = enabled
+      ? [
+          ...without,
+          {
+            id: generateId(),
+            // Named after THIS database, the way Notion names the reverse
+            // property after the related one.
+            name: database?.name || 'Зворотні',
+            type: 'backlink',
+            backlinkSource: { databaseId, fieldId: field.id },
+          },
+        ]
+      : without;
+    await updateDoc(doc(db, 'customDatabases', targetId), { fields: next, updatedAt: Date.now() });
+  }
+
   async function openNewRow() {
     const id = generateId();
     const now = Date.now();
@@ -740,8 +839,39 @@ export default function CustomDatabaseScreen({}: Props) {
     return displayFieldValue(field, value, displayContext);
   }
 
+  // The row currently open in the form. A brand-new row is written to
+  // Firestore before the form opens (see openNewRow), so it already has a
+  // real id - which is what lets backlinks work while creating, not only
+  // while editing.
+  const editingRowId = rowEditor ? (rowEditor.mode === 'new' ? rowEditor.id : rowEditor.row.id) : null;
+
   function renderFieldInput(field: FieldDef) {
     const value = draftValues[field.id];
+    if (field.type === 'backlink') {
+      const linked = editingRowId ? resolveBacklinkRows(field, editingRowId, displayContext) : [];
+      const sourceDb = field.backlinkSource ? relatedDatabases[field.backlinkSource.databaseId] : undefined;
+      return (
+        <View style={styles.backlinkList}>
+          {linked.map((r) => (
+            <View key={r.id} style={styles.backlinkRow}>
+              <Text style={styles.backlinkRowLabel} numberOfLines={1}>
+                {rowTitleOf(sourceDb, r)}
+              </Text>
+              <Pressable
+                hitSlop={8}
+                onPress={() => unlinkBacklinkRow(field, r.id).catch(() => {})}
+              >
+                <Ionicons name="close" size={16} color="#9CA3AF" />
+              </Pressable>
+            </View>
+          ))}
+          <Pressable style={styles.backlinkAddRow} onPress={() => setBacklinkPickerFieldId(field.id)}>
+            <Ionicons name="add" size={16} color={ACCENT} />
+            <Text style={styles.backlinkAddLabel}>Додати</Text>
+          </Pressable>
+        </View>
+      );
+    }
     if (field.type === 'text') {
       return (
         <TextInput
@@ -818,6 +948,7 @@ export default function CustomDatabaseScreen({}: Props) {
   const datePickerField = database.fields.find((f) => f.id === datePickerFieldId) ?? null;
   const selectPickerField = database.fields.find((f) => f.id === selectPickerFieldId) ?? null;
   const relationPickerField = database.fields.find((f) => f.id === relationPickerFieldId) ?? null;
+  const backlinkPickerField = database.fields.find((f) => f.id === backlinkPickerFieldId) ?? null;
 
   function renderRowCard(item: CustomDatabaseRow) {
     const { text, textMuted } = colorForDocument(item.id);
@@ -961,6 +1092,21 @@ export default function CustomDatabaseScreen({}: Props) {
           returnKeyType="done"
           onEndEditing={(e) => commitCellText(row, field, e.nativeEvent.text)}
         />
+      );
+    }
+    // A backlink holds nothing of its own and is edited from the row form
+    // (where the other side's rows can actually be picked), so the table
+    // shows how many point here and doesn't open a picker on tap - the
+    // generic branch below would otherwise offer an option list with no
+    // options in it.
+    if (field.type === 'backlink') {
+      const count = resolveBacklinkRows(field, row.id, displayContext).length;
+      return (
+        <View key={field.id} style={[styles.tableCellTap, { width: TABLE_COLUMN_WIDTH }]}>
+          <Text style={count ? styles.tableCell : styles.tableCellEmpty} numberOfLines={1}>
+            {count || '—'}
+          </Text>
+        </View>
       );
     }
     if (field.type === 'relation') {
@@ -1561,6 +1707,10 @@ export default function CustomDatabaseScreen({}: Props) {
         visible={editingFields}
         fields={database.fields}
         otherDatabases={otherDatabases}
+        isBacklinkEnabled={isBacklinkEnabled}
+        onToggleBacklink={(field, enabled) => {
+          toggleBacklink(field, enabled).catch((e) => console.warn('[CustomDatabase] backlink toggle failed', e));
+        }}
         onSave={saveFields}
         onClose={() => setEditingFields(false)}
       />
@@ -1668,6 +1818,29 @@ export default function CustomDatabaseScreen({}: Props) {
           value={draftValues[selectPickerField.id]}
           onChange={(value) => setDraftValue(selectPickerField.id, value)}
           onClose={() => setSelectPickerFieldId(null)}
+        />
+      )}
+
+      {/* The backlink side's own picker: the same sheet, driven by a
+          relation-shaped field pointed at the SOURCE database, so picking
+          (or creating) there writes that row's relation field back here. */}
+      {backlinkPickerField && backlinkPickerField.backlinkSource && editingRowId && (
+        <RelationPickerSheet
+          field={{
+            id: backlinkPickerField.id,
+            name: backlinkPickerField.name,
+            type: 'relation',
+            relationTarget: { kind: 'customDb', databaseId: backlinkPickerField.backlinkSource.databaseId },
+          }}
+          value={undefined}
+          photos={photosList}
+          relatedDatabase={relatedDatabases[backlinkPickerField.backlinkSource.databaseId] ?? null}
+          relatedRows={relatedRows[backlinkPickerField.backlinkSource.databaseId] ?? []}
+          onCreateRow={(title) => createBacklinkRow(backlinkPickerField, title, editingRowId)}
+          onChange={(pickedId) => {
+            if (pickedId) linkBacklinkRow(backlinkPickerField, pickedId, editingRowId).catch(() => {});
+          }}
+          onClose={() => setBacklinkPickerFieldId(null)}
         />
       )}
 
@@ -2424,6 +2597,35 @@ const styles = StyleSheet.create({
   // dark tabs - flexGrow/flexShrink: 0 keeps it from competing for height
   // with the row list below it (same fix, same reason, as that
   // component's own `scroll` style).
+  backlinkList: {
+    gap: 6,
+  },
+  backlinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  backlinkRowLabel: {
+    flex: 1,
+    fontSize: 15,
+    color: '#111827',
+  },
+  backlinkAddRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
+  backlinkAddLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: ACCENT,
+  },
   paramsScroll: {
     flexGrow: 0,
     flexShrink: 0,

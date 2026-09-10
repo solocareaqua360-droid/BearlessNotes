@@ -76,6 +76,20 @@ export function resolveRelationValue(
   return { label };
 }
 
+// The rows on the other end of a 'backlink' field: every row of the source
+// database whose own relation field currently points at `rowId`. Computed,
+// never stored - which is exactly why the two sides can't disagree, and
+// why turning a backlink off leaves nothing behind to clean up.
+export function resolveBacklinkRows(
+  field: FieldDef,
+  rowId: string,
+  ctx: RowDisplayContext
+): CustomDatabaseRow[] {
+  const source = field.backlinkSource;
+  if (!source || !rowId) return [];
+  return (ctx.relatedRows[source.databaseId] ?? []).filter((r) => r.values[source.fieldId] === rowId);
+}
+
 // One field's value as display text - '' for an empty one, which is what
 // callers filter on to decide whether it's worth showing at all.
 export function displayFieldValue(
@@ -126,7 +140,16 @@ export function buildRowDisplay(
     chips: database.fields
       .slice(1)
       .filter((f) => !f.hidden && f.id !== cover?.id)
-      .map((f) => ({ field: f, shown: displayFieldValue(f, row.values[f.id], ctx) }))
+      .map((f) => ({
+        field: f,
+        // A backlink holds nothing in row.values - its "value" is however
+        // many rows currently point here, so a card shows that count
+        // rather than trying to list them all in a chip.
+        shown:
+          f.type === 'backlink'
+            ? String(resolveBacklinkRows(f, row.id, ctx).length || '')
+            : displayFieldValue(f, row.values[f.id], ctx),
+      }))
       .filter((entry) => entry.shown !== ''),
   };
 }

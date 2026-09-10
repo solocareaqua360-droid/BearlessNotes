@@ -24,6 +24,7 @@ export const FIELD_TYPE_LABEL: Record<FieldType, string> = {
   select: 'Список',
   multiSelect: 'Множинний список',
   relation: 'Пов’язана база',
+  backlink: 'Зворотні посилання',
 };
 
 // Shared with CustomDatabaseScreen's table header / row form, so a field's
@@ -35,6 +36,7 @@ export const FIELD_TYPE_ICON: Record<FieldType, keyof typeof Ionicons.glyphMap> 
   select: 'chevron-down-circle-outline',
   multiSelect: 'list-outline',
   relation: 'git-network-outline',
+  backlink: 'return-down-back-outline',
 };
 
 const TYPE_LABEL = FIELD_TYPE_LABEL;
@@ -56,6 +58,12 @@ type Props = {
   // Every OTHER custom database (this one excluded) - what a 'relation'
   // field can point at besides the built-in "Фото".
   otherDatabases: { id: string; name: string }[];
+  // Whether this relation's reverse side is currently shown in the target
+  // database, and the switch for it. Applied straight away rather than
+  // waiting for "Зберегти", because it writes to a DIFFERENT database's
+  // field list, not to the draft this sheet is editing.
+  isBacklinkEnabled: (field: FieldDef) => boolean;
+  onToggleBacklink: (field: FieldDef, enabled: boolean) => void;
   onSave: (fields: FieldDef[]) => void;
   onClose: () => void;
 };
@@ -65,7 +73,15 @@ type Props = {
 // writes back on "Зберегти" (onSave), same "edit a copy, commit at the end"
 // shape as GroupPickerSheet's inline rename, just for a whole list at once
 // instead of one row.
-export default function FieldsEditorSheet({ visible, fields, otherDatabases, onSave, onClose }: Props) {
+export default function FieldsEditorSheet({
+  visible,
+  fields,
+  otherDatabases,
+  isBacklinkEnabled,
+  onToggleBacklink,
+  onSave,
+  onClose,
+}: Props) {
   const [draft, setDraft] = useState<FieldDef[]>(fields);
   const [typeMenuFieldId, setTypeMenuFieldId] = useState<string | null>(null);
   // Which field's relation-target list ("Фото" vs another database) is
@@ -360,6 +376,25 @@ export default function FieldsEditorSheet({ visible, fields, otherDatabases, onS
                       />
                       <Text style={styles.coverToggleLabel}>Використовувати як заставку</Text>
                     </Pressable>
+                    {/* Only for a field that's already saved: the reverse
+                        side has to name a real field id, and a field
+                        added in this draft doesn't have one on record yet
+                        (cancelling would leave the other database pointing
+                        at something that never existed). */}
+                    {field.relationTarget?.kind === 'customDb' &&
+                      fields.some((f) => f.id === field.id) && (
+                        <Pressable
+                          style={styles.coverToggleRow}
+                          onPress={() => onToggleBacklink(field, !isBacklinkEnabled(field))}
+                        >
+                          <Ionicons
+                            name={isBacklinkEnabled(field) ? 'checkbox' : 'square-outline'}
+                            size={18}
+                            color={isBacklinkEnabled(field) ? ACCENT : '#9CA3AF'}
+                          />
+                          <Text style={styles.coverToggleLabel}>Показувати з іншого боку</Text>
+                        </Pressable>
+                      )}
                   </View>
                 )}
               </View>

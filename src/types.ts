@@ -383,7 +383,24 @@ export interface DocumentItem {
 // (Tasks/Links/Photos/Files). fields[0] is always type 'text' and acts as
 // the row's title everywhere (list view, row picker) - it can be renamed
 // but never removed or retyped.
-export type FieldType = 'text' | 'number' | 'date' | 'select' | 'multiSelect' | 'relation';
+export type FieldType =
+  | 'text'
+  | 'number'
+  | 'date'
+  | 'select'
+  | 'multiSelect'
+  | 'relation'
+  // The other end of somebody else's 'relation' field: every row of THAT
+  // database currently pointing at this one. Deliberately stores nothing
+  // in a row's own `values` - it is computed at render time from rows that
+  // are already loaded, which is what makes it impossible for the two
+  // sides to disagree, and what makes turning it off again free (nothing
+  // was ever written to clean up).
+  //
+  // It is still editable: adding from this side writes the relation field
+  // of the OTHER row, since that single field remains the only place the
+  // link is stored.
+  | 'backlink';
 
 export interface FieldOption {
   id: string;
@@ -406,6 +423,11 @@ export interface FieldDef {
   options?: FieldOption[];
   // 'relation' only.
   relationTarget?: RelationTarget;
+  // 'backlink' only - which database's rows to look at, and which of its
+  // 'relation' fields has to point back here for a row to count. Created
+  // and removed by the relation field's own "показувати з іншого боку"
+  // toggle (see FieldsEditorSheet), never picked as a field type by hand.
+  backlinkSource?: { databaseId: string; fieldId: string };
   // 'relation' only - marks this as THE field whose value renders as a
   // thumbnail cover in list/table (and, later, card) views, instead of a
   // plain text value. At most one field per database should carry this -
