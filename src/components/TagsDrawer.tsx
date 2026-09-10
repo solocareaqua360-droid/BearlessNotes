@@ -1,11 +1,15 @@
 import { useMemo, useState } from 'react';
-import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Tag } from '../types';
 import { FONT_REGULAR, FONT_SEMIBOLD, FONT_BOLD, FONT_EXTRABOLD } from '../utils/fonts';
 
-const DRAWER_WIDTH = Math.round(Dimensions.get('window').width * (2 / 3));
+// Two thirds of the window, measured per render (useWindowDimensions) and
+// never captured once at module scope from Dimensions.get() - see
+// CalendarScreen's own PLATE_MARGIN comment for why that value can simply
+// be the wrong window, and what it looks like when it is.
+const DRAWER_FRACTION = 2 / 3;
 // Matches FloatingIslandTabBar's own height (8px padding + 48px buttons) -
 // the open button is a standalone circle the same size as the island.
 const OPEN_BUTTON_SIZE = 64;
@@ -164,9 +168,11 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
   // flips false so the closing animation below gets to finish before the
   // Modal actually unmounts, instead of yanking the drawer away instantly.
   const [isRendered, setIsRendered] = useState(false);
+  const { width: windowWidth } = useWindowDimensions();
+  const drawerWidth = Math.round(windowWidth * DRAWER_FRACTION);
   const [filterMode, setFilterMode] = useState<TagFilterMode>('multi');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  // How far open the panel is, 0 (closed) .. DRAWER_WIDTH (fully open).
+  // How far open the panel is, 0 (closed) .. drawerWidth (fully open).
   // Kept separate from the backdrop's own dim-in below - the panel itself
   // snaps out quickly (a spring here read as "wobbling like a boat", so a
   // plain eased slide replaces it), while the dimming behind it fades in
@@ -187,7 +193,7 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
   function openDrawer() {
     setIsOpen(true);
     setIsRendered(true);
-    openAmount.value = withTiming(DRAWER_WIDTH, { duration: 260, easing: Easing.out(Easing.cubic) });
+    openAmount.value = withTiming(drawerWidth, { duration: 260, easing: Easing.out(Easing.cubic) });
     dimAmount.value = withTiming(1, { duration: 520, easing: Easing.out(Easing.quad) });
   }
 
@@ -225,7 +231,10 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
     }
   }
 
-  const panelStyle = useAnimatedStyle(() => ({ transform: [{ translateX: openAmount.value - DRAWER_WIDTH }] }));
+  const panelStyle = useAnimatedStyle(
+    () => ({ transform: [{ translateX: openAmount.value - drawerWidth }] }),
+    [drawerWidth]
+  );
   const backdropStyle = useAnimatedStyle(() => ({ opacity: dimAmount.value }));
 
   return (
@@ -235,7 +244,7 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
           <Pressable style={StyleSheet.absoluteFill} onPress={closeDrawer} />
         </Animated.View>
 
-        <Animated.View style={[styles.panel, { width: DRAWER_WIDTH }, panelStyle]}>
+        <Animated.View style={[styles.panel, { width: drawerWidth }, panelStyle]}>
           <Text style={styles.title}>Теги</Text>
 
           <View style={styles.segmented}>
@@ -356,7 +365,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     paddingHorizontal: 12,
     marginBottom: 6,
-    maxWidth: DRAWER_WIDTH - 60,
+    maxWidth: '100%',
   },
   untaggedLabel: {
     fontSize: 14,
@@ -378,7 +387,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     paddingHorizontal: 12,
     marginBottom: 6,
-    maxWidth: DRAWER_WIDTH - 60,
+    maxWidth: '100%',
   },
   // Fixed-width slot for the checkmark, always rendered - see TreeRow.
   treeCheckSlot: {

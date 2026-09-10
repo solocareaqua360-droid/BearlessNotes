@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Dimensions,
   Keyboard,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -40,13 +39,22 @@ import {
 } from '../utils/dateLocale';
 
 const ACCENT = '#3B82F6';
-const PAGE_WIDTH = Dimensions.get('window').width;
 // calendarPlate carries its own marginHorizontal:16 on each side, so the
-// week strip's actual scrollable viewport is narrower than the raw device
-// width - every page inside it (and the paging math that scrolls between
-// them) has to size against this instead of PAGE_WIDTH, or the ScrollView's
-// real width and its pages' assumed width disagree and everything shifts.
-const STRIP_WIDTH = PAGE_WIDTH - 32;
+// week strip's actual scrollable viewport is this much narrower than the
+// window - every page inside it (and the paging math that scrolls between
+// them) sizes against that, or the ScrollView's real width and its pages'
+// assumed width disagree and everything shifts.
+//
+// Derived per render from useWindowDimensions, NEVER captured once at
+// module scope from Dimensions.get(): that value is whatever Android
+// happened to report the instant this module was first evaluated, which
+// is not always the window the app ends up laid out in (a cold start
+// behind the splash, an OTA bundle reload, split screen, a system display-
+// size change). When the two disagree, the pages stay their stale width
+// while the weekday header above them lays out flexibly against the real
+// one - the columns drift apart and the last days of the week fall off
+// the right edge, which is exactly how this screen has broken twice.
+const PLATE_MARGIN = 16;
 const documentsCollection = collection(db, 'documents');
 const tasksCollection = collection(db, 'tasks');
 const calendarPrefsDoc = doc(db, 'settings', 'calendarPrefs');
@@ -93,6 +101,7 @@ export default function CalendarScreen() {
   // re-measure on a runtime window resize (a Fold unfolding), so the
   // gradient's canvas is sized from this instead.
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const stripWidth = windowWidth - PLATE_MARGIN * 2;
   const today = useMemo(() => new Date(), []);
 
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
@@ -206,13 +215,13 @@ export default function CalendarScreen() {
 
   // Recenters the 3-page week strip on the (possibly new) current week.
   useEffect(() => {
-    weekScrollRef.current?.scrollTo({ x: STRIP_WIDTH, animated: false });
-  }, [weekStart]);
+    weekScrollRef.current?.scrollTo({ x: stripWidth, animated: false });
+  }, [weekStart, stripWidth]);
 
   // Same recentring for the "only filled days" strip's own 3-page window.
   useEffect(() => {
-    filledScrollRef.current?.scrollTo({ x: STRIP_WIDTH, animated: false });
-  }, [filledPageStart]);
+    filledScrollRef.current?.scrollTo({ x: stripWidth, animated: false });
+  }, [filledPageStart, stripWidth]);
 
   // Jumps the strip to whichever 7-slot page contains the selected day (or
   // the next filled day after it, if the selected day itself has no note)
@@ -342,7 +351,7 @@ export default function CalendarScreen() {
   }, [jumpToDate]);
 
   function handleWeekScrollEnd(e: NativeSyntheticEvent<NativeScrollEvent>) {
-    const page = Math.round(e.nativeEvent.contentOffset.x / STRIP_WIDTH);
+    const page = Math.round(e.nativeEvent.contentOffset.x / stripWidth);
     if (page === 1) return;
     const deltaDays = (page - 1) * 7;
     setWeekStart((prev) => addDays(prev, deltaDays));
@@ -350,7 +359,7 @@ export default function CalendarScreen() {
   }
 
   function handleFilledScrollEnd(e: NativeSyntheticEvent<NativeScrollEvent>) {
-    const page = Math.round(e.nativeEvent.contentOffset.x / STRIP_WIDTH);
+    const page = Math.round(e.nativeEvent.contentOffset.x / stripWidth);
     if (page === 1) return;
     userAdjustedFilledPageRef.current = true;
     setFilledPageStart((prev) => Math.max(0, prev + (page - 1) * 7));
@@ -570,12 +579,12 @@ export default function CalendarScreen() {
                 pagingEnabled
                 showsHorizontalScrollIndicator={false}
                 style={[styles.weekScroll, { height: FILLED_ROW_HEIGHT }]}
-                contentOffset={{ x: STRIP_WIDTH, y: 0 }}
-                onLayout={() => filledScrollRef.current?.scrollTo({ x: STRIP_WIDTH, animated: false })}
+                contentOffset={{ x: stripWidth, y: 0 }}
+                onLayout={() => filledScrollRef.current?.scrollTo({ x: stripWidth, animated: false })}
                 onMomentumScrollEnd={handleFilledScrollEnd}
               >
                 {WEEK_PAGE_OFFSETS.map((offset) => (
-                  <View key={offset} style={styles.weekPage}>
+                  <View key={offset} style={[styles.weekPage, { width: stripWidth }]}>
                     {Array.from({ length: 7 }, (_, i) => {
                       const idx = filledPageStart + offset + i;
                       const dateStr = activeDatesSorted[idx];
@@ -605,12 +614,12 @@ export default function CalendarScreen() {
                 // RN gives every ScrollView flexGrow: 1, so without a fixed
                 // height here the strip stretches over all the free space.
                 style={styles.weekScroll}
-                contentOffset={{ x: STRIP_WIDTH, y: 0 }}
-                onLayout={() => weekScrollRef.current?.scrollTo({ x: STRIP_WIDTH, animated: false })}
+                contentOffset={{ x: stripWidth, y: 0 }}
+                onLayout={() => weekScrollRef.current?.scrollTo({ x: stripWidth, animated: false })}
                 onMomentumScrollEnd={handleWeekScrollEnd}
               >
                 {WEEK_PAGE_OFFSETS.map((offset) => (
-                  <View key={offset} style={styles.weekPage}>
+                  <View key={offset} style={[styles.weekPage, { width: stripWidth }]}>
                     {getWeekDates(addDays(weekStart, offset)).map((date) => {
                       const key = dateKey(date);
                       const isToday = isSameDay(date, today);
@@ -1002,7 +1011,6 @@ const styles = StyleSheet.create({
     height: WEEK_AREA_HEIGHT,
   },
   weekPage: {
-    width: STRIP_WIDTH,
     flexDirection: 'row',
     paddingHorizontal: 16,
   },

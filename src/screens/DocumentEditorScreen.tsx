@@ -18,6 +18,7 @@ import {
   Text,
   TextInput,
   UIManager,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -2688,7 +2689,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // the wrong view here (a 2500px-tall ancestor), so it isn't used.
   const activeInputBottomSV = useSharedValue(-1);
   const activeInputOffsetSV = useSharedValue(0);
-  const windowHeight = Dimensions.get('window').height;
+  // useWindowDimensions, not a bare Dimensions.get() read: this one feeds
+  // the keyboard-sync math below, and a value that doesn't re-render when
+  // the window actually changes is the same trap that broke the calendar's
+  // week strip twice (see CalendarScreen's PLATE_MARGIN comment).
+  const { height: windowHeight } = useWindowDimensions();
   useEffect(() => {
     if (focusedBlockId === null) activeInputBottomSV.value = -1;
   }, [focusedBlockId]);
