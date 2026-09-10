@@ -49,7 +49,9 @@ import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useSortPref } from '../hooks/useSortPref';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
-import { blockFromFile, copyObjectsToNote } from '../utils/copyToNote';
+import { appendBlocksToToday, blockFromFile, copyObjectsToNote } from '../utils/copyToNote';
+import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
+import SaveDestinationSheet from '../components/SaveDestinationSheet';
 import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
 import { sortItems } from '../utils/sortItems';
 import { colorForDocument } from '../utils/documentColor';
@@ -61,6 +63,8 @@ const groupsCollection = collection(db, 'groups');
 const filesPrefsDoc = doc(db, 'settings', 'filesPrefs');
 
 type ViewMode = 'list' | 'grid';
+
+type JustAddedFile = { id: string; fileUri: string; fileName: string; mimeType?: string; createdAt: number };
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -114,6 +118,18 @@ export default function FilesScreen() {
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
+  // The record a "+" add just created, waiting on the "Перемістити" toast
+  // (see relocateJustAddedFile) - the file itself already lives in the
+  // base regardless of what happens here.
+  const [justAddedFile, setJustAddedFile] = useState<JustAddedFile | null>(null);
+  const [saveDestinationVisible, setSaveDestinationVisible] = useState(false);
+  // Same 4s window usePendingDelete's own undo toast uses - ignored (not
+  // cleared) while the sheet is actually open so it can't vanish mid-choice.
+  useEffect(() => {
+    if (!justAddedFile || saveDestinationVisible) return;
+    const timeoutId = setTimeout(() => setJustAddedFile(null), 4000);
+    return () => clearTimeout(timeoutId);
+  }, [justAddedFile, saveDestinationVisible]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [cardMenuFileId, setCardMenuFileId] = useState<string | null>(null);
@@ -216,6 +232,32 @@ export default function FilesScreen() {
     backupFileToDrive(fileUri, asset.name, asset.mimeType ?? 'application/octet-stream', 'Files').then((uploaded) => {
       if (uploaded) updateDoc(doc(db, 'files', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
     });
+    // Lands in the base either way (unchanged, fast); "Перемістити" on the
+    // toast below is the opt-in path to ALSO reference it from a note/
+    // today/board, via the same SaveDestinationSheet ShareIntentHandler
+    // uses - it never removes the base record, only adds a block elsewhere.
+    setJustAddedFile({ id, fileUri, fileName: asset.name, mimeType: asset.mimeType, createdAt: now });
+  }
+
+  function fileToBlock(item: JustAddedFile) {
+    return blockFromFile({ id: item.id, fileUri: item.fileUri, fileName: item.fileName, mimeType: item.mimeType, createdAt: item.createdAt });
+  }
+
+  function fileToImportableItem(item: JustAddedFile) {
+    return {
+      id: item.id,
+      kind: 'file',
+      title: item.fileName,
+      data: { fileUri: item.fileUri, fileName: item.fileName, mimeType: item.mimeType, createdAt: item.createdAt },
+    };
+  }
+
+  function relocateJustAddedFile(destination: (item: JustAddedFile) => Promise<unknown>) {
+    const item = justAddedFile;
+    if (!item) return;
+    setJustAddedFile(null);
+    setSaveDestinationVisible(false);
+    destination(item).catch((e) => console.warn('[FilesScreen] relocate failed', e));
   }
 
   async function openFile(file: FileItem) {
@@ -714,6 +756,40 @@ export default function FilesScreen() {
       )}
 
       {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
+      {!toast && justAddedFile && (
+        <UndoToast
+          message={`Додано у Файли: ${justAddedFile.fileName}`}
+          actionLabel="Перемістити"
+          onUndo={() => setSaveDestinationVisible(true)}
+        />
+      )}
+
+      <SaveDestinationSheet
+        visible={saveDestinationVisible}
+        title="Куди додати файл?"
+        defaultLabel="Лишити в базі"
+        onPickDefault={() => relocateJustAddedFile(async () => {})}
+        onPickToday={() =>
+          relocateJustAddedFile((item) => appendBlocksToToday([fileToBlock(item)], [{ collectionName: 'files', id: item.id }]))
+        }
+        onPickNew={() =>
+          relocateJustAddedFile((item) =>
+            copyObjectsToNote(null, [fileToBlock(item)], [{ collectionName: 'files', id: item.id }]).then((newId) =>
+              navigation.navigate('Editor', { documentId: newId })
+            )
+          )
+        }
+        onPickExisting={(documentId) =>
+          relocateJustAddedFile((item) =>
+            copyObjectsToNote(documentId, [fileToBlock(item)], [{ collectionName: 'files', id: item.id }])
+          )
+        }
+        onPickNewBoard={() => relocateJustAddedFile((item) => createBoardAndAddItem('Без назви', fileToImportableItem(item)))}
+        onPickExistingBoard={(boardId) =>
+          relocateJustAddedFile((item) => addItemToBoard(boardId, fileToImportableItem(item)))
+        }
+        onClose={() => setSaveDestinationVisible(false)}
+      />
     </View>
   );
 }

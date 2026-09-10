@@ -56,7 +56,9 @@ import { useSortPref } from '../hooks/useSortPref';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
-import { blockFromPhoto, copyObjectsToNote } from '../utils/copyToNote';
+import { appendBlocksToToday, blockFromPhoto, copyObjectsToNote } from '../utils/copyToNote';
+import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
+import SaveDestinationSheet from '../components/SaveDestinationSheet';
 import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
 import { sortItems } from '../utils/sortItems';
 import DownloadToast from '../components/DownloadToast';
@@ -65,6 +67,8 @@ import SortMenuRows from '../components/SortMenuRows';
 const ACCENT = '#EC4899';
 const groupsCollection = collection(db, 'groups');
 const DOWNLOAD_DIR_STORAGE_KEY = 'bearlessNotes.downloadDirUri';
+
+type JustAddedPhoto = { id: string; imageUri: string; createdAt: number };
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -181,6 +185,13 @@ export default function PhotosScreen() {
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
+  const [justAddedPhoto, setJustAddedPhoto] = useState<JustAddedPhoto | null>(null);
+  const [saveDestinationVisible, setSaveDestinationVisible] = useState(false);
+  useEffect(() => {
+    if (!justAddedPhoto || saveDestinationVisible) return;
+    const timeoutId = setTimeout(() => setJustAddedPhoto(null), 4000);
+    return () => clearTimeout(timeoutId);
+  }, [justAddedPhoto, saveDestinationVisible]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [addPhotoSheetVisible, setAddPhotoSheetVisible] = useState(false);
   const { sortPref, selectSortField } = useSortPref('photosPrefs');
@@ -331,6 +342,26 @@ export default function PhotosScreen() {
     backupFileToDrive(imageUri, `${id}.jpg`, 'image/jpeg', 'Photos').then((uploaded) => {
       if (uploaded) updateDoc(doc(db, 'photos', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
     });
+    // Lands in the base either way (unchanged, fast) - see FilesScreen's
+    // identical justAddedFile for why "Перемістити" only ADDS a block
+    // elsewhere rather than moving anything.
+    setJustAddedPhoto({ id, imageUri, createdAt: now });
+  }
+
+  function photoToBlock(item: JustAddedPhoto) {
+    return blockFromPhoto({ id: item.id, imageUri: item.imageUri, createdAt: item.createdAt });
+  }
+
+  function photoToImportableItem(item: JustAddedPhoto) {
+    return { id: item.id, kind: 'photo', title: 'Фото', data: { imageUri: item.imageUri, createdAt: item.createdAt } };
+  }
+
+  function relocateJustAddedPhoto(destination: (item: JustAddedPhoto) => Promise<unknown>) {
+    const item = justAddedPhoto;
+    if (!item) return;
+    setJustAddedPhoto(null);
+    setSaveDestinationVisible(false);
+    destination(item).catch((e) => console.warn('[PhotosScreen] relocate failed', e));
   }
 
   async function openDocumentIcon(photo: PhotoItem) {
@@ -810,6 +841,9 @@ export default function PhotosScreen() {
       )}
 
       {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
+      {!toast && justAddedPhoto && (
+        <UndoToast message="Додано у Фото" actionLabel="Перемістити" onUndo={() => setSaveDestinationVisible(true)} />
+      )}
       {downloadToast && (
         <DownloadToast
           fileName={downloadToast.fileName}
@@ -817,6 +851,37 @@ export default function PhotosScreen() {
           onIgnore={dismissDownloadToast}
         />
       )}
+
+      <SaveDestinationSheet
+        visible={saveDestinationVisible}
+        title="Куди додати фото?"
+        defaultLabel="Лишити в базі"
+        onPickDefault={() => relocateJustAddedPhoto(async () => {})}
+        onPickToday={() =>
+          relocateJustAddedPhoto((item) =>
+            appendBlocksToToday([photoToBlock(item)], [{ collectionName: 'photos', id: item.id }])
+          )
+        }
+        onPickNew={() =>
+          relocateJustAddedPhoto((item) =>
+            copyObjectsToNote(null, [photoToBlock(item)], [{ collectionName: 'photos', id: item.id }]).then((newId) =>
+              navigation.navigate('Editor', { documentId: newId })
+            )
+          )
+        }
+        onPickExisting={(documentId) =>
+          relocateJustAddedPhoto((item) =>
+            copyObjectsToNote(documentId, [photoToBlock(item)], [{ collectionName: 'photos', id: item.id }])
+          )
+        }
+        onPickNewBoard={() =>
+          relocateJustAddedPhoto((item) => createBoardAndAddItem('Без назви', photoToImportableItem(item)))
+        }
+        onPickExistingBoard={(boardId) =>
+          relocateJustAddedPhoto((item) => addItemToBoard(boardId, photoToImportableItem(item)))
+        }
+        onClose={() => setSaveDestinationVisible(false)}
+      />
     </View>
   );
 }

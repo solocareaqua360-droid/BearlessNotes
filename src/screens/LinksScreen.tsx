@@ -46,7 +46,9 @@ import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useSortPref } from '../hooks/useSortPref';
 import { useTags, detachTagFromDeletedItem, isTagAllowedForKind } from '../hooks/useTags';
-import { blockFromLink, copyObjectsToNote } from '../utils/copyToNote';
+import { appendBlocksToToday, blockFromLink, copyObjectsToNote } from '../utils/copyToNote';
+import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
+import SaveDestinationSheet from '../components/SaveDestinationSheet';
 import { linkDocId } from '../utils/linkId';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { sortItems } from '../utils/sortItems';
@@ -59,6 +61,8 @@ const linksCollection = collection(db, 'links');
 const groupsCollection = collection(db, 'groups');
 
 type ViewMode = 'list' | 'grid';
+
+type JustAddedLink = { id: string; url: string; title: string; imageUrl?: string; siteName?: string; createdAt: number };
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -187,6 +191,13 @@ export default function LinksScreen({ route, navigation }: Props) {
   const [addLinkUrlPromptVisible, setAddLinkUrlPromptVisible] = useState(false);
   const [isAddingLink, setIsAddingLink] = useState(false);
   const [addLinkTitlePrompt, setAddLinkTitlePrompt] = useState<{ url: string; preview: LinkPreview } | null>(null);
+  const [justAddedLink, setJustAddedLink] = useState<JustAddedLink | null>(null);
+  const [saveDestinationVisible, setSaveDestinationVisible] = useState(false);
+  useEffect(() => {
+    if (!justAddedLink || saveDestinationVisible) return;
+    const timeoutId = setTimeout(() => setJustAddedLink(null), 4000);
+    return () => clearTimeout(timeoutId);
+  }, [justAddedLink, saveDestinationVisible]);
   const { sortPref, selectSortField } = useSortPref(linksPrefsKey);
   const { filterPending, requestDeleteMany, undo, toast } = usePendingDelete<LinkItem>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
@@ -311,6 +322,31 @@ export default function LinksScreen({ route, navigation }: Props) {
     // list. Jump the screen to wherever it actually landed.
     const newCategory = categoryFromSiteName(preview.siteName);
     if (newCategory !== category) navigation.setParams({ category: newCategory });
+    // Lands in the base either way (unchanged, fast) - see FilesScreen's
+    // identical justAddedFile for why "Перемістити" only ADDS a block
+    // elsewhere rather than moving anything.
+    setJustAddedLink({ id, url, title, imageUrl: preview.imageUrl, siteName: preview.siteName, createdAt: now });
+  }
+
+  function linkToBlock(item: JustAddedLink) {
+    return blockFromLink({ url: item.url, title: item.title, imageUrl: item.imageUrl, siteName: item.siteName });
+  }
+
+  function linkToImportableItem(item: JustAddedLink) {
+    return {
+      id: item.id,
+      kind: `link-${categoryFromSiteName(item.siteName)}`,
+      title: item.title || hostnameOf(item.url),
+      data: { url: item.url, title: item.title, imageUrl: item.imageUrl, siteName: item.siteName },
+    };
+  }
+
+  function relocateJustAddedLink(destination: (item: JustAddedLink) => Promise<unknown>) {
+    const item = justAddedLink;
+    if (!item) return;
+    setJustAddedLink(null);
+    setSaveDestinationVisible(false);
+    destination(item).catch((e) => console.warn('[LinksScreen] relocate failed', e));
   }
 
   async function submitNewLinkUrl(rawUrl: string) {
@@ -819,6 +855,44 @@ export default function LinksScreen({ route, navigation }: Props) {
       )}
 
       {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
+      {!toast && justAddedLink && (
+        <UndoToast
+          message={`Додано у ${CATEGORY_INFO[category].title}`}
+          actionLabel="Перемістити"
+          onUndo={() => setSaveDestinationVisible(true)}
+        />
+      )}
+
+      <SaveDestinationSheet
+        visible={saveDestinationVisible}
+        title="Куди додати посилання?"
+        defaultLabel="Лишити в базі"
+        onPickDefault={() => relocateJustAddedLink(async () => {})}
+        onPickToday={() =>
+          relocateJustAddedLink((item) =>
+            appendBlocksToToday([linkToBlock(item)], [{ collectionName: 'links', id: item.id }])
+          )
+        }
+        onPickNew={() =>
+          relocateJustAddedLink((item) =>
+            copyObjectsToNote(null, [linkToBlock(item)], [{ collectionName: 'links', id: item.id }]).then((newId) =>
+              navigation.navigate('Editor', { documentId: newId })
+            )
+          )
+        }
+        onPickExisting={(documentId) =>
+          relocateJustAddedLink((item) =>
+            copyObjectsToNote(documentId, [linkToBlock(item)], [{ collectionName: 'links', id: item.id }])
+          )
+        }
+        onPickNewBoard={() =>
+          relocateJustAddedLink((item) => createBoardAndAddItem('Без назви', linkToImportableItem(item)))
+        }
+        onPickExistingBoard={(boardId) =>
+          relocateJustAddedLink((item) => addItemToBoard(boardId, linkToImportableItem(item)))
+        }
+        onClose={() => setSaveDestinationVisible(false)}
+      />
     </View>
   );
 }

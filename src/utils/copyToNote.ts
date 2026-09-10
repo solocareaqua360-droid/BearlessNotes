@@ -1,6 +1,7 @@
 import { addDoc, arrayUnion, collection, doc, setDoc, updateDoc } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import { Block, SketchElement } from '../types';
+import { dateKey } from './dateLocale';
 
 const documentsCollection = collection(db, 'documents');
 
@@ -128,6 +129,30 @@ export async function copyObjectsToNote(
     });
     documentId = newDocRef.id;
   }
+  await Promise.all(
+    mirrorUpdates.map(({ collectionName, id }) =>
+      setDoc(doc(db, collectionName, id), { [`usedInDocuments.${documentId}`]: true }, { merge: true })
+    )
+  );
+  return documentId;
+}
+
+// "Сьогодні" from SaveDestinationSheet - appends into today's own daily
+// note, creating it (with the `calendarDate` field CalendarScreen looks
+// for) if today doesn't have one yet. A plain updateDoc like
+// copyObjectsToNote's "existing document" branch would reject outright on
+// a day that has nothing written yet - setDoc+merge is what makes "create
+// if missing, append if not" one call.
+export async function appendBlocksToToday(
+  blocks: Block[],
+  mirrorUpdates: { collectionName: string; id: string }[]
+): Promise<string> {
+  const documentId = `day_${dateKey(new Date())}`;
+  await setDoc(
+    doc(db, 'documents', documentId),
+    { blocks: arrayUnion(...blocks), calendarDate: dateKey(new Date()), updatedAt: Date.now() },
+    { merge: true }
+  );
   await Promise.all(
     mirrorUpdates.map(({ collectionName, id }) =>
       setDoc(doc(db, collectionName, id), { [`usedInDocuments.${documentId}`]: true }, { merge: true })

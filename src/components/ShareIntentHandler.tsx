@@ -21,6 +21,7 @@ import { backupFileToDrive } from '../utils/googleDrive';
 import { navigationRef } from '../navigationRef';
 import { FREE_STICKER_LIMIT } from '../screens/DocumentsScreen';
 import { dateKey } from '../utils/dateLocale';
+import { appendBlocksToToday } from '../utils/copyToNote';
 import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
 import RenamePrompt from './RenamePrompt';
 import SaveDestinationSheet from './SaveDestinationSheet';
@@ -262,25 +263,18 @@ export default function ShareIntentHandler() {
     };
   }
 
-  // "Сьогодні" - appended to today's own daily note, creating it (with the
-  // calendarDate field CalendarScreen looks for) if today doesn't have one
-  // yet. Same lazy-mirror reasoning as "Додати в документ": opening the
-  // Calendar tab, which lands on today by default, is what lets
-  // DocumentEditorScreen's own sync effects catch the link/text block up.
+  // "Сьогодні" - appended to today's own daily note (see
+  // appendBlocksToToday). No mirror write here, same lazy-mirror
+  // reasoning as "Додати в документ": the link's mirror record doesn't
+  // exist yet at share time, so opening the Calendar tab, which lands on
+  // today by default, is what lets DocumentEditorScreen's own sync
+  // effects create it properly (full url/title/etc, not just a bare
+  // usedInDocuments entry).
   function finalizeShareToday() {
     const share = pendingShare;
     if (!share) return;
     setPendingShare(null);
-    const documentId = `day_${dateKey(new Date())}`;
-    setDoc(
-      doc(db, 'documents', documentId),
-      {
-        blocks: arrayUnion(blockForPendingShare(share)),
-        calendarDate: dateKey(new Date()),
-        updatedAt: Date.now(),
-      },
-      { merge: true }
-    )
+    appendBlocksToToday([blockForPendingShare(share)], [])
       .then(() => {
         if (navigationRef.isReady())
           navigationRef.navigate('Tabs', { screen: 'Календар', params: { jumpToDate: dateKey(new Date()) } });

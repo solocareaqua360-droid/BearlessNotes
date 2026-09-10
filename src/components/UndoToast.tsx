@@ -1,13 +1,24 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-export default function UndoToast({ message, onUndo }: { message: string; onUndo: () => void }) {
+// `actionLabel` defaults to "Скасувати" (its original, only job) - Files/
+// Photos/Links also reuse this exact shape for "Додано у Файли · Перемістити"
+// after a "+" add, which is why the label is a prop rather than baked in.
+export default function UndoToast({
+  message,
+  actionLabel,
+  onUndo,
+}: {
+  message: string;
+  actionLabel?: string;
+  onUndo: () => void;
+}) {
   return (
     <View style={styles.toast}>
       <Text style={styles.message} numberOfLines={1}>
         {message}
       </Text>
       <Pressable hitSlop={8} onPress={onUndo}>
-        <Text style={styles.undo}>Скасувати</Text>
+        <Text style={styles.undo}>{actionLabel ?? 'Скасувати'}</Text>
       </Pressable>
     </View>
   );
