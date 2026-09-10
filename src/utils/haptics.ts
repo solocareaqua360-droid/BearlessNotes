@@ -1,4 +1,4 @@
-import { Platform, Vibration } from 'react-native';
+import { Platform } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
 // Haptic feedback, named for what happened rather than for how it should
@@ -68,17 +68,12 @@ export function hapticWarning() {
   android(Haptics.AndroidHaptics.Reject, () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning));
 }
 
-// A new document opening: a short pulse, a pause, then a longer one -
-// a sheet lifting and landing.
-//
-// This one deliberately uses the raw motor (Vibration) rather than the
-// haptic effects everything else here uses. Samsung attenuates the
-// system's tactile effects heavily - even Heavy impacts were barely
-// distinguishable on the user's device, and the tick constants were
-// invisible - and the motor is the only thing left that is reliably
-// FELT. The cost is honest: this buzzes where a haptic effect taps.
-// Durations in ms, alternating pause/vibrate as Android's pattern format
-// requires.
-export function hapticPageTurn() {
-  Vibration.vibrate([0, 22, 55, 45]);
+// A new document created. Deliberately the SAME effect as picking a block
+// up, not one of its own: a composed two-pulse "page turn" was
+// imperceptible through the system's tactile effects on the user's
+// Samsung (which attenuates them heavily), and buzzy through the raw
+// motor. The drag effect is what reads clearly on that hardware, so a
+// creation gets it too.
+export function hapticCreate() {
+  android(Haptics.AndroidHaptics.Drag_Start, () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
 }
