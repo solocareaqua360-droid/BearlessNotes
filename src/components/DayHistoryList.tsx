@@ -203,7 +203,11 @@ export default function DayHistoryList({ items }: { items: HistoryItem[] }) {
   }
 
   return (
-    <View style={styles.wrap}>
+    // A Fragment, not a wrapping View: the caller (CalendarScreen) places
+    // the header pill in a flex-wrap row alongside its own month capsule,
+    // and relies on the expanded body's own width:'100%' to force it onto
+    // its own line below both rather than squeezing in beside them.
+    <>
       <Pressable style={styles.header} onPress={() => setExpanded((v) => !v)}>
         <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.75)" />
         <Text style={styles.headerLabel}>Історія ({items.length})</Text>
@@ -211,31 +215,36 @@ export default function DayHistoryList({ items }: { items: HistoryItem[] }) {
       </Pressable>
 
       {expanded && (
-        // A fixed max height with its own scroll - this list can end up
-        // being the main thing on screen (the note collapsed specifically
-        // to make room for it), so it must never depend on how much space
-        // whatever surrounds it happens to leave.
-        <ScrollView style={styles.list} nestedScrollEnabled contentContainerStyle={styles.listContent}>
-          {items.map((item) => (
-            <View key={`${item.kind}-${item.id}`}>
-              {item.kind === 'photo' || item.kind === 'file' || item.kind.startsWith('link-')
-                ? renderMediaCard(item)
-                : renderPlainCard(item)}
-            </View>
-          ))}
-        </ScrollView>
+        <View style={styles.bodyRow}>
+          {/* A fixed max height with its own scroll - this list can end up
+              being the main thing on screen (the note collapsed
+              specifically to make room for it), so it must never depend
+              on how much space whatever surrounds it happens to leave. */}
+          <ScrollView style={styles.list} nestedScrollEnabled contentContainerStyle={styles.listContent}>
+            {items.map((item) => (
+              <View key={`${item.kind}-${item.id}`}>
+                {item.kind === 'photo' || item.kind === 'file' || item.kind.startsWith('link-')
+                  ? renderMediaCard(item)
+                  : renderPlainCard(item)}
+              </View>
+            ))}
+          </ScrollView>
+        </View>
       )}
 
       {viewerImageUri && <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />}
       {playingVideoUrl && <VideoPlayerModal url={playingVideoUrl} onClose={() => setPlayingVideoUrl(null)} />}
-    </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    marginHorizontal: 16,
-    marginBottom: 8,
+  // Forces the expanded list onto its own line below the header row (see
+  // the Fragment comment above) in the parent's flex-wrap container,
+  // instead of squeezing in beside the header/month-capsule pills.
+  bodyRow: {
+    width: '100%',
+    marginTop: 8,
   },
   header: {
     flexDirection: 'row',

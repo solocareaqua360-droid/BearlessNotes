@@ -672,15 +672,23 @@ export default function CalendarScreen() {
       </Animated.View>
       </Animated.View>
 
-      {!isWriting && !onlyFilledDays && (
-        <View style={styles.expandRow}>
-          <Pressable
-            style={styles.expandButton}
-            hitSlop={10}
-            onPress={() => setIsMonthExpanded((prev) => !prev)}
-          >
-            <Ionicons name={isMonthExpanded ? 'chevron-up' : 'chevron-down'} size={16} color="#9CA3AF" />
-          </Pressable>
+      {/* One flex-wrap row for both capsules - the month one always here
+          (unless a compact strip is active, same as before), the history
+          one only on a day that actually has any (see DayHistoryList,
+          which renders nothing at all when it doesn't). Wrapping lets
+          the history capsule's own expanded list drop onto its own line
+          below both pills instead of squeezing in beside them - see its
+          width:'100%' body. */}
+      {!isWriting && (
+        <View style={styles.capsuleRow}>
+          {!onlyFilledDays && (
+            <Pressable style={styles.monthCapsule} onPress={() => setIsMonthExpanded((prev) => !prev)}>
+              <Ionicons name="calendar-outline" size={14} color="rgba(255,255,255,0.75)" />
+              <Text style={styles.monthCapsuleLabel}>{MONTH_FULL[visibleMonth.month]}</Text>
+              <Ionicons name={isMonthExpanded ? 'chevron-up' : 'chevron-down'} size={14} color="rgba(255,255,255,0.6)" />
+            </Pressable>
+          )}
+          <DayHistoryList items={historyByDate.get(selectedKey) ?? []} />
         </View>
       )}
 
@@ -708,10 +716,6 @@ export default function CalendarScreen() {
             </Pressable>
           ))}
         </View>
-      )}
-
-      {!isWriting && (
-        <DayHistoryList items={historyByDate.get(selectedKey) ?? []} />
       )}
 
       {/* Collapsing the note only makes sense while browsing "days with
@@ -1109,18 +1113,33 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: '#60A5FA',
   },
-  expandRow: {
+  capsuleRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    paddingVertical: 6,
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 8,
   },
-  expandButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#F3F4F6',
+  // Same frosted-glass pill every capsule on this dark background uses
+  // (ProjectTabsRow's tabs, the database screens' own controls) - named
+  // for whichever month it would expand into, so the label itself says
+  // what tapping it does.
+  monthCapsule: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(20,20,20,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  monthCapsuleLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.85)',
   },
   noteArea: {
     flex: 1,
