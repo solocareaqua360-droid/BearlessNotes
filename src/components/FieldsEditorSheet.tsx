@@ -189,8 +189,13 @@ export default function FieldsEditorSheet({ visible, fields, otherDatabases, onS
           GestureHandlerRootView - the ScrollView above needs a root
           re-declared here or it doesn't scroll at all. */}
       <GestureHandlerRootView style={{ flex: 1 }}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={[styles.sheet, { marginBottom: keyboardHeight }]} onPress={() => {}}>
+      {/* Backdrop as a SIBLING behind the sheet, not its parent - as a
+          parent it took the RN touch responder for every drag that didn't
+          land on a deeper child, which is what kept this list from
+          scrolling. A tap outside the sheet still closes it. */}
+      <View style={styles.backdrop}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={[styles.sheet, { marginBottom: keyboardHeight }]}>
           <View style={styles.handle} />
           <Text style={styles.title}>Поля</Text>
 
@@ -345,8 +350,8 @@ export default function FieldsEditorSheet({ visible, fields, otherDatabases, onS
               <Text style={styles.saveLabel}>Зберегти</Text>
             </Pressable>
           </View>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
       </GestureHandlerRootView>
     </Modal>
   );

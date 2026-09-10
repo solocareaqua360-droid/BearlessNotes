@@ -949,8 +949,16 @@ export default function CustomDatabaseScreen({}: Props) {
             GestureScrollView below needs its own root re-declared inside it
             or it silently doesn't scroll at all. */}
         <GestureHandlerRootView style={{ flex: 1 }}>
-        <Pressable style={styles.backdrop} onPress={cancelRowEditor}>
-          <Pressable style={[styles.editorSheet, { marginBottom: keyboardHeight }]} onPress={() => {}}>
+        {/* The dimmed backdrop is a SIBLING behind the sheet, not its
+            parent. As a parent (a Pressable wrapping everything, only there
+            to stop a tap from closing the sheet) it took the RN touch
+            responder for every drag that didn't land on a deeper child -
+            which is exactly what kept the field list from scrolling. With
+            it behind instead, nothing above the list claims touches, and a
+            tap outside the sheet still closes it. */}
+        <View style={styles.backdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={cancelRowEditor} />
+          <View style={[styles.editorSheet, { marginBottom: keyboardHeight }]}>
             <View style={styles.handle} />
             <Text style={styles.title}>{rowEditor?.mode === 'new' ? 'Новий запис' : 'Редагувати запис'}</Text>
             {/* keyboardShouldPersistTaps: without it, tapping "Теги" (or
@@ -986,8 +994,8 @@ export default function CustomDatabaseScreen({}: Props) {
                 <Text style={styles.saveLabel}>Зберегти</Text>
               </Pressable>
             </View>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
         </GestureHandlerRootView>
       </Modal>
 
