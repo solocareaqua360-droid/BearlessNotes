@@ -1902,7 +1902,12 @@ const styles = StyleSheet.create({
   },
   tabsTunnel: {
     position: 'absolute',
-    right: 0,
+    // Hangs 2px PAST the tabs ScrollView's own right edge, which is what
+    // clips them - so a tab runs out of view just inside this oval's far
+    // border rather than at the near one. That's the whole illusion: a tab
+    // is still visible entering the tunnel and is gone by the far side,
+    // instead of being cut off against the mouth of it.
+    right: -2,
     // Overhangs a tab by 4px at each end, so it reads as the thing the
     // tabs disappear into rather than as another pill in the row. (The
     // row carries 10px of padding under its pills, hence the asymmetry.)
@@ -1910,10 +1915,10 @@ const styles = StyleSheet.create({
     bottom: 6,
     width: 10,
     borderRadius: 999,
-    // Nearly opaque on purpose: a tab has to VANISH behind this, and at
-    // the glass transparency the rest of the capsules use, its text
-    // showed straight through and the illusion fell apart.
-    backgroundColor: 'rgba(24,22,20,0.94)',
+    // Same glass as every other capsule here, deliberately: making it
+    // opaque did hide the tab, but at the NEAR edge, which read as the
+    // tab simply ending early.
+    backgroundColor: 'rgba(20,20,20,0.35)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
   },
