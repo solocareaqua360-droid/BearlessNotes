@@ -39,7 +39,7 @@ import {
   writeBatch,
 } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
-import { CustomDatabase, CustomDatabaseRow, FieldDef, Group } from '../types';
+import { CustomDatabase, CustomDatabaseRow, CustomDatabaseView, FieldDef, Group } from '../types';
 import { groupAppliesTo } from '../utils/groups';
 import { hapticSuccess } from '../utils/haptics';
 import CustomRowCard, { CustomRowGridCard, RelationThumb } from '../components/CustomRowCard';
@@ -85,6 +85,7 @@ import {
   sortRows,
   sortableFieldsOf,
   toggleFacet,
+  viewMatchesState,
 } from '../utils/customRowQuery';
 import { colorForDocument } from '../utils/documentColor';
 import { MONTH_FULL, WEEKDAY_SHORT, dateKey, getMonthGrid, isSameDay, parseDateKey } from '../utils/dateLocale';
@@ -141,7 +142,7 @@ export default function CustomDatabaseScreen({}: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [menuOpen, setMenuOpen] = useState(false);
   const [paramsCollapsed, setParamsCollapsed] = useState(false);
-  const [openParam, setOpenParam] = useState<'view' | 'sort' | 'filter' | null>(null);
+  const [openParam, setOpenParam] = useState<'view' | 'sort' | 'filter' | 'views' | null>(null);
   const [sortPref, setSortPref] = useState<RowSort>(DEFAULT_ROW_SORT);
   const [filters, setFilters] = useState<RowFilter[]>([]);
   // Which field's values the filter dropdown is currently showing. null is
@@ -151,6 +152,12 @@ export default function CustomDatabaseScreen({}: Props) {
   // that exact spot instead of inside the capsule's own one-pill-tall row.
   const [stripY, setStripY] = useState(0);
   const [chipLayouts, setChipLayouts] = useState<Record<string, ChipLayout>>({});
+  const [savedViews, setSavedViews] = useState<CustomDatabaseView[]>([]);
+  // { mode: 'new' } asks for a name for the current state; { mode: 'rename' }
+  // carries the view being renamed.
+  const [viewPrompt, setViewPrompt] = useState<{ mode: 'new' } | { mode: 'rename'; view: CustomDatabaseView } | null>(
+    null
+  );
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingDatabase, setRenamingDatabase] = useState(false);
@@ -217,6 +224,17 @@ export default function CustomDatabaseScreen({}: Props) {
       const data = snapshot.data();
       if (!data) return;
       setDatabase({ id: databaseId, name: data.name, icon: data.icon, color: data.color, fields: data.fields ?? [], createdAt: data.createdAt, updatedAt: data.updatedAt });
+    });
+  }, [databaseId]);
+
+  useEffect(() => {
+    return onSnapshot(collection(db, 'customDatabaseViews'), (snapshot) => {
+      setSavedViews(
+        snapshot.docs
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabaseView, 'id'>) }))
+          .filter((v) => v.databaseId === databaseId)
+          .sort((a, b) => a.name.localeCompare(b.name, 'uk', { sensitivity: 'base', numeric: true }))
+      );
     });
   }, [databaseId]);
 
@@ -424,6 +442,7 @@ export default function CustomDatabaseScreen({}: Props) {
     : [];
   const sortFields = sortableFieldsOf(database);
   const openChipLayout = openParam ? chipLayouts[openParam] ?? null : null;
+  const activeView = savedViews.find((v) => viewMatchesState(v, viewMode, sortPref, filters)) ?? null;
   const selectedRows = rows.filter((r) => selectedIds.has(r.id));
   const rowMenuRow = rowMenuId ? rows.find((r) => r.id === rowMenuId) ?? null : null;
 
@@ -451,7 +470,48 @@ export default function CustomDatabaseScreen({}: Props) {
     );
   }
 
-  function openParamList(key: 'view' | 'sort' | 'filter') {
+  function applySavedView(view: CustomDatabaseView) {
+    setDoc(
+      prefsDoc,
+      { viewMode: view.viewMode, sortField: view.sortField, sortDir: view.sortDir, rowFilters: view.filters ?? [] },
+      { merge: true }
+    );
+    closeParamList();
+  }
+
+  async function saveCurrentAsView(name: string) {
+    setViewPrompt(null);
+    const id = generateId();
+    await setDoc(doc(db, 'customDatabaseViews', id), {
+      databaseId,
+      name: name.trim() || 'Вигляд',
+      viewMode,
+      sortField: sortPref.field,
+      sortDir: sortPref.dir,
+      filters,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  }
+
+  async function renameSavedView(view: CustomDatabaseView, name: string) {
+    setViewPrompt(null);
+    await updateDoc(doc(db, 'customDatabaseViews', view.id), { name: name.trim() || view.name, updatedAt: Date.now() });
+  }
+
+  function openSavedViewMenu(view: CustomDatabaseView) {
+    Alert.alert(view.name, undefined, [
+      { text: 'Перейменувати', onPress: () => setViewPrompt({ mode: 'rename', view }) },
+      {
+        text: 'Видалити',
+        style: 'destructive',
+        onPress: () => deleteDoc(doc(db, 'customDatabaseViews', view.id)),
+      },
+      { text: 'Скасувати', style: 'cancel' },
+    ]);
+  }
+
+  function openParamList(key: 'view' | 'sort' | 'filter' | 'views') {
     setFilterFieldId(null);
     setOpenParam((prev) => (prev === key ? null : key));
   }
@@ -479,6 +539,9 @@ export default function CustomDatabaseScreen({}: Props) {
     setDeletingDatabase(false);
     const batch = writeBatch(db);
     rows.forEach((r) => batch.delete(doc(db, 'customDatabaseRows', r.id)));
+    // A saved view describes THIS database and nothing else, so it goes
+    // with it - otherwise it lingers as a name pointing at nothing.
+    savedViews.forEach((v) => batch.delete(doc(db, 'customDatabaseViews', v.id)));
     batch.delete(doc(db, 'customDatabases', databaseId));
     await batch.commit();
     navigation.goBack();
@@ -997,6 +1060,21 @@ export default function CustomDatabaseScreen({}: Props) {
 
       {!paramsCollapsed && (
         <View style={styles.paramsStrip} onLayout={(e) => setStripY(e.nativeEvent.layout.y)}>
+          {/* Named slices of this database come first: they set every other
+              capsule at once, so they read as the coarse choice the rest
+              refine. */}
+          <Pressable
+            style={[styles.paramChip, !!activeView && styles.paramChipActive]}
+            onLayout={(e) => rememberChip('views', e.nativeEvent.layout)}
+            onPress={() => openParamList('views')}
+          >
+            <Ionicons name="bookmark-outline" size={13} color="rgba(255,255,255,0.85)" />
+            <Text style={styles.paramChipLabel} numberOfLines={1}>
+              {activeView ? activeView.name : 'Вигляди'}
+            </Text>
+            <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
+          </Pressable>
+
           <Pressable
             style={styles.paramChip}
             onLayout={(e) => rememberChip('view', e.nativeEvent.layout)}
@@ -1064,6 +1142,75 @@ export default function CustomDatabaseScreen({}: Props) {
                 : { left: openChipLayout.x },
             ]}
           >
+            {openParam === 'views' && (
+              <>
+                <Pressable style={styles.paramExpandedHead} onPress={closeParamList}>
+                  <Ionicons name="bookmark-outline" size={13} color="#fff" />
+                  <Text style={styles.paramChipLabel} numberOfLines={1}>
+                    {activeView ? activeView.name : 'Вигляди'}
+                  </Text>
+                  <Ionicons name="chevron-up" size={12} color="rgba(255,255,255,0.6)" />
+                </Pressable>
+                <View style={styles.paramScrollWrap}>
+                  <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+                    {savedViews.map((view) => {
+                      const active = activeView?.id === view.id;
+                      return (
+                        <Pressable
+                          key={view.id}
+                          style={styles.paramOption}
+                          onPress={() => applySavedView(view)}
+                          onLongPress={() => openSavedViewMenu(view)}
+                        >
+                          <Ionicons
+                            name={VIEW_ICONS[view.viewMode]}
+                            size={14}
+                            color={active ? '#fff' : 'rgba(255,255,255,0.7)'}
+                          />
+                          <Text
+                            style={[styles.paramOptionLabel, active && styles.paramOptionLabelActive]}
+                            numberOfLines={1}
+                          >
+                            {view.name}
+                          </Text>
+                          {(view.filters?.length ?? 0) > 0 && (
+                            <Ionicons name="funnel" size={11} color="rgba(255,255,255,0.45)" />
+                          )}
+                          {active && <Ionicons name="checkmark" size={14} color="#fff" />}
+                        </Pressable>
+                      );
+                    })}
+                    {savedViews.length > 0 && <View style={styles.paramDivider} />}
+                    {/* Saving is disabled while a view already matches -
+                        there would be nothing new to save, and two views
+                        with the same contents can't be told apart. */}
+                    <Pressable
+                      style={styles.paramOption}
+                      disabled={!!activeView}
+                      onPress={() => {
+                        closeParamList();
+                        setViewPrompt({ mode: 'new' });
+                      }}
+                    >
+                      <Ionicons
+                        name="add-circle-outline"
+                        size={15}
+                        color={activeView ? 'rgba(255,255,255,0.3)' : ACCENT}
+                      />
+                      <Text
+                        style={[
+                          styles.paramOptionLabel,
+                          { color: activeView ? 'rgba(255,255,255,0.3)' : ACCENT },
+                        ]}
+                      >
+                        Зберегти поточний
+                      </Text>
+                    </Pressable>
+                  </ScrollView>
+                </View>
+              </>
+            )}
+
             {openParam === 'view' && (
               <>
                 <Pressable style={styles.paramExpandedHead} onPress={closeParamList}>
@@ -1329,6 +1476,17 @@ export default function CustomDatabaseScreen({}: Props) {
         initialValue={database.name}
         onCancel={() => setRenamingDatabase(false)}
         onSave={renameDatabase}
+      />
+
+      <RenamePrompt
+        visible={viewPrompt !== null}
+        title={viewPrompt?.mode === 'rename' ? 'Назва вигляду' : 'Зберегти вигляд'}
+        initialValue={viewPrompt?.mode === 'rename' ? viewPrompt.view.name : ''}
+        placeholder="Наприклад, Цього тижня"
+        onCancel={() => setViewPrompt(null)}
+        onSave={(name) =>
+          viewPrompt?.mode === 'rename' ? renameSavedView(viewPrompt.view, name) : saveCurrentAsView(name)
+        }
       />
 
       <FieldsEditorSheet
@@ -2154,6 +2312,9 @@ const styles = StyleSheet.create({
   paramsStrip: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+    // Four capsules don't fit one line on a phone - they wrap rather than
+    // squash, and each list still finds its own capsule by measurement.
+    flexWrap: 'wrap',
     gap: 8,
     paddingHorizontal: 20,
     paddingBottom: 10,

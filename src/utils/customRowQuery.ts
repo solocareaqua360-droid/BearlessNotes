@@ -230,3 +230,42 @@ export function sortRows(
     return raw * factor;
   });
 }
+
+// ---------------------------------------------------------------------
+// Saved views
+// ---------------------------------------------------------------------
+
+function sameValues(a: string[] | undefined, b: string[] | undefined): boolean {
+  const av = [...(a ?? [])].sort();
+  const bv = [...(b ?? [])].sort();
+  return av.length === bv.length && av.every((v, i) => v === bv[i]);
+}
+
+// Order-independent on both the filter list and each filter's values: two
+// filter sets that select the same rows are the same view, however they
+// were built up.
+export function filtersEqual(a: RowFilter[], b: RowFilter[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((filter) => {
+    const other = b.find((f) => f.fieldId === filter.fieldId);
+    return !!other && other.op === filter.op && sameValues(filter.values, other.values);
+  });
+}
+
+// Whether the screen is CURRENTLY showing exactly what a saved view
+// describes. Derived rather than stored: the alternative, remembering
+// which view was last tapped, goes stale the moment a filter is nudged,
+// and then the capsule names a view the screen is no longer showing.
+export function viewMatchesState(
+  view: { viewMode: string; sortField: string; sortDir: string; filters: RowFilter[] },
+  viewMode: string,
+  sort: RowSort,
+  filters: RowFilter[]
+): boolean {
+  return (
+    view.viewMode === viewMode &&
+    view.sortField === sort.field &&
+    view.sortDir === sort.dir &&
+    filtersEqual(view.filters ?? [], filters)
+  );
+}

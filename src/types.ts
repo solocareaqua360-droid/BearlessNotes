@@ -410,6 +410,29 @@ export interface CustomDatabase {
   updatedAt: number;
 }
 
+// A named, saved slice of one database: a display mode plus a sort plus a
+// set of filters, under a name the user gave it. Its own flat collection
+// rather than an array on the database doc, because a document can embed
+// one as a live block and needs to load just that view by id.
+//
+// The filter/sort shapes live in utils/customRowQuery (RowFilter, RowSort)
+// rather than here - they're query mechanics, used by the screen and this
+// record alike, and keeping them there is what lets that module stay the
+// single place a filter's meaning is defined.
+export interface CustomDatabaseView {
+  id: string;
+  databaseId: string;
+  name: string;
+  viewMode: 'list' | 'table' | 'cards';
+  sortField: string;
+  sortDir: 'asc' | 'desc';
+  // Same array the screen stores in its prefs doc; a filter naming a field
+  // that has since been deleted is ignored when the view is applied.
+  filters: { fieldId: string; op: 'any' | 'filled' | 'empty'; values?: string[] }[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 // One row lives in its own document in the flat `customDatabaseRows`
 // collection (client-side filtered by databaseId), not embedded as an array
 // on the database doc the way BoardItem.cards is - a database can grow to
