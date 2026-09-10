@@ -67,3 +67,16 @@ export function hapticSuccess() {
 export function hapticWarning() {
   android(Haptics.AndroidHaptics.Reject, () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning));
 }
+
+// A new document opening. There's no "page turn" in the system's set - it
+// is semantic (confirm/reject/tick/toggle), not skeuomorphic - so this
+// composes one out of two: a light tick, then a softer settle a moment
+// later, which reads as a sheet lifting and landing rather than as a
+// single click. The gap is the whole effect; too short and the two blur
+// into one buzz, too long and they read as two separate events.
+export function hapticPageTurn() {
+  android(Haptics.AndroidHaptics.Segment_Tick, () => Haptics.selectionAsync());
+  setTimeout(() => {
+    android(Haptics.AndroidHaptics.Gesture_End, () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft));
+  }, 70);
+}
