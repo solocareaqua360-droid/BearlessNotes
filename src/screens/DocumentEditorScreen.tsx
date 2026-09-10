@@ -82,7 +82,7 @@ import { backupFileToDrive } from '../utils/googleDrive';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags } from '../hooks/useTags';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
-import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils/haptics';
+import { hapticDiscard, hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
@@ -3679,6 +3679,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   function deleteSelectedBlocks() {
+    hapticDiscard();
     snapshotBeforeChange();
     setBlocks((prev) => {
       const next = prev.filter((block) => !selectedIds.has(block.id));

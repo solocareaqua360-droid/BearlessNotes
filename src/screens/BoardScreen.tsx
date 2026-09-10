@@ -33,7 +33,7 @@ import { db } from '../firebase';
 import { BoardsStackParamList, RootStackParamList } from '../navigation';
 import { Block, BoardCard, BoardColumn, BoardConnection } from '../types';
 import CustomRowBlockCard from '../components/CustomRowBlockCard';
-import { hapticDrop, hapticPickUp } from '../utils/haptics';
+import { hapticDiscard, hapticDrop, hapticPickUp } from '../utils/haptics';
 import {
   APPROX_CARD_HEIGHT,
   COLUMN_CARD_GAP,
@@ -1525,6 +1525,7 @@ export default function BoardScreen() {
 
   function deleteColumn() {
     if (!deletingColumn) return;
+    hapticDiscard();
     // Cards keep the position the column had them in - the reflow effect
     // below strips the now-dangling columnId when `columns` changes.
     setColumns((prev) => prev.filter((c) => c.id !== deletingColumn.id));
@@ -1547,6 +1548,7 @@ export default function BoardScreen() {
         text: 'Видалити',
         style: 'destructive',
         onPress: () => {
+          hapticDiscard();
           // Reflowed after the removal so a column closes the gap its
           // deleted card left behind.
           setCards((prev) =>

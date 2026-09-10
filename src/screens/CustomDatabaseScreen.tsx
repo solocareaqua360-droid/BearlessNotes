@@ -364,6 +364,7 @@ export default function CustomDatabaseScreen({}: Props) {
 
   async function deleteDatabaseConfirmed() {
     setDeletingDatabase(false);
+    hapticDiscard();
     const batch = writeBatch(db);
     rows.forEach((r) => batch.delete(doc(db, 'customDatabaseRows', r.id)));
     batch.delete(doc(db, 'customDatabases', databaseId));
