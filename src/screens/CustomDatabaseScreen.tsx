@@ -39,6 +39,15 @@ import {
 } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import { CustomDatabase, CustomDatabaseRow, FieldDef, Group } from '../types';
+import CustomRowCard, { RelationThumb } from '../components/CustomRowCard';
+import {
+  buildRowDisplay,
+  coverFieldOf,
+  displayFieldValue,
+  resolveRelationValue,
+  rowTitleOf,
+  RowDisplayContext,
+} from '../utils/customRowDisplay';
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import FieldsEditorSheet, { FIELD_TYPE_ICON } from '../components/FieldsEditorSheet';
@@ -295,45 +304,15 @@ export default function CustomDatabaseScreen({}: Props) {
     );
   }
 
-  const titleField = database.fields[0];
-  const titleOf = (row: CustomDatabaseRow) => String(row.values[titleField?.id] ?? '').trim() || 'Без назви';
-  // The one relation field (if any) marked as this database's cover - see
-  // FieldDef.isCover. Shown as a thumbnail in both the list and table
-  // views, ahead of the plain "Фаза 2" card view this is really for.
-  const coverField = database.fields.find((f) => f.type === 'relation' && f.isCover) ?? null;
+  const titleOf = (row: CustomDatabaseRow) => rowTitleOf(database, row);
+  const coverField = coverFieldOf(database);
+  // The three live caches a row's values resolve against - shared with the
+  // same row rendered inside a document (see useCustomRowData), so the
+  // resolution rules live in one place instead of once per screen.
+  const displayContext: RowDisplayContext = { photos: photosList, relatedDatabases, relatedRows };
 
-  // What a relation field's stored target id (row.values[field.id]) should
-  // actually show - a label, and a thumbnail when one is available.
-  // Resolving a 'customDb' target one level for its OWN cover (rather than
-  // just its title) is deliberate: it's what lets a relation-to-a-relation
-  // chain still surface a real photo instead of just a name, without
-  // recursing any further than that one extra hop (see the plan discussed
-  // with the user - no deeper chains for now).
-  function resolveRelation(
-    field: FieldDef,
-    targetId: string | undefined
-  ): { label: string; thumbUri?: string; driveFileId?: string } | null {
-    if (!targetId) return null;
-    const target = field.relationTarget;
-    if (!target || target.kind === 'photos') {
-      const photo = photosList.find((p) => p.id === targetId);
-      if (!photo) return { label: 'Фото' };
-      return { label: photo.title || 'Фото', thumbUri: photo.imageUri, driveFileId: photo.driveFileId };
-    }
-    const targetDb = relatedDatabases[target.databaseId];
-    const targetRow = relatedRows[target.databaseId]?.find((r) => r.id === targetId);
-    if (!targetDb || !targetRow) return { label: 'Запис' };
-    const titleFieldId = targetDb.fields[0]?.id;
-    const label = String(targetRow.values[titleFieldId ?? ''] ?? '').trim() || 'Без назви';
-    const targetCoverField = targetDb.fields.find((f) => f.type === 'relation' && f.isCover);
-    if (targetCoverField?.relationTarget?.kind === 'photos') {
-      const coverTargetId = targetRow.values[targetCoverField.id];
-      if (typeof coverTargetId === 'string') {
-        const photo = photosList.find((p) => p.id === coverTargetId);
-        if (photo) return { label, thumbUri: photo.imageUri, driveFileId: photo.driveFileId };
-      }
-    }
-    return { label };
+  function resolveRelation(field: FieldDef, targetId: string | undefined) {
+    return resolveRelationValue(field, targetId, displayContext);
   }
 
   const pendingFilteredRows = filterPending(rows);
@@ -491,23 +470,7 @@ export default function CustomDatabaseScreen({}: Props) {
   }
 
   function displayValue(field: FieldDef, value: string | number | string[] | undefined): string {
-    if (value === undefined || value === null || value === '') return '';
-    if (field.type === 'date' && typeof value === 'string') {
-      // value is already a dateKey ("YYYY-MM-DD") string - just reformat it
-      // for display, no need to round-trip through a Date.
-      return value.split('-').reverse().join('.');
-    }
-    if ((field.type === 'select' || field.type === 'multiSelect') && field.options) {
-      const ids = Array.isArray(value) ? value : [value as string];
-      return ids
-        .map((id) => field.options?.find((o) => o.id === id)?.label)
-        .filter(Boolean)
-        .join(', ');
-    }
-    if (field.type === 'relation' && typeof value === 'string') {
-      return resolveRelation(field, value)?.label ?? '';
-    }
-    return String(value);
+    return displayFieldValue(field, value, displayContext);
   }
 
   function renderFieldInput(field: FieldDef) {
@@ -590,66 +553,30 @@ export default function CustomDatabaseScreen({}: Props) {
   const relationPickerField = database.fields.find((f) => f.id === relationPickerFieldId) ?? null;
 
   function renderRowCard(item: CustomDatabaseRow) {
-    const { background, text, textMuted } = colorForDocument(item.id);
-    // Every filled field past the title, as icon + value - except the
-    // cover field itself (if any), which gets its own thumbnail below
-    // instead of repeating as a text chip. Naming each one on the card
-    // would be more label than data; the type icon carries enough to read
-    // the row at a glance.
-    const filledFields = database!.fields
-      .slice(1)
-      .filter((f) => f.id !== coverField?.id)
-      .map((f) => ({ field: f, shown: displayValue(f, item.values[f.id]) }))
-      .filter((entry) => entry.shown !== '');
-    const coverRaw = coverField ? item.values[coverField.id] : undefined;
-    const coverResolved = coverField && typeof coverRaw === 'string' ? resolveRelation(coverField, coverRaw) : null;
+    const { text, textMuted } = colorForDocument(item.id);
     return (
-      <View key={item.id} style={[styles.row, { backgroundColor: background }]}>
-        <Pressable style={styles.rowTap} onPress={() => (isSelectMode ? toggleSelected(item.id) : openEditRow(item))}>
-          {coverField && (
-            coverResolved?.thumbUri ? (
-              <RelationThumb uri={coverResolved.thumbUri} driveFileId={coverResolved.driveFileId} size={56} radius={12} />
-            ) : (
-              <View style={styles.rowCoverPlaceholder}>
-                <Ionicons name="image-outline" size={20} color="#9CA3AF" />
-              </View>
-            )
-          )}
-          <View style={styles.rowBody}>
-            <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
-              {titleOf(item)}
-            </Text>
-            {filledFields.length > 0 && (
-              <View style={styles.rowFieldChips}>
-                {filledFields.map(({ field, shown }) => (
-                  <View key={field.id} style={styles.rowFieldChip}>
-                    <Ionicons name={FIELD_TYPE_ICON[field.type]} size={11} color={textMuted} />
-                    <Text style={[styles.rowFieldChipValue, { color: textMuted }]} numberOfLines={1}>
-                      {shown}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            )}
-            <View style={styles.rowMeta}>
-              <TagChips tags={tags.filter((t) => (item.tagIds ?? []).includes(t.id))} onPress={() => openEditRow(item)} glass />
-            </View>
-          </View>
-        </Pressable>
-        {isSelectMode ? (
-          <Pressable hitSlop={8} onPress={() => toggleSelected(item.id)} style={styles.rowActionButton}>
-            <Ionicons
-              name={selectedIds.has(item.id) ? 'checkmark-circle' : 'ellipse-outline'}
-              size={22}
-              color={selectedIds.has(item.id) ? text : textMuted}
-            />
-          </Pressable>
-        ) : (
-          <Pressable hitSlop={8} onPress={() => setRowMenuId(item.id)} style={styles.rowActionButton}>
-            <Ionicons name="ellipsis-horizontal" size={16} color={textMuted} />
-          </Pressable>
-        )}
-      </View>
+      <CustomRowCard
+        key={item.id}
+        rowId={item.id}
+        display={buildRowDisplay(database, item, displayContext)}
+        tags={tags.filter((t) => (item.tagIds ?? []).includes(t.id))}
+        onPress={() => (isSelectMode ? toggleSelected(item.id) : openEditRow(item))}
+        right={
+          isSelectMode ? (
+            <Pressable hitSlop={8} onPress={() => toggleSelected(item.id)} style={styles.rowActionButton}>
+              <Ionicons
+                name={selectedIds.has(item.id) ? 'checkmark-circle' : 'ellipse-outline'}
+                size={22}
+                color={selectedIds.has(item.id) ? text : textMuted}
+              />
+            </Pressable>
+          ) : (
+            <Pressable hitSlop={8} onPress={() => setRowMenuId(item.id)} style={styles.rowActionButton}>
+              <Ionicons name="ellipsis-horizontal" size={16} color={textMuted} />
+            </Pressable>
+          )
+        }
+      />
     );
   }
 
@@ -1252,29 +1179,6 @@ function OptionPickerSheet({
   );
 }
 
-// A small square thumbnail for a resolved relation target - same
-// checking/ready/missing states as PhotosScreen's own PhotoThumb, just
-// without the tag row/select-mode chrome that only makes sense on that
-// screen's grid.
-function RelationThumb({ uri, driveFileId, size, radius = 6 }: { uri: string; driveFileId?: string; size: number; radius?: number }) {
-  const status = useCachedAttachment(uri, driveFileId);
-  return (
-    <View style={[styles.relationThumbWrap, { width: size, height: size, borderRadius: radius }]}>
-      {status === 'ready' ? (
-        <Image source={{ uri }} style={styles.relationThumbImage} resizeMode="cover" />
-      ) : (
-        <View style={[styles.relationThumbImage, styles.relationThumbStatus]}>
-          {status === 'missing' ? (
-            <Ionicons name="cloud-offline-outline" size={Math.round(size * 0.45)} color="#9CA3AF" />
-          ) : (
-            <ActivityIndicator color="#9CA3AF" size="small" />
-          )}
-        </View>
-      )}
-    </View>
-  );
-}
-
 // One picker serving a 'relation' field's value, wherever it's edited from
 // (the row form's draft, or a tapped table cell - same split OptionPickerSheet
 // already makes). Target "Фото" shows a searchable thumbnail grid; target
@@ -1686,57 +1590,6 @@ const styles = StyleSheet.create({
   listWithBulkBar: {
     paddingBottom: 170,
   },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-    borderRadius: 14,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(176,176,176,0.5)',
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-  },
-  rowTap: {
-    flex: 1,
-    flexDirection: 'row',
-    gap: 12,
-  },
-  rowBody: {
-    flex: 1,
-    minWidth: 0,
-    gap: 4,
-    justifyContent: 'center',
-  },
-  rowTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  rowFieldChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 2,
-  },
-  rowFieldChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    maxWidth: '100%',
-  },
-  rowFieldChipValue: {
-    fontSize: 12,
-    flexShrink: 1,
-  },
-  rowMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 2,
-  },
   rowActionButton: {
     padding: 6,
   },
@@ -1934,30 +1787,10 @@ const styles = StyleSheet.create({
     gap: 8,
     minWidth: 0,
   },
-  relationThumbWrap: {
-    overflow: 'hidden',
-    backgroundColor: '#F3F4F6',
-  },
-  relationThumbImage: {
-    width: '100%',
-    height: '100%',
-  },
-  relationThumbStatus: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   tableCellRelation: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-  },
-  rowCoverPlaceholder: {
-    width: 56,
-    height: 56,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   relationSearchInput: {
     borderWidth: 1,
