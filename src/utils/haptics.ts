@@ -78,21 +78,24 @@ export function hapticCreate() {
   android(Haptics.AndroidHaptics.Drag_Start, () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
 }
 
-// Something thrown away. The raw motor, not the tactile effects the rest
-// of this file uses - and that is the whole point.
+// Something rushing past and away. Shaped as approach -> peak -> recede,
+// not as a plain fade: a whoosh that passes THROUGH you swells before it
+// goes, and that shape is what makes it read as movement rather than as
+// something merely stopping.
 //
-// Two earlier attempts built this out of a series of discrete impacts,
-// fading first by strength and then by spacing. Both came through as
-// separate knocks; the user's words for the second were "an old car
-// starting", which is exactly what a run of evenly-spaced taps is. No
-// amount of retiming fixes that: discrete effects can't be made
-// continuous, and a whoosh IS continuous.
+// Played on the raw motor rather than as a series of impacts. Three
+// earlier versions built it from discrete effects at 25-90ms spacing and
+// every one came through as separate knocks - "an old car starting" - on
+// this hardware, which also attenuates the Light/Soft effects so far that
+// the quiet ends of such a ramp never arrive at all. Discrete effects
+// can't be made continuous, and this has to be.
 //
-// The motor can be. This pattern never fully stops - the vibration
-// shortens (70ms down to 8) while the gaps between grow (10ms up to 20),
-// so it reads as one sound fading out rather than as several. It buzzes
-// where a haptic effect taps, which for paper going into a bin is the
-// right texture anyway. Android's format alternates pause/vibrate.
+// The motor's amplitude can't be set, so nearness is carried by DURATION:
+// segments grow 10 -> 60ms as it approaches and shrink back to 6 as it
+// leaves, while the gaps between them tighten to 6ms at the peak and open
+// to 22ms at the tail. Android's format alternates pause/vibrate.
 export function hapticDiscard() {
-  Vibration.vibrate([0, 70, 10, 50, 12, 36, 14, 26, 16, 18, 18, 12, 20, 8]);
+  Vibration.vibrate([
+    0, 10, 12, 16, 10, 26, 8, 42, 6, 60, 8, 34, 12, 20, 16, 12, 22, 6,
+  ]);
 }
