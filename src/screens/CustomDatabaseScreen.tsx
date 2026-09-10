@@ -933,7 +933,10 @@ export default function CustomDatabaseScreen({}: Props) {
                 size={13}
                 color={viewMode === mode ? '#111827' : 'rgba(255,255,255,0.85)'}
               />
-              <Text style={[styles.paramChipLabel, viewMode === mode && styles.paramChipLabelActive]}>
+              <Text
+                numberOfLines={1}
+                style={[styles.paramChipLabel, viewMode === mode && styles.paramChipLabelActive]}
+              >
                 {VIEW_LABELS[mode]}
               </Text>
             </Pressable>
@@ -947,7 +950,7 @@ export default function CustomDatabaseScreen({}: Props) {
                 style={[styles.paramChip, active && styles.paramChipActive]}
                 onPress={() => selectSortField(field)}
               >
-                <Text style={[styles.paramChipLabel, active && styles.paramChipLabelActive]}>
+                <Text numberOfLines={1} style={[styles.paramChipLabel, active && styles.paramChipLabelActive]}>
                   {SORT_LABELS[field]}
                   {active ? (sortPref.dir === 'asc' ? ' ↑' : ' ↓') : ''}
                 </Text>
@@ -1846,6 +1849,10 @@ const styles = StyleSheet.create({
   paramChip: {
     flexDirection: 'row',
     alignItems: 'center',
+    // Without this the chips shrink to fit the visible width instead of
+    // overflowing it, which is what a horizontal ScrollView needs them to
+    // do - they came out squashed with their labels crushed.
+    flexShrink: 0,
     gap: 5,
     backgroundColor: 'rgba(20,20,20,0.35)',
     borderWidth: 1,
@@ -1868,6 +1875,7 @@ const styles = StyleSheet.create({
   },
   paramsDivider: {
     width: 1,
+    flexShrink: 0,
     height: 18,
     backgroundColor: 'rgba(255,255,255,0.3)',
     marginHorizontal: 2,
