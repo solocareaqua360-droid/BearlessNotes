@@ -66,9 +66,26 @@ import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
-import { useSortPref } from '../hooks/useSortPref';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
-import { SortField, sortItems } from '../utils/sortItems';
+import {
+  BUILT_IN_SORT_FIELDS,
+  BUILT_IN_SORT_LABELS,
+  DEFAULT_ROW_SORT,
+  Facet,
+  RowFilter,
+  RowSort,
+  activeFilterFor,
+  applyRowFilters,
+  clearFilterFor,
+  defaultDirFor,
+  facetsOf,
+  filterableFieldsOf,
+  setPresenceOp,
+  sortLabelFor,
+  sortRows,
+  sortableFieldsOf,
+  toggleFacet,
+} from '../utils/customRowQuery';
 import { colorForDocument } from '../utils/documentColor';
 import { MONTH_FULL, WEEKDAY_SHORT, dateKey, getMonthGrid, isSameDay, parseDateKey } from '../utils/dateLocale';
 
@@ -85,12 +102,6 @@ const VIEW_ICONS: Record<ViewMode, keyof typeof Ionicons.glyphMap> = {
   cards: 'albums-outline',
   table: 'grid-outline',
 };
-const SORT_LABELS: Record<SortField, string> = {
-  title: 'Назва',
-  createdAt: 'Створено',
-  updatedAt: 'Змінено',
-};
-
 const TABLE_COLUMN_WIDTH = 150;
 const TABLE_HANDLE_WIDTH = 34;
 // Every cell is exactly this tall so the frozen column and the scrolling
@@ -129,7 +140,12 @@ export default function CustomDatabaseScreen({}: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [menuOpen, setMenuOpen] = useState(false);
   const [paramsCollapsed, setParamsCollapsed] = useState(false);
-  const [openParam, setOpenParam] = useState<'view' | 'sort' | null>(null);
+  const [openParam, setOpenParam] = useState<'view' | 'sort' | 'filter' | null>(null);
+  const [sortPref, setSortPref] = useState<RowSort>(DEFAULT_ROW_SORT);
+  const [filters, setFilters] = useState<RowFilter[]>([]);
+  // Which field's values the filter dropdown is currently showing. null is
+  // its top level, the list of fields.
+  const [filterFieldId, setFilterFieldId] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingDatabase, setRenamingDatabase] = useState(false);
@@ -186,7 +202,6 @@ export default function CustomDatabaseScreen({}: Props) {
     };
   }, []);
 
-  const { sortPref, selectSortField } = useSortPref(prefsKey);
   const { filterPending, requestDeleteMany, undo, toast } = usePendingDelete<CustomDatabaseRow>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
   const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, clear: clearSelection } =
@@ -330,8 +345,18 @@ export default function CustomDatabaseScreen({}: Props) {
 
   useEffect(() => {
     return onSnapshot(prefsDoc, (snapshot) => {
-      setViewMode((snapshot.data()?.viewMode as ViewMode | undefined) ?? 'list');
-      setParamsCollapsed(!!snapshot.data()?.paramsCollapsed);
+      const data = snapshot.data();
+      setViewMode((data?.viewMode as ViewMode | undefined) ?? 'list');
+      setParamsCollapsed(!!data?.paramsCollapsed);
+      // Same two keys useSortPref writes on the other database screens, so
+      // a sort chosen before this screen grew its own field-aware sorting
+      // is still the sort it comes back with.
+      setSortPref(
+        data?.sortField
+          ? { field: data.sortField as string, dir: (data.sortDir as RowSort['dir']) ?? 'desc' }
+          : DEFAULT_ROW_SORT
+      );
+      setFilters((data?.rowFilters as RowFilter[] | undefined) ?? []);
     });
   }, [prefsKey]);
 
@@ -374,18 +399,42 @@ export default function CustomDatabaseScreen({}: Props) {
         )
       )
     : groupFilteredRows;
-  const displayedRows = sortItems(
-    searchedRows,
+  const displayedRows = sortRows(
+    applyRowFilters(searchedRows, filters, database),
     sortPref,
-    titleOf,
-    (r) => r.createdAt,
-    (r) => r.updatedAt
+    database,
+    displayContext
   );
+  // The values a facet list offers come from the rows the OTHER filters
+  // already allow, not from the whole database - so narrowing one field
+  // never leaves another offering values that would return nothing.
+  const filterFields = filterableFieldsOf(database);
+  const openFilterField = filterFieldId ? filterFields.find((f) => f.id === filterFieldId) ?? null : null;
+  const openFilterFacets: Facet[] = openFilterField
+    ? facetsOf(
+        openFilterField,
+        applyRowFilters(searchedRows, clearFilterFor(filters, openFilterField.id), database),
+        displayContext
+      )
+    : [];
+  const sortFields = sortableFieldsOf(database);
   const selectedRows = rows.filter((r) => selectedIds.has(r.id));
   const rowMenuRow = rowMenuId ? rows.find((r) => r.id === rowMenuId) ?? null : null;
 
   async function changeViewMode(mode: ViewMode) {
     await setDoc(prefsDoc, { viewMode: mode }, { merge: true });
+  }
+
+  // Tapping the field already sorted by flips its direction; tapping a
+  // different one switches to it with that field's own sensible default
+  // direction - the behaviour useSortPref gave the other screens.
+  function selectSortField(field: string) {
+    const dir = sortPref.field === field ? (sortPref.dir === 'asc' ? 'desc' : 'asc') : defaultDirFor(field, database);
+    setDoc(prefsDoc, { sortField: field, sortDir: dir }, { merge: true });
+  }
+
+  function applyFilters(next: RowFilter[]) {
+    setDoc(prefsDoc, { rowFilters: next }, { merge: true });
   }
 
   function toggleParamsCollapsed() {
@@ -924,7 +973,15 @@ export default function CustomDatabaseScreen({}: Props) {
 
       {/* Closes an open list on a tap anywhere else. It sits BEFORE the
           strip so the strip (and the list itself) still draw above it. */}
-      {openParam !== null && <Pressable style={styles.menuBackdrop} onPress={() => setOpenParam(null)} />}
+      {openParam !== null && (
+        <Pressable
+          style={styles.menuBackdrop}
+          onPress={() => {
+            setOpenParam(null);
+            setFilterFieldId(null);
+          }}
+        />
+      )}
 
       {!paramsCollapsed && (
         <View style={styles.paramsStrip}>
@@ -981,7 +1038,7 @@ export default function CustomDatabaseScreen({}: Props) {
             <View style={styles.paramChip}>
               <Ionicons name="swap-vertical-outline" size={13} color="rgba(255,255,255,0.85)" />
               <Text style={styles.paramChipLabel} numberOfLines={1}>
-                {SORT_LABELS[sortPref.field]} {sortPref.dir === 'asc' ? '↑' : '↓'}
+                {sortLabelFor(sortPref, database)} {sortPref.dir === 'asc' ? '↑' : '↓'}
               </Text>
               <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
             </View>
@@ -994,36 +1051,174 @@ export default function CustomDatabaseScreen({}: Props) {
                 <Pressable style={styles.paramExpandedHead} onPress={() => setOpenParam(null)}>
                   <Ionicons name="swap-vertical-outline" size={13} color="#fff" />
                   <Text style={styles.paramChipLabel} numberOfLines={1}>
-                    {SORT_LABELS[sortPref.field]} {sortPref.dir === 'asc' ? '↑' : '↓'}
+                    {sortLabelFor(sortPref, database)} {sortPref.dir === 'asc' ? '↑' : '↓'}
                   </Text>
                   <Ionicons name="chevron-up" size={12} color="rgba(255,255,255,0.6)" />
                 </Pressable>
-                {(['title', 'createdAt', 'updatedAt'] as SortField[]).map((field) => {
-                  const active = sortPref.field === field;
-                  return (
-                    <Pressable
+                <ScrollView style={styles.paramScroll} keyboardShouldPersistTaps="handled">
+                  {BUILT_IN_SORT_FIELDS.map((field) => (
+                    <SortOption
                       key={field}
-                      style={styles.paramOption}
-                      // Tapping the chosen field flips its direction rather
-                      // than closing on a no-op, as the sort menu this
-                      // replaced already did.
+                      label={BUILT_IN_SORT_LABELS[field]}
+                      active={sortPref.field === field}
+                      dir={sortPref.dir}
                       onPress={() => {
                         selectSortField(field);
-                        if (!active) setOpenParam(null);
+                        if (sortPref.field !== field) setOpenParam(null);
                       }}
-                    >
-                      <Text style={[styles.paramOptionLabel, active && styles.paramOptionLabelActive]}>
-                        {SORT_LABELS[field]}
-                      </Text>
-                      {active && (
-                        <Ionicons name={sortPref.dir === 'asc' ? 'arrow-up' : 'arrow-down'} size={14} color="#fff" />
-                      )}
-                    </Pressable>
-                  );
-                })}
+                    />
+                  ))}
+                  {/* The database's own fields continue the same list under
+                      a divider - sorting by "Дата зйомки" is the same kind
+                      of choice as sorting by "Змінено", just not one every
+                      database has. */}
+                  {sortFields.length > 0 && <View style={styles.paramDivider} />}
+                  {sortFields.map((field) => (
+                    <SortOption
+                      key={field.id}
+                      label={field.name}
+                      icon={FIELD_TYPE_ICON[field.type]}
+                      active={sortPref.field === field.id}
+                      dir={sortPref.dir}
+                      onPress={() => {
+                        selectSortField(field.id);
+                        if (sortPref.field !== field.id) setOpenParam(null);
+                      }}
+                    />
+                  ))}
+                </ScrollView>
               </View>
             )}
           </View>
+
+          {filterFields.length > 0 && (
+            <View style={styles.paramGroup}>
+              <View style={[styles.paramChip, filters.length > 0 && styles.paramChipActive]}>
+                <Ionicons name="funnel-outline" size={13} color="rgba(255,255,255,0.85)" />
+                <Text style={styles.paramChipLabel} numberOfLines={1}>
+                  {filters.length > 0 ? `Фільтр · ${filters.length}` : 'Фільтр'}
+                </Text>
+                <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
+              </View>
+              <Pressable
+                style={StyleSheet.absoluteFill}
+                onPress={() =>
+                  setOpenParam((prev) => {
+                    setFilterFieldId(null);
+                    return prev === 'filter' ? null : 'filter';
+                  })
+                }
+              />
+              {openParam === 'filter' && (
+                // Anchored to its RIGHT edge, unlike the other two: it's
+                // the last capsule in the row, so a list growing rightward
+                // would run off the screen.
+                <View style={[styles.paramExpanded, styles.paramExpandedRight]}>
+                  <Pressable
+                    style={styles.paramExpandedHead}
+                    onPress={() => {
+                      // Backing out of a field's values returns to the
+                      // field list rather than closing the whole capsule.
+                      if (openFilterField) setFilterFieldId(null);
+                      else setOpenParam(null);
+                    }}
+                  >
+                    <Ionicons
+                      name={openFilterField ? 'chevron-back' : 'funnel-outline'}
+                      size={13}
+                      color="#fff"
+                    />
+                    <Text style={styles.paramChipLabel} numberOfLines={1}>
+                      {openFilterField ? openFilterField.name : 'Фільтр'}
+                    </Text>
+                    <Ionicons name="chevron-up" size={12} color="rgba(255,255,255,0.6)" />
+                  </Pressable>
+                  <ScrollView style={styles.paramScroll} keyboardShouldPersistTaps="handled">
+                    {!openFilterField &&
+                      filterFields.map((field) => {
+                        const active = activeFilterFor(filters, field.id);
+                        return (
+                          <Pressable
+                            key={field.id}
+                            style={styles.paramOption}
+                            onPress={() => setFilterFieldId(field.id)}
+                          >
+                            <Ionicons
+                              name={FIELD_TYPE_ICON[field.type]}
+                              size={14}
+                              color={active ? '#fff' : 'rgba(255,255,255,0.7)'}
+                            />
+                            <Text style={[styles.paramOptionLabel, !!active && styles.paramOptionLabelActive]}>
+                              {field.name}
+                            </Text>
+                            {!!active && (
+                              <Text style={styles.paramOptionCount}>
+                                {active.op === 'filled' ? '≠∅' : active.op === 'empty' ? '∅' : active.values?.length}
+                              </Text>
+                            )}
+                            <Ionicons name="chevron-forward" size={13} color="rgba(255,255,255,0.45)" />
+                          </Pressable>
+                        );
+                      })}
+                    {openFilterField && (
+                      <>
+                        {openFilterFacets.map((facet) => {
+                          const active = activeFilterFor(filters, openFilterField.id);
+                          const on = active?.op === 'any' && (active.values ?? []).includes(facet.key);
+                          return (
+                            <Pressable
+                              key={facet.key}
+                              style={styles.paramOption}
+                              onPress={() => applyFilters(toggleFacet(filters, openFilterField.id, facet.key))}
+                            >
+                              <Ionicons
+                                name={on ? 'checkbox' : 'square-outline'}
+                                size={15}
+                                color={on ? '#fff' : 'rgba(255,255,255,0.5)'}
+                              />
+                              <Text style={[styles.paramOptionLabel, on && styles.paramOptionLabelActive]} numberOfLines={1}>
+                                {facet.label}
+                              </Text>
+                              <Text style={styles.paramOptionCount}>{facet.count}</Text>
+                            </Pressable>
+                          );
+                        })}
+                        <View style={styles.paramDivider} />
+                        {(['filled', 'empty'] as const).map((op) => {
+                          const on = activeFilterFor(filters, openFilterField.id)?.op === op;
+                          return (
+                            <Pressable
+                              key={op}
+                              style={styles.paramOption}
+                              onPress={() => applyFilters(setPresenceOp(filters, openFilterField.id, op))}
+                            >
+                              <Ionicons
+                                name={on ? 'radio-button-on' : 'radio-button-off'}
+                                size={15}
+                                color={on ? '#fff' : 'rgba(255,255,255,0.5)'}
+                              />
+                              <Text style={[styles.paramOptionLabel, on && styles.paramOptionLabelActive]}>
+                                {op === 'filled' ? 'Заповнено' : 'Порожньо'}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                        {!!activeFilterFor(filters, openFilterField.id) && (
+                          <Pressable
+                            style={styles.paramOption}
+                            onPress={() => applyFilters(clearFilterFor(filters, openFilterField.id))}
+                          >
+                            <Ionicons name="close-circle-outline" size={15} color={DANGER} />
+                            <Text style={[styles.paramOptionLabel, { color: DANGER }]}>Скинути</Text>
+                          </Pressable>
+                        )}
+                      </>
+                    )}
+                  </ScrollView>
+                </View>
+              )}
+            </View>
+          )}
         </View>
       )}
 
@@ -1736,6 +1931,33 @@ const miniStyles = StyleSheet.create({
   },
 });
 
+// One row of the sort dropdown. Extracted only because the built-ins and
+// the database's own fields render identically and there are two lists of
+// them - not a reusable widget beyond this menu.
+function SortOption({
+  label,
+  icon,
+  active,
+  dir,
+  onPress,
+}: {
+  label: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+  active: boolean;
+  dir: 'asc' | 'desc';
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={styles.paramOption} onPress={onPress}>
+      {!!icon && <Ionicons name={icon} size={14} color={active ? '#fff' : 'rgba(255,255,255,0.7)'} />}
+      <Text style={[styles.paramOptionLabel, active && styles.paramOptionLabelActive]} numberOfLines={1}>
+        {label}
+      </Text>
+      {active && <Ionicons name={dir === 'asc' ? 'arrow-up' : 'arrow-down'} size={14} color="#fff" />}
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1913,6 +2135,12 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     zIndex: 20,
   },
+  // Marks the filter capsule when something is actually filtered - the
+  // count alone is easy to miss, and a filtered list looks identical to a
+  // short one.
+  paramChipActive: {
+    borderColor: 'rgba(255,255,255,0.9)',
+  },
   paramChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1928,12 +2156,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
   },
   paramChipLabel: {
+    maxWidth: 130,
     fontSize: 13,
     color: 'rgba(255,255,255,0.85)',
     fontWeight: '600',
   },
   // The open capsule: the same glass body as the pill, just taller and
   // squarer, drawn over the collapsed one it replaces.
+  paramExpandedRight: {
+    left: undefined,
+    right: 0,
+  },
   paramExpanded: {
     position: 'absolute',
     top: 0,
@@ -1968,6 +2201,21 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: 'rgba(255,255,255,0.7)',
+  },
+  paramOptionCount: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.45)',
+  },
+  paramDivider: {
+    height: 1,
+    marginVertical: 4,
+    marginHorizontal: 13,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  // A database with many fields, or a field with many distinct values,
+  // would otherwise grow the dropdown past the bottom of the screen.
+  paramScroll: {
+    maxHeight: 260,
   },
   paramOptionLabelActive: {
     color: '#fff',
