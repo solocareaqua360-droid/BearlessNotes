@@ -65,6 +65,11 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
   // in the app, so this one is simply placed first when the fields are
   // built - the file's own column order is kept for all the others.
   const [titleColumn, setTitleColumn] = useState(0);
+  // Extra columns appended to the name, in the order they were added - for
+  // a table where the name column repeats and only the combination is
+  // unique (a fleet's model plus its plate). They still become their own
+  // fields; this only affects what the row is called.
+  const [titleExtras, setTitleExtras] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
   // Spreadsheets already sitting in the Files database - a file shared into
   // the app earlier is the common case, and making the user go find it
@@ -107,6 +112,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
     setOpenMenuColumn(null);
     setDatabaseName('');
     setTitleColumn(0);
+    setTitleExtras([]);
     setBusy(false);
   }
 
@@ -201,6 +207,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
   // one repairs its mapping if it was set to something else.
   function chooseTitleColumn(index: number) {
     setTitleColumn(index);
+    setTitleExtras((prev) => prev.filter((i) => i !== index));
     setMappings((prev) =>
       prev.map((m, i) => {
         if (i !== index) return m;
@@ -216,6 +223,21 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
   function fieldIdFor(index: number): string {
     const current = mappings[index];
     return current && current.kind !== 'skip' ? current.fieldId : generateId();
+  }
+
+  function toggleTitleExtra(index: number) {
+    setTitleExtras((prev) => (prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]));
+  }
+
+  // What the name will actually read like, from the first row that has
+  // something in it - the whole point is seeing that it comes out unique.
+  function titlePreview(): string {
+    const sample = dataRows.find((r) => ((r[titleColumn] ?? '') as string).toString().trim() !== '');
+    if (!sample) return '';
+    return [titleColumn, ...titleExtras]
+      .map((i) => (sample[i] ?? '').toString().trim())
+      .filter((part) => part !== '')
+      .join(' · ');
   }
 
   function setMapping(index: number, mapping: ColumnMapping) {
@@ -271,7 +293,17 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
         databaseId = await createDatabaseForImport(databaseName.trim(), fields);
       }
 
-      const written = await runTableImport({ databaseId, fields, columns: mappings, dataRows });
+      const titleMapping = mappings[titleColumn];
+      const written = await runTableImport({
+        databaseId,
+        fields,
+        columns: mappings,
+        dataRows,
+        compositeTitle:
+          !targetDatabase && titleExtras.length > 0 && titleMapping && titleMapping.kind !== 'skip'
+            ? { fieldId: titleMapping.fieldId, columnIndexes: [titleColumn, ...titleExtras] }
+            : undefined,
+      });
       onDone(databaseId, written);
       reset();
     } catch (e) {
@@ -378,6 +410,9 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
               )}
 
               <Text style={styles.sectionLabel}>Колонки ({dataRows.length} рядків)</Text>
+              {!targetDatabase && titleExtras.length > 0 && !!titlePreview() && (
+                <Text style={styles.titlePreview}>Назва виглядатиме так: {titlePreview()}</Text>
+              )}
               {Array.from({ length: columnCount }, (_, index) => {
                 const mapping = mappings[index] ?? { kind: 'skip' as const };
                 const sample = dataRows.find((r) => (r[index] ?? '').toString().trim() !== '');
@@ -396,9 +431,20 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
                         (index === titleColumn ? (
                           <Text style={styles.titleBadge}>Назва</Text>
                         ) : (
-                          <Pressable hitSlop={6} onPress={() => chooseTitleColumn(index)}>
-                            <Text style={styles.titleBadgePick}>Зробити назвою</Text>
-                          </Pressable>
+                          <View style={styles.titleControls}>
+                            <Pressable hitSlop={6} onPress={() => toggleTitleExtra(index)}>
+                              <Text
+                                style={
+                                  titleExtras.includes(index) ? styles.titleBadge : styles.titleBadgePick
+                                }
+                              >
+                                {titleExtras.includes(index) ? 'У назві' : '+ до назви'}
+                              </Text>
+                            </Pressable>
+                            <Pressable hitSlop={6} onPress={() => chooseTitleColumn(index)}>
+                              <Text style={styles.titleBadgePick}>Зробити назвою</Text>
+                            </Pressable>
+                          </View>
                         ))}
                     </View>
 
@@ -636,6 +682,16 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: '#9CA3AF',
+  },
+  titleControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  titlePreview: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 8,
   },
   mappingRow: {
     flexDirection: 'row',
