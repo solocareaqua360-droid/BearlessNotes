@@ -81,7 +81,10 @@ export function guessFieldType(values: string[]): FieldType {
 // What one column of the file becomes on the database side.
 export type ColumnMapping =
   | { kind: 'skip' }
-  | { kind: 'newField'; name: string; type: FieldType; relationDatabaseId?: string }
+  // fieldId is generated up front and carried through to the FieldDef this
+  // column becomes, so the write step matches columns to fields by id.
+  // Matching by name would merge two columns that happen to share a header.
+  | { kind: 'newField'; fieldId: string; name: string; type: FieldType; relationDatabaseId?: string }
   | { kind: 'existingField'; fieldId: string };
 
 // Firestore caps a batch at 500 writes; a row is one write, and relation
@@ -162,12 +165,7 @@ export async function runTableImport(opts: {
   const relationTargets = new Set(
     columns
       .map((mapping) => {
-        const field =
-          mapping.kind === 'existingField'
-            ? fieldById.get(mapping.fieldId)
-            : mapping.kind === 'newField'
-              ? fields.find((f) => f.name === mapping.name)
-              : undefined;
+        const field = mapping.kind === 'skip' ? undefined : fieldById.get(mapping.fieldId);
         return field?.type === 'relation' && field.relationTarget?.kind === 'customDb'
           ? field.relationTarget.databaseId
           : null;
@@ -200,10 +198,7 @@ export async function runTableImport(opts: {
       const values: Record<string, string | number | string[]> = {};
       columns.forEach((mapping, index) => {
         if (mapping.kind === 'skip') return;
-        const field =
-          mapping.kind === 'existingField'
-            ? fieldById.get(mapping.fieldId)
-            : fields.find((f) => f.name === mapping.name);
+        const field = fieldById.get(mapping.fieldId);
         if (!field) return;
         const cell = (rowCells[index] ?? '').toString().trim();
         if (cell === '') return;

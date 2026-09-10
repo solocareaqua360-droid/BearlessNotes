@@ -61,6 +61,10 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
   const [mappings, setMappings] = useState<ColumnMapping[]>([]);
   const [openMenuColumn, setOpenMenuColumn] = useState<number | null>(null);
   const [databaseName, setDatabaseName] = useState('');
+  // Which column becomes the row's name. fields[0] is the title everywhere
+  // in the app, so this one is simply placed first when the fields are
+  // built - the file's own column order is kept for all the others.
+  const [titleColumn, setTitleColumn] = useState(0);
   const [busy, setBusy] = useState(false);
   // Spreadsheets already sitting in the Files database - a file shared into
   // the app earlier is the common case, and making the user go find it
@@ -102,6 +106,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
     setMappings([]);
     setOpenMenuColumn(null);
     setDatabaseName('');
+    setTitleColumn(0);
     setBusy(false);
   }
 
@@ -121,20 +126,19 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
     const rows = withHeader ? parsed.grid.slice(1) : parsed.grid;
     const count = parsed.grid.reduce((max, r) => Math.max(max, r.length), 0);
     const header = withHeader ? (parsed.grid[0] ?? []) : [];
-    return Array.from({ length: count }, (_, index) => {
+    return Array.from({ length: count }, (_, index): ColumnMapping => {
       const name = (header[index] ?? '').toString().trim() || `Колонка ${index + 1}`;
       if (targetDatabase) {
         // Into an existing database: match by name where possible, skip
         // whatever doesn't line up rather than guessing.
         const match = targetDatabase.fields.find((f) => f.name.trim().toLowerCase() === name.toLowerCase());
-        return match ? { kind: 'existingField' as const, fieldId: match.id } : { kind: 'skip' as const };
+        return match ? { kind: 'existingField', fieldId: match.id } : { kind: 'skip' };
       }
       return {
-        kind: 'newField' as const,
+        kind: 'newField',
+        fieldId: generateId(),
         name,
-        // The first column is the row's name everywhere in the app
-        // (fields[0]), so it is always text.
-        type: index === 0 ? 'text' : guessFieldType(columnValues(index, rows)),
+        type: index === titleColumn ? 'text' : guessFieldType(columnValues(index, rows)),
       };
     });
   }
@@ -193,6 +197,27 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
     setMappings(buildDefaultMappings(sheets[sheetIndex], next));
   }
 
+  // The name column can't be skipped or be anything but text, so choosing
+  // one repairs its mapping if it was set to something else.
+  function chooseTitleColumn(index: number) {
+    setTitleColumn(index);
+    setMappings((prev) =>
+      prev.map((m, i) => {
+        if (i !== index) return m;
+        if (m.kind === 'newField') return { ...m, type: 'text', relationDatabaseId: undefined };
+        return { kind: 'newField', fieldId: generateId(), name: columnLabel(index), type: 'text' };
+      })
+    );
+    setOpenMenuColumn(null);
+  }
+
+  // Reuses the id this column was already going to become, so switching a
+  // column's type doesn't quietly make it a different field.
+  function fieldIdFor(index: number): string {
+    const current = mappings[index];
+    return current && current.kind !== 'skip' ? current.fieldId : generateId();
+  }
+
   function setMapping(index: number, mapping: ColumnMapping) {
     setMappings((prev) => prev.map((m, i) => (i === index ? mapping : m)));
     setOpenMenuColumn(null);
@@ -219,11 +244,15 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
       if (!targetDatabase) {
         // Build the new database's fields from the columns mapped to one,
         // in file order.
-        fields = mappings
-          .map((mapping, index) => {
-            if (mapping.kind !== 'newField') return null;
+        // The chosen name column goes first (fields[0] is the title
+        // everywhere in the app); everything else keeps the file's order.
+        const order = [titleColumn, ...mappings.map((_, i) => i).filter((i) => i !== titleColumn)];
+        fields = order
+          .map((index) => {
+            const mapping = mappings[index];
+            if (!mapping || mapping.kind !== 'newField') return null;
             const field: FieldDef = {
-              id: generateId(),
+              id: mapping.fieldId,
               name: mapping.name.trim() || `Колонка ${index + 1}`,
               type: mapping.relationDatabaseId ? 'relation' : mapping.type,
             };
@@ -242,15 +271,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
         databaseId = await createDatabaseForImport(databaseName.trim(), fields);
       }
 
-      // runTableImport matches a 'newField' mapping to its built FieldDef
-      // by name, so the names have to be the ones actually saved above.
-      const namedMappings: ColumnMapping[] = mappings.map((mapping, index) =>
-        mapping.kind === 'newField'
-          ? { ...mapping, name: mapping.name.trim() || `Колонка ${index + 1}` }
-          : mapping
-      );
-
-      const written = await runTableImport({ databaseId, fields, columns: namedMappings, dataRows });
+      const written = await runTableImport({ databaseId, fields, columns: mappings, dataRows });
       onDone(databaseId, written);
       reset();
     } catch (e) {
@@ -371,7 +392,14 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
                           {sample ? String(sample[index]) : 'порожня'}
                         </Text>
                       </View>
-                      {index === 0 && !targetDatabase && <Text style={styles.titleBadge}>Назва</Text>}
+                      {!targetDatabase &&
+                        (index === titleColumn ? (
+                          <Text style={styles.titleBadge}>Назва</Text>
+                        ) : (
+                          <Pressable hitSlop={6} onPress={() => chooseTitleColumn(index)}>
+                            <Text style={styles.titleBadgePick}>Зробити назвою</Text>
+                          </Pressable>
+                        ))}
                     </View>
 
                     <Pressable
@@ -413,12 +441,17 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
                                   <Text style={styles.menuRowType}>{FIELD_TYPE_LABEL[f.type]}</Text>
                                 </Pressable>
                               ))
-                          : (index === 0 ? (['text'] as FieldType[]) : IMPORTABLE_TYPES).map((type) => (
+                          : (index === titleColumn ? (['text'] as FieldType[]) : IMPORTABLE_TYPES).map((type) => (
                               <Pressable
                                 key={type}
                                 style={styles.menuRow}
                                 onPress={() =>
-                                  setMapping(index, { kind: 'newField', name: columnLabel(index), type })
+                                  setMapping(index, {
+                                    kind: 'newField',
+                                    fieldId: fieldIdFor(index),
+                                    name: columnLabel(index),
+                                    type,
+                                  })
                                 }
                               >
                                 <Text style={styles.menuRowLabel}>Нове поле</Text>
@@ -431,7 +464,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
                             is missing - which is what links two imported
                             files together without a second pass by hand. */}
                         {!targetDatabase &&
-                          index > 0 &&
+                          index !== titleColumn &&
                           otherDatabases.map((odb) => (
                             <Pressable
                               key={odb.id}
@@ -439,6 +472,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
                               onPress={() =>
                                 setMapping(index, {
                                   kind: 'newField',
+                                  fieldId: fieldIdFor(index),
                                   name: columnLabel(index),
                                   type: 'relation',
                                   relationDatabaseId: odb.id,
@@ -591,6 +625,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: ACCENT,
+  },
+  titleBadgePick: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#9CA3AF',
   },
   mappingRow: {
     flexDirection: 'row',
