@@ -22,6 +22,8 @@ import { Block } from '../types';
 import { RootStackParamList } from '../navigation';
 import DocumentEditorScreen, { DocumentEditorHandle } from './DocumentEditorScreen';
 import { hasNoteContent } from '../utils/documentPreview';
+import { useDayHistory } from '../hooks/useDayHistory';
+import DayHistoryList from '../components/DayHistoryList';
 import { FONT_REGULAR, FONT_MEDIUM, FONT_SEMIBOLD, FONT_BOLD } from '../utils/fonts';
 import {
   MONTH_FULL,
@@ -100,7 +102,13 @@ export default function CalendarScreen() {
     const d = new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
   });
-  const [onlyFilledDays, setOnlyFilledDays] = useState(false);
+  // Which of the two "only X days" compact strips is active, if either -
+  // mutually exclusive (one strip, one criterion at a time), stored under
+  // the same calendarPrefsDoc the old plain boolean used. `isCompactMode`
+  // is what most of the surrounding layout code actually cares about
+  // (is the pill strip showing at all), regardless of which criterion.
+  const [compactFilter, setCompactFilterState] = useState<'none' | 'filled' | 'history'>('none');
+  const onlyFilledDays = compactFilter !== 'none';
   const [noteFilledDates, setNoteFilledDates] = useState<Set<string>>(new Set());
   const [reminderFilledDates, setReminderFilledDates] = useState<Set<string>>(new Set());
   // A day counts as "filled" either because it has a real note or because
@@ -114,9 +122,16 @@ export default function CalendarScreen() {
     () => new Set([...noteFilledDates, ...reminderFilledDates]),
     [noteFilledDates, reminderFilledDates]
   );
-  // Sorted view of filledDates for the "only filled days" strip - date keys
+  const { historyByDate, historyDates } = useDayHistory(
+    visibleMonth.year,
+    visibleMonth.month,
+    compactFilter === 'history'
+  );
+  // Sorted view of whichever set the active compact strip shows - date keys
   // (YYYY-MM-DD) sort lexicographically the same as chronologically.
   const filledDatesSorted = useMemo(() => Array.from(filledDates).sort(), [filledDates]);
+  const historyDatesSorted = useMemo(() => Array.from(historyDates).sort(), [historyDates]);
+  const activeDatesSorted = compactFilter === 'history' ? historyDatesSorted : filledDatesSorted;
   const [dueReminders, setDueReminders] = useState<
     { id: string; text: string; checked: boolean; documentId: string; reminderTime?: string }[]
   >([]);
@@ -133,6 +148,13 @@ export default function CalendarScreen() {
   // the strip (let alone the month grid) plus the keyboard leaves almost
   // nothing for the note being written.
   const [isWriting, setIsWriting] = useState(false);
+  // Only meaningful in the "history" compact strip (see the collapse row
+  // near noteArea below) - reset whenever that strip isn't the active one,
+  // so leaving it and coming back never starts pre-collapsed for no reason.
+  const [noteCollapsed, setNoteCollapsed] = useState(false);
+  useEffect(() => {
+    if (compactFilter !== 'history') setNoteCollapsed(false);
+  }, [compactFilter]);
   // Index into filledDatesSorted of the first cell of the currently shown
   // page of the "only filled days" strip - same 3-page sliding-window idea
   // as weekStart/WEEK_PAGE_OFFSETS below, just stepping by array index
@@ -165,7 +187,11 @@ export default function CalendarScreen() {
 
   useEffect(() => {
     return onSnapshot(calendarPrefsDoc, (snapshot) => {
-      setOnlyFilledDays(snapshot.data()?.onlyFilledDays ?? false);
+      const data = snapshot.data();
+      // Reads both the new field and the old plain boolean it replaces, so
+      // whatever was saved before this update still means the same thing.
+      const stored = data?.compactFilter as 'none' | 'filled' | 'history' | undefined;
+      setCompactFilterState(stored ?? (data?.onlyFilledDays ? 'filled' : 'none'));
     });
   }, []);
 
@@ -192,17 +218,24 @@ export default function CalendarScreen() {
   // the next filled day after it, if the selected day itself has no note)
   // the moment the toggle turns on or the list first loads - never again
   // after the user has scrolled it themselves.
+  // Switching which criterion the compact strip uses (filled <-> history)
+  // is as much a fresh start as turning it on from "none" - the previous
+  // scroll position belonged to a completely different set of dates.
+  useEffect(() => {
+    userAdjustedFilledPageRef.current = false;
+  }, [compactFilter]);
+
   useEffect(() => {
     if (!onlyFilledDays) {
       userAdjustedFilledPageRef.current = false;
       return;
     }
-    if (userAdjustedFilledPageRef.current || filledDatesSorted.length === 0) return;
+    if (userAdjustedFilledPageRef.current || activeDatesSorted.length === 0) return;
     const key = dateKey(selectedDate);
-    let idx = filledDatesSorted.findIndex((k) => k >= key);
-    if (idx === -1) idx = filledDatesSorted.length - 1;
+    let idx = activeDatesSorted.findIndex((k) => k >= key);
+    if (idx === -1) idx = activeDatesSorted.length - 1;
     setFilledPageStart(Math.max(0, idx - (idx % 7)));
-  }, [onlyFilledDays, filledDatesSorted, selectedDate]);
+  }, [onlyFilledDays, activeDatesSorted, selectedDate]);
 
   // The month grid can never be reached while showing only filled days (see
   // the expand button being hidden below) - if it was already open when the
@@ -230,10 +263,14 @@ export default function CalendarScreen() {
   // to effectively unbounded instead. A personal note history is small
   // enough that this is still one cheap query, not real pagination.
   useEffect(() => {
-    const monthStartKey = onlyFilledDays
+    // Only THIS strip's own criterion widens the range to unbounded - the
+    // history strip widens useDayHistory's own query instead (see its
+    // `unbounded` param above), independently.
+    const unbounded = compactFilter === 'filled';
+    const monthStartKey = unbounded
       ? '0001-01-01'
       : dateKey(addDays(new Date(visibleMonth.year, visibleMonth.month, 1), -7));
-    const monthEndKey = onlyFilledDays
+    const monthEndKey = unbounded
       ? '9999-12-31'
       : dateKey(addDays(new Date(visibleMonth.year, visibleMonth.month + 1, 0), 7));
     const filledQuery = query(
@@ -249,16 +286,17 @@ export default function CalendarScreen() {
       });
       setNoteFilledDates(filled);
     });
-  }, [visibleMonth.year, visibleMonth.month, onlyFilledDays]);
+  }, [visibleMonth.year, visibleMonth.month, compactFilter]);
 
   // Same range, same reasoning, but against tasks' own reminderDate - a day
   // with a task due on it counts as "filled" too (see filledDates above),
   // without writing an actual (empty) diary document for it.
   useEffect(() => {
-    const monthStartKey = onlyFilledDays
+    const unbounded = compactFilter === 'filled';
+    const monthStartKey = unbounded
       ? '0001-01-01'
       : dateKey(addDays(new Date(visibleMonth.year, visibleMonth.month, 1), -7));
-    const monthEndKey = onlyFilledDays
+    const monthEndKey = unbounded
       ? '9999-12-31'
       : dateKey(addDays(new Date(visibleMonth.year, visibleMonth.month + 1, 0), 7));
     const remindersQuery = query(
@@ -274,7 +312,7 @@ export default function CalendarScreen() {
       });
       setReminderFilledDates(filled);
     });
-  }, [visibleMonth.year, visibleMonth.month, onlyFilledDays]);
+  }, [visibleMonth.year, visibleMonth.month, compactFilter]);
 
   function selectDay(date: Date) {
     setSelectedDate(date);
@@ -325,9 +363,10 @@ export default function CalendarScreen() {
     });
   }
 
-  async function toggleOnlyFilledDays() {
+  async function toggleCompactFilter(mode: 'filled' | 'history') {
     setMenuOpen(false);
-    await setDoc(calendarPrefsDoc, { onlyFilledDays: !onlyFilledDays }, { merge: true });
+    const next = compactFilter === mode ? 'none' : mode;
+    await setDoc(calendarPrefsDoc, { compactFilter: next }, { merge: true });
   }
 
   // The row height that isn't the month grid - WEEK_AREA_HEIGHT normally,
@@ -475,10 +514,15 @@ export default function CalendarScreen() {
       {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
       {menuOpen && (
         <View style={styles.menuPanel}>
-          <Pressable style={styles.menuRow} onPress={toggleOnlyFilledDays}>
+          <Pressable style={styles.menuRow} onPress={() => toggleCompactFilter('filled')}>
             <Ionicons name="filter-outline" size={17} color="#111827" />
             <Text style={styles.menuRowLabel}>Лише заповнені дні</Text>
-            {onlyFilledDays && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+            {compactFilter === 'filled' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+          </Pressable>
+          <Pressable style={styles.menuRow} onPress={() => toggleCompactFilter('history')}>
+            <Ionicons name="time-outline" size={17} color="#111827" />
+            <Text style={styles.menuRowLabel}>Лише дні з історією</Text>
+            {compactFilter === 'history' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
           </Pressable>
         </View>
       )}
@@ -534,7 +578,7 @@ export default function CalendarScreen() {
                   <View key={offset} style={styles.weekPage}>
                     {Array.from({ length: 7 }, (_, i) => {
                       const idx = filledPageStart + offset + i;
-                      const dateStr = filledDatesSorted[idx];
+                      const dateStr = activeDatesSorted[idx];
                       if (!dateStr) return <View key={i} style={styles.filledDayCell} />;
                       const date = parseDateKey(dateStr);
                       const isToday = isSameDay(date, today);
@@ -577,6 +621,7 @@ export default function CalendarScreen() {
                           isToday={isToday}
                           isSelected={key === selectedKey}
                           filled={filledDates.has(key)}
+                          hasHistory={historyDates.has(key)}
                           onPress={() => selectDay(date)}
                         />
                       );
@@ -613,6 +658,7 @@ export default function CalendarScreen() {
                         isSelected={key === selectedKey}
                         muted={!inMonth}
                         filled={filledDates.has(key)}
+                        hasHistory={historyDates.has(key)}
                         inGrid
                         onPress={() => selectDay(date)}
                       />
@@ -664,18 +710,35 @@ export default function CalendarScreen() {
         </View>
       )}
 
-      <View style={styles.noteArea}>
-        <DocumentEditorScreen
-          key={dailyDocId}
-          ref={noteEditorRef}
-          embedded
-          documentId={dailyDocId}
-          navigation={navigation}
-          extraFields={{ calendarDate: selectedKey }}
-          onSelectModeChange={setNoteSelectMode}
-          onSaveStatusChange={setNoteSaveStatus}
-        />
-      </View>
+      {!isWriting && (
+        <DayHistoryList items={historyByDate.get(selectedKey) ?? []} />
+      )}
+
+      {/* Collapsing the note only makes sense while browsing "days with
+          history" - that's the one strip where the note itself is often
+          not the point of looking at the day at all, and having more
+          history entries visible at once matters more than the note. */}
+      {!isWriting && compactFilter === 'history' && (
+        <Pressable style={styles.collapseNoteRow} onPress={() => setNoteCollapsed((v) => !v)}>
+          <Ionicons name={noteCollapsed ? 'chevron-down' : 'chevron-up'} size={14} color="rgba(255,255,255,0.6)" />
+          <Text style={styles.collapseNoteLabel}>{noteCollapsed ? 'Показати нотатку дня' : 'Згорнути нотатку дня'}</Text>
+        </Pressable>
+      )}
+
+      {!(compactFilter === 'history' && noteCollapsed) && (
+        <View style={styles.noteArea}>
+          <DocumentEditorScreen
+            key={dailyDocId}
+            ref={noteEditorRef}
+            embedded
+            documentId={dailyDocId}
+            navigation={navigation}
+            extraFields={{ calendarDate: selectedKey }}
+            onSelectModeChange={setNoteSelectMode}
+            onSaveStatusChange={setNoteSaveStatus}
+          />
+        </View>
+      )}
     </View>
   );
 }
@@ -691,6 +754,7 @@ function DayCell({
   isSelected,
   muted,
   filled,
+  hasHistory,
   inGrid,
   compact,
   onPress,
@@ -699,10 +763,15 @@ function DayCell({
   isToday: boolean;
   isSelected: boolean;
   muted?: boolean;
-  // Real note or reminder on this day - shown as a small dot under the
-  // number. Not meaningful in `compact` mode (the "only filled days" strip
-  // only ever shows filled days to begin with).
+  // Real note or reminder on this day - shown as a small white dot under
+  // the number. Not meaningful in `compact` mode (both compact strips only
+  // ever show days that already match their own criterion to begin with).
   filled?: boolean;
+  // Something (file/photo/link/document/board/task/sticker/database row or
+  // view) was added this day - a second, blue dot, independent of `filled`:
+  // a day can have history with no note of its own, or a note with nothing
+  // else added.
+  hasHistory?: boolean;
   inGrid?: boolean;
   // The "only filled days" strip's own cell shape: a day.month pill instead
   // of a plain day-number circle, since these dates jump around freely and
@@ -733,7 +802,12 @@ function DayCell({
         ) : (
           <Text style={[styles.dayNum, numColor]}>{date.getDate()}</Text>
         )}
-        {filled && !compact && <View style={[styles.filledDot, isToday && styles.filledDotOnToday]} />}
+        {!compact && (filled || hasHistory) && (
+          <View style={styles.dotsRow}>
+            {filled && <View style={[styles.filledDot, isToday && styles.filledDotOnToday]} />}
+            {hasHistory && <View style={styles.historyDot} />}
+          </View>
+        )}
       </View>
     </Pressable>
   );
@@ -1009,9 +1083,15 @@ const styles = StyleSheet.create({
   // white day number it sits under; on today's own white-filled circle the
   // number is dark instead, so the dot switches to match it there too -
   // otherwise it would vanish against that white background.
-  filledDot: {
+  // Holds both dots side by side (rather than each absolutely positioned
+  // on its own) so having both never overlaps them into one blob.
+  dotsRow: {
     position: 'absolute',
     bottom: 4,
+    flexDirection: 'row',
+    gap: 3,
+  },
+  filledDot: {
     width: 3.5,
     height: 3.5,
     borderRadius: 2,
@@ -1019,6 +1099,15 @@ const styles = StyleSheet.create({
   },
   filledDotOnToday: {
     backgroundColor: '#111827',
+  },
+  // A saturated blue reads clearly against both the plain dark cell and
+  // today's white circle, so unlike filledDot this one never needs a
+  // second on-today variant.
+  historyDot: {
+    width: 3.5,
+    height: 3.5,
+    borderRadius: 2,
+    backgroundColor: '#60A5FA',
   },
   expandRow: {
     flexDirection: 'row',
@@ -1038,6 +1127,19 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     borderRadius: 16,
     overflow: 'hidden',
+  },
+  collapseNoteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingVertical: 4,
+  },
+  collapseNoteLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.6)',
   },
   dueCard: {
     backgroundColor: '#fff',

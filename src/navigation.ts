@@ -10,7 +10,15 @@ export type RootStackParamList = {
   // just switches to that tab and lands wherever its own nested
   // BoardsStack last was - see App.tsx's BoardsStack for why that's
   // enough to satisfy "resume the last open board" with no extra code.
-  Tabs: undefined | { screen: 'Календар'; params: { jumpToDate: string } } | { screen: 'Дошки' };
+  Tabs:
+    | undefined
+    | { screen: 'Календар'; params: { jumpToDate: string } }
+    | { screen: 'Дошки' }
+    // Jumps straight into one board rather than wherever BoardsStack last
+    // was - used by the calendar's day-history list to open a board item.
+    // React Navigation resolves a doubly-nested `screen`/`params` like this
+    // by recursing into BoardsStack itself, no extra plumbing needed there.
+    | { screen: 'Дошки'; params: { screen: 'Board'; params: { boardId: string } } };
   // autoFocusTitle: set only right after creating a brand-new document
   // (DocumentsScreen's own addDoc) - focuses the title field and raises the
   // keyboard the instant the editor opens, since a fresh "Без назви"
