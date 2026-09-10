@@ -287,9 +287,11 @@ const gridStyles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 4,
   },
+  // 1.5 instead of a square 1 - a third shorter, so the cover reads as a
+  // banner over the card's own text rather than the whole tile.
   coverWrap: {
     width: '100%',
-    aspectRatio: 1,
+    aspectRatio: 1.5,
     overflow: 'hidden',
   },
   coverEmpty: {
