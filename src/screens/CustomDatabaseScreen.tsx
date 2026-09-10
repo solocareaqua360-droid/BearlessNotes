@@ -1903,13 +1903,17 @@ const styles = StyleSheet.create({
   tabsTunnel: {
     position: 'absolute',
     right: 0,
-    top: 0,
-    // The tabs row carries this much padding under its pills - matching it
-    // makes the tunnel exactly as tall as a tab, and centred on it.
-    bottom: 10,
-    width: 8,
+    // Overhangs a tab by 4px at each end, so it reads as the thing the
+    // tabs disappear into rather than as another pill in the row. (The
+    // row carries 10px of padding under its pills, hence the asymmetry.)
+    top: -4,
+    bottom: 6,
+    width: 10,
     borderRadius: 999,
-    backgroundColor: 'rgba(20,20,20,0.35)',
+    // Nearly opaque on purpose: a tab has to VANISH behind this, and at
+    // the glass transparency the rest of the capsules use, its text
+    // showed straight through and the illusion fell apart.
+    backgroundColor: 'rgba(24,22,20,0.94)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
   },
