@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Platform, Vibration } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
 // Haptic feedback, named for what happened rather than for how it should
@@ -78,35 +78,21 @@ export function hapticCreate() {
   android(Haptics.AndroidHaptics.Drag_Start, () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
 }
 
-// Something thrown away. The fade is carried by DENSITY, not by strength:
-// the pulses start almost fused (25ms apart) and end clearly separate
-// (70ms), which the hand reads as a rattle winding down - something
-// receding. An earlier version faded by dropping the impact style
-// instead, and came through as two taps rather than a decay: this phone
-// attenuates the Light/Soft effects so heavily that the quiet end of such
-// a ramp simply isn't felt, leaving only the loud beginning of it.
+// Something thrown away. The raw motor, not the tactile effects the rest
+// of this file uses - and that is the whole point.
 //
-// Style stays at Light for the body for the same reason - it has to be
-// something that actually registers on every pulse - with only the last
-// two dropping to Soft, by which point the widening gaps are already
-// doing the work.
-const DISCARD_PULSES: [number, Haptics.ImpactFeedbackStyle][] = [
-  [0, Haptics.ImpactFeedbackStyle.Medium],
-  [25, Haptics.ImpactFeedbackStyle.Light],
-  [55, Haptics.ImpactFeedbackStyle.Light],
-  [90, Haptics.ImpactFeedbackStyle.Light],
-  [130, Haptics.ImpactFeedbackStyle.Light],
-  [180, Haptics.ImpactFeedbackStyle.Light],
-  [240, Haptics.ImpactFeedbackStyle.Soft],
-  [310, Haptics.ImpactFeedbackStyle.Soft],
-];
-
+// Two earlier attempts built this out of a series of discrete impacts,
+// fading first by strength and then by spacing. Both came through as
+// separate knocks; the user's words for the second were "an old car
+// starting", which is exactly what a run of evenly-spaced taps is. No
+// amount of retiming fixes that: discrete effects can't be made
+// continuous, and a whoosh IS continuous.
+//
+// The motor can be. This pattern never fully stops - the vibration
+// shortens (70ms down to 8) while the gaps between grow (10ms up to 20),
+// so it reads as one sound fading out rather than as several. It buzzes
+// where a haptic effect taps, which for paper going into a bin is the
+// right texture anyway. Android's format alternates pause/vibrate.
 export function hapticDiscard() {
-  DISCARD_PULSES.forEach(([delay, style]) => {
-    if (delay === 0) {
-      Haptics.impactAsync(style).catch(() => {});
-      return;
-    }
-    setTimeout(() => Haptics.impactAsync(style).catch(() => {}), delay);
-  });
+  Vibration.vibrate([0, 70, 10, 50, 12, 36, 14, 26, 16, 18, 18, 12, 20, 8]);
 }
