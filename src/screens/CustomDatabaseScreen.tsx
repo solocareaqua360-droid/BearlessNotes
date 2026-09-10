@@ -128,6 +128,7 @@ export default function CustomDatabaseScreen({}: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [menuOpen, setMenuOpen] = useState(false);
   const [paramsCollapsed, setParamsCollapsed] = useState(false);
+  const [headerCapsuleWidth, setHeaderCapsuleWidth] = useState<number | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingDatabase, setRenamingDatabase] = useState(false);
@@ -831,7 +832,13 @@ export default function CustomDatabaseScreen({}: Props) {
             {database.name}
           </Text>
         </View>
-        <View style={styles.headerButtons}>
+        <View
+          style={styles.headerButtons}
+          // Measured so the parameters capsule below can be exactly as wide
+          // as this one rather than approximately - the two sit one under
+          // the other, where a few pixels out reads as a mistake.
+          onLayout={(e) => setHeaderCapsuleWidth(e.nativeEvent.layout.width)}
+        >
           <Pressable hitSlop={6} onPress={() => setMenuOpen((v) => !v)}>
             <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
           </Pressable>
@@ -897,16 +904,28 @@ export default function CustomDatabaseScreen({}: Props) {
         </View>
       )}
 
-      {/* The parameters that change while working, one tap away and
-          showing their own state - the sticker strip's pattern from the
-          Documents screen. Collapsed state is remembered per database, so
-          a screen crowded with group tabs and a search row can be quieted
-          down and stay that way. */}
-      <View style={styles.paramsHeader}>
-        <Pressable style={styles.paramsToggle} onPress={toggleParamsCollapsed}>
-          <Text style={styles.paramsToggleLabel}>
-            {VIEW_LABELS[viewMode]} · {SORT_LABELS[sortPref.field]} {sortPref.dir === 'asc' ? '↑' : '↓'}
-          </Text>
+      {/* Groups and the parameters toggle share one row: both are ways of
+          narrowing what's below, and stacking them cost a line each on a
+          screen that also carries a header and sometimes a search field.
+          The toggle takes the header capsule's own measured width so the
+          two line up exactly. */}
+      <View style={styles.controlsRow}>
+        <View style={styles.controlsTabs}>
+          {groups.length > 0 && (
+            <ProjectTabsRow
+              items={groups}
+              selected={groupFilter}
+              onSelect={setGroupFilter}
+              unassignedLabel="Без групи"
+              dark
+            />
+          )}
+        </View>
+        <Pressable
+          style={[styles.paramsToggle, headerCapsuleWidth ? { width: headerCapsuleWidth } : null]}
+          onPress={toggleParamsCollapsed}
+        >
+          <Text style={styles.paramsToggleLabel}>Параметри</Text>
           <Ionicons
             name={paramsCollapsed ? 'chevron-down' : 'chevron-up'}
             size={14}
@@ -970,10 +989,6 @@ export default function CustomDatabaseScreen({}: Props) {
             style={styles.searchInput}
           />
         </View>
-      )}
-
-      {groups.length > 0 && (
-        <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" dark />
       )}
 
       {isLoading ? (
@@ -1812,15 +1827,24 @@ const styles = StyleSheet.create({
     // scrolled out from under it.
     paddingBottom: 170,
   },
-  paramsHeader: {
+  controlsRow: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingHorizontal: 20,
+    alignItems: 'center',
+    gap: 8,
+    paddingRight: 20,
     paddingBottom: 6,
+  },
+  // The tabs take whatever the toggle leaves, and scroll within it -
+  // minWidth: 0 is what lets a flex child actually shrink below its
+  // content instead of pushing the toggle off the row.
+  controlsTabs: {
+    flex: 1,
+    minWidth: 0,
   },
   paramsToggle: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
     backgroundColor: 'rgba(20,20,20,0.35)',
     borderWidth: 1,
