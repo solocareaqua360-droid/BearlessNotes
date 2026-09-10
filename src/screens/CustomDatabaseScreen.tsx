@@ -625,6 +625,7 @@ export default function CustomDatabaseScreen({}: Props) {
         tags={tags.filter((t) => (item.tagIds ?? []).includes(t.id))}
         documentCount={documentIdsOf(item).length}
         onPress={() => (isSelectMode ? toggleSelected(item.id) : openEditRow(item))}
+        onLongPress={() => setRowMenuId(item.id)}
         right={
           isSelectMode ? (
             <Pressable hitSlop={8} onPress={() => toggleSelected(item.id)} style={styles.rowActionButton}>
@@ -945,7 +946,11 @@ export default function CustomDatabaseScreen({}: Props) {
                     size={22}
                     color="#fff"
                   />
-                ) : undefined
+                ) : (
+                  <Pressable hitSlop={8} onPress={() => setRowMenuId(row.id)}>
+                    <Ionicons name="ellipsis-horizontal" size={16} color="rgba(255,255,255,0.85)" />
+                  </Pressable>
+                )
               }
             />
           ))}

@@ -390,6 +390,7 @@ export default function FilesScreen() {
         <Pressable
           style={styles.rowTap}
           onPress={() => (isSelectMode ? toggleSelected(item.id) : openFile(item))}
+          onLongPress={() => setCardMenuFileId(item.id)}
         >
           <View style={[styles.thumbIcon, { backgroundColor: `${fileIconColorFor(item.fileName)}1A` }]}>
             <Ionicons name={fileIconFor(item.fileName)} size={20} color={fileIconColorFor(item.fileName)} />
@@ -433,6 +434,7 @@ export default function FilesScreen() {
         <Pressable
           style={styles.gridTap}
           onPress={() => (isSelectMode ? toggleSelected(item.id) : openFile(item))}
+          onLongPress={() => setCardMenuFileId(item.id)}
         >
           <View style={[styles.gridThumb, { backgroundColor: `${fileIconColorFor(item.fileName)}1A` }]}>
             <Ionicons name={fileIconFor(item.fileName)} size={26} color={fileIconColorFor(item.fileName)} />

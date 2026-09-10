@@ -58,6 +58,7 @@ type Props = {
   display: RowDisplay;
   tags: Tag[];
   onPress?: () => void;
+  onLongPress?: () => void;
   onTagPress?: () => void;
   // How many documents embed this row as a card. Shown as a chip so it's
   // visible without opening the row's menu; omitted where the question
@@ -72,11 +73,25 @@ type Props = {
 // rather than a copy per screen: it's rendered in its own database's list,
 // as a block inside a document, and (later) as a board card - a redesign
 // has to land in all three at once, which only a single component gives.
-export default function CustomRowCard({ rowId, display, tags, onPress, onTagPress, documentCount, right }: Props) {
+export default function CustomRowCard({
+  rowId,
+  display,
+  tags,
+  onPress,
+  onLongPress,
+  onTagPress,
+  documentCount,
+  right,
+}: Props) {
   const { background, text, textMuted } = colorForDocument(rowId);
   return (
     <View style={[styles.row, { backgroundColor: background }]}>
-      <Pressable style={styles.rowTap} onPress={onPress} disabled={!onPress}>
+      <Pressable
+        style={styles.rowTap}
+        onPress={onPress}
+        onLongPress={onLongPress}
+        disabled={!onPress && !onLongPress}
+      >
         {display.cover !== undefined &&
           (display.cover?.thumbUri ? (
             <RelationThumb uri={display.cover.thumbUri} driveFileId={display.cover.driveFileId} size={56} radius={12} />

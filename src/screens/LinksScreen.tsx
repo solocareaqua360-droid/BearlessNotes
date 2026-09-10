@@ -454,6 +454,7 @@ export default function LinksScreen({ route, navigation }: Props) {
         <Pressable
           style={styles.rowTap}
           onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkUrl(item.url))}
+          onLongPress={() => setCardMenuLinkId(item.id)}
         >
           {item.imageUrl ? (
             <Image source={{ uri: item.imageUrl }} style={styles.thumb} resizeMode="cover" />
@@ -506,6 +507,7 @@ export default function LinksScreen({ route, navigation }: Props) {
         <Pressable
           style={styles.gridTap}
           onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkUrl(item.url))}
+          onLongPress={() => setCardMenuLinkId(item.id)}
         >
           {item.imageUrl ? (
             <Image source={{ uri: item.imageUrl }} style={styles.gridThumb} resizeMode="cover" />

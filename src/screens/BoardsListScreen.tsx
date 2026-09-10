@@ -79,7 +79,12 @@ export default function BoardsListScreen() {
   function renderBoardRow(item: BoardItem) {
     const { background, text, textMuted } = colorForDocument(item.id);
     return (
-      <Pressable key={item.id} style={[styles.row, { backgroundColor: background }]} onPress={() => openBoard(item)}>
+      <Pressable
+        key={item.id}
+        style={[styles.row, { backgroundColor: background }]}
+        onPress={() => openBoard(item)}
+        onLongPress={() => setCardMenuBoardId(item.id)}
+      >
         <View style={styles.rowIcon}>
           <Ionicons name="apps-outline" size={20} color={text} />
         </View>
