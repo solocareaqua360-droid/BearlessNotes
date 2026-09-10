@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { collection, onSnapshot, orderBy, query } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import { ImportableItem, MAX_CARDS_PER_COLUMN } from '../utils/importGroupToBoard';
+import { hapticSelectItem, hapticWarning } from '../utils/haptics';
 
 const ACCENT = '#3B82F6';
 
@@ -64,7 +65,13 @@ export default function GroupImportSheet({
         return next;
       }
       // The cap is per kind, because each kind becomes its own column.
-      if (selectedOfKind(item.kind).length >= MAX_CARDS_PER_COLUMN) return prev;
+      // A blocked tap says so by feel as well as visually - otherwise it
+      // reads as the checkbox simply not working.
+      if (selectedOfKind(item.kind).length >= MAX_CARDS_PER_COLUMN) {
+        hapticWarning();
+        return prev;
+      }
+      hapticSelectItem();
       next.add(key);
       return next;
     });

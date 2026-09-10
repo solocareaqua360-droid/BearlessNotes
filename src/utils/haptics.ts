@@ -77,3 +77,21 @@ export function hapticWarning() {
 export function hapticCreate() {
   android(Haptics.AndroidHaptics.Drag_Start, () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
 }
+
+// Something thrown away. A single pulse can't read as a "whoosh" - that
+// needs a tail - so this fires four impacts that get weaker as the gaps
+// between them stretch: a decay curve, which the hand reads as one thing
+// moving past and away rather than as four taps. Deliberately allowed to
+// blur together; the blur IS the effect here, unlike everywhere else in
+// this file where two pulses had to stay distinct.
+export function hapticDiscard() {
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+  const tail: [number, Haptics.ImpactFeedbackStyle][] = [
+    [35, Haptics.ImpactFeedbackStyle.Medium],
+    [65, Haptics.ImpactFeedbackStyle.Light],
+    [90, Haptics.ImpactFeedbackStyle.Soft],
+  ];
+  tail.forEach(([delay, style]) => {
+    setTimeout(() => Haptics.impactAsync(style).catch(() => {}), delay);
+  });
+}
