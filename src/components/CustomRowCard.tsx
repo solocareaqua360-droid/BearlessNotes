@@ -16,21 +16,31 @@ export function RelationThumb({
   driveFileId,
   size,
   radius = 6,
+  fill,
 }: {
   uri: string;
   driveFileId?: string;
-  size: number;
+  // Ignored when `fill` is set - the thumbnail then takes its parent's
+  // size instead, which is what a grid tile's cover needs (a fixed square
+  // would just be cropped by the tile rather than scaled to it).
+  size?: number;
   radius?: number;
+  fill?: boolean;
 }) {
   const status = useCachedAttachment(uri, driveFileId);
   return (
-    <View style={[styles.thumbWrap, { width: size, height: size, borderRadius: radius }]}>
+    <View
+      style={[
+        styles.thumbWrap,
+        fill ? styles.thumbFill : { width: size, height: size, borderRadius: radius },
+      ]}
+    >
       {status === 'ready' ? (
         <Image source={{ uri }} style={styles.thumbImage} resizeMode="cover" />
       ) : (
         <View style={[styles.thumbImage, styles.thumbStatus]}>
           {status === 'missing' ? (
-            <Ionicons name="cloud-offline-outline" size={Math.round(size * 0.45)} color="#9CA3AF" />
+            <Ionicons name="cloud-offline-outline" size={Math.round((size ?? 48) * 0.45)} color="#9CA3AF" />
           ) : (
             <ActivityIndicator color="#9CA3AF" size="small" />
           )}
@@ -163,6 +173,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: '#F3F4F6',
   },
+  thumbFill: {
+    width: '100%',
+    height: '100%',
+  },
   thumbImage: {
     width: '100%',
     height: '100%',
@@ -170,5 +184,106 @@ const styles = StyleSheet.create({
   thumbStatus: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+});
+
+// The same row as a grid tile: the cover image is the whole point of this
+// view (it's what the cover field exists for), so it leads, with the
+// title and a couple of values under it. A database with no cover field
+// still works - the tile just carries text, on the row's own colour.
+export function CustomRowGridCard({
+  rowId,
+  display,
+  onPress,
+  onLongPress,
+  right,
+}: {
+  rowId: string;
+  display: RowDisplay;
+  onPress?: () => void;
+  onLongPress?: () => void;
+  right?: ReactNode;
+}) {
+  const { background, text, textMuted } = colorForDocument(rowId);
+  const hasCover = display.cover !== undefined;
+  return (
+    <Pressable
+      style={[gridStyles.tile, { backgroundColor: background }]}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      disabled={!onPress && !onLongPress}
+    >
+      {hasCover &&
+        (display.cover?.thumbUri ? (
+          <View style={gridStyles.coverWrap}>
+            <RelationThumb uri={display.cover.thumbUri} driveFileId={display.cover.driveFileId} fill />
+          </View>
+        ) : (
+          <View style={[gridStyles.coverWrap, gridStyles.coverEmpty]}>
+            <Ionicons name="image-outline" size={26} color="rgba(255,255,255,0.5)" />
+          </View>
+        ))}
+      <View style={gridStyles.body}>
+        <Text style={[gridStyles.title, { color: text }]} numberOfLines={2}>
+          {display.title}
+        </Text>
+        {display.chips.slice(0, 3).map(({ field, shown }) => (
+          <View key={field.id} style={gridStyles.chip}>
+            <Ionicons name={FIELD_TYPE_ICON[field.type]} size={11} color={textMuted} />
+            <Text style={[gridStyles.chipValue, { color: textMuted }]} numberOfLines={1}>
+              {shown}
+            </Text>
+          </View>
+        ))}
+      </View>
+      {right !== undefined && <View style={gridStyles.corner}>{right}</View>}
+    </Pressable>
+  );
+}
+
+const gridStyles = StyleSheet.create({
+  tile: {
+    width: '47%',
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(176,176,176,0.5)',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  coverWrap: {
+    width: '100%',
+    aspectRatio: 1,
+    overflow: 'hidden',
+  },
+  coverEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  body: {
+    padding: 10,
+    gap: 4,
+  },
+  title: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  chipValue: {
+    fontSize: 12,
+    flexShrink: 1,
+  },
+  corner: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
   },
 });

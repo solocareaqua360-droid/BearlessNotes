@@ -41,7 +41,7 @@ import { db } from '../firebase';
 import { CustomDatabase, CustomDatabaseRow, FieldDef, Group } from '../types';
 import { groupAppliesTo } from '../utils/groups';
 import { hapticSuccess } from '../utils/haptics';
-import CustomRowCard, { RelationThumb } from '../components/CustomRowCard';
+import CustomRowCard, { CustomRowGridCard, RelationThumb } from '../components/CustomRowCard';
 import {
   buildRowDisplay,
   coverFieldOf,
@@ -83,7 +83,7 @@ const TABLE_HANDLE_WIDTH = 34;
 // keeps them in step.
 const TABLE_ROW_HEIGHT = 46;
 
-type ViewMode = 'list' | 'table';
+type ViewMode = 'list' | 'table' | 'cards';
 type RowEditorState = { mode: 'new'; id: string } | { mode: 'edit'; row: CustomDatabaseRow };
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CustomDatabase'>;
@@ -788,6 +788,11 @@ export default function CustomDatabaseScreen({}: Props) {
             <Text style={styles.menuRowLabel}>Таблиця</Text>
             {viewMode === 'table' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
           </Pressable>
+          <Pressable style={styles.menuRow} onPress={() => changeViewMode('cards')}>
+            <Ionicons name="albums-outline" size={17} color="#111827" />
+            <Text style={styles.menuRowLabel}>Картки</Text>
+            {viewMode === 'cards' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+          </Pressable>
           <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
           <View style={styles.menuDivider} />
           <Pressable
@@ -841,6 +846,27 @@ export default function CustomDatabaseScreen({}: Props) {
         </View>
       ) : viewMode === 'table' ? (
         renderTable()
+      ) : viewMode === 'cards' ? (
+        <ScrollView contentContainerStyle={[styles.cardGrid, isSelectMode && styles.listWithBulkBar]}>
+          {displayedRows.map((row) => (
+            <CustomRowGridCard
+              key={row.id}
+              rowId={row.id}
+              display={buildRowDisplay(database, row, displayContext)}
+              onPress={() => (isSelectMode ? toggleSelected(row.id) : openEditRow(row))}
+              onLongPress={() => setRowMenuId(row.id)}
+              right={
+                isSelectMode ? (
+                  <Ionicons
+                    name={selectedIds.has(row.id) ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={22}
+                    color="#fff"
+                  />
+                ) : undefined
+              }
+            />
+          ))}
+        </ScrollView>
       ) : (
         <ScrollView contentContainerStyle={[styles.list, isSelectMode && styles.listWithBulkBar]}>
           {displayedRows.map(renderRowCard)}
@@ -1614,6 +1640,15 @@ const styles = StyleSheet.create({
     gap: 10,
     // Clears the floating "+" (bottom: 100, 56 tall) so the last row can be
     // scrolled out from under it.
+    paddingBottom: 170,
+  },
+  cardGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    gap: 12,
     paddingBottom: 170,
   },
   listWithBulkBar: {
