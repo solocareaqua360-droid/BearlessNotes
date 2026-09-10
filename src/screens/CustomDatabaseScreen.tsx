@@ -128,7 +128,7 @@ export default function CustomDatabaseScreen({}: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [menuOpen, setMenuOpen] = useState(false);
   const [paramsCollapsed, setParamsCollapsed] = useState(false);
-  const [headerCapsuleWidth, setHeaderCapsuleWidth] = useState<number | null>(null);
+  const [openParam, setOpenParam] = useState<'view' | 'sort' | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingDatabase, setRenamingDatabase] = useState(false);
@@ -832,13 +832,7 @@ export default function CustomDatabaseScreen({}: Props) {
             {database.name}
           </Text>
         </View>
-        <View
-          style={styles.headerButtons}
-          // Measured so the parameters capsule below can be exactly as wide
-          // as this one rather than approximately - the two sit one under
-          // the other, where a few pixels out reads as a mistake.
-          onLayout={(e) => setHeaderCapsuleWidth(e.nativeEvent.layout.width)}
-        >
+        <View style={styles.headerButtons}>
           <Pressable hitSlop={6} onPress={() => setMenuOpen((v) => !v)}>
             <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
           </Pressable>
@@ -921,10 +915,7 @@ export default function CustomDatabaseScreen({}: Props) {
             />
           )}
         </View>
-        <Pressable
-          style={[styles.paramsToggle, headerCapsuleWidth ? { width: headerCapsuleWidth } : null]}
-          onPress={toggleParamsCollapsed}
-        >
+        <Pressable style={styles.paramsToggle} onPress={toggleParamsCollapsed}>
           <Text style={styles.paramsToggleLabel}>Параметри</Text>
           <Ionicons
             name={paramsCollapsed ? 'chevron-down' : 'chevron-up'}
@@ -935,45 +926,93 @@ export default function CustomDatabaseScreen({}: Props) {
       </View>
 
       {!paramsCollapsed && (
-        // A wrapping row, not a horizontal scroller: six short chips fit in
-        // two lines, nothing can be squeezed to fit a viewport, and no
-        // option hides past the screen edge where it would never be found.
+        // One capsule per parameter, each opening its own list beneath
+        // itself rather than laying every option out at once: the row
+        // stays short, and the capsule keeps showing what's chosen.
         <View style={styles.paramsStrip}>
-          {(['list', 'cards', 'table'] as ViewMode[]).map((mode) => (
+          <View style={styles.paramGroup}>
             <Pressable
-              key={mode}
-              style={[styles.paramChip, viewMode === mode && styles.paramChipActive]}
-              onPress={() => changeViewMode(mode)}
+              style={[styles.paramChip, openParam === 'view' && styles.paramChipOpen]}
+              onPress={() => setOpenParam((prev) => (prev === 'view' ? null : 'view'))}
             >
-              <Ionicons
-                name={VIEW_ICONS[mode]}
-                size={13}
-                color={viewMode === mode ? '#111827' : 'rgba(255,255,255,0.85)'}
-              />
-              <Text
-                numberOfLines={1}
-                style={[styles.paramChipLabel, viewMode === mode && styles.paramChipLabelActive]}
-              >
-                {VIEW_LABELS[mode]}
+              <Ionicons name={VIEW_ICONS[viewMode]} size={13} color="rgba(255,255,255,0.85)" />
+              <Text style={styles.paramChipLabel} numberOfLines={1}>
+                {VIEW_LABELS[viewMode]}
               </Text>
+              <Ionicons
+                name={openParam === 'view' ? 'chevron-up' : 'chevron-down'}
+                size={12}
+                color="rgba(255,255,255,0.6)"
+              />
             </Pressable>
-          ))}
-          <View style={styles.paramsDivider} />
-          {(['title', 'createdAt', 'updatedAt'] as SortField[]).map((field) => {
-            const active = sortPref.field === field;
-            return (
-              <Pressable
-                key={field}
-                style={[styles.paramChip, active && styles.paramChipActive]}
-                onPress={() => selectSortField(field)}
-              >
-                <Text numberOfLines={1} style={[styles.paramChipLabel, active && styles.paramChipLabelActive]}>
-                  {SORT_LABELS[field]}
-                  {active ? (sortPref.dir === 'asc' ? ' ↑' : ' ↓') : ''}
-                </Text>
-              </Pressable>
-            );
-          })}
+            {openParam === 'view' && (
+              <View style={styles.paramDropdown}>
+                {(['list', 'cards', 'table'] as ViewMode[]).map((mode) => (
+                  <Pressable
+                    key={mode}
+                    style={styles.paramOption}
+                    onPress={() => {
+                      changeViewMode(mode);
+                      setOpenParam(null);
+                    }}
+                  >
+                    <Ionicons name={VIEW_ICONS[mode]} size={14} color={viewMode === mode ? ACCENT : '#111827'} />
+                    <Text style={[styles.paramOptionLabel, viewMode === mode && styles.paramOptionLabelActive]}>
+                      {VIEW_LABELS[mode]}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </View>
+
+          <View style={styles.paramGroup}>
+            <Pressable
+              style={[styles.paramChip, openParam === 'sort' && styles.paramChipOpen]}
+              onPress={() => setOpenParam((prev) => (prev === 'sort' ? null : 'sort'))}
+            >
+              <Ionicons name="swap-vertical-outline" size={13} color="rgba(255,255,255,0.85)" />
+              <Text style={styles.paramChipLabel} numberOfLines={1}>
+                {SORT_LABELS[sortPref.field]} {sortPref.dir === 'asc' ? '↑' : '↓'}
+              </Text>
+              <Ionicons
+                name={openParam === 'sort' ? 'chevron-up' : 'chevron-down'}
+                size={12}
+                color="rgba(255,255,255,0.6)"
+              />
+            </Pressable>
+            {openParam === 'sort' && (
+              <View style={styles.paramDropdown}>
+                {(['title', 'createdAt', 'updatedAt'] as SortField[]).map((field) => {
+                  const active = sortPref.field === field;
+                  return (
+                    <Pressable
+                      key={field}
+                      style={styles.paramOption}
+                      // Tapping the chosen one flips its direction instead
+                      // of closing on a no-op, which is how the sort menu
+                      // this replaced already behaved.
+                      onPress={() => {
+                        selectSortField(field);
+                        if (!active) setOpenParam(null);
+                      }}
+                    >
+                      <Text style={[styles.paramOptionLabel, active && styles.paramOptionLabelActive]}>
+                        {SORT_LABELS[field]}
+                      </Text>
+                      {active && (
+                        <Ionicons
+                          name={sortPref.dir === 'asc' ? 'arrow-up' : 'arrow-down'}
+                          size={14}
+                          color={ACCENT}
+                        />
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+          </View>
         </View>
       )}
 
@@ -1848,57 +1887,85 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: 'rgba(20,20,20,0.35)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
+    borderColor: 'rgba(255,255,255,0.4)',
     borderRadius: 999,
-    paddingVertical: 5,
-    paddingHorizontal: 12,
+    // A group tab's own metrics, so this sits on the same line as them at
+    // the same height instead of as a smaller pill beside them.
+    paddingVertical: 7,
+    paddingHorizontal: 13,
+    // The tabs row carries this much padding under its pills; matching it
+    // keeps the two vertically centred on each other.
+    marginBottom: 10,
   },
   paramsToggleLabel: {
-    fontSize: 12,
+    fontSize: 13,
     color: 'rgba(255,255,255,0.85)',
     fontWeight: '600',
   },
   paramsStrip: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
+    // flex-start, not center: an open dropdown makes its own capsule
+    // taller, and the other one must stay put rather than drift down to
+    // the middle of it.
+    alignItems: 'flex-start',
     gap: 8,
     paddingHorizontal: 20,
     paddingBottom: 10,
   },
+  // Holds a capsule and the list it opens, so the list lands directly
+  // under its own capsule and inherits its left edge.
+  paramGroup: {
+    alignItems: 'flex-start',
+  },
   paramChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    // Without this the chips shrink to fit the visible width instead of
-    // overflowing it, which is what a horizontal ScrollView needs them to
-    // do - they came out squashed with their labels crushed.
     flexShrink: 0,
     gap: 5,
     backgroundColor: 'rgba(20,20,20,0.35)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
+    borderColor: 'rgba(255,255,255,0.4)',
     borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    // Same metrics as a group tab (see ProjectTabsRow's own tab style) so
+    // the two rows read as one family rather than two sizes of pill.
+    paddingVertical: 7,
+    paddingHorizontal: 13,
   },
-  paramChipActive: {
-    backgroundColor: '#fff',
+  paramChipOpen: {
     borderColor: '#fff',
   },
   paramChipLabel: {
-    fontSize: 12,
+    fontSize: 13,
     color: 'rgba(255,255,255,0.85)',
     fontWeight: '600',
   },
-  paramChipLabelActive: {
+  paramDropdown: {
+    marginTop: 6,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    paddingVertical: 4,
+    minWidth: 150,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  paramOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  paramOptionLabel: {
+    flex: 1,
+    fontSize: 14,
     color: '#111827',
   },
-  paramsDivider: {
-    width: 1,
-    flexShrink: 0,
-    height: 18,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    marginHorizontal: 2,
+  paramOptionLabelActive: {
+    color: ACCENT,
+    fontWeight: '700',
   },
   searchRow: {
     flexDirection: 'row',
