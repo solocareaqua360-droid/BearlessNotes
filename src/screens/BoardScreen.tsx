@@ -32,6 +32,19 @@ import { addDoc, collection, doc, getDoc, getDocFromCache, setDoc, updateDoc } f
 import { db } from '../firebase';
 import { BoardsStackParamList, RootStackParamList } from '../navigation';
 import { Block, BoardCard, BoardColumn, BoardConnection } from '../types';
+import CustomRowBlockCard from '../components/CustomRowBlockCard';
+import {
+  APPROX_CARD_HEIGHT,
+  COLUMN_CARD_GAP,
+  COLUMN_HEADER_HEIGHT,
+  COLUMN_MIN_HEIGHT,
+  COLUMN_PADDING,
+  COLUMN_SPACING,
+  COLUMN_WIDTH,
+  DEFAULT_CARD_WIDTH,
+  WORLD_CENTER,
+  WORLD_SIZE,
+} from '../utils/boardLayout';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import RenamePrompt from '../components/RenamePrompt';
 import VideoPlayerModal from '../components/VideoPlayerModal';
@@ -42,30 +55,20 @@ import { blockFromFile, blockFromLink, blockFromPhoto } from '../utils/copyToNot
 import { backupFileToDrive } from '../utils/googleDrive';
 
 const AUTOSAVE_DELAY_MS = 600;
-const DEFAULT_CARD_WIDTH = 160;
 const MIN_SCALE = 0.4;
 const MAX_SCALE = 3;
 // A large fixed virtual canvas rather than an unbounded one - card x/y are
 // plain offsets from this world's own top-left, and the world container
 // itself starts centered on screen (see canvasSurface/world styles), so
 // WORLD_CENTER is where a freshly created card lands by default.
-const WORLD_SIZE = 6000;
-const WORLD_CENTER = WORLD_SIZE / 2;
 const STICKY_COLORS = ['#FEF3C7', '#DBEAFE', '#DCFCE7', '#FCE7F3', '#EDE9FE', '#FFE4E6'];
 // Cards don't carry their own rendered height (only width) - close enough
 // for hit-testing the marquee-selection rectangle against, not meant to be
 // pixel-exact.
-const APPROX_CARD_HEIGHT = 140;
 const SELECTION_COLOR = '#2563EB';
 // Kanban columns. A column is exactly wide enough for a default card plus
 // its own padding on both sides, so a card dropped in sits flush.
-const COLUMN_PADDING = 12;
-const COLUMN_WIDTH = DEFAULT_CARD_WIDTH + COLUMN_PADDING * 2;
-const COLUMN_HEADER_HEIGHT = 44;
-const COLUMN_CARD_GAP = 12;
 // A column with nothing in it still has to be a visible drop target.
-const COLUMN_MIN_HEIGHT = 220;
-const COLUMN_SPACING = 24;
 // How far outside a column's own bounds a dropped card still gets pulled
 // into it. Generous on purpose - dropping a card "at" a column shouldn't
 // require landing inside its box.
@@ -763,6 +766,20 @@ function DraggableCard({
             <Text style={styles.refLabel} numberOfLines={2}>
               {card.linkTitle || card.linkSiteName || 'Посилання'}
             </Text>
+          </View>
+        ) : type === 'dbRow' ? (
+          // A row of a user-created database, rendered live from that
+          // database through the same card its own list and its document
+          // block use (see CustomRowBlockCard) - a rename there shows up
+          // here without the board storing anything but the row's id.
+          <View style={styles.dbRowCard} pointerEvents="none">
+            <CustomRowBlockCard
+              databaseId={card.dbRowDatabaseId}
+              rowId={card.id}
+              fallbackTitle={card.dbRowTitle}
+              tags={[]}
+              onOpen={() => {}}
+            />
           </View>
         ) : null}
       </Animated.View>
@@ -2022,6 +2039,9 @@ const styles = StyleSheet.create({
   stickyText: {
     fontSize: 14,
     color: '#111827',
+  },
+  dbRowCard: {
+    padding: 2,
   },
   refCard: {
     backgroundColor: '#fff',

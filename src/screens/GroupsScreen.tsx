@@ -19,6 +19,8 @@ import { db } from '../firebase';
 import { CustomDatabase, CustomDatabaseRow, Group } from '../types';
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
+import GroupImportSheet from '../components/GroupImportSheet';
+import { createBoardForGroup, importGroupToBoard } from '../utils/importGroupToBoard';
 import { groupKindFields, kindsOf, labelForKind } from '../utils/groups';
 import { rowTitleOf } from '../utils/customRowDisplay';
 
@@ -43,6 +45,9 @@ type GroupItem = {
   icon: keyof typeof Ionicons.glyphMap;
   // 'customRow' only - which database it belongs to, for opening it.
   databaseId?: string;
+  // The source record's own fields, kept so importing it onto a board can
+  // build a card without re-reading the document it came from.
+  data: Record<string, unknown>;
 };
 
 function linkKindOf(siteName: string | undefined): string {
@@ -78,6 +83,7 @@ export default function GroupsScreen() {
   const [showArchived, setShowArchived] = useState(false);
   const [renamingGroup, setRenamingGroup] = useState<Group | null>(null);
   const [kindsEditorGroup, setKindsEditorGroup] = useState<Group | null>(null);
+  const [importingGroup, setImportingGroup] = useState<Group | null>(null);
 
   useEffect(() => {
     return onSnapshot(query(collection(db, 'groups'), orderBy('name')), (snapshot) => {
@@ -134,6 +140,7 @@ export default function GroupsScreen() {
               title,
               icon: ICON_BY_KIND[kind] ?? 'grid-outline',
               databaseId,
+              data,
             });
           });
           return next;
@@ -202,6 +209,34 @@ export default function GroupsScreen() {
     const next = current.includes(kind) ? current.filter((k) => k !== kind) : [...current, kind];
     await updateDoc(doc(db, 'groups', group.id), groupKindFields(next));
     setKindsEditorGroup({ ...group, ...groupKindFields(next) });
+  }
+
+  async function runImport(
+    group: Group,
+    selected: GroupItem[],
+    target: { boardId: string } | { newBoard: true }
+  ) {
+    setImportingGroup(null);
+    const boardId = 'boardId' in target ? target.boardId : await createBoardForGroup(group.name);
+    const added = await importGroupToBoard(
+      boardId,
+      group,
+      selected.map((item) => ({
+        id: item.id,
+        kind: item.kind,
+        title: titleOf(item, customRowsById),
+        databaseId: item.databaseId,
+        data: item.data,
+      })),
+      (kind) => labelForKind(kind, customDatabaseNames)
+    );
+    setOpenGroupId(null);
+    Alert.alert(
+      'Готово',
+      added === 0
+        ? 'Ці елементи вже є на дошці.'
+        : `На дошку додано ${added} карток. Кожен тип — окремою колонкою.`
+    );
   }
 
   function openItem(item: GroupItem) {
@@ -313,6 +348,10 @@ export default function GroupsScreen() {
                     <Ionicons name="pencil-outline" size={16} color="#111827" />
                     <Text style={styles.actionLabel}>Перейменувати</Text>
                   </Pressable>
+                  <Pressable style={styles.action} onPress={() => setImportingGroup(openGroup)}>
+                    <Ionicons name="apps-outline" size={16} color="#111827" />
+                    <Text style={styles.actionLabel}>На дошку</Text>
+                  </Pressable>
                   <Pressable style={styles.action} onPress={() => setKindsEditorGroup(openGroup)}>
                     <Ionicons name="albums-outline" size={16} color="#111827" />
                     <Text style={styles.actionLabel}>Бази</Text>
@@ -406,6 +445,18 @@ export default function GroupsScreen() {
           </View>
         </View>
       </Modal>
+
+      <GroupImportSheet
+        visible={importingGroup !== null}
+        groupName={importingGroup?.name ?? ''}
+        items={importingGroup ? (itemsByGroup[importingGroup.id] ?? []) : []}
+        labelForKind={(kind) => labelForKind(kind, customDatabaseNames)}
+        titleForItem={(item) => titleOf(item as GroupItem, customRowsById)}
+        onCancel={() => setImportingGroup(null)}
+        onConfirm={(selected, target) => {
+          if (importingGroup) runImport(importingGroup, selected as GroupItem[], target);
+        }}
+      />
 
       <RenamePrompt
         visible={renamingGroup !== null}
