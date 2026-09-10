@@ -8,6 +8,7 @@ import { RootStackParamList } from '../navigation';
 import { HistoryItem, HistoryItemKind } from '../hooks/useDayHistory';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { colorForDocument } from '../utils/documentColor';
+import MediaRowCard from './MediaRowCard';
 import ZoomableImageViewer from './ZoomableImageViewer';
 import VideoPlayerModal from './VideoPlayerModal';
 
@@ -24,6 +25,33 @@ const ICON_BY_KIND: Record<HistoryItemKind, keyof typeof Ionicons.glyphMap> = {
   customRow: 'server-outline',
   customView: 'bookmark-outline',
 };
+
+const LINK_COLOR_BY_KIND: Record<'link-video' | 'link-geo' | 'link-other', string> = {
+  'link-video': '#EF4444',
+  'link-geo': '#16A34A',
+  'link-other': '#3B82F6',
+};
+
+// Same tinting-by-extension FilesScreen's own row card uses - duplicated
+// rather than shared, same as every other small per-screen copy of this in
+// the app (see FilesScreen's own comment on it).
+function fileIconFor(name: string): 'document-text-outline' | 'document-outline' {
+  return name.toLowerCase().endsWith('.pdf') ? 'document-text-outline' : 'document-outline';
+}
+function fileIconColorFor(name: string): string {
+  const ext = name.toLowerCase().split('.').pop();
+  if (ext === 'pdf') return '#DC2626';
+  if (ext === 'doc' || ext === 'docx') return '#2563EB';
+  if (ext === 'xls' || ext === 'xlsx') return '#16A34A';
+  return '#6B7280';
+}
+
+// The date is already the whole point of being on this screen - what's
+// worth showing on a history card here is WHEN that day it happened.
+function formatTime(ms: number): string {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
 
 // Kinds whose tap target (see openNaturally below) already lands on their
 // home database screen - a second "show in database" icon there would just
@@ -102,6 +130,78 @@ export default function DayHistoryList({ items }: { items: HistoryItem[] }) {
     }
   }
 
+  // The full Files/Links database row (thumbnail-or-icon, title, caption) -
+  // photos never had a card shape of their own before this (Photos is a
+  // grid-only screen), so MediaRowCard is what gives them one, same as
+  // file/link.
+  function renderMediaCard(item: HistoryItem) {
+    const time = formatTime(item.createdAt);
+    if (item.kind === 'photo') {
+      return (
+        <MediaRowCard
+          id={item.id}
+          title={item.title}
+          caption={time}
+          thumbUri={item.data?.imageUri as string | undefined}
+          onPress={() => openNaturally(item).catch((e) => Alert.alert('Не вдалося відкрити', String(e)))}
+        />
+      );
+    }
+    if (item.kind === 'file') {
+      const fileName = (item.data?.fileName as string) ?? item.title;
+      return (
+        <MediaRowCard
+          id={item.id}
+          title={item.title}
+          caption={time}
+          iconName={fileIconFor(fileName)}
+          iconColor={fileIconColorFor(fileName)}
+          onPress={() => openNaturally(item).catch((e) => Alert.alert('Не вдалося відкрити', String(e)))}
+        />
+      );
+    }
+    // link-*
+    return (
+      <MediaRowCard
+        id={item.id}
+        title={item.title}
+        caption={time}
+        thumbUri={item.data?.imageUrl as string | undefined}
+        iconName={ICON_BY_KIND[item.kind]}
+        iconColor={LINK_COLOR_BY_KIND[item.kind as 'link-video' | 'link-geo' | 'link-other']}
+        onPress={() => openNaturally(item).catch((e) => Alert.alert('Не вдалося відкрити', String(e)))}
+      />
+    );
+  }
+
+  // Every other kind has no thumbnail worth showing (a document/board/task/
+  // sticker/database row or view is just a name) - a plain icon card, same
+  // family as CustomRowCard's own row, with the same time caption.
+  function renderPlainCard(item: HistoryItem) {
+    const { background, text, textMuted } = colorForDocument(item.id);
+    return (
+      <View style={[styles.card, { backgroundColor: background }]}>
+        <Pressable
+          style={styles.cardTap}
+          onPress={() => openNaturally(item).catch((e) => Alert.alert('Не вдалося відкрити', String(e)))}
+        >
+          <Ionicons name={ICON_BY_KIND[item.kind]} size={16} color={textMuted} />
+          <View style={styles.cardBody}>
+            <Text style={[styles.cardTitle, { color: text }]} numberOfLines={2}>
+              {item.title}
+            </Text>
+            <Text style={[styles.cardCaption, { color: textMuted }]}>{formatTime(item.createdAt)}</Text>
+          </View>
+        </Pressable>
+        {SHOW_IN_DATABASE_KINDS.includes(item.kind) && (
+          <Pressable hitSlop={8} style={styles.dbButton} onPress={() => showInDatabase(item)}>
+            <Ionicons name="server-outline" size={15} color={textMuted} />
+          </Pressable>
+        )}
+      </View>
+    );
+  }
+
   return (
     <View style={styles.wrap}>
       <Pressable style={styles.header} onPress={() => setExpanded((v) => !v)}>
@@ -116,30 +216,13 @@ export default function DayHistoryList({ items }: { items: HistoryItem[] }) {
         // to make room for it), so it must never depend on how much space
         // whatever surrounds it happens to leave.
         <ScrollView style={styles.list} nestedScrollEnabled contentContainerStyle={styles.listContent}>
-          {items.map((item) => {
-            // Same deterministic per-id palette every card in the app uses
-            // (CustomRowCard, DocumentCard) - a database's own row keeps
-            // its colour here too, since it's still the same id.
-            const { background, text, textMuted } = colorForDocument(item.id);
-            return (
-              <View key={`${item.kind}-${item.id}`} style={[styles.card, { backgroundColor: background }]}>
-                <Pressable
-                  style={styles.cardTap}
-                  onPress={() => openNaturally(item).catch((e) => Alert.alert('Не вдалося відкрити', String(e)))}
-                >
-                  <Ionicons name={ICON_BY_KIND[item.kind]} size={16} color={textMuted} />
-                  <Text style={[styles.cardTitle, { color: text }]} numberOfLines={2}>
-                    {item.title}
-                  </Text>
-                </Pressable>
-                {SHOW_IN_DATABASE_KINDS.includes(item.kind) && (
-                  <Pressable hitSlop={8} style={styles.dbButton} onPress={() => showInDatabase(item)}>
-                    <Ionicons name="server-outline" size={15} color={textMuted} />
-                  </Pressable>
-                )}
-              </View>
-            );
-          })}
+          {items.map((item) => (
+            <View key={`${item.kind}-${item.id}`}>
+              {item.kind === 'photo' || item.kind === 'file' || item.kind.startsWith('link-')
+                ? renderMediaCard(item)
+                : renderPlainCard(item)}
+            </View>
+          ))}
         </ScrollView>
       )}
 
@@ -172,16 +255,13 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.85)',
   },
   list: {
-    maxHeight: 320,
+    maxHeight: 360,
   },
   listContent: {
     gap: 8,
     paddingTop: 8,
     paddingBottom: 2,
   },
-  // Same card shape as CustomRowCard's own `row` style - border, shadow and
-  // radius, just without that component's cover-image slot, which no
-  // history kind here has a use for.
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -202,10 +282,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  cardTitle: {
+  cardBody: {
     flex: 1,
+    gap: 2,
+  },
+  cardTitle: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  cardCaption: {
+    fontSize: 12,
   },
   dbButton: {
     padding: 4,

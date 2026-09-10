@@ -144,7 +144,7 @@ export function useDayHistory(
     kind: categoryOf(data.siteName as string | undefined),
     title: (data.title as string) || (data.url as string) || 'Посилання',
     createdAt: data.createdAt as number,
-    data: { url: data.url },
+    data: { url: data.url, imageUrl: data.imageUrl },
   }));
 
   // A regular document only - a daily note (`calendarDate` set) IS the
