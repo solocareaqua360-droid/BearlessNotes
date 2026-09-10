@@ -88,6 +88,7 @@ import { colorForDocument } from '../utils/documentColor';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
 import AddExistingItemModal from '../components/AddExistingItemModal';
+import CustomRowBlockCard from '../components/CustomRowBlockCard';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -605,6 +606,10 @@ async function buildDocumentHtml(title: string, blocks: Block[]): Promise<string
       );
     } else if (type === 'sketch') {
       parts.push('<p>[Малюнок]</p>');
+    } else if (type === 'dbRow') {
+      // Only the snapshot title - an export is a flat file, so there's
+      // nothing live to render here.
+      parts.push(`<p>[Запис: ${escapeHtml(block.dbRowTitle || 'Без назви')}]</p>`);
     } else if (type === 'table') {
       const rows = block.tableRows ?? [];
       const rowsHtml = rows
@@ -650,6 +655,8 @@ function buildDocumentText(title: string, blocks: Block[]): string {
       lines.push(`${block.linkTitle || ''} ${block.linkUrl || ''}`.trim());
     } else if (type === 'sketch') {
       lines.push('[Малюнок]');
+    } else if (type === 'dbRow') {
+      lines.push(`[Запис: ${block.dbRowTitle || 'Без назви'}]`);
     } else if (type === 'table') {
       const rows = block.tableRows ?? [];
       rows.forEach((row, r) => lines.push(row.cells.map((_, c) => displayValueOf(rows, r, c)).join('\t')));
@@ -728,6 +735,10 @@ type BlockRowProps = {
   onOpenLink: (url: string) => void;
   onOpenLinkDatabase: (block: Block) => void;
   onOpenSketch: (id: string) => void;
+  // 'dbRow' blocks only - the full tag list (the card filters it by the
+  // live row's own tagIds) and "open this row in its database".
+  allTags: Tag[];
+  onOpenCustomRow: (databaseId: string, rowId: string) => void;
   inputRef: (ref: TextInput | null) => void;
   // null when "Колір паперу" is off, OR for a sticker block specifically -
   // a sticker keeps its own yellow/dark treatment regardless of the
@@ -951,6 +962,8 @@ function BlockRow({
   onOpenLink,
   onOpenLinkDatabase,
   onOpenSketch,
+  allTags,
+  onOpenCustomRow,
   inputRef,
   paperColor,
 }: BlockRowProps) {
@@ -1233,6 +1246,22 @@ function BlockRow({
         </View>
       );
     }
+  } else if (type === 'dbRow') {
+    // A row of a user-created database, rendered LIVE from that database
+    // (see CustomRowBlockCard) rather than from anything stored on the
+    // block - the whole point of embedding a record instead of copying its
+    // text. In select mode the card is inert so a tap selects the block.
+    content = (
+      <View style={styles.dbRowBlock} pointerEvents={isSelectMode ? 'none' : 'auto'}>
+        <CustomRowBlockCard
+          databaseId={item.dbRowDatabaseId}
+          rowId={item.id}
+          fallbackTitle={item.dbRowTitle}
+          tags={allTags}
+          onOpen={onOpenCustomRow}
+        />
+      </View>
+    );
   } else {
     const textField = canEditText ? (
       <TextInput
@@ -1416,6 +1445,10 @@ type SortableBlockRowProps = {
   onOpenLink: (url: string) => void;
   onOpenLinkDatabase: (block: Block) => void;
   onOpenSketch: (id: string) => void;
+  // 'dbRow' blocks only - the full tag list (the card filters it by the
+  // live row's own tagIds) and "open this row in its database".
+  allTags: Tag[];
+  onOpenCustomRow: (databaseId: string, rowId: string) => void;
   inputRef: (ref: TextInput | null) => void;
   // Attached to the one active row only, so the screen's keyboard handler
   // can measure it on the UI thread the instant the keyboard starts rising.
@@ -1454,6 +1487,8 @@ function SortableBlockRow({
   onOpenLink,
   onOpenLinkDatabase,
   onOpenSketch,
+  allTags,
+  onOpenCustomRow,
   inputRef,
   paperColor,
 }: SortableBlockRowProps) {
@@ -1531,6 +1566,8 @@ function SortableBlockRow({
             onOpenLink={onOpenLink}
             onOpenLinkDatabase={onOpenLinkDatabase}
             onOpenSketch={onOpenSketch}
+            allTags={allTags}
+            onOpenCustomRow={onOpenCustomRow}
             inputRef={inputRef}
           />
         </Animated.View>
@@ -1565,6 +1602,10 @@ type BlockListProps = {
   onOpenLink: (url: string) => void;
   onOpenLinkDatabase: (block: Block) => void;
   onOpenSketch: (id: string) => void;
+  // 'dbRow' blocks only - the full tag list (the card filters it by the
+  // live row's own tagIds) and "open this row in its database".
+  allTags: Tag[];
+  onOpenCustomRow: (databaseId: string, rowId: string) => void;
   onInputRef: (id: string, ref: TextInput | null) => void;
   paperColor: ReturnType<typeof colorForDocument> | null;
 };
@@ -1594,6 +1635,8 @@ function BlockList({
   onOpenLink,
   onOpenLinkDatabase,
   onOpenSketch,
+  allTags,
+  onOpenCustomRow,
   onInputRef,
   paperColor,
 }: BlockListProps) {
@@ -1810,6 +1853,8 @@ function BlockList({
           onOpenLink={onOpenLink}
           onOpenLinkDatabase={onOpenLinkDatabase}
           onOpenSketch={onOpenSketch}
+          allTags={allTags}
+          onOpenCustomRow={onOpenCustomRow}
           inputRef={(ref) => onInputRef(item.id, ref)}
           paperColor={paperColor}
         />
@@ -2293,6 +2338,36 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     knownStickerBlockIdsRef.current = currentIds;
   }
 
+  // Embedded database rows (see the 'dbRow' block type). Only the
+  // back-link is written - never the row's own content, and never a
+  // delete: unlike a photo/file/sticker record (which exists BECAUSE a
+  // document made it), a row belongs to its database and outlives every
+  // document that happens to mention it. Hence the plain field delete
+  // below rather than removeDocumentUsage, which cleans up an orphaned
+  // record.
+  const knownCustomRowIdsRef = useRef<Set<string>>(new Set());
+
+  function syncCustomRowsForDocument(currentBlocks: Block[]) {
+    const rowBlocks = currentBlocks.filter((b) => (b.type ?? 'paragraph') === 'dbRow');
+    const currentIds = new Set(rowBlocks.map((b) => b.id));
+    rowBlocks.forEach((b) => {
+      updateDoc(doc(db, 'customDatabaseRows', b.id), {
+        [`usedInDocuments.${documentId}`]: true,
+      }).catch(() => {
+        // Deleted from its database in the meantime - the block stays and
+        // renders its "запис видалено" state, nothing to record.
+      });
+    });
+    knownCustomRowIdsRef.current.forEach((id) => {
+      if (!currentIds.has(id)) {
+        updateDoc(doc(db, 'customDatabaseRows', id), {
+          [`usedInDocuments.${documentId}`]: deleteField(),
+        }).catch(() => {});
+      }
+    });
+    knownCustomRowIdsRef.current = currentIds;
+  }
+
   useEffect(() => {
     if (!isLoaded) return;
     setSaveStatus('saving');
@@ -2332,6 +2407,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       syncPhotosForDocument(blocks);
       syncFilesForDocument(blocks);
       syncStickersForDocument(blocks);
+      syncCustomRowsForDocument(blocks);
     }, AUTOSAVE_DELAY_MS);
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -2996,6 +3072,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   function cancelLinkTitlePrompt() {
     setLinkTitlePrompt(null);
     setLinkTitlePromptValue('');
+  }
+
+  // Tapping an embedded row opens it in its own database, with that row's
+  // editor already open (see CustomDatabase's openRowId param) - the same
+  // "jump to the record behind this block" move the file/photo/link blocks
+  // already offer through their little database button.
+  function openCustomRowBlock(databaseId: string, rowId: string) {
+    navigation.navigate('CustomDatabase', { databaseId, openRowId: rowId });
   }
 
   async function openLinkBlock(url: string) {
@@ -3856,6 +3940,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           onOpenLink={openLinkBlock}
           onOpenLinkDatabase={openLinkDatabase}
           onOpenSketch={openSketchBlock}
+          allTags={tags}
+          onOpenCustomRow={openCustomRowBlock}
           onInputRef={(id, ref) => {
             inputRefs.current[id] = ref;
           }}
@@ -4072,6 +4158,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       )}
       <AddExistingItemModal
         visible={existingItemPickerBlockId !== null}
+        includeCustomDatabases
         onPick={(item) => {
           if (existingItemPickerBlockId) insertExistingItemIntoBlock(existingItemPickerBlockId, item);
         }}
@@ -4083,6 +4170,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                 (b) =>
                   ((b.type ?? 'paragraph') === 'file' && b.fileUri) ||
                   ((b.type ?? 'paragraph') === 'image' && b.imageUri) ||
+                  // A dbRow block reuses the referenced row's own id
+                  // (blockFromCustomRow) - same collision risk.
+                  (b.type ?? 'paragraph') === 'dbRow' ||
                   // A sticker block reuses its own record's id (any
                   // content type - paragraph/image/sketch), same
                   // collision risk as file/image above.
@@ -4281,6 +4371,9 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     // See TEXT_SWIPE_MARGIN.
     marginRight: TEXT_SWIPE_MARGIN,
+  },
+  dbRowBlock: {
+    flex: 1,
   },
   blockDisplayText: {
     fontSize: 16,

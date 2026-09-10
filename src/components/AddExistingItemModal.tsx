@@ -3,8 +3,15 @@ import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View 
 import { Ionicons } from '@expo/vector-icons';
 import { collection, onSnapshot, orderBy, query } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
-import { Block, SketchElement } from '../types';
-import { blockFromFile, blockFromLink, blockFromPhoto, blockFromSticker } from '../utils/copyToNote';
+import { Block, CustomDatabase, CustomDatabaseRow, SketchElement } from '../types';
+import {
+  blockFromCustomRow,
+  blockFromFile,
+  blockFromLink,
+  blockFromPhoto,
+  blockFromSticker,
+} from '../utils/copyToNote';
+import { rowTitleOf } from '../utils/customRowDisplay';
 
 const ACCENT = '#3B82F6';
 const STICKER_YELLOW = '#FBE97A';
@@ -13,6 +20,8 @@ const photosCollection = collection(db, 'photos');
 const linksCollection = collection(db, 'links');
 const documentsCollection = collection(db, 'documents');
 const stickersCollection = collection(db, 'stickers');
+const customDatabasesCollection = collection(db, 'customDatabases');
+const customRowsCollection = collection(db, 'customDatabaseRows');
 
 // Links split into video/geo/other exactly like LinksScreen's own tabs
 // (see LinksScreen.tsx's categoryOf) - they're one Firestore collection but
@@ -22,7 +31,7 @@ const stickersCollection = collection(db, 'stickers');
 // opts in via `includeDocuments` (see Props) - DocumentEditorScreen's own
 // use of this modal never does, since a document can't nest as a block
 // inside another document.
-type Tab = 'file' | 'photo' | 'video' | 'geo' | 'other' | 'document' | 'sticker';
+type Tab = 'file' | 'photo' | 'video' | 'geo' | 'other' | 'document' | 'sticker' | 'customDb';
 
 type FileRow = {
   id: string;
@@ -101,6 +110,10 @@ type Props = {
   // reference isn't a `Block` - only BoardScreen sets this.
   includeDocuments?: boolean;
   onPickDocument?: (item: DocumentRow) => void;
+  // Adds a "Бази" tab (rows of the user's own databases, as 'dbRow'
+  // blocks). Opt-in because the board can't render that block type yet -
+  // only DocumentEditorScreen sets it.
+  includeCustomDatabases?: boolean;
 };
 
 // The reverse direction of CopyToNoteModal (Files/Photos/Links → a note) -
@@ -115,6 +128,7 @@ export default function AddExistingItemModal({
   excludeIds,
   includeDocuments,
   onPickDocument,
+  includeCustomDatabases,
 }: Props) {
   const [tab, setTab] = useState<Tab>('file');
   const [searchQuery, setSearchQuery] = useState('');
@@ -123,6 +137,12 @@ export default function AddExistingItemModal({
   const [links, setLinks] = useState<LinkRow[]>([]);
   const [documents, setDocuments] = useState<DocumentRow[]>([]);
   const [stickers, setStickers] = useState<StickerRow[]>([]);
+  // The "Бази" tab is two levels deep: pick a database, then one of its
+  // rows. One tab rather than a tab per database, since there's no upper
+  // bound on how many the user creates.
+  const [customDatabases, setCustomDatabases] = useState<CustomDatabase[]>([]);
+  const [customRows, setCustomRows] = useState<CustomDatabaseRow[]>([]);
+  const [openDatabaseId, setOpenDatabaseId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -160,6 +180,28 @@ export default function AddExistingItemModal({
   }, [visible]);
 
   useEffect(() => {
+    if (!visible || !includeCustomDatabases) return;
+    return onSnapshot(query(customDatabasesCollection, orderBy('name')), (snapshot) => {
+      setCustomDatabases(
+        snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabase, 'id'>) }))
+      );
+    });
+  }, [visible, includeCustomDatabases]);
+
+  useEffect(() => {
+    if (!visible || !openDatabaseId) return;
+    // Filtered client-side by databaseId, same "avoid a composite index"
+    // convention CustomDatabaseScreen's own rows query follows.
+    return onSnapshot(query(customRowsCollection, orderBy('updatedAt', 'desc')), (snapshot) => {
+      setCustomRows(
+        snapshot.docs
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabaseRow, 'id'>) }))
+          .filter((r) => r.databaseId === openDatabaseId)
+      );
+    });
+  }, [visible, openDatabaseId]);
+
+  useEffect(() => {
     if (!visible || !includeDocuments) return;
     return onSnapshot(query(documentsCollection, orderBy('updatedAt', 'desc')), (snapshot) => {
       setDocuments(
@@ -174,6 +216,7 @@ export default function AddExistingItemModal({
     if (!visible) {
       setSearchQuery('');
       setTab('file');
+      setOpenDatabaseId(null);
     }
   }, [visible]);
 
@@ -194,6 +237,13 @@ export default function AddExistingItemModal({
   // in this document would put two blocks on the same id.
   const filteredStickers = stickers.filter(
     (s) => !excludeIds?.has(s.id) && labelForSticker(s).toLowerCase().includes(needle)
+  );
+  const openDatabase = customDatabases.find((d) => d.id === openDatabaseId) ?? null;
+  const filteredDatabases = customDatabases.filter((d) => (d.name || 'База').toLowerCase().includes(needle));
+  // Same id-collision guard as files/photos/stickers - a row block reuses
+  // the row's own id (blockFromCustomRow).
+  const filteredCustomRows = customRows.filter(
+    (r) => !excludeIds?.has(r.id) && rowTitleOf(openDatabase, r).toLowerCase().includes(needle)
   );
 
   return (
@@ -228,6 +278,11 @@ export default function AddExistingItemModal({
             <Pressable style={[styles.tab, tab === 'sticker' && styles.tabActive]} onPress={() => setTab('sticker')}>
               <Text style={[styles.tabLabel, tab === 'sticker' && styles.tabLabelActive]}>Стікери</Text>
             </Pressable>
+            {includeCustomDatabases && (
+              <Pressable style={[styles.tab, tab === 'customDb' && styles.tabActive]} onPress={() => setTab('customDb')}>
+                <Text style={[styles.tabLabel, tab === 'customDb' && styles.tabLabelActive]}>Бази</Text>
+              </Pressable>
+            )}
             {includeDocuments && (
               <Pressable style={[styles.tab, tab === 'document' && styles.tabActive]} onPress={() => setTab('document')}>
                 <Text style={[styles.tabLabel, tab === 'document' && styles.tabLabelActive]}>Документи</Text>
@@ -372,6 +427,68 @@ export default function AddExistingItemModal({
                   </Pressable>
                 ))
               ))}
+
+            {/* Two levels: the databases themselves, then the rows of
+                whichever one was opened. The back row is what returns to
+                the list rather than a second "Бази" tap. */}
+            {tab === 'customDb' && !openDatabase &&
+              (filteredDatabases.length === 0 ? (
+                <Text style={styles.emptyLabel}>Ще немає власних баз</Text>
+              ) : (
+                filteredDatabases.map((d) => (
+                  <Pressable key={d.id} style={styles.row} onPress={() => setOpenDatabaseId(d.id)}>
+                    <View style={styles.docIcon}>
+                      <Ionicons
+                        name={(d.icon as keyof typeof Ionicons.glyphMap) || 'grid-outline'}
+                        size={18}
+                        color={ACCENT}
+                      />
+                    </View>
+                    <Text style={styles.rowText} numberOfLines={1}>
+                      {d.name || 'База'}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+                  </Pressable>
+                ))
+              ))}
+
+            {tab === 'customDb' && openDatabase && (
+              <>
+                <Pressable style={styles.row} onPress={() => setOpenDatabaseId(null)}>
+                  <Ionicons name="chevron-back" size={16} color="#6B7280" />
+                  <Text style={[styles.rowText, styles.backRowText]} numberOfLines={1}>
+                    {openDatabase.name || 'База'}
+                  </Text>
+                </Pressable>
+                {filteredCustomRows.length === 0 ? (
+                  <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
+                ) : (
+                  filteredCustomRows.map((r) => (
+                    <Pressable
+                      key={r.id}
+                      style={styles.row}
+                      onPress={() =>
+                        onPick(
+                          blockFromCustomRow({
+                            id: r.id,
+                            databaseId: openDatabase.id,
+                            title: rowTitleOf(openDatabase, r),
+                            createdAt: r.createdAt,
+                          })
+                        )
+                      }
+                    >
+                      <View style={styles.docIcon}>
+                        <Ionicons name="grid-outline" size={18} color={ACCENT} />
+                      </View>
+                      <Text style={styles.rowText} numberOfLines={1}>
+                        {rowTitleOf(openDatabase, r)}
+                      </Text>
+                    </Pressable>
+                  ))
+                )}
+              </>
+            )}
           </ScrollView>
         </Pressable>
       </Pressable>
@@ -482,6 +599,10 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 8,
     backgroundColor: '#F3F4F6',
+  },
+  backRowText: {
+    color: '#6B7280',
+    fontWeight: '600',
   },
   rowText: {
     flex: 1,

@@ -97,7 +97,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'CustomDatabase'>;
 export default function CustomDatabaseScreen({}: Props) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute();
-  const { databaseId } = route.params as { databaseId: string };
+  const { databaseId, openRowId } = route.params as { databaseId: string; openRowId?: string };
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
   const customRowKind = `customRow:${databaseId}`;
@@ -289,6 +289,19 @@ export default function CustomDatabaseScreen({}: Props) {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [referencedDbIdsKey]);
+
+  // Arrived from a 'dbRow' block in a document (see openCustomRowBlock):
+  // open that row's editor as soon as the rows are in. The ref makes it a
+  // one-shot - closing the editor mustn't reopen it on the next render.
+  const openedRowFromParamRef = useRef(false);
+  useEffect(() => {
+    if (!openRowId || openedRowFromParamRef.current) return;
+    const row = rows.find((r) => r.id === openRowId);
+    if (!row) return;
+    openedRowFromParamRef.current = true;
+    openEditRow(row);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openRowId, rows]);
 
   useEffect(() => {
     return onSnapshot(prefsDoc, (snapshot) => {

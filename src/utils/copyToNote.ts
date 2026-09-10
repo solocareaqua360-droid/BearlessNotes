@@ -135,3 +135,15 @@ export async function copyObjectsToNote(
   );
   return documentId;
 }
+
+// A row of a user-created database as a document block. Like
+// blockFromFile/blockFromPhoto (and unlike blockFromLink), the block reuses
+// the record's OWN id, so one row embedded in two documents stays one
+// record listed in both - see CustomDatabaseRow.usedInDocuments. The title
+// is only a fallback label: the card renders the row live.
+export function blockFromCustomRow(row: { id: string; databaseId: string; title: string; createdAt?: number }): Block {
+  const block: Block = { id: row.id, text: '', type: 'dbRow', dbRowDatabaseId: row.databaseId };
+  if (row.title) block.dbRowTitle = row.title;
+  if (row.createdAt) block.createdAt = row.createdAt;
+  return block;
+}

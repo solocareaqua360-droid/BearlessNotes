@@ -8,7 +8,13 @@ export type BlockType =
   | 'file'
   | 'link'
   | 'sketch'
-  | 'table';
+  | 'table'
+  // A row of a user-created database (CustomDatabaseRow), embedded as a
+  // card. Unlike every other reference block here, this one renders LIVE
+  // rather than from a snapshot - editing the row in its own database
+  // updates every document that mentions it, which is the two-way link
+  // PROJECT_BRIEF.md asks for.
+  | 'dbRow';
 
 // One freehand stroke OR simple shape (line/rectangle/circle) in a
 // 'sketch' block - `d` is a plain SVG path `d` attribute. A freehand
@@ -111,6 +117,13 @@ export interface Block {
   // 'file' blocks only - an optional rename that overrides fileName for
   // display (see FilesScreen) without touching the actual attached file.
   fileTitle?: string;
+  // 'dbRow' blocks only. The block's own `id` IS the referenced row's id
+  // (same convention file/image blocks follow with their record), so this
+  // only has to carry which database that row lives in. dbRowTitle is a
+  // snapshot used purely as a fallback label while the live row loads, or
+  // if it has since been deleted from its database.
+  dbRowDatabaseId?: string;
+  dbRowTitle?: string;
   // 'checkbox' blocks only - standard properties of the "справа" object
   // type (hardcoded, unlike a future user-defined type's properties).
   projectId?: string; // references a doc in the 'projects' collection
@@ -392,6 +405,11 @@ export interface CustomDatabaseRow {
   // GroupPickerSheet.tsx.
   tagIds?: string[];
   groupId?: string;
+  // documentId -> true for every document embedding this row as a 'dbRow'
+  // block, same shape files/photos/links already use. Unlike those, a row
+  // is NEVER deleted when the last document drops it - it belongs to its
+  // database, not to the documents that happen to mention it.
+  usedInDocuments?: Record<string, boolean>;
   createdAt: number;
   updatedAt: number;
 }

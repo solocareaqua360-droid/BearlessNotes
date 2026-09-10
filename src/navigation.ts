@@ -35,7 +35,10 @@ export type RootStackParamList = {
   // Firestore doc in `customDatabases`) - unlike Photos/Files/Stickers,
   // there's no fixed number of these, so one shared screen keyed by id
   // instead of one RootStackParamList entry per database.
-  CustomDatabase: { databaseId: string };
+  // openRowId: set only when arriving from a 'dbRow' block in a document -
+  // the screen opens that row's editor as soon as its rows have loaded, so
+  // the tap lands on the record itself rather than just its database.
+  CustomDatabase: { databaseId: string; openRowId?: string };
   Tags: undefined;
   TagItems: { tagId: string };
   Settings: undefined;
