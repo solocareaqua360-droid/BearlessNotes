@@ -14,12 +14,31 @@ type Props = {
   onPickExisting: (documentId: string) => void;
   onPickNew: () => void;
   onClose: () => void;
+  // Overrides the sheet's heading - ShareIntentHandler reuses this same
+  // picker for "where should this land?" rather than "copy to note", where
+  // the default title reads oddly.
+  title?: string;
+  // A third destination row, above "Новий документ" - only ShareIntentHandler
+  // sets this, for "save on its own, no document" (a shared link straight
+  // into Посилання, shared text as a sticker). Omitted everywhere else,
+  // which is what keeps the three existing Files/Photos/Links bulk-copy
+  // call sites down to their original two choices.
+  standaloneLabel?: string;
+  onPickStandalone?: () => void;
 };
 
 // Bulk "copy to note" destination picker (see BulkActionBar) - lists every
 // regular document (daily notes excluded, same filter DocumentsScreen and
 // SearchScreen use) plus a "new document" row at the top.
-export default function CopyToNoteModal({ visible, onPickExisting, onPickNew, onClose }: Props) {
+export default function CopyToNoteModal({
+  visible,
+  onPickExisting,
+  onPickNew,
+  onClose,
+  title,
+  standaloneLabel,
+  onPickStandalone,
+}: Props) {
   const [documents, setDocuments] = useState<PickableDocument[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -52,7 +71,7 @@ export default function CopyToNoteModal({ visible, onPickExisting, onPickNew, on
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.handle} />
-          <Text style={styles.title}>Копіювати в нотатку</Text>
+          <Text style={styles.title}>{title ?? 'Копіювати в нотатку'}</Text>
 
           <Pressable style={styles.row} onPress={onPickNew}>
             <View style={styles.newIcon}>
@@ -60,6 +79,15 @@ export default function CopyToNoteModal({ visible, onPickExisting, onPickNew, on
             </View>
             <Text style={[styles.rowText, { color: ACCENT, fontWeight: '600' }]}>Новий документ</Text>
           </Pressable>
+
+          {standaloneLabel && onPickStandalone && (
+            <Pressable style={styles.row} onPress={onPickStandalone}>
+              <View style={styles.newIcon}>
+                <Ionicons name="albums-outline" size={16} color={ACCENT} />
+              </View>
+              <Text style={[styles.rowText, { color: ACCENT, fontWeight: '600' }]}>{standaloneLabel}</Text>
+            </Pressable>
+          )}
 
           <View style={styles.searchRow}>
             <Ionicons name="search" size={14} color="#9CA3AF" />

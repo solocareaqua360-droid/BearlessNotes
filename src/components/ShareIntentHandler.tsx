@@ -1,14 +1,27 @@
 import { useRef, useState, useEffect } from 'react';
 import { Alert } from 'react-native';
 import { useShareIntentContext, ShareIntentFile } from 'expo-share-intent';
-import { addDoc, collection, doc, setDoc, updateDoc } from '@react-native-firebase/firestore';
+import {
+  addDoc,
+  arrayUnion,
+  collection,
+  doc,
+  getDocs,
+  orderBy,
+  query,
+  setDoc,
+  updateDoc,
+} from '@react-native-firebase/firestore';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { db } from '../firebase';
 import { Block, BlockType } from '../types';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
+import { linkDocId } from '../utils/linkId';
 import { backupFileToDrive } from '../utils/googleDrive';
 import { navigationRef } from '../navigationRef';
+import { FREE_STICKER_LIMIT } from '../screens/DocumentsScreen';
 import RenamePrompt from './RenamePrompt';
+import CopyToNoteModal from './CopyToNoteModal';
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -29,23 +42,27 @@ type PendingImport = {
   mimeType: string;
 };
 
+// A shared link or plain text waiting on "where should this land?" (see
+// CopyToNoteModal below) - a link's preview is fetched up front, since all
+// three destinations need its title either way.
+type PendingShare = { kind: 'link'; url: string; preview: LinkPreview } | { kind: 'text'; text: string };
+
 // Something shared into mindEva via Android's Share sheet (app.json's
 // expo-share-intent plugin registers the app for it - see
 // project_pending_share_intent memory for why this was queued). No UI of
-// its own besides the rename prompt below; mounted once inside
+// its own besides the two prompts below; mounted once inside
 // NavigationContainer (see App.tsx) so navigationRef is already attached
 // by the time anything here needs it.
 //
 // Routing: photos/files land straight in their database, same as those
-// screens' own "+" button (standalone, no document) - but with a chance
-// to rename first (see renameQueue), since a shared file's own name is
-// often something like "IMG-20250910-WA0002.jpg", not a name anyone
-// would recognize later. A link or plain text becomes a new document
-// instead, since neither has a "standalone, no document" home the way
-// Photos/Files do - a shared link still needs the same og:title/image
-// lookup a pasted link gets inside a document (convertUrlToLinkBlock),
-// so it's built the exact same way, just as the first block of a fresh
-// document instead of one typed into an existing one.
+// screens' own "+" button (standalone, no document) - but with a chance to
+// rename first (see renameQueue), since a shared file's own name is often
+// something like "IMG-20250910-WA0002.jpg", not a name anyone would
+// recognize later. A link or plain text asks where it should land (see
+// pendingShare) - Новий документ / Додати в існуючий / standalone (Посилання
+// for a link, a sticker for text) - rather than always burying it in a
+// brand-new, otherwise-empty document the way this used to work
+// unconditionally.
 export default function ShareIntentHandler() {
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
   // Guards against processing the same pending share twice - e.g. a
@@ -57,6 +74,7 @@ export default function ShareIntentHandler() {
   // one at a time in handleRenameDecision.
   const [renameQueue, setRenameQueue] = useState<PendingImport[]>([]);
   const addedCountRef = useRef({ photos: 0, files: 0 });
+  const [pendingShare, setPendingShare] = useState<PendingShare | null>(null);
 
   useEffect(() => {
     if (!hasShareIntent || processingRef.current) return;
@@ -80,11 +98,13 @@ export default function ShareIntentHandler() {
       return;
     }
     if (shareIntent.webUrl) {
-      await importSharedLink(shareIntent.webUrl);
+      const url = shareIntent.webUrl;
+      const preview: LinkPreview = await fetchLinkPreview(url).catch(() => ({}) as LinkPreview);
+      setPendingShare({ kind: 'link', url, preview });
       return;
     }
     if (shareIntent.text && shareIntent.text.trim()) {
-      await importSharedText(shareIntent.text.trim());
+      setPendingShare({ kind: 'text', text: shareIntent.text.trim() });
     }
   }
 
@@ -173,43 +193,145 @@ export default function ShareIntentHandler() {
     setRenameQueue(rest);
   }
 
-  async function importSharedLink(url: string) {
-    const preview: LinkPreview = await fetchLinkPreview(url).catch(() => ({}) as LinkPreview);
-    const block: Block = { ...buildBlock('link', url), linkUrl: url };
-    if (preview.title) block.linkTitle = preview.title;
-    if (preview.imageUrl) block.linkImageUrl = preview.imageUrl;
-    if (preview.siteName) block.linkSiteName = preview.siteName;
+  // The block a pending link/text share becomes - same shape either
+  // destination inserts, just built once here.
+  function blockForPendingShare(share: PendingShare): Block {
+    if (share.kind === 'text') return buildBlock('paragraph', share.text);
+    const block: Block = { ...buildBlock('link', share.url), linkUrl: share.url };
+    if (share.preview.title) block.linkTitle = share.preview.title;
+    if (share.preview.imageUrl) block.linkImageUrl = share.preview.imageUrl;
+    if (share.preview.siteName) block.linkSiteName = share.preview.siteName;
+    return block;
+  }
+
+  function titleForPendingShare(share: PendingShare): string {
+    if (share.kind === 'link') return share.preview.title || share.url;
+    const firstLine = share.text.split('\n')[0].trim();
+    return firstLine.length > 0 ? firstLine.slice(0, 80) : 'Без назви';
+  }
+
+  // The block becomes the first (and only) thing in a fresh document, same
+  // as this used to be the only option. The link's own mirror record isn't
+  // written here: DocumentEditorScreen's own syncLinksForDocument does that
+  // the moment this document is opened (which the navigate below does
+  // immediately), same as if the link had been typed in by hand. A plain
+  // function rather than a button handler, so the sticker-limit fallback in
+  // finalizeShareStandalone can fall through to it without fighting the
+  // pendingShare state it already cleared.
+  async function createNewDocumentFromShare(share: PendingShare) {
     const now = Date.now();
     const newDoc = await addDoc(collection(db, 'documents'), {
-      title: preview.title || url,
+      title: titleForPendingShare(share),
       createdAt: now,
       updatedAt: now,
-      blocks: [block],
+      blocks: [blockForPendingShare(share)],
     });
     if (navigationRef.isReady()) navigationRef.navigate('Editor', { documentId: newDoc.id });
   }
 
-  async function importSharedText(text: string) {
-    const firstLine = text.split('\n')[0].trim();
-    const title = firstLine.length > 0 ? firstLine.slice(0, 80) : 'Без назви';
+  function reportShareFailure(e: unknown) {
+    console.warn('[ShareIntentHandler] finalize failed', e);
+    Alert.alert('Не вдалося зберегти', 'Спробуйте ще раз.');
+  }
+
+  // "Новий документ" button.
+  function finalizeShareAsNewDocument() {
+    const share = pendingShare;
+    if (!share) return;
+    setPendingShare(null);
+    createNewDocumentFromShare(share).catch(reportShareFailure);
+  }
+
+  // "Додати в документ" - appended to the end of an already-existing
+  // document's own blocks array. Same lazy-mirror reasoning as above:
+  // opening that document (the navigate below) is what lets its own sync
+  // effects catch the new link/text block up.
+  function finalizeShareIntoDocument(documentId: string) {
+    const share = pendingShare;
+    if (!share) return;
+    setPendingShare(null);
+    updateDoc(doc(db, 'documents', documentId), {
+      blocks: arrayUnion(blockForPendingShare(share)),
+      updatedAt: Date.now(),
+    })
+      .then(() => {
+        if (navigationRef.isReady()) navigationRef.navigate('Editor', { documentId });
+      })
+      .catch(reportShareFailure);
+  }
+
+  // "Зберегти окремо" - no document at all, so unlike the two paths above
+  // there's no editor visit ahead to write the mirror record lazily; it's
+  // written directly here, in full, the same shape syncLinksForDocument
+  // would produce.
+  function finalizeShareStandalone() {
+    const share = pendingShare;
+    if (!share) return;
+    setPendingShare(null);
+    saveShareStandalone(share).catch(reportShareFailure);
+  }
+
+  async function saveShareStandalone(share: PendingShare) {
     const now = Date.now();
-    const newDoc = await addDoc(collection(db, 'documents'), {
-      title,
-      createdAt: now,
-      updatedAt: now,
-      blocks: [buildBlock('paragraph', text)],
-    });
-    if (navigationRef.isReady()) navigationRef.navigate('Editor', { documentId: newDoc.id });
+    if (share.kind === 'link') {
+      const linkId = linkDocId(share.url);
+      const linkDocData: Record<string, unknown> = {
+        url: share.url,
+        createdAt: now,
+        updatedAt: now,
+        usedInDocuments: {},
+      };
+      if (share.preview.title) linkDocData.title = share.preview.title;
+      if (share.preview.imageUrl) linkDocData.imageUrl = share.preview.imageUrl;
+      if (share.preview.siteName) linkDocData.siteName = share.preview.siteName;
+      await setDoc(doc(db, 'links', linkId), linkDocData, { merge: true });
+      Alert.alert('Додано в mindEva', 'Посилання збережено в базі "Посилання".');
+      return;
+    }
+    // Same cap DocumentsScreen's own sticker FAB enforces - falls back to
+    // a new document instead of just refusing outright, since there's no
+    // composer open here for the user to try something else from.
+    const freeStickersSnapshot = await getDocs(query(collection(db, 'stickers'), orderBy('updatedAt', 'desc')));
+    const freeStickerCount = freeStickersSnapshot.docs.filter((d) => {
+      const data = d.data() as { trashed?: boolean; usedInDocuments?: Record<string, boolean> };
+      return !data.trashed && Object.keys(data.usedInDocuments ?? {}).length === 0;
+    }).length;
+    if (freeStickerCount >= FREE_STICKER_LIMIT) {
+      Alert.alert(
+        'Забагато вільних стікерів',
+        `Уже є ${FREE_STICKER_LIMIT} - цей текст додано як новий документ замість стікера.`
+      );
+      await createNewDocumentFromShare(share);
+      return;
+    }
+    const id = generateId();
+    await setDoc(
+      doc(db, 'stickers', id),
+      { type: 'paragraph', text: share.text, createdAt: now, updatedAt: now, usedInDocuments: {} },
+      { merge: true }
+    );
+    Alert.alert('Додано в mindEva', 'Текст збережено як стікер.');
   }
 
   const current = renameQueue[0];
   return (
-    <RenamePrompt
-      visible={current !== undefined}
-      title={current?.kind === 'photo' ? 'Назва фото' : 'Назва файлу'}
-      initialValue={current?.originalName ?? ''}
-      onCancel={() => handleRenameDecision(current?.originalName ?? '')}
-      onSave={(title) => handleRenameDecision(title)}
-    />
+    <>
+      <RenamePrompt
+        visible={current !== undefined}
+        title={current?.kind === 'photo' ? 'Назва фото' : 'Назва файлу'}
+        initialValue={current?.originalName ?? ''}
+        onCancel={() => handleRenameDecision(current?.originalName ?? '')}
+        onSave={(title) => handleRenameDecision(title)}
+      />
+      <CopyToNoteModal
+        visible={pendingShare !== null}
+        title={pendingShare?.kind === 'link' ? 'Куди зберегти посилання?' : 'Куди зберегти текст?'}
+        standaloneLabel={pendingShare?.kind === 'link' ? 'Зберегти в Посилання' : 'Зберегти як стікер'}
+        onPickNew={finalizeShareAsNewDocument}
+        onPickExisting={finalizeShareIntoDocument}
+        onPickStandalone={finalizeShareStandalone}
+        onClose={() => setPendingShare(null)}
+      />
+    </>
   );
 }

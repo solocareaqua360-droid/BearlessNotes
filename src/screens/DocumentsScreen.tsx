@@ -63,7 +63,9 @@ const documentsPrefsDoc = doc(db, 'settings', 'documentsPrefs');
 const stickersCollection = collection(db, 'stickers');
 const STICKER_YELLOW = '#FBE97A';
 const STICKER_DARK = '#4a3f05';
-const FREE_STICKER_LIMIT = 10;
+// Exported so ShareIntentHandler can apply the same cap when a shared
+// text lands as a standalone sticker instead of through the FAB here.
+export const FREE_STICKER_LIMIT = 10;
 
 type ViewMode = 'list' | 'grid';
 
