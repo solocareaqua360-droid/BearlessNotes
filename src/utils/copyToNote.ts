@@ -147,3 +147,13 @@ export function blockFromCustomRow(row: { id: string; databaseId: string; title:
   if (row.createdAt) block.createdAt = row.createdAt;
   return block;
 }
+
+// The same convention one level up: a 'dbView' block reuses the SAVED
+// VIEW's own id, so it too stays one record listed in every document that
+// embeds it - see CustomDatabaseView.usedInDocuments.
+export function blockFromCustomView(view: { id: string; databaseId: string; name: string; createdAt?: number }): Block {
+  const block: Block = { id: view.id, text: '', type: 'dbView', dbViewDatabaseId: view.databaseId };
+  if (view.name) block.dbViewTitle = view.name;
+  if (view.createdAt) block.createdAt = view.createdAt;
+  return block;
+}

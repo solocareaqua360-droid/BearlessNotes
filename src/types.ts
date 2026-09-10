@@ -14,7 +14,12 @@ export type BlockType =
   // rather than from a snapshot - editing the row in its own database
   // updates every document that mentions it, which is the two-way link
   // PROJECT_BRIEF.md asks for.
-  | 'dbRow';
+  | 'dbRow'
+  // A saved view of a user-created database (CustomDatabaseView), embedded
+  // as a live-filtered, live-sorted slice of its rows - same two-way link
+  // as 'dbRow', one level up: the block shows whichever rows currently
+  // match the view's filter, not a fixed list picked at insert time.
+  | 'dbView';
 
 // One freehand stroke OR simple shape (line/rectangle/circle) in a
 // 'sketch' block - `d` is a plain SVG path `d` attribute. A freehand
@@ -124,6 +129,12 @@ export interface Block {
   // if it has since been deleted from its database.
   dbRowDatabaseId?: string;
   dbRowTitle?: string;
+  // 'dbView' blocks only. Same convention as 'dbRow' above - the block's
+  // own `id` IS the referenced view's id, so this only carries which
+  // database the view belongs to (needed before the view doc itself has
+  // loaded) and a fallback name for while it loads or after it's deleted.
+  dbViewDatabaseId?: string;
+  dbViewTitle?: string;
   // 'checkbox' blocks only - standard properties of the "справа" object
   // type (hardcoded, unlike a future user-defined type's properties).
   projectId?: string; // references a doc in the 'projects' collection
@@ -429,6 +440,9 @@ export interface CustomDatabaseView {
   // Same array the screen stores in its prefs doc; a filter naming a field
   // that has since been deleted is ignored when the view is applied.
   filters: { fieldId: string; op: 'any' | 'filled' | 'empty'; values?: string[] }[];
+  // documentId -> true for every document embedding this view as a 'dbView'
+  // block, same shape/purpose as CustomDatabaseRow.usedInDocuments below.
+  usedInDocuments?: Record<string, boolean>;
   createdAt: number;
   updatedAt: number;
 }

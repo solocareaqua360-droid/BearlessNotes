@@ -3,9 +3,10 @@ import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View 
 import { Ionicons } from '@expo/vector-icons';
 import { collection, onSnapshot, orderBy, query } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
-import { Block, CustomDatabase, CustomDatabaseRow, SketchElement } from '../types';
+import { Block, CustomDatabase, CustomDatabaseRow, CustomDatabaseView, SketchElement } from '../types';
 import {
   blockFromCustomRow,
+  blockFromCustomView,
   blockFromFile,
   blockFromLink,
   blockFromPhoto,
@@ -22,6 +23,7 @@ const documentsCollection = collection(db, 'documents');
 const stickersCollection = collection(db, 'stickers');
 const customDatabasesCollection = collection(db, 'customDatabases');
 const customRowsCollection = collection(db, 'customDatabaseRows');
+const customViewsCollection = collection(db, 'customDatabaseViews');
 
 // Links split into video/geo/other exactly like LinksScreen's own tabs
 // (see LinksScreen.tsx's categoryOf) - they're one Firestore collection but
@@ -142,6 +144,7 @@ export default function AddExistingItemModal({
   // bound on how many the user creates.
   const [customDatabases, setCustomDatabases] = useState<CustomDatabase[]>([]);
   const [customRows, setCustomRows] = useState<CustomDatabaseRow[]>([]);
+  const [customViews, setCustomViews] = useState<CustomDatabaseView[]>([]);
   const [openDatabaseId, setOpenDatabaseId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -202,6 +205,17 @@ export default function AddExistingItemModal({
   }, [visible, openDatabaseId]);
 
   useEffect(() => {
+    if (!visible || !openDatabaseId) return;
+    return onSnapshot(customViewsCollection, (snapshot) => {
+      setCustomViews(
+        snapshot.docs
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabaseView, 'id'>) }))
+          .filter((v) => v.databaseId === openDatabaseId)
+      );
+    });
+  }, [visible, openDatabaseId]);
+
+  useEffect(() => {
     if (!visible || !includeDocuments) return;
     return onSnapshot(query(documentsCollection, orderBy('updatedAt', 'desc')), (snapshot) => {
       setDocuments(
@@ -244,6 +258,11 @@ export default function AddExistingItemModal({
   // the row's own id (blockFromCustomRow).
   const filteredCustomRows = customRows.filter(
     (r) => !excludeIds?.has(r.id) && rowTitleOf(openDatabase, r).toLowerCase().includes(needle)
+  );
+  // Same id-collision guard - a view block reuses the view's own id
+  // (blockFromCustomView).
+  const filteredCustomViews = customViews.filter(
+    (v) => !excludeIds?.has(v.id) && (v.name || 'Вигляд').toLowerCase().includes(needle)
   );
 
   return (
@@ -460,6 +479,38 @@ export default function AddExistingItemModal({
                     {openDatabase.name || 'База'}
                   </Text>
                 </Pressable>
+                {/* Saved views first, under their own label - a live,
+                    filtered slice of the database is a coarser, more
+                    useful thing to embed than one row, so it leads. */}
+                {filteredCustomViews.length > 0 && (
+                  <>
+                    <Text style={styles.sectionLabel}>Вигляди</Text>
+                    {filteredCustomViews.map((v) => (
+                      <Pressable
+                        key={v.id}
+                        style={styles.row}
+                        onPress={() =>
+                          onPick(
+                            blockFromCustomView({
+                              id: v.id,
+                              databaseId: openDatabase.id,
+                              name: v.name || 'Вигляд',
+                              createdAt: v.createdAt,
+                            })
+                          )
+                        }
+                      >
+                        <View style={styles.docIcon}>
+                          <Ionicons name="bookmark-outline" size={18} color={ACCENT} />
+                        </View>
+                        <Text style={styles.rowText} numberOfLines={1}>
+                          {v.name || 'Вигляд'}
+                        </Text>
+                      </Pressable>
+                    ))}
+                    <Text style={styles.sectionLabel}>Записи</Text>
+                  </>
+                )}
                 {filteredCustomRows.length === 0 ? (
                   <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
                 ) : (
@@ -573,6 +624,16 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     textAlign: 'center',
     paddingVertical: 16,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#9CA3AF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    paddingTop: 10,
+    paddingBottom: 2,
+    paddingHorizontal: 2,
   },
   list: {
     maxHeight: 320,

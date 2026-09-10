@@ -127,7 +127,11 @@ type Props = NativeStackScreenProps<RootStackParamList, 'CustomDatabase'>;
 export default function CustomDatabaseScreen({}: Props) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute();
-  const { databaseId, openRowId } = route.params as { databaseId: string; openRowId?: string };
+  const { databaseId, openRowId, openViewId } = route.params as {
+    databaseId: string;
+    openRowId?: string;
+    openViewId?: string;
+  };
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
   const customRowKind = `customRow:${databaseId}`;
@@ -374,6 +378,18 @@ export default function CustomDatabaseScreen({}: Props) {
     openEditRow(row);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openRowId, rows]);
+
+  // Same one-shot shape, for arriving from a 'dbView' block (see
+  // openCustomViewBlock): apply that saved view as soon as it's loaded.
+  const openedViewFromParamRef = useRef(false);
+  useEffect(() => {
+    if (!openViewId || openedViewFromParamRef.current) return;
+    const view = savedViews.find((v) => v.id === openViewId);
+    if (!view) return;
+    openedViewFromParamRef.current = true;
+    applySavedView(view);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openViewId, savedViews]);
 
   useEffect(() => {
     return onSnapshot(prefsDoc, (snapshot) => {

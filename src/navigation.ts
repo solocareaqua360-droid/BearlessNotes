@@ -38,7 +38,7 @@ export type RootStackParamList = {
   // openRowId: set only when arriving from a 'dbRow' block in a document -
   // the screen opens that row's editor as soon as its rows have loaded, so
   // the tap lands on the record itself rather than just its database.
-  CustomDatabase: { databaseId: string; openRowId?: string };
+  CustomDatabase: { databaseId: string; openRowId?: string; openViewId?: string };
   Tags: undefined;
   // The temporary, cross-database counterpart to Tags (see the Group type).
   Groups: undefined;

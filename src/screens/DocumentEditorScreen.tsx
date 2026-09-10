@@ -92,6 +92,7 @@ import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import CustomRowBlockCard from '../components/CustomRowBlockCard';
+import CustomDatabaseViewBlockCard from '../components/CustomDatabaseViewBlockCard';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -613,6 +614,8 @@ async function buildDocumentHtml(title: string, blocks: Block[]): Promise<string
       // Only the snapshot title - an export is a flat file, so there's
       // nothing live to render here.
       parts.push(`<p>[Запис: ${escapeHtml(block.dbRowTitle || 'Без назви')}]</p>`);
+    } else if (type === 'dbView') {
+      parts.push(`<p>[Вигляд: ${escapeHtml(block.dbViewTitle || 'Вигляд')}]</p>`);
     } else if (type === 'table') {
       const rows = block.tableRows ?? [];
       const rowsHtml = rows
@@ -660,6 +663,8 @@ function buildDocumentText(title: string, blocks: Block[]): string {
       lines.push('[Малюнок]');
     } else if (type === 'dbRow') {
       lines.push(`[Запис: ${block.dbRowTitle || 'Без назви'}]`);
+    } else if (type === 'dbView') {
+      lines.push(`[Вигляд: ${block.dbViewTitle || 'Вигляд'}]`);
     } else if (type === 'table') {
       const rows = block.tableRows ?? [];
       rows.forEach((row, r) => lines.push(row.cells.map((_, c) => displayValueOf(rows, r, c)).join('\t')));
@@ -742,6 +747,9 @@ type BlockRowProps = {
   // live row's own tagIds) and "open this row in its database".
   allTags: Tag[];
   onOpenCustomRow: (databaseId: string, rowId: string) => void;
+  // 'dbView' blocks only - "open this view's own database, with that view
+  // applied" (tapping the block's header, as opposed to one of its rows).
+  onOpenCustomView: (databaseId: string, viewId: string) => void;
   inputRef: (ref: TextInput | null) => void;
   // null when "Колір паперу" is off, OR for a sticker block specifically -
   // a sticker keeps its own yellow/dark treatment regardless of the
@@ -967,6 +975,7 @@ function BlockRow({
   onOpenSketch,
   allTags,
   onOpenCustomRow,
+  onOpenCustomView,
   inputRef,
   paperColor,
 }: BlockRowProps) {
@@ -1265,6 +1274,22 @@ function BlockRow({
         />
       </View>
     );
+  } else if (type === 'dbView') {
+    // A saved view of a user-created database, rendered LIVE (see
+    // CustomDatabaseViewBlockCard) - the rows shown are whichever ones
+    // currently match the view's filter, not a list fixed at insert time.
+    content = (
+      <View style={styles.dbRowBlock} pointerEvents={isSelectMode ? 'none' : 'auto'}>
+        <CustomDatabaseViewBlockCard
+          databaseId={item.dbViewDatabaseId}
+          viewId={item.id}
+          fallbackTitle={item.dbViewTitle}
+          tags={allTags}
+          onOpenRow={onOpenCustomRow}
+          onOpenView={onOpenCustomView}
+        />
+      </View>
+    );
   } else {
     const textField = canEditText ? (
       <TextInput
@@ -1452,6 +1477,9 @@ type SortableBlockRowProps = {
   // live row's own tagIds) and "open this row in its database".
   allTags: Tag[];
   onOpenCustomRow: (databaseId: string, rowId: string) => void;
+  // 'dbView' blocks only - "open this view's own database, with that view
+  // applied" (tapping the block's header, as opposed to one of its rows).
+  onOpenCustomView: (databaseId: string, viewId: string) => void;
   inputRef: (ref: TextInput | null) => void;
   // Attached to the one active row only, so the screen's keyboard handler
   // can measure it on the UI thread the instant the keyboard starts rising.
@@ -1492,6 +1520,7 @@ function SortableBlockRow({
   onOpenSketch,
   allTags,
   onOpenCustomRow,
+  onOpenCustomView,
   inputRef,
   paperColor,
 }: SortableBlockRowProps) {
@@ -1574,6 +1603,7 @@ function SortableBlockRow({
             onOpenSketch={onOpenSketch}
             allTags={allTags}
             onOpenCustomRow={onOpenCustomRow}
+            onOpenCustomView={onOpenCustomView}
             inputRef={inputRef}
           />
         </Animated.View>
@@ -1612,6 +1642,9 @@ type BlockListProps = {
   // live row's own tagIds) and "open this row in its database".
   allTags: Tag[];
   onOpenCustomRow: (databaseId: string, rowId: string) => void;
+  // 'dbView' blocks only - "open this view's own database, with that view
+  // applied" (tapping the block's header, as opposed to one of its rows).
+  onOpenCustomView: (databaseId: string, viewId: string) => void;
   onInputRef: (id: string, ref: TextInput | null) => void;
   paperColor: ReturnType<typeof colorForDocument> | null;
 };
@@ -1643,6 +1676,7 @@ function BlockList({
   onOpenSketch,
   allTags,
   onOpenCustomRow,
+  onOpenCustomView,
   onInputRef,
   paperColor,
 }: BlockListProps) {
@@ -1864,6 +1898,7 @@ function BlockList({
           onOpenSketch={onOpenSketch}
           allTags={allTags}
           onOpenCustomRow={onOpenCustomRow}
+          onOpenCustomView={onOpenCustomView}
           inputRef={(ref) => onInputRef(item.id, ref)}
           paperColor={paperColor}
         />
@@ -2377,6 +2412,32 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     knownCustomRowIdsRef.current = currentIds;
   }
 
+  // Same shape one level up, for embedded saved views ('dbView' blocks) -
+  // a view belongs to its database exactly like a row does, so it's the
+  // same back-link-only, never-delete convention.
+  const knownCustomViewIdsRef = useRef<Set<string>>(new Set());
+
+  function syncCustomViewsForDocument(currentBlocks: Block[]) {
+    const viewBlocks = currentBlocks.filter((b) => (b.type ?? 'paragraph') === 'dbView');
+    const currentIds = new Set(viewBlocks.map((b) => b.id));
+    viewBlocks.forEach((b) => {
+      updateDoc(doc(db, 'customDatabaseViews', b.id), {
+        [`usedInDocuments.${documentId}`]: true,
+      }).catch(() => {
+        // Deleted from its database in the meantime - the block stays and
+        // renders its "вигляд видалено" state, nothing to record.
+      });
+    });
+    knownCustomViewIdsRef.current.forEach((id) => {
+      if (!currentIds.has(id)) {
+        updateDoc(doc(db, 'customDatabaseViews', id), {
+          [`usedInDocuments.${documentId}`]: deleteField(),
+        }).catch(() => {});
+      }
+    });
+    knownCustomViewIdsRef.current = currentIds;
+  }
+
   useEffect(() => {
     if (!isLoaded) return;
     setSaveStatus('saving');
@@ -2417,6 +2478,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       syncFilesForDocument(blocks);
       syncStickersForDocument(blocks);
       syncCustomRowsForDocument(blocks);
+      syncCustomViewsForDocument(blocks);
     }, AUTOSAVE_DELAY_MS);
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -3089,6 +3151,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // already offer through their little database button.
   function openCustomRowBlock(databaseId: string, rowId: string) {
     navigation.navigate('CustomDatabase', { databaseId, openRowId: rowId });
+  }
+
+  // Tapping an embedded view's header opens its own database with that
+  // exact view applied (see CustomDatabase's openViewId param), the same
+  // "jump to the thing behind this block" move as openCustomRowBlock.
+  function openCustomViewBlock(databaseId: string, viewId: string) {
+    navigation.navigate('CustomDatabase', { databaseId, openViewId: viewId });
   }
 
   async function openLinkBlock(url: string) {
@@ -3952,6 +4021,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           onOpenSketch={openSketchBlock}
           allTags={tags}
           onOpenCustomRow={openCustomRowBlock}
+          onOpenCustomView={openCustomViewBlock}
           onInputRef={(id, ref) => {
             inputRefs.current[id] = ref;
           }}
@@ -4186,9 +4256,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                 (b) =>
                   ((b.type ?? 'paragraph') === 'file' && b.fileUri) ||
                   ((b.type ?? 'paragraph') === 'image' && b.imageUri) ||
-                  // A dbRow block reuses the referenced row's own id
-                  // (blockFromCustomRow) - same collision risk.
+                  // A dbRow/dbView block reuses the referenced row's/
+                  // view's own id (blockFromCustomRow/blockFromCustomView)
+                  // - same collision risk.
                   (b.type ?? 'paragraph') === 'dbRow' ||
+                  (b.type ?? 'paragraph') === 'dbView' ||
                   // A sticker block reuses its own record's id (any
                   // content type - paragraph/image/sketch), same
                   // collision risk as file/image above.
