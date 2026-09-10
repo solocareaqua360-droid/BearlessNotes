@@ -916,12 +916,10 @@ export default function CustomDatabaseScreen({}: Props) {
       </View>
 
       {!paramsCollapsed && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.paramsScroll}
-          contentContainerStyle={styles.paramsStrip}
-        >
+        // A wrapping row, not a horizontal scroller: six short chips fit in
+        // two lines, nothing can be squeezed to fit a viewport, and no
+        // option hides past the screen edge where it would never be found.
+        <View style={styles.paramsStrip}>
           {(['list', 'cards', 'table'] as ViewMode[]).map((mode) => (
             <Pressable
               key={mode}
@@ -957,7 +955,7 @@ export default function CustomDatabaseScreen({}: Props) {
               </Pressable>
             );
           })}
-        </ScrollView>
+        </View>
       )}
 
       {isSearching && (
@@ -1836,11 +1834,9 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.85)',
     fontWeight: '600',
   },
-  paramsScroll: {
-    flexGrow: 0,
-  },
   paramsStrip: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: 20,
