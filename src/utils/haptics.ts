@@ -78,26 +78,35 @@ export function hapticCreate() {
   android(Haptics.AndroidHaptics.Drag_Start, () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
 }
 
-// Something thrown away. A single pulse can't read as a "whoosh" - that
-// needs a tail - so this fires a series that starts moderate and fades,
-// with the gaps between pulses widening as it goes. The widening is what
-// makes it recede rather than just stop: even, equal gaps read as a
-// stutter, lengthening ones as something moving away.
+// Something thrown away. The fade is carried by DENSITY, not by strength:
+// the pulses start almost fused (25ms apart) and end clearly separate
+// (70ms), which the hand reads as a rattle winding down - something
+// receding. An earlier version faded by dropping the impact style
+// instead, and came through as two taps rather than a decay: this phone
+// attenuates the Light/Soft effects so heavily that the quiet end of such
+// a ramp simply isn't felt, leaving only the loud beginning of it.
 //
-// Starts at Medium rather than Heavy on purpose: the first pulse is the
-// throw, not an impact, and a hard one made it read as hitting something.
-// The tail runs ~280ms - three times its first version, which was over
-// before it could be felt as a movement at all.
-const DISCARD_TAIL: [number, Haptics.ImpactFeedbackStyle][] = [
+// Style stays at Light for the body for the same reason - it has to be
+// something that actually registers on every pulse - with only the last
+// two dropping to Soft, by which point the widening gaps are already
+// doing the work.
+const DISCARD_PULSES: [number, Haptics.ImpactFeedbackStyle][] = [
+  [0, Haptics.ImpactFeedbackStyle.Medium],
+  [25, Haptics.ImpactFeedbackStyle.Light],
   [55, Haptics.ImpactFeedbackStyle.Light],
-  [120, Haptics.ImpactFeedbackStyle.Light],
-  [195, Haptics.ImpactFeedbackStyle.Soft],
-  [280, Haptics.ImpactFeedbackStyle.Soft],
+  [90, Haptics.ImpactFeedbackStyle.Light],
+  [130, Haptics.ImpactFeedbackStyle.Light],
+  [180, Haptics.ImpactFeedbackStyle.Light],
+  [240, Haptics.ImpactFeedbackStyle.Soft],
+  [310, Haptics.ImpactFeedbackStyle.Soft],
 ];
 
 export function hapticDiscard() {
-  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-  DISCARD_TAIL.forEach(([delay, style]) => {
+  DISCARD_PULSES.forEach(([delay, style]) => {
+    if (delay === 0) {
+      Haptics.impactAsync(style).catch(() => {});
+      return;
+    }
     setTimeout(() => Haptics.impactAsync(style).catch(() => {}), delay);
   });
 }
