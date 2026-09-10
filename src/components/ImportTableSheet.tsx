@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,12 +12,16 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
+import { collection, onSnapshot, orderBy, query } from '@react-native-firebase/firestore';
+import { db } from '../firebase';
 import { FieldDef, FieldType } from '../types';
 import {
   ColumnMapping,
   ParsedSheet,
   createDatabaseForImport,
+  ensureLocalFile,
   guessFieldType,
+  isTableFileName,
   optionsFromColumn,
   parseTableFile,
   runTableImport,
@@ -58,6 +62,32 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
   const [openMenuColumn, setOpenMenuColumn] = useState<number | null>(null);
   const [databaseName, setDatabaseName] = useState('');
   const [busy, setBusy] = useState(false);
+  // Spreadsheets already sitting in the Files database - a file shared into
+  // the app earlier is the common case, and making the user go find it
+  // again through the system picker would be silly.
+  const [storedFiles, setStoredFiles] = useState<
+    { id: string; fileUri: string; fileName: string; title?: string; driveFileId?: string }[]
+  >([]);
+
+  useEffect(() => {
+    if (!visible) return;
+    return onSnapshot(query(collection(db, 'files'), orderBy('updatedAt', 'desc')), (snapshot) => {
+      setStoredFiles(
+        snapshot.docs
+          .map((d) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              fileUri: data.fileUri as string,
+              fileName: (data.fileName as string) ?? '',
+              title: data.title as string | undefined,
+              driveFileId: data.driveFileId as string | undefined,
+            };
+          })
+          .filter((f) => isTableFileName(f.fileName) || isTableFileName(f.title ?? ''))
+      );
+    });
+  }, [visible]);
 
   const sheet = sheets?.[sheetIndex] ?? null;
   const grid = sheet?.grid ?? [];
@@ -109,12 +139,10 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
     });
   }
 
-  async function pickFile() {
-    const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
-    if (result.canceled || !result.assets[0]) return;
+  async function loadFile(uri: string, displayName: string) {
     setBusy(true);
     try {
-      const parsed = await parseTableFile(result.assets[0].uri);
+      const parsed = await parseTableFile(uri);
       const nonEmpty = parsed.filter((s) => s.grid.length > 0);
       if (nonEmpty.length === 0) {
         Alert.alert('Порожній файл', 'У цьому файлі не знайшлося жодного рядка.');
@@ -123,13 +151,33 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
       setSheets(nonEmpty);
       setSheetIndex(0);
       setMappings(buildDefaultMappings(nonEmpty[0], true));
-      setDatabaseName(result.assets[0].name.replace(/\.[^.]+$/, ''));
+      setDatabaseName(displayName.replace(/\.[^.]+$/, ''));
     } catch (e) {
       console.warn('[ImportTableSheet] parse failed', e);
       Alert.alert('Не вдалося прочитати файл', 'Підтримуються .xlsx, .xls і .csv.');
     } finally {
       setBusy(false);
     }
+  }
+
+  async function pickFile() {
+    const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+    if (result.canceled || !result.assets[0]) return;
+    await loadFile(result.assets[0].uri, result.assets[0].name);
+  }
+
+  // The bytes may not be on this device (a file restored from a backup, or
+  // shared from another one) - pulled back from its Drive copy first, the
+  // same way a thumbnail would be.
+  async function useStoredFile(file: { fileUri: string; fileName: string; title?: string; driveFileId?: string }) {
+    setBusy(true);
+    const available = await ensureLocalFile(file.fileUri, file.driveFileId).catch(() => false);
+    setBusy(false);
+    if (!available) {
+      Alert.alert('Файл недоступний', 'Його немає на цьому пристрої і не вдалося відновити з резервної копії.');
+      return;
+    }
+    await loadFile(file.fileUri, file.title || file.fileName);
   }
 
   function selectSheet(index: number) {
@@ -243,9 +291,30 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
                 {busy ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.primaryButtonLabel}>Обрати файл</Text>
+                  <Text style={styles.primaryButtonLabel}>Обрати файл на пристрої</Text>
                 )}
               </Pressable>
+
+              {storedFiles.length > 0 && (
+                <>
+                  <Text style={styles.sectionLabel}>З бази файлів</Text>
+                  <ScrollView style={styles.storedList} keyboardShouldPersistTaps="handled">
+                    {storedFiles.map((f) => (
+                      <Pressable
+                        key={f.id}
+                        style={styles.storedRow}
+                        disabled={busy}
+                        onPress={() => useStoredFile(f)}
+                      >
+                        <Ionicons name="document-outline" size={18} color={ACCENT} />
+                        <Text style={styles.storedLabel} numberOfLines={1}>
+                          {f.title || f.fileName}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </>
+              )}
             </View>
           ) : (
             <ScrollView style={styles.body} keyboardShouldPersistTaps="handled">
@@ -560,6 +629,20 @@ const styles = StyleSheet.create({
   menuRowType: {
     fontSize: 12,
     color: '#9CA3AF',
+  },
+  storedList: {
+    maxHeight: 260,
+  },
+  storedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+  },
+  storedLabel: {
+    flex: 1,
+    fontSize: 15,
+    color: '#111827',
   },
   primaryButton: {
     backgroundColor: ACCENT,

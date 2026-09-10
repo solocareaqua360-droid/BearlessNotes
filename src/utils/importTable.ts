@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
+import { downloadFileFromDrive } from './googleDrive';
 import { addDoc, collection, doc, getDocs, query, writeBatch } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import { CustomDatabaseRow, FieldDef, FieldType } from '../types';
@@ -11,6 +12,25 @@ export type ParsedSheet = { name: string; grid: string[][] };
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+// A file already in the Files database only ever stores a local path (see
+// backupFileToDrive) - on a device that never created it, that path is
+// empty and the Drive copy is the only one there is. Same restore step
+// useCachedAttachment does for thumbnails, as a plain call for the one-off
+// case of reading a file to import it.
+export async function ensureLocalFile(uri: string, driveFileId?: string): Promise<boolean> {
+  const info = await LegacyFileSystem.getInfoAsync(uri);
+  if (info.exists) return true;
+  if (!driveFileId) return false;
+  return downloadFileFromDrive(driveFileId, uri);
+}
+
+// Whether a file in the Files database is worth offering as an import
+// source - by its own name, since that's what the user recognises and what
+// the picker filters on anyway.
+export function isTableFileName(name: string): boolean {
+  return /\.(xlsx|xls|csv)$/i.test(name.trim());
 }
 
 // SheetJS reads .xlsx, .xls and .csv from the same call - it sniffs the
