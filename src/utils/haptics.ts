@@ -70,13 +70,19 @@ export function hapticWarning() {
 
 // A new document opening. There's no "page turn" in the system's set - it
 // is semantic (confirm/reject/tick/toggle), not skeuomorphic - so this
-// composes one out of two: a light tick, then a softer settle a moment
-// later, which reads as a sheet lifting and landing rather than as a
-// single click. The gap is the whole effect; too short and the two blur
-// into one buzz, too long and they read as two separate events.
+// composes one out of two impacts: a firm one, then a softer settle a
+// moment later, which reads as a sheet lifting and landing rather than as
+// a single click.
+//
+// Impact styles rather than the Android constants used elsewhere here on
+// purpose: the tick constants (Segment_Tick, Clock_Tick) are the lightest
+// effects the system has - meant for scrolling one notch - and were too
+// faint to tell apart. Heavy/Medium are the loudest thing available
+// without dropping to the raw motor (Vibration.vibrate), which buzzes
+// instead of tapping.
 export function hapticPageTurn() {
-  android(Haptics.AndroidHaptics.Segment_Tick, () => Haptics.selectionAsync());
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
   setTimeout(() => {
-    android(Haptics.AndroidHaptics.Gesture_End, () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
   }, 70);
 }
