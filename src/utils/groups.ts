@@ -40,6 +40,10 @@ export function labelForKind(kind: string, customDatabaseNames: Record<string, s
     'link-geo': 'Геоточки',
     'link-other': 'Посилання',
     task: 'Справи',
+    // Not a real group kind (groups don't apply to plain shared text) -
+    // included here anyway so addItemToBoard.ts's single-item board add
+    // can label a text card's column through this same lookup.
+    text: 'Текст',
   };
   return fixed[kind] ?? kind;
 }

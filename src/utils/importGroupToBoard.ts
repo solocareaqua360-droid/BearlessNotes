@@ -36,7 +36,10 @@ export type ImportableItem = {
 
 // The board card for one item. Position is filled in by the caller (the
 // column stacks them); null for a kind that has nothing to show as a card.
-function cardFor(item: ImportableItem): BoardCard | null {
+// Exported so addItemToBoard.ts (a single item, rather than a whole
+// group) can build the same card shapes without a second copy of this
+// per-kind logic.
+export function cardFor(item: ImportableItem): BoardCard | null {
   const base = { x: 0, y: 0, width: DEFAULT_CARD_WIDTH };
   if (item.kind === 'photo') {
     return {
@@ -88,6 +91,9 @@ function cardFor(item: ImportableItem): BoardCard | null {
       }),
       ...base,
     };
+  }
+  if (item.kind === 'text') {
+    return { id: generateId(), text: (item.data.text as string) ?? '', type: 'paragraph', ...base };
   }
   if (item.kind === 'document') {
     // Same shape addDocumentCard builds, minus the preview snapshot - the

@@ -20,8 +20,18 @@ import { linkDocId } from '../utils/linkId';
 import { backupFileToDrive } from '../utils/googleDrive';
 import { navigationRef } from '../navigationRef';
 import { FREE_STICKER_LIMIT } from '../screens/DocumentsScreen';
+import { dateKey } from '../utils/dateLocale';
+import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
 import RenamePrompt from './RenamePrompt';
-import CopyToNoteModal from './CopyToNoteModal';
+import SaveDestinationSheet from './SaveDestinationSheet';
+
+// Identical to LinksScreen.tsx's/AddExistingItemModal.tsx's own copy of
+// this same small classifier - see those for why it isn't shared.
+function categoryOf(siteName: string | undefined): 'link-video' | 'link-geo' | 'link-other' {
+  if (siteName?.includes('YouTube') || siteName?.includes('TikTok')) return 'link-video';
+  if (siteName === 'Геоточка') return 'link-geo';
+  return 'link-other';
+}
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -43,8 +53,8 @@ type PendingImport = {
 };
 
 // A shared link or plain text waiting on "where should this land?" (see
-// CopyToNoteModal below) - a link's preview is fetched up front, since all
-// three destinations need its title either way.
+// SaveDestinationSheet below) - a link's preview is fetched up front, since
+// every destination needs its title either way.
 type PendingShare = { kind: 'link'; url: string; preview: LinkPreview } | { kind: 'text'; text: string };
 
 // Something shared into mindEva via Android's Share sheet (app.json's
@@ -59,8 +69,9 @@ type PendingShare = { kind: 'link'; url: string; preview: LinkPreview } | { kind
 // rename first (see renameQueue), since a shared file's own name is often
 // something like "IMG-20250910-WA0002.jpg", not a name anyone would
 // recognize later. A link or plain text asks where it should land (see
-// pendingShare) - Новий документ / Додати в існуючий / standalone (Посилання
-// for a link, a sticker for text) - rather than always burying it in a
+// pendingShare, SaveDestinationSheet) - a new or existing note, today's
+// daily note, a new or existing board, or standalone (Посилання for a
+// link, a sticker for text) - rather than always burying it in a
 // brand-new, otherwise-empty document the way this used to work
 // unconditionally.
 export default function ShareIntentHandler() {
@@ -229,6 +240,76 @@ export default function ShareIntentHandler() {
     if (navigationRef.isReady()) navigationRef.navigate('Editor', { documentId: newDoc.id });
   }
 
+  // The ImportableItem shape addItemToBoard/createBoardAndAddItem (and,
+  // through cardFor, importGroupToBoard) already build a card from - a
+  // shared link's kind is its video/geo/other category, a shared text has
+  // no real "kind" of its own so it gets the synthetic 'text' one (see
+  // groups.ts' labelForKind, which knows how to label it).
+  function importableItemForShare(share: PendingShare): { id: string; kind: string; title: string; data: Record<string, unknown> } {
+    if (share.kind === 'text') {
+      return { id: generateId(), kind: 'text', title: titleForPendingShare(share), data: { text: share.text } };
+    }
+    return {
+      id: linkDocId(share.url),
+      kind: categoryOf(share.preview.siteName),
+      title: share.preview.title || share.url,
+      data: {
+        url: share.url,
+        title: share.preview.title,
+        imageUrl: share.preview.imageUrl,
+        siteName: share.preview.siteName,
+      },
+    };
+  }
+
+  // "Сьогодні" - appended to today's own daily note, creating it (with the
+  // calendarDate field CalendarScreen looks for) if today doesn't have one
+  // yet. Same lazy-mirror reasoning as "Додати в документ": opening the
+  // Calendar tab, which lands on today by default, is what lets
+  // DocumentEditorScreen's own sync effects catch the link/text block up.
+  function finalizeShareToday() {
+    const share = pendingShare;
+    if (!share) return;
+    setPendingShare(null);
+    const documentId = `day_${dateKey(new Date())}`;
+    setDoc(
+      doc(db, 'documents', documentId),
+      {
+        blocks: arrayUnion(blockForPendingShare(share)),
+        calendarDate: dateKey(new Date()),
+        updatedAt: Date.now(),
+      },
+      { merge: true }
+    )
+      .then(() => {
+        if (navigationRef.isReady())
+          navigationRef.navigate('Tabs', { screen: 'Календар', params: { jumpToDate: dateKey(new Date()) } });
+      })
+      .catch(reportShareFailure);
+  }
+
+  // "Нова дошка" / "Існуюча дошка" - the link/text becomes a card instead
+  // of a document block; no navigation, same as the standalone path below,
+  // since jumping into a board the user hasn't asked to see would be more
+  // disruptive than a confirmation toast.
+  function finalizeShareNewBoard() {
+    const share = pendingShare;
+    if (!share) return;
+    setPendingShare(null);
+    createBoardAndAddItem('Без назви', importableItemForShare(share))
+      .then(() => Alert.alert('Додано в mindEva', 'Створено нову дошку.'))
+      .catch(reportShareFailure);
+  }
+
+  function finalizeShareExistingBoard(boardId: string) {
+    const share = pendingShare;
+    if (!share) return;
+    setPendingShare(null);
+    addItemToBoard(boardId, importableItemForShare(share))
+      .then(() => Alert.alert('Додано в mindEva', 'Додано на дошку.'))
+      .catch(reportShareFailure);
+  }
+
   function reportShareFailure(e: unknown) {
     console.warn('[ShareIntentHandler] finalize failed', e);
     Alert.alert('Не вдалося зберегти', 'Спробуйте ще раз.');
@@ -323,13 +404,16 @@ export default function ShareIntentHandler() {
         onCancel={() => handleRenameDecision(current?.originalName ?? '')}
         onSave={(title) => handleRenameDecision(title)}
       />
-      <CopyToNoteModal
+      <SaveDestinationSheet
         visible={pendingShare !== null}
         title={pendingShare?.kind === 'link' ? 'Куди зберегти посилання?' : 'Куди зберегти текст?'}
-        standaloneLabel={pendingShare?.kind === 'link' ? 'Зберегти в Посилання' : 'Зберегти як стікер'}
+        defaultLabel={pendingShare?.kind === 'link' ? 'Зберегти в Посилання' : 'Зберегти як стікер'}
+        onPickDefault={finalizeShareStandalone}
+        onPickToday={finalizeShareToday}
         onPickNew={finalizeShareAsNewDocument}
         onPickExisting={finalizeShareIntoDocument}
-        onPickStandalone={finalizeShareStandalone}
+        onPickNewBoard={finalizeShareNewBoard}
+        onPickExistingBoard={finalizeShareExistingBoard}
         onClose={() => setPendingShare(null)}
       />
     </>

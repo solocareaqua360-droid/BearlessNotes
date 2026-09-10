@@ -334,6 +334,14 @@ export interface BoardColumn {
   title: string;
   x: number;
   y: number;
+  // Which kind of item this column collects (see utils/groups.ts'
+  // kindsOf/labelForKind for the vocabulary) - set only on a column
+  // created by addItemToBoard.ts's single-item "add to board" flow, so a
+  // second item of the same kind can find and reuse it by kind rather
+  // than by title (title is just a label and the user may rename it).
+  // Columns from importGroupToBoard.ts don't set this - a fresh column
+  // per import batch is the point there, never reused across imports.
+  kind?: string;
 }
 
 export interface BoardItem {
