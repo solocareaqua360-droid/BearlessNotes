@@ -581,6 +581,27 @@ export default function CustomDatabaseScreen({}: Props) {
   // needs a real document to attach its usedIn entry to (createAndAttachTag
   // calls update() on it, which fails outright on a doc that doesn't exist
   // yet). cancelRowEditor cleans this up again if the user backs out.
+  // Creates a row in ANOTHER database carrying just its title - what the
+  // relation picker's "Створити «X»" offers, so a relation can be filled
+  // in with something that isn't in that database yet without leaving this
+  // screen. Everything else about the new row stays empty; it's a stub the
+  // user can go and flesh out later.
+  async function createRelatedRow(targetDatabaseId: string, title: string): Promise<string> {
+    const targetDb = relatedDatabases[targetDatabaseId];
+    const titleFieldId = targetDb?.fields[0]?.id;
+    if (!titleFieldId) return '';
+    const id = generateId();
+    const now = Date.now();
+    await setDoc(doc(db, 'customDatabaseRows', id), {
+      databaseId: targetDatabaseId,
+      values: { [titleFieldId]: title },
+      tagIds: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    return id;
+  }
+
   async function openNewRow() {
     const id = generateId();
     const now = Date.now();
@@ -1665,6 +1686,11 @@ export default function CustomDatabaseScreen({}: Props) {
               ? (relatedRows[relationPickerField.relationTarget.databaseId] ?? [])
               : []
           }
+          onCreateRow={(title) =>
+            relationPickerField.relationTarget?.kind === 'customDb'
+              ? createRelatedRow(relationPickerField.relationTarget.databaseId, title)
+              : Promise.resolve('')
+          }
           onChange={(value) => setDraftValue(relationPickerField.id, value)}
           onClose={() => setRelationPickerFieldId(null)}
         />
@@ -1701,6 +1727,11 @@ export default function CustomDatabaseScreen({}: Props) {
             cellPicker.field.relationTarget?.kind === 'customDb'
               ? (relatedRows[cellPicker.field.relationTarget.databaseId] ?? [])
               : []
+          }
+          onCreateRow={(title) =>
+            cellPicker.field.relationTarget?.kind === 'customDb'
+              ? createRelatedRow(cellPicker.field.relationTarget.databaseId, title)
+              : Promise.resolve('')
           }
           onChange={(value) => writeRowValue(cellPicker.rowId, cellPicker.field.id, value)}
           onClose={() => setCellPicker(null)}
@@ -1913,6 +1944,7 @@ function RelationPickerSheet({
   photos,
   relatedDatabase,
   relatedRows,
+  onCreateRow,
   onChange,
   onClose,
 }: {
@@ -1921,6 +1953,11 @@ function RelationPickerSheet({
   photos: { id: string; imageUri: string; title?: string; driveFileId?: string }[];
   relatedDatabase: CustomDatabase | null;
   relatedRows: CustomDatabaseRow[];
+  // Creates a row in the TARGET database carrying just this title, and
+  // resolves to its new id - what lets a relation be filled in with
+  // something that doesn't exist in that database yet, instead of forcing
+  // a trip over there to create it first (the Notion behaviour).
+  onCreateRow: (title: string) => Promise<string>;
   onChange: (value: string) => void;
   onClose: () => void;
 }) {
@@ -1989,6 +2026,10 @@ function RelationPickerSheet({
   const rowsFiltered = needle
     ? relatedRows.filter((r) => String(r.values[titleFieldId ?? ''] ?? '').toLowerCase().includes(needle))
     : relatedRows;
+  const canCreate =
+    !!relatedDatabase &&
+    needle.length > 0 &&
+    !relatedRows.some((r) => String(r.values[titleFieldId ?? ''] ?? '').trim().toLowerCase() === needle);
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
@@ -2004,6 +2045,29 @@ function RelationPickerSheet({
           />
           {clearRow}
           <ScrollView style={styles.relationPickerScroll} keyboardShouldPersistTaps="handled">
+            {/* Only when what's typed isn't already one of the rows - an
+                exact match means "pick that one", not "make a second with
+                the same name". */}
+            {canCreate && (
+              <Pressable
+                style={styles.optionPickerRow}
+                onPress={() => {
+                  const title = search.trim();
+                  setSearch('');
+                  onCreateRow(title)
+                    .then((newId) => {
+                      onChange(newId);
+                      onClose();
+                    })
+                    .catch(() => {});
+                }}
+              >
+                <Ionicons name="add-circle-outline" size={18} color={ACCENT} />
+                <Text style={[styles.optionPickerLabel, { color: ACCENT }]} numberOfLines={1}>
+                  Створити «{search.trim()}»
+                </Text>
+              </Pressable>
+            )}
             {rowsFiltered.map((r) => {
               const title = String(r.values[titleFieldId ?? ''] ?? '').trim() || 'Без назви';
               return (
