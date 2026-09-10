@@ -848,8 +848,13 @@ export default function CustomDatabaseScreen({}: Props) {
               dark
             />
           )}
+          {/* A capsule squeezed to a line, drawn over the scrolling tabs at
+              the point where they run out of room: they slide into it
+              rather than being cut off mid-word against the control
+              capsule. Purely visual - it catches nothing. */}
+          {groups.length > 0 && <View style={styles.tabsTunnel} pointerEvents="none" />}
         </View>
-        <View style={styles.headerButtons}>
+        <View style={[styles.headerButtons, groups.length > 0 && styles.controlsCapsuleOffset]}>
           <Pressable hitSlop={6} onPress={() => setMenuOpen((v) => !v)}>
             <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
           </Pressable>
@@ -1778,8 +1783,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    height: 38,
-    borderRadius: 19,
+    // A group tab's own vertical metrics instead of a fixed height, so the
+    // capsule and the tabs beside it come out exactly the same height.
+    paddingVertical: 7,
+    borderRadius: 999,
     paddingHorizontal: 14,
     backgroundColor: 'rgba(20,20,20,0.35)',
     borderWidth: 1,
@@ -1881,12 +1888,30 @@ const styles = StyleSheet.create({
     paddingRight: 20,
     paddingBottom: 6,
   },
+  // The tabs row's own bottom padding would otherwise leave the capsule
+  // sitting lower than the pills it stands next to.
+  controlsCapsuleOffset: {
+    marginBottom: 10,
+  },
   // The tabs take whatever the toggle leaves, and scroll within it -
   // minWidth: 0 is what lets a flex child actually shrink below its
   // content instead of pushing the toggle off the row.
   controlsTabs: {
     flex: 1,
     minWidth: 0,
+  },
+  tabsTunnel: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    // The tabs row carries this much padding under its pills - matching it
+    // makes the tunnel exactly as tall as a tab, and centred on it.
+    bottom: 10,
+    width: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(20,20,20,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
   },
   paramsStrip: {
     flexDirection: 'row',
@@ -1930,7 +1955,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 0,
-    minWidth: 160,
+    // At least as wide as the pill it grows out of, and no wider unless a
+    // label needs it - a fixed width made it noticeably broader than the
+    // capsule it's supposed to be a continuation of.
+    minWidth: '100%',
     backgroundColor: 'rgba(20,20,20,0.92)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
