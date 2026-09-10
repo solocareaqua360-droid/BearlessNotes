@@ -14,6 +14,7 @@ import {
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  LinearTransition,
   makeMutable,
   runOnJS,
   SharedValue,
@@ -695,6 +696,11 @@ function DraggableCard({
     <GestureDetector gesture={gesture}>
       <Animated.View
         onLayout={(e) => onMeasure(card.id, e.nativeEvent.layout.height)}
+        // Animates the card's own HEIGHT when a document card expands or
+        // collapses, which until now snapped. Safe alongside the drag:
+        // position is driven by transform (see animatedStyle below), not
+        // by layout, so a drag never triggers this.
+        layout={LinearTransition.duration(220)}
         style={[
           styles.card,
           { width: card.width },
@@ -2052,6 +2058,10 @@ const styles = StyleSheet.create({
   refCard: {
     backgroundColor: '#fff',
     borderRadius: 10,
+    // Clips the text while the card's height animates open or shut (see
+    // the layout transition on the card) - without it the not-yet-visible
+    // lines spill outside the card for the length of the animation.
+    overflow: 'hidden',
     padding: 8,
     gap: 6,
     borderWidth: 1,
