@@ -1127,6 +1127,11 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 8,
     marginHorizontal: 16,
+    // Equal above and below: the calendar plate sits flush on top of this
+    // row (its height is exactly its own rows, no bottom padding), so
+    // without the top margin the capsules hug the calendar while keeping a
+    // gap to the note sheet under them.
+    marginTop: 8,
     marginBottom: 8,
   },
   // Same frosted-glass pill every capsule on this dark background uses
