@@ -152,6 +152,15 @@ export default function CustomDatabaseScreen({}: Props) {
   // that exact spot instead of inside the capsule's own one-pill-tall row.
   const [stripY, setStripY] = useState(0);
   const [chipLayouts, setChipLayouts] = useState<Record<string, ChipLayout>>({});
+  // The capsule strip scrolls horizontally now (see paramsScroll below);
+  // a chip's onLayout position is relative to that scrolling content, not
+  // the screen, so placing the overlay under it needs the strip's own
+  // screen x and the current scroll offset too. Refs, not state - both are
+  // read once, at the moment a list opens, and stay correct afterward
+  // because opening one freezes the scroll (scrollEnabled below) until it
+  // closes.
+  const stripXRef = useRef(0);
+  const scrollXRef = useRef(0);
   const [savedViews, setSavedViews] = useState<CustomDatabaseView[]>([]);
   // { mode: 'new' } asks for a name for the current state; { mode: 'rename' }
   // carries the view being renamed.
@@ -442,6 +451,10 @@ export default function CustomDatabaseScreen({}: Props) {
     : [];
   const sortFields = sortableFieldsOf(database);
   const openChipLayout = openParam ? chipLayouts[openParam] ?? null : null;
+  // A chip's onLayout position is relative to the scrolling strip's
+  // content, not the screen - undo the current scroll offset to place the
+  // overlay under where the chip actually sits right now.
+  const openChipScreenX = openChipLayout ? stripXRef.current + openChipLayout.x - scrollXRef.current : 0;
   const activeView = savedViews.find((v) => viewMatchesState(v, viewMode, sortPref, filters)) ?? null;
   const selectedRows = rows.filter((r) => selectedIds.has(r.id));
   const rowMenuRow = rowMenuId ? rows.find((r) => r.id === rowMenuId) ?? null : null;
@@ -1059,7 +1072,25 @@ export default function CustomDatabaseScreen({}: Props) {
       )}
 
       {!paramsCollapsed && (
-        <View style={styles.paramsStrip} onLayout={(e) => setStripY(e.nativeEvent.layout.y)}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          // Frozen while a list is open: a horizontal drag meant to scroll
+          // an open dropdown's own vertical list would otherwise also
+          // carry the strip sideways underneath it, and the list's anchor
+          // is only ever recomputed at the moment it opens.
+          scrollEnabled={openParam === null}
+          onScroll={(e) => {
+            scrollXRef.current = e.nativeEvent.contentOffset.x;
+          }}
+          scrollEventThrottle={16}
+          style={styles.paramsScroll}
+          contentContainerStyle={styles.paramsStrip}
+          onLayout={(e) => {
+            setStripY(e.nativeEvent.layout.y);
+            stripXRef.current = e.nativeEvent.layout.x;
+          }}
+        >
           {/* Named slices of this database come first: they set every other
               capsule at once, so they read as the coarse choice the rest
               refine. */}
@@ -1112,7 +1143,7 @@ export default function CustomDatabaseScreen({}: Props) {
               <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
             </Pressable>
           )}
-        </View>
+        </ScrollView>
       )}
 
       {/* An open list is drawn HERE, over the whole screen, rather than
@@ -1138,8 +1169,8 @@ export default function CustomDatabaseScreen({}: Props) {
               // anchored to its RIGHT edge - growing rightward would run
               // off the screen.
               openParam === 'filter'
-                ? { right: Math.max(8, windowWidth - openChipLayout.x - openChipLayout.width) }
-                : { left: openChipLayout.x },
+                ? { right: Math.max(8, windowWidth - openChipScreenX - openChipLayout.width) }
+                : { left: openChipScreenX },
             ]}
           >
             {openParam === 'views' && (
@@ -2309,18 +2340,23 @@ const styles = StyleSheet.create({
   controlsSpacer: {
     flex: 1,
   },
-  paramsStrip: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    // Four capsules don't fit one line on a phone - they wrap rather than
-    // squash, and each list still finds its own capsule by measurement.
-    flexWrap: 'wrap',
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingBottom: 10,
+  // The strip scrolls horizontally, same family as ProjectTabsRow's own
+  // dark tabs - flexGrow/flexShrink: 0 keeps it from competing for height
+  // with the row list below it (same fix, same reason, as that
+  // component's own `scroll` style).
+  paramsScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
     // Above the list below, so an open dropdown covers the cards instead
     // of pushing them down the screen.
     zIndex: 20,
+  },
+  paramsStrip: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingBottom: 10,
   },
   // Holds a capsule and the list it opens. The list is positioned against
   // this, so it lands directly under its own capsule and inherits its
