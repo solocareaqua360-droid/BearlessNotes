@@ -30,6 +30,7 @@ import {
   deleteDoc,
   deleteField,
   doc,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
@@ -59,6 +60,7 @@ import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
 import GroupPickerSheet from '../components/GroupPickerSheet';
+import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
@@ -127,6 +129,9 @@ export default function CustomDatabaseScreen({}: Props) {
   const [selectPickerFieldId, setSelectPickerFieldId] = useState<string | null>(null);
   const [relationPickerFieldId, setRelationPickerFieldId] = useState<string | null>(null);
   const [rowMenuId, setRowMenuId] = useState<string | null>(null);
+  const [documentPicker, setDocumentPicker] = useState<{ row: CustomDatabaseRow; documents: PickableDocument[] } | null>(
+    null
+  );
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   // Date/select/multiSelect/relation cells can't be typed into - they open
@@ -196,6 +201,7 @@ export default function CustomDatabaseScreen({}: Props) {
               values: data.values ?? {},
               tagIds: data.tagIds ?? [],
               groupId: data.groupId,
+              usedInDocuments: data.usedInDocuments,
               createdAt: data.createdAt ?? 0,
               updatedAt: data.updatedAt ?? 0,
             } as CustomDatabaseRow;
@@ -432,6 +438,31 @@ export default function CustomDatabaseScreen({}: Props) {
     setRowEditor(null);
   }
 
+  // Which documents embed this row as a card - the reverse of the
+  // 'dbRow' block writing usedInDocuments when it's inserted. One
+  // document opens straight away; several ask which, same as a file or
+  // photo used in more than one place.
+  function documentIdsOf(row: CustomDatabaseRow): string[] {
+    return Object.keys(row.usedInDocuments ?? {});
+  }
+
+  async function openRowDocuments(row: CustomDatabaseRow) {
+    setRowMenuId(null);
+    const ids = documentIdsOf(row);
+    if (ids.length === 0) return;
+    if (ids.length === 1) {
+      navigation.navigate('Editor', { documentId: ids[0] });
+      return;
+    }
+    const documents = await Promise.all(
+      ids.map(async (id) => {
+        const snapshot = await getDoc(doc(db, 'documents', id));
+        return { id, title: (snapshot.data()?.title as string) || 'Без назви' };
+      })
+    );
+    setDocumentPicker({ row, documents });
+  }
+
   async function deleteRow(row: CustomDatabaseRow) {
     await deleteDoc(doc(db, 'customDatabaseRows', row.id));
     await Promise.all(
@@ -592,6 +623,7 @@ export default function CustomDatabaseScreen({}: Props) {
         rowId={item.id}
         display={buildRowDisplay(database, item, displayContext)}
         tags={tags.filter((t) => (item.tagIds ?? []).includes(t.id))}
+        documentCount={documentIdsOf(item).length}
         onPress={() => (isSelectMode ? toggleSelected(item.id) : openEditRow(item))}
         right={
           isSelectMode ? (
@@ -903,6 +935,7 @@ export default function CustomDatabaseScreen({}: Props) {
               key={row.id}
               rowId={row.id}
               display={buildRowDisplay(database, row, displayContext)}
+              documentCount={documentIdsOf(row).length}
               onPress={() => (isSelectMode ? toggleSelected(row.id) : openEditRow(row))}
               onLongPress={() => setRowMenuId(row.id)}
               right={
@@ -1168,6 +1201,14 @@ export default function CustomDatabaseScreen({}: Props) {
               <Ionicons name="pencil-outline" size={18} color="#111827" />
               <Text style={styles.cardMenuRowLabel}>Редагувати</Text>
             </Pressable>
+            {rowMenuRow && documentIdsOf(rowMenuRow).length > 0 && (
+              <Pressable style={styles.cardMenuRow} onPress={() => openRowDocuments(rowMenuRow)}>
+                <Ionicons name="document-text-outline" size={18} color="#111827" />
+                <Text style={styles.cardMenuRowLabel}>
+                  Документи ({documentIdsOf(rowMenuRow).length})
+                </Text>
+              </Pressable>
+            )}
             <Pressable
               style={styles.cardMenuRow}
               onPress={() => {
@@ -1202,6 +1243,17 @@ export default function CustomDatabaseScreen({}: Props) {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <DocumentPickerModal
+        visible={documentPicker !== null}
+        subtitle={documentPicker ? titleOf(documentPicker.row) : undefined}
+        documents={documentPicker?.documents ?? []}
+        onPick={(documentId) => {
+          setDocumentPicker(null);
+          navigation.navigate('Editor', { documentId });
+        }}
+        onClose={() => setDocumentPicker(null)}
+      />
 
       <BulkActionBar
         count={selectedIds.size}

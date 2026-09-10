@@ -59,6 +59,10 @@ type Props = {
   tags: Tag[];
   onPress?: () => void;
   onTagPress?: () => void;
+  // How many documents embed this row as a card. Shown as a chip so it's
+  // visible without opening the row's menu; omitted where the question
+  // doesn't arise - inside a document, the answer is "this one".
+  documentCount?: number;
   // The trailing control - the select checkbox / "..." menu on the database
   // screen, nothing when the card is embedded elsewhere.
   right?: ReactNode;
@@ -68,7 +72,7 @@ type Props = {
 // rather than a copy per screen: it's rendered in its own database's list,
 // as a block inside a document, and (later) as a board card - a redesign
 // has to land in all three at once, which only a single component gives.
-export default function CustomRowCard({ rowId, display, tags, onPress, onTagPress, right }: Props) {
+export default function CustomRowCard({ rowId, display, tags, onPress, onTagPress, documentCount, right }: Props) {
   const { background, text, textMuted } = colorForDocument(rowId);
   return (
     <View style={[styles.row, { backgroundColor: background }]}>
@@ -85,7 +89,7 @@ export default function CustomRowCard({ rowId, display, tags, onPress, onTagPres
           <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
             {display.title}
           </Text>
-          {display.chips.length > 0 && (
+          {(display.chips.length > 0 || !!documentCount) && (
             <View style={styles.rowFieldChips}>
               {display.chips.map(({ field, shown }) => (
                 <View key={field.id} style={styles.rowFieldChip}>
@@ -95,6 +99,12 @@ export default function CustomRowCard({ rowId, display, tags, onPress, onTagPres
                   </Text>
                 </View>
               ))}
+              {!!documentCount && (
+                <View style={styles.rowFieldChip}>
+                  <Ionicons name="document-text-outline" size={11} color={textMuted} />
+                  <Text style={[styles.rowFieldChipValue, { color: textMuted }]}>{documentCount}</Text>
+                </View>
+              )}
             </View>
           )}
           {tags.length > 0 && (
@@ -196,12 +206,14 @@ export function CustomRowGridCard({
   display,
   onPress,
   onLongPress,
+  documentCount,
   right,
 }: {
   rowId: string;
   display: RowDisplay;
   onPress?: () => void;
   onLongPress?: () => void;
+  documentCount?: number;
   right?: ReactNode;
 }) {
   const { background, text, textMuted } = colorForDocument(rowId);
@@ -235,6 +247,12 @@ export function CustomRowGridCard({
             </Text>
           </View>
         ))}
+        {!!documentCount && (
+          <View style={gridStyles.chip}>
+            <Ionicons name="document-text-outline" size={11} color={textMuted} />
+            <Text style={[gridStyles.chipValue, { color: textMuted }]}>{documentCount}</Text>
+          </View>
+        )}
       </View>
       {right !== undefined && <View style={gridStyles.corner}>{right}</View>}
     </Pressable>
