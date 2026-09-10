@@ -192,15 +192,33 @@ export interface Project {
 // Links split into their own video/geo/other kinds, same as TaggableKind
 // does for tags and for the same reason: a video's groups and a geo
 // point's groups are different vocabularies in practice.
+// A group is the app's TEMPORARY, cross-database theme - "what I'm living
+// with right now" - as opposed to a tag, which is the permanent library
+// (a tree, hundreds of them, one item filed in several places at once). A
+// group gathers on the order of a hundred items of mixed types for as long
+// as that period lasts, and is archived once it's over, its contents by
+// then filed away with tags. That difference is why both exist.
 export interface Group {
   id: string;
   name: string;
   color: string;
-  // Widened to `string` (was the same closed six-literal union as
-  // TaggableKind) so a custom database can mint its own `customRow:${id}`
-  // kind - GroupPickerSheet/screens only ever compare/store this as an
-  // opaque string, nothing relies on the closed set.
-  kind: string;
+  // Which databases this group shows up in - 'document' | 'photo' | 'file'
+  // | 'link-*' | `customRow:${databaseId}`. A group used to belong to
+  // exactly ONE of them (the `kind` field below); it can now span several,
+  // which is what lets one theme collect items of different types.
+  //
+  // Read through groupAppliesTo (utils/groups.ts), never directly: groups
+  // written before this existed still carry only `kind`, and that helper is
+  // what keeps them working without a migration pass over the collection.
+  kinds?: string[];
+  // Legacy single-kind form. Still written alongside `kinds` (as its first
+  // entry) so a build without this change would keep showing the group in
+  // the database it was made in rather than losing it entirely.
+  kind?: string;
+  // An archived group drops out of every database's group tabs but keeps
+  // its items' groupId, so archiving is reversible and nothing is lost -
+  // it stays visible under "Архівні" on the Groups screen.
+  archived?: boolean;
 }
 
 // A database-object kind a tag can be attached to. Used both as the second

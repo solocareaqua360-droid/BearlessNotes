@@ -22,6 +22,7 @@ import CustomDatabaseScreen from './src/screens/CustomDatabaseScreen';
 import BoardsListScreen from './src/screens/BoardsListScreen';
 import BoardScreen from './src/screens/BoardScreen';
 import TagManageScreen from './src/screens/TagManageScreen';
+import GroupsScreen from './src/screens/GroupsScreen';
 import TagItemsScreen from './src/screens/TagItemsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import SearchScreen from './src/screens/SearchScreen';
@@ -113,6 +114,7 @@ export default function App() {
               <Stack.Screen name="Stickers" component={StickersScreen} />
               <Stack.Screen name="CustomDatabase" component={CustomDatabaseScreen} />
               <Stack.Screen name="Tags" component={TagManageScreen} />
+              <Stack.Screen name="Groups" component={GroupsScreen} />
               <Stack.Screen name="TagItems" component={TagItemsScreen} />
               <Stack.Screen name="Settings" component={SettingsScreen} />
               <Stack.Screen name="Search" component={SearchScreen} />

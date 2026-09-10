@@ -37,6 +37,7 @@ import {
 } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import { Block, Group, Tag } from '../types';
+import { groupAppliesTo } from '../utils/groups';
 import { RootStackParamList } from '../navigation';
 import ZoomableImageViewer, { ViewerAction } from '../components/ZoomableImageViewer';
 import RenamePrompt from '../components/RenamePrompt';
@@ -234,8 +235,8 @@ export default function PhotosScreen() {
     return onSnapshot(query(groupsCollection, orderBy('name')), (snapshot) => {
       setGroups(
         snapshot.docs
-          .map((d) => ({ id: d.id, ...(d.data() as { name: string; color: string; kind: Group['kind'] }) }))
-          .filter((g) => g.kind === 'photo')
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<Group, 'id'>) }))
+          .filter((g) => groupAppliesTo(g, 'photo'))
       );
     });
   }, []);

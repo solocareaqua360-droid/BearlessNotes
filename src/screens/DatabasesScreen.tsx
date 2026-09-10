@@ -23,7 +23,7 @@ type Tile = {
   // "Скоро" placeholder.
   linkCategory?: 'video' | 'geo' | 'other';
   // Set for tiles with their own dedicated (paramless) screen.
-  route?: 'Photos' | 'Files' | 'Tags' | 'Diary' | 'Stickers';
+  route?: 'Photos' | 'Files' | 'Tags' | 'Groups' | 'Diary' | 'Stickers';
   // The board tile - unlike the others, this opens a bottom TAB (see
   // App.tsx's BoardsStack), not a root-stack screen, so it goes through
   // `navigation.navigate('Tabs', { screen: 'Дошки' })` instead of `route`.
@@ -48,6 +48,7 @@ const GRID_TILES: Tile[] = [
   { key: 'stickers', label: 'Стікери', icon: 'reader-outline', route: 'Stickers' },
   { key: 'board', label: 'Дошка', icon: 'apps-outline', opensBoardsTab: true },
   { key: 'tags', label: 'Теги', icon: 'pricetag-outline', route: 'Tags' },
+  { key: 'groups', label: 'Групи', icon: 'albums-outline', route: 'Groups' },
   { key: 'diary', label: 'Щоденник', icon: 'book-outline', route: 'Diary' },
 ];
 

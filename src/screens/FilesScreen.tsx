@@ -33,6 +33,7 @@ import {
 } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import { Block, Group } from '../types';
+import { groupAppliesTo } from '../utils/groups';
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
@@ -163,8 +164,8 @@ export default function FilesScreen() {
     return onSnapshot(query(groupsCollection, orderBy('name')), (snapshot) => {
       setGroups(
         snapshot.docs
-          .map((d) => ({ id: d.id, ...(d.data() as { name: string; color: string; kind: Group['kind'] }) }))
-          .filter((g) => g.kind === 'file')
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<Group, 'id'>) }))
+          .filter((g) => groupAppliesTo(g, 'file'))
       );
     });
   }, []);

@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { addDoc, collection, deleteDoc, doc, updateDoc } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import { Group } from '../types';
+import { groupKindFields } from '../utils/groups';
 
 const ACCENT = '#3B82F6';
 const GROUP_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
@@ -17,7 +18,8 @@ const groupsCollection = collection(db, 'groups');
 // button below the same way the two pseudo-entries never had one.
 export const CAMERA_PHOTOS_GROUP_ID = 'camera-photos';
 
-export type GroupKind = Group['kind'];
+// A database identifier a group can belong to - see Group.kinds.
+export type GroupKind = string;
 
 type Props = {
   visible: boolean;
@@ -55,7 +57,7 @@ export default function GroupPickerSheet({ visible, kind, groups, onPick, onClos
     const name = newGroupName.trim();
     if (!name) return;
     const color = GROUP_COLORS[groups.length % GROUP_COLORS.length];
-    await addDoc(groupsCollection, { name, color, kind });
+    await addDoc(groupsCollection, { name, color, ...groupKindFields([kind]) });
     setNewGroupName('');
   }
 

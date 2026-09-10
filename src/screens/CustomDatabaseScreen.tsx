@@ -39,6 +39,7 @@ import {
 } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import { CustomDatabase, CustomDatabaseRow, FieldDef, Group } from '../types';
+import { groupAppliesTo } from '../utils/groups';
 import CustomRowCard, { RelationThumb } from '../components/CustomRowCard';
 import {
   buildRowDisplay,
@@ -205,8 +206,8 @@ export default function CustomDatabaseScreen({}: Props) {
     return onSnapshot(collection(db, 'groups'), (snapshot) => {
       setGroups(
         snapshot.docs
-          .map((d) => ({ id: d.id, ...(d.data() as { name: string; color: string; kind: string }) }))
-          .filter((g) => g.kind === customRowKind)
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<Group, 'id'>) }))
+          .filter((g) => groupAppliesTo(g, customRowKind))
       );
     });
   }, [customRowKind]);

@@ -69,6 +69,7 @@ import {
 import { db } from '../firebase';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import { Block, BlockType, Group, SketchElement, Tag, TableRow } from '../types';
+import { groupAppliesTo } from '../utils/groups';
 import { RootStackParamList } from '../navigation';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import VideoPlayerModal from '../components/VideoPlayerModal';
@@ -1940,8 +1941,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     return onSnapshot(query(collection(db, 'groups'), orderBy('name')), (snapshot) => {
       setGroups(
         snapshot.docs
-          .map((d) => ({ id: d.id, ...(d.data() as { name: string; color: string; kind: string }) }))
-          .filter((g) => g.kind === 'document')
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<Group, 'id'>) }))
+          .filter((g) => groupAppliesTo(g, 'document'))
       );
     });
   }, [embedded]);

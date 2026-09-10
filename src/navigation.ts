@@ -40,6 +40,8 @@ export type RootStackParamList = {
   // the tap lands on the record itself rather than just its database.
   CustomDatabase: { databaseId: string; openRowId?: string };
   Tags: undefined;
+  // The temporary, cross-database counterpart to Tags (see the Group type).
+  Groups: undefined;
   TagItems: { tagId: string };
   Settings: undefined;
   // Pushed from the search icon on DocumentsScreen - no longer a bottom
