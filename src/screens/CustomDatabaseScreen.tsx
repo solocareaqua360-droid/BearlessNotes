@@ -925,6 +925,10 @@ export default function CustomDatabaseScreen({}: Props) {
         </Pressable>
       </View>
 
+      {/* Closes an open list on a tap anywhere else. It sits BEFORE the
+          strip so the strip (and the list itself) still draw above it. */}
+      {openParam !== null && <Pressable style={styles.menuBackdrop} onPress={() => setOpenParam(null)} />}
+
       {!paramsCollapsed && (
         // One capsule per parameter, each opening its own list beneath
         // itself rather than laying every option out at once: the row
@@ -1904,18 +1908,20 @@ const styles = StyleSheet.create({
   },
   paramsStrip: {
     flexDirection: 'row',
-    // flex-start, not center: an open dropdown makes its own capsule
-    // taller, and the other one must stay put rather than drift down to
-    // the middle of it.
     alignItems: 'flex-start',
     gap: 8,
     paddingHorizontal: 20,
     paddingBottom: 10,
+    // Above the list below, so an open dropdown covers the cards instead
+    // of pushing them down the screen.
+    zIndex: 20,
   },
-  // Holds a capsule and the list it opens, so the list lands directly
-  // under its own capsule and inherits its left edge.
+  // Holds a capsule and the list it opens. The list is positioned against
+  // this, so it lands directly under its own capsule and inherits its
+  // left edge whichever capsule was tapped.
   paramGroup: {
     alignItems: 'flex-start',
+    zIndex: 20,
   },
   paramChip: {
     flexDirection: 'row',
@@ -1940,6 +1946,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   paramDropdown: {
+    // Floats over the content rather than taking part in the layout -
+    // '100%' is the capsule's own height, so the list hangs off its
+    // bottom edge no matter how tall the capsule renders.
+    position: 'absolute',
+    top: '100%',
+    left: 0,
     marginTop: 6,
     backgroundColor: '#fff',
     borderRadius: 14,
@@ -1949,7 +1961,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
+    // Elevation, not just zIndex: on Android that's what actually decides
+    // which sibling draws on top, and the cards below carry elevation of
+    // their own.
+    elevation: 12,
+    zIndex: 50,
   },
   paramOption: {
     flexDirection: 'row',
