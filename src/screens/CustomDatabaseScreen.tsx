@@ -67,10 +67,9 @@ import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { useSortPref } from '../hooks/useSortPref';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
-import { sortItems } from '../utils/sortItems';
+import { SortField, sortItems } from '../utils/sortItems';
 import { colorForDocument } from '../utils/documentColor';
 import { MONTH_FULL, WEEKDAY_SHORT, dateKey, getMonthGrid, isSameDay, parseDateKey } from '../utils/dateLocale';
-import SortMenuRows from '../components/SortMenuRows';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -78,6 +77,18 @@ const DANGER = '#EF4444';
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
+
+const VIEW_LABELS: Record<ViewMode, string> = { list: 'Список', cards: 'Картки', table: 'Таблиця' };
+const VIEW_ICONS: Record<ViewMode, keyof typeof Ionicons.glyphMap> = {
+  list: 'reorder-four-outline',
+  cards: 'albums-outline',
+  table: 'grid-outline',
+};
+const SORT_LABELS: Record<SortField, string> = {
+  title: 'Назва',
+  createdAt: 'Створено',
+  updatedAt: 'Змінено',
+};
 
 const TABLE_COLUMN_WIDTH = 150;
 const TABLE_HANDLE_WIDTH = 34;
@@ -116,6 +127,7 @@ export default function CustomDatabaseScreen({}: Props) {
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [paramsCollapsed, setParamsCollapsed] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingDatabase, setRenamingDatabase] = useState(false);
@@ -317,6 +329,7 @@ export default function CustomDatabaseScreen({}: Props) {
   useEffect(() => {
     return onSnapshot(prefsDoc, (snapshot) => {
       setViewMode((snapshot.data()?.viewMode as ViewMode | undefined) ?? 'list');
+      setParamsCollapsed(!!snapshot.data()?.paramsCollapsed);
     });
   }, [prefsKey]);
 
@@ -370,8 +383,11 @@ export default function CustomDatabaseScreen({}: Props) {
   const rowMenuRow = rowMenuId ? rows.find((r) => r.id === rowMenuId) ?? null : null;
 
   async function changeViewMode(mode: ViewMode) {
-    setMenuOpen(false);
     await setDoc(prefsDoc, { viewMode: mode }, { merge: true });
+  }
+
+  function toggleParamsCollapsed() {
+    setDoc(prefsDoc, { paramsCollapsed: !paramsCollapsed }, { merge: true });
   }
 
   async function renameDatabase(name: string) {
@@ -844,24 +860,10 @@ export default function CustomDatabaseScreen({}: Props) {
       {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
       {menuOpen && (
         <View style={styles.menuPanel}>
-          <Text style={styles.menuSectionLabel}>Вигляд</Text>
-          <Pressable style={styles.menuRow} onPress={() => changeViewMode('list')}>
-            <Ionicons name="reorder-four-outline" size={17} color="#111827" />
-            <Text style={styles.menuRowLabel}>Список</Text>
-            {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-          </Pressable>
-          <Pressable style={styles.menuRow} onPress={() => changeViewMode('table')}>
-            <Ionicons name="grid-outline" size={17} color="#111827" />
-            <Text style={styles.menuRowLabel}>Таблиця</Text>
-            {viewMode === 'table' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-          </Pressable>
-          <Pressable style={styles.menuRow} onPress={() => changeViewMode('cards')}>
-            <Ionicons name="albums-outline" size={17} color="#111827" />
-            <Text style={styles.menuRowLabel}>Картки</Text>
-            {viewMode === 'cards' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-          </Pressable>
-          <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
-          <View style={styles.menuDivider} />
+          {/* View and sort live in the capsule strip below the header, not
+              here: they're changed constantly while working, and a menu
+              can't show which one is active without being opened. What's
+              left is the rare, per-database housekeeping. */}
           <Pressable
             style={styles.menuRow}
             onPress={() => {
@@ -893,6 +895,66 @@ export default function CustomDatabaseScreen({}: Props) {
             <Text style={[styles.menuRowLabel, { color: DANGER }]}>Видалити базу</Text>
           </Pressable>
         </View>
+      )}
+
+      {/* The parameters that change while working, one tap away and
+          showing their own state - the sticker strip's pattern from the
+          Documents screen. Collapsed state is remembered per database, so
+          a screen crowded with group tabs and a search row can be quieted
+          down and stay that way. */}
+      <View style={styles.paramsHeader}>
+        <Pressable style={styles.paramsToggle} onPress={toggleParamsCollapsed}>
+          <Text style={styles.paramsToggleLabel}>
+            {VIEW_LABELS[viewMode]} · {SORT_LABELS[sortPref.field]} {sortPref.dir === 'asc' ? '↑' : '↓'}
+          </Text>
+          <Ionicons
+            name={paramsCollapsed ? 'chevron-down' : 'chevron-up'}
+            size={14}
+            color="rgba(255,255,255,0.75)"
+          />
+        </Pressable>
+      </View>
+
+      {!paramsCollapsed && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.paramsScroll}
+          contentContainerStyle={styles.paramsStrip}
+        >
+          {(['list', 'cards', 'table'] as ViewMode[]).map((mode) => (
+            <Pressable
+              key={mode}
+              style={[styles.paramChip, viewMode === mode && styles.paramChipActive]}
+              onPress={() => changeViewMode(mode)}
+            >
+              <Ionicons
+                name={VIEW_ICONS[mode]}
+                size={13}
+                color={viewMode === mode ? '#111827' : 'rgba(255,255,255,0.85)'}
+              />
+              <Text style={[styles.paramChipLabel, viewMode === mode && styles.paramChipLabelActive]}>
+                {VIEW_LABELS[mode]}
+              </Text>
+            </Pressable>
+          ))}
+          <View style={styles.paramsDivider} />
+          {(['title', 'createdAt', 'updatedAt'] as SortField[]).map((field) => {
+            const active = sortPref.field === field;
+            return (
+              <Pressable
+                key={field}
+                style={[styles.paramChip, active && styles.paramChipActive]}
+                onPress={() => selectSortField(field)}
+              >
+                <Text style={[styles.paramChipLabel, active && styles.paramChipLabelActive]}>
+                  {SORT_LABELS[field]}
+                  {active ? (sortPref.dir === 'asc' ? ' ↑' : ' ↓') : ''}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       )}
 
       {isSearching && (
@@ -1748,6 +1810,67 @@ const styles = StyleSheet.create({
     // Clears the floating "+" (bottom: 100, 56 tall) so the last row can be
     // scrolled out from under it.
     paddingBottom: 170,
+  },
+  paramsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 20,
+    paddingBottom: 6,
+  },
+  paramsToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(20,20,20,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    borderRadius: 999,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+  },
+  paramsToggleLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '600',
+  },
+  paramsScroll: {
+    flexGrow: 0,
+  },
+  paramsStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+  },
+  paramChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(20,20,20,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  paramChipActive: {
+    backgroundColor: '#fff',
+    borderColor: '#fff',
+  },
+  paramChipLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '600',
+  },
+  paramChipLabelActive: {
+    color: '#111827',
+  },
+  paramsDivider: {
+    width: 1,
+    height: 18,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    marginHorizontal: 2,
   },
   searchRow: {
     flexDirection: 'row',
