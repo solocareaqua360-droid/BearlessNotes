@@ -1,6 +1,5 @@
 import { ReactNode } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { LinearTransition } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { Tag } from '../types';
 import { RowDisplay } from '../utils/customRowDisplay';
@@ -62,10 +61,7 @@ type Props = {
 export default function CustomRowCard({ rowId, display, tags, onPress, onTagPress, right }: Props) {
   const { background, text, textMuted } = colorForDocument(rowId);
   return (
-    // Animated so the card slides rather than jumps when the list around
-    // it changes - a row filtered out, a group tab switched, a value
-    // edited into a taller card.
-    <Animated.View layout={LinearTransition.duration(220)} style={[styles.row, { backgroundColor: background }]}>
+    <View style={[styles.row, { backgroundColor: background }]}>
       <Pressable style={styles.rowTap} onPress={onPress} disabled={!onPress}>
         {display.cover !== undefined &&
           (display.cover?.thumbUri ? (
@@ -99,7 +95,7 @@ export default function CustomRowCard({ rowId, display, tags, onPress, onTagPres
         </View>
       </Pressable>
       {right}
-    </Animated.View>
+    </View>
   );
 }
 
