@@ -227,7 +227,7 @@ export function CustomRowGridCard({
         <Text style={[gridStyles.title, { color: text }]} numberOfLines={2}>
           {display.title}
         </Text>
-        {display.chips.slice(0, 3).map(({ field, shown }) => (
+        {display.chips.map(({ field, shown }) => (
           <View key={field.id} style={gridStyles.chip}>
             <Ionicons name={FIELD_TYPE_ICON[field.type]} size={11} color={textMuted} />
             <Text style={[gridStyles.chipValue, { color: textMuted }]} numberOfLines={1}>

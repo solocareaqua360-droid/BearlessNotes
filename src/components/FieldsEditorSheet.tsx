@@ -157,6 +157,14 @@ export default function FieldsEditorSheet({ visible, fields, otherDatabases, onS
     );
   }
 
+  // Hiding is a display setting: the field keeps its values and stays
+  // editable in the row form - it just stops being drawn in the list,
+  // cards and table. fields[0] is never hideable (see the eye below):
+  // it's the row's name everywhere.
+  function toggleHidden(id: string) {
+    setDraft((prev) => prev.map((f) => (f.id === id ? { ...f, hidden: !f.hidden } : f)));
+  }
+
   function addField() {
     setDraft((prev) => [...prev, { id: generateId(), name: 'Нове поле', type: 'text' }]);
   }
@@ -226,7 +234,7 @@ export default function FieldsEditorSheet({ visible, fields, otherDatabases, onS
               >
                 <View style={styles.fieldRow}>
                   <TextInput
-                    style={styles.fieldNameInput}
+                    style={[styles.fieldNameInput, field.hidden && styles.fieldNameHidden]}
                     value={field.name}
                     onChangeText={(text) => updateField(field.id, { name: text })}
                   />
@@ -240,6 +248,15 @@ export default function FieldsEditorSheet({ visible, fields, otherDatabases, onS
                   {/* fields[0] is the row's title everywhere else in this
                       database - renameable but never deletable or retyped,
                       so the app never ends up with zero display name. */}
+                  {index > 0 && (
+                    <Pressable hitSlop={8} onPress={() => toggleHidden(field.id)}>
+                      <Ionicons
+                        name={field.hidden ? 'eye-off-outline' : 'eye-outline'}
+                        size={17}
+                        color={field.hidden ? DANGER : '#6B7280'}
+                      />
+                    </Pressable>
+                  )}
                   {index > 0 && (
                     <Pressable hitSlop={8} onPress={() => deleteField(field.id)}>
                       <Ionicons name="trash-outline" size={16} color={DANGER} />
@@ -414,6 +431,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  fieldNameHidden: {
+    color: '#9CA3AF',
+    textDecorationLine: 'line-through',
   },
   fieldNameInput: {
     flex: 1,

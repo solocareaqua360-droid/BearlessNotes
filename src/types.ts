@@ -393,6 +393,11 @@ export interface FieldDef {
   // FieldsEditorSheet enforces that by clearing every other field's flag
   // the moment one is turned on.
   isCover?: boolean;
+  // Hidden from every VIEW of the database - list, cards and table alike -
+  // while still being editable in the row form, which is the only place
+  // left to give it a value. fields[0] is never hideable: it's the row's
+  // name everywhere.
+  hidden?: boolean;
 }
 
 export interface CustomDatabase {

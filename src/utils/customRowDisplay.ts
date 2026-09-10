@@ -25,7 +25,17 @@ export const EMPTY_ROW_DISPLAY_CONTEXT: RowDisplayContext = {
 // A database's cover field, if it has one - the single 'relation' field
 // marked isCover, whose target renders as a thumbnail instead of text.
 export function coverFieldOf(database: CustomDatabase | null | undefined): FieldDef | null {
-  return database?.fields.find((f) => f.type === 'relation' && f.isCover) ?? null;
+  const cover = database?.fields.find((f) => f.type === 'relation' && f.isCover);
+  // A hidden cover field hides its thumbnail too - "приховати" means
+  // everywhere, and a card with no cover simply falls back to text.
+  return cover && !cover.hidden ? cover : null;
+}
+
+// The fields a VIEW should draw, in order. The row form deliberately does
+// NOT use this: hiding a field must not make it impossible to give it a
+// value.
+export function visibleFieldsOf(database: CustomDatabase | null | undefined): FieldDef[] {
+  return (database?.fields ?? []).filter((f) => !f.hidden);
 }
 
 export function rowTitleOf(database: CustomDatabase | null | undefined, row: CustomDatabaseRow | null | undefined): string {
@@ -115,7 +125,7 @@ export function buildRowDisplay(
     cover: !cover ? undefined : typeof coverRaw === 'string' ? resolveRelationValue(cover, coverRaw, ctx) : null,
     chips: database.fields
       .slice(1)
-      .filter((f) => f.id !== cover?.id)
+      .filter((f) => !f.hidden && f.id !== cover?.id)
       .map((f) => ({ field: f, shown: displayFieldValue(f, row.values[f.id], ctx) }))
       .filter((entry) => entry.shown !== ''),
   };

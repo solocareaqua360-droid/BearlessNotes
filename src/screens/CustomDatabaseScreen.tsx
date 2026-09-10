@@ -48,6 +48,7 @@ import {
   displayFieldValue,
   resolveRelationValue,
   rowTitleOf,
+  visibleFieldsOf,
   RowDisplayContext,
 } from '../utils/customRowDisplay';
 import { RootStackParamList } from '../navigation';
@@ -605,9 +606,12 @@ export default function CustomDatabaseScreen({}: Props) {
   // scrollEnabled={false}), which keeps them in lockstep with no feedback
   // loop between two scrollables.
   function renderTable() {
+    // The title column always shows (it's the row's name); the rest drop
+    // out when hidden, header and cells alike - same setting that hides
+    // them from the list and the cards.
     const fields = database!.fields;
     const firstField = fields[0];
-    const restFields = fields.slice(1);
+    const restFields = visibleFieldsOf(database).filter((f) => f.id !== firstField?.id);
     return (
       <View style={styles.tableWrap}>
         <View style={styles.tableHeaderRow}>
