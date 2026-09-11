@@ -8,6 +8,14 @@ import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler
 import { Ionicons } from '@expo/vector-icons';
 import { Tag } from '../types';
 import { TAG_COLORS, TAG_ICONS } from '../constants/tags';
+import {
+  GLASS_BACKDROP,
+  GLASS_BODY,
+  GLASS_LINE,
+  GLASS_TEXT,
+  GLASS_TEXT_FAINT,
+  GLASS_TEXT_MUTED,
+} from '../constants/glass';
 
 const ACCENT = '#3B82F6';
 
@@ -80,7 +88,7 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
               value={path}
               onChangeText={setPath}
               placeholder='робота/оренда'
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={GLASS_TEXT_FAINT}
               style={styles.pathInput}
             />
           </View>
@@ -98,12 +106,12 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
 
           <Text style={styles.sectionLabel}>ІКОНКА</Text>
           <View style={styles.iconSearchRow}>
-            <Ionicons name="search" size={14} color="#9CA3AF" />
+            <Ionicons name="search" size={14} color={GLASS_TEXT_FAINT} />
             <TextInput
               value={iconQuery}
               onChangeText={setIconQuery}
               placeholder="пошук іконки"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={GLASS_TEXT_FAINT}
               style={styles.iconSearchInput}
             />
           </View>
@@ -118,7 +126,7 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
                   <Ionicons
                     name={name as keyof typeof Ionicons.glyphMap}
                     size={18}
-                    color={selectedIcon === name ? '#fff' : '#6B7280'}
+                    color={selectedIcon === name ? '#fff' : GLASS_TEXT_MUTED}
                   />
                 </Pressable>
               ))}
@@ -134,11 +142,11 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(17,24,39,0.45)',
+    backgroundColor: GLASS_BACKDROP,
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
@@ -149,7 +157,7 @@ const styles = StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: GLASS_LINE,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -162,12 +170,12 @@ const styles = StyleSheet.create({
   },
   headerCancel: {
     fontSize: 15,
-    color: '#6B7280',
+    color: GLASS_TEXT_MUTED,
   },
   headerTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   headerSave: {
     fontSize: 15,
@@ -193,15 +201,15 @@ const styles = StyleSheet.create({
   pathInput: {
     flex: 1,
     fontSize: 17,
-    color: '#111827',
+    color: GLASS_TEXT,
     borderBottomWidth: 1.5,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: GLASS_LINE,
     paddingBottom: 8,
   },
   sectionLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#6B7280',
+    color: GLASS_TEXT_MUTED,
     marginBottom: 8,
   },
   colorRow: {
@@ -216,13 +224,13 @@ const styles = StyleSheet.create({
   },
   colorSwatchSelected: {
     borderWidth: 2,
-    borderColor: '#111827',
+    borderColor: GLASS_TEXT,
   },
   iconSearchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: GLASS_LINE,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -231,7 +239,7 @@ const styles = StyleSheet.create({
   iconSearchInput: {
     flex: 1,
     fontSize: 13,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   iconGridScroll: {
     maxHeight: 240,

@@ -27,7 +27,7 @@ import { rowTitleOf } from '../utils/customRowDisplay';
 import ContentColumn from '../components/ContentColumn';
 import { GroupItem, useGroupItems } from '../hooks/useGroupItems';
 
-const ACCENT = '#3B82F6';
+const ACCENT = '#69736E';
 const DANGER = '#EF4444';
 
 // The temporary, cross-database side of this app's two filing systems (see

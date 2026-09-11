@@ -57,7 +57,7 @@ import { colorForDocument } from '../utils/documentColor';
 import SortMenuRows from '../components/SortMenuRows';
 import ContentColumn from '../components/ContentColumn';
 
-const ACCENT = '#3B82F6';
+const ACCENT = '#14B8A6';
 const DANGER = '#EF4444';
 const linksCollection = collection(db, 'links');
 const groupsCollection = collection(db, 'groups');
@@ -978,7 +978,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     gap: 12,
     height: 38,
-    borderRadius: 19,
+    borderRadius: 999,
     paddingHorizontal: 14,
     backgroundColor: 'rgba(20,20,20,0.35)',
     borderWidth: 1,

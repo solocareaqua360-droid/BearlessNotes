@@ -59,7 +59,7 @@ import { colorForDocument } from '../utils/documentColor';
 import SortMenuRows from '../components/SortMenuRows';
 import ContentColumn from '../components/ContentColumn';
 
-const ACCENT = '#8B5CF6';
+const ACCENT = '#0EA5E9';
 const DANGER = '#EF4444';
 const groupsCollection = collection(db, 'groups');
 const filesPrefsDoc = doc(db, 'settings', 'filesPrefs');
@@ -858,7 +858,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     height: 38,
-    borderRadius: 19,
+    borderRadius: 999,
     paddingHorizontal: 14,
     backgroundColor: 'rgba(20,20,20,0.35)',
     borderWidth: 1,

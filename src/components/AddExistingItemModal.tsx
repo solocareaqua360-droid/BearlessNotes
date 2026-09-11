@@ -18,6 +18,14 @@ import {
   blockFromSticker,
 } from '../utils/copyToNote';
 import { rowTitleOf } from '../utils/customRowDisplay';
+import {
+  GLASS_BACKDROP,
+  GLASS_BODY,
+  GLASS_LINE,
+  GLASS_TEXT,
+  GLASS_TEXT_FAINT,
+  GLASS_TEXT_MUTED,
+} from '../constants/glass';
 
 const ACCENT = '#3B82F6';
 const STICKER_YELLOW = '#FBE97A';
@@ -324,12 +332,12 @@ export default function AddExistingItemModal({
           </ScrollView>
 
           <View style={styles.searchRow}>
-            <Ionicons name="search" size={14} color="#9CA3AF" />
+            <Ionicons name="search" size={14} color={GLASS_TEXT_FAINT} />
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder="Пошук за назвою"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={GLASS_TEXT_FAINT}
               style={styles.searchInput}
             />
           </View>
@@ -480,7 +488,7 @@ export default function AddExistingItemModal({
                     <Text style={styles.rowText} numberOfLines={1}>
                       {d.name || 'База'}
                     </Text>
-                    <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+                    <Ionicons name="chevron-forward" size={16} color={GLASS_TEXT_FAINT} />
                   </Pressable>
                 ))
               ))}
@@ -488,7 +496,7 @@ export default function AddExistingItemModal({
             {tab === 'customDb' && openDatabase && (
               <>
                 <Pressable style={styles.row} onPress={() => setOpenDatabaseId(null)}>
-                  <Ionicons name="chevron-back" size={16} color="#6B7280" />
+                  <Ionicons name="chevron-back" size={16} color={GLASS_TEXT_MUTED} />
                   <Text style={[styles.rowText, styles.backRowText]} numberOfLines={1}>
                     {openDatabase.name || 'База'}
                   </Text>
@@ -565,11 +573,11 @@ export default function AddExistingItemModal({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(17,24,39,0.45)',
+    backgroundColor: GLASS_BACKDROP,
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
@@ -580,7 +588,7 @@ const styles = StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: GLASS_LINE,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -588,7 +596,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#111827',
+    color: GLASS_TEXT,
     marginBottom: 10,
   },
   // Horizontally scrollable now that links split into three tabs of their
@@ -606,7 +614,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 10,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: GLASS_LINE,
   },
   tabActive: {
     backgroundColor: ACCENT,
@@ -614,7 +622,7 @@ const styles = StyleSheet.create({
   tabLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#6B7280',
+    color: GLASS_TEXT_MUTED,
   },
   tabLabelActive: {
     color: '#fff',
@@ -623,7 +631,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: GLASS_LINE,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -632,18 +640,18 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   emptyLabel: {
     fontSize: 13,
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
     textAlign: 'center',
     paddingVertical: 16,
   },
   sectionLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
     paddingTop: 10,
@@ -674,15 +682,15 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 8,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: GLASS_LINE,
   },
   backRowText: {
-    color: '#6B7280',
+    color: GLASS_TEXT_MUTED,
     fontWeight: '600',
   },
   rowText: {
     flex: 1,
     fontSize: 15,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
 });

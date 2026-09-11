@@ -8,6 +8,13 @@ import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler
 import { Ionicons } from '@expo/vector-icons';
 import { collection, onSnapshot, orderBy, query } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
+import {
+  GLASS_BACKDROP,
+  GLASS_BODY,
+  GLASS_LINE,
+  GLASS_TEXT,
+  GLASS_TEXT_FAINT,
+} from '../constants/glass';
 
 const ACCENT = '#3B82F6';
 const documentsCollection = collection(db, 'documents');
@@ -79,12 +86,12 @@ export default function CopyToNoteModal({ visible, onPickExisting, onPickNew, on
           </Pressable>
 
           <View style={styles.searchRow}>
-            <Ionicons name="search" size={14} color="#9CA3AF" />
+            <Ionicons name="search" size={14} color={GLASS_TEXT_FAINT} />
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder="Пошук за назвою"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={GLASS_TEXT_FAINT}
               style={styles.searchInput}
             />
           </View>
@@ -114,11 +121,11 @@ export default function CopyToNoteModal({ visible, onPickExisting, onPickNew, on
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(17,24,39,0.45)',
+    backgroundColor: GLASS_BACKDROP,
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
@@ -129,7 +136,7 @@ const styles = StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: GLASS_LINE,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -137,14 +144,14 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#111827',
+    color: GLASS_TEXT,
     marginBottom: 8,
   },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: GLASS_LINE,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -153,11 +160,11 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   emptyLabel: {
     fontSize: 13,
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
     textAlign: 'center',
     paddingVertical: 16,
   },
@@ -189,6 +196,6 @@ const styles = StyleSheet.create({
   rowText: {
     flex: 1,
     fontSize: 15,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
 });

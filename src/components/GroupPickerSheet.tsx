@@ -5,6 +5,14 @@ import { addDoc, collection, deleteDoc, doc, updateDoc } from '@react-native-fir
 import { db } from '../firebase';
 import { Group } from '../types';
 import { groupKindFields } from '../utils/groups';
+import {
+  GLASS_BACKDROP,
+  GLASS_BODY,
+  GLASS_INPUT,
+  GLASS_LINE,
+  GLASS_TEXT,
+  GLASS_TEXT_FAINT,
+} from '../constants/glass';
 
 const ACCENT = '#3B82F6';
 const GROUP_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
@@ -89,7 +97,7 @@ export default function GroupPickerSheet({ visible, kind, groups, onPick, onClos
           <Text style={styles.title}>Групування</Text>
 
           <Pressable style={styles.row} onPress={() => onPick(null)}>
-            <View style={[styles.dot, { backgroundColor: '#9CA3AF' }]} />
+            <View style={[styles.dot, { backgroundColor: GLASS_TEXT_FAINT }]} />
             <Text style={styles.rowText}>Без групи</Text>
           </Pressable>
 
@@ -114,11 +122,11 @@ export default function GroupPickerSheet({ visible, kind, groups, onPick, onClos
                   <Text style={styles.rowText}>{g.name}</Text>
                 </Pressable>
                 <Pressable hitSlop={8} onPress={() => startEditGroup(g)}>
-                  <Ionicons name="pencil-outline" size={16} color="#9CA3AF" />
+                  <Ionicons name="pencil-outline" size={16} color={GLASS_TEXT_FAINT} />
                 </Pressable>
                 {g.id !== CAMERA_PHOTOS_GROUP_ID && (
                   <Pressable hitSlop={8} onPress={() => confirmDeleteGroup(g)}>
-                    <Ionicons name="close" size={16} color="#9CA3AF" />
+                    <Ionicons name="close" size={16} color={GLASS_TEXT_FAINT} />
                   </Pressable>
                 )}
               </View>
@@ -149,11 +157,11 @@ export default function GroupPickerSheet({ visible, kind, groups, onPick, onClos
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(17,24,39,0.45)',
+    backgroundColor: GLASS_BACKDROP,
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
@@ -164,7 +172,7 @@ const styles = StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: GLASS_LINE,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -172,7 +180,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#111827',
+    color: GLASS_TEXT,
     marginBottom: 8,
   },
   row: {
@@ -195,19 +203,19 @@ const styles = StyleSheet.create({
   rowText: {
     flex: 1,
     fontSize: 15,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   renameInput: {
     flex: 1,
     fontSize: 15,
-    color: '#111827',
+    color: GLASS_TEXT,
     paddingVertical: 2,
     borderBottomWidth: 1,
     borderBottomColor: ACCENT,
   },
   divider: {
     height: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: GLASS_LINE,
     marginVertical: 8,
   },
   addRow: {
@@ -218,8 +226,8 @@ const styles = StyleSheet.create({
   addInput: {
     flex: 1,
     fontSize: 15,
-    color: '#111827',
-    backgroundColor: '#F9FAFB',
+    color: GLASS_TEXT,
+    backgroundColor: GLASS_INPUT,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,

@@ -23,6 +23,14 @@ import {
   runTableImport,
 } from '../utils/importTable';
 import { FIELD_TYPE_LABEL } from './FieldsEditorSheet';
+import {
+  GLASS_BACKDROP,
+  GLASS_BODY,
+  GLASS_LINE,
+  GLASS_TEXT,
+  GLASS_TEXT_FAINT,
+  GLASS_TEXT_MUTED,
+} from '../constants/glass';
 
 const ACCENT = '#3B82F6';
 
@@ -399,7 +407,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
                 <Ionicons
                   name={hasHeaderRow ? 'checkbox' : 'square-outline'}
                   size={18}
-                  color={hasHeaderRow ? ACCENT : '#9CA3AF'}
+                  color={hasHeaderRow ? ACCENT : GLASS_TEXT_FAINT}
                 />
                 <Text style={styles.switchLabel}>Перший рядок це заголовки</Text>
               </Pressable>
@@ -475,7 +483,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
                       <Ionicons
                         name={openMenuColumn === index ? 'chevron-up' : 'chevron-down'}
                         size={16}
-                        color="#9CA3AF"
+                        color={GLASS_TEXT_FAINT}
                       />
                     </Pressable>
 
@@ -571,11 +579,11 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(17,24,39,0.45)',
+    backgroundColor: GLASS_BACKDROP,
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
@@ -586,7 +594,7 @@ const styles = StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: GLASS_LINE,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -594,7 +602,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#111827',
+    color: GLASS_TEXT,
     marginBottom: 8,
   },
   body: {
@@ -606,12 +614,12 @@ const styles = StyleSheet.create({
   },
   hint: {
     fontSize: 14,
-    color: '#6B7280',
+    color: GLASS_TEXT_MUTED,
   },
   sectionLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
     marginTop: 14,
@@ -625,7 +633,7 @@ const styles = StyleSheet.create({
   chip: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: GLASS_LINE,
     paddingVertical: 6,
     paddingHorizontal: 12,
   },
@@ -635,7 +643,7 @@ const styles = StyleSheet.create({
   },
   chipLabel: {
     fontSize: 13,
-    color: '#374151',
+    color: GLASS_TEXT,
   },
   chipLabelActive: {
     color: ACCENT,
@@ -649,20 +657,20 @@ const styles = StyleSheet.create({
   },
   switchLabel: {
     fontSize: 15,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: GLASS_LINE,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   columnCard: {
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: GLASS_LINE,
     borderRadius: 12,
     padding: 10,
     marginBottom: 8,
@@ -679,11 +687,11 @@ const styles = StyleSheet.create({
   columnName: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   columnSample: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
   },
   titleBadge: {
     fontSize: 11,
@@ -693,7 +701,7 @@ const styles = StyleSheet.create({
   titleBadgePick: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
   },
   titleControls: {
     flexDirection: 'row',
@@ -702,7 +710,7 @@ const styles = StyleSheet.create({
   },
   titlePreview: {
     fontSize: 13,
-    color: '#6B7280',
+    color: GLASS_TEXT_MUTED,
     marginBottom: 8,
   },
   mappingRow: {
@@ -710,7 +718,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginTop: 8,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: GLASS_LINE,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -718,15 +726,15 @@ const styles = StyleSheet.create({
   mappingLabel: {
     flex: 1,
     fontSize: 14,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   mappingLabelSkip: {
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
   },
   menu: {
     marginTop: 6,
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    borderTopColor: GLASS_LINE,
   },
   menuRow: {
     flexDirection: 'row',
@@ -737,11 +745,11 @@ const styles = StyleSheet.create({
   menuRowLabel: {
     flex: 1,
     fontSize: 14,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   menuRowType: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
   },
   storedList: {
     maxHeight: 260,
@@ -755,7 +763,7 @@ const styles = StyleSheet.create({
   storedLabel: {
     flex: 1,
     fontSize: 15,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   primaryButton: {
     backgroundColor: ACCENT,

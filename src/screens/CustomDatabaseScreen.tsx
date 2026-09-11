@@ -97,7 +97,7 @@ import {
 import { colorForDocument } from '../utils/documentColor';
 import { MONTH_FULL, WEEKDAY_SHORT, dateKey, getMonthGrid, isSameDay, parseDateKey } from '../utils/dateLocale';
 
-const ACCENT = '#3B82F6';
+const ACCENT = '#A05C7B';
 const DANGER = '#EF4444';
 
 function generateId(): string {

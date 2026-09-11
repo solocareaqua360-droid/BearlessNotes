@@ -8,9 +8,18 @@ import {
   getMonthGrid,
   parseDateKey,
 } from '../utils/dateLocale';
+import {
+  GLASS_BACKDROP,
+  GLASS_BODY,
+  GLASS_DANGER,
+  GLASS_LINE,
+  GLASS_TEXT,
+  GLASS_TEXT_FAINT,
+  GLASS_TEXT_MUTED,
+} from '../constants/glass';
 
 const ACCENT = '#3B82F6';
-const DANGER = '#EF4444';
+const DANGER = GLASS_DANGER;
 
 type Props = {
   visible: boolean;
@@ -104,10 +113,10 @@ export default function ReminderSheet({ visible, initialDate, initialTime, onClo
             </Text>
             <View style={styles.calHeadArrows}>
               <Pressable hitSlop={8} onPress={() => changeMonth(-1)}>
-                <Ionicons name="chevron-back" size={18} color="#6B7280" />
+                <Ionicons name="chevron-back" size={18} color={GLASS_TEXT_MUTED} />
               </Pressable>
               <Pressable hitSlop={8} onPress={() => changeMonth(1)}>
-                <Ionicons name="chevron-forward" size={18} color="#6B7280" />
+                <Ionicons name="chevron-forward" size={18} color={GLASS_TEXT_MUTED} />
               </Pressable>
             </View>
           </View>
@@ -206,11 +215,11 @@ export default function ReminderSheet({ visible, initialDate, initialTime, onClo
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(17,24,39,0.45)',
+    backgroundColor: GLASS_BACKDROP,
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
@@ -220,7 +229,7 @@ const styles = StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: GLASS_LINE,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -228,7 +237,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#111827',
+    color: GLASS_TEXT,
     marginBottom: 14,
   },
   calHead: {
@@ -240,7 +249,7 @@ const styles = StyleSheet.create({
   calHeadTitle: {
     fontSize: 13.5,
     fontWeight: '700',
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   calHeadArrows: {
     flexDirection: 'row',
@@ -255,7 +264,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 10.5,
     fontWeight: '600',
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
   },
   grid: {
     flexDirection: 'row',
@@ -283,10 +292,10 @@ const styles = StyleSheet.create({
   },
   dayNum: {
     fontSize: 12.5,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   dayNumMuted: {
-    color: '#D1D5DB',
+    color: GLASS_TEXT_FAINT,
   },
   dayNumSelected: {
     color: '#fff',
@@ -299,12 +308,12 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 4,
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    borderTopColor: GLASS_LINE,
   },
   timeLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   timeToggle: {
     paddingHorizontal: 12,
@@ -321,7 +330,7 @@ const styles = StyleSheet.create({
   timeToggleText: {
     fontSize: 12.5,
     fontWeight: '700',
-    color: '#6B7280',
+    color: GLASS_TEXT_MUTED,
   },
   timeToggleTextOn: {
     color: ACCENT,
@@ -352,7 +361,7 @@ const styles = StyleSheet.create({
   stepperValue: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#111827',
+    color: GLASS_TEXT,
     fontVariant: ['tabular-nums'],
     width: 34,
     textAlign: 'center',
@@ -360,7 +369,7 @@ const styles = StyleSheet.create({
   stepperColon: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   actions: {
     flexDirection: 'row',

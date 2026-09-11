@@ -93,6 +93,10 @@ const SELECTION_COLOR = '#2563EB';
 // How far outside a column's own bounds a dropped card still gets pulled
 // into it. Generous on purpose - dropping a card "at" a column shouldn't
 // require landing inside its box.
+// The boards section's own colour, the same one BoardsListScreen uses - it
+// was written into the "+" button's style as a number, which is how a
+// screen ends up with a colour nothing else knows about.
+const ACCENT = '#8B5CF6';
 const COLUMN_SNAP_MARGIN = 90;
 const CONNECTION_COLOR = '#8B5CF6';
 // Padding around a connection's own bounding box, so the curve's bulge and
@@ -2501,8 +2505,8 @@ const styles = StyleSheet.create({
     right: 20,
     width: 56,
     height: 56,
-    borderRadius: 28,
-    backgroundColor: '#8B5CF6',
+    borderRadius: 18,
+    backgroundColor: ACCENT,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#8B5CF6',
@@ -2788,7 +2792,7 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
   textEditSave: {
-    backgroundColor: '#8B5CF6',
+    backgroundColor: ACCENT,
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 18,

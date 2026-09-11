@@ -5,6 +5,14 @@ import { collection, onSnapshot, orderBy, query } from '@react-native-firebase/f
 import { db } from '../firebase';
 import { ImportableItem, MAX_CARDS_PER_COLUMN } from '../utils/importGroupToBoard';
 import { hapticSelectItem, hapticWarning } from '../utils/haptics';
+import {
+  GLASS_BACKDROP,
+  GLASS_BODY,
+  GLASS_LINE,
+  GLASS_TEXT,
+  GLASS_TEXT_FAINT,
+  GLASS_TEXT_MUTED,
+} from '../constants/glass';
 
 const ACCENT = '#3B82F6';
 
@@ -135,7 +143,7 @@ export default function GroupImportSheet({
                             <Ionicons
                               name={on ? 'checkbox' : 'square-outline'}
                               size={18}
-                              color={on ? ACCENT : blocked ? '#E5E7EB' : '#9CA3AF'}
+                              color={on ? ACCENT : blocked ? GLASS_LINE : GLASS_TEXT_FAINT}
                             />
                             <Text style={[styles.itemLabel, blocked && styles.itemLabelBlocked]} numberOfLines={1}>
                               {titleForItem(item)}
@@ -205,11 +213,11 @@ export default function GroupImportSheet({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(17,24,39,0.45)',
+    backgroundColor: GLASS_BACKDROP,
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
@@ -220,7 +228,7 @@ const styles = StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: GLASS_LINE,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -228,7 +236,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#111827',
+    color: GLASS_TEXT,
     marginBottom: 8,
   },
   list: {
@@ -236,7 +244,7 @@ const styles = StyleSheet.create({
   },
   empty: {
     fontSize: 13,
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
     paddingVertical: 16,
   },
   kindHeader: {
@@ -246,16 +254,16 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginTop: 6,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: GLASS_LINE,
   },
   kindLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#6B7280',
+    color: GLASS_TEXT_MUTED,
   },
   kindCount: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
   },
   kindCountCapped: {
     color: ACCENT,
@@ -273,14 +281,14 @@ const styles = StyleSheet.create({
   itemLabel: {
     flex: 1,
     fontSize: 15,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   itemLabelBlocked: {
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
   },
   capHint: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
     paddingBottom: 8,
   },
   boardRow: {
@@ -309,7 +317,7 @@ const styles = StyleSheet.create({
   },
   cancelLabel: {
     fontSize: 15,
-    color: '#6B7280',
+    color: GLASS_TEXT_MUTED,
   },
   saveButton: {
     backgroundColor: ACCENT,

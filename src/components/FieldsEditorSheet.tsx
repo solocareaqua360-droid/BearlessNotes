@@ -11,24 +11,29 @@ import { FieldDef, FieldOption, FieldType, RelationTarget } from '../types';
 import { canJoinTitle } from '../utils/customRowDisplay';
 import { TAG_COLORS } from '../constants/tags';
 
+import {
+  GLASS_ACCENT,
+  GLASS_BACKDROP,
+  GLASS_BODY,
+  GLASS_DANGER,
+  GLASS_EDGE,
+  GLASS_TEXT,
+  GLASS_TEXT_FAINT,
+  GLASS_TEXT_MUTED,
+} from '../constants/glass';
+
 const ACCENT = '#3B82F6';
 // The palette this sheet is drawn in. It sits over the database screen's
 // own gradient, so it borrows that screen's glass language - a dark
 // translucent body with a hairline white edge - instead of the white card
 // every other sheet in the app still uses. On that body the flat blue and
 // red of a white sheet go muddy, so both are lightened.
-// Nearly opaque on purpose. A real blur (expo-blur) is what this wants,
-// but that's a native module: it can only arrive with the next native
-// build, never over the air. Until then the body carries the glass edge
-// and the capsules, and lets only a hint of the screen through - at 0.86
-// the list behind it was legible straight through the sheet.
-const GLASS_BODY = 'rgba(24,21,19,0.96)';
-const GLASS_EDGE = 'rgba(255,255,255,0.22)';
-const TEXT = '#fff';
-const TEXT_MUTED = 'rgba(255,255,255,0.62)';
-const TEXT_FAINT = 'rgba(255,255,255,0.3)';
-const ACCENT_ON_GLASS = '#8AB4FF';
-const DANGER = '#FB7185';
+// The shared glass palette - see constants/glass.
+const TEXT = GLASS_TEXT;
+const TEXT_MUTED = GLASS_TEXT_MUTED;
+const TEXT_FAINT = GLASS_TEXT_FAINT;
+const ACCENT_ON_GLASS = GLASS_ACCENT;
+const DANGER = GLASS_DANGER;
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -584,7 +589,7 @@ export default function FieldsEditorSheet({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(17,24,39,0.45)',
+    backgroundColor: GLASS_BACKDROP,
     justifyContent: 'flex-end',
   },
   sheet: {

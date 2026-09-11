@@ -1,5 +1,12 @@
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  GLASS_BACKDROP,
+  GLASS_BODY,
+  GLASS_LINE,
+  GLASS_TEXT,
+  GLASS_TEXT_FAINT,
+} from '../constants/glass';
 
 const ACCENT = '#3B82F6';
 
@@ -35,7 +42,7 @@ export default function DocumentPickerModal({ visible, subtitle, documents, onPi
               <Text style={styles.rowText} numberOfLines={1}>
                 {d.title}
               </Text>
-              <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
+              <Ionicons name="chevron-forward" size={16} color={GLASS_TEXT_FAINT} />
             </Pressable>
           ))}
         </Pressable>
@@ -47,11 +54,11 @@ export default function DocumentPickerModal({ visible, subtitle, documents, onPi
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(17,24,39,0.45)',
+    backgroundColor: GLASS_BACKDROP,
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
@@ -61,7 +68,7 @@ const styles = StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: GLASS_LINE,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -69,11 +76,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   subtitle: {
     fontSize: 13,
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
     marginTop: 2,
     marginBottom: 4,
   },
@@ -93,7 +100,7 @@ const styles = StyleSheet.create({
   },
   rowText: {
     fontSize: 16,
-    color: '#111827',
+    color: GLASS_TEXT,
     flex: 1,
   },
 });

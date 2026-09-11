@@ -41,7 +41,7 @@ import { formatShortDate, parseDateKey } from '../utils/dateLocale';
 import { sortItems } from '../utils/sortItems';
 import ContentColumn from '../components/ContentColumn';
 
-const ACCENT = '#3B82F6';
+const ACCENT = '#4E9A6B';
 const DANGER = '#EF4444';
 const PROJECT_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
 const tasksCollection = collection(db, 'tasks');
