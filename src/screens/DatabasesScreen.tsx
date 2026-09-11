@@ -13,6 +13,7 @@ import { FONT_REGULAR, FONT_MEDIUM, FONT_BOLD } from '../utils/fonts';
 import { colorForDocument } from '../utils/documentColor';
 import RenamePrompt from '../components/RenamePrompt';
 import ImportTableSheet from '../components/ImportTableSheet';
+import ContentColumn from '../components/ContentColumn';
 
 type Tile = {
   key: string;
@@ -144,116 +145,118 @@ export default function DatabasesScreen() {
         </Defs>
         <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#databasesBg)" />
       </Svg>
-
-      <View style={styles.headerRow}>
-        <Text style={styles.header}>Бази даних</Text>
-        <View style={styles.headerButtons}>
-          <Pressable hitSlop={6} onPress={() => navigation.navigate('Search')}>
-            <Ionicons name="search" size={17} color="#fff" />
-          </Pressable>
-          <View style={styles.headerButtonsDivider} />
-          <Pressable hitSlop={6} onPress={() => navigation.navigate('Settings')}>
-            <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
-          </Pressable>
-        </View>
-      </View>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Pressable style={styles.wideTile} onPress={() => navigation.navigate('Tasks')}>
-          <Ionicons name="checkbox-outline" size={22} color={colorFor(WIDE_TILE_KEY)} />
-          <Text style={[styles.tileLabel, { color: colorFor(WIDE_TILE_KEY) }]}>Справи</Text>
-          <Pressable
-            hitSlop={8}
-            style={styles.tileMenuButton}
-            onPress={(e) => {
-              e.stopPropagation();
-              setColorMenuKey(WIDE_TILE_KEY);
-            }}
-          >
-            <Ionicons name="ellipsis-horizontal" size={16} color="rgba(255,255,255,0.7)" />
-          </Pressable>
-        </Pressable>
-
-        <View style={styles.grid}>
-          {GRID_TILES.map((tile) => (
-            <Pressable key={tile.key} style={styles.tile} onPress={() => openTile(tile)}>
-              <Ionicons name={tile.icon} size={22} color={colorFor(tile.key)} />
-              <Text style={[styles.tileLabel, { color: colorFor(tile.key) }]}>{tile.label}</Text>
-              <Pressable
-                hitSlop={8}
-                style={styles.tileMenuButton}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  setColorMenuKey(tile.key);
-                }}
-              >
-                <Ionicons name="ellipsis-horizontal" size={16} color="rgba(255,255,255,0.7)" />
-              </Pressable>
+      <ContentColumn>
+        <View style={styles.headerRow}>
+          <Text style={styles.header}>Бази даних</Text>
+          <View style={styles.headerButtons}>
+            <Pressable hitSlop={6} onPress={() => navigation.navigate('Search')}>
+              <Ionicons name="search" size={17} color="#fff" />
             </Pressable>
-          ))}
-
-          {customDatabases.map((cdb) => {
-            const color = cdb.color ?? colorForDocument(cdb.id).background;
-            return (
-              <Pressable
-                key={cdb.id}
-                style={styles.tile}
-                onPress={() => navigation.navigate('CustomDatabase', { databaseId: cdb.id })}
-              >
-                <Ionicons name={(cdb.icon as keyof typeof Ionicons.glyphMap) ?? 'grid-outline'} size={22} color={color} />
-                <Text style={[styles.tileLabel, { color }]} numberOfLines={1}>
-                  {cdb.name}
-                </Text>
-              </Pressable>
-            );
-          })}
-
-          <Pressable style={[styles.tile, styles.newTile]} onPress={() => setCreatingDatabase(true)}>
-            <Ionicons name="add" size={22} color="rgba(255,255,255,0.6)" />
-            <Text style={styles.newTileLabel}>Нова база</Text>
-          </Pressable>
-
-          <Pressable style={[styles.tile, styles.newTile]} onPress={() => setImporting(true)}>
-            <Ionicons name="download-outline" size={22} color="rgba(255,255,255,0.6)" />
-            <Text style={styles.newTileLabel}>Імпорт таблиці</Text>
-          </Pressable>
+            <View style={styles.headerButtonsDivider} />
+            <Pressable hitSlop={6} onPress={() => navigation.navigate('Settings')}>
+              <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
+            </Pressable>
+          </View>
         </View>
-      </ScrollView>
-
-      <ImportTableSheet
-        visible={importing}
-        otherDatabases={customDatabases.map((d) => ({ id: d.id, name: d.name }))}
-        onClose={() => setImporting(false)}
-        onDone={(databaseId, rowCount) => {
-          setImporting(false);
-          Alert.alert('Імпортовано', `Додано записів: ${rowCount}`);
-          navigation.navigate('CustomDatabase', { databaseId });
-        }}
-      />
-
-      <RenamePrompt
-        visible={creatingDatabase}
-        title="Нова база"
-        initialValue=""
-        placeholder="Назва бази"
-        onCancel={() => setCreatingDatabase(false)}
-        onSave={createDatabase}
-      />
-
-      {/* Color picker - only the harmonious palette is offered. */}
-      <Modal visible={colorMenuKey !== null} transparent animationType="fade" onRequestClose={() => setColorMenuKey(null)}>
-        <Pressable style={styles.colorMenuBackdrop} onPress={() => setColorMenuKey(null)}>
-          <Pressable style={styles.colorMenuCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.colorMenuTitle}>Колір плитки</Text>
-            <View style={styles.colorMenuRow}>
-              {TAG_COLORS.map((color) => (
-                <Pressable key={color} onPress={() => colorMenuKey && pickColor(colorMenuKey, color)}>
-                  <View style={[styles.colorSwatch, { backgroundColor: color }]} />
-                </Pressable>
-              ))}
-            </View>
+        <ScrollView contentContainerStyle={styles.content}>
+          <Pressable style={styles.wideTile} onPress={() => navigation.navigate('Tasks')}>
+            <Ionicons name="checkbox-outline" size={22} color={colorFor(WIDE_TILE_KEY)} />
+            <Text style={[styles.tileLabel, { color: colorFor(WIDE_TILE_KEY) }]}>Справи</Text>
+            <Pressable
+              hitSlop={8}
+              style={styles.tileMenuButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                setColorMenuKey(WIDE_TILE_KEY);
+              }}
+            >
+              <Ionicons name="ellipsis-horizontal" size={16} color="rgba(255,255,255,0.7)" />
+            </Pressable>
           </Pressable>
-        </Pressable>
-      </Modal>
+
+          <View style={styles.grid}>
+            {GRID_TILES.map((tile) => (
+              <Pressable key={tile.key} style={styles.tile} onPress={() => openTile(tile)}>
+                <Ionicons name={tile.icon} size={22} color={colorFor(tile.key)} />
+                <Text style={[styles.tileLabel, { color: colorFor(tile.key) }]}>{tile.label}</Text>
+                <Pressable
+                  hitSlop={8}
+                  style={styles.tileMenuButton}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    setColorMenuKey(tile.key);
+                  }}
+                >
+                  <Ionicons name="ellipsis-horizontal" size={16} color="rgba(255,255,255,0.7)" />
+                </Pressable>
+              </Pressable>
+            ))}
+
+            {customDatabases.map((cdb) => {
+              const color = cdb.color ?? colorForDocument(cdb.id).background;
+              return (
+                <Pressable
+                  key={cdb.id}
+                  style={styles.tile}
+                  onPress={() => navigation.navigate('CustomDatabase', { databaseId: cdb.id })}
+                >
+                  <Ionicons name={(cdb.icon as keyof typeof Ionicons.glyphMap) ?? 'grid-outline'} size={22} color={color} />
+                  <Text style={[styles.tileLabel, { color }]} numberOfLines={1}>
+                    {cdb.name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+
+            <Pressable style={[styles.tile, styles.newTile]} onPress={() => setCreatingDatabase(true)}>
+              <Ionicons name="add" size={22} color="rgba(255,255,255,0.6)" />
+              <Text style={styles.newTileLabel}>Нова база</Text>
+            </Pressable>
+
+            <Pressable style={[styles.tile, styles.newTile]} onPress={() => setImporting(true)}>
+              <Ionicons name="download-outline" size={22} color="rgba(255,255,255,0.6)" />
+              <Text style={styles.newTileLabel}>Імпорт таблиці</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+
+        <ImportTableSheet
+          visible={importing}
+          otherDatabases={customDatabases.map((d) => ({ id: d.id, name: d.name }))}
+          onClose={() => setImporting(false)}
+          onDone={(databaseId, rowCount) => {
+            setImporting(false);
+            Alert.alert('Імпортовано', `Додано записів: ${rowCount}`);
+            navigation.navigate('CustomDatabase', { databaseId });
+          }}
+        />
+
+        <RenamePrompt
+          visible={creatingDatabase}
+          title="Нова база"
+          initialValue=""
+          placeholder="Назва бази"
+          onCancel={() => setCreatingDatabase(false)}
+          onSave={createDatabase}
+        />
+
+        {/* Color picker - only the harmonious palette is offered. */}
+        <Modal visible={colorMenuKey !== null} transparent animationType="fade" onRequestClose={() => setColorMenuKey(null)}>
+          <Pressable style={styles.colorMenuBackdrop} onPress={() => setColorMenuKey(null)}>
+            <Pressable style={styles.colorMenuCard} onPress={(e) => e.stopPropagation()}>
+              <Text style={styles.colorMenuTitle}>Колір плитки</Text>
+              <View style={styles.colorMenuRow}>
+                {TAG_COLORS.map((color) => (
+                  <Pressable key={color} onPress={() => colorMenuKey && pickColor(colorMenuKey, color)}>
+                    <View style={[styles.colorSwatch, { backgroundColor: color }]} />
+                  </Pressable>
+                ))}
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      </ContentColumn>
+
     </View>
   );
 }

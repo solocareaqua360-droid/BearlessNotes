@@ -10,6 +10,7 @@ import { BoardsStackParamList } from '../navigation';
 import { BoardItem } from '../types';
 import { colorForDocument } from '../utils/documentColor';
 import RenamePrompt from '../components/RenamePrompt';
+import ContentColumn from '../components/ContentColumn';
 
 const ACCENT = '#8B5CF6';
 const boardsCollection = collection(db, 'boards');
@@ -120,74 +121,76 @@ export default function BoardsListScreen() {
         </Defs>
         <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#boardsBg)" />
       </Svg>
-
-      {/* No back-chevron here - this screen is the "Дошки" tab's own root
-          now (see App.tsx's BoardsStack), same as Документи/Календар/
-          Більше's headers, none of which have one either. BoardScreen's
-          own chevron (returning to this list) stays, since Board really
-          does have somewhere to go back to within the same nested stack. */}
-      <View style={styles.headerRow}>
-        <Text style={styles.header}>Дошка</Text>
-        <Pressable hitSlop={8} style={styles.addButton} onPress={createBoard}>
-          <Ionicons name="add" size={20} color="#fff" />
-        </Pressable>
-      </View>
-
-      {isLoading ? (
-        <View style={styles.emptyState}>
-          <ActivityIndicator color="#fff" />
+      <ContentColumn>
+        {/* No back-chevron here - this screen is the "Дошки" tab's own root
+            now (see App.tsx's BoardsStack), same as Документи/Календар/
+            Більше's headers, none of which have one either. BoardScreen's
+            own chevron (returning to this list) stays, since Board really
+            does have somewhere to go back to within the same nested stack. */}
+        <View style={styles.headerRow}>
+          <Text style={styles.header}>Дошка</Text>
+          <Pressable hitSlop={8} style={styles.addButton} onPress={createBoard}>
+            <Ionicons name="add" size={20} color="#fff" />
+          </Pressable>
         </View>
-      ) : boards.length === 0 ? (
-        <View style={styles.emptyState}>
-          <View style={styles.emptyIcon}>
-            <Ionicons name="apps-outline" size={32} color={ACCENT} />
+
+        {isLoading ? (
+          <View style={styles.emptyState}>
+            <ActivityIndicator color="#fff" />
           </View>
-          <Text style={styles.emptyLabel}>Ще немає дощок</Text>
-          <Text style={styles.emptyHint}>Дошка - вільний канвас для карток, які потім можна зібрати в документ</Text>
-        </View>
-      ) : (
-        <ScrollView contentContainerStyle={styles.list}>{boards.map(renderBoardRow)}</ScrollView>
-      )}
+        ) : boards.length === 0 ? (
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIcon}>
+              <Ionicons name="apps-outline" size={32} color={ACCENT} />
+            </View>
+            <Text style={styles.emptyLabel}>Ще немає дощок</Text>
+            <Text style={styles.emptyHint}>Дошка - вільний канвас для карток, які потім можна зібрати в документ</Text>
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={styles.list}>{boards.map(renderBoardRow)}</ScrollView>
+        )}
 
-      <Modal
-        visible={cardMenuBoard !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setCardMenuBoardId(null)}
-      >
-        <Pressable style={styles.cardMenuBackdrop} onPress={() => setCardMenuBoardId(null)}>
-          <Pressable style={styles.cardMenuSheet} onPress={() => {}}>
-            <View style={styles.cardMenuHandle} />
-            <Pressable
-              style={styles.cardMenuRow}
-              onPress={() => {
-                if (cardMenuBoard) setRenamingBoard(cardMenuBoard);
-                setCardMenuBoardId(null);
-              }}
-            >
-              <Ionicons name="pencil-outline" size={18} color="#111827" />
-              <Text style={styles.cardMenuRowLabel}>Перейменувати</Text>
-            </Pressable>
-            <Pressable
-              style={styles.cardMenuRow}
-              onPress={() => cardMenuBoard && confirmDeleteBoard(cardMenuBoard)}
-            >
-              <Ionicons name="trash-outline" size={18} color="#EF4444" />
-              <Text style={[styles.cardMenuRowLabel, { color: '#EF4444' }]}>Видалити</Text>
+        <Modal
+          visible={cardMenuBoard !== null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setCardMenuBoardId(null)}
+        >
+          <Pressable style={styles.cardMenuBackdrop} onPress={() => setCardMenuBoardId(null)}>
+            <Pressable style={styles.cardMenuSheet} onPress={() => {}}>
+              <View style={styles.cardMenuHandle} />
+              <Pressable
+                style={styles.cardMenuRow}
+                onPress={() => {
+                  if (cardMenuBoard) setRenamingBoard(cardMenuBoard);
+                  setCardMenuBoardId(null);
+                }}
+              >
+                <Ionicons name="pencil-outline" size={18} color="#111827" />
+                <Text style={styles.cardMenuRowLabel}>Перейменувати</Text>
+              </Pressable>
+              <Pressable
+                style={styles.cardMenuRow}
+                onPress={() => cardMenuBoard && confirmDeleteBoard(cardMenuBoard)}
+              >
+                <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                <Text style={[styles.cardMenuRowLabel, { color: '#EF4444' }]}>Видалити</Text>
+              </Pressable>
             </Pressable>
           </Pressable>
-        </Pressable>
-      </Modal>
+        </Modal>
 
-      <RenamePrompt
-        visible={renamingBoard !== null}
-        title="Назва дошки"
-        initialValue={renamingBoard?.title ?? ''}
-        onCancel={() => setRenamingBoard(null)}
-        onSave={(title) => {
-          if (renamingBoard) renameBoard(renamingBoard, title);
-        }}
-      />
+        <RenamePrompt
+          visible={renamingBoard !== null}
+          title="Назва дошки"
+          initialValue={renamingBoard?.title ?? ''}
+          onCancel={() => setRenamingBoard(null)}
+          onSave={(title) => {
+            if (renamingBoard) renameBoard(renamingBoard, title);
+          }}
+        />
+      </ContentColumn>
+
     </View>
   );
 }

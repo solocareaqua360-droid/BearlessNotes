@@ -63,6 +63,7 @@ import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
 import { sortItems } from '../utils/sortItems';
 import DownloadToast from '../components/DownloadToast';
 import SortMenuRows from '../components/SortMenuRows';
+import ContentColumn from '../components/ContentColumn';
 
 const ACCENT = '#EC4899';
 const groupsCollection = collection(db, 'groups');
@@ -601,223 +602,224 @@ export default function PhotosScreen() {
         </Defs>
         <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#photosBg)" />
       </Svg>
-
-      <View style={styles.headerRow}>
-        <View style={styles.headerLeft}>
-          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={24} color="#fff" />
-          </Pressable>
-          <Text style={styles.header}>Зображення</Text>
-        </View>
-        <View style={styles.headerButtons}>
-          <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-            <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
-          </Pressable>
-          <View style={styles.headerButtonsDivider} />
-          <Pressable hitSlop={8} onPress={toggleSelectMode}>
-            <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
-          </Pressable>
-          <View style={styles.headerButtonsDivider} />
-          <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
-            <Ionicons name={isSearching ? 'close' : 'search'} size={17} color="#fff" />
-          </Pressable>
-        </View>
-      </View>
-
-      {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
-      {menuOpen && (
-        <View style={styles.menuPanel}>
-          <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
-        </View>
-      )}
-
-      {groups.length > 0 && (
-        <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" dark />
-      )}
-
-      {tagFilter && (
-        <View style={styles.filterRow}>
-          {tagFilter.type === 'untagged' ? (
-            <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
-              <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
-              <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без тегів</Text>
-              <Pressable hitSlop={8} onPress={() => setTagFilter(null)}>
-                <Ionicons name="close" size={14} color="#6B7280" />
-              </Pressable>
-            </View>
-          ) : (
-            tagFilter.tagIds.map((tagId) => {
-              const tag = tags.find((t) => t.id === tagId);
-              if (!tag) return null;
-              return (
-                <View key={tagId} style={[styles.filterChip, { borderColor: tag.color }]}>
-                  <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tag.color} />
-                  <Text style={[styles.filterChipLabel, { color: tag.color }]}>{tag.path}</Text>
-                  <Pressable hitSlop={8} onPress={() => setTagFilter(removeTagFromFilter(tagFilter, tagId))}>
-                    <Ionicons name="close" size={14} color={tag.color} />
-                  </Pressable>
-                </View>
-              );
-            })
-          )}
-        </View>
-      )}
-
-      {isSearching && (
-        <View style={styles.searchRow}>
-          <Ionicons name="search" size={14} color="#9CA3AF" />
-          <TextInput
-            autoFocus
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Пошук фото за назвою"
-            placeholderTextColor="#9CA3AF"
-            style={styles.searchInput}
-          />
-        </View>
-      )}
-
-      {isLoading ? (
-        <View style={styles.emptyState}>
-          <ActivityIndicator color="#fff" />
-        </View>
-      ) : displayedPhotos.length === 0 ? (
-        <View style={styles.emptyState}>
-          <View style={styles.emptyIcon}>
-            <Ionicons name="image-outline" size={32} color={ACCENT} />
+      <ContentColumn>
+        <View style={styles.headerRow}>
+          <View style={styles.headerLeft}>
+            <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+              <Ionicons name="chevron-back" size={24} color="#fff" />
+            </Pressable>
+            <Text style={styles.header}>Зображення</Text>
           </View>
-          <Text style={styles.emptyLabel}>{needle ? 'Нічого не знайдено' : 'Ще немає фото'}</Text>
-          {!needle && (
-            <Text style={styles.emptyHint}>
-              Додайте зображення як блок у будь-якому документі - воно з'явиться тут само
-            </Text>
-          )}
+          <View style={styles.headerButtons}>
+            <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
+              <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
+            </Pressable>
+            <View style={styles.headerButtonsDivider} />
+            <Pressable hitSlop={8} onPress={toggleSelectMode}>
+              <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
+            </Pressable>
+            <View style={styles.headerButtonsDivider} />
+            <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
+              <Ionicons name={isSearching ? 'close' : 'search'} size={17} color="#fff" />
+            </Pressable>
+          </View>
         </View>
-      ) : (
-        <ScrollView contentContainerStyle={[styles.grid, isSelectMode && styles.gridWithBulkBar]}>
-          {displayedPhotos.map((photo) => (
-            <Pressable
-              key={photo.id}
-              style={styles.cell}
-              onPress={() => (isSelectMode ? toggleSelected(photo.id) : setViewerPhotoId(photo.id))}
-            >
-              <PhotoThumb
-                uri={photo.imageUri}
-                driveFileId={photo.driveFileId}
-                docCount={photo.documentIds.length}
-                tags={tags.filter((t) => photo.tagIds.includes(t.id))}
-                onTagPress={() => setTagPickerForId(photo.id)}
-                isSelectMode={isSelectMode}
-                isSelected={selectedIds.has(photo.id)}
-              />
-            </Pressable>
-          ))}
-        </ScrollView>
-      )}
 
-      {viewerPhoto && (
-        <Modal visible transparent animationType="fade" onRequestClose={() => setViewerPhotoId(null)}>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <ZoomableImageViewer
-              uri={viewerPhoto.imageUri}
-              onClose={() => setViewerPhotoId(null)}
-              actions={viewerActionsFor(viewerPhoto)}
+        {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
+        {menuOpen && (
+          <View style={styles.menuPanel}>
+            <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
+          </View>
+        )}
+
+        {groups.length > 0 && (
+          <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" dark />
+        )}
+
+        {tagFilter && (
+          <View style={styles.filterRow}>
+            {tagFilter.type === 'untagged' ? (
+              <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
+                <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
+                <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без тегів</Text>
+                <Pressable hitSlop={8} onPress={() => setTagFilter(null)}>
+                  <Ionicons name="close" size={14} color="#6B7280" />
+                </Pressable>
+              </View>
+            ) : (
+              tagFilter.tagIds.map((tagId) => {
+                const tag = tags.find((t) => t.id === tagId);
+                if (!tag) return null;
+                return (
+                  <View key={tagId} style={[styles.filterChip, { borderColor: tag.color }]}>
+                    <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tag.color} />
+                    <Text style={[styles.filterChipLabel, { color: tag.color }]}>{tag.path}</Text>
+                    <Pressable hitSlop={8} onPress={() => setTagFilter(removeTagFromFilter(tagFilter, tagId))}>
+                      <Ionicons name="close" size={14} color={tag.color} />
+                    </Pressable>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+
+        {isSearching && (
+          <View style={styles.searchRow}>
+            <Ionicons name="search" size={14} color="#9CA3AF" />
+            <TextInput
+              autoFocus
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Пошук фото за назвою"
+              placeholderTextColor="#9CA3AF"
+              style={styles.searchInput}
             />
-          </GestureHandlerRootView>
-        </Modal>
-      )}
+          </View>
+        )}
 
-      <RenamePrompt
-        visible={renamingPhoto !== null}
-        title="Назва фото"
-        initialValue={renamingPhoto?.title ?? ''}
-        onCancel={() => setRenamingPhoto(null)}
-        onSave={(title) => {
-          if (renamingPhoto) renamePhoto(renamingPhoto, title);
-        }}
-      />
+        {isLoading ? (
+          <View style={styles.emptyState}>
+            <ActivityIndicator color="#fff" />
+          </View>
+        ) : displayedPhotos.length === 0 ? (
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIcon}>
+              <Ionicons name="image-outline" size={32} color={ACCENT} />
+            </View>
+            <Text style={styles.emptyLabel}>{needle ? 'Нічого не знайдено' : 'Ще немає фото'}</Text>
+            {!needle && (
+              <Text style={styles.emptyHint}>
+                Додайте зображення як блок у будь-якому документі - воно з'явиться тут само
+              </Text>
+            )}
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={[styles.grid, isSelectMode && styles.gridWithBulkBar]}>
+            {displayedPhotos.map((photo) => (
+              <Pressable
+                key={photo.id}
+                style={styles.cell}
+                onPress={() => (isSelectMode ? toggleSelected(photo.id) : setViewerPhotoId(photo.id))}
+              >
+                <PhotoThumb
+                  uri={photo.imageUri}
+                  driveFileId={photo.driveFileId}
+                  docCount={photo.documentIds.length}
+                  tags={tags.filter((t) => photo.tagIds.includes(t.id))}
+                  onTagPress={() => setTagPickerForId(photo.id)}
+                  isSelectMode={isSelectMode}
+                  isSelected={selectedIds.has(photo.id)}
+                />
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
 
-      <Modal
-        visible={addPhotoSheetVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAddPhotoSheetVisible(false)}
-      >
-        <Pressable style={styles.addPhotoBackdrop} onPress={() => setAddPhotoSheetVisible(false)}>
-          <Pressable style={styles.addPhotoSheet} onPress={() => {}}>
-            <View style={styles.addPhotoHandle} />
-            <Pressable
-              style={styles.addPhotoRow}
-              onPress={() => {
-                setAddPhotoSheetVisible(false);
-                addPhotoDirectly('gallery');
-              }}
-            >
-              <Ionicons name="image-outline" size={18} color="#111827" />
-              <Text style={styles.addPhotoRowLabel}>Галерея</Text>
-            </Pressable>
-            <Pressable
-              style={styles.addPhotoRow}
-              onPress={() => {
-                setAddPhotoSheetVisible(false);
-                addPhotoDirectly('camera');
-              }}
-            >
-              <Ionicons name="camera-outline" size={18} color="#111827" />
-              <Text style={styles.addPhotoRowLabel}>Камера</Text>
+        {viewerPhoto && (
+          <Modal visible transparent animationType="fade" onRequestClose={() => setViewerPhotoId(null)}>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+              <ZoomableImageViewer
+                uri={viewerPhoto.imageUri}
+                onClose={() => setViewerPhotoId(null)}
+                actions={viewerActionsFor(viewerPhoto)}
+              />
+            </GestureHandlerRootView>
+          </Modal>
+        )}
+
+        <RenamePrompt
+          visible={renamingPhoto !== null}
+          title="Назва фото"
+          initialValue={renamingPhoto?.title ?? ''}
+          onCancel={() => setRenamingPhoto(null)}
+          onSave={(title) => {
+            if (renamingPhoto) renamePhoto(renamingPhoto, title);
+          }}
+        />
+
+        <Modal
+          visible={addPhotoSheetVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setAddPhotoSheetVisible(false)}
+        >
+          <Pressable style={styles.addPhotoBackdrop} onPress={() => setAddPhotoSheetVisible(false)}>
+            <Pressable style={styles.addPhotoSheet} onPress={() => {}}>
+              <View style={styles.addPhotoHandle} />
+              <Pressable
+                style={styles.addPhotoRow}
+                onPress={() => {
+                  setAddPhotoSheetVisible(false);
+                  addPhotoDirectly('gallery');
+                }}
+              >
+                <Ionicons name="image-outline" size={18} color="#111827" />
+                <Text style={styles.addPhotoRowLabel}>Галерея</Text>
+              </Pressable>
+              <Pressable
+                style={styles.addPhotoRow}
+                onPress={() => {
+                  setAddPhotoSheetVisible(false);
+                  addPhotoDirectly('camera');
+                }}
+              >
+                <Ionicons name="camera-outline" size={18} color="#111827" />
+                <Text style={styles.addPhotoRowLabel}>Камера</Text>
+              </Pressable>
             </Pressable>
           </Pressable>
-        </Pressable>
-      </Modal>
+        </Modal>
 
-      <DocumentPickerModal
-        visible={documentPicker !== null}
-        subtitle={documentPicker?.photo.title}
-        documents={documentPicker?.documents ?? []}
-        onPick={pickDocument}
-        onClose={() => setDocumentPicker(null)}
-      />
+        <DocumentPickerModal
+          visible={documentPicker !== null}
+          subtitle={documentPicker?.photo.title}
+          documents={documentPicker?.documents ?? []}
+          onPick={pickDocument}
+          onClose={() => setDocumentPicker(null)}
+        />
 
-      <TagPicker
-        visible={tagPickerPhoto !== null}
-        kind="photo"
-        tags={tags}
-        selectedTagIds={tagPickerPhoto?.tagIds ?? []}
-        onAttach={(tag) => tagPickerPhoto && attachTag(tag, 'photo', tagPickerPhoto.id, 'photos')}
-        onDetach={(tag) => tagPickerPhoto && detachTag(tag, 'photo', tagPickerPhoto.id, 'photos')}
-        onCreateAndAttach={(path, icon, color) =>
-          tagPickerPhoto && createAndAttachTag(path, icon, color, 'photo', tagPickerPhoto.id, 'photos')
-        }
-        onRenameTag={renameTag}
-        onClose={() => setTagPickerForId(null)}
-      />
+        <TagPicker
+          visible={tagPickerPhoto !== null}
+          kind="photo"
+          tags={tags}
+          selectedTagIds={tagPickerPhoto?.tagIds ?? []}
+          onAttach={(tag) => tagPickerPhoto && attachTag(tag, 'photo', tagPickerPhoto.id, 'photos')}
+          onDetach={(tag) => tagPickerPhoto && detachTag(tag, 'photo', tagPickerPhoto.id, 'photos')}
+          onCreateAndAttach={(path, icon, color) =>
+            tagPickerPhoto && createAndAttachTag(path, icon, color, 'photo', tagPickerPhoto.id, 'photos')
+          }
+          onRenameTag={renameTag}
+          onClose={() => setTagPickerForId(null)}
+        />
 
-      <TagPicker
-        visible={bulkTagPickerVisible}
-        kind="photo"
-        tags={tags}
-        selectedTagIds={[]}
-        onAttach={bulkAttachTag}
-        onDetach={() => {}}
-        onCreateAndAttach={bulkCreateAndAttachTag}
-        onRenameTag={renameTag}
-        onClose={() => setBulkTagPickerVisible(false)}
-      />
+        <TagPicker
+          visible={bulkTagPickerVisible}
+          kind="photo"
+          tags={tags}
+          selectedTagIds={[]}
+          onAttach={bulkAttachTag}
+          onDetach={() => {}}
+          onCreateAndAttach={bulkCreateAndAttachTag}
+          onRenameTag={renameTag}
+          onClose={() => setBulkTagPickerVisible(false)}
+        />
 
-      <GroupPickerSheet
-        visible={bulkGroupPickerVisible}
-        kind="photo"
-        groups={groups}
-        onPick={bulkAssignGroup}
-        onClose={() => setBulkGroupPickerVisible(false)}
-      />
+        <GroupPickerSheet
+          visible={bulkGroupPickerVisible}
+          kind="photo"
+          groups={groups}
+          onPick={bulkAssignGroup}
+          onClose={() => setBulkGroupPickerVisible(false)}
+        />
 
-      <CopyToNoteModal
-        visible={bulkCopyModalVisible}
-        onPickExisting={bulkCopyToExisting}
-        onPickNew={bulkCopyToNew}
-        onClose={() => setBulkCopyModalVisible(false)}
-      />
+        <CopyToNoteModal
+          visible={bulkCopyModalVisible}
+          onPickExisting={bulkCopyToExisting}
+          onPickNew={bulkCopyToNew}
+          onClose={() => setBulkCopyModalVisible(false)}
+        />
+      </ContentColumn>
 
       <TagsDrawer
         tags={drawerTags}

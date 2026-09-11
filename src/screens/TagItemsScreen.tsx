@@ -8,6 +8,7 @@ import { db } from '../firebase';
 import { RootStackParamList } from '../navigation';
 import { TaggableKind } from '../types';
 import { useTags, itemsCollectionForKind, parseUsedInKey } from '../hooks/useTags';
+import ContentColumn from '../components/ContentColumn';
 
 const documentsCollection = collection(db, 'documents');
 
@@ -113,45 +114,48 @@ export default function TagItemsScreen({ route }: Props) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={22} color="#111827" />
-        </Pressable>
-        <View style={[styles.headerIcon, { backgroundColor: `${tag.color}1F` }]}>
-          <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={17} color={tag.color} />
-        </View>
-        <Text style={styles.headerTitle}>{tag.path}</Text>
-      </View>
-      <Text style={styles.subtitle}>
-        {items.length} {items.length === 1 ? 'елемент' : 'елементів'}
-      </Text>
-
-      {isLoading ? (
-        <View style={styles.emptyState}>
-          <ActivityIndicator color={tag.color} />
-        </View>
-      ) : (
-        <ScrollView contentContainerStyle={styles.list}>
-          {items.map((item) => {
-            const info = KIND_ICON[item.kind] ?? CUSTOM_ROW_ICON;
-            return (
-              <Pressable key={item.key} style={styles.row} onPress={() => openItem(item)}>
-                <View style={[styles.rowIcon, { backgroundColor: `${info.color}1A` }]}>
-                  <Ionicons name={info.icon} size={17} color={info.color} />
-                </View>
-                <Text style={styles.rowLabel} numberOfLines={1}>
-                  {item.title}
-                </Text>
-              </Pressable>
-            );
-          })}
-
-          <Pressable style={styles.createRow} onPress={createTaggedDocument}>
-            <Ionicons name="add" size={18} color="#3B82F6" />
-            <Text style={styles.createLabel}>Створити новий документ з тегом "{tag.path}"</Text>
+      <ContentColumn>
+        <View style={styles.headerRow}>
+          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={22} color="#111827" />
           </Pressable>
-        </ScrollView>
-      )}
+          <View style={[styles.headerIcon, { backgroundColor: `${tag.color}1F` }]}>
+            <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={17} color={tag.color} />
+          </View>
+          <Text style={styles.headerTitle}>{tag.path}</Text>
+        </View>
+        <Text style={styles.subtitle}>
+          {items.length} {items.length === 1 ? 'елемент' : 'елементів'}
+        </Text>
+
+        {isLoading ? (
+          <View style={styles.emptyState}>
+            <ActivityIndicator color={tag.color} />
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={styles.list}>
+            {items.map((item) => {
+              const info = KIND_ICON[item.kind] ?? CUSTOM_ROW_ICON;
+              return (
+                <Pressable key={item.key} style={styles.row} onPress={() => openItem(item)}>
+                  <View style={[styles.rowIcon, { backgroundColor: `${info.color}1A` }]}>
+                    <Ionicons name={info.icon} size={17} color={info.color} />
+                  </View>
+                  <Text style={styles.rowLabel} numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                </Pressable>
+              );
+            })}
+
+            <Pressable style={styles.createRow} onPress={createTaggedDocument}>
+              <Ionicons name="add" size={18} color="#3B82F6" />
+              <Text style={styles.createLabel}>Створити новий документ з тегом "{tag.path}"</Text>
+            </Pressable>
+          </ScrollView>
+        )}
+      </ContentColumn>
+
     </View>
   );
 }

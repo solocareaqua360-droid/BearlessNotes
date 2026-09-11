@@ -54,6 +54,7 @@ import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { sortItems } from '../utils/sortItems';
 import { colorForDocument } from '../utils/documentColor';
 import SortMenuRows from '../components/SortMenuRows';
+import ContentColumn from '../components/ContentColumn';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -603,235 +604,236 @@ export default function LinksScreen({ route, navigation }: Props) {
         </Defs>
         <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#linksBg)" />
       </Svg>
-
-      <View style={styles.headerRow}>
-        <View style={styles.headerLeft}>
-          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={24} color="#fff" />
-          </Pressable>
-          <Text style={styles.header} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.4}>
-            {info.title}
-          </Text>
-        </View>
-        <View style={styles.headerButtons}>
-          <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-            <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
-          </Pressable>
-          <View style={styles.headerButtonsDivider} />
-          <Pressable hitSlop={8} onPress={toggleSelectMode}>
-            <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
-          </Pressable>
-          <View style={styles.headerButtonsDivider} />
-          <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
-            <Ionicons name={isSearching ? 'close' : 'search'} size={17} color="#fff" />
-          </Pressable>
-        </View>
-      </View>
-
-      {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
-      {menuOpen && (
-        <View style={styles.menuPanel}>
-          <Text style={styles.menuSectionLabel}>Вигляд</Text>
-          <Pressable style={styles.menuRow} onPress={() => changeViewMode('list')}>
-            <Ionicons name="reorder-four-outline" size={17} color="#111827" />
-            <Text style={styles.menuRowLabel}>Список</Text>
-            {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-          </Pressable>
-          <Pressable style={styles.menuRow} onPress={() => changeViewMode('grid')}>
-            <Ionicons name="grid-outline" size={17} color="#111827" />
-            <Text style={styles.menuRowLabel}>Сітка</Text>
-            {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-          </Pressable>
-          <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
-        </View>
-      )}
-
-      {groups.length > 0 && (
-        <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" dark />
-      )}
-
-      {tagFilter && (
-        <View style={styles.filterRow}>
-          {tagFilter.type === 'untagged' ? (
-            <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
-              <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
-              <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без тегів</Text>
-              <Pressable hitSlop={8} onPress={() => setTagFilter(null)}>
-                <Ionicons name="close" size={14} color="#6B7280" />
-              </Pressable>
-            </View>
-          ) : (
-            tagFilter.tagIds.map((tagId) => {
-              const tag = tags.find((t) => t.id === tagId);
-              if (!tag) return null;
-              return (
-                <View key={tagId} style={[styles.filterChip, { borderColor: tag.color }]}>
-                  <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tag.color} />
-                  <Text style={[styles.filterChipLabel, { color: tag.color }]}>{tag.path}</Text>
-                  <Pressable hitSlop={8} onPress={() => setTagFilter(removeTagFromFilter(tagFilter, tagId))}>
-                    <Ionicons name="close" size={14} color={tag.color} />
-                  </Pressable>
-                </View>
-              );
-            })
-          )}
-        </View>
-      )}
-
-      {isSearching && (
-        <View style={styles.searchRow}>
-          <Ionicons name="search" size={14} color="#9CA3AF" />
-          <TextInput
-            autoFocus
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Пошук за назвою"
-            placeholderTextColor="#9CA3AF"
-            style={styles.searchInput}
-          />
-        </View>
-      )}
-
-      {isLoading ? (
-        <View style={styles.emptyState}>
-          <ActivityIndicator color="#fff" />
-        </View>
-      ) : filteredLinks.length === 0 ? (
-        <View style={styles.emptyState}>
-          <View style={[styles.emptyIcon, { backgroundColor: `${info.color}1A` }]}>
-            <Ionicons name={info.icon} size={32} color={info.color} />
-          </View>
-          <Text style={styles.emptyLabel}>{needle ? 'Нічого не знайдено' : 'Ще немає збережених посилань'}</Text>
-          {!needle && <Text style={styles.emptyHint}>{info.emptyHint}</Text>}
-        </View>
-      ) : viewMode === 'grid' ? (
-        <ScrollView contentContainerStyle={[styles.gridList, isSelectMode && styles.listWithBulkBar]}>
-          {filteredLinks.map(renderLinkGridCell)}
-        </ScrollView>
-      ) : (
-        <ScrollView contentContainerStyle={[styles.list, isSelectMode && styles.listWithBulkBar]}>
-          {filteredLinks.map(renderLinkRow)}
-        </ScrollView>
-      )}
-
-      <Modal
-        visible={cardMenuLink !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setCardMenuLinkId(null)}
-      >
-        <Pressable style={styles.cardMenuBackdrop} onPress={() => setCardMenuLinkId(null)}>
-          <Pressable style={styles.cardMenuSheet} onPress={() => {}}>
-            <View style={styles.cardMenuHandle} />
-            <Pressable
-              style={styles.cardMenuRow}
-              onPress={() => {
-                if (cardMenuLink) setRenamingLink(cardMenuLink);
-                setCardMenuLinkId(null);
-              }}
-            >
-              <Ionicons name="pencil-outline" size={18} color="#111827" />
-              <Text style={styles.cardMenuRowLabel}>Редагувати назву</Text>
+      <ContentColumn>
+        <View style={styles.headerRow}>
+          <View style={styles.headerLeft}>
+            <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+              <Ionicons name="chevron-back" size={24} color="#fff" />
             </Pressable>
-            {cardMenuLink && cardMenuLink.documentIds.length > 0 && (
+            <Text style={styles.header} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.4}>
+              {info.title}
+            </Text>
+          </View>
+          <View style={styles.headerButtons}>
+            <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
+              <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
+            </Pressable>
+            <View style={styles.headerButtonsDivider} />
+            <Pressable hitSlop={8} onPress={toggleSelectMode}>
+              <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
+            </Pressable>
+            <View style={styles.headerButtonsDivider} />
+            <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
+              <Ionicons name={isSearching ? 'close' : 'search'} size={17} color="#fff" />
+            </Pressable>
+          </View>
+        </View>
+
+        {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
+        {menuOpen && (
+          <View style={styles.menuPanel}>
+            <Text style={styles.menuSectionLabel}>Вигляд</Text>
+            <Pressable style={styles.menuRow} onPress={() => changeViewMode('list')}>
+              <Ionicons name="reorder-four-outline" size={17} color="#111827" />
+              <Text style={styles.menuRowLabel}>Список</Text>
+              {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+            </Pressable>
+            <Pressable style={styles.menuRow} onPress={() => changeViewMode('grid')}>
+              <Ionicons name="grid-outline" size={17} color="#111827" />
+              <Text style={styles.menuRowLabel}>Сітка</Text>
+              {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+            </Pressable>
+            <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
+          </View>
+        )}
+
+        {groups.length > 0 && (
+          <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" dark />
+        )}
+
+        {tagFilter && (
+          <View style={styles.filterRow}>
+            {tagFilter.type === 'untagged' ? (
+              <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
+                <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
+                <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без тегів</Text>
+                <Pressable hitSlop={8} onPress={() => setTagFilter(null)}>
+                  <Ionicons name="close" size={14} color="#6B7280" />
+                </Pressable>
+              </View>
+            ) : (
+              tagFilter.tagIds.map((tagId) => {
+                const tag = tags.find((t) => t.id === tagId);
+                if (!tag) return null;
+                return (
+                  <View key={tagId} style={[styles.filterChip, { borderColor: tag.color }]}>
+                    <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tag.color} />
+                    <Text style={[styles.filterChipLabel, { color: tag.color }]}>{tag.path}</Text>
+                    <Pressable hitSlop={8} onPress={() => setTagFilter(removeTagFromFilter(tagFilter, tagId))}>
+                      <Ionicons name="close" size={14} color={tag.color} />
+                    </Pressable>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+
+        {isSearching && (
+          <View style={styles.searchRow}>
+            <Ionicons name="search" size={14} color="#9CA3AF" />
+            <TextInput
+              autoFocus
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Пошук за назвою"
+              placeholderTextColor="#9CA3AF"
+              style={styles.searchInput}
+            />
+          </View>
+        )}
+
+        {isLoading ? (
+          <View style={styles.emptyState}>
+            <ActivityIndicator color="#fff" />
+          </View>
+        ) : filteredLinks.length === 0 ? (
+          <View style={styles.emptyState}>
+            <View style={[styles.emptyIcon, { backgroundColor: `${info.color}1A` }]}>
+              <Ionicons name={info.icon} size={32} color={info.color} />
+            </View>
+            <Text style={styles.emptyLabel}>{needle ? 'Нічого не знайдено' : 'Ще немає збережених посилань'}</Text>
+            {!needle && <Text style={styles.emptyHint}>{info.emptyHint}</Text>}
+          </View>
+        ) : viewMode === 'grid' ? (
+          <ScrollView contentContainerStyle={[styles.gridList, isSelectMode && styles.listWithBulkBar]}>
+            {filteredLinks.map(renderLinkGridCell)}
+          </ScrollView>
+        ) : (
+          <ScrollView contentContainerStyle={[styles.list, isSelectMode && styles.listWithBulkBar]}>
+            {filteredLinks.map(renderLinkRow)}
+          </ScrollView>
+        )}
+
+        <Modal
+          visible={cardMenuLink !== null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setCardMenuLinkId(null)}
+        >
+          <Pressable style={styles.cardMenuBackdrop} onPress={() => setCardMenuLinkId(null)}>
+            <Pressable style={styles.cardMenuSheet} onPress={() => {}}>
+              <View style={styles.cardMenuHandle} />
               <Pressable
                 style={styles.cardMenuRow}
                 onPress={() => {
-                  if (cardMenuLink) openDocumentIcon(cardMenuLink);
+                  if (cardMenuLink) setRenamingLink(cardMenuLink);
                   setCardMenuLinkId(null);
                 }}
               >
-                <Ionicons name="document-text-outline" size={18} color="#111827" />
-                <Text style={styles.cardMenuRowLabel}>
-                  Документи{cardMenuLink.documentIds.length > 1 ? ` (${cardMenuLink.documentIds.length})` : ''}
-                </Text>
+                <Ionicons name="pencil-outline" size={18} color="#111827" />
+                <Text style={styles.cardMenuRowLabel}>Редагувати назву</Text>
               </Pressable>
-            )}
+              {cardMenuLink && cardMenuLink.documentIds.length > 0 && (
+                <Pressable
+                  style={styles.cardMenuRow}
+                  onPress={() => {
+                    if (cardMenuLink) openDocumentIcon(cardMenuLink);
+                    setCardMenuLinkId(null);
+                  }}
+                >
+                  <Ionicons name="document-text-outline" size={18} color="#111827" />
+                  <Text style={styles.cardMenuRowLabel}>
+                    Документи{cardMenuLink.documentIds.length > 1 ? ` (${cardMenuLink.documentIds.length})` : ''}
+                  </Text>
+                </Pressable>
+              )}
+            </Pressable>
           </Pressable>
-        </Pressable>
-      </Modal>
+        </Modal>
 
-      <RenamePrompt
-        visible={renamingLink !== null}
-        title="Назва посилання"
-        initialValue={renamingLink?.title ?? ''}
-        onCancel={() => setRenamingLink(null)}
-        onSave={(title) => {
-          if (renamingLink) renameLink(renamingLink, title);
-        }}
-      />
+        <RenamePrompt
+          visible={renamingLink !== null}
+          title="Назва посилання"
+          initialValue={renamingLink?.title ?? ''}
+          onCancel={() => setRenamingLink(null)}
+          onSave={(title) => {
+            if (renamingLink) renameLink(renamingLink, title);
+          }}
+        />
 
-      <RenamePrompt
-        visible={addLinkUrlPromptVisible}
-        title="Нове посилання"
-        placeholder="https://…"
-        initialValue=""
-        onCancel={() => setAddLinkUrlPromptVisible(false)}
-        onSave={submitNewLinkUrl}
-      />
+        <RenamePrompt
+          visible={addLinkUrlPromptVisible}
+          title="Нове посилання"
+          placeholder="https://…"
+          initialValue=""
+          onCancel={() => setAddLinkUrlPromptVisible(false)}
+          onSave={submitNewLinkUrl}
+        />
 
-      <RenamePrompt
-        visible={addLinkTitlePrompt !== null}
-        title="Назва посилання"
-        initialValue=""
-        onCancel={() => setAddLinkTitlePrompt(null)}
-        onSave={confirmAddLinkTitle}
-      />
+        <RenamePrompt
+          visible={addLinkTitlePrompt !== null}
+          title="Назва посилання"
+          initialValue=""
+          onCancel={() => setAddLinkTitlePrompt(null)}
+          onSave={confirmAddLinkTitle}
+        />
 
-      {isAddingLink && (
-        <View style={styles.addLinkLoading}>
-          <ActivityIndicator color="#fff" />
-        </View>
-      )}
+        {isAddingLink && (
+          <View style={styles.addLinkLoading}>
+            <ActivityIndicator color="#fff" />
+          </View>
+        )}
 
-      <DocumentPickerModal
-        visible={documentPicker !== null}
-        subtitle={documentPicker?.link.title || (documentPicker ? hostnameOf(documentPicker.link.url) : undefined)}
-        documents={documentPicker?.documents ?? []}
-        onPick={pickDocument}
-        onClose={() => setDocumentPicker(null)}
-      />
+        <DocumentPickerModal
+          visible={documentPicker !== null}
+          subtitle={documentPicker?.link.title || (documentPicker ? hostnameOf(documentPicker.link.url) : undefined)}
+          documents={documentPicker?.documents ?? []}
+          onPick={pickDocument}
+          onClose={() => setDocumentPicker(null)}
+        />
 
-      <TagPicker
-        visible={tagPickerLink !== null}
-        kind={tagKind}
-        tags={tags}
-        selectedTagIds={tagPickerLink?.tagIds ?? []}
-        onAttach={(tag) => tagPickerLink && attachTag(tag, tagKind, tagPickerLink.id, 'links')}
-        onDetach={(tag) => tagPickerLink && detachTag(tag, tagKind, tagPickerLink.id, 'links')}
-        onCreateAndAttach={(path, icon, color) =>
-          tagPickerLink && createAndAttachTag(path, icon, color, tagKind, tagPickerLink.id, 'links')
-        }
-        onRenameTag={renameTag}
-        onClose={() => setTagPickerForId(null)}
-      />
+        <TagPicker
+          visible={tagPickerLink !== null}
+          kind={tagKind}
+          tags={tags}
+          selectedTagIds={tagPickerLink?.tagIds ?? []}
+          onAttach={(tag) => tagPickerLink && attachTag(tag, tagKind, tagPickerLink.id, 'links')}
+          onDetach={(tag) => tagPickerLink && detachTag(tag, tagKind, tagPickerLink.id, 'links')}
+          onCreateAndAttach={(path, icon, color) =>
+            tagPickerLink && createAndAttachTag(path, icon, color, tagKind, tagPickerLink.id, 'links')
+          }
+          onRenameTag={renameTag}
+          onClose={() => setTagPickerForId(null)}
+        />
 
-      <TagPicker
-        visible={bulkTagPickerVisible}
-        kind={tagKind}
-        tags={tags}
-        selectedTagIds={[]}
-        onAttach={bulkAttachTag}
-        onDetach={() => {}}
-        onCreateAndAttach={bulkCreateAndAttachTag}
-        onRenameTag={renameTag}
-        onClose={() => setBulkTagPickerVisible(false)}
-      />
+        <TagPicker
+          visible={bulkTagPickerVisible}
+          kind={tagKind}
+          tags={tags}
+          selectedTagIds={[]}
+          onAttach={bulkAttachTag}
+          onDetach={() => {}}
+          onCreateAndAttach={bulkCreateAndAttachTag}
+          onRenameTag={renameTag}
+          onClose={() => setBulkTagPickerVisible(false)}
+        />
 
-      <GroupPickerSheet
-        visible={bulkGroupPickerVisible}
-        kind={groupKind}
-        groups={groups}
-        onPick={bulkAssignGroup}
-        onClose={() => setBulkGroupPickerVisible(false)}
-      />
+        <GroupPickerSheet
+          visible={bulkGroupPickerVisible}
+          kind={groupKind}
+          groups={groups}
+          onPick={bulkAssignGroup}
+          onClose={() => setBulkGroupPickerVisible(false)}
+        />
 
-      <CopyToNoteModal
-        visible={bulkCopyModalVisible}
-        onPickExisting={bulkCopyToExisting}
-        onPickNew={bulkCopyToNew}
-        onClose={() => setBulkCopyModalVisible(false)}
-      />
+        <CopyToNoteModal
+          visible={bulkCopyModalVisible}
+          onPickExisting={bulkCopyToExisting}
+          onPickNew={bulkCopyToNew}
+          onClose={() => setBulkCopyModalVisible(false)}
+        />
+      </ContentColumn>
 
       <TagsDrawer
         tags={drawerTags}

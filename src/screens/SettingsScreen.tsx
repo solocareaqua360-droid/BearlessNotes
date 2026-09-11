@@ -16,6 +16,7 @@ import {
   isDriveConnected,
   runDriveDiagnostics,
 } from '../utils/googleDrive';
+import ContentColumn from '../components/ContentColumn';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -142,91 +143,94 @@ export default function SettingsScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <Text style={styles.header}>Налаштування</Text>
-      </View>
-
-      <View style={[styles.card, styles.updateCard]}>
-        <View style={styles.cardHeader}>
-          <Ionicons name="cloud-download-outline" size={22} color={ACCENT} />
-          <Text style={styles.cardTitle}>Версія застосунку</Text>
+      <ContentColumn>
+        <View style={styles.headerRow}>
+          <Text style={styles.header}>Налаштування</Text>
         </View>
-        <Text style={styles.cardBody}>
-          {Updates.isEmbeddedLaunch
-            ? 'Працює версія з APK (жодного оновлення ще не застосовано)'
-            : `Оновлення ${(Updates.updateId ?? '').slice(0, 8)} від ${formatUpdateTime(Updates.createdAt)}`}
-        </Text>
-        <Text style={styles.cardHint}>
-          Нові версії приходять по повітрю: застосунок завантажує їх при запуску, а застосовує при наступному. Кнопка
-          нижче робить обидва кроки одразу.
-        </Text>
-        <Pressable style={styles.checkButton} onPress={handleCheckUpdate} disabled={updateBusy}>
-          {updateBusy ? (
-            <ActivityIndicator color={ACCENT} />
-          ) : (
-            <Text style={styles.checkLabel}>Перевірити оновлення</Text>
-          )}
-        </Pressable>
-      </View>
 
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Ionicons name="cloud-outline" size={22} color={ACCENT} />
-          <Text style={styles.cardTitle}>Google Drive</Text>
-        </View>
-        {email ? (
-          <>
-            <Text style={styles.cardBody}>
-              Підключено: <Text style={styles.emailText}>{email}</Text>
-            </Text>
-            <Text style={styles.cardHint}>
-              Нові файли й фото автоматично копіюються в папку "Bearless Notes" на Диску.
-            </Text>
-            <View style={styles.trafficRow}>
-              <Ionicons name="server-outline" size={15} color="#6B7280" />
-              {quotaLoading && !quota ? (
-                <ActivityIndicator size="small" color="#6B7280" />
-              ) : quota ? (
-                <Text style={styles.trafficLabel}>
-                  Диск: {formatBytes(quota.usage)}
-                  {quota.limit != null
-                    ? ` з ${formatBytes(quota.limit)} (${Math.round((quota.usage / quota.limit) * 100)}%)`
-                    : ' (без обмеження)'}
-                </Text>
-              ) : (
-                <Text style={styles.trafficLabel}>Не вдалося отримати дані про Диск</Text>
-              )}
-              <Pressable onPress={loadQuota} disabled={quotaLoading} hitSlop={8}>
-                <Ionicons name="refresh-outline" size={15} color={ACCENT} />
-              </Pressable>
-            </View>
-            {!!stats && stats.fileCount > 0 && (
-              <View style={styles.trafficRow}>
-                <Ionicons name="cloud-upload-outline" size={15} color="#6B7280" />
-                <Text style={styles.trafficLabel}>
-                  Завантажено застосунком: {formatBytes(stats.totalBytesStored)} ({stats.fileCount}{' '}
-                  {stats.fileCount === 1 ? 'файл' : 'файлів'})
-                </Text>
-              </View>
+        <View style={[styles.card, styles.updateCard]}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="cloud-download-outline" size={22} color={ACCENT} />
+            <Text style={styles.cardTitle}>Версія застосунку</Text>
+          </View>
+          <Text style={styles.cardBody}>
+            {Updates.isEmbeddedLaunch
+              ? 'Працює версія з APK (жодного оновлення ще не застосовано)'
+              : `Оновлення ${(Updates.updateId ?? '').slice(0, 8)} від ${formatUpdateTime(Updates.createdAt)}`}
+          </Text>
+          <Text style={styles.cardHint}>
+            Нові версії приходять по повітрю: застосунок завантажує їх при запуску, а застосовує при наступному. Кнопка
+            нижче робить обидва кроки одразу.
+          </Text>
+          <Pressable style={styles.checkButton} onPress={handleCheckUpdate} disabled={updateBusy}>
+            {updateBusy ? (
+              <ActivityIndicator color={ACCENT} />
+            ) : (
+              <Text style={styles.checkLabel}>Перевірити оновлення</Text>
             )}
-            <Pressable style={styles.checkButton} onPress={handleCheckConnection} disabled={busy}>
-              {busy ? <ActivityIndicator color={ACCENT} /> : <Text style={styles.checkLabel}>Перевірити з'єднання</Text>}
-            </Pressable>
-            <Pressable style={styles.disconnectButton} onPress={handleDisconnect} disabled={busy}>
-              <Text style={styles.disconnectLabel}>Відключити</Text>
-            </Pressable>
-          </>
-        ) : (
-          <>
-            <Text style={styles.cardHint}>
-              Підключи Google-акаунт, щоб нові файли й фото автоматично копіювались на твій Google Диск.
-            </Text>
-            <Pressable style={styles.connectButton} onPress={handleConnect} disabled={busy}>
-              {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.connectLabel}>Підключити</Text>}
-            </Pressable>
-          </>
-        )}
-      </View>
+          </Pressable>
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="cloud-outline" size={22} color={ACCENT} />
+            <Text style={styles.cardTitle}>Google Drive</Text>
+          </View>
+          {email ? (
+            <>
+              <Text style={styles.cardBody}>
+                Підключено: <Text style={styles.emailText}>{email}</Text>
+              </Text>
+              <Text style={styles.cardHint}>
+                Нові файли й фото автоматично копіюються в папку "Bearless Notes" на Диску.
+              </Text>
+              <View style={styles.trafficRow}>
+                <Ionicons name="server-outline" size={15} color="#6B7280" />
+                {quotaLoading && !quota ? (
+                  <ActivityIndicator size="small" color="#6B7280" />
+                ) : quota ? (
+                  <Text style={styles.trafficLabel}>
+                    Диск: {formatBytes(quota.usage)}
+                    {quota.limit != null
+                      ? ` з ${formatBytes(quota.limit)} (${Math.round((quota.usage / quota.limit) * 100)}%)`
+                      : ' (без обмеження)'}
+                  </Text>
+                ) : (
+                  <Text style={styles.trafficLabel}>Не вдалося отримати дані про Диск</Text>
+                )}
+                <Pressable onPress={loadQuota} disabled={quotaLoading} hitSlop={8}>
+                  <Ionicons name="refresh-outline" size={15} color={ACCENT} />
+                </Pressable>
+              </View>
+              {!!stats && stats.fileCount > 0 && (
+                <View style={styles.trafficRow}>
+                  <Ionicons name="cloud-upload-outline" size={15} color="#6B7280" />
+                  <Text style={styles.trafficLabel}>
+                    Завантажено застосунком: {formatBytes(stats.totalBytesStored)} ({stats.fileCount}{' '}
+                    {stats.fileCount === 1 ? 'файл' : 'файлів'})
+                  </Text>
+                </View>
+              )}
+              <Pressable style={styles.checkButton} onPress={handleCheckConnection} disabled={busy}>
+                {busy ? <ActivityIndicator color={ACCENT} /> : <Text style={styles.checkLabel}>Перевірити з'єднання</Text>}
+              </Pressable>
+              <Pressable style={styles.disconnectButton} onPress={handleDisconnect} disabled={busy}>
+                <Text style={styles.disconnectLabel}>Відключити</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text style={styles.cardHint}>
+                Підключи Google-акаунт, щоб нові файли й фото автоматично копіювались на твій Google Диск.
+              </Text>
+              <Pressable style={styles.connectButton} onPress={handleConnect} disabled={busy}>
+                {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.connectLabel}>Підключити</Text>}
+              </Pressable>
+            </>
+          )}
+        </View>
+      </ContentColumn>
+
     </View>
   );
 }

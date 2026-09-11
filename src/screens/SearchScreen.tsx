@@ -9,6 +9,7 @@ import { DocumentItem } from '../types';
 import { RootStackParamList } from '../navigation';
 import DocumentCard from '../components/DocumentCard';
 import { documentMatchesQuery, extractPreview, findBodyMatch, findTitleMatch } from '../utils/documentPreview';
+import ContentColumn from '../components/ContentColumn';
 
 const documentsCollection = collection(db, 'documents');
 
@@ -46,44 +47,47 @@ export default function SearchScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={22} color="#111827" />
-        </Pressable>
-      </View>
+      <ContentColumn>
+        <View style={styles.headerRow}>
+          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={22} color="#111827" />
+          </Pressable>
+        </View>
 
-      <View style={styles.searchRow}>
-        <Ionicons name="search" size={16} color="#9CA3AF" />
-        <TextInput
-          autoFocus
-          value={query_}
-          onChangeText={setQuery}
-          placeholder="Пошук документів"
-          placeholderTextColor="#9CA3AF"
-          style={styles.searchInput}
-        />
-      </View>
+        <View style={styles.searchRow}>
+          <Ionicons name="search" size={16} color="#9CA3AF" />
+          <TextInput
+            autoFocus
+            value={query_}
+            onChangeText={setQuery}
+            placeholder="Пошук документів"
+            placeholderTextColor="#9CA3AF"
+            style={styles.searchInput}
+          />
+        </View>
 
-      <ScrollView contentContainerStyle={styles.list}>
-        {matches.map((item) => {
-          const titleMatch = findTitleMatch(item.title ?? '', needle);
-          const bodyMatch = titleMatch ? null : findBodyMatch(item.blocks, needle);
-          const { imageUri, previewText } = extractPreview(item.blocks, item.coverImageUri);
-          return (
-            <DocumentCard
-              key={item.id}
-              id={item.id}
-              title={item.title}
-              updatedAt={item.updatedAt}
-              imageUri={imageUri}
-              previewText={previewText}
-              titleMatch={titleMatch}
-              bodyMatch={bodyMatch}
-              onPress={() => navigation.navigate('Editor', { documentId: item.id })}
-            />
-          );
-        })}
-      </ScrollView>
+        <ScrollView contentContainerStyle={styles.list}>
+          {matches.map((item) => {
+            const titleMatch = findTitleMatch(item.title ?? '', needle);
+            const bodyMatch = titleMatch ? null : findBodyMatch(item.blocks, needle);
+            const { imageUri, previewText } = extractPreview(item.blocks, item.coverImageUri);
+            return (
+              <DocumentCard
+                key={item.id}
+                id={item.id}
+                title={item.title}
+                updatedAt={item.updatedAt}
+                imageUri={imageUri}
+                previewText={previewText}
+                titleMatch={titleMatch}
+                bodyMatch={bodyMatch}
+                onPress={() => navigation.navigate('Editor', { documentId: item.id })}
+              />
+            );
+          })}
+        </ScrollView>
+      </ContentColumn>
+
     </View>
   );
 }

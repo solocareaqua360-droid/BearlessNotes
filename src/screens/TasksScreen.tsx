@@ -39,6 +39,7 @@ import { useSortPref } from '../hooks/useSortPref';
 import { cancelReminder, scheduleReminder } from '../utils/reminders';
 import { formatShortDate, parseDateKey } from '../utils/dateLocale';
 import { sortItems } from '../utils/sortItems';
+import ContentColumn from '../components/ContentColumn';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -746,182 +747,185 @@ export default function TasksScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <View style={styles.headerLeft}>
-          <Pressable
-            hitSlop={8}
-            onPress={() => (kanbanMode ? setKanbanMode(false) : navigation.goBack())}
-          >
-            <Ionicons name="chevron-back" size={22} color="#111827" />
-          </Pressable>
-          <Text style={styles.header}>{kanbanMode ? 'Справи на сьогодні' : 'Справи'}</Text>
+      <ContentColumn>
+        <View style={styles.headerRow}>
+          <View style={styles.headerLeft}>
+            <Pressable
+              hitSlop={8}
+              onPress={() => (kanbanMode ? setKanbanMode(false) : navigation.goBack())}
+            >
+              <Ionicons name="chevron-back" size={22} color="#111827" />
+            </Pressable>
+            <Text style={styles.header}>{kanbanMode ? 'Справи на сьогодні' : 'Справи'}</Text>
+          </View>
+          <View style={styles.headerButtonsCapsule}>
+            <Pressable
+              style={styles.headerButtonsCapsuleBtn}
+              hitSlop={6}
+              onPress={() => setMenuOpen((v) => !v)}
+              accessibilityLabel="Меню"
+            >
+              <Ionicons name="ellipsis-horizontal" size={18} color="#6B7280" />
+            </Pressable>
+            <View style={styles.headerButtonsCapsuleDivider} />
+            <Pressable
+              style={styles.headerButtonsCapsuleBtn}
+              hitSlop={6}
+              onPress={() =>
+                setKanbanMode((v) => {
+                  const next = !v;
+                  if (next) clearSelection();
+                  return next;
+                })
+              }
+              accessibilityLabel="Канбан"
+            >
+              <Ionicons
+                name={kanbanMode ? 'list-outline' : 'albums-outline'}
+                size={18}
+                color={kanbanMode ? '#111827' : '#6B7280'}
+              />
+            </Pressable>
+            <View style={styles.headerButtonsCapsuleDivider} />
+            <Pressable
+              style={styles.headerButtonsCapsuleBtn}
+              hitSlop={6}
+              onPress={() => {
+                if (!isSelectMode) setKanbanMode(false);
+                toggleSelectMode();
+              }}
+              accessibilityLabel="Виділити"
+            >
+              <Ionicons
+                name={isSelectMode ? 'close' : 'checkmark-circle-outline'}
+                size={18}
+                color={isSelectMode ? '#111827' : '#6B7280'}
+              />
+            </Pressable>
+          </View>
         </View>
-        <View style={styles.headerButtonsCapsule}>
-          <Pressable
-            style={styles.headerButtonsCapsuleBtn}
-            hitSlop={6}
-            onPress={() => setMenuOpen((v) => !v)}
-            accessibilityLabel="Меню"
-          >
-            <Ionicons name="ellipsis-horizontal" size={18} color="#6B7280" />
-          </Pressable>
-          <View style={styles.headerButtonsCapsuleDivider} />
-          <Pressable
-            style={styles.headerButtonsCapsuleBtn}
-            hitSlop={6}
-            onPress={() =>
-              setKanbanMode((v) => {
-                const next = !v;
-                if (next) clearSelection();
-                return next;
-              })
-            }
-            accessibilityLabel="Канбан"
-          >
-            <Ionicons
-              name={kanbanMode ? 'list-outline' : 'albums-outline'}
-              size={18}
-              color={kanbanMode ? '#111827' : '#6B7280'}
-            />
-          </Pressable>
-          <View style={styles.headerButtonsCapsuleDivider} />
-          <Pressable
-            style={styles.headerButtonsCapsuleBtn}
-            hitSlop={6}
-            onPress={() => {
-              if (!isSelectMode) setKanbanMode(false);
-              toggleSelectMode();
-            }}
-            accessibilityLabel="Виділити"
-          >
-            <Ionicons
-              name={isSelectMode ? 'close' : 'checkmark-circle-outline'}
-              size={18}
-              color={isSelectMode ? '#111827' : '#6B7280'}
-            />
-          </Pressable>
-        </View>
-      </View>
 
-      {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
-      {menuOpen && (
-        <View style={styles.menuPanel}>
-          <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
-        </View>
-      )}
+        {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
+        {menuOpen && (
+          <View style={styles.menuPanel}>
+            <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
+          </View>
+        )}
 
-      {!kanbanMode && projects.length > 0 && (
-        <ProjectTabsRow items={projects} selected={projectFilter} onSelect={setProjectFilter} />
-      )}
+        {!kanbanMode && projects.length > 0 && (
+          <ProjectTabsRow items={projects} selected={projectFilter} onSelect={setProjectFilter} />
+        )}
 
-      {kanbanMode ? (
-        renderKanbanBoard()
-      ) : (
-      <ScrollView contentContainerStyle={styles.list}>
-        {todayTasks.length > 0 &&
-          renderSection({
-            key: '__today__',
-            title: 'СЬОГОДНІ',
-            color: '#F59E0B',
-            icon: 'star',
-            unfinished: todayTasks.filter((t) => !t.checked),
-            completed: todayTasks.filter((t) => t.checked),
+        {kanbanMode ? (
+          renderKanbanBoard()
+        ) : (
+        <ScrollView contentContainerStyle={styles.list}>
+          {todayTasks.length > 0 &&
+            renderSection({
+              key: '__today__',
+              title: 'СЬОГОДНІ',
+              color: '#F59E0B',
+              icon: 'star',
+              unfinished: todayTasks.filter((t) => !t.checked),
+              completed: todayTasks.filter((t) => t.checked),
+            })}
+
+          {todayTasks.length > 0 && <View style={styles.todayDivider} />}
+
+          {renderSection({
+            key: '__all__',
+            title: null,
+            color: null,
+            unfinished: filteredTasks.filter((t) => !t.checked && !isTaskToday(t, today)),
+            completed: filteredTasks.filter((t) => t.checked && !isTaskToday(t, today)),
           })}
 
-        {todayTasks.length > 0 && <View style={styles.todayDivider} />}
-
-        {renderSection({
-          key: '__all__',
-          title: null,
-          color: null,
-          unfinished: filteredTasks.filter((t) => !t.checked && !isTaskToday(t, today)),
-          completed: filteredTasks.filter((t) => t.checked && !isTaskToday(t, today)),
-        })}
-
-        {filteredTasks.length === 0 && (
-          <Text style={styles.emptyFilterLabel}>Немає справ із цим фільтром</Text>
+          {filteredTasks.length === 0 && (
+            <Text style={styles.emptyFilterLabel}>Немає справ із цим фільтром</Text>
+          )}
+        </ScrollView>
         )}
-      </ScrollView>
-      )}
 
-      {isSelectMode && selectedIds.size > 0 && (
-        <View style={styles.selectionBar}>
-          <Text style={styles.selectionCount}>{selectedIds.size}</Text>
-          <Pressable style={styles.selectionDeleteBtn} onPress={confirmBulkDeleteTasks}>
-            <Ionicons name="trash-outline" size={18} color={DANGER} />
-            <Text style={styles.selectionDeleteLabel}>Видалити</Text>
-          </Pressable>
-        </View>
-      )}
-
-      <Modal visible={pickerTaskId !== null} transparent animationType="fade" onRequestClose={() => setPickerTaskId(null)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setPickerTaskId(null)}>
-          <Pressable style={[styles.modalSheet, { marginBottom: keyboardHeight }]} onPress={() => {}}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Оберіть проект</Text>
-
-            <Pressable style={styles.modalRow} onPress={() => assignProject(null)}>
-              <View style={[styles.modalDot, { backgroundColor: '#9CA3AF' }]} />
-              <Text style={styles.modalRowText}>Без проекту</Text>
+        {isSelectMode && selectedIds.size > 0 && (
+          <View style={styles.selectionBar}>
+            <Text style={styles.selectionCount}>{selectedIds.size}</Text>
+            <Pressable style={styles.selectionDeleteBtn} onPress={confirmBulkDeleteTasks}>
+              <Ionicons name="trash-outline" size={18} color={DANGER} />
+              <Text style={styles.selectionDeleteLabel}>Видалити</Text>
             </Pressable>
+          </View>
+        )}
 
-            {projects.map((p) =>
-              editingProjectId === p.id ? (
-                <View key={p.id} style={styles.modalRow}>
-                  <View style={[styles.modalDot, { backgroundColor: p.color }]} />
-                  <TextInput
-                    style={styles.modalRenameInput}
-                    value={editingProjectName}
-                    onChangeText={setEditingProjectName}
-                    autoFocus
-                    onSubmitEditing={saveEditProject}
-                    onBlur={saveEditProject}
-                    returnKeyType="done"
-                  />
-                </View>
-              ) : (
-                <View key={p.id} style={styles.modalRow}>
-                  <Pressable style={styles.modalRowTap} onPress={() => assignProject(p.id)}>
-                    <View style={[styles.modalDot, { backgroundColor: p.color }]} />
-                    <Text style={styles.modalRowText}>{p.name}</Text>
-                  </Pressable>
-                  <Pressable hitSlop={8} onPress={() => startEditProject(p)}>
-                    <Ionicons name="pencil-outline" size={16} color="#9CA3AF" />
-                  </Pressable>
-                  <Pressable hitSlop={8} onPress={() => confirmDeleteProject(p)}>
-                    <Ionicons name="close" size={16} color="#9CA3AF" />
-                  </Pressable>
-                </View>
-              )
-            )}
+        <Modal visible={pickerTaskId !== null} transparent animationType="fade" onRequestClose={() => setPickerTaskId(null)}>
+          <Pressable style={styles.modalBackdrop} onPress={() => setPickerTaskId(null)}>
+            <Pressable style={[styles.modalSheet, { marginBottom: keyboardHeight }]} onPress={() => {}}>
+              <View style={styles.modalHandle} />
+              <Text style={styles.modalTitle}>Оберіть проект</Text>
 
-            <View style={styles.modalDivider} />
-
-            <View style={styles.modalAddRow}>
-              <TextInput
-                style={styles.modalInput}
-                value={newProjectName}
-                onChangeText={setNewProjectName}
-                placeholder="Новий проект"
-                onSubmitEditing={addProject}
-                returnKeyType="done"
-              />
-              <Pressable hitSlop={8} onPress={addProject}>
-                <Ionicons name="add-circle" size={26} color={ACCENT} />
+              <Pressable style={styles.modalRow} onPress={() => assignProject(null)}>
+                <View style={[styles.modalDot, { backgroundColor: '#9CA3AF' }]} />
+                <Text style={styles.modalRowText}>Без проекту</Text>
               </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
 
-      <ReminderSheet
-        visible={reminderTaskId !== null}
-        initialDate={reminderTaskId ? tasks.find((t) => t.id === reminderTaskId)?.reminderDate : undefined}
-        initialTime={reminderTaskId ? tasks.find((t) => t.id === reminderTaskId)?.reminderTime : undefined}
-        onClose={() => setReminderTaskId(null)}
-        onSave={saveTaskReminder}
-        onClear={clearTaskReminder}
-      />
+              {projects.map((p) =>
+                editingProjectId === p.id ? (
+                  <View key={p.id} style={styles.modalRow}>
+                    <View style={[styles.modalDot, { backgroundColor: p.color }]} />
+                    <TextInput
+                      style={styles.modalRenameInput}
+                      value={editingProjectName}
+                      onChangeText={setEditingProjectName}
+                      autoFocus
+                      onSubmitEditing={saveEditProject}
+                      onBlur={saveEditProject}
+                      returnKeyType="done"
+                    />
+                  </View>
+                ) : (
+                  <View key={p.id} style={styles.modalRow}>
+                    <Pressable style={styles.modalRowTap} onPress={() => assignProject(p.id)}>
+                      <View style={[styles.modalDot, { backgroundColor: p.color }]} />
+                      <Text style={styles.modalRowText}>{p.name}</Text>
+                    </Pressable>
+                    <Pressable hitSlop={8} onPress={() => startEditProject(p)}>
+                      <Ionicons name="pencil-outline" size={16} color="#9CA3AF" />
+                    </Pressable>
+                    <Pressable hitSlop={8} onPress={() => confirmDeleteProject(p)}>
+                      <Ionicons name="close" size={16} color="#9CA3AF" />
+                    </Pressable>
+                  </View>
+                )
+              )}
+
+              <View style={styles.modalDivider} />
+
+              <View style={styles.modalAddRow}>
+                <TextInput
+                  style={styles.modalInput}
+                  value={newProjectName}
+                  onChangeText={setNewProjectName}
+                  placeholder="Новий проект"
+                  onSubmitEditing={addProject}
+                  returnKeyType="done"
+                />
+                <Pressable hitSlop={8} onPress={addProject}>
+                  <Ionicons name="add-circle" size={26} color={ACCENT} />
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        <ReminderSheet
+          visible={reminderTaskId !== null}
+          initialDate={reminderTaskId ? tasks.find((t) => t.id === reminderTaskId)?.reminderDate : undefined}
+          initialTime={reminderTaskId ? tasks.find((t) => t.id === reminderTaskId)?.reminderTime : undefined}
+          onClose={() => setReminderTaskId(null)}
+          onSave={saveTaskReminder}
+          onClear={clearTaskReminder}
+        />
+      </ContentColumn>
+
     </View>
   );
 }

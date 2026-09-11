@@ -7,6 +7,7 @@ import { Tag } from '../types';
 import { RootStackParamList } from '../navigation';
 import { useTags } from '../hooks/useTags';
 import TagEditSheet from '../components/TagEditSheet';
+import ContentColumn from '../components/ContentColumn';
 
 const DANGER = '#EF4444';
 
@@ -44,66 +45,69 @@ export default function TagManageScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <Text style={styles.header}>Теги</Text>
-        <Pressable
-          hitSlop={8}
-          onPress={() => navigation.navigate('Placeholder', { icon: 'ellipsis-horizontal-outline', label: 'Скоро' })}
-        >
-          <Ionicons name="ellipsis-horizontal-outline" size={22} color="#111827" />
-        </Pressable>
-      </View>
-      <Text style={styles.subtitle}>
-        Керування вже існуючими тегами. Створити новий тег можна лише разом із присвоєнням елементу.
-      </Text>
-
-      {!isLoading && tags.length === 0 ? (
-        <View style={styles.emptyState}>
-          <View style={styles.emptyIcon}>
-            <Ionicons name="pricetag-outline" size={32} color="#3B82F6" />
-          </View>
-          <Text style={styles.emptyLabel}>Ще немає тегів</Text>
-          <Text style={styles.emptyHint}>Додайте перший тег через меню тегів на будь-якому елементі</Text>
+      <ContentColumn>
+        <View style={styles.headerRow}>
+          <Text style={styles.header}>Теги</Text>
+          <Pressable
+            hitSlop={8}
+            onPress={() => navigation.navigate('Placeholder', { icon: 'ellipsis-horizontal-outline', label: 'Скоро' })}
+          >
+            <Ionicons name="ellipsis-horizontal-outline" size={22} color="#111827" />
+          </Pressable>
         </View>
-      ) : (
-        <ScrollView contentContainerStyle={styles.list}>
-          {tags.map((tag) => (
-            <View key={tag.id} style={styles.row}>
-              <Pressable
-                style={styles.rowTap}
-                onPress={() => navigation.navigate('TagItems', { tagId: tag.id })}
-              >
-                <View style={[styles.rowIcon, { backgroundColor: `${tag.color}1A` }]}>
-                  <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={16} color={tag.color} />
-                </View>
-                <View style={styles.rowBody}>
-                  <Text style={styles.rowLabel}>{tag.path}</Text>
-                  <Text style={styles.rowMeta}>
-                    {Object.keys(tag.usedIn).length} {Object.keys(tag.usedIn).length === 1 ? 'елемент' : 'елементів'} ·{' '}
-                    {tag.types.map((t) => KIND_LABELS[t] ?? t).join(', ')}
-                  </Text>
-                </View>
-              </Pressable>
-              <Pressable hitSlop={8} style={styles.rowAction} onPress={() => setEditingTag(tag)}>
-                <Ionicons name="pencil-outline" size={15} color="#9CA3AF" />
-              </Pressable>
-              <Pressable hitSlop={8} style={styles.rowAction} onPress={() => confirmDelete(tag)}>
-                <Ionicons name="trash-outline" size={15} color={DANGER} />
-              </Pressable>
-            </View>
-          ))}
-        </ScrollView>
-      )}
+        <Text style={styles.subtitle}>
+          Керування вже існуючими тегами. Створити новий тег можна лише разом із присвоєнням елементу.
+        </Text>
 
-      <TagEditSheet
-        visible={editingTag !== null}
-        tag={editingTag}
-        onCancel={() => setEditingTag(null)}
-        onSave={(path, icon, color) => {
-          if (editingTag) updateTag(editingTag, { path, icon, color });
-          setEditingTag(null);
-        }}
-      />
+        {!isLoading && tags.length === 0 ? (
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIcon}>
+              <Ionicons name="pricetag-outline" size={32} color="#3B82F6" />
+            </View>
+            <Text style={styles.emptyLabel}>Ще немає тегів</Text>
+            <Text style={styles.emptyHint}>Додайте перший тег через меню тегів на будь-якому елементі</Text>
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={styles.list}>
+            {tags.map((tag) => (
+              <View key={tag.id} style={styles.row}>
+                <Pressable
+                  style={styles.rowTap}
+                  onPress={() => navigation.navigate('TagItems', { tagId: tag.id })}
+                >
+                  <View style={[styles.rowIcon, { backgroundColor: `${tag.color}1A` }]}>
+                    <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={16} color={tag.color} />
+                  </View>
+                  <View style={styles.rowBody}>
+                    <Text style={styles.rowLabel}>{tag.path}</Text>
+                    <Text style={styles.rowMeta}>
+                      {Object.keys(tag.usedIn).length} {Object.keys(tag.usedIn).length === 1 ? 'елемент' : 'елементів'} ·{' '}
+                      {tag.types.map((t) => KIND_LABELS[t] ?? t).join(', ')}
+                    </Text>
+                  </View>
+                </Pressable>
+                <Pressable hitSlop={8} style={styles.rowAction} onPress={() => setEditingTag(tag)}>
+                  <Ionicons name="pencil-outline" size={15} color="#9CA3AF" />
+                </Pressable>
+                <Pressable hitSlop={8} style={styles.rowAction} onPress={() => confirmDelete(tag)}>
+                  <Ionicons name="trash-outline" size={15} color={DANGER} />
+                </Pressable>
+              </View>
+            ))}
+          </ScrollView>
+        )}
+
+        <TagEditSheet
+          visible={editingTag !== null}
+          tag={editingTag}
+          onCancel={() => setEditingTag(null)}
+          onSave={(path, icon, color) => {
+            if (editingTag) updateTag(editingTag, { path, icon, color });
+            setEditingTag(null);
+          }}
+        />
+      </ContentColumn>
+
     </View>
   );
 }

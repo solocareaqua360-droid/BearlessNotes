@@ -24,6 +24,7 @@ import { createBoardForGroup, importGroupToBoard } from '../utils/importGroupToB
 import { hapticSuccess } from '../utils/haptics';
 import { groupKindFields, kindsOf, labelForKind } from '../utils/groups';
 import { rowTitleOf } from '../utils/customRowDisplay';
+import ContentColumn from '../components/ContentColumn';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -293,182 +294,184 @@ export default function GroupsScreen() {
         </Defs>
         <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#groupsBg)" />
       </Svg>
-
-      <View style={styles.headerRow}>
-        <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={24} color="#fff" />
-        </Pressable>
-        <Text style={styles.header}>Групи</Text>
-      </View>
-
-      {isLoading ? (
-        <View style={styles.emptyState}>
-          <ActivityIndicator color="#fff" />
+      <ContentColumn>
+        <View style={styles.headerRow}>
+          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={24} color="#fff" />
+          </Pressable>
+          <Text style={styles.header}>Групи</Text>
         </View>
-      ) : (
-        <ScrollView contentContainerStyle={styles.list}>
-          {activeGroups.length === 0 ? (
-            <Text style={styles.emptyHint}>
-              Групи створюються там, де ви їх використовуєте — у документах, фото, файлах чи власній базі.
-            </Text>
-          ) : (
-            activeGroups.map(renderGroupRow)
-          )}
 
-          {archivedGroups.length > 0 && (
-            <>
-              <Pressable style={styles.archiveToggle} onPress={() => setShowArchived((v) => !v)}>
-                <Ionicons
-                  name={showArchived ? 'chevron-down' : 'chevron-forward'}
-                  size={15}
-                  color="rgba(255,255,255,0.6)"
-                />
-                <Text style={styles.archiveToggleLabel}>Архівні ({archivedGroups.length})</Text>
-              </Pressable>
-              {showArchived && archivedGroups.map(renderGroupRow)}
-            </>
-          )}
-        </ScrollView>
-      )}
+        {isLoading ? (
+          <View style={styles.emptyState}>
+            <ActivityIndicator color="#fff" />
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={styles.list}>
+            {activeGroups.length === 0 ? (
+              <Text style={styles.emptyHint}>
+                Групи створюються там, де ви їх використовуєте — у документах, фото, файлах чи власній базі.
+              </Text>
+            ) : (
+              activeGroups.map(renderGroupRow)
+            )}
 
-      <Modal visible={openGroup !== null} transparent animationType="fade" onRequestClose={() => setOpenGroupId(null)}>
-        <View style={styles.backdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpenGroupId(null)} />
-          <View style={styles.sheet}>
-            <View style={styles.handle} />
-            {openGroup && (
+            {archivedGroups.length > 0 && (
               <>
-                <View style={styles.sheetTitleRow}>
-                  <View style={[styles.colorDot, { backgroundColor: openGroup.color || ACCENT }]} />
-                  <Text style={styles.sheetTitle} numberOfLines={1}>
-                    {openGroup.name}
-                  </Text>
-                </View>
-
-                <View style={styles.actionRow}>
-                  <Pressable style={styles.action} onPress={() => setRenamingGroup(openGroup)}>
-                    <Ionicons name="pencil-outline" size={16} color="#111827" />
-                    <Text style={styles.actionLabel}>Перейменувати</Text>
-                  </Pressable>
-                  <Pressable style={styles.action} onPress={() => setImportingGroup(openGroup)}>
-                    <Ionicons name="apps-outline" size={16} color="#111827" />
-                    <Text style={styles.actionLabel}>На дошку</Text>
-                  </Pressable>
-                  <Pressable style={styles.action} onPress={() => setKindsEditorGroup(openGroup)}>
-                    <Ionicons name="albums-outline" size={16} color="#111827" />
-                    <Text style={styles.actionLabel}>Бази</Text>
-                  </Pressable>
-                  <Pressable style={styles.action} onPress={() => setArchived(openGroup, !openGroup.archived)}>
-                    <Ionicons
-                      name={openGroup.archived ? 'arrow-undo-outline' : 'archive-outline'}
-                      size={16}
-                      color="#111827"
-                    />
-                    <Text style={styles.actionLabel}>{openGroup.archived ? 'Повернути' : 'Архівувати'}</Text>
-                  </Pressable>
-                  <Pressable style={styles.action} onPress={() => confirmDelete(openGroup)}>
-                    <Ionicons name="trash-outline" size={16} color={DANGER} />
-                    <Text style={[styles.actionLabel, { color: DANGER }]}>Видалити</Text>
-                  </Pressable>
-                </View>
-
-                <ScrollView style={styles.itemList} keyboardShouldPersistTaps="handled">
-                  {openItems.length === 0 ? (
-                    <Text style={styles.sheetEmpty}>У цій групі поки нічого немає.</Text>
-                  ) : (
-                    openItems.map((item) => (
-                      <Pressable
-                        key={`${item.kind}:${item.id}`}
-                        style={styles.itemRow}
-                        onPress={() => {
-                          setOpenGroupId(null);
-                          openItem(item);
-                        }}
-                      >
-                        <View style={styles.itemIcon}>
-                          <Ionicons name={item.icon} size={16} color={ACCENT} />
-                        </View>
-                        <View style={styles.rowBody}>
-                          <Text style={styles.itemTitle} numberOfLines={1}>
-                            {titleOf(item, customRowsById)}
-                          </Text>
-                          <Text style={styles.itemKind} numberOfLines={1}>
-                            {labelForKind(item.kind, customDatabaseNames)}
-                          </Text>
-                        </View>
-                      </Pressable>
-                    ))
-                  )}
-                </ScrollView>
+                <Pressable style={styles.archiveToggle} onPress={() => setShowArchived((v) => !v)}>
+                  <Ionicons
+                    name={showArchived ? 'chevron-down' : 'chevron-forward'}
+                    size={15}
+                    color="rgba(255,255,255,0.6)"
+                  />
+                  <Text style={styles.archiveToggleLabel}>Архівні ({archivedGroups.length})</Text>
+                </Pressable>
+                {showArchived && archivedGroups.map(renderGroupRow)}
               </>
             )}
+          </ScrollView>
+        )}
+
+        <Modal visible={openGroup !== null} transparent animationType="fade" onRequestClose={() => setOpenGroupId(null)}>
+          <View style={styles.backdrop}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpenGroupId(null)} />
+            <View style={styles.sheet}>
+              <View style={styles.handle} />
+              {openGroup && (
+                <>
+                  <View style={styles.sheetTitleRow}>
+                    <View style={[styles.colorDot, { backgroundColor: openGroup.color || ACCENT }]} />
+                    <Text style={styles.sheetTitle} numberOfLines={1}>
+                      {openGroup.name}
+                    </Text>
+                  </View>
+
+                  <View style={styles.actionRow}>
+                    <Pressable style={styles.action} onPress={() => setRenamingGroup(openGroup)}>
+                      <Ionicons name="pencil-outline" size={16} color="#111827" />
+                      <Text style={styles.actionLabel}>Перейменувати</Text>
+                    </Pressable>
+                    <Pressable style={styles.action} onPress={() => setImportingGroup(openGroup)}>
+                      <Ionicons name="apps-outline" size={16} color="#111827" />
+                      <Text style={styles.actionLabel}>На дошку</Text>
+                    </Pressable>
+                    <Pressable style={styles.action} onPress={() => setKindsEditorGroup(openGroup)}>
+                      <Ionicons name="albums-outline" size={16} color="#111827" />
+                      <Text style={styles.actionLabel}>Бази</Text>
+                    </Pressable>
+                    <Pressable style={styles.action} onPress={() => setArchived(openGroup, !openGroup.archived)}>
+                      <Ionicons
+                        name={openGroup.archived ? 'arrow-undo-outline' : 'archive-outline'}
+                        size={16}
+                        color="#111827"
+                      />
+                      <Text style={styles.actionLabel}>{openGroup.archived ? 'Повернути' : 'Архівувати'}</Text>
+                    </Pressable>
+                    <Pressable style={styles.action} onPress={() => confirmDelete(openGroup)}>
+                      <Ionicons name="trash-outline" size={16} color={DANGER} />
+                      <Text style={[styles.actionLabel, { color: DANGER }]}>Видалити</Text>
+                    </Pressable>
+                  </View>
+
+                  <ScrollView style={styles.itemList} keyboardShouldPersistTaps="handled">
+                    {openItems.length === 0 ? (
+                      <Text style={styles.sheetEmpty}>У цій групі поки нічого немає.</Text>
+                    ) : (
+                      openItems.map((item) => (
+                        <Pressable
+                          key={`${item.kind}:${item.id}`}
+                          style={styles.itemRow}
+                          onPress={() => {
+                            setOpenGroupId(null);
+                            openItem(item);
+                          }}
+                        >
+                          <View style={styles.itemIcon}>
+                            <Ionicons name={item.icon} size={16} color={ACCENT} />
+                          </View>
+                          <View style={styles.rowBody}>
+                            <Text style={styles.itemTitle} numberOfLines={1}>
+                              {titleOf(item, customRowsById)}
+                            </Text>
+                            <Text style={styles.itemKind} numberOfLines={1}>
+                              {labelForKind(item.kind, customDatabaseNames)}
+                            </Text>
+                          </View>
+                        </Pressable>
+                      ))
+                    )}
+                  </ScrollView>
+                </>
+              )}
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
 
-      <Modal
-        visible={kindsEditorGroup !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setKindsEditorGroup(null)}
-      >
-        <View style={styles.backdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setKindsEditorGroup(null)} />
-          <View style={styles.sheet}>
-            <View style={styles.handle} />
-            <Text style={styles.sheetTitle}>У яких базах показувати</Text>
-            <ScrollView style={styles.itemList}>
-              {[
-                'document',
-                'photo',
-                'file',
-                'link-video',
-                'link-geo',
-                'link-other',
-                ...customDatabases.map((d) => `customRow:${d.id}`),
-              ].map((kind) => {
-                const on = kindsEditorGroup ? kindsOf(kindsEditorGroup).includes(kind) : false;
-                return (
-                  <Pressable
-                    key={kind}
-                    style={styles.itemRow}
-                    onPress={() => kindsEditorGroup && toggleKind(kindsEditorGroup, kind)}
-                  >
-                    <Ionicons
-                      name={on ? 'checkbox' : 'square-outline'}
-                      size={18}
-                      color={on ? ACCENT : '#9CA3AF'}
-                    />
-                    <Text style={styles.itemTitle}>{labelForKind(kind, customDatabaseNames)}</Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+        <Modal
+          visible={kindsEditorGroup !== null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setKindsEditorGroup(null)}
+        >
+          <View style={styles.backdrop}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setKindsEditorGroup(null)} />
+            <View style={styles.sheet}>
+              <View style={styles.handle} />
+              <Text style={styles.sheetTitle}>У яких базах показувати</Text>
+              <ScrollView style={styles.itemList}>
+                {[
+                  'document',
+                  'photo',
+                  'file',
+                  'link-video',
+                  'link-geo',
+                  'link-other',
+                  ...customDatabases.map((d) => `customRow:${d.id}`),
+                ].map((kind) => {
+                  const on = kindsEditorGroup ? kindsOf(kindsEditorGroup).includes(kind) : false;
+                  return (
+                    <Pressable
+                      key={kind}
+                      style={styles.itemRow}
+                      onPress={() => kindsEditorGroup && toggleKind(kindsEditorGroup, kind)}
+                    >
+                      <Ionicons
+                        name={on ? 'checkbox' : 'square-outline'}
+                        size={18}
+                        color={on ? ACCENT : '#9CA3AF'}
+                      />
+                      <Text style={styles.itemTitle}>{labelForKind(kind, customDatabaseNames)}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
 
-      <GroupImportSheet
-        visible={importingGroup !== null}
-        groupName={importingGroup?.name ?? ''}
-        items={importingGroup ? (itemsByGroup[importingGroup.id] ?? []) : []}
-        labelForKind={(kind) => labelForKind(kind, customDatabaseNames)}
-        titleForItem={(item) => titleOf(item as GroupItem, customRowsById)}
-        onCancel={() => setImportingGroup(null)}
-        onConfirm={(selected, target) => {
-          if (importingGroup) runImport(importingGroup, selected as GroupItem[], target);
-        }}
-      />
+        <GroupImportSheet
+          visible={importingGroup !== null}
+          groupName={importingGroup?.name ?? ''}
+          items={importingGroup ? (itemsByGroup[importingGroup.id] ?? []) : []}
+          labelForKind={(kind) => labelForKind(kind, customDatabaseNames)}
+          titleForItem={(item) => titleOf(item as GroupItem, customRowsById)}
+          onCancel={() => setImportingGroup(null)}
+          onConfirm={(selected, target) => {
+            if (importingGroup) runImport(importingGroup, selected as GroupItem[], target);
+          }}
+        />
 
-      <RenamePrompt
-        visible={renamingGroup !== null}
-        title="Назва групи"
-        initialValue={renamingGroup?.name ?? ''}
-        onCancel={() => setRenamingGroup(null)}
-        onSave={(name) => {
-          if (renamingGroup) renameGroup(renamingGroup, name);
-        }}
-      />
+        <RenamePrompt
+          visible={renamingGroup !== null}
+          title="Назва групи"
+          initialValue={renamingGroup?.name ?? ''}
+          onCancel={() => setRenamingGroup(null)}
+          onSave={(name) => {
+            if (renamingGroup) renameGroup(renamingGroup, name);
+          }}
+        />
+      </ContentColumn>
+
     </View>
   );
 }

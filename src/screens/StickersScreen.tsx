@@ -24,6 +24,7 @@ import StickerComposer from '../components/StickerComposer';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import SketchEditor from '../components/SketchEditor';
+import ContentColumn from '../components/ContentColumn';
 
 const STICKER_YELLOW = '#FBE97A';
 const STICKER_DARK = '#4a3f05';
@@ -210,87 +211,89 @@ export default function StickersScreen() {
         </Defs>
         <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#stickersBg)" />
       </Svg>
-
-      <View style={styles.headerRow}>
-        <View style={styles.headerLeft}>
-          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={24} color="#fff" />
-          </Pressable>
-          <Text style={styles.header}>{viewingTrash ? 'Смітник' : 'Стікери'}</Text>
-        </View>
-        <Pressable
-          hitSlop={8}
-          style={[styles.trashToggle, viewingTrash && styles.trashToggleActive]}
-          onPress={() => setViewingTrash((v) => !v)}
-        >
-          <Ionicons
-            name={viewingTrash ? 'close' : 'trash-outline'}
-            size={18}
-            color={viewingTrash ? STICKER_DARK : 'rgba(255,255,255,0.85)'}
-          />
-        </Pressable>
-      </View>
-
-      {isLoading ? (
-        <View style={styles.emptyState}>
-          <ActivityIndicator color="#fff" />
-        </View>
-      ) : visibleStickers.length === 0 ? (
-        <View style={styles.emptyState}>
-          <View style={styles.emptyIcon}>
-            <Ionicons name={viewingTrash ? 'trash-outline' : 'reader-outline'} size={32} color={STICKER_DARK} />
+      <ContentColumn>
+        <View style={styles.headerRow}>
+          <View style={styles.headerLeft}>
+            <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+              <Ionicons name="chevron-back" size={24} color="#fff" />
+            </Pressable>
+            <Text style={styles.header}>{viewingTrash ? 'Смітник' : 'Стікери'}</Text>
           </View>
-          <Text style={styles.emptyLabel}>{viewingTrash ? 'Смітник порожній' : 'Ще немає стікерів'}</Text>
-          {!viewingTrash && (
-            <Text style={styles.emptyHint}>Короткий текст, одне фото або малюнок - як паперовий стікер</Text>
-          )}
+          <Pressable
+            hitSlop={8}
+            style={[styles.trashToggle, viewingTrash && styles.trashToggleActive]}
+            onPress={() => setViewingTrash((v) => !v)}
+          >
+            <Ionicons
+              name={viewingTrash ? 'close' : 'trash-outline'}
+              size={18}
+              color={viewingTrash ? STICKER_DARK : 'rgba(255,255,255,0.85)'}
+            />
+          </Pressable>
         </View>
-      ) : (
-        <ScrollView contentContainerStyle={styles.grid}>{visibleStickers.map(renderSticker)}</ScrollView>
-      )}
 
-      {!viewingTrash && (
-        <Pressable style={styles.fab} onPress={openCreate}>
-          <Ionicons name="add" size={26} color={STICKER_DARK} />
-        </Pressable>
-      )}
+        {isLoading ? (
+          <View style={styles.emptyState}>
+            <ActivityIndicator color="#fff" />
+          </View>
+        ) : visibleStickers.length === 0 ? (
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIcon}>
+              <Ionicons name={viewingTrash ? 'trash-outline' : 'reader-outline'} size={32} color={STICKER_DARK} />
+            </View>
+            <Text style={styles.emptyLabel}>{viewingTrash ? 'Смітник порожній' : 'Ще немає стікерів'}</Text>
+            {!viewingTrash && (
+              <Text style={styles.emptyHint}>Короткий текст, одне фото або малюнок - як паперовий стікер</Text>
+            )}
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={styles.grid}>{visibleStickers.map(renderSticker)}</ScrollView>
+        )}
 
-      <StickerComposer
-        visible={composerVisible}
-        editingTextSticker={editingTextSticker}
-        onClose={() => {
-          setComposerVisible(false);
-          setEditingTextSticker(null);
-        }}
-      />
+        {!viewingTrash && (
+          <Pressable style={styles.fab} onPress={openCreate}>
+            <Ionicons name="add" size={26} color={STICKER_DARK} />
+          </Pressable>
+        )}
 
-      {viewerImageUri && (
-        // See DocumentsScreen's own copy of this fix - Modal, not a plain
-        // absolute overlay, or the real status bar shows through as a
-        // solid black strip above the viewer.
-        <Modal visible transparent animationType="fade" onRequestClose={() => setViewerImageUri(null)}>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />
-          </GestureHandlerRootView>
-        </Modal>
-      )}
+        <StickerComposer
+          visible={composerVisible}
+          editingTextSticker={editingTextSticker}
+          onClose={() => {
+            setComposerVisible(false);
+            setEditingTextSticker(null);
+          }}
+        />
 
-      <SketchEditor
-        visible={sketchEditing !== null}
-        initialElements={sketchEditing?.sketchElements ?? []}
-        onSave={saveSketchEdit}
-        onClose={() => setSketchEditing(null)}
-      />
+        {viewerImageUri && (
+          // See DocumentsScreen's own copy of this fix - Modal, not a plain
+          // absolute overlay, or the real status bar shows through as a
+          // solid black strip above the viewer.
+          <Modal visible transparent animationType="fade" onRequestClose={() => setViewerImageUri(null)}>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+              <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />
+            </GestureHandlerRootView>
+          </Modal>
+        )}
 
-      <DocumentPickerModal
-        visible={documentPicker !== null}
-        documents={documentPicker?.documents ?? []}
-        onPick={(documentId) => {
-          setDocumentPicker(null);
-          navigation.navigate('Editor', { documentId });
-        }}
-        onClose={() => setDocumentPicker(null)}
-      />
+        <SketchEditor
+          visible={sketchEditing !== null}
+          initialElements={sketchEditing?.sketchElements ?? []}
+          onSave={saveSketchEdit}
+          onClose={() => setSketchEditing(null)}
+        />
+
+        <DocumentPickerModal
+          visible={documentPicker !== null}
+          documents={documentPicker?.documents ?? []}
+          onPick={(documentId) => {
+            setDocumentPicker(null);
+            navigation.navigate('Editor', { documentId });
+          }}
+          onClose={() => setDocumentPicker(null)}
+        />
+      </ContentColumn>
+
     </View>
   );
 }

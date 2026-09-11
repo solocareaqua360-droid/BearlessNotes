@@ -56,6 +56,7 @@ import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
 import { sortItems } from '../utils/sortItems';
 import { colorForDocument } from '../utils/documentColor';
 import SortMenuRows from '../components/SortMenuRows';
+import ContentColumn from '../components/ContentColumn';
 
 const ACCENT = '#8B5CF6';
 const DANGER = '#EF4444';
@@ -525,214 +526,215 @@ export default function FilesScreen() {
         </Defs>
         <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#filesBg)" />
       </Svg>
-
-      <View style={styles.headerRow}>
-        <View style={styles.headerLeft}>
-          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={24} color="#fff" />
-          </Pressable>
-          <Text style={styles.header}>Файли</Text>
-        </View>
-        <View style={styles.headerButtons}>
-          <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-            <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
-          </Pressable>
-          <View style={styles.headerButtonsDivider} />
-          <Pressable hitSlop={8} onPress={toggleSelectMode}>
-            <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
-          </Pressable>
-          <View style={styles.headerButtonsDivider} />
-          <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
-            <Ionicons name={isSearching ? 'close' : 'search'} size={17} color="#fff" />
-          </Pressable>
-        </View>
-      </View>
-
-      {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
-      {menuOpen && (
-        <View style={styles.menuPanel}>
-          <Text style={styles.menuSectionLabel}>Вигляд</Text>
-          <Pressable style={styles.menuRow} onPress={() => changeViewMode('list')}>
-            <Ionicons name="reorder-four-outline" size={17} color="#111827" />
-            <Text style={styles.menuRowLabel}>Список</Text>
-            {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-          </Pressable>
-          <Pressable style={styles.menuRow} onPress={() => changeViewMode('grid')}>
-            <Ionicons name="grid-outline" size={17} color="#111827" />
-            <Text style={styles.menuRowLabel}>Сітка</Text>
-            {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-          </Pressable>
-          <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
-        </View>
-      )}
-
-      {groups.length > 0 && (
-        <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" dark />
-      )}
-
-      {tagFilter && (
-        <View style={styles.filterRow}>
-          {tagFilter.type === 'untagged' ? (
-            <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
-              <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
-              <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без тегів</Text>
-              <Pressable hitSlop={8} onPress={() => setTagFilter(null)}>
-                <Ionicons name="close" size={14} color="#6B7280" />
-              </Pressable>
-            </View>
-          ) : (
-            tagFilter.tagIds.map((tagId) => {
-              const tag = tags.find((t) => t.id === tagId);
-              if (!tag) return null;
-              return (
-                <View key={tagId} style={[styles.filterChip, { borderColor: tag.color }]}>
-                  <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tag.color} />
-                  <Text style={[styles.filterChipLabel, { color: tag.color }]}>{tag.path}</Text>
-                  <Pressable hitSlop={8} onPress={() => setTagFilter(removeTagFromFilter(tagFilter, tagId))}>
-                    <Ionicons name="close" size={14} color={tag.color} />
-                  </Pressable>
-                </View>
-              );
-            })
-          )}
-        </View>
-      )}
-
-      {isSearching && (
-        <View style={styles.searchRow}>
-          <Ionicons name="search" size={14} color="#9CA3AF" />
-          <TextInput
-            autoFocus
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Пошук файлів"
-            placeholderTextColor="#9CA3AF"
-            style={styles.searchInput}
-          />
-        </View>
-      )}
-
-      {isLoading ? (
-        <View style={styles.emptyState}>
-          <ActivityIndicator color="#fff" />
-        </View>
-      ) : displayedFiles.length === 0 ? (
-        <View style={styles.emptyState}>
-          <View style={styles.emptyIcon}>
-            <Ionicons name="document-outline" size={32} color={ACCENT} />
-          </View>
-          <Text style={styles.emptyLabel}>{needle ? 'Нічого не знайдено' : 'Ще немає файлів'}</Text>
-          {!needle && (
-            <Text style={styles.emptyHint}>
-              Прикріпіть файл як блок у будь-якому документі - він з'явиться тут сам
-            </Text>
-          )}
-        </View>
-      ) : viewMode === 'grid' ? (
-        <ScrollView contentContainerStyle={[styles.gridList, isSelectMode && styles.listWithBulkBar]}>
-          {displayedFiles.map(renderFileGridCell)}
-        </ScrollView>
-      ) : (
-        <ScrollView contentContainerStyle={[styles.list, isSelectMode && styles.listWithBulkBar]}>
-          {displayedFiles.map(renderFileRow)}
-        </ScrollView>
-      )}
-
-      <Modal
-        visible={cardMenuFile !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setCardMenuFileId(null)}
-      >
-        <Pressable style={styles.cardMenuBackdrop} onPress={() => setCardMenuFileId(null)}>
-          <Pressable style={styles.cardMenuSheet} onPress={() => {}}>
-            <View style={styles.cardMenuHandle} />
-            <Pressable
-              style={styles.cardMenuRow}
-              onPress={() => {
-                if (cardMenuFile) setRenamingFile(cardMenuFile);
-                setCardMenuFileId(null);
-              }}
-            >
-              <Ionicons name="pencil-outline" size={18} color="#111827" />
-              <Text style={styles.cardMenuRowLabel}>Редагувати назву</Text>
+      <ContentColumn>
+        <View style={styles.headerRow}>
+          <View style={styles.headerLeft}>
+            <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+              <Ionicons name="chevron-back" size={24} color="#fff" />
             </Pressable>
-            {cardMenuFile && cardMenuFile.documentIds.length > 0 && (
+            <Text style={styles.header}>Файли</Text>
+          </View>
+          <View style={styles.headerButtons}>
+            <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
+              <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
+            </Pressable>
+            <View style={styles.headerButtonsDivider} />
+            <Pressable hitSlop={8} onPress={toggleSelectMode}>
+              <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
+            </Pressable>
+            <View style={styles.headerButtonsDivider} />
+            <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
+              <Ionicons name={isSearching ? 'close' : 'search'} size={17} color="#fff" />
+            </Pressable>
+          </View>
+        </View>
+
+        {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
+        {menuOpen && (
+          <View style={styles.menuPanel}>
+            <Text style={styles.menuSectionLabel}>Вигляд</Text>
+            <Pressable style={styles.menuRow} onPress={() => changeViewMode('list')}>
+              <Ionicons name="reorder-four-outline" size={17} color="#111827" />
+              <Text style={styles.menuRowLabel}>Список</Text>
+              {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+            </Pressable>
+            <Pressable style={styles.menuRow} onPress={() => changeViewMode('grid')}>
+              <Ionicons name="grid-outline" size={17} color="#111827" />
+              <Text style={styles.menuRowLabel}>Сітка</Text>
+              {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+            </Pressable>
+            <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
+          </View>
+        )}
+
+        {groups.length > 0 && (
+          <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" dark />
+        )}
+
+        {tagFilter && (
+          <View style={styles.filterRow}>
+            {tagFilter.type === 'untagged' ? (
+              <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
+                <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
+                <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без тегів</Text>
+                <Pressable hitSlop={8} onPress={() => setTagFilter(null)}>
+                  <Ionicons name="close" size={14} color="#6B7280" />
+                </Pressable>
+              </View>
+            ) : (
+              tagFilter.tagIds.map((tagId) => {
+                const tag = tags.find((t) => t.id === tagId);
+                if (!tag) return null;
+                return (
+                  <View key={tagId} style={[styles.filterChip, { borderColor: tag.color }]}>
+                    <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tag.color} />
+                    <Text style={[styles.filterChipLabel, { color: tag.color }]}>{tag.path}</Text>
+                    <Pressable hitSlop={8} onPress={() => setTagFilter(removeTagFromFilter(tagFilter, tagId))}>
+                      <Ionicons name="close" size={14} color={tag.color} />
+                    </Pressable>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+
+        {isSearching && (
+          <View style={styles.searchRow}>
+            <Ionicons name="search" size={14} color="#9CA3AF" />
+            <TextInput
+              autoFocus
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Пошук файлів"
+              placeholderTextColor="#9CA3AF"
+              style={styles.searchInput}
+            />
+          </View>
+        )}
+
+        {isLoading ? (
+          <View style={styles.emptyState}>
+            <ActivityIndicator color="#fff" />
+          </View>
+        ) : displayedFiles.length === 0 ? (
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIcon}>
+              <Ionicons name="document-outline" size={32} color={ACCENT} />
+            </View>
+            <Text style={styles.emptyLabel}>{needle ? 'Нічого не знайдено' : 'Ще немає файлів'}</Text>
+            {!needle && (
+              <Text style={styles.emptyHint}>
+                Прикріпіть файл як блок у будь-якому документі - він з'явиться тут сам
+              </Text>
+            )}
+          </View>
+        ) : viewMode === 'grid' ? (
+          <ScrollView contentContainerStyle={[styles.gridList, isSelectMode && styles.listWithBulkBar]}>
+            {displayedFiles.map(renderFileGridCell)}
+          </ScrollView>
+        ) : (
+          <ScrollView contentContainerStyle={[styles.list, isSelectMode && styles.listWithBulkBar]}>
+            {displayedFiles.map(renderFileRow)}
+          </ScrollView>
+        )}
+
+        <Modal
+          visible={cardMenuFile !== null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setCardMenuFileId(null)}
+        >
+          <Pressable style={styles.cardMenuBackdrop} onPress={() => setCardMenuFileId(null)}>
+            <Pressable style={styles.cardMenuSheet} onPress={() => {}}>
+              <View style={styles.cardMenuHandle} />
               <Pressable
                 style={styles.cardMenuRow}
                 onPress={() => {
-                  if (cardMenuFile) openDocumentIcon(cardMenuFile);
+                  if (cardMenuFile) setRenamingFile(cardMenuFile);
                   setCardMenuFileId(null);
                 }}
               >
-                <Ionicons name="document-text-outline" size={18} color="#111827" />
-                <Text style={styles.cardMenuRowLabel}>
-                  Документи{cardMenuFile.documentIds.length > 1 ? ` (${cardMenuFile.documentIds.length})` : ''}
-                </Text>
+                <Ionicons name="pencil-outline" size={18} color="#111827" />
+                <Text style={styles.cardMenuRowLabel}>Редагувати назву</Text>
               </Pressable>
-            )}
+              {cardMenuFile && cardMenuFile.documentIds.length > 0 && (
+                <Pressable
+                  style={styles.cardMenuRow}
+                  onPress={() => {
+                    if (cardMenuFile) openDocumentIcon(cardMenuFile);
+                    setCardMenuFileId(null);
+                  }}
+                >
+                  <Ionicons name="document-text-outline" size={18} color="#111827" />
+                  <Text style={styles.cardMenuRowLabel}>
+                    Документи{cardMenuFile.documentIds.length > 1 ? ` (${cardMenuFile.documentIds.length})` : ''}
+                  </Text>
+                </Pressable>
+              )}
+            </Pressable>
           </Pressable>
-        </Pressable>
-      </Modal>
+        </Modal>
 
-      <RenamePrompt
-        visible={renamingFile !== null}
-        title="Назва файлу"
-        initialValue={renamingFile?.title ?? renamingFile?.fileName ?? ''}
-        onCancel={() => setRenamingFile(null)}
-        onSave={(title) => {
-          if (renamingFile) renameFile(renamingFile, title);
-        }}
-      />
+        <RenamePrompt
+          visible={renamingFile !== null}
+          title="Назва файлу"
+          initialValue={renamingFile?.title ?? renamingFile?.fileName ?? ''}
+          onCancel={() => setRenamingFile(null)}
+          onSave={(title) => {
+            if (renamingFile) renameFile(renamingFile, title);
+          }}
+        />
 
-      <DocumentPickerModal
-        visible={documentPicker !== null}
-        subtitle={documentPicker?.file.title || documentPicker?.file.fileName}
-        documents={documentPicker?.documents ?? []}
-        onPick={pickDocument}
-        onClose={() => setDocumentPicker(null)}
-      />
+        <DocumentPickerModal
+          visible={documentPicker !== null}
+          subtitle={documentPicker?.file.title || documentPicker?.file.fileName}
+          documents={documentPicker?.documents ?? []}
+          onPick={pickDocument}
+          onClose={() => setDocumentPicker(null)}
+        />
 
-      <TagPicker
-        visible={tagPickerFile !== null}
-        kind="file"
-        tags={tags}
-        selectedTagIds={tagPickerFile?.tagIds ?? []}
-        onAttach={(tag) => tagPickerFile && attachTag(tag, 'file', tagPickerFile.id, 'files')}
-        onDetach={(tag) => tagPickerFile && detachTag(tag, 'file', tagPickerFile.id, 'files')}
-        onCreateAndAttach={(path, icon, color) =>
-          tagPickerFile && createAndAttachTag(path, icon, color, 'file', tagPickerFile.id, 'files')
-        }
-        onRenameTag={renameTag}
-        onClose={() => setTagPickerForId(null)}
-      />
+        <TagPicker
+          visible={tagPickerFile !== null}
+          kind="file"
+          tags={tags}
+          selectedTagIds={tagPickerFile?.tagIds ?? []}
+          onAttach={(tag) => tagPickerFile && attachTag(tag, 'file', tagPickerFile.id, 'files')}
+          onDetach={(tag) => tagPickerFile && detachTag(tag, 'file', tagPickerFile.id, 'files')}
+          onCreateAndAttach={(path, icon, color) =>
+            tagPickerFile && createAndAttachTag(path, icon, color, 'file', tagPickerFile.id, 'files')
+          }
+          onRenameTag={renameTag}
+          onClose={() => setTagPickerForId(null)}
+        />
 
-      <TagPicker
-        visible={bulkTagPickerVisible}
-        kind="file"
-        tags={tags}
-        selectedTagIds={[]}
-        onAttach={bulkAttachTag}
-        onDetach={() => {}}
-        onCreateAndAttach={bulkCreateAndAttachTag}
-        onRenameTag={renameTag}
-        onClose={() => setBulkTagPickerVisible(false)}
-      />
+        <TagPicker
+          visible={bulkTagPickerVisible}
+          kind="file"
+          tags={tags}
+          selectedTagIds={[]}
+          onAttach={bulkAttachTag}
+          onDetach={() => {}}
+          onCreateAndAttach={bulkCreateAndAttachTag}
+          onRenameTag={renameTag}
+          onClose={() => setBulkTagPickerVisible(false)}
+        />
 
-      <GroupPickerSheet
-        visible={bulkGroupPickerVisible}
-        kind="file"
-        groups={groups}
-        onPick={bulkAssignGroup}
-        onClose={() => setBulkGroupPickerVisible(false)}
-      />
+        <GroupPickerSheet
+          visible={bulkGroupPickerVisible}
+          kind="file"
+          groups={groups}
+          onPick={bulkAssignGroup}
+          onClose={() => setBulkGroupPickerVisible(false)}
+        />
 
-      <CopyToNoteModal
-        visible={bulkCopyModalVisible}
-        onPickExisting={bulkCopyToExisting}
-        onPickNew={bulkCopyToNew}
-        onClose={() => setBulkCopyModalVisible(false)}
-      />
+        <CopyToNoteModal
+          visible={bulkCopyModalVisible}
+          onPickExisting={bulkCopyToExisting}
+          onPickNew={bulkCopyToNew}
+          onClose={() => setBulkCopyModalVisible(false)}
+        />
+      </ContentColumn>
 
       <TagsDrawer
         tags={drawerTags}
