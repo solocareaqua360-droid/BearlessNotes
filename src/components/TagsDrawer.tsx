@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Tag } from '../types';
 import { FONT_REGULAR, FONT_SEMIBOLD, FONT_BOLD, FONT_EXTRABOLD } from '../utils/fonts';
-import { GLASS_BODY, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
+import { GLASS_BODY, GLASS_BODY_BLURRED, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
+import { BlurView } from 'expo-blur';
+import { useBlurTarget } from './GlassTarget';
 
 // Two thirds of the window, measured per render (useWindowDimensions) and
 // never captured once at module scope from Dimensions.get() - see
@@ -169,6 +171,7 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
   // flips false so the closing animation below gets to finish before the
   // Modal actually unmounts, instead of yanking the drawer away instantly.
   const [isRendered, setIsRendered] = useState(false);
+  const blurTarget = useBlurTarget();
   const { width: windowWidth } = useWindowDimensions();
   const drawerWidth = Math.round(windowWidth * DRAWER_FRACTION);
   const [filterMode, setFilterMode] = useState<TagFilterMode>('multi');
@@ -240,8 +243,21 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
 
   return (
     <>
-      <Modal visible={isRendered} transparent animationType="none" statusBarTranslucent onRequestClose={closeDrawer}>
+      {isRendered && (
+      // A layer, not a Modal: a Modal is its own window on Android, and a
+      // blur only reaches what is in the window it lives in. The dim below
+      // fades in on its own timing (see dimAmount), so it stays an animated
+      // view rather than moving into GlassLayer.
+      <View style={styles.layer} pointerEvents="box-none">
         <Animated.View style={[styles.backdrop, backdropStyle]} pointerEvents={isOpen ? 'auto' : 'none'}>
+          <BlurView
+            intensity={45}
+            tint="dark"
+            blurMethod="dimezisBlurView"
+            blurTarget={blurTarget ?? undefined}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
           <Pressable style={StyleSheet.absoluteFill} onPress={closeDrawer} />
         </Animated.View>
 
@@ -281,7 +297,8 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
             ))}
           </ScrollView>
         </Animated.View>
-      </Modal>
+      </View>
+      )}
 
       {!isOpen && !hideOpenButton && (
         <Pressable style={styles.openButton} onPress={openDrawer}>
@@ -301,12 +318,21 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'rgba(17,24,39,0.35)',
   },
+  // The layer the drawer lives in, in place of the window it used to have.
+  layer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 60,
+  },
   panel: {
     position: 'absolute',
     left: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: GLASS_BODY,
+    backgroundColor: GLASS_BODY_BLURRED,
     paddingTop: 56,
     paddingHorizontal: 16,
     paddingBottom: 20,
