@@ -111,22 +111,24 @@ export default function CalendarScreen() {
   // its reminders | note | the day's history). The history is what gains
   // most: under the calendar it's a pill that drops a 360px-tall list,
   // which is exactly the cramped feeling a column of its own removes.
-  const { isTwoPane, isThreePane } = useResponsiveLayout();
+  const { isTwoPane } = useResponsiveLayout();
   // The calendar's own column, measured rather than assumed: in two panes
   // the window is no longer the space the strip has, and a strip whose
   // pages are sized against the wrong width is exactly how this screen
   // broke twice (see PLATE_MARGIN's comment above).
   const [calendarPaneWidth, setCalendarPaneWidth] = useState(0);
-  // Either column can be put away to give the note the room - both at once
-  // is "the note full screen", which is what the button on the note itself
-  // toggles. Only ever applies while there are columns to hide.
-  const [showCalendarPane, setShowCalendarPane] = useState(true);
-  const [showHistoryPane, setShowHistoryPane] = useState(true);
-  // The diary spread: today's page and tomorrow's side by side, with the
-  // calendar and the history together in the narrow column beside them.
-  // A mode, not a replacement - the single wide page is still one tap
-  // away, and only three columns have room for it at all.
-  const [spreadMode, setSpreadMode] = useState(false);
+  // On a wide screen there are exactly two layouts, and one button between
+  // them. 'pages' is what unfolding the phone opens: two day sheets filling
+  // the screen like a document, with only a narrow week strip above them to
+  // pick the date by. 'columns' narrows that to a single sheet on the right
+  // and gives the left to the calendar opened out, with the day's history
+  // and its reminders under it.
+  //
+  // Four independent toggles lived here before - hide the calendar, hide
+  // the history, note full screen, spread - and between them they made more
+  // arrangements than anyone could hold in their head. These two are the
+  // ones worth having.
+  const [wideLayout, setWideLayout] = useState<'pages' | 'columns'>('pages');
   const stripWidth = (isTwoPane && calendarPaneWidth > 0 ? calendarPaneWidth : windowWidth) - PLATE_MARGIN * 2;
   const today = useMemo(() => new Date(), []);
 
@@ -203,20 +205,18 @@ export default function CalendarScreen() {
   const filledScrollRef = useRef<ScrollView>(null);
 
   const weekScrollRef = useRef<ScrollView>(null);
-  // With two panes the month is simply always open - the week strip is the
-  // collapsed form of the same cells, and there's room for all six rows.
-  const monthOpen = isTwoPane || isMonthExpanded;
+  // Two day sheets side by side with the week strip above them - the
+  // layout unfolding the phone opens. A narrow screen never sees either of
+  // the two: folded shut, everything is exactly as it was.
+  const twoPages = isTwoPane && wideLayout === 'pages';
+  // The month is opened out only where it has a column to itself; in the
+  // two-page layout the calendar is that narrow strip and nothing more.
+  const monthOpen = (isTwoPane && wideLayout === 'columns') || isMonthExpanded;
   // The calendar folds away under the keyboard only when the note is
   // BELOW it. Side by side, typing in the note has no reason to take the
   // calendar off the screen.
   const foldedAway = isWriting && !isTwoPane;
-  const noteFullscreen = !showCalendarPane && (!isThreePane || !showHistoryPane);
-  const spread = isThreePane && spreadMode && showCalendarPane;
-  function toggleNoteFullscreen() {
-    const goingFull = !noteFullscreen;
-    setShowCalendarPane(!goingFull);
-    setShowHistoryPane(!goingFull);
-  }
+  const spread = twoPages;
   const expandAmount = useSharedValue(0); // 0 = week strip, 1 = month grid
   const visibleAmount = useSharedValue(1); // 0 = folded away (writing)
 
@@ -459,12 +459,169 @@ export default function CalendarScreen() {
   const weekLayerStyle = useAnimatedStyle(() => ({ opacity: 1 - expandAmount.value }));
   const monthLayerStyle = useAnimatedStyle(() => ({ opacity: expandAmount.value }));
 
+  // Folding the phone shut comes back to the two pages, which is what
+  // unfolding it should open with again.
   useEffect(() => {
-    if (!isTwoPane) {
-      setShowCalendarPane(true);
-      setShowHistoryPane(true);
-    }
+    if (!isTwoPane) setWideLayout('pages');
   }, [isTwoPane]);
+
+  // The calendar itself. Drawn in two different places depending on the
+  // layout - full width above two day sheets, or at the top of its own
+  // column beside one - so it lives in a function rather than being
+  // written out twice and drifting apart.
+  function renderCalendarPlate() {
+    return (
+      <>
+        <Animated.View style={[styles.calendarPlate, isTwoPane && !twoPages && styles.calendarPlatePaned, calendarPlateStyle]}>
+        <Animated.View style={[styles.calendarWrap, calendarWrapStyle]}>
+          <Animated.View style={[styles.monthNavWrap, monthNavStyle]}>
+            <View style={styles.monthNav}>
+              <Pressable hitSlop={10} onPress={() => changeVisibleMonth(-1)}>
+                <Ionicons name="chevron-back" size={18} color="rgba(255,255,255,0.7)" />
+              </Pressable>
+              <Text style={styles.monthNavLabel}>
+                {MONTH_FULL[visibleMonth.month]} {visibleMonth.year}
+              </Text>
+              <Pressable hitSlop={10} onPress={() => changeVisibleMonth(1)}>
+                <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
+              </Pressable>
+            </View>
+          </Animated.View>
+
+          {!onlyFilledDays && (
+            // Hidden entirely (not just blanked) while showing only filled
+            // days - its dates aren't a real calendar week (they skip straight
+            // from one filled day to the next), so weekday letters above them
+            // would be meaningless. The reclaimed height goes to bigger day
+            // cells instead (see FILLED_ROW_HEIGHT).
+            <View style={styles.weekdayHeader}>
+              {WEEKDAY_SHORT.map((w) => (
+                <Text key={w} style={styles.weekdayHeaderLabel}>
+                  {w}
+                </Text>
+              ))}
+            </View>
+          )}
+
+          <Animated.View style={[styles.gridClip, gridClipStyle]}>
+            <Animated.View
+              style={[styles.calendarLayer, { height: weekRowHeight }, weekLayerStyle]}
+              pointerEvents={monthOpen ? 'none' : 'auto'}
+            >
+              {onlyFilledDays ? (
+                <ScrollView
+                  ref={filledScrollRef}
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  style={[styles.weekScroll, { height: filledRowHeight }]}
+                  contentOffset={{ x: stripWidth, y: 0 }}
+                  onLayout={() => filledScrollRef.current?.scrollTo({ x: stripWidth, animated: false })}
+                  onMomentumScrollEnd={handleFilledScrollEnd}
+                >
+                  {WEEK_PAGE_OFFSETS.map((offset) => (
+                    <View key={offset} style={[styles.weekPage, { width: stripWidth }]}>
+                      {Array.from({ length: 7 }, (_, i) => {
+                        const idx = filledPageStart + offset + i;
+                        const dateStr = activeDatesSorted[idx];
+                        if (!dateStr) return <View key={i} style={styles.filledDayCell} />;
+                        const date = parseDateKey(dateStr);
+                        const isToday = isSameDay(date, today);
+                        return (
+                          <DayCell
+                            key={dateStr}
+                            date={date}
+                            isToday={isToday}
+                            isSelected={dateStr === selectedKey}
+                            height={filledRowHeight}
+                            compact
+                            onPress={() => selectDay(date)}
+                          />
+                        );
+                      })}
+                    </View>
+                  ))}
+                </ScrollView>
+              ) : (
+                <ScrollView
+                  ref={weekScrollRef}
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  // RN gives every ScrollView flexGrow: 1, so without a fixed
+                  // height here the strip stretches over all the free space.
+                  style={styles.weekScroll}
+                  contentOffset={{ x: stripWidth, y: 0 }}
+                  onLayout={() => weekScrollRef.current?.scrollTo({ x: stripWidth, animated: false })}
+                  onMomentumScrollEnd={handleWeekScrollEnd}
+                >
+                  {WEEK_PAGE_OFFSETS.map((offset) => (
+                    <View key={offset} style={[styles.weekPage, { width: stripWidth }]}>
+                      {getWeekDates(addDays(weekStart, offset)).map((date) => {
+                        const key = dateKey(date);
+                        const isToday = isSameDay(date, today);
+                        return (
+                          <DayCell
+                            key={key}
+                            date={date}
+                            isToday={isToday}
+                            isSelected={key === selectedKey}
+                            filled={filledDates.has(key)}
+                            hasHistory={historyDates.has(key)}
+                            height={rowHeight}
+                            onPress={() => selectDay(date)}
+                          />
+                        );
+                      })}
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+            </Animated.View>
+
+            <Animated.View
+              style={[styles.calendarLayer, { height: monthAreaHeight }, monthLayerStyle]}
+              pointerEvents={monthOpen ? 'auto' : 'none'}
+            >
+              <View style={styles.monthGrid}>
+                {/* One explicit row per week, each cell flex:1 - not a single
+                    flexWrap container with hardcoded `100/7%` cell widths.
+                    Yoga rounds each cell's percentage width to a whole pixel,
+                    and on most screen widths 7 * round(100/7%) overshoots the
+                    row by a pixel, so the 7th cell (Sunday) wrapped onto the
+                    next visual row instead of staying in this one - the same
+                    flex:1-per-row technique the week strip below already uses
+                    safely (dayCell), just applied per week instead of once. */}
+                {Array.from({ length: 6 }, (_, row) => (
+                  <View key={row} style={styles.monthGridRow}>
+                    {monthGrid.slice(row * 7, row * 7 + 7).map(({ date, inMonth }) => {
+                      const key = dateKey(date);
+                      const isToday = isSameDay(date, today);
+                      return (
+                        <DayCell
+                          key={key}
+                          date={date}
+                          isToday={isToday}
+                          isSelected={key === selectedKey}
+                          muted={!inMonth}
+                          filled={filledDates.has(key)}
+                          hasHistory={historyDates.has(key)}
+                          height={rowHeight}
+                          inGrid
+                          onPress={() => selectDay(date)}
+                        />
+                      );
+                    })}
+                  </View>
+                ))}
+              </View>
+            </Animated.View>
+          </Animated.View>
+        </Animated.View>
+        </Animated.View>
+      </>
+    );
+  }
 
   // One day's sheet. `primary` is the selected day's - the one the header's
   // save dot and select-mode button drive, and the only one that needs the
@@ -590,43 +747,12 @@ export default function CalendarScreen() {
             <Ionicons name="checkmark" size={17} color={noteSaveStatus === 'saved' ? '#171310' : '#fff'} />
           </View>
           <View style={styles.headerButtons}>
-            {/* Only where there's a column to put away. A filled icon means
-                the column is showing, an outline that it's hidden - same
-                on/off reading as the sticker button on Documents. */}
+            {/* The one wide-screen switch: two day sheets, or a single
+                sheet with the calendar opened out beside it. */}
             {isTwoPane && (
               <>
-                <Pressable hitSlop={6} onPress={() => setShowCalendarPane((v) => !v)}>
-                  <Ionicons name={showCalendarPane ? 'calendar' : 'calendar-outline'} size={17} color="#fff" />
-                </Pressable>
-                <View style={styles.headerButtonsDivider} />
-              </>
-            )}
-            {/* Between the two column toggles, because that's what it is:
-                both of them at once. */}
-            {isTwoPane && (
-              <>
-                <Pressable hitSlop={6} onPress={toggleNoteFullscreen}>
-                  <Ionicons
-                    name={noteFullscreen ? 'contract-outline' : 'expand-outline'}
-                    size={17}
-                    color="#fff"
-                  />
-                </Pressable>
-                <View style={styles.headerButtonsDivider} />
-              </>
-            )}
-            {isThreePane && (
-              <>
-                <Pressable hitSlop={6} onPress={() => setSpreadMode((v) => !v)}>
-                  <Ionicons name={spreadMode ? 'book' : 'book-outline'} size={17} color="#fff" />
-                </Pressable>
-                <View style={styles.headerButtonsDivider} />
-              </>
-            )}
-            {isThreePane && (
-              <>
-                <Pressable hitSlop={6} onPress={() => setShowHistoryPane((v) => !v)}>
-                  <Ionicons name={showHistoryPane ? 'time' : 'time-outline'} size={17} color="#fff" />
+                <Pressable hitSlop={6} onPress={() => setWideLayout((v) => (v === 'pages' ? 'columns' : 'pages'))}>
+                  <Ionicons name={twoPages ? 'contract-outline' : 'expand-outline'} size={17} color="#fff" />
                 </Pressable>
                 <View style={styles.headerButtonsDivider} />
               </>
@@ -662,259 +788,97 @@ export default function CalendarScreen() {
         </View>
       )}
 
-      {/* One column on a phone (calendar, then the note under it), two on
-          a wide screen (calendar left, note right). Both halves are flex:1
-          in the row, so they split the window evenly. */}
-      {/* In spread mode the row is reversed, which is what puts the
-          calendar column last on screen while it stays first in the tree -
-          the three slots keep their order and only their contents change,
-          rather than the whole layout being written twice. */}
-      <View style={isTwoPane ? [styles.paneRow, spread && styles.paneRowSpread] : styles.stack}>
-        <View
-          style={[
-            isTwoPane ? styles.sidePane : null,
-            isTwoPane && !showCalendarPane ? styles.paneHidden : null,
-          ]}
-          onLayout={(e) => setCalendarPaneWidth(e.nativeEvent.layout.width)}
-        >
-          <Animated.View style={[styles.calendarPlate, isTwoPane && (spread ? styles.calendarPlateSpread : styles.calendarPlatePaned), calendarPlateStyle]}>
-          <Animated.View style={[styles.calendarWrap, calendarWrapStyle]}>
-            <Animated.View style={[styles.monthNavWrap, monthNavStyle]}>
-              <View style={styles.monthNav}>
-                <Pressable hitSlop={10} onPress={() => changeVisibleMonth(-1)}>
-                  <Ionicons name="chevron-back" size={18} color="rgba(255,255,255,0.7)" />
-                </Pressable>
-                <Text style={styles.monthNavLabel}>
-                  {MONTH_FULL[visibleMonth.month]} {visibleMonth.year}
-                </Text>
-                <Pressable hitSlop={10} onPress={() => changeVisibleMonth(1)}>
-                  <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
-                </Pressable>
-              </View>
-            </Animated.View>
+      {/* Two layouts, nothing in between. Two day sheets with the week
+          strip above them, or a single sheet with the calendar opened out
+          beside it. On a narrow screen neither applies and the page below
+          is the one it always was. */}
+      {twoPages && <View onLayout={(e) => setCalendarPaneWidth(e.nativeEvent.layout.width)}>{renderCalendarPlate()}</View>}
 
-            {!onlyFilledDays && (
-              // Hidden entirely (not just blanked) while showing only filled
-              // days - its dates aren't a real calendar week (they skip straight
-              // from one filled day to the next), so weekday letters above them
-              // would be meaningless. The reclaimed height goes to bigger day
-              // cells instead (see FILLED_ROW_HEIGHT).
-              <View style={styles.weekdayHeader}>
-                {WEEKDAY_SHORT.map((w) => (
-                  <Text key={w} style={styles.weekdayHeaderLabel}>
-                    {w}
-                  </Text>
+      <View style={isTwoPane ? styles.paneRow : styles.stack}>
+        {!twoPages && (
+          <View
+            style={isTwoPane ? styles.sidePane : undefined}
+            onLayout={(e) => setCalendarPaneWidth(e.nativeEvent.layout.width)}
+          >
+            {renderCalendarPlate()}
+            {/* One flex-wrap row for both capsules - the month one always here
+                (unless a compact strip is active, same as before), the history
+                one only on a day that actually has any (see DayHistoryList,
+                which renders nothing at all when it doesn't). Wrapping lets
+                the history capsule's own expanded list drop onto its own line
+                below both pills instead of squeezing in beside them - see its
+                width:'100%' body. */}
+            {/* Narrow screens only: on a wide one the month is already open
+                (so its capsule would toggle nothing) and the history is the
+                list further down this column. */}
+            {!foldedAway && !isTwoPane && (
+              <View style={[styles.capsuleRow, isTwoPane && styles.calendarPlatePaned]}>
+                {/* The month capsule IS the expand button, named after the month
+                    it opens - with two panes the month is already open and it
+                    would toggle nothing, so it goes away and the nav row inside
+                    the plate (arrows + month name) carries the month instead. */}
+                {!onlyFilledDays && !isTwoPane && (
+                  <Pressable style={styles.monthCapsule} onPress={() => setIsMonthExpanded((prev) => !prev)}>
+                    <Ionicons name="calendar-outline" size={14} color="rgba(255,255,255,0.75)" />
+                    <Text style={styles.monthCapsuleLabel}>{MONTH_FULL[visibleMonth.month]}</Text>
+                    <Ionicons name={isMonthExpanded ? 'chevron-up' : 'chevron-down'} size={14} color="rgba(255,255,255,0.6)" />
+                  </Pressable>
+                )}
+                <DayHistoryList items={historyByDate.get(selectedKey) ?? []} />
+              </View>
+            )}
+
+            {!foldedAway && dueElsewhere.length > 0 && (
+              <View style={[styles.dueCard, isTwoPane && styles.calendarPlatePaned]}>
+                {dueElsewhere.map((task, index) => (
+                  <Pressable
+                    key={task.id}
+                    style={[styles.dueRow, index > 0 && styles.dueRowDivider]}
+                    onPress={() => navigation.navigate('Editor', { documentId: task.documentId })}
+                  >
+                    <Pressable hitSlop={6} onPress={() => toggleDueReminder(task)}>
+                      <Ionicons
+                        name={task.checked ? 'checkbox' : 'square-outline'}
+                        size={18}
+                        color={task.checked ? ACCENT : '#9CA3AF'}
+                      />
+                    </Pressable>
+                    <Text
+                      style={[styles.dueReminderText, task.checked && styles.dueReminderTextChecked]}
+                      numberOfLines={1}
+                    >
+                      {task.text}
+                    </Text>
+                  </Pressable>
                 ))}
               </View>
             )}
 
-            <Animated.View style={[styles.gridClip, gridClipStyle]}>
-              <Animated.View
-                style={[styles.calendarLayer, { height: weekRowHeight }, weekLayerStyle]}
-                pointerEvents={monthOpen ? 'none' : 'auto'}
-              >
-                {onlyFilledDays ? (
-                  <ScrollView
-                    ref={filledScrollRef}
-                    horizontal
-                    pagingEnabled
-                    showsHorizontalScrollIndicator={false}
-                    style={[styles.weekScroll, { height: filledRowHeight }]}
-                    contentOffset={{ x: stripWidth, y: 0 }}
-                    onLayout={() => filledScrollRef.current?.scrollTo({ x: stripWidth, animated: false })}
-                    onMomentumScrollEnd={handleFilledScrollEnd}
-                  >
-                    {WEEK_PAGE_OFFSETS.map((offset) => (
-                      <View key={offset} style={[styles.weekPage, { width: stripWidth }]}>
-                        {Array.from({ length: 7 }, (_, i) => {
-                          const idx = filledPageStart + offset + i;
-                          const dateStr = activeDatesSorted[idx];
-                          if (!dateStr) return <View key={i} style={styles.filledDayCell} />;
-                          const date = parseDateKey(dateStr);
-                          const isToday = isSameDay(date, today);
-                          return (
-                            <DayCell
-                              key={dateStr}
-                              date={date}
-                              isToday={isToday}
-                              isSelected={dateStr === selectedKey}
-                              height={filledRowHeight}
-                              compact
-                              onPress={() => selectDay(date)}
-                            />
-                          );
-                        })}
-                      </View>
-                    ))}
-                  </ScrollView>
-                ) : (
-                  <ScrollView
-                    ref={weekScrollRef}
-                    horizontal
-                    pagingEnabled
-                    showsHorizontalScrollIndicator={false}
-                    // RN gives every ScrollView flexGrow: 1, so without a fixed
-                    // height here the strip stretches over all the free space.
-                    style={styles.weekScroll}
-                    contentOffset={{ x: stripWidth, y: 0 }}
-                    onLayout={() => weekScrollRef.current?.scrollTo({ x: stripWidth, animated: false })}
-                    onMomentumScrollEnd={handleWeekScrollEnd}
-                  >
-                    {WEEK_PAGE_OFFSETS.map((offset) => (
-                      <View key={offset} style={[styles.weekPage, { width: stripWidth }]}>
-                        {getWeekDates(addDays(weekStart, offset)).map((date) => {
-                          const key = dateKey(date);
-                          const isToday = isSameDay(date, today);
-                          return (
-                            <DayCell
-                              key={key}
-                              date={date}
-                              isToday={isToday}
-                              isSelected={key === selectedKey}
-                              filled={filledDates.has(key)}
-                              hasHistory={historyDates.has(key)}
-                              height={rowHeight}
-                              onPress={() => selectDay(date)}
-                            />
-                          );
-                        })}
-                      </View>
-                    ))}
-                  </ScrollView>
-                )}
-              </Animated.View>
+            {/* Collapsing the note only makes sense while browsing "days with
+                history" - that's the one strip where the note itself is often
+                not the point of looking at the day at all, and having more
+                history entries visible at once matters more than the note. */}
+            {/* Collapsing the note only makes sense when it sits below the
+                calendar - beside it, there's nothing to make room for. */}
+            {!foldedAway && !isTwoPane && compactFilter === 'history' && (
+              <Pressable style={styles.collapseNoteRow} onPress={() => setNoteCollapsed((v) => !v)}>
+                <Ionicons name={noteCollapsed ? 'chevron-down' : 'chevron-up'} size={14} color="rgba(255,255,255,0.6)" />
+                <Text style={styles.collapseNoteLabel}>{noteCollapsed ? 'Показати нотатку дня' : 'Згорнути нотатку дня'}</Text>
+              </Pressable>
+            )}
 
-              <Animated.View
-                style={[styles.calendarLayer, { height: monthAreaHeight }, monthLayerStyle]}
-                pointerEvents={monthOpen ? 'auto' : 'none'}
-              >
-                <View style={styles.monthGrid}>
-                  {/* One explicit row per week, each cell flex:1 - not a single
-                      flexWrap container with hardcoded `100/7%` cell widths.
-                      Yoga rounds each cell's percentage width to a whole pixel,
-                      and on most screen widths 7 * round(100/7%) overshoots the
-                      row by a pixel, so the 7th cell (Sunday) wrapped onto the
-                      next visual row instead of staying in this one - the same
-                      flex:1-per-row technique the week strip below already uses
-                      safely (dayCell), just applied per week instead of once. */}
-                  {Array.from({ length: 6 }, (_, row) => (
-                    <View key={row} style={styles.monthGridRow}>
-                      {monthGrid.slice(row * 7, row * 7 + 7).map(({ date, inMonth }) => {
-                        const key = dateKey(date);
-                        const isToday = isSameDay(date, today);
-                        return (
-                          <DayCell
-                            key={key}
-                            date={date}
-                            isToday={isToday}
-                            isSelected={key === selectedKey}
-                            muted={!inMonth}
-                            filled={filledDates.has(key)}
-                            hasHistory={historyDates.has(key)}
-                            height={rowHeight}
-                            inGrid
-                            onPress={() => selectDay(date)}
-                          />
-                        );
-                      })}
-                    </View>
-                  ))}
-                </View>
-              </Animated.View>
-            </Animated.View>
-          </Animated.View>
-          </Animated.View>
-
-          {/* One flex-wrap row for both capsules - the month one always here
-              (unless a compact strip is active, same as before), the history
-              one only on a day that actually has any (see DayHistoryList,
-              which renders nothing at all when it doesn't). Wrapping lets
-              the history capsule's own expanded list drop onto its own line
-              below both pills instead of squeezing in beside them - see its
-              width:'100%' body. */}
-          {/* Skipped outright in three columns: the month capsule is gone
-              with the month always open, and the history has its own
-              column - an empty row would just leave a gap. */}
-          {!foldedAway && !isThreePane && (
-            <View style={[styles.capsuleRow, isTwoPane && (spread ? styles.calendarPlateSpread : styles.calendarPlatePaned)]}>
-              {/* The month capsule IS the expand button, named after the month
-                  it opens - with two panes the month is already open and it
-                  would toggle nothing, so it goes away and the nav row inside
-                  the plate (arrows + month name) carries the month instead. */}
-              {!onlyFilledDays && !isTwoPane && (
-                <Pressable style={styles.monthCapsule} onPress={() => setIsMonthExpanded((prev) => !prev)}>
-                  <Ionicons name="calendar-outline" size={14} color="rgba(255,255,255,0.75)" />
-                  <Text style={styles.monthCapsuleLabel}>{MONTH_FULL[visibleMonth.month]}</Text>
-                  <Ionicons name={isMonthExpanded ? 'chevron-up' : 'chevron-down'} size={14} color="rgba(255,255,255,0.6)" />
-                </Pressable>
-              )}
-              <DayHistoryList items={historyByDate.get(selectedKey) ?? []} />
-            </View>
-          )}
-
-          {!foldedAway && dueElsewhere.length > 0 && (
-            <View style={[styles.dueCard, isTwoPane && (spread ? styles.calendarPlateSpread : styles.calendarPlatePaned)]}>
-              {dueElsewhere.map((task, index) => (
-                <Pressable
-                  key={task.id}
-                  style={[styles.dueRow, index > 0 && styles.dueRowDivider]}
-                  onPress={() => navigation.navigate('Editor', { documentId: task.documentId })}
-                >
-                  <Pressable hitSlop={6} onPress={() => toggleDueReminder(task)}>
-                    <Ionicons
-                      name={task.checked ? 'checkbox' : 'square-outline'}
-                      size={18}
-                      color={task.checked ? ACCENT : '#9CA3AF'}
-                    />
-                  </Pressable>
-                  <Text
-                    style={[styles.dueReminderText, task.checked && styles.dueReminderTextChecked]}
-                    numberOfLines={1}
-                  >
-                    {task.text}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
-
-          {/* Collapsing the note only makes sense while browsing "days with
-              history" - that's the one strip where the note itself is often
-              not the point of looking at the day at all, and having more
-              history entries visible at once matters more than the note. */}
-          {/* Collapsing the note only makes sense when it sits below the
-              calendar - beside it, there's nothing to make room for. */}
-          {!foldedAway && !isTwoPane && compactFilter === 'history' && (
-            <Pressable style={styles.collapseNoteRow} onPress={() => setNoteCollapsed((v) => !v)}>
-              <Ionicons name={noteCollapsed ? 'chevron-down' : 'chevron-up'} size={14} color="rgba(255,255,255,0.6)" />
-              <Text style={styles.collapseNoteLabel}>{noteCollapsed ? 'Показати нотатку дня' : 'Згорнути нотатку дня'}</Text>
-            </Pressable>
-          )}
-
-          {/* With two pages taking the rest of the screen, the history
-              shares this column instead of having one of its own. */}
-          {spread && showHistoryPane && (
-            <View style={styles.historyUnderCalendar}>
-              <DayHistoryList items={historyByDate.get(selectedKey) ?? []} fill />
-            </View>
-          )}
-        </View>
-
-        {/* Second slot: the next day in a spread, the selected day
-            otherwise. Reversed, it lands to the right of the third. */}
-        {!(compactFilter === 'history' && noteCollapsed) &&
-          (spread ? renderDayNote(nextKey, nextDate, false) : renderDayNote(selectedKey, selectedDate, true))}
-
-        {/* Third slot: the selected day's page in a spread (leftmost once
-            reversed), the history column otherwise. */}
-        {spread
-          ? renderDayNote(selectedKey, selectedDate, true)
-          : isThreePane &&
-            showHistoryPane && (
-              <View style={styles.historyPane}>
+            {/* The day's history lives under the calendar, in the same
+                column - there is no third column any more. */}
+            {isTwoPane && (
+              <View style={styles.historyUnderCalendar}>
                 <DayHistoryList items={historyByDate.get(selectedKey) ?? []} fill />
               </View>
             )}
+            </View>
+        )}
+
+        {!(compactFilter === 'history' && noteCollapsed) && renderDayNote(selectedKey, selectedDate, true)}
+        {twoPages && renderDayNote(nextKey, nextDate, false)}
       </View>
 
     </View>
@@ -1151,9 +1115,6 @@ const styles = StyleSheet.create({
   calendarPlatePaned: {
     marginRight: 0,
   },
-  paneHidden: {
-    display: 'none',
-  },
   monthNavWrap: {
     overflow: 'hidden',
   },
@@ -1316,21 +1277,13 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
   },
-  paneRowSpread: {
-    flexDirection: 'row-reverse',
-  },
+  // Under the calendar, lined up with it: same left margin, same dropped
+  // right one, so this column has one straight edge on each side.
   historyUnderCalendar: {
     flex: 1,
-    marginLeft: 0,
-    marginRight: 16,
+    marginLeft: 16,
+    marginRight: 0,
     marginTop: 10,
-  },
-  // Reversed, this column sits against the right edge of the screen, so
-  // the margin it drops is the other one - the gap to the page beside it
-  // comes from that page, exactly as on the left in the normal layout.
-  calendarPlateSpread: {
-    marginLeft: 0,
-    marginRight: 16,
   },
   pageDateLabel: {
     fontSize: 12,
@@ -1339,19 +1292,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 10,
   },
-  // The calendar and the history take a column each; the note takes a
-  // little more, since it's the one column whose content is text being
-  // written rather than a grid or a list of cards sized by their own.
+  // The calendar's column against the sheet beside it: the sheet takes a
+  // little more, since it's the half whose content is text being written
+  // rather than a grid and a list of cards that size themselves.
   sidePane: {
     flex: 1,
   },
   notePane: {
     flex: 1.3,
-  },
-  historyPane: {
-    flex: 1,
-    marginRight: 16,
-    marginBottom: 8,
   },
   capsuleRow: {
     flexDirection: 'row',
