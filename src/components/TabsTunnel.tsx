@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { GLASS_ISLAND } from '../constants/glass';
 
 // A capsule squeezed to a line at the point where a scrolling row of pills
 // runs out of room - the "tunnel" they slide into rather than being cut
@@ -72,7 +73,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: TUNNEL_WIDTH,
     borderRadius: 999,
-    backgroundColor: 'rgba(20,20,20,0.35)',
+    backgroundColor: GLASS_ISLAND,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
   },

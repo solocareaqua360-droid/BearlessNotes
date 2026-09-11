@@ -16,6 +16,7 @@ import Svg, { Defs, LinearGradient, Stop, Rect, Path, Text as SvgText } from 're
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   addDoc,
@@ -134,12 +135,18 @@ export default function DocumentsScreen() {
   // Visual feedback while the FAB's long-press-to-create-a-sticker gesture
   // is armed - see the FAB's onLongPress/onPressOut below.
   const [fabPressed, setFabPressed] = useState(false);
-  // Where the island hangs. Measured off the title and the group tabs -
-  // NOT off the list: the sticker strip sits between them and comes and
-  // goes, and an island that follows the list slides up and down with it.
-  // These two don't move, so neither does the island.
-  const [headerBottom, setHeaderBottom] = useState(0);
-  const [groupsBottom, setGroupsBottom] = useState(0);
+  // The floating chrome - the group tabs and the tag-filter chips - no
+  // longer stands in the list's way: the list runs the whole height of
+  // the pane and the cards pass UNDER the tabs and off the top of the
+  // screen. So its height has to be measured, to know where the list's
+  // first card rests and where the island hangs.
+  const [chromeHeight, setChromeHeight] = useState(0);
+  // The pane the list lives in. On a Fold the chrome must span that pane,
+  // not the whole window - the open document has the other half.
+  const [paneRect, setPaneRect] = useState({ x: 0, width: 0 });
+  const insets = useSafeAreaInsets();
+  const chromeTop = insets.top + 10;
+  const chromeBottom = chromeTop + chromeHeight + 8;
   // The menu is cut to the island's own height, so it has to be measured
   // rather than guessed - the icons decide it.
   const [islandHeight, setIslandHeight] = useState(0);
@@ -385,6 +392,59 @@ export default function DocumentsScreen() {
     clearSelection();
   }
 
+  // The stickers ride at the top of the list rather than above it: the
+  // list now runs the full height of the pane, and anything standing
+  // between the tabs and the cards would be the very bar we just took
+  // out. As the list's header they scroll away with the cards.
+  const stickerStrip =
+    !stickersCollapsed && freeStickers.length > 0 ? (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.stickerScroll}
+        contentContainerStyle={styles.stickerStrip}
+      >
+        {freeStickers.map((s) => (
+          <Pressable key={s.id} style={styles.stickerCard} onPress={() => openFreeSticker(s)}>
+            {s.type === 'image' && s.imageUri ? (
+              <Image source={{ uri: s.imageUri }} style={styles.stickerCardImage} resizeMode="cover" />
+            ) : s.type === 'sketch' && (s.sketchElements?.length ?? 0) > 0 ? (
+              // Same viewBox-reuses-the-capture-canvas-size approach as
+              // DocumentEditorScreen's own sketch block preview - the
+              // drawing scales correctly into this much smaller box.
+              <Svg width="100%" height="100%" viewBox={`0 0 ${s.sketchWidth || 1} ${s.sketchHeight || 1}`}>
+                {(s.sketchElements ?? []).map((el, i) =>
+                  el.kind === 'text' ? (
+                    <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
+                      {el.text}
+                    </SvgText>
+                  ) : (
+                    <Path
+                      key={i}
+                      d={el.d}
+                      stroke={el.color}
+                      strokeWidth={el.width}
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  )
+                )}
+              </Svg>
+            ) : s.type === 'sketch' ? (
+              <View style={styles.stickerCardIconWrap}>
+                <Ionicons name="brush-outline" size={34} color={STICKER_DARK} />
+              </View>
+            ) : (
+              <Text style={styles.stickerCardText} numberOfLines={6}>
+                {s.text || 'Порожній стікер'}
+              </Text>
+            )}
+          </Pressable>
+        ))}
+      </ScrollView>
+    ) : null;
+
   return (
     <View style={styles.container}>
       {/* Page background: a fixed gradient (react-native-svg, already a
@@ -422,13 +482,10 @@ export default function DocumentsScreen() {
         {/* Hidden rather than unmounted while the document is full screen:
             the list keeps its scroll position and its subscriptions, so
             coming back out of full screen lands where it left off. */}
-        <View style={[styles.pane, isTwoPane && !!openDoc && paneFullscreen && styles.paneHidden]}>
         <View
-          style={styles.headerRow}
-          onLayout={(e) => setHeaderBottom(e.nativeEvent.layout.y + e.nativeEvent.layout.height)}
+          style={[styles.pane, isTwoPane && !!openDoc && paneFullscreen && styles.paneHidden]}
+          onLayout={(e) => setPaneRect({ x: e.nativeEvent.layout.x, width: e.nativeEvent.layout.width })}
         >
-          <Text style={styles.header}>Документи</Text>
-        </View>
 
         {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
 
@@ -444,7 +501,7 @@ export default function DocumentsScreen() {
         {isFocused && !(isTwoPane && !!openDoc && paneFullscreen) && (
         <GlassPortal>
         <View
-          style={[styles.sideIslandLayer, { top: (groups.length > 0 ? groupsBottom : headerBottom) + 8 }]}
+          style={[styles.sideIslandLayer, { top: chromeBottom, left: paneRect.x, width: paneRect.width }]}
           pointerEvents="box-none"
         >
           <View style={styles.sideIslandRow}>
@@ -509,70 +566,62 @@ export default function DocumentsScreen() {
         </GlassPortal>
         )}
 
-        {/* The tabs now have the whole line to themselves. */}
-        {groups.length > 0 && (
-          <View
-            style={styles.groupsRow}
-            onLayout={(e) => setGroupsBottom(e.nativeEvent.layout.y + e.nativeEvent.layout.height)}
-          >
-            <TabsTunnel>
-              <ProjectTabsRow
-                items={groups}
-                selected={groupFilter}
-                onSelect={setGroupFilter}
-                unassignedLabel="Без групи"
-                dark
-              />
-            </TabsTunnel>
-          </View>
-        )}
-
-        {!stickersCollapsed && freeStickers.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.stickerScroll}
-            contentContainerStyle={styles.stickerStrip}
-          >
-            {freeStickers.map((s) => (
-              <Pressable key={s.id} style={styles.stickerCard} onPress={() => openFreeSticker(s)}>
-                {s.type === 'image' && s.imageUri ? (
-                  <Image source={{ uri: s.imageUri }} style={styles.stickerCardImage} resizeMode="cover" />
-                ) : s.type === 'sketch' && (s.sketchElements?.length ?? 0) > 0 ? (
-                  // Same viewBox-reuses-the-capture-canvas-size approach as
-                  // DocumentEditorScreen's own sketch block preview - the
-                  // drawing scales correctly into this much smaller box.
-                  <Svg width="100%" height="100%" viewBox={`0 0 ${s.sketchWidth || 1} ${s.sketchHeight || 1}`}>
-                    {(s.sketchElements ?? []).map((el, i) =>
-                      el.kind === 'text' ? (
-                        <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
-                          {el.text}
-                        </SvgText>
-                      ) : (
-                        <Path
-                          key={i}
-                          d={el.d}
-                          stroke={el.color}
-                          strokeWidth={el.width}
-                          fill="none"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      )
-                    )}
-                  </Svg>
-                ) : s.type === 'sketch' ? (
-                  <View style={styles.stickerCardIconWrap}>
-                    <Ionicons name="brush-outline" size={34} color={STICKER_DARK} />
-                  </View>
-                ) : (
-                  <Text style={styles.stickerCardText} numberOfLines={6}>
-                    {s.text || 'Порожній стікер'}
-                  </Text>
-                )}
-              </Pressable>
-            ))}
-          </ScrollView>
+        {/* The tabs and the filter chips float over the list rather than
+            standing above it, so a card slides under them and off the top
+            of the screen instead of being cut short by a bar - which is
+            also what finally gives the pills something to blur. Through
+            the portal for the same reason as the island: a blur cannot
+            live inside the view it blurs. */}
+        {isFocused && !(isTwoPane && !!openDoc && paneFullscreen) && (
+        <GlassPortal>
+        <View
+          style={[styles.topChrome, { top: chromeTop, left: paneRect.x, width: paneRect.width }]}
+          pointerEvents="box-none"
+          onLayout={(e) => setChromeHeight(e.nativeEvent.layout.height)}
+        >
+          {groups.length > 0 && (
+            <View style={styles.groupsRow}>
+              <TabsTunnel>
+                <ProjectTabsRow
+                  items={groups}
+                  selected={groupFilter}
+                  onSelect={setGroupFilter}
+                  unassignedLabel="Без групи"
+                  dark
+                  blurTarget={blurTarget}
+                />
+              </TabsTunnel>
+            </View>
+          )}
+          {activeFilter && (
+            <View style={styles.filterRow}>
+              {activeFilter.type === 'untagged' ? (
+                <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
+                  <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
+                  <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без тегів</Text>
+                  <Pressable hitSlop={8} onPress={() => setActiveFilter(null)}>
+                    <Ionicons name="close" size={14} color="#6B7280" />
+                  </Pressable>
+                </View>
+              ) : (
+                activeFilter.tagIds.map((tagId) => {
+                  const tag = tags.find((t) => t.id === tagId);
+                  if (!tag) return null;
+                  return (
+                    <View key={tagId} style={[styles.filterChip, { borderColor: tag.color }]}>
+                      <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tag.color} />
+                      <Text style={[styles.filterChipLabel, { color: tag.color }]}>{tag.path}</Text>
+                      <Pressable hitSlop={8} onPress={() => setActiveFilter(removeTagFromFilter(activeFilter, tagId))}>
+                        <Ionicons name="close" size={14} color={tag.color} />
+                      </Pressable>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          )}
+        </View>
+        </GlassPortal>
         )}
 
         <StickerComposer
@@ -607,40 +656,13 @@ export default function DocumentsScreen() {
           onClose={() => setSketchEditing(null)}
         />
 
-        {activeFilter && (
-          <View style={styles.filterRow}>
-            {activeFilter.type === 'untagged' ? (
-              <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
-                <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
-                <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без тегів</Text>
-                <Pressable hitSlop={8} onPress={() => setActiveFilter(null)}>
-                  <Ionicons name="close" size={14} color="#6B7280" />
-                </Pressable>
-              </View>
-            ) : (
-              activeFilter.tagIds.map((tagId) => {
-                const tag = tags.find((t) => t.id === tagId);
-                if (!tag) return null;
-                return (
-                  <View key={tagId} style={[styles.filterChip, { borderColor: tag.color }]}>
-                    <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tag.color} />
-                    <Text style={[styles.filterChipLabel, { color: tag.color }]}>{tag.path}</Text>
-                    <Pressable hitSlop={8} onPress={() => setActiveFilter(removeTagFromFilter(activeFilter, tagId))}>
-                      <Ionicons name="close" size={14} color={tag.color} />
-                    </Pressable>
-                  </View>
-                );
-              })
-            )}
-          </View>
-        )}
-
         {isLoading ? (
-          <View style={styles.emptyState}>
+          <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
             <ActivityIndicator color={ACCENT} />
           </View>
         ) : displayedDocuments.length === 0 ? (
-          <View style={styles.emptyState}>
+          <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
+            {stickerStrip}
             {documents.length === 0 ? (
               <>
                 <Pressable style={styles.emptyIcon} onPress={createDocument}>
@@ -671,7 +693,10 @@ export default function DocumentsScreen() {
             extraData={[isSelectMode, selectedIds]}
             numColumns={viewMode === 'grid' ? 2 : 1}
             columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
-            contentContainerStyle={styles.list}
+            // The cards start below the floating tabs and scroll up under
+            // them from there.
+            contentContainerStyle={[styles.list, { paddingTop: chromeBottom }]}
+            ListHeaderComponent={stickerStrip}
             renderItem={({ item }) => {
               // Grid cards reclaim the thumbnail's space for text when a
               // document has no image (see DocumentCard's own noImage
@@ -815,38 +840,25 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: 'rgba(255,255,255,0.5)',
   },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    // Was 56 - pushed down to roughly the level a note's own title sits at
-    // in the editor (that title starts under its own back/undo/redo
-    // header row, ~90px down).
-    paddingTop: 90,
-    paddingBottom: 8,
-  },
-  header: {
-    // At least 2x the previous 22.
-    fontSize: 46,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    // The new gradient is dark top-to-bottom (no light edge left), so the
-    // title needs to sit on it in white now.
-    color: '#fff',
-  },
   // The capsule, stood on its end against the right edge. A full-height
   // layer rather than a `top: 50%` offset, so it centres itself without
   // knowing how tall it is; box-none keeps the empty column above and
   // below it from swallowing taps meant for the list.
   sideIslandLayer: {
     position: 'absolute',
-    // `top` comes from the list's own layout - see listTop.
-    // Android keeps ~20px at each edge for its own back gesture, so the
-    // island sits a little in from the edge rather than against it.
-    right: 14,
+    // `top`, `left` and `width` come from the pane's own layout - on a
+    // Fold the island hugs the list's pane, not the window.
+    // Android keeps ~20px at each edge for its own back gesture, so it
+    // sits a little in from the edge rather than against it.
+    alignItems: 'flex-end',
+    paddingRight: 14,
     // Above the menu's backdrop (5), so the "..." button can also close
     // the menu it opened.
+    zIndex: 6,
+  },
+  // The band the group tabs and the tag chips float in, over the list.
+  topChrome: {
+    position: 'absolute',
     zIndex: 6,
   },
   sideIslandRow: {
@@ -929,9 +941,8 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 20,
   },
-  // The groups have the line to themselves now the capsule has moved to
-  // the edge. Still a row: TabsTunnel's inner `flex: 1` only means
-  // "the rest of the width" inside a row.
+  // Still a row even though the capsule has left it: TabsTunnel's inner
+  // `flex: 1` only means "the rest of the width" inside a row.
   groupsRow: {
     flexDirection: 'row',
     alignItems: 'center',

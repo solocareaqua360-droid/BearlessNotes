@@ -1,4 +1,6 @@
+import { RefObject } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { GLASS_ISLAND } from '../constants/glass';
 
 // Sentinel for "no group/project assigned" - an id string, since a real
@@ -25,6 +27,11 @@ type Props = {
   // already used for their own header capsules, applied here too so the
   // pills stay legible instead of nearly invisible gray-on-dark.
   dark?: boolean;
+  // A real blur behind every pill, for the screens where the content
+  // scrolls under this row. Only pass it where the row itself is drawn
+  // OUTSIDE the blur target (Documents draws it through the portal) - a
+  // blur inside the view it blurs takes the app down.
+  blurTarget?: RefObject<View | null> | null;
 };
 
 // Horizontal row of pills (see the videobookmark reference the user showed:
@@ -36,6 +43,7 @@ export default function ProjectTabsRow({
   onSelect,
   unassignedLabel = 'Без проєкту',
   dark,
+  blurTarget,
 }: Props) {
   return (
     <ScrollView
@@ -50,7 +58,14 @@ export default function ProjectTabsRow({
       style={styles.scroll}
       contentContainerStyle={styles.row}
     >
-      <Tab label="Всі" color={MUTED} active={selected === null} onPress={() => onSelect(null)} dark={dark} />
+      <Tab
+        label="Всі"
+        color={MUTED}
+        active={selected === null}
+        onPress={() => onSelect(null)}
+        dark={dark}
+        blurTarget={blurTarget}
+      />
       {items.map((p) => (
         <Tab
           key={p.id}
@@ -59,6 +74,7 @@ export default function ProjectTabsRow({
           active={selected === p.id}
           onPress={() => onSelect(p.id)}
           dark={dark}
+          blurTarget={blurTarget}
         />
       ))}
       <Tab
@@ -67,6 +83,7 @@ export default function ProjectTabsRow({
         active={selected === UNASSIGNED_ID}
         onPress={() => onSelect(UNASSIGNED_ID)}
         dark={dark}
+        blurTarget={blurTarget}
       />
     </ScrollView>
   );
@@ -78,12 +95,14 @@ function Tab({
   active,
   onPress,
   dark,
+  blurTarget,
 }: {
   label: string;
   color: string;
   active: boolean;
   onPress: () => void;
   dark?: boolean;
+  blurTarget?: RefObject<View | null> | null;
 }) {
   // On the dark gradient, an active tab inverts to a solid white pill with
   // dark text (matching CalendarScreen's own "Сьогодні" button) rather than
@@ -94,6 +113,18 @@ function Tab({
       style={[styles.tab, dark && styles.tabDark, dark && active && styles.tabDarkActive]}
       onPress={onPress}
     >
+      {/* No blur under the active pill - it is a solid white one, and
+          there would be nothing to see through it. */}
+      {dark && !active && !!blurTarget && (
+        <BlurView
+          intensity={60}
+          tint="dark"
+          blurMethod="dimezisBlurView"
+          blurTarget={blurTarget}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+      )}
       {active && <View style={[styles.dot, { backgroundColor: dark ? '#171310' : color }]} />}
       <Text
         style={[
@@ -151,6 +182,9 @@ const styles = StyleSheet.create({
   // the other and were visibly different weights.
   tabDark: {
     height: 45,
+    // Keeps each pill's blur inside its own rounded shape, so the edge
+    // stays a clean line.
+    overflow: 'hidden',
     paddingHorizontal: 16,
     backgroundColor: GLASS_ISLAND,
     borderColor: 'rgba(255,255,255,0.4)',
