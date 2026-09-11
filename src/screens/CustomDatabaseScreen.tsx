@@ -180,6 +180,10 @@ export default function CustomDatabaseScreen({}: Props) {
   const [importing, setImporting] = useState(false);
   const [deletingDatabase, setDeletingDatabase] = useState(false);
   const [rowEditor, setRowEditor] = useState<RowEditorState | null>(null);
+  // Opening a row now lands on a READ page - a structured reference for
+  // this one record - and editing is a deliberate step from there, rather
+  // than every tap dropping straight into a form.
+  const [rowPageId, setRowPageId] = useState<string | null>(null);
   const [draftValues, setDraftValues] = useState<Record<string, string | number | string[]>>({});
   const [draftTagIds, setDraftTagIds] = useState<string[]>([]);
   const [tagPickerVisible, setTagPickerVisible] = useState(false);
@@ -388,7 +392,7 @@ export default function CustomDatabaseScreen({}: Props) {
     const row = rows.find((r) => r.id === openRowId);
     if (!row) return;
     openedRowFromParamRef.current = true;
-    openEditRow(row);
+    setRowPageId(row.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openRowId, rows]);
 
@@ -487,6 +491,7 @@ export default function CustomDatabaseScreen({}: Props) {
   const activeView = savedViews.find((v) => viewMatchesState(v, viewMode, sortPref, filters)) ?? null;
   const selectedRows = rows.filter((r) => selectedIds.has(r.id));
   const rowMenuRow = rowMenuId ? rows.find((r) => r.id === rowMenuId) ?? null : null;
+  const rowPageRow = rowPageId ? rows.find((r) => r.id === rowPageId) ?? null : null;
 
   async function changeViewMode(mode: ViewMode) {
     await setDoc(prefsDoc, { viewMode: mode }, { merge: true });
@@ -961,7 +966,7 @@ export default function CustomDatabaseScreen({}: Props) {
         display={buildRowDisplay(database, item, displayContext)}
         tags={tags.filter((t) => (item.tagIds ?? []).includes(t.id))}
         documentCount={documentIdsOf(item).length}
-        onPress={() => (isSelectMode ? toggleSelected(item.id) : openEditRow(item))}
+        onPress={() => (isSelectMode ? toggleSelected(item.id) : setRowPageId(item.id))}
         onLongPress={() => setRowMenuId(item.id)}
         right={
           isSelectMode ? (
@@ -1031,7 +1036,7 @@ export default function CustomDatabaseScreen({}: Props) {
                       "a cell for one value, the card when I want them all". */}
                   <Pressable
                     style={styles.tableRowHandle}
-                    onPress={() => (isSelectMode ? toggleSelected(row.id) : openEditRow(row))}
+                    onPress={() => (isSelectMode ? toggleSelected(row.id) : setRowPageId(row.id))}
                     onLongPress={() => setRowMenuId(row.id)}
                   >
                     <Ionicons
@@ -1666,7 +1671,7 @@ export default function CustomDatabaseScreen({}: Props) {
               rowId={row.id}
               display={buildRowDisplay(database, row, displayContext)}
               documentCount={documentIdsOf(row).length}
-              onPress={() => (isSelectMode ? toggleSelected(row.id) : openEditRow(row))}
+              onPress={() => (isSelectMode ? toggleSelected(row.id) : setRowPageId(row.id))}
               onLongPress={() => setRowMenuId(row.id)}
               right={
                 isSelectMode ? (
@@ -1753,6 +1758,111 @@ export default function CustomDatabaseScreen({}: Props) {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* The record as a page: a structured reference to read, with editing
+          a deliberate step away rather than the only mode. The form below
+          stacks on top of it, so "Редагувати" never loses this page. */}
+      <Modal
+        visible={rowPageRow !== null}
+        animationType="slide"
+        onRequestClose={() => setRowPageId(null)}
+      >
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <View style={styles.pageContainer}>
+            <View style={styles.pageHeader}>
+              <Pressable hitSlop={10} onPress={() => setRowPageId(null)}>
+                <Ionicons name="chevron-back" size={24} color="#111827" />
+              </Pressable>
+              <Text style={styles.pageHeaderTitle} numberOfLines={1}>
+                {rowPageRow ? titleOf(rowPageRow) : ''}
+              </Text>
+              <Pressable
+                style={styles.pageEditButton}
+                onPress={() => {
+                  if (rowPageRow) openEditRow(rowPageRow);
+                }}
+              >
+                <Ionicons name="create-outline" size={16} color="#fff" />
+                <Text style={styles.pageEditLabel}>Редагувати</Text>
+              </Pressable>
+            </View>
+
+            {rowPageRow && (
+              <GestureScrollView contentContainerStyle={styles.pageBody}>
+                {(() => {
+                  const cover = coverField ? resolveRelation(coverField, rowPageRow.values[coverField.id] as string | undefined) : null;
+                  return cover?.thumbUri ? (
+                    <View style={styles.pageCover}>
+                      <RelationThumb uri={cover.thumbUri} driveFileId={cover.driveFileId} fill />
+                    </View>
+                  ) : null;
+                })()}
+
+                <Text style={styles.pageTitle}>{titleOf(rowPageRow)}</Text>
+
+                {/* Every field past the title, value-first and read-only.
+                    Empty ones are shown too, greyed - on a reference page
+                    "this is not filled in" is information. */}
+                {database.fields.slice(1).map((field) => {
+                  if (field.type === 'backlink') {
+                    const linked = resolveBacklinkRows(field, rowPageRow.id, displayContext);
+                    const sourceDb = field.backlinkSource ? relatedDatabases[field.backlinkSource.databaseId] : undefined;
+                    return (
+                      <View key={field.id} style={styles.pageField}>
+                        <Text style={styles.pageFieldLabel}>{field.name}</Text>
+                        {linked.length === 0 ? (
+                          <Text style={styles.pageFieldEmpty}>—</Text>
+                        ) : (
+                          linked.map((r) => (
+                            <Text key={r.id} style={styles.pageFieldValue}>
+                              {rowTitleOf(sourceDb, r)}
+                            </Text>
+                          ))
+                        )}
+                      </View>
+                    );
+                  }
+                  const raw = rowPageRow.values[field.id];
+                  if (field.type === 'relation') {
+                    const resolved = typeof raw === 'string' ? resolveRelation(field, raw) : null;
+                    return (
+                      <View key={field.id} style={styles.pageField}>
+                        <Text style={styles.pageFieldLabel}>{field.name}</Text>
+                        {resolved ? (
+                          <View style={styles.pageRelationValue}>
+                            {resolved.thumbUri && (
+                              <RelationThumb uri={resolved.thumbUri} driveFileId={resolved.driveFileId} size={32} radius={8} />
+                            )}
+                            <Text style={styles.pageFieldValue}>{resolved.label}</Text>
+                          </View>
+                        ) : (
+                          <Text style={styles.pageFieldEmpty}>—</Text>
+                        )}
+                      </View>
+                    );
+                  }
+                  const shown = displayValue(field, raw);
+                  return (
+                    <View key={field.id} style={styles.pageField}>
+                      <Text style={styles.pageFieldLabel}>{field.name}</Text>
+                      <Text style={shown ? styles.pageFieldValue : styles.pageFieldEmpty}>{shown || '—'}</Text>
+                    </View>
+                  );
+                })}
+
+                {(rowPageRow.tagIds ?? []).length > 0 && (
+                  <View style={styles.pageField}>
+                    <Text style={styles.pageFieldLabel}>Теги</Text>
+                    <View style={styles.pageTags}>
+                      <TagChips tags={tags.filter((t) => (rowPageRow.tagIds ?? []).includes(t.id))} onPress={() => {}} />
+                    </View>
+                  </View>
+                )}
+              </GestureScrollView>
+            )}
+          </View>
+        </GestureHandlerRootView>
       </Modal>
 
       <Modal visible={rowEditor !== null} transparent animationType="fade" onRequestClose={cancelRowEditor}>
@@ -2620,6 +2730,87 @@ const styles = StyleSheet.create({
   // dark tabs - flexGrow/flexShrink: 0 keeps it from competing for height
   // with the row list below it (same fix, same reason, as that
   // component's own `scroll` style).
+  // The record page: a plain light sheet, deliberately not the dark
+  // gradient the database list sits on - it reads as a document about one
+  // record rather than another view of the list.
+  pageContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  pageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 56,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  pageHeaderTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  pageEditButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: ACCENT,
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  pageEditLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  pageBody: {
+    padding: 16,
+    paddingBottom: 48,
+  },
+  pageCover: {
+    width: '100%',
+    aspectRatio: 1.5,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 16,
+  },
+  pageTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 16,
+  },
+  pageField: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+    gap: 4,
+  },
+  pageFieldLabel: {
+    fontSize: 12,
+    color: '#9CA3AF',
+  },
+  pageFieldValue: {
+    fontSize: 16,
+    color: '#111827',
+  },
+  pageFieldEmpty: {
+    fontSize: 16,
+    color: '#D1D5DB',
+  },
+  pageRelationValue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  pageTags: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
   backlinkList: {
     gap: 6,
   },
