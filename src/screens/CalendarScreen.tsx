@@ -122,6 +122,11 @@ export default function CalendarScreen() {
   // toggles. Only ever applies while there are columns to hide.
   const [showCalendarPane, setShowCalendarPane] = useState(true);
   const [showHistoryPane, setShowHistoryPane] = useState(true);
+  // The diary spread: today's page and tomorrow's side by side, with the
+  // calendar and the history together in the narrow column beside them.
+  // A mode, not a replacement - the single wide page is still one tap
+  // away, and only three columns have room for it at all.
+  const [spreadMode, setSpreadMode] = useState(false);
   const stripWidth = (isTwoPane && calendarPaneWidth > 0 ? calendarPaneWidth : windowWidth) - PLATE_MARGIN * 2;
   const today = useMemo(() => new Date(), []);
 
@@ -206,6 +211,7 @@ export default function CalendarScreen() {
   // calendar off the screen.
   const foldedAway = isWriting && !isTwoPane;
   const noteFullscreen = !showCalendarPane && (!isThreePane || !showHistoryPane);
+  const spread = isThreePane && spreadMode && showCalendarPane;
   function toggleNoteFullscreen() {
     const goingFull = !noteFullscreen;
     setShowCalendarPane(!goingFull);
@@ -460,12 +466,44 @@ export default function CalendarScreen() {
     }
   }, [isTwoPane]);
 
+  // One day's sheet. `primary` is the selected day's - the one the header's
+  // save dot and select-mode button drive, and the only one that needs the
+  // ref. The second page carries a date label because, unlike the first,
+  // the header above doesn't name it.
+  function renderDayNote(key: string, date: Date, primary: boolean) {
+    return (
+      <View style={[styles.noteArea, isTwoPane && styles.notePane]}>
+        {spread && (
+          <Text style={styles.pageDateLabel}>
+            {WEEKDAY_SHORT[mondayIndex(date)]}, {formatBigDate(date)}
+          </Text>
+        )}
+        <DocumentEditorScreen
+          key={`day_${key}`}
+          ref={primary ? noteEditorRef : undefined}
+          embedded
+          documentId={`day_${key}`}
+          navigation={navigation}
+          extraFields={{ calendarDate: key }}
+          onSelectModeChange={primary ? setNoteSelectMode : undefined}
+          onSaveStatusChange={primary ? setNoteSaveStatus : undefined}
+        />
+      </View>
+    );
+  }
+
   const monthGrid = useMemo(
     () => getMonthGrid(visibleMonth.year, visibleMonth.month),
     [visibleMonth.year, visibleMonth.month]
   );
   const selectedKey = dateKey(selectedDate);
   const dailyDocId = `day_${selectedKey}`;
+  // The right-hand page of the spread is always the day after the selected
+  // one, the way a paper diary opens: picking a date moves the whole
+  // spread rather than one page of it, so there's never a question of
+  // which page a tap on the calendar changes.
+  const nextDate = addDays(selectedDate, 1);
+  const nextKey = dateKey(nextDate);
 
   // The actual tasks due on the selected day (not just whether the day
   // counts as "filled") - a task written in a DIFFERENT document but
@@ -579,6 +617,14 @@ export default function CalendarScreen() {
             )}
             {isThreePane && (
               <>
+                <Pressable hitSlop={6} onPress={() => setSpreadMode((v) => !v)}>
+                  <Ionicons name={spreadMode ? 'book' : 'book-outline'} size={17} color="#fff" />
+                </Pressable>
+                <View style={styles.headerButtonsDivider} />
+              </>
+            )}
+            {isThreePane && (
+              <>
                 <Pressable hitSlop={6} onPress={() => setShowHistoryPane((v) => !v)}>
                   <Ionicons name={showHistoryPane ? 'time' : 'time-outline'} size={17} color="#fff" />
                 </Pressable>
@@ -619,7 +665,11 @@ export default function CalendarScreen() {
       {/* One column on a phone (calendar, then the note under it), two on
           a wide screen (calendar left, note right). Both halves are flex:1
           in the row, so they split the window evenly. */}
-      <View style={isTwoPane ? styles.paneRow : styles.stack}>
+      {/* In spread mode the row is reversed, which is what puts the
+          calendar column last on screen while it stays first in the tree -
+          the three slots keep their order and only their contents change,
+          rather than the whole layout being written twice. */}
+      <View style={isTwoPane ? [styles.paneRow, spread && styles.paneRowSpread] : styles.stack}>
         <View
           style={[
             isTwoPane ? styles.sidePane : null,
@@ -627,7 +677,7 @@ export default function CalendarScreen() {
           ]}
           onLayout={(e) => setCalendarPaneWidth(e.nativeEvent.layout.width)}
         >
-          <Animated.View style={[styles.calendarPlate, isTwoPane && styles.calendarPlatePaned, calendarPlateStyle]}>
+          <Animated.View style={[styles.calendarPlate, isTwoPane && (spread ? styles.calendarPlateSpread : styles.calendarPlatePaned), calendarPlateStyle]}>
           <Animated.View style={[styles.calendarWrap, calendarWrapStyle]}>
             <Animated.View style={[styles.monthNavWrap, monthNavStyle]}>
               <View style={styles.monthNav}>
@@ -786,7 +836,7 @@ export default function CalendarScreen() {
               with the month always open, and the history has its own
               column - an empty row would just leave a gap. */}
           {!foldedAway && !isThreePane && (
-            <View style={[styles.capsuleRow, isTwoPane && styles.calendarPlatePaned]}>
+            <View style={[styles.capsuleRow, isTwoPane && (spread ? styles.calendarPlateSpread : styles.calendarPlatePaned)]}>
               {/* The month capsule IS the expand button, named after the month
                   it opens - with two panes the month is already open and it
                   would toggle nothing, so it goes away and the nav row inside
@@ -803,7 +853,7 @@ export default function CalendarScreen() {
           )}
 
           {!foldedAway && dueElsewhere.length > 0 && (
-            <View style={[styles.dueCard, isTwoPane && styles.calendarPlatePaned]}>
+            <View style={[styles.dueCard, isTwoPane && (spread ? styles.calendarPlateSpread : styles.calendarPlatePaned)]}>
               {dueElsewhere.map((task, index) => (
                 <Pressable
                   key={task.id}
@@ -840,27 +890,31 @@ export default function CalendarScreen() {
               <Text style={styles.collapseNoteLabel}>{noteCollapsed ? 'Показати нотатку дня' : 'Згорнути нотатку дня'}</Text>
             </Pressable>
           )}
+
+          {/* With two pages taking the rest of the screen, the history
+              shares this column instead of having one of its own. */}
+          {spread && showHistoryPane && (
+            <View style={styles.historyUnderCalendar}>
+              <DayHistoryList items={historyByDate.get(selectedKey) ?? []} fill />
+            </View>
+          )}
         </View>
 
-        {!(compactFilter === 'history' && noteCollapsed) && (
-          <View style={[styles.noteArea, isTwoPane && styles.notePane]}>
-            <DocumentEditorScreen
-              key={dailyDocId}
-              ref={noteEditorRef}
-              embedded
-              documentId={dailyDocId}
-              navigation={navigation}
-              extraFields={{ calendarDate: selectedKey }}
-              onSelectModeChange={setNoteSelectMode}
-              onSaveStatusChange={setNoteSaveStatus}
-            />
-          </View>
-        )}
-        {isThreePane && showHistoryPane && (
-          <View style={styles.historyPane}>
-            <DayHistoryList items={historyByDate.get(selectedKey) ?? []} fill />
-          </View>
-        )}
+        {/* Second slot: the next day in a spread, the selected day
+            otherwise. Reversed, it lands to the right of the third. */}
+        {!(compactFilter === 'history' && noteCollapsed) &&
+          (spread ? renderDayNote(nextKey, nextDate, false) : renderDayNote(selectedKey, selectedDate, true))}
+
+        {/* Third slot: the selected day's page in a spread (leftmost once
+            reversed), the history column otherwise. */}
+        {spread
+          ? renderDayNote(selectedKey, selectedDate, true)
+          : isThreePane &&
+            showHistoryPane && (
+              <View style={styles.historyPane}>
+                <DayHistoryList items={historyByDate.get(selectedKey) ?? []} fill />
+              </View>
+            )}
       </View>
 
     </View>
@@ -1261,6 +1315,29 @@ const styles = StyleSheet.create({
   paneRow: {
     flex: 1,
     flexDirection: 'row',
+  },
+  paneRowSpread: {
+    flexDirection: 'row-reverse',
+  },
+  historyUnderCalendar: {
+    flex: 1,
+    marginLeft: 0,
+    marginRight: 16,
+    marginTop: 10,
+  },
+  // Reversed, this column sits against the right edge of the screen, so
+  // the margin it drops is the other one - the gap to the page beside it
+  // comes from that page, exactly as on the left in the normal layout.
+  calendarPlateSpread: {
+    marginLeft: 0,
+    marginRight: 16,
+  },
+  pageDateLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9CA3AF',
+    paddingHorizontal: 16,
+    paddingTop: 10,
   },
   // The calendar and the history take a column each; the note takes a
   // little more, since it's the one column whose content is text being
