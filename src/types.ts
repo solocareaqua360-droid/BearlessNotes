@@ -109,22 +109,6 @@ export interface Block {
   // duplicate.
   driveFileId?: string;
   driveBytes?: number;
-  // Where this block came from, when it was generated from a board (see
-  // boardToDocument.ts). This is what makes the link two-way: without it a
-  // rebuild is the only possible direction, because an edited block has no
-  // way to say which card it belongs to.
-  //
-  // Exactly one of these is set on a generated block:
-  //  - sourceCardId: it IS that board card, and editing it edits the card;
-  //  - sourceColumnId: it's the column's own heading or the rule above it;
-  //  - sourceDocumentId + sourceBlockId: it was inlined from a document
-  //    card, so it belongs to THAT document, not to the board.
-  // A block with none of them is one written into the document by hand -
-  // which is how a new card gets made from the document side.
-  sourceCardId?: string;
-  sourceColumnId?: string;
-  sourceDocumentId?: string;
-  sourceBlockId?: string;
   // 'image' blocks only - a user-given name, always renamable (see
   // PhotosScreen). Absent until the user names it; the photo grid falls
   // back to a generic "Без назви" label, never the raw local file path.
@@ -358,11 +342,6 @@ export interface BoardColumn {
   // Columns from importGroupToBoard.ts don't set this - a fresh column
   // per import batch is the point there, never reused across imports.
   kind?: string;
-  // The document formed from this column (see boardToDocument.ts). Per
-  // column rather than per board: a board holds several themes at once -
-  // a group import alone makes a column per kind - and a document is one
-  // of them, not the canvas they share.
-  documentId?: string;
 }
 
 export interface BoardItem {
@@ -371,9 +350,6 @@ export interface BoardItem {
   cards: BoardCard[];
   connections?: BoardConnection[];
   columns?: BoardColumn[];
-  // Boards formed before documents became per-column carry this; nothing
-  // writes it any more (see BoardColumn.documentId).
-  documentId?: string;
   createdAt: number;
   updatedAt: number;
 }

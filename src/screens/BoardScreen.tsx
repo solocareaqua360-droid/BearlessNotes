@@ -66,8 +66,7 @@ import { linkDocId } from '../utils/linkId';
 import { blockFromFile, blockFromLink, blockFromPhoto } from '../utils/copyToNote';
 import { backupFileToDrive } from '../utils/googleDrive';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
-import { contentEqual, generateDocumentFromColumn } from '../utils/boardToDocument';
-import BoardColumnDocument from '../components/BoardColumnDocument';
+import { contentEqual } from '../utils/contentEqual';
 import GroupImportSheet from '../components/GroupImportSheet';
 import { useGroupItems } from '../hooks/useGroupItems';
 import { importGroupToBoard } from '../utils/importGroupToBoard';
@@ -831,7 +830,6 @@ export default function BoardScreen() {
   // is the whole point of a board full of documents. Full screen is still
   // a tap away, so nothing that worked before stops working.
   const [paneDocId, setPaneDocId] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
   // One column read as flowing text in the right-hand half. Not a document
   // and not a copy: it edits the cards themselves, which is why nothing
   // here is synchronised with anything. Opened by long-pressing a column
@@ -1524,48 +1522,6 @@ export default function BoardScreen() {
   const [groupPickerVisible, setGroupPickerVisible] = useState(false);
   const [importingGroup, setImportingGroup] = useState<Group | null>(null);
 
-  // Forming the document a second time replaces what it holds, so it asks
-  // first: that document is an ordinary one from the moment it's made, and
-  // may well have been written in since.
-  function confirmGenerateFromPreview() {
-    if (!viewerColumn?.documentId) {
-      generateFromPreview();
-      return;
-    }
-    Alert.alert(
-      'Переформувати документ?',
-      'Він буде зібраний із дошки заново. Правки, зроблені в самому документі, будуть замінені.',
-      [
-        { text: 'Скасувати', style: 'cancel' },
-        { text: 'Переформувати', style: 'destructive', onPress: generateFromPreview },
-      ]
-    );
-  }
-
-  async function generateFromPreview() {
-    if (generating || !viewerColumn) return;
-    setGenerating(true);
-    try {
-      const { documentId, columns: nextColumns } = await generateDocumentFromColumn(
-        { id: boardId, title, cards, connections, columns, createdAt: 0, updatedAt: 0 },
-        viewerColumn.id
-      );
-      // The column now remembers its document; taking that back into state
-      // keeps this screen's own autosave from writing the older list over
-      // it a moment later.
-      setColumns(nextColumns);
-      const id = documentId;
-      // Straight into the real editor in the same half of the screen: what
-      // was a preview a moment ago is now a document, and the board is
-      // still there beside it.
-      setViewerColumnId(null);
-      if (isTwoPane) setPaneDocId(id);
-      else navigation.navigate('EditorModal', { documentId: id });
-    } finally {
-      setGenerating(false);
-    }
-  }
-
   // Arriving from the document's own "show the board" button: the document
   // that sent us here opens beside the board it came from.
   useEffect(() => {
@@ -1708,39 +1664,10 @@ export default function BoardScreen() {
   // what to do with the column, because that header is where the reading
   // order lives - it's the natural place to ask for the document this
   // board would make. (Renaming is still a plain tap.)
-  const viewerColumn = viewerColumnId ? (columns.find((c) => c.id === viewerColumnId) ?? null) : null;
-
-  // Writing in the text view writes the card itself - no document, no
-  // second copy, nothing to reconcile afterwards. The board's own autosave
-  // carries it from here like any other card change.
-  function changeCardText(cardId: string, text: string) {
-    setCards((prev) => prev.map((c) => (c.id === cardId ? { ...c, text } : c)));
-  }
-
-  // Carrying on past the end of the column: a new text card at the bottom
-  // of it. Returns the id so the caller can put the cursor in it.
-  function appendTextCard(columnId: string): string {
-    const id = generateId();
-    const members = columnMembers(cards, columnId);
-    const lastY = members.length > 0 ? members[members.length - 1].y : 0;
-    setCards((prev) => [
-      ...prev,
-      {
-        id,
-        text: '',
-        type: 'paragraph',
-        columnId,
-        x: 0,
-        y: lastY + 1,
-        width: DEFAULT_CARD_WIDTH,
-        color: STICKY_COLORS[prev.length % STICKY_COLORS.length],
-        createdAt: Date.now(),
-      },
-    ]);
-    return id;
-  }
-
-  async function runGroupImport(group: Group, selected: { id: string; kind: string; databaseId?: string; data: Record<string, unknown> }[]) {
+  async function runGroupImport(
+    group: Group,
+    selected: { id: string; kind: string; databaseId?: string; data: Record<string, unknown> }[]
+  ) {
     setImportingGroup(null);
     await importGroupToBoard(
       boardId,
@@ -1756,30 +1683,6 @@ export default function BoardScreen() {
     );
     // The import writes the board document directly; this screen hears
     // about the new cards through its own listener.
-  }
-
-  function handleColumnLongPress(column: BoardColumn) {
-    Alert.alert(column.title?.trim() || 'Колонка', undefined, [
-      { text: 'Скасувати', style: 'cancel' },
-      {
-        text: 'Видалити колонку',
-        style: 'destructive',
-        onPress: () => confirmDeleteColumn(column),
-      },
-      {
-        text: 'Читати як текст',
-        onPress: () => {
-          setPaneDocId(null);
-          setViewerColumnId(column.id);
-          if (!isTwoPane) {
-            Alert.alert(
-              'Замало місця',
-              'Колонка читається текстом поруч із дошкою, тож для цього треба широкий екран. Розклади телефон або поверни його.'
-            );
-          }
-        },
-      },
-    ]);
   }
 
   function handleCardLongPress(card: BoardCard) {
@@ -1928,7 +1831,7 @@ export default function BoardScreen() {
                     onDragStart={setDraggingColumnId}
                     onDragEnd={commitColumnDrag}
                     onRename={setRenamingColumn}
-                    onDelete={handleColumnLongPress}
+                    onDelete={confirmDeleteColumn}
                   />
                 );
               })}
@@ -2317,21 +2220,6 @@ export default function BoardScreen() {
           </View>
         )}
       </View>
-
-      {isTwoPane && viewerColumn !== null && (
-        <View style={styles.docPane}>
-          <BoardColumnDocument
-            title={viewerColumn.title?.trim() || 'Колонка'}
-            cards={columnMembers(cards, viewerColumn.id)}
-            hasDocument={!!viewerColumn.documentId}
-            onChangeCardText={changeCardText}
-            onStartWriting={() => appendTextCard(viewerColumn.id)}
-            onOpenCard={handleCardTap}
-            onGenerate={confirmGenerateFromPreview}
-            onClose={() => setViewerColumnId(null)}
-          />
-        </View>
-      )}
 
       {isTwoPane && paneDocId !== null && (
         <View style={styles.docPane}>
