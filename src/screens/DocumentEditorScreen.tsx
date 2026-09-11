@@ -80,6 +80,7 @@ import DocumentTagsBlock from '../components/DocumentTagsBlock';
 import SketchEditor from '../components/SketchEditor';
 import EditorToolbar, { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolbar';
 import { BlockAction } from '../components/blockActions';
+import { clearCopiedObject, getCopiedObject, useCopiedObject } from '../utils/objectClipboard';
 import { backupFileToDrive } from '../utils/googleDrive';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags } from '../hooks/useTags';
@@ -2047,6 +2048,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // reasoning behind what this document says - so the document keeps a way
   // back to it rather than trying to carry any of that in its own text.
   const [sourceBoardId, setSourceBoardId] = useState<string | null>(null);
+  const copiedObject = useCopiedObject();
   const [reminderBlockId, setReminderBlockId] = useState<string | null>(null);
   const focusIdRef = useRef<string | null>(null);
   const focusToEndRef = useRef(false);
@@ -3824,6 +3826,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     setBlocks((prev) => [...prev, created]);
   }
 
+  // Whatever was last copied from a board card or a database screen, as a
+  // block. It references the same photo, file or link - pasting it puts
+  // that object here, not a second copy of it (see objectClipboard).
+  function pasteCopiedObject() {
+    const value = getCopiedObject();
+    if (!value) return;
+    snapshotBeforeChange();
+    const pasted: Block = { ...value.block, id: generateId(), createdAt: Date.now() };
+    setBlocks((prev) => [...prev, pasted]);
+    clearCopiedObject();
+  }
+
   function handleReorderBlocks(next: Block[]) {
     snapshotBeforeChange();
     setBlocks(next);
@@ -4100,10 +4114,23 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         />
 
         {selectedIds.size === 0 && (
-          <Pressable style={styles.addBlock} onPress={addBlockAtEnd}>
-            <Ionicons name="add" size={18} color={paperColor?.text ?? '#111827'} />
-            <Text style={[styles.addBlockLabel, paperColor && { color: paperColor.text }]}>Додати блок</Text>
-          </Pressable>
+          <View style={styles.addBlockRow}>
+            <Pressable style={styles.addBlock} onPress={addBlockAtEnd}>
+              <Ionicons name="add" size={18} color={paperColor?.text ?? '#111827'} />
+              <Text style={[styles.addBlockLabel, paperColor && { color: paperColor.text }]}>Додати блок</Text>
+            </Pressable>
+            {/* Only while there is something to paste, and it says what
+                that something is - a paste button that might do nothing is
+                worse than none. */}
+            {!!copiedObject && (
+              <Pressable style={styles.addBlock} onPress={pasteCopiedObject}>
+                <Ionicons name="clipboard-outline" size={18} color={paperColor?.text ?? '#111827'} />
+                <Text style={[styles.addBlockLabel, paperColor && { color: paperColor.text }]}>
+                  Вставити {copiedObject.label}
+                </Text>
+              </Pressable>
+            )}
+          </View>
         )}
         <Animated.View style={bottomSpacerStyle} />
       </ScrollView>
@@ -4965,6 +4992,12 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 20,
     paddingVertical: 14,
+  },
+  addBlockRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 4,
   },
   addBlockLabel: {
     fontSize: 15,

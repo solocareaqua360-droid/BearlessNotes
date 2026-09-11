@@ -46,6 +46,7 @@ import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
+import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import TagsDrawer, { TagFilter, matchesTagFilter, removeTagFromFilter } from '../components/TagsDrawer';
@@ -291,6 +292,17 @@ export default function PhotosScreen() {
   const viewerPhoto = viewerPhotoId ? photos.find((p) => p.id === viewerPhotoId) ?? null : null;
   const tagPickerPhoto = tagPickerForId ? photos.find((p) => p.id === tagPickerForId) ?? null : null;
   const selectedPhotos = photos.filter((p) => selectedIds.has(p.id));
+
+  // The one selected row, put on the app's own clipboard as the block that
+  // REFERENCES it - pasted into a document it stays this same record
+  // rather than becoming a second copy of it (see objectClipboard).
+  function copySelectedToClipboard() {
+    const [only] = selectedPhotos;
+    if (!only) return;
+    const block = blockFromPhoto(only);
+    copyObject({ label: labelForBlock(block), block });
+    clearSelection();
+  }
 
   // Same resize-then-compress DocumentEditorScreen's own image blocks go
   // through before ever being saved anywhere.
@@ -833,6 +845,7 @@ export default function PhotosScreen() {
         onTag={() => setBulkTagPickerVisible(true)}
         onGroup={() => setBulkGroupPickerVisible(true)}
         onCopy={() => setBulkCopyModalVisible(true)}
+        onCopyObject={copySelectedToClipboard}
         onDelete={confirmDeleteSelected}
       />
 

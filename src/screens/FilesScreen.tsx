@@ -41,6 +41,7 @@ import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
+import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import TagsDrawer, { TagFilter, matchesTagFilter, removeTagFromFilter } from '../components/TagsDrawer';
@@ -213,6 +214,17 @@ export default function FilesScreen() {
   const tagPickerFile = tagPickerForId ? files.find((f) => f.id === tagPickerForId) ?? null : null;
   const cardMenuFile = cardMenuFileId ? files.find((f) => f.id === cardMenuFileId) ?? null : null;
   const selectedFiles = files.filter((f) => selectedIds.has(f.id));
+
+  // The one selected row, put on the app's own clipboard as the block that
+  // REFERENCES it - pasted into a document it stays this same record
+  // rather than becoming a second copy of it (see objectClipboard).
+  function copySelectedToClipboard() {
+    const [only] = selectedFiles;
+    if (!only) return;
+    const block = blockFromFile(only);
+    copyObject({ label: labelForBlock(block), block });
+    clearSelection();
+  }
 
   // The "+" button - attaching a file straight into the database, no
   // document involved (usedInDocuments starts empty). Same picker call and
@@ -748,6 +760,7 @@ export default function FilesScreen() {
         onTag={() => setBulkTagPickerVisible(true)}
         onGroup={() => setBulkGroupPickerVisible(true)}
         onCopy={() => setBulkCopyModalVisible(true)}
+        onCopyObject={copySelectedToClipboard}
         onDelete={confirmDeleteSelected}
       />
 

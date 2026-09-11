@@ -41,6 +41,7 @@ import {
   updateDoc,
 } from '@react-native-firebase/firestore';
 import * as Clipboard from 'expo-clipboard';
+import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import { db } from '../firebase';
 import { BoardsStackParamList, RootStackParamList } from '../navigation';
 import { Block, BoardCard, BoardColumn, BoardConnection } from '../types';
@@ -1781,10 +1782,32 @@ export default function BoardScreen() {
     return card.text ?? '';
   }
 
+  // Copying a card does both halves at once: its text goes to the system
+  // clipboard, where any other app can take it, and the card ITSELF goes
+  // to this app's own clipboard as the block it would be in a document -
+  // which is what lets a photo be pasted as that same photo rather than a
+  // second copy of it.
   async function copyCardText(card: BoardCard) {
+    const {
+      x: _x,
+      y: _y,
+      width: _width,
+      color: _color,
+      columnId: _columnId,
+      documentExpanded: _expanded,
+      ...block
+    } = card;
+    const asBlock = { ...(block as Block), type: (card.type === 'document' ? 'paragraph' : card.type) ?? 'paragraph' };
+    copyObject({ label: card.type === 'document' ? 'текст' : labelForBlock(asBlock), block: asBlock });
+
     const text = await textOfCard(card);
-    if (!text.trim()) return;
-    await Clipboard.setStringAsync(text);
+    if (text.trim()) {
+      // A document card has no block of its own to paste (a document
+      // cannot nest in a document), so its text is what travels - and it
+      // replaces the block above for that case.
+      if (card.type === 'document') copyObject({ label: 'текст', block: { ...asBlock, text } });
+      await Clipboard.setStringAsync(text);
+    }
     hapticSuccess();
     setSelectedCardIds(new Set());
   }

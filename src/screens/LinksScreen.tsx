@@ -38,6 +38,7 @@ import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
+import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import GroupPickerSheet, { GroupKind } from '../components/GroupPickerSheet';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import TagsDrawer, { TagFilter, matchesTagFilter, removeTagFromFilter } from '../components/TagsDrawer';
@@ -278,6 +279,17 @@ export default function LinksScreen({ route, navigation }: Props) {
   const tagPickerLink = tagPickerForId ? links.find((l) => l.id === tagPickerForId) ?? null : null;
   const cardMenuLink = cardMenuLinkId ? links.find((l) => l.id === cardMenuLinkId) ?? null : null;
   const selectedLinks = categoryLinks.filter((l) => selectedIds.has(l.id));
+
+  // The one selected row, put on the app's own clipboard as the block that
+  // REFERENCES it - pasted into a document it stays this same record
+  // rather than becoming a second copy of it (see objectClipboard).
+  function copySelectedToClipboard() {
+    const [only] = selectedLinks;
+    if (!only) return;
+    const block = blockFromLink(only);
+    copyObject({ label: labelForBlock(block), block });
+    clearSelection();
+  }
 
   function openLinkUrl(url: string) {
     Linking.openURL(url).catch(() => {});
@@ -847,6 +859,7 @@ export default function LinksScreen({ route, navigation }: Props) {
         onTag={() => setBulkTagPickerVisible(true)}
         onGroup={() => setBulkGroupPickerVisible(true)}
         onCopy={() => setBulkCopyModalVisible(true)}
+        onCopyObject={copySelectedToClipboard}
         onDelete={confirmDeleteSelected}
       />
 

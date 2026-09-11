@@ -10,6 +10,10 @@ type Props = {
   // Documents itself) - the button just doesn't render rather than calling
   // a no-op.
   onCopy?: () => void;
+  // Puts the one selected row on the app's own clipboard, to be pasted
+  // into any open document (see objectClipboard). Offered only for a
+  // single row: pasting expects one object, not a pile.
+  onCopyObject?: () => void;
   onDelete: () => void;
   // Documents/Calendar share the bottom of the screen with
   // FloatingIslandTabBar (bottom: 24, ~64 tall) - this bar needs to float
@@ -25,7 +29,15 @@ type Props = {
 // instead of a full-width flat bar with per-action colors, which is what
 // made it hard to tell apart from a plain toolbar and, on Documents, put it
 // at the same height as the tab island underneath.
-export default function BulkActionBar({ count, onTag, onGroup, onCopy, onDelete, aboveTabBar }: Props) {
+export default function BulkActionBar({
+  count,
+  onTag,
+  onGroup,
+  onCopy,
+  onCopyObject,
+  onDelete,
+  aboveTabBar,
+}: Props) {
   // The device's own gesture-nav strip isn't accounted for by a plain
   // hardcoded bottom offset - on a phone with a tall gesture inset, that
   // let this bar render partly behind/under the system bar rather than
@@ -54,6 +66,12 @@ export default function BulkActionBar({ count, onTag, onGroup, onCopy, onDelete,
           <Pressable style={styles.action} hitSlop={6} onPress={onCopy}>
             <Ionicons name="document-text-outline" size={18} color="#fff" />
             <Text style={styles.actionLabel}>В нотатку</Text>
+          </Pressable>
+        )}
+        {!!onCopyObject && count === 1 && (
+          <Pressable style={styles.action} hitSlop={6} onPress={onCopyObject}>
+            <Ionicons name="copy-outline" size={18} color="#fff" />
+            <Text style={styles.actionLabel}>Копіювати</Text>
           </Pressable>
         )}
         <Pressable style={styles.action} hitSlop={6} onPress={onDelete}>
