@@ -36,6 +36,10 @@ type Props = {
   // OUTSIDE the blur target (Documents draws it through the portal) - a
   // blur inside the view it blurs takes the app down.
   blurTarget?: RefObject<View | null> | null;
+  // How much room to leave at the row's end. The pills still scroll past
+  // it and off the screen's own edge - which is a clean cut - but at rest
+  // the last one stands clear of whatever the rail has parked there.
+  endPadding?: number;
 };
 
 // Horizontal row of pills (see the videobookmark reference the user showed:
@@ -49,6 +53,7 @@ export default function ProjectTabsRow({
   pinnedTab,
   dark,
   blurTarget,
+  endPadding,
 }: Props) {
   return (
     <ScrollView
@@ -61,7 +66,7 @@ export default function ProjectTabsRow({
       // alignItems is 'stretch'). Same bug, same fix, as the calendar's own
       // week strip.
       style={styles.scroll}
-      contentContainerStyle={styles.row}
+      contentContainerStyle={[styles.row, endPadding !== undefined && { paddingRight: endPadding }]}
     >
       <Tab
         label="Всі"

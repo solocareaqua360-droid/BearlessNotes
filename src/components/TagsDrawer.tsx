@@ -6,14 +6,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from '
 import { Tag } from '../types';
 import { FONT_REGULAR, FONT_SEMIBOLD, FONT_BOLD, FONT_EXTRABOLD } from '../utils/fonts';
 import GlowHalo from './GlowHalo';
-import {
-  HALO,
-  HALO_INSET,
-  RAIL_GAP,
-  RAIL_RIGHT,
-  RAIL_WIDTH,
-  TAG_ROW_HEIGHT,
-} from '../constants/rail';
+import { HALO, HALO_INSET, RAIL_CLEARANCE, RAIL_RIGHT, TAG_ROW_HEIGHT } from '../constants/rail';
 import { GLASS_ISLAND } from '../constants/glass';
 import { useRail } from '../hooks/useRail';
 import { GLASS_BODY, GLASS_BODY_BLURRED, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
@@ -506,19 +499,24 @@ const styles = StyleSheet.create({
   },
   // The square the halo is drawn on - twice the button across and centred
   // on it, because the button's own box would clip the light.
-  // The row of tags along the foot of the screen. It stops short of the
-  // rail so the navigation island never sits on top of a pill.
+  // The row of tags along the foot of the screen. Full width, so a pill
+  // scrolled past the end is cut by the screen's own edge - clipping it
+  // against a box that ends short of the edge left a hard-edged rectangle
+  // of unblurred pill sitting in mid-screen instead.
   tagRow: {
     position: 'absolute',
     left: 0,
-    right: RAIL_RIGHT + RAIL_WIDTH + RAIL_GAP,
+    right: 0,
     height: TAG_ROW_HEIGHT,
   },
   tagRowContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 20,
+    paddingLeft: 20,
+    // The rail's own width, kept free: at rest no pill is left standing
+    // under the navigation island.
+    paddingRight: RAIL_CLEARANCE,
   },
   tagPill: {
     flexDirection: 'row',

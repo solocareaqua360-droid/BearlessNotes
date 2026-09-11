@@ -20,9 +20,10 @@ export const NAV_ROUTES = 4;
 export const RAIL_WIDTH = NAV_BUTTON + NAV_PADDING * 2;
 export const NAV_HEIGHT = NAV_BUTTON * NAV_ROUTES + NAV_GAP * (NAV_ROUTES - 1) + NAV_PADDING * 2;
 
-// The two round buttons between the island and the capsule.
-export const RAIL_ADD_BOTTOM = NAV_BOTTOM + NAV_HEIGHT + RAIL_GAP;
-export const RAIL_TAG_BOTTOM = RAIL_ADD_BOTTOM + RAIL_WIDTH + RAIL_GAP;
+// How much of the screen's width the rail claims - what a row running
+// along the head or the foot has to stay clear of, so its last pill isn't
+// left sitting under the capsule or the island.
+export const RAIL_CLEARANCE = RAIL_RIGHT + RAIL_WIDTH + RAIL_GAP;
 
 // A halo is drawn on a square twice the button's size, centred on it -
 // the button's own box would clip it.
@@ -45,8 +46,6 @@ export const TAG_ROW_PAD = 4;
 // How far in from the very top edge the group tabs start - shared with
 // DocumentsScreen's own chromeTop, so the two never drift apart.
 export const CHROME_TOP = 4;
-// A pill (45) plus the row's own bottom padding (6).
-const GROUPS_ROW_HEIGHT = 51;
 // 3 buttons at 24 + 18 of padding at each end + 2 dividers at 1 + 4 gaps
 // at 18 + the 1px border top and bottom. This was still the old 4-button,
 // 21px-icon capsule's height (148) after the capsule grew - the mismatch
@@ -55,8 +54,15 @@ const CAPSULE_HEIGHT = 184;
 
 export function useRailLayout(windowHeight: number, insetTop: number, insetBottom: number) {
   const tagRowBottom = insetBottom + TAG_ROW_PAD;
-  const foot = tagRowBottom + TAG_ROW_HEIGHT + RAIL_GAP;
-  const head = insetTop + CHROME_TOP + GROUPS_ROW_HEIGHT + 8 + CAPSULE_HEIGHT;
+  // The island drops all the way into the tag row's own band rather than
+  // stopping above it. It can: both rows keep the rail's width clear, so
+  // there is never a pill down there for it to cover.
+  const foot = tagRowBottom;
+  // And the capsule starts level with the group tabs instead of hanging
+  // under them, for the same reason. Between them that is some 120px the
+  // four pieces of the rail get back - without it they simply did not fit
+  // on a screen this size, and rode up over one another.
+  const head = insetTop + CHROME_TOP + CAPSULE_HEIGHT;
   const free = windowHeight - head - foot;
   const gap = Math.max(RAIL_GAP, (free - (RAIL_WIDTH * 2 + NAV_HEIGHT)) / 4);
   const navBottom = foot + gap;
