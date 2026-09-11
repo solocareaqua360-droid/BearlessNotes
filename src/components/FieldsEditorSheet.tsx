@@ -8,6 +8,7 @@ import { Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimen
 import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { FieldDef, FieldOption, FieldType, RelationTarget } from '../types';
+import { canJoinTitle } from '../utils/customRowDisplay';
 import { TAG_COLORS } from '../constants/tags';
 
 const ACCENT = '#3B82F6';
@@ -140,6 +141,12 @@ export default function FieldsEditorSheet({
     setDraft((prev) =>
       prev.map((f) => {
         if (f.id !== id) return f;
+        // A type that can't be read as plain text can't be part of a name
+        // either - dropped rather than left set and silently ignored.
+        if (!canJoinTitle(type) && f.inTitle) {
+          const { inTitle: _it, ...withoutTitle } = f;
+          f = withoutTitle as FieldDef;
+        }
         if (type === 'select' || type === 'multiSelect') {
           const { relationTarget: _rt, isCover: _ic, ...rest } = f;
           return { ...rest, type, options: f.options ?? [] };
@@ -177,6 +184,13 @@ export default function FieldsEditorSheet({
   // editable in the row form - it just stops being drawn in the list,
   // cards and table. fields[0] is never hideable (see the eye below):
   // it's the row's name everywhere.
+  // Appends this field to the row's name (see rowTitleOf). Offered only for
+  // types whose value is already its display text - an option or relation
+  // stores an id, which would read as gibberish in a name.
+  function toggleInTitle(id: string) {
+    setDraft((prev) => prev.map((f) => (f.id === id ? { ...f, inTitle: !f.inTitle } : f)));
+  }
+
   function toggleHidden(id: string) {
     setDraft((prev) => prev.map((f) => (f.id === id ? { ...f, hidden: !f.hidden } : f)));
   }
@@ -273,12 +287,25 @@ export default function FieldsEditorSheet({
                       />
                     </Pressable>
                   )}
+                  {index > 0 && canJoinTitle(field.type) && (
+                    <Pressable hitSlop={8} onPress={() => toggleInTitle(field.id)}>
+                      <Ionicons
+                        name={field.inTitle ? 'pricetag' : 'pricetag-outline'}
+                        size={16}
+                        color={field.inTitle ? ACCENT : '#6B7280'}
+                      />
+                    </Pressable>
+                  )}
                   {index > 0 && (
                     <Pressable hitSlop={8} onPress={() => deleteField(field.id)}>
                       <Ionicons name="trash-outline" size={16} color={DANGER} />
                     </Pressable>
                   )}
                 </View>
+
+                {!!field.inTitle && canJoinTitle(field.type) && (
+                  <Text style={styles.inTitleHint}>Додається до назви запису</Text>
+                )}
 
                 {typeMenuFieldId === field.id && index > 0 && (
                   <View style={styles.typeMenu}>
@@ -506,6 +533,11 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: '#111827',
+  },
+  inTitleHint: {
+    fontSize: 12,
+    color: ACCENT,
+    marginTop: 4,
   },
   optionsBox: {
     marginTop: 8,

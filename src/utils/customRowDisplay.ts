@@ -38,10 +38,31 @@ export function visibleFieldsOf(database: CustomDatabase | null | undefined): Fi
   return (database?.fields ?? []).filter((f) => !f.hidden);
 }
 
+// Which field types may be appended to the name - ones whose stored value
+// is already its display text. A select or relation stores an id, and this
+// function has no context to resolve it against.
+export function canJoinTitle(type: FieldDef['type']): boolean {
+  return type === 'text' || type === 'number' || type === 'date';
+}
+
+// The row's name: the title field, plus every field flagged inTitle, in
+// field order. Composed at display time rather than baked into a value, so
+// a hand-added row follows the same rule as an imported one and editing a
+// part (a plate, say) updates the name everywhere at once.
 export function rowTitleOf(database: CustomDatabase | null | undefined, row: CustomDatabaseRow | null | undefined): string {
-  const titleFieldId = database?.fields[0]?.id;
+  const fields = database?.fields ?? [];
+  const titleFieldId = fields[0]?.id;
   if (!row || !titleFieldId) return 'Без назви';
-  return String(row.values[titleFieldId] ?? '').trim() || 'Без назви';
+  const parts = [String(row.values[titleFieldId] ?? '').trim()];
+  fields.slice(1).forEach((field) => {
+    if (!field.inTitle || !canJoinTitle(field.type)) return;
+    const raw = row.values[field.id];
+    if (raw === undefined || raw === null || raw === '') return;
+    // A date is stored as its dateKey; everything else here is already the
+    // text it should read as.
+    parts.push(field.type === 'date' ? String(raw).split('-').reverse().join('.') : String(raw).trim());
+  });
+  return parts.filter((p) => p !== '').join(' · ') || 'Без назви';
 }
 
 // What a relation field's stored target id (row.values[field.id]) should

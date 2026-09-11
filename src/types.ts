@@ -434,6 +434,15 @@ export interface FieldDef {
   // FieldsEditorSheet enforces that by clearing every other field's flag
   // the moment one is turned on.
   isCover?: boolean;
+  // Appended to the row's NAME wherever it's shown (see rowTitleOf), after
+  // the title field and in field order - for a table where the title field
+  // repeats and only a combination identifies a row (a fleet where the
+  // model is shared and the plate is what distinguishes a vehicle). The
+  // field stays a normal field of its own, so it can still be filtered and
+  // sorted by; only the displayed name is composed. Restricted to types
+  // whose stored value IS its display text (text/number/date), since
+  // rowTitleOf has no context to resolve an option or relation id with.
+  inTitle?: boolean;
   // Hidden from every VIEW of the database - list, cards and table alike -
   // while still being editable in the row form, which is the only place
   // left to give it a value. fields[0] is never hideable: it's the row's

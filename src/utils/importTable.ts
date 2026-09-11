@@ -157,13 +157,8 @@ export async function runTableImport(opts: {
   fields: FieldDef[];
   columns: ColumnMapping[];
   dataRows: string[][];
-  // Builds the row's name out of several columns joined together, for a
-  // table where no single column is unique on its own - a fleet where the
-  // model repeats and only model plus plate identifies a vehicle. The
-  // columns still become their own fields; only the name is combined.
-  compositeTitle?: { fieldId: string; columnIndexes: number[] };
 }): Promise<number> {
-  const { databaseId, fields, columns, dataRows, compositeTitle } = opts;
+  const { databaseId, fields, columns, dataRows } = opts;
   const fieldById = new Map(fields.map((f) => [f.id, f]));
 
   // Which databases the relation columns point at.
@@ -232,14 +227,6 @@ export async function runTableImport(opts: {
         }
         values[field.id] = cell;
       });
-
-      if (compositeTitle && compositeTitle.columnIndexes.length > 0) {
-        const joined = compositeTitle.columnIndexes
-          .map((i) => (rowCells[i] ?? '').toString().trim())
-          .filter((part) => part !== '')
-          .join(' · ');
-        if (joined) values[compositeTitle.fieldId] = joined;
-      }
 
       const now = Date.now();
       batch.set(doc(db, 'customDatabaseRows', generateId()), {

@@ -2375,7 +2375,10 @@ function RelationPickerSheet({
               </Pressable>
             )}
             {rowsFiltered.map((r) => {
-              const title = String(r.values[titleFieldId ?? ''] ?? '').trim() || 'Без назви';
+              // The composed name (see rowTitleOf), not the raw title field
+              // - this list is exactly where several rows share a title
+              // field and only the composed name tells them apart.
+              const title = rowTitleOf(relatedDatabase, r);
               return (
                 <Pressable
                   key={r.id}

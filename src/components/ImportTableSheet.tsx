@@ -10,6 +10,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { collection, onSnapshot, orderBy, query } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import { FieldDef, FieldType } from '../types';
+import { canJoinTitle } from '../utils/customRowDisplay';
 import {
   ColumnMapping,
   ParsedSheet,
@@ -220,6 +221,14 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
     return current && current.kind !== 'skip' ? current.fieldId : generateId();
   }
 
+  // Only a column becoming a plain text/number/date field can join the
+  // name - a select or relation column stores an id.
+  function canJoinTitleColumn(index: number): boolean {
+    const mapping = mappings[index];
+    if (!mapping || mapping.kind !== 'newField' || mapping.relationDatabaseId) return false;
+    return canJoinTitle(mapping.type);
+  }
+
   function toggleTitleExtra(index: number) {
     setTitleExtras((prev) => (prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]));
   }
@@ -273,6 +282,11 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
               name: mapping.name.trim() || `Колонка ${index + 1}`,
               type: mapping.relationDatabaseId ? 'relation' : mapping.type,
             };
+            // "+ до назви" sets the same flag the field settings offer, so
+            // the composed name is one rule that rows added by hand later
+            // follow too - rather than text joined once at import that
+            // nothing afterwards knows about.
+            if (titleExtras.includes(index) && canJoinTitle(field.type)) field.inTitle = true;
             if (mapping.relationDatabaseId) {
               field.relationTarget = { kind: 'customDb', databaseId: mapping.relationDatabaseId };
             } else if (mapping.type === 'select' || mapping.type === 'multiSelect') {
@@ -288,17 +302,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
         databaseId = await createDatabaseForImport(databaseName.trim(), fields);
       }
 
-      const titleMapping = mappings[titleColumn];
-      const written = await runTableImport({
-        databaseId,
-        fields,
-        columns: mappings,
-        dataRows,
-        compositeTitle:
-          !targetDatabase && titleExtras.length > 0 && titleMapping && titleMapping.kind !== 'skip'
-            ? { fieldId: titleMapping.fieldId, columnIndexes: [titleColumn, ...titleExtras] }
-            : undefined,
-      });
+      const written = await runTableImport({ databaseId, fields, columns: mappings, dataRows });
       onDone(databaseId, written);
       reset();
     } catch (e) {
@@ -435,7 +439,11 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
                           <Text style={styles.titleBadge}>Назва</Text>
                         ) : (
                           <View style={styles.titleControls}>
-                            <Pressable hitSlop={6} onPress={() => toggleTitleExtra(index)}>
+                            <Pressable
+                              hitSlop={6}
+                              disabled={!canJoinTitleColumn(index)}
+                              onPress={() => toggleTitleExtra(index)}
+                            >
                               <Text
                                 style={
                                   titleExtras.includes(index) ? styles.titleBadge : styles.titleBadgePick
