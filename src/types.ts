@@ -350,6 +350,12 @@ export interface BoardItem {
   cards: BoardCard[];
   connections?: BoardConnection[];
   columns?: BoardColumn[];
+  // The document generated from this board (see boardToDocument.ts). The
+  // document carries the reverse pointer, so either one can open the other
+  // beside it: the document says what was decided, the board next to it
+  // says why - its connections and comment cards are exactly the part that
+  // can't travel into a linear text.
+  documentId?: string;
   createdAt: number;
   updatedAt: number;
 }

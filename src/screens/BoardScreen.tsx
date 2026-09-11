@@ -55,6 +55,7 @@ import { linkDocId } from '../utils/linkId';
 import { blockFromFile, blockFromLink, blockFromPhoto } from '../utils/copyToNote';
 import { backupFileToDrive } from '../utils/googleDrive';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
+import { generateDocumentFromBoard } from '../utils/boardToDocument';
 import DocumentEditorScreen from './DocumentEditorScreen';
 
 const AUTOSAVE_DELAY_MS = 600;
@@ -806,7 +807,7 @@ export default function BoardScreen() {
   // typed against.
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList & BoardsStackParamList>>();
   const { params } = useRoute<Props['route']>();
-  const { boardId } = params;
+  const { boardId, openDocumentId } = params;
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const { isTwoPane } = useResponsiveLayout();
   // A document card opened beside the board instead of over it: the board
@@ -814,6 +815,11 @@ export default function BoardScreen() {
   // is the whole point of a board full of documents. Full screen is still
   // a tap away, so nothing that worked before stops working.
   const [paneDocId, setPaneDocId] = useState<string | null>(null);
+  // The document generated from this board, if there is one - see
+  // boardToDocument.ts. Stored on the board itself, so it survives a
+  // reopen and the document can find its way back here.
+  const [generatedDocId, setGeneratedDocId] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
   const [paneFullscreen, setPaneFullscreen] = useState(false);
   // The canvas's own size, which stops being the window's the moment a
   // document takes half of it. Screen->world maths below reads this, not
@@ -938,6 +944,7 @@ export default function BoardScreen() {
       setCards(data?.cards ?? []);
       setConnections(data?.connections ?? []);
       setColumns(data?.columns ?? []);
+      setGeneratedDocId(data?.documentId ?? null);
       setIsLoaded(true);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1421,6 +1428,63 @@ export default function BoardScreen() {
     );
   }
 
+  // Arriving from the document's own "show the board" button: the document
+  // that sent us here opens beside the board it came from.
+  useEffect(() => {
+    if (openDocumentId && isTwoPane) setPaneDocId(openDocumentId);
+  }, [openDocumentId, isTwoPane]);
+
+  // Builds the document this board adds up to - columns as headings, cards
+  // as blocks, in reading order. Run a second time it rewrites the same
+  // document rather than making another, which is why it warns first: a
+  // rebuild replaces whatever was edited in the document by hand.
+  async function buildBoardDocument() {
+    if (generating) return;
+    setGenerating(true);
+    try {
+      const id = await generateDocumentFromBoard({
+        id: boardId,
+        title,
+        cards,
+        connections,
+        columns,
+        documentId: generatedDocId ?? undefined,
+        createdAt: 0,
+        updatedAt: 0,
+      });
+      setGeneratedDocId(id);
+      if (isTwoPane) setPaneDocId(id);
+      else navigation.navigate('EditorModal', { documentId: id });
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  function confirmBuildBoardDocument() {
+    if (!generatedDocId) {
+      Alert.alert('Сформувати документ', 'Колонки стануть заголовками, картки - блоками, у тому ж порядку.', [
+        { text: 'Скасувати', style: 'cancel' },
+        { text: 'Сформувати', onPress: buildBoardDocument },
+      ]);
+      return;
+    }
+    Alert.alert(
+      'Документ уже сформовано',
+      'Оновити його з поточної дошки? Правки, зроблені в самому документі, будуть замінені.',
+      [
+        { text: 'Скасувати', style: 'cancel' },
+        {
+          text: 'Відкрити',
+          onPress: () =>
+            isTwoPane
+              ? setPaneDocId(generatedDocId)
+              : navigation.navigate('EditorModal', { documentId: generatedDocId }),
+        },
+        { text: 'Оновити', style: 'destructive', onPress: buildBoardDocument },
+      ]
+    );
+  }
+
   function editDocumentCard(card: BoardCard) {
     if (!card.documentId) return;
     if (isTwoPane) {
@@ -1802,6 +1866,13 @@ export default function BoardScreen() {
             <Text style={styles.headerTitle} numberOfLines={1}>
               {title || 'Без назви'}
             </Text>
+          </Pressable>
+          <Pressable style={styles.toolButton} onPress={confirmBuildBoardDocument}>
+            <Ionicons
+              name={generatedDocId ? 'document-text' : 'document-text-outline'}
+              size={20}
+              color="#111827"
+            />
           </Pressable>
           {/* One button cycling move -> select -> connect, each with its own
               icon, rather than three buttons crowding the header. */}

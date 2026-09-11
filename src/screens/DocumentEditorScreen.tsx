@@ -2037,6 +2037,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const [sketchEditorBlockId, setSketchEditorBlockId] = useState<string | null>(null);
   const [existingItemPickerBlockId, setExistingItemPickerBlockId] = useState<string | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  // Set on a document generated from a board (see boardToDocument.ts).
+  // The board is where the connections and the comment cards stayed - the
+  // reasoning behind what this document says - so the document keeps a way
+  // back to it rather than trying to carry any of that in its own text.
+  const [sourceBoardId, setSourceBoardId] = useState<string | null>(null);
   const [reminderBlockId, setReminderBlockId] = useState<string | null>(null);
   const focusIdRef = useRef<string | null>(null);
   const focusToEndRef = useRef(false);
@@ -2130,6 +2135,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       setCoverImageUri(data?.coverImageUri);
       setPaperColorEnabled(!!data?.paperColorEnabled);
       setGroupId(data?.groupId ?? null);
+      setSourceBoardId(data?.boardId ?? null);
       const loadedBlocks: Block[] = data?.blocks ?? [];
       setBlocks(loadedBlocks.length > 0 ? loadedBlocks : [newBlock()]);
       // Seed the "what does this document currently mirror" trackers from
@@ -3928,6 +3934,24 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               {groups.find((g) => g.id === groupId)?.name ?? 'Додати в групу'}
             </Text>
           </Pressable>
+          {!!sourceBoardId && (
+            <>
+              <Text style={styles.exportMenuLabel}>Джерело</Text>
+              <Pressable
+                style={styles.exportMenuRow}
+                onPress={() => {
+                  setExportMenuOpen(false);
+                  navigation.navigate('Tabs', {
+                    screen: 'Дошки',
+                    params: { screen: 'Board', params: { boardId: sourceBoardId, openDocumentId: documentId } },
+                  });
+                }}
+              >
+                <Ionicons name="grid-outline" size={17} color="#111827" />
+                <Text style={styles.exportMenuRowLabel}>Показати дошку</Text>
+              </Pressable>
+            </>
+          )}
           <Text style={styles.exportMenuLabel}>Експорт</Text>
           <Pressable style={styles.exportMenuRow} onPress={exportAsPdf}>
             <Ionicons name="document-text-outline" size={17} color="#111827" />

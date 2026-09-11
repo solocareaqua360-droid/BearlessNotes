@@ -18,7 +18,10 @@ export type RootStackParamList = {
     // was - used by the calendar's day-history list to open a board item.
     // React Navigation resolves a doubly-nested `screen`/`params` like this
     // by recursing into BoardsStack itself, no extra plumbing needed there.
-    | { screen: 'Дошки'; params: { screen: 'Board'; params: { boardId: string } } };
+    | {
+        screen: 'Дошки';
+        params: { screen: 'Board'; params: { boardId: string; openDocumentId?: string } };
+      };
   // autoFocusTitle: set only right after creating a brand-new document
   // (DocumentsScreen's own addDoc) - focuses the title field and raises the
   // keyboard the instant the editor opens, since a fresh "Без назви"
@@ -70,5 +73,8 @@ export type RootStackParamList = {
 // with no manual "remember the last board id" tracking anywhere.
 export type BoardsStackParamList = {
   BoardsList: undefined;
-  Board: { boardId: string };
+  // openDocumentId: opened straight into the board's document pane - how
+  // a generated document jumps back to the board it came from with itself
+  // still on screen.
+  Board: { boardId: string; openDocumentId?: string };
 };
