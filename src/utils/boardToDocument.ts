@@ -213,6 +213,19 @@ export type DocumentToBoardResult = {
 
 const LOOSE = 'loose';
 
+// A block with nothing in it yet. The editor keeps one of these around all
+// the time - "Додати блок" makes one and it sits there until something is
+// typed - so the sync has to ignore them completely. Making a card out of
+// one produced an empty yellow sticky on the board, and counting one as
+// "the document is ahead" left the board unable to rebuild for as long as
+// it sat there, which is to say: always.
+export function isEmptyBlock(block: Block): boolean {
+  if ((block.text ?? '').trim() !== '') return false;
+  const type = block.type ?? 'paragraph';
+  if (type === 'divider') return false;
+  return !block.imageUri && !block.fileUri && !block.linkUrl && !block.sketchElements?.length;
+}
+
 // Blocks a generated document never owns: a column's heading and the rule
 // above it describe the board's shape, and an inlined block belongs to the
 // document it came from.
@@ -254,7 +267,17 @@ export function applyDocumentToBoard(
   // looseOrigin: where a card made from a block that sits under no heading
   // lands on the canvas - the document says nothing about coordinates, so
   // the caller supplies a sensible spot (the middle of the world).
-  options: { defaultCardWidth: number; looseOrigin: { x: number; y: number } }
+  //
+  // knownCardIds: the cards this document was seen to contain last time
+  // the two were in step. A card is deleted only if it was in there and
+  // has gone since - "isn't mentioned now" on its own is also what a
+  // half-loaded or stale document looks like, and a card lost that way is
+  // the worst thing this sync can do.
+  options: {
+    defaultCardWidth: number;
+    looseOrigin: { x: number; y: number };
+    knownCardIds?: Set<string>;
+  }
 ): DocumentToBoardResult {
   const columns = [...(board.columns ?? [])];
   const byId = new Map(board.cards.map((c) => [c.id, c]));
@@ -310,6 +333,13 @@ export function applyDocumentToBoard(
       // of the addressing this document wrapped around it.
       const { sourceDocumentId: _d, sourceBlockId: _b, ...plain } = block;
       inline.blocks.push({ ...(plain as Block), id: block.sourceBlockId ?? block.id });
+      nextBlocks.push(block);
+      continue;
+    }
+
+    // An empty line is not content: it stays in the document and nothing
+    // on the board is made for it.
+    if (!block.sourceCardId && isEmptyBlock(block)) {
       nextBlocks.push(block);
       continue;
     }
@@ -391,10 +421,17 @@ export function applyDocumentToBoard(
   }
 
   const cards = placed.map((c) => byIdNext.get(c.id) as BoardCard);
-  // Cards no block mentions any more were deleted from the document side.
-  const kept = new Set(cards.map((c) => c.id));
-  const removedCardIds = board.cards.filter((c) => !kept.has(c.id)).map((c) => c.id);
+  const mentioned = new Set(cards.map((c) => c.id));
+  const unmentioned = board.cards.filter((c) => !mentioned.has(c.id));
+  // Only a card the document was known to hold counts as deleted; the rest
+  // are left exactly where they are, and the next rebuild puts them back
+  // into the document.
+  const removedCardIds = unmentioned
+    .filter((c) => options.knownCardIds?.has(c.id))
+    .map((c) => c.id);
+  const survivors = unmentioned.filter((c) => !options.knownCardIds?.has(c.id));
   if (removedCardIds.length > 0) changed = true;
+  cards.push(...survivors);
 
   // The same document pinned to the board twice arrives here as two
   // separate runs of blocks, and there is no honest way to turn two runs

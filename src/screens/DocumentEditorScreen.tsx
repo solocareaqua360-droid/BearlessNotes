@@ -71,7 +71,7 @@ import {
 import { db } from '../firebase';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import { Block, BlockType, BoardCard, BoardColumn, Group, SketchElement, Tag, TableRow } from '../types';
-import { applyDocumentToBoard, blocksEqual, SourceDocumentEdit } from '../utils/boardToDocument';
+import { applyDocumentToBoard, blocksEqual, isEmptyBlock, SourceDocumentEdit } from '../utils/boardToDocument';
 import { DEFAULT_CARD_WIDTH, WORLD_CENTER } from '../utils/boardLayout';
 import { groupAppliesTo } from '../utils/groups';
 import { RootStackParamList } from '../navigation';
@@ -2557,7 +2557,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         // Same rule from this side: a line typed here that hasn't become a
         // card yet means this copy is the newer one, whatever arrives.
         const localIsAhead = current.some(
-          (block) => !block.sourceCardId && !block.sourceColumnId && !block.sourceDocumentId
+          (block) =>
+            !block.sourceCardId && !block.sourceColumnId && !block.sourceDocumentId && !isEmptyBlock(block)
         );
         if (localIsAhead) return current;
         return blocksEqual(current, incoming) ? current : incoming;
@@ -2572,6 +2573,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // yet, and writes only what actually differs - which is what stops the
   // two sides from writing each other in circles.
   const boardSyncingRef = useRef(false);
+  // Which cards this document was last seen to contain. Deleting a card is
+  // only allowed for one that was in here and has gone since - see
+  // applyDocumentToBoard's knownCardIds.
+  const knownCardIdsRef = useRef<Set<string> | null>(null);
 
   // Edits that landed among a document card's own text belong to that
   // document, not to the board (see SourceDocumentEdit). Same rules as the
@@ -2607,7 +2612,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       const result = applyDocumentToBoard(currentBlocks, { cards: data.cards ?? [], columns: data.columns }, {
         defaultCardWidth: DEFAULT_CARD_WIDTH,
         looseOrigin: { x: WORLD_CENTER, y: WORLD_CENTER },
+        knownCardIds: knownCardIdsRef.current ?? undefined,
       });
+      // Whatever this document holds now is what it will be compared
+      // against next time - including the cards just made for it.
+      knownCardIdsRef.current = new Set(
+        result.blocks.map((block) => block.sourceCardId).filter((id): id is string => !!id)
+      );
       if (!result.changed) return;
       // The one thing worth stopping for. A mismatch in the mapping would
       // show up as a pile of cards disappearing at once, and by then the

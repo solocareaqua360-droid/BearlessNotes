@@ -71,6 +71,7 @@ import {
   buildBlocksFromBoard,
   contentEqual,
   generateDocumentFromBoard,
+  isEmptyBlock,
 } from '../utils/boardToDocument';
 import BoardDocumentPreview from '../components/BoardDocumentPreview';
 import DocumentEditorScreen from './DocumentEditorScreen';
@@ -1519,7 +1520,8 @@ export default function BoardScreen() {
         // good, which is how board edits stopped reaching the document at
         // all.
         const documentIsAhead = current.some(
-          (block) => !block.sourceCardId && !block.sourceColumnId && !block.sourceDocumentId
+          (block) =>
+            !block.sourceCardId && !block.sourceColumnId && !block.sourceDocumentId && !isEmptyBlock(block)
         );
         if (documentIsAhead) return;
 
