@@ -38,6 +38,8 @@ import { hapticButtonDown, hapticButtonUp } from '../utils/haptics';
 import { RootStackParamList } from '../navigation';
 import { useTags, detachTagFromDeletedItem, ITEMS_COLLECTION_BY_KIND } from '../hooks/useTags';
 import { useMultiSelect } from '../hooks/useMultiSelect';
+import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
+import DocumentEditorScreen from './DocumentEditorScreen';
 import { useSortPref } from '../hooks/useSortPref';
 import { sortItems } from '../utils/sortItems';
 import SortMenuRows from '../components/SortMenuRows';
@@ -89,6 +91,15 @@ export default function DocumentsScreen() {
   // - useWindowDimensions re-renders on that resize, so passing explicit
   // pixel width/height keeps the gradient's canvas in sync with it.
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  // A Fold's inner screen (and a tablet, and DeX) is wide enough to hold
+  // the list and the document open beside it instead of pushing the editor
+  // over the top of the list. Folding the phone shut resizes the window,
+  // which drops straight back to one column with the same document still
+  // remembered - unfolding brings it back where it was.
+  const { isTwoPane, listPaneWidth } = useResponsiveLayout();
+  // Which document the right-hand pane holds. Only ever read in two-pane
+  // mode; on a phone a document is a pushed screen, as before.
+  const [openDoc, setOpenDoc] = useState<{ id: string; autoFocusTitle?: boolean } | null>(null);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<TagFilter | null>(null);
@@ -245,6 +256,25 @@ export default function DocumentsScreen() {
   // several tags and a single selected tag in 'multi' (OR) mode land the
   // note back under that same filter right away, instead of it vanishing
   // from the currently-filtered view the moment it's created.
+  // A document deleted from the list (on its own or in a bulk select)
+  // leaves the pane holding a document that no longer exists - it empties
+  // instead. Guarded on isLoading so the very first render, before the
+  // subscription has delivered anything, doesn't count as "gone".
+  useEffect(() => {
+    if (!openDoc || isLoading) return;
+    if (!documents.some((d) => d.id === openDoc.id)) setOpenDoc(null);
+  }, [documents, isLoading, openDoc]);
+
+  // The one place that decides what "open a document" means: a pane on a
+  // wide screen, a pushed screen on a narrow one.
+  function openDocument(id: string, autoFocusTitle?: boolean) {
+    if (isTwoPane) {
+      setOpenDoc({ id, autoFocusTitle });
+      return;
+    }
+    navigation.navigate('Editor', autoFocusTitle ? { documentId: id, autoFocusTitle: true } : { documentId: id });
+  }
+
   async function createDocument() {
     const now = Date.now();
     const newDoc = await addDoc(documentsCollection, {
@@ -264,7 +294,7 @@ export default function DocumentsScreen() {
         filterTags.map((tag) => attachTag(tag, 'document', newDoc.id, ITEMS_COLLECTION_BY_KIND.document))
       );
     }
-    navigation.navigate('Editor', { documentId: newDoc.id, autoFocusTitle: true });
+    openDocument(newDoc.id, true);
   }
 
   async function changeViewMode(mode: ViewMode) {
@@ -353,260 +383,291 @@ export default function DocumentsScreen() {
         <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#documentsBg)" />
       </Svg>
 
-      <View style={styles.headerRow}>
-        <Text style={styles.header}>Документи</Text>
-      </View>
-
-      {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
-      {menuOpen && (
-        <View style={styles.menuPanel}>
-          <Text style={styles.menuSectionLabel}>Вигляд</Text>
-          <Pressable style={styles.menuRow} onPress={() => changeViewMode('list')}>
-            <Ionicons name="reorder-four-outline" size={17} color="#111827" />
-            <Text style={styles.menuRowLabel}>Список</Text>
-            {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-          </Pressable>
-          <Pressable style={styles.menuRow} onPress={() => changeViewMode('grid')}>
-            <Ionicons name="grid-outline" size={17} color="#111827" />
-            <Text style={styles.menuRowLabel}>Сітка</Text>
-            {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-          </Pressable>
-          <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
+      {/* One column on a phone, two on a Fold's inner screen: the list keeps
+          its own width and the open document takes the rest. Everything
+          that floats over the whole window - the tag drawer, the modals
+          below - stays outside this row, so a drawer still covers the
+          screen rather than half of it. */}
+      <View style={styles.paneRow}>
+        <View style={[styles.pane, isTwoPane && { flex: 0, width: listPaneWidth }]}>
+        <View style={styles.headerRow}>
+          <Text style={styles.header}>Документи</Text>
         </View>
-      )}
 
-      {/* Groups and the whole control capsule share one row - the title
-          keeps the line above to itself, same as CustomDatabaseScreen.
-          The capsule's fourth button is what shows/hides the sticker
-          strip below. */}
-      <View style={styles.groupsRow}>
-        {groups.length > 0 ? (
-          <TabsTunnel>
-            <ProjectTabsRow
-              items={groups}
-              selected={groupFilter}
-              onSelect={setGroupFilter}
-              unassignedLabel="Без групи"
-              dark
-            />
-          </TabsTunnel>
-        ) : (
-          <View style={styles.groupsSpacer} />
-        )}
-        <View style={[styles.headerButtons, groups.length > 0 && styles.headerButtonsOffset]}>
-          <Pressable hitSlop={6} onPress={() => navigation.navigate('Search')}>
-            <Ionicons name="search" size={17} color="#fff" />
-          </Pressable>
-          <View style={styles.headerButtonsDivider} />
-          <Pressable hitSlop={6} onPress={() => setMenuOpen((v) => !v)}>
-            <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
-          </Pressable>
-          <View style={styles.headerButtonsDivider} />
-          <Pressable hitSlop={6} onPress={toggleSelectMode}>
-            <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
-          </Pressable>
-          <View style={styles.headerButtonsDivider} />
-          <Pressable hitSlop={6} onPress={toggleStickersCollapsed}>
-            <Ionicons name={stickersCollapsed ? 'albums-outline' : 'albums'} size={17} color="#fff" />
-          </Pressable>
-        </View>
-      </View>
-
-      {!stickersCollapsed && freeStickers.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.stickerScroll}
-          contentContainerStyle={styles.stickerStrip}
-        >
-          {freeStickers.map((s) => (
-            <Pressable key={s.id} style={styles.stickerCard} onPress={() => openFreeSticker(s)}>
-              {s.type === 'image' && s.imageUri ? (
-                <Image source={{ uri: s.imageUri }} style={styles.stickerCardImage} resizeMode="cover" />
-              ) : s.type === 'sketch' && (s.sketchElements?.length ?? 0) > 0 ? (
-                // Same viewBox-reuses-the-capture-canvas-size approach as
-                // DocumentEditorScreen's own sketch block preview - the
-                // drawing scales correctly into this much smaller box.
-                <Svg width="100%" height="100%" viewBox={`0 0 ${s.sketchWidth || 1} ${s.sketchHeight || 1}`}>
-                  {(s.sketchElements ?? []).map((el, i) =>
-                    el.kind === 'text' ? (
-                      <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
-                        {el.text}
-                      </SvgText>
-                    ) : (
-                      <Path
-                        key={i}
-                        d={el.d}
-                        stroke={el.color}
-                        strokeWidth={el.width}
-                        fill="none"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    )
-                  )}
-                </Svg>
-              ) : s.type === 'sketch' ? (
-                <View style={styles.stickerCardIconWrap}>
-                  <Ionicons name="brush-outline" size={34} color={STICKER_DARK} />
-                </View>
-              ) : (
-                <Text style={styles.stickerCardText} numberOfLines={6}>
-                  {s.text || 'Порожній стікер'}
-                </Text>
-              )}
+        {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
+        {menuOpen && (
+          <View style={styles.menuPanel}>
+            <Text style={styles.menuSectionLabel}>Вигляд</Text>
+            <Pressable style={styles.menuRow} onPress={() => changeViewMode('list')}>
+              <Ionicons name="reorder-four-outline" size={17} color="#111827" />
+              <Text style={styles.menuRowLabel}>Список</Text>
+              {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
             </Pressable>
-          ))}
-        </ScrollView>
-      )}
+            <Pressable style={styles.menuRow} onPress={() => changeViewMode('grid')}>
+              <Ionicons name="grid-outline" size={17} color="#111827" />
+              <Text style={styles.menuRowLabel}>Сітка</Text>
+              {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+            </Pressable>
+            <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
+          </View>
+        )}
 
-      <StickerComposer
-        visible={stickerComposerVisible}
-        editingTextSticker={editingTextSticker}
-        onClose={() => {
-          setStickerComposerVisible(false);
-          setEditingTextSticker(null);
-        }}
-      />
-
-      {viewerImageUri && (
-        // Modal (its own native window on Android) rather than a plain
-        // absolute-positioned overlay - without it this rendered inside the
-        // Documents tab's own layout and left the real status bar showing
-        // as a solid black strip above it, instead of the immersive
-        // full-screen viewer this needs (see the same pattern's own
-        // comment in DocumentEditorScreen). GestureHandlerRootView has to
-        // be re-declared inside the Modal for its own separate native
-        // window - the app-level one in App.tsx doesn't reach in here.
-        <Modal visible transparent animationType="fade" onRequestClose={() => setViewerImageUri(null)}>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />
-          </GestureHandlerRootView>
-        </Modal>
-      )}
-
-      <SketchEditor
-        visible={sketchEditing !== null}
-        initialElements={sketchEditing?.sketchElements ?? []}
-        onSave={saveSketchEdit}
-        onClose={() => setSketchEditing(null)}
-      />
-
-      {activeFilter && (
-        <View style={styles.filterRow}>
-          {activeFilter.type === 'untagged' ? (
-            <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
-              <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
-              <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без тегів</Text>
-              <Pressable hitSlop={8} onPress={() => setActiveFilter(null)}>
-                <Ionicons name="close" size={14} color="#6B7280" />
-              </Pressable>
-            </View>
-          ) : (
-            activeFilter.tagIds.map((tagId) => {
-              const tag = tags.find((t) => t.id === tagId);
-              if (!tag) return null;
-              return (
-                <View key={tagId} style={[styles.filterChip, { borderColor: tag.color }]}>
-                  <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tag.color} />
-                  <Text style={[styles.filterChipLabel, { color: tag.color }]}>{tag.path}</Text>
-                  <Pressable hitSlop={8} onPress={() => setActiveFilter(removeTagFromFilter(activeFilter, tagId))}>
-                    <Ionicons name="close" size={14} color={tag.color} />
-                  </Pressable>
-                </View>
-              );
-            })
-          )}
-        </View>
-      )}
-
-      {isLoading ? (
-        <View style={styles.emptyState}>
-          <ActivityIndicator color={ACCENT} />
-        </View>
-      ) : displayedDocuments.length === 0 ? (
-        <View style={styles.emptyState}>
-          {documents.length === 0 ? (
-            <>
-              <Pressable style={styles.emptyIcon} onPress={createDocument}>
-                <Ionicons name="document-text-outline" size={32} color={ACCENT} />
-                <View style={styles.emptyBadge}>
-                  <Ionicons name="add" size={14} color="#fff" />
-                </View>
-              </Pressable>
-              <Text style={styles.emptyLabel}>Створити новий документ</Text>
-            </>
-          ) : (
-            <Text style={styles.emptyLabel}>Немає документів із цим фільтром</Text>
-          )}
-        </View>
-      ) : (
-        <FlatList
-          // FlatList throws if numColumns changes on an already-mounted
-          // instance - key forces a clean remount when switching views.
-          key={viewMode}
-          data={displayedDocuments}
-          keyExtractor={(item) => item.id}
-          // FlatList only re-renders an already-mounted row when `data` or
-          // `extraData` changes - isSelectMode/selectedIds live outside
-          // `data`, so without this a card kept showing its pre-select-mode
-          // props (tapping it still navigated instead of toggling a
-          // checkbox) even though renderItem's own closure had the fresh
-          // values.
-          extraData={[isSelectMode, selectedIds]}
-          numColumns={viewMode === 'grid' ? 2 : 1}
-          columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => {
-            // Grid cards reclaim the thumbnail's space for text when a
-            // document has no image (see DocumentCard's own noImage
-            // handling) - list rows are unaffected, so they keep the
-            // short default length.
-            const { imageUri, imageUris, previewText, checklistItems } = extractPreview(
-              item.blocks,
-              item.coverImageUri,
-              viewMode === 'grid' ? EXPANDED_PREVIEW_LENGTH : undefined
-            );
-            return (
-              <DocumentCard
-                id={item.id}
-                title={item.title}
-                updatedAt={item.updatedAt}
-                imageUri={imageUri}
-                imageUris={imageUris}
-                previewText={previewText}
-                checklistItems={checklistItems}
-                onPress={() => navigation.navigate('Editor', { documentId: item.id })}
-                isSelectMode={isSelectMode}
-                isSelected={selectedIds.has(item.id)}
-                onToggleSelect={() => toggleSelected(item.id)}
-                layout={viewMode}
+        {/* Groups and the whole control capsule share one row - the title
+            keeps the line above to itself, same as CustomDatabaseScreen.
+            The capsule's fourth button is what shows/hides the sticker
+            strip below. */}
+        <View style={styles.groupsRow}>
+          {groups.length > 0 ? (
+            <TabsTunnel>
+              <ProjectTabsRow
+                items={groups}
+                selected={groupFilter}
+                onSelect={setGroupFilter}
+                unassignedLabel="Без групи"
+                dark
               />
-            );
+            </TabsTunnel>
+          ) : (
+            <View style={styles.groupsSpacer} />
+          )}
+          <View style={[styles.headerButtons, groups.length > 0 && styles.headerButtonsOffset]}>
+            <Pressable hitSlop={6} onPress={() => navigation.navigate('Search')}>
+              <Ionicons name="search" size={17} color="#fff" />
+            </Pressable>
+            <View style={styles.headerButtonsDivider} />
+            <Pressable hitSlop={6} onPress={() => setMenuOpen((v) => !v)}>
+              <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
+            </Pressable>
+            <View style={styles.headerButtonsDivider} />
+            <Pressable hitSlop={6} onPress={toggleSelectMode}>
+              <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
+            </Pressable>
+            <View style={styles.headerButtonsDivider} />
+            <Pressable hitSlop={6} onPress={toggleStickersCollapsed}>
+              <Ionicons name={stickersCollapsed ? 'albums-outline' : 'albums'} size={17} color="#fff" />
+            </Pressable>
+          </View>
+        </View>
+
+        {!stickersCollapsed && freeStickers.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.stickerScroll}
+            contentContainerStyle={styles.stickerStrip}
+          >
+            {freeStickers.map((s) => (
+              <Pressable key={s.id} style={styles.stickerCard} onPress={() => openFreeSticker(s)}>
+                {s.type === 'image' && s.imageUri ? (
+                  <Image source={{ uri: s.imageUri }} style={styles.stickerCardImage} resizeMode="cover" />
+                ) : s.type === 'sketch' && (s.sketchElements?.length ?? 0) > 0 ? (
+                  // Same viewBox-reuses-the-capture-canvas-size approach as
+                  // DocumentEditorScreen's own sketch block preview - the
+                  // drawing scales correctly into this much smaller box.
+                  <Svg width="100%" height="100%" viewBox={`0 0 ${s.sketchWidth || 1} ${s.sketchHeight || 1}`}>
+                    {(s.sketchElements ?? []).map((el, i) =>
+                      el.kind === 'text' ? (
+                        <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
+                          {el.text}
+                        </SvgText>
+                      ) : (
+                        <Path
+                          key={i}
+                          d={el.d}
+                          stroke={el.color}
+                          strokeWidth={el.width}
+                          fill="none"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      )
+                    )}
+                  </Svg>
+                ) : s.type === 'sketch' ? (
+                  <View style={styles.stickerCardIconWrap}>
+                    <Ionicons name="brush-outline" size={34} color={STICKER_DARK} />
+                  </View>
+                ) : (
+                  <Text style={styles.stickerCardText} numberOfLines={6}>
+                    {s.text || 'Порожній стікер'}
+                  </Text>
+                )}
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
+
+        <StickerComposer
+          visible={stickerComposerVisible}
+          editingTextSticker={editingTextSticker}
+          onClose={() => {
+            setStickerComposerVisible(false);
+            setEditingTextSticker(null);
           }}
         />
-      )}
 
-      {!isSelectMode && (
-        <Pressable
-          style={[styles.fab, fabPressed && styles.fabSticker]}
-          onPress={createDocument}
-          // The two halves of a mechanical key: resistance under the
-          // finger, rebound when it lifts (see hapticButtonDown/Up).
-          onPressIn={hapticButtonDown}
-          onLongPress={() => {
-            setFabPressed(true);
-            openStickerComposer();
-          }}
-          onPressOut={() => {
-            hapticButtonUp();
-            setFabPressed(false);
-          }}
-          delayLongPress={400}
-        >
-          <Ionicons name="add" size={28} color={fabPressed ? STICKER_DARK : '#fff'} />
-        </Pressable>
-      )}
+        {viewerImageUri && (
+          // Modal (its own native window on Android) rather than a plain
+          // absolute-positioned overlay - without it this rendered inside the
+          // Documents tab's own layout and left the real status bar showing
+          // as a solid black strip above it, instead of the immersive
+          // full-screen viewer this needs (see the same pattern's own
+          // comment in DocumentEditorScreen). GestureHandlerRootView has to
+          // be re-declared inside the Modal for its own separate native
+          // window - the app-level one in App.tsx doesn't reach in here.
+          <Modal visible transparent animationType="fade" onRequestClose={() => setViewerImageUri(null)}>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+              <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />
+            </GestureHandlerRootView>
+          </Modal>
+        )}
+
+        <SketchEditor
+          visible={sketchEditing !== null}
+          initialElements={sketchEditing?.sketchElements ?? []}
+          onSave={saveSketchEdit}
+          onClose={() => setSketchEditing(null)}
+        />
+
+        {activeFilter && (
+          <View style={styles.filterRow}>
+            {activeFilter.type === 'untagged' ? (
+              <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
+                <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
+                <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без тегів</Text>
+                <Pressable hitSlop={8} onPress={() => setActiveFilter(null)}>
+                  <Ionicons name="close" size={14} color="#6B7280" />
+                </Pressable>
+              </View>
+            ) : (
+              activeFilter.tagIds.map((tagId) => {
+                const tag = tags.find((t) => t.id === tagId);
+                if (!tag) return null;
+                return (
+                  <View key={tagId} style={[styles.filterChip, { borderColor: tag.color }]}>
+                    <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tag.color} />
+                    <Text style={[styles.filterChipLabel, { color: tag.color }]}>{tag.path}</Text>
+                    <Pressable hitSlop={8} onPress={() => setActiveFilter(removeTagFromFilter(activeFilter, tagId))}>
+                      <Ionicons name="close" size={14} color={tag.color} />
+                    </Pressable>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+
+        {isLoading ? (
+          <View style={styles.emptyState}>
+            <ActivityIndicator color={ACCENT} />
+          </View>
+        ) : displayedDocuments.length === 0 ? (
+          <View style={styles.emptyState}>
+            {documents.length === 0 ? (
+              <>
+                <Pressable style={styles.emptyIcon} onPress={createDocument}>
+                  <Ionicons name="document-text-outline" size={32} color={ACCENT} />
+                  <View style={styles.emptyBadge}>
+                    <Ionicons name="add" size={14} color="#fff" />
+                  </View>
+                </Pressable>
+                <Text style={styles.emptyLabel}>Створити новий документ</Text>
+              </>
+            ) : (
+              <Text style={styles.emptyLabel}>Немає документів із цим фільтром</Text>
+            )}
+          </View>
+        ) : (
+          <FlatList
+            // FlatList throws if numColumns changes on an already-mounted
+            // instance - key forces a clean remount when switching views.
+            key={viewMode}
+            data={displayedDocuments}
+            keyExtractor={(item) => item.id}
+            // FlatList only re-renders an already-mounted row when `data` or
+            // `extraData` changes - isSelectMode/selectedIds live outside
+            // `data`, so without this a card kept showing its pre-select-mode
+            // props (tapping it still navigated instead of toggling a
+            // checkbox) even though renderItem's own closure had the fresh
+            // values.
+            extraData={[isSelectMode, selectedIds]}
+            numColumns={viewMode === 'grid' ? 2 : 1}
+            columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
+            contentContainerStyle={styles.list}
+            renderItem={({ item }) => {
+              // Grid cards reclaim the thumbnail's space for text when a
+              // document has no image (see DocumentCard's own noImage
+              // handling) - list rows are unaffected, so they keep the
+              // short default length.
+              const { imageUri, imageUris, previewText, checklistItems } = extractPreview(
+                item.blocks,
+                item.coverImageUri,
+                viewMode === 'grid' ? EXPANDED_PREVIEW_LENGTH : undefined
+              );
+              return (
+                <DocumentCard
+                  id={item.id}
+                  title={item.title}
+                  updatedAt={item.updatedAt}
+                  imageUri={imageUri}
+                  imageUris={imageUris}
+                  previewText={previewText}
+                  checklistItems={checklistItems}
+                  onPress={() => openDocument(item.id)}
+                  isSelectMode={isSelectMode}
+                  isSelected={selectedIds.has(item.id)}
+                  onToggleSelect={() => toggleSelected(item.id)}
+                  layout={viewMode}
+                />
+              );
+            }}
+          />
+        )}
+
+        {!isSelectMode && (
+          <Pressable
+            style={[styles.fab, fabPressed && styles.fabSticker]}
+            onPress={createDocument}
+            // The two halves of a mechanical key: resistance under the
+            // finger, rebound when it lifts (see hapticButtonDown/Up).
+            onPressIn={hapticButtonDown}
+            onLongPress={() => {
+              setFabPressed(true);
+              openStickerComposer();
+            }}
+            onPressOut={() => {
+              hapticButtonUp();
+              setFabPressed(false);
+            }}
+            delayLongPress={400}
+          >
+            <Ionicons name="add" size={28} color={fabPressed ? STICKER_DARK : '#fff'} />
+          </Pressable>
+        )}
+        </View>
+
+        {isTwoPane && (
+          <View style={styles.editorPane}>
+            {openDoc ? (
+              // Keyed by id so switching documents remounts the editor
+              // rather than re-seeding one instance's state mid-edit.
+              <DocumentEditorScreen
+                key={openDoc.id}
+                pane
+                documentId={openDoc.id}
+                autoFocusTitle={openDoc.autoFocusTitle}
+                navigation={navigation}
+                onClose={() => setOpenDoc(null)}
+              />
+            ) : (
+              <View style={styles.editorPaneEmpty}>
+                <Ionicons name="document-text-outline" size={34} color="rgba(255,255,255,0.3)" />
+                <Text style={styles.editorPaneEmptyLabel}>Виберіть документ зі списку</Text>
+              </View>
+            )}
+          </View>
+        )}
+      </View>
 
       <TagsDrawer tags={drawerTags} activeFilter={activeFilter} onSelectFilter={setActiveFilter} hideOpenButton={isSelectMode} />
 
@@ -644,6 +705,29 @@ export default function DocumentsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  paneRow: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  pane: {
+    flex: 1,
+  },
+  editorPane: {
+    flex: 1,
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(255,255,255,0.15)',
+    overflow: 'hidden',
+  },
+  editorPaneEmpty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  editorPaneEmptyLabel: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.5)',
   },
   headerRow: {
     flexDirection: 'row',

@@ -1937,6 +1937,18 @@ type Props =
       // toggle without lifting isSelectMode into two-way controlled props.
       onSelectModeChange?: (isSelectMode: boolean) => void;
       onSaveStatusChange?: (status: 'saved' | 'saving') => void;
+    }
+  // Pane mode (DocumentsScreen's two-pane layout on a wide screen): the
+  // WHOLE editor, header and title and cover included - unlike embedded
+  // mode, which strips all of that because the calendar draws its own.
+  // The only difference from the stack screen is that there's no stack to
+  // pop: the back arrow hands the pane back to the list instead.
+  | {
+      pane: true;
+      documentId: string;
+      navigation: NativeStackNavigationProp<RootStackParamList>;
+      autoFocusTitle?: boolean;
+      onClose: () => void;
     };
 
 export type DocumentEditorHandle = {
@@ -1945,14 +1957,19 @@ export type DocumentEditorHandle = {
 
 function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHandle>) {
   const embedded = 'embedded' in props;
-  const documentId = 'embedded' in props ? props.documentId : props.route.params.documentId;
+  const documentId =
+    'embedded' in props ? props.documentId : 'pane' in props ? props.documentId : props.route.params.documentId;
   const navigation = props.navigation;
   const extraFields = 'embedded' in props ? (props.extraFields ?? {}) : {};
   const onSelectModeChange = 'embedded' in props ? props.onSelectModeChange : undefined;
   const onSaveStatusChange = 'embedded' in props ? props.onSaveStatusChange : undefined;
+  // In a pane there is nothing on a stack to go back to - the arrow empties
+  // the pane and leaves the list beside it alone.
+  const closePane = 'pane' in props ? props.onClose : null;
   // Only set right after DocumentsScreen creates a brand-new document - see
   // navigation.ts's own comment on this param.
-  const autoFocusTitle = !embedded && !!props.route.params.autoFocusTitle;
+  const autoFocusTitle =
+    'pane' in props ? !!props.autoFocusTitle : !embedded && !('pane' in props) && !!props.route.params.autoFocusTitle;
   const [title, setTitle] = useState('');
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [tagIds, setTagIds] = useState<string[]>([]);
@@ -3844,7 +3861,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       {!embedded && (
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+          <Pressable hitSlop={8} onPress={() => (closePane ? closePane() : navigation.goBack())}>
             <Ionicons name="arrow-back" size={22} color={paperColor?.text ?? '#111827'} />
           </Pressable>
         </View>
