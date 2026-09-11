@@ -2492,6 +2492,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // never touched again after that, same as every later autosave.
       const createdAtField = isNewDocumentRef.current ? { createdAt: Date.now() } : {};
       isNewDocumentRef.current = false;
+      // Cleared here rather than in the cleanup: from this point there is
+      // nothing scheduled, and the listener above reads this to tell
+      // "waiting to write" from "nothing pending".
+      saveTimeoutRef.current = null;
       setDoc(
         doc(db, 'documents', documentId),
         {
@@ -2538,10 +2542,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     return onSnapshot(doc(db, 'documents', documentId), (snapshot) => {
       const incoming = (snapshot.data()?.blocks ?? []) as Block[];
       if (incoming.length === 0) return;
-      setBlocks((current) => {
-        if (saveStatus === 'saving') return current;
-        return blocksEqual(current, incoming) ? current : incoming;
-      });
+      // Everything here is a reason the arriving version is OLDER than
+      // what's on screen, not newer:
+      //  - a save is scheduled or in flight (this very edit, not yet
+      //    written), and applying the stored version would undo it;
+      //  - the board sync is mid-flight, which stamps blocks locally with
+      //    the cards it just made for them - the write that carries those
+      //    stamps hasn't happened yet;
+      //  - a block is focused, and replacing the array under a live
+      //    TextInput remounts it, which drops the keyboard mid-sentence.
+      if (saveTimeoutRef.current || saveStatus === 'saving' || boardSyncingRef.current) return;
+      if (focusedBlockIdRef.current) return;
+      setBlocks((current) => (blocksEqual(current, incoming) ? current : incoming));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceBoardId, isLoaded, documentId, saveStatus]);
