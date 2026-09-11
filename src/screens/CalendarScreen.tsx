@@ -563,6 +563,20 @@ export default function CalendarScreen() {
                 <View style={styles.headerButtonsDivider} />
               </>
             )}
+            {/* Between the two column toggles, because that's what it is:
+                both of them at once. */}
+            {isTwoPane && (
+              <>
+                <Pressable hitSlop={6} onPress={toggleNoteFullscreen}>
+                  <Ionicons
+                    name={noteFullscreen ? 'contract-outline' : 'expand-outline'}
+                    size={17}
+                    color="#fff"
+                  />
+                </Pressable>
+                <View style={styles.headerButtonsDivider} />
+              </>
+            )}
             {isThreePane && (
               <>
                 <Pressable hitSlop={6} onPress={() => setShowHistoryPane((v) => !v)}>
@@ -840,18 +854,6 @@ export default function CalendarScreen() {
               onSelectModeChange={setNoteSelectMode}
               onSaveStatusChange={setNoteSaveStatus}
             />
-            {/* On the sheet itself, not in the header: it's about this one
-                thing - the note taking the whole window and giving it
-                back. */}
-            {isTwoPane && (
-              <Pressable style={styles.noteExpandButton} onPress={toggleNoteFullscreen} hitSlop={6}>
-                <Ionicons
-                  name={noteFullscreen ? 'contract-outline' : 'expand-outline'}
-                  size={17}
-                  color="#6B7280"
-                />
-              </Pressable>
-            )}
           </View>
         )}
         {isThreePane && showHistoryPane && (
@@ -1097,18 +1099,6 @@ const styles = StyleSheet.create({
   },
   paneHidden: {
     display: 'none',
-  },
-  noteExpandButton: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 32,
-    height: 32,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(17,24,39,0.06)',
-    zIndex: 5,
   },
   monthNavWrap: {
     overflow: 'hidden',
