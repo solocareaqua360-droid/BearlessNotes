@@ -22,6 +22,10 @@ type Props = {
   // component only draws the pill row, so it doesn't care which; the
   // caller supplies the right wording for its "unassigned" tab.
   unassignedLabel?: string;
+  // A tab that is always there and can never be deleted, the way "Без
+  // групи" always is - Documents keeps its loose stickers behind one.
+  // Drawn last, after the unassigned tab.
+  pinnedTab?: { id: string; label: string };
   // Documents/Calendar/Databases sit on the dark gradient background
   // instead of these screens' plain white - the dark-glass treatment
   // already used for their own header capsules, applied here too so the
@@ -42,6 +46,7 @@ export default function ProjectTabsRow({
   selected,
   onSelect,
   unassignedLabel = 'Без проєкту',
+  pinnedTab,
   dark,
   blurTarget,
 }: Props) {
@@ -85,6 +90,16 @@ export default function ProjectTabsRow({
         dark={dark}
         blurTarget={blurTarget}
       />
+      {pinnedTab && (
+        <Tab
+          label={pinnedTab.label}
+          color={MUTED}
+          active={selected === pinnedTab.id}
+          onPress={() => onSelect(pinnedTab.id)}
+          dark={dark}
+          blurTarget={blurTarget}
+        />
+      )}
     </ScrollView>
   );
 }

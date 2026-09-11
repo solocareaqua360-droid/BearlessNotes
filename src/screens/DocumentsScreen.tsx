@@ -82,6 +82,11 @@ const STICKER_DARK = '#4a3f05';
 // text lands as a standalone sticker instead of through the FAB here.
 export const FREE_STICKER_LIMIT = 10;
 
+// The loose stickers' own group. A sentinel id, like ProjectTabsRow's own
+// UNASSIGNED_ID: it is a tab, not a document in `groups`, so it can never
+// be renamed away or deleted.
+const STICKERS_GROUP = '__stickers__';
+
 type ViewMode = 'list' | 'grid';
 
 type StripSticker = {
@@ -134,7 +139,6 @@ export default function DocumentsScreen() {
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [stickersCollapsed, setStickersCollapsed] = useState(false);
   const [freeStickers, setFreeStickers] = useState<StripSticker[]>([]);
   const [stickerComposerVisible, setStickerComposerVisible] = useState(false);
   const [editingTextSticker, setEditingTextSticker] = useState<{ id: string; text: string } | null>(null);
@@ -167,7 +171,6 @@ export default function DocumentsScreen() {
     return onSnapshot(documentsPrefsDoc, (snapshot) => {
       const data = snapshot.data();
       setViewMode((data?.viewMode as ViewMode | undefined) ?? 'list');
-      setStickersCollapsed(!!data?.stickersCollapsed);
     });
   }, []);
 
@@ -184,10 +187,6 @@ export default function DocumentsScreen() {
       );
     });
   }, []);
-
-  function toggleStickersCollapsed() {
-    setDoc(documentsPrefsDoc, { stickersCollapsed: !stickersCollapsed }, { merge: true });
-  }
 
   function openStickerComposer() {
     if (freeStickers.length >= FREE_STICKER_LIMIT) {
@@ -263,6 +262,9 @@ export default function DocumentsScreen() {
     });
   }, []);
 
+  // The stickers' tab isn't a filter over the documents - it replaces
+  // them.
+  const showingStickers = groupFilter === STICKERS_GROUP;
   const groupFilteredDocuments =
     groupFilter === null
       ? documents
@@ -400,58 +402,50 @@ export default function DocumentsScreen() {
     clearSelection();
   }
 
-  // The stickers ride at the top of the list rather than above it: the
-  // list now runs the full height of the pane, and anything standing
-  // between the tabs and the cards would be the very bar we just took
-  // out. As the list's header they scroll away with the cards.
-  const stickerStrip =
-    !stickersCollapsed && freeStickers.length > 0 ? (
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.stickerScroll}
-        contentContainerStyle={styles.stickerStrip}
-      >
-        {freeStickers.map((s) => (
-          <Pressable key={s.id} style={styles.stickerCard} onPress={() => openFreeSticker(s)}>
-            {s.type === 'image' && s.imageUri ? (
-              <Image source={{ uri: s.imageUri }} style={styles.stickerCardImage} resizeMode="cover" />
-            ) : s.type === 'sketch' && (s.sketchElements?.length ?? 0) > 0 ? (
-              // Same viewBox-reuses-the-capture-canvas-size approach as
-              // DocumentEditorScreen's own sketch block preview - the
-              // drawing scales correctly into this much smaller box.
-              <Svg width="100%" height="100%" viewBox={`0 0 ${s.sketchWidth || 1} ${s.sketchHeight || 1}`}>
-                {(s.sketchElements ?? []).map((el, i) =>
-                  el.kind === 'text' ? (
-                    <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
-                      {el.text}
-                    </SvgText>
-                  ) : (
-                    <Path
-                      key={i}
-                      d={el.d}
-                      stroke={el.color}
-                      strokeWidth={el.width}
-                      fill="none"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  )
-                )}
-              </Svg>
-            ) : s.type === 'sketch' ? (
-              <View style={styles.stickerCardIconWrap}>
-                <Ionicons name="brush-outline" size={34} color={STICKER_DARK} />
-              </View>
-            ) : (
-              <Text style={styles.stickerCardText} numberOfLines={6}>
-                {s.text || 'Порожній стікер'}
-              </Text>
+  // Тhe loose stickers are a group of their own now - the last tab, the
+  // one that can no more be removed than "Без групи" can. Tapping it
+  // swaps the list of documents for a list of stickers, in whichever
+  // view (list or grid) the documents are in.
+  function stickerFace(s: StripSticker) {
+    return (
+      <>
+        {s.type === 'image' && s.imageUri ? (
+          <Image source={{ uri: s.imageUri }} style={styles.stickerCardImage} resizeMode="cover" />
+        ) : s.type === 'sketch' && (s.sketchElements?.length ?? 0) > 0 ? (
+          // Same viewBox-reuses-the-capture-canvas-size approach as
+          // DocumentEditorScreen's own sketch block preview - the
+          // drawing scales correctly into this much smaller box.
+          <Svg width="100%" height="100%" viewBox={`0 0 ${s.sketchWidth || 1} ${s.sketchHeight || 1}`}>
+            {(s.sketchElements ?? []).map((el, i) =>
+              el.kind === 'text' ? (
+                <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
+                  {el.text}
+                </SvgText>
+              ) : (
+                <Path
+                  key={i}
+                  d={el.d}
+                  stroke={el.color}
+                  strokeWidth={el.width}
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              )
             )}
-          </Pressable>
-        ))}
-      </ScrollView>
-    ) : null;
+          </Svg>
+        ) : s.type === 'sketch' ? (
+          <View style={styles.stickerCardIconWrap}>
+            <Ionicons name="brush-outline" size={34} color={STICKER_DARK} />
+          </View>
+        ) : (
+          <Text style={styles.stickerCardText} numberOfLines={6}>
+            {s.text || 'Порожній стікер'}
+          </Text>
+        )}
+      </>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -564,10 +558,6 @@ export default function DocumentsScreen() {
               <Pressable hitSlop={8} onPress={toggleSelectMode}>
                 <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={24} color="#fff" />
               </Pressable>
-              <View style={styles.sideIslandDivider} />
-              <Pressable hitSlop={8} onPress={toggleStickersCollapsed}>
-                <Ionicons name={stickersCollapsed ? 'albums-outline' : 'albums'} size={24} color="#fff" />
-              </Pressable>
             </View>
           </View>
         </View>
@@ -595,6 +585,7 @@ export default function DocumentsScreen() {
                   selected={groupFilter}
                   onSelect={setGroupFilter}
                   unassignedLabel="Без групи"
+                  pinnedTab={{ id: STICKERS_GROUP, label: 'Стікери' }}
                   dark
                   blurTarget={blurTarget}
                 />
@@ -664,13 +655,38 @@ export default function DocumentsScreen() {
           onClose={() => setSketchEditing(null)}
         />
 
-        {isLoading ? (
+        {showingStickers ? (
+          freeStickers.length === 0 ? (
+            <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
+              <Text style={styles.emptyLabel}>Немає вільних стікерів</Text>
+            </View>
+          ) : (
+            <FlatList
+              key={`stickers-${viewMode}`}
+              data={freeStickers}
+              keyExtractor={(item) => item.id}
+              numColumns={viewMode === 'grid' ? 2 : 1}
+              columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
+              contentContainerStyle={[styles.list, { paddingTop: chromeBottom }]}
+              renderItem={({ item }) => (
+                <Pressable
+                  style={[
+                    styles.stickerCard,
+                    viewMode === 'grid' ? styles.stickerCardGrid : styles.stickerCardRow,
+                  ]}
+                  onPress={() => openFreeSticker(item)}
+                >
+                  {stickerFace(item)}
+                </Pressable>
+              )}
+            />
+          )
+        ) : isLoading ? (
           <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
             <ActivityIndicator color={ACCENT} />
           </View>
         ) : displayedDocuments.length === 0 ? (
           <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
-            {stickerStrip}
             {documents.length === 0 ? (
               <>
                 <Pressable style={styles.emptyIcon} onPress={createDocument}>
@@ -704,7 +720,6 @@ export default function DocumentsScreen() {
             // The cards start below the floating tabs and scroll up under
             // them from there.
             contentContainerStyle={[styles.list, { paddingTop: chromeBottom }]}
-            ListHeaderComponent={stickerStrip}
             renderItem={({ item }) => {
               // Grid cards reclaim the thumbnail's space for text when a
               // document has no image (see DocumentCard's own noImage
@@ -965,18 +980,7 @@ const styles = StyleSheet.create({
   // height with the documents FlatList below it and gets squeezed shorter
   // than its own content (150px cards clipped) - same bug/fix as
   // ProjectTabsRow's own `scroll` style documents.
-  stickerScroll: {
-    flexGrow: 0,
-    flexShrink: 0,
-  },
-  stickerStrip: {
-    paddingHorizontal: 20,
-    paddingBottom: 10,
-    gap: 10,
-  },
   stickerCard: {
-    width: 150,
-    height: 150,
     borderRadius: 6,
     backgroundColor: STICKER_YELLOW,
     padding: 14,
@@ -987,6 +991,18 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 4,
     elevation: 4,
+  },
+  // Two to a row in grid view, one across in list view - the same two
+  // shapes the document cards take.
+  stickerCardGrid: {
+    flex: 1,
+    height: 180,
+    marginBottom: 12,
+  },
+  stickerCardRow: {
+    height: 120,
+    marginHorizontal: 20,
+    marginBottom: 12,
   },
   stickerCardImage: {
     width: '100%',
