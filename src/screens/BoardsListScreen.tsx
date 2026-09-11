@@ -12,6 +12,7 @@ import { colorForDocument } from '../utils/documentColor';
 import BoardMiniMap from '../components/BoardMiniMap';
 import RenamePrompt from '../components/RenamePrompt';
 import ContentColumn from '../components/ContentColumn';
+import { GLASS_BODY, GLASS_TEXT } from '../constants/glass';
 
 const ACCENT = '#8B5CF6';
 const boardsCollection = collection(db, 'boards');
@@ -308,7 +309,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   cardMenuSheet: {
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
@@ -331,6 +332,6 @@ const styles = StyleSheet.create({
   },
   cardMenuRowLabel: {
     fontSize: 15,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
 });

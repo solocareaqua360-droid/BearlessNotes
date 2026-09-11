@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc } from '@react-native-firebase/firestore';
+import { GLASS_BODY, GLASS_TEXT } from '../constants/glass';
 import { db } from '../firebase';
 import { CustomDatabase, CustomDatabaseRow, Group } from '../types';
 import { RootStackParamList } from '../navigation';
@@ -228,22 +229,22 @@ export default function GroupsScreen() {
 
                   <View style={styles.actionRow}>
                     <Pressable style={styles.action} onPress={() => setRenamingGroup(openGroup)}>
-                      <Ionicons name="pencil-outline" size={16} color="#111827" />
+                      <Ionicons name="pencil-outline" size={16} color={GLASS_TEXT} />
                       <Text style={styles.actionLabel}>Перейменувати</Text>
                     </Pressable>
                     <Pressable style={styles.action} onPress={() => setImportingGroup(openGroup)}>
-                      <Ionicons name="apps-outline" size={16} color="#111827" />
+                      <Ionicons name="apps-outline" size={16} color={GLASS_TEXT} />
                       <Text style={styles.actionLabel}>На дошку</Text>
                     </Pressable>
                     <Pressable style={styles.action} onPress={() => setKindsEditorGroup(openGroup)}>
-                      <Ionicons name="albums-outline" size={16} color="#111827" />
+                      <Ionicons name="albums-outline" size={16} color={GLASS_TEXT} />
                       <Text style={styles.actionLabel}>Бази</Text>
                     </Pressable>
                     <Pressable style={styles.action} onPress={() => setArchived(openGroup, !openGroup.archived)}>
                       <Ionicons
                         name={openGroup.archived ? 'arrow-undo-outline' : 'archive-outline'}
                         size={16}
-                        color="#111827"
+                        color={GLASS_TEXT}
                       />
                       <Text style={styles.actionLabel}>{openGroup.archived ? 'Повернути' : 'Архівувати'}</Text>
                     </Pressable>
@@ -437,7 +438,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
@@ -461,7 +462,7 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#111827',
+    color: GLASS_TEXT,
     flexShrink: 1,
   },
   actionRow: {

@@ -14,6 +14,7 @@ import { colorForDocument } from '../utils/documentColor';
 import RenamePrompt from '../components/RenamePrompt';
 import ImportTableSheet from '../components/ImportTableSheet';
 import ContentColumn from '../components/ContentColumn';
+import { GLASS_BODY, GLASS_TEXT } from '../constants/glass';
 
 type Tile = {
   key: string;
@@ -361,7 +362,7 @@ const styles = StyleSheet.create({
     padding: 32,
   },
   colorMenuCard: {
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     borderRadius: 16,
     padding: 20,
     width: '100%',
@@ -371,7 +372,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
     marginBottom: 14,
   },
   colorMenuRow: {

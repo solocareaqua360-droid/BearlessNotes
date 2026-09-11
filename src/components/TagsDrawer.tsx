@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Tag } from '../types';
 import { FONT_REGULAR, FONT_SEMIBOLD, FONT_BOLD, FONT_EXTRABOLD } from '../utils/fonts';
+import { GLASS_BODY, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 
 // Two thirds of the window, measured per render (useWindowDimensions) and
 // never captured once at module scope from Dimensions.get() - see
@@ -93,7 +94,7 @@ function TreeRow({
   // A branch-only node (a path segment with no tag of its own, just
   // grouping children) has no color to draw from, so it - and the
   // chevron/icon/text that go with it - stay neutral gray instead.
-  const tint = node.tag ? node.tag.color : '#9CA3AF';
+  const tint = node.tag ? node.tag.color : GLASS_TEXT_FAINT;
 
   return (
     <View style={{ marginLeft: depth * 18 }}>
@@ -259,10 +260,10 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
           </View>
 
           <Pressable style={styles.untaggedRow} onPress={toggleUntagged}>
-            <Ionicons name="pricetag-outline" size={13} color="#9CA3AF" />
+            <Ionicons name="pricetag-outline" size={13} color={GLASS_TEXT_FAINT} />
             <Text style={styles.untaggedLabel}>Без тегів</Text>
             <View style={styles.treeCheckSlot}>
-              {activeFilter?.type === 'untagged' && <Ionicons name="checkmark" size={14} color="#9CA3AF" />}
+              {activeFilter?.type === 'untagged' && <Ionicons name="checkmark" size={14} color={GLASS_TEXT_FAINT} />}
             </View>
           </Pressable>
 
@@ -305,7 +306,7 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     paddingTop: 56,
     paddingHorizontal: 16,
     paddingBottom: 20,
@@ -319,7 +320,7 @@ const styles = StyleSheet.create({
     fontSize: 19,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: '#111827',
+    color: GLASS_TEXT,
     marginBottom: 12,
   },
   segmented: {
@@ -335,19 +336,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     borderWidth: 1.5,
-    borderColor: '#111827',
+    borderColor: GLASS_TEXT,
     borderRadius: 999,
   },
   segmentLabel: {
     fontSize: 13,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
   },
   segmentLabelActive: {
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   // White capsule, border always in its own color (gray for "Без тегів" -
   // it has none of its own) - not just when active. Selection shows as the
@@ -358,9 +359,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-start',
     gap: 8,
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     borderWidth: 1.5,
-    borderColor: '#9CA3AF',
+    borderColor: GLASS_TEXT_FAINT,
     borderRadius: 999,
     paddingVertical: 7,
     paddingHorizontal: 12,
@@ -370,7 +371,7 @@ const styles = StyleSheet.create({
   untaggedLabel: {
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
     flexShrink: 1,
   },
   scroll: {
@@ -381,7 +382,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-start',
     gap: 8,
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     borderWidth: 1.5,
     borderRadius: 999,
     paddingVertical: 7,
@@ -410,7 +411,7 @@ const styles = StyleSheet.create({
     width: OPEN_BUTTON_SIZE,
     height: OPEN_BUTTON_SIZE,
     borderRadius: 16,
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -423,6 +424,6 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: '700',
     fontFamily: FONT_EXTRABOLD,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
 });

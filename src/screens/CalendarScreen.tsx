@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { collection, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from '@react-native-firebase/firestore';
+import { GLASS_BODY, GLASS_TEXT } from '../constants/glass';
 import { db } from '../firebase';
 import { Block } from '../types';
 import { RootStackParamList } from '../navigation';
@@ -624,12 +625,12 @@ export default function CalendarScreen() {
       {menuOpen && (
         <View style={styles.menuPanel}>
           <Pressable style={styles.menuRow} onPress={() => toggleCompactFilter('filled')}>
-            <Ionicons name="filter-outline" size={17} color="#111827" />
+            <Ionicons name="filter-outline" size={17} color={GLASS_TEXT} />
             <Text style={styles.menuRowLabel}>Лише заповнені дні</Text>
             {compactFilter === 'filled' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
           </Pressable>
           <Pressable style={styles.menuRow} onPress={() => toggleCompactFilter('history')}>
-            <Ionicons name="time-outline" size={17} color="#111827" />
+            <Ionicons name="time-outline" size={17} color={GLASS_TEXT} />
             <Text style={styles.menuRowLabel}>Лише дні з історією</Text>
             {compactFilter === 'history' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
           </Pressable>
@@ -1058,7 +1059,7 @@ const styles = StyleSheet.create({
     top: 96,
     right: 20,
     width: 260,
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     borderRadius: 14,
     padding: 6,
     shadowColor: '#000',
@@ -1080,7 +1081,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   // The glass plate under the calendar's numbers - a separate, unanimated
   // wrapper (see calendarPlate below) rather than styling this directly:

@@ -31,6 +31,7 @@ import {
   updateDoc,
   writeBatch,
 } from '@react-native-firebase/firestore';
+import { GLASS_BODY, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import { db } from '../firebase';
 import { DocumentItem, Group, SketchElement } from '../types';
 import { groupAppliesTo } from '../utils/groups';
@@ -415,12 +416,12 @@ export default function DocumentsScreen() {
           <View style={styles.menuPanel}>
             <Text style={styles.menuSectionLabel}>Вигляд</Text>
             <Pressable style={styles.menuRow} onPress={() => changeViewMode('list')}>
-              <Ionicons name="reorder-four-outline" size={17} color="#111827" />
+              <Ionicons name="reorder-four-outline" size={17} color={GLASS_TEXT} />
               <Text style={styles.menuRowLabel}>Список</Text>
               {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
             </Pressable>
             <Pressable style={styles.menuRow} onPress={() => changeViewMode('grid')}>
-              <Ionicons name="grid-outline" size={17} color="#111827" />
+              <Ionicons name="grid-outline" size={17} color={GLASS_TEXT} />
               <Text style={styles.menuRowLabel}>Сітка</Text>
               {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
             </Pressable>
@@ -811,7 +812,7 @@ const styles = StyleSheet.create({
     top: 96,
     right: 20,
     width: 200,
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     borderRadius: 14,
     padding: 6,
     shadowColor: '#000',
@@ -826,7 +827,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.04,
     textTransform: 'uppercase',
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
     paddingHorizontal: 8,
     paddingTop: 4,
     paddingBottom: 2,
@@ -842,7 +843,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   gridRow: {
     gap: 12,

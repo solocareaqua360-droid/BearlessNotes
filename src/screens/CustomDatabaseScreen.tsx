@@ -39,6 +39,13 @@ import {
   updateDoc,
   writeBatch,
 } from '@react-native-firebase/firestore';
+import {
+  GLASS_BODY,
+  GLASS_LINE,
+  GLASS_TEXT,
+  GLASS_TEXT_FAINT,
+  GLASS_TEXT_MUTED,
+} from '../constants/glass';
 import { db } from '../firebase';
 import { CustomDatabase, CustomDatabaseRow, CustomDatabaseView, FieldDef, Group } from '../types';
 import { groupAppliesTo } from '../utils/groups';
@@ -929,7 +936,7 @@ export default function CustomDatabaseScreen({}: Props) {
                 hitSlop={8}
                 onPress={() => unlinkBacklinkRow(field, r.id).catch(() => {})}
               >
-                <Ionicons name="close" size={16} color="#9CA3AF" />
+                <Ionicons name="close" size={16} color={GLASS_TEXT_FAINT} />
               </Pressable>
             </View>
           ))}
@@ -967,7 +974,7 @@ export default function CustomDatabaseScreen({}: Props) {
           <Text style={value ? styles.fieldPressableValue : styles.fieldPressablePlaceholder}>
             {value ? displayValue(field, value) : 'Обрати дату'}
           </Text>
-          <Ionicons name="calendar-outline" size={16} color="#9CA3AF" />
+          <Ionicons name="calendar-outline" size={16} color={GLASS_TEXT_FAINT} />
         </Pressable>
       );
     }
@@ -987,7 +994,7 @@ export default function CustomDatabaseScreen({}: Props) {
           ) : (
             <Text style={styles.fieldPressablePlaceholder}>Обрати</Text>
           )}
-          <Ionicons name="chevron-down" size={16} color="#9CA3AF" />
+          <Ionicons name="chevron-down" size={16} color={GLASS_TEXT_FAINT} />
         </Pressable>
       );
     }
@@ -1005,7 +1012,7 @@ export default function CustomDatabaseScreen({}: Props) {
           ) : (
             <Text style={styles.fieldPressablePlaceholder}>Обрати</Text>
           )}
-          <Ionicons name="chevron-down" size={16} color="#9CA3AF" />
+          <Ionicons name="chevron-down" size={16} color={GLASS_TEXT_FAINT} />
         </Pressable>
       );
     }
@@ -1028,7 +1035,7 @@ export default function CustomDatabaseScreen({}: Props) {
         ) : (
           <Text style={styles.fieldPressablePlaceholder}>Обрати</Text>
         )}
-        <Ionicons name="chevron-down" size={16} color="#9CA3AF" />
+        <Ionicons name="chevron-down" size={16} color={GLASS_TEXT_FAINT} />
       </Pressable>
     );
   }
@@ -1331,7 +1338,7 @@ export default function CustomDatabaseScreen({}: Props) {
               setRenamingDatabase(true);
             }}
           >
-            <Ionicons name="pencil-outline" size={17} color="#111827" />
+            <Ionicons name="pencil-outline" size={17} color={GLASS_TEXT} />
             <Text style={styles.menuRowLabel}>Перейменувати базу</Text>
           </Pressable>
           <Pressable
@@ -1341,7 +1348,7 @@ export default function CustomDatabaseScreen({}: Props) {
               setEditingFields(true);
             }}
           >
-            <Ionicons name="options-outline" size={17} color="#111827" />
+            <Ionicons name="options-outline" size={17} color={GLASS_TEXT} />
             <Text style={styles.menuRowLabel}>Поля</Text>
           </Pressable>
           <Pressable
@@ -1351,7 +1358,7 @@ export default function CustomDatabaseScreen({}: Props) {
               setImporting(true);
             }}
           >
-            <Ionicons name="download-outline" size={17} color="#111827" />
+            <Ionicons name="download-outline" size={17} color={GLASS_TEXT} />
             <Text style={styles.menuRowLabel}>Імпортувати таблицю</Text>
           </Pressable>
           <Pressable
@@ -2124,7 +2131,7 @@ export default function CustomDatabaseScreen({}: Props) {
                 ) : (
                   <View key={field.id} style={styles.editorField}>
                     <View style={styles.editorFieldLabelRow}>
-                      <Ionicons name={FIELD_TYPE_ICON[field.type]} size={12} color="#6B7280" />
+                      <Ionicons name={FIELD_TYPE_ICON[field.type]} size={12} color={GLASS_TEXT_MUTED} />
                       <Text style={styles.editorFieldLabel}>{field.name}</Text>
                     </View>
                     {renderFieldInput(field)}
@@ -2327,7 +2334,7 @@ export default function CustomDatabaseScreen({}: Props) {
                 if (rowMenuRow) openEditRow(rowMenuRow);
               }}
             >
-              <Ionicons name="pencil-outline" size={18} color="#111827" />
+              <Ionicons name="pencil-outline" size={18} color={GLASS_TEXT} />
               <Text style={styles.cardMenuRowLabel}>Редагувати</Text>
             </Pressable>
             {rowMenuRow && documentIdsOf(rowMenuRow).length > 0 && (
@@ -2887,7 +2894,7 @@ const styles = StyleSheet.create({
     top: 96,
     right: 20,
     width: 220,
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     borderRadius: 14,
     padding: 6,
     shadowColor: '#000',
@@ -2902,7 +2909,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.04,
     textTransform: 'uppercase',
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
     paddingHorizontal: 8,
     paddingTop: 4,
     paddingBottom: 2,
@@ -2917,11 +2924,11 @@ const styles = StyleSheet.create({
   menuRowLabel: {
     flex: 1,
     fontSize: 14,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   menuDivider: {
     height: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: GLASS_LINE,
     marginVertical: 4,
   },
   emptyState: {
@@ -3302,7 +3309,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   cardGrid: {
     flexDirection: 'row',
@@ -3397,7 +3404,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
@@ -3406,7 +3413,7 @@ const styles = StyleSheet.create({
     maxHeight: '70%',
   },
   editorSheet: {
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
@@ -3417,7 +3424,7 @@ const styles = StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: GLASS_LINE,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -3425,7 +3432,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#111827',
+    color: GLASS_TEXT,
     marginBottom: 8,
   },
   editorScroll: {
@@ -3446,28 +3453,28 @@ const styles = StyleSheet.create({
   editorFieldLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#6B7280',
+    color: GLASS_TEXT_MUTED,
   },
   optionPickerEmpty: {
     fontSize: 13,
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
     paddingVertical: 12,
   },
   fieldInput: {
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: GLASS_LINE,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   fieldPressable: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: GLASS_LINE,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -3475,11 +3482,11 @@ const styles = StyleSheet.create({
   },
   fieldPressableValue: {
     fontSize: 15,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   fieldPressablePlaceholder: {
     fontSize: 15,
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
   },
   optionChipsRow: {
     flexDirection: 'row',
@@ -3510,7 +3517,7 @@ const styles = StyleSheet.create({
   optionPickerLabel: {
     flex: 1,
     fontSize: 15,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   relationValueRow: {
     flex: 1,
@@ -3526,12 +3533,12 @@ const styles = StyleSheet.create({
   },
   relationSearchInput: {
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: GLASS_LINE,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
     fontSize: 14,
-    color: '#111827',
+    color: GLASS_TEXT,
     marginBottom: 4,
   },
   relationPickerScroll: {
@@ -3565,7 +3572,7 @@ const styles = StyleSheet.create({
   },
   cancelLabel: {
     fontSize: 15,
-    color: '#6B7280',
+    color: GLASS_TEXT_MUTED,
   },
   saveButton: {
     backgroundColor: ACCENT,
@@ -3630,7 +3637,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   cardMenuSheet: {
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
@@ -3645,6 +3652,6 @@ const styles = StyleSheet.create({
   },
   cardMenuRowLabel: {
     fontSize: 15,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
 });
