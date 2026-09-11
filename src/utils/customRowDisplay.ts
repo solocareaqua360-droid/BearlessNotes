@@ -67,6 +67,15 @@ export function rowTitleOf(database: CustomDatabase | null | undefined, row: Cus
   return parts.filter((p) => p !== '').join(' · ') || 'Без назви';
 }
 
+// A relation field holds one id or, once it's a gallery, an array of
+// them. The cover is whichever comes first: a card has room for exactly
+// one picture, and a field the user turned into a gallery after picking a
+// cover must not silently lose that cover.
+export function firstRelationId(value: string | number | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) return value.find((v) => typeof v === 'string' && v !== '');
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
 // What a relation field's stored target id (row.values[field.id]) should
 // show - a label, and a thumbnail when one is available. A 'customDb'
 // target is resolved one level further, into its OWN cover, so a
@@ -90,8 +99,8 @@ export function resolveRelationValue(
   const label = rowTitleOf(targetDb, targetRow);
   const targetCoverField = coverFieldOf(targetDb);
   if (targetCoverField?.relationTarget?.kind === 'photos') {
-    const coverTargetId = targetRow.values[targetCoverField.id];
-    if (typeof coverTargetId === 'string') {
+    const coverTargetId = firstRelationId(targetRow.values[targetCoverField.id]);
+    if (coverTargetId) {
       const photo = ctx.photos.find((p) => p.id === coverTargetId);
       if (photo) return { label, thumbUri: photo.imageUri, driveFileId: photo.driveFileId };
     }
@@ -174,10 +183,10 @@ export function buildRowDisplay(
 ): RowDisplay {
   if (!database || !row) return { title: rowTitleOf(database, row), cover: undefined, chips: [] };
   const cover = coverFieldOf(database);
-  const coverRaw = cover ? row.values[cover.id] : undefined;
+  const coverRaw = cover ? firstRelationId(row.values[cover.id]) : undefined;
   return {
     title: rowTitleOf(database, row),
-    cover: !cover ? undefined : typeof coverRaw === 'string' ? resolveRelationValue(cover, coverRaw, ctx) : null,
+    cover: !cover ? undefined : coverRaw ? resolveRelationValue(cover, coverRaw, ctx) : null,
     chips: database.fields
       .slice(1)
       .filter((f) => !f.hidden && f.type !== 'section' && f.id !== cover?.id)
