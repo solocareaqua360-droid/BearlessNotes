@@ -112,6 +112,22 @@ const VIEW_ICONS: Record<ViewMode, keyof typeof Ionicons.glyphMap> = {
 };
 const TABLE_COLUMN_WIDTH = 150;
 const TABLE_HANDLE_WIDTH = 34;
+// The title column is the one column whose content the user can't shorten:
+// a composed name ("FORD TRANSIT · 7902E6") is as long as the fields that
+// make it. So it measures itself against the longest name actually in the
+// database instead of sitting at the same fixed width as the rest - never
+// narrower than a normal column, never past half the screen (past that the
+// frozen part crowds out everything it's supposed to be read next to).
+// Width is estimated from the character count rather than measured: an
+// onLayout measurement would arrive a frame after the column it has to
+// size, and this column has to be the same width in the header, the frozen
+// body and every cell at once.
+const TABLE_TITLE_CHAR_WIDTH = 7.8;
+function titleColumnWidth(titles: string[], windowWidth: number): number {
+  const longest = titles.reduce((max, t) => Math.max(max, t.length), 0);
+  const wanted = Math.ceil(longest * TABLE_TITLE_CHAR_WIDTH) + 16;
+  return Math.max(TABLE_COLUMN_WIDTH, Math.min(wanted, Math.round(windowWidth * 0.55)));
+}
 // Every cell is exactly this tall so the frozen column and the scrolling
 // columns line up row for row - they're two separate stacks, nothing else
 // keeps them in step.
@@ -1052,12 +1068,13 @@ export default function CustomDatabaseScreen({}: Props) {
     const fields = database!.fields;
     const firstField = fields[0];
     const restFields = visibleFieldsOf(database).filter((f) => f.id !== firstField?.id);
+    const titleWidth = titleColumnWidth(displayedRows.map(titleOf), windowWidth);
     return (
       <View style={styles.tableWrap}>
         <View style={styles.tableHeaderRow}>
-          <View style={[styles.tableFrozenHeader, { width: TABLE_HANDLE_WIDTH + TABLE_COLUMN_WIDTH }]}>
+          <View style={[styles.tableFrozenHeader, { width: TABLE_HANDLE_WIDTH + titleWidth }]}>
             <View style={styles.tableRowHandle} />
-            <View style={[styles.tableHeaderCell, { width: TABLE_COLUMN_WIDTH }]}>
+            <View style={[styles.tableHeaderCell, { width: titleWidth }]}>
               <Ionicons name={FIELD_TYPE_ICON[firstField.type]} size={12} color="rgba(255,255,255,0.65)" />
               <Text style={styles.tableHeaderLabel} numberOfLines={1}>
                 {firstField.name}
@@ -1078,7 +1095,7 @@ export default function CustomDatabaseScreen({}: Props) {
 
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.tableBody}>
           <View style={styles.tableBodyRow}>
-            <View style={[styles.tableFrozenColumn, { width: TABLE_HANDLE_WIDTH + TABLE_COLUMN_WIDTH }]}>
+            <View style={[styles.tableFrozenColumn, { width: TABLE_HANDLE_WIDTH + titleWidth }]}>
               {displayedRows.map((row) => (
                 <View key={row.id} style={styles.tableRow}>
                   {/* Tapping a cell edits that one cell; this button is the
@@ -1101,7 +1118,7 @@ export default function CustomDatabaseScreen({}: Props) {
                       color="rgba(255,255,255,0.75)"
                     />
                   </Pressable>
-                  {renderTableCell(row, firstField)}
+                  {renderTableCell(row, firstField, titleWidth)}
                 </View>
               ))}
             </View>
@@ -1129,7 +1146,7 @@ export default function CustomDatabaseScreen({}: Props) {
     );
   }
 
-  function renderTableCell(row: CustomDatabaseRow, field: FieldDef) {
+  function renderTableCell(row: CustomDatabaseRow, field: FieldDef, width: number = TABLE_COLUMN_WIDTH) {
     const raw = row.values[field.id];
     // Text/number cells are live inputs rather than a tap-to-swap Pressable:
     // swapping the component on tap remounted it mid-layout, which is what
@@ -1141,7 +1158,7 @@ export default function CustomDatabaseScreen({}: Props) {
       return (
         <TextInput
           key={`${field.id}:${asText}`}
-          style={[styles.tableCellInput, { width: TABLE_COLUMN_WIDTH }]}
+          style={[styles.tableCellInput, { width }]}
           defaultValue={asText}
           placeholder="—"
           placeholderTextColor="rgba(255,255,255,0.3)"
@@ -1159,7 +1176,7 @@ export default function CustomDatabaseScreen({}: Props) {
     if (field.type === 'backlink') {
       const count = resolveBacklinkRows(field, row.id, displayContext).length;
       return (
-        <View key={field.id} style={[styles.tableCellTap, { width: TABLE_COLUMN_WIDTH }]}>
+        <View key={field.id} style={[styles.tableCellTap, { width }]}>
           <Text style={count ? styles.tableCell : styles.tableCellEmpty} numberOfLines={1}>
             {count || '—'}
           </Text>
@@ -1171,7 +1188,7 @@ export default function CustomDatabaseScreen({}: Props) {
       return (
         <Pressable
           key={field.id}
-          style={[styles.tableCellTap, { width: TABLE_COLUMN_WIDTH }]}
+          style={[styles.tableCellTap, { width }]}
           onPress={() => beginCellEdit(row, field)}
         >
           <Text style={count ? styles.tableCell : styles.tableCellEmpty} numberOfLines={1}>
@@ -1185,7 +1202,7 @@ export default function CustomDatabaseScreen({}: Props) {
       return (
         <Pressable
           key={field.id}
-          style={[styles.tableCellTap, styles.tableCellRelation, { width: TABLE_COLUMN_WIDTH }]}
+          style={[styles.tableCellTap, styles.tableCellRelation, { width }]}
           onPress={() => beginCellEdit(row, field)}
         >
           {resolved?.thumbUri && <RelationThumb uri={resolved.thumbUri} driveFileId={resolved.driveFileId} size={22} radius={5} />}
@@ -1199,7 +1216,7 @@ export default function CustomDatabaseScreen({}: Props) {
     return (
       <Pressable
         key={field.id}
-        style={[styles.tableCellTap, { width: TABLE_COLUMN_WIDTH }]}
+        style={[styles.tableCellTap, { width }]}
         onPress={() => beginCellEdit(row, field)}
       >
         <Text style={shown ? styles.tableCell : styles.tableCellEmpty} numberOfLines={1}>
