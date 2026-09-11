@@ -9,6 +9,10 @@
 // build. Until then the hairline edge and the glass capsules carry the
 // look and only a hint of the screen shows through.
 export const GLASS_BODY = 'rgba(24,21,19,0.96)';
+// For a sheet that has a real blur behind it (see GlassLayer): the fill
+// only has to darken what the blur already softened, and at 0.96 it would
+// hide it completely.
+export const GLASS_BODY_BLURRED = 'rgba(24,21,19,0.55)';
 export const GLASS_EDGE = 'rgba(255,255,255,0.22)';
 // A card or a row inside the sheet - a lift off the body, not a border.
 export const GLASS_CARD = 'rgba(255,255,255,0.07)';

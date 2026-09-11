@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, onSnapshot, orderBy, query } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
@@ -7,12 +7,13 @@ import { ImportableItem, MAX_CARDS_PER_COLUMN } from '../utils/importGroupToBoar
 import { hapticSelectItem, hapticWarning } from '../utils/haptics';
 import {
   GLASS_BACKDROP,
-  GLASS_BODY,
+  GLASS_BODY_BLURRED,
   GLASS_LINE,
   GLASS_TEXT,
   GLASS_TEXT_FAINT,
   GLASS_TEXT_MUTED,
 } from '../constants/glass';
+import GlassLayer from './GlassLayer';
 
 const ACCENT = '#3B82F6';
 
@@ -106,7 +107,7 @@ export default function GroupImportSheet({
   const chosenItems = items.filter((i) => selected.has(keyOf(i)));
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+    <GlassLayer visible={visible} onClose={onCancel}>
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onCancel} />
         <View style={styles.sheet}>
@@ -206,18 +207,17 @@ export default function GroupImportSheet({
           )}
         </View>
       </View>
-    </Modal>
+    </GlassLayer>
   );
 }
 
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: GLASS_BACKDROP,
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: GLASS_BODY,
+    backgroundColor: GLASS_BODY_BLURRED,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { addDoc, collection, deleteDoc, doc, updateDoc } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
@@ -7,12 +7,13 @@ import { Group } from '../types';
 import { groupKindFields } from '../utils/groups';
 import {
   GLASS_BACKDROP,
-  GLASS_BODY,
+  GLASS_BODY_BLURRED,
   GLASS_INPUT,
   GLASS_LINE,
   GLASS_TEXT,
   GLASS_TEXT_FAINT,
 } from '../constants/glass';
+import GlassLayer from './GlassLayer';
 
 const ACCENT = '#3B82F6';
 const GROUP_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
@@ -90,7 +91,7 @@ export default function GroupPickerSheet({ visible, kind, groups, onPick, onClos
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <GlassLayer visible={visible} onClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={[styles.sheet, { marginBottom: keyboardHeight }]} onPress={() => {}}>
           <View style={styles.handle} />
@@ -150,18 +151,17 @@ export default function GroupPickerSheet({ visible, kind, groups, onPick, onClos
           </View>
         </Pressable>
       </Pressable>
-    </Modal>
+    </GlassLayer>
   );
 }
 
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: GLASS_BACKDROP,
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: GLASS_BODY,
+    backgroundColor: GLASS_BODY_BLURRED,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,

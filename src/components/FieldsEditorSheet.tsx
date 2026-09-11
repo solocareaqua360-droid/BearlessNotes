@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  BackHandler,
   Keyboard,
   Pressable,
   StyleSheet,
@@ -16,7 +15,6 @@ import {
 // reason as DocumentEditorScreen's block list.
 import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import { FieldDef, FieldOption, FieldType, RelationTarget } from '../types';
 import { canJoinTitle } from '../utils/customRowDisplay';
 import { TAG_COLORS } from '../constants/tags';
@@ -24,13 +22,14 @@ import { TAG_COLORS } from '../constants/tags';
 import {
   GLASS_ACCENT,
   GLASS_BACKDROP,
-  GLASS_BODY,
+  GLASS_BODY_BLURRED,
   GLASS_DANGER,
   GLASS_EDGE,
   GLASS_TEXT,
   GLASS_TEXT_FAINT,
   GLASS_TEXT_MUTED,
 } from '../constants/glass';
+import GlassLayer from './GlassLayer';
 
 const ACCENT = '#3B82F6';
 // The palette this sheet is drawn in. It sits over the database screen's
@@ -152,15 +151,6 @@ export default function FieldsEditorSheet({
     if (visible) setDraft(fields);
   }, [visible, fields]);
 
-  // What onRequestClose did while this was a Modal.
-  useEffect(() => {
-    if (!visible) return;
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      onClose();
-      return true;
-    });
-    return () => sub.remove();
-  }, [visible, onClose]);
 
   function updateField(id: string, patch: Partial<FieldDef>) {
     setDraft((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)));
@@ -293,24 +283,8 @@ export default function FieldsEditorSheet({
     onSave(draft.map((f) => ({ ...f, name: f.name.trim() || 'Поле' })));
   }
 
-  if (!visible) return null;
-
   return (
-    // NOT a Modal. A Modal is its own native window on Android, and a blur
-    // only blurs what is in ITS OWN window - so behind a sheet in a window
-    // of its own there is nothing to blur, and the screen shows through
-    // sharp. As a layer inside the screen the blur has the screen to work
-    // with, which is the whole point of the glass.
-    //
-    // Two things the Modal used to provide have to be provided here: the
-    // hardware back button (see the effect above) and the gesture root,
-    // which App.tsx's own now covers since this is no longer a separate
-    // window.
-    <View style={StyleSheet.absoluteFill}>
-      {/* Backdrop as a SIBLING behind the sheet, not its parent - as a
-          parent it took the RN touch responder for every drag that didn't
-          land on a deeper child, which is what kept this list from
-          scrolling. A tap outside the sheet still closes it. */}
+    <GlassLayer visible={visible} onClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         {/* Same keyboard-aware height as the row editor: sheet + keyboard
@@ -325,18 +299,6 @@ export default function FieldsEditorSheet({
             },
           ]}
         >
-          {/* The real glass, at last. On Android this blurs what is behind
-              it WITHIN ITS OWN WINDOW - and a sheet like this one is its
-              own window - so if the screen behind stays sharp, the fix is
-              to make these sheets a layer inside the screen instead of a
-              window over it. This one is the test of that. */}
-          <BlurView
-            intensity={60}
-            tint="dark"
-            blurMethod="dimezisBlurView"
-            style={StyleSheet.absoluteFill}
-            pointerEvents="none"
-          />
           <View style={styles.handle} />
           <Text style={styles.title}>Поля</Text>
 
@@ -621,20 +583,17 @@ export default function FieldsEditorSheet({
           </View>
         </View>
       </View>
-    </View>
+    </GlassLayer>
   );
 }
 
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: GLASS_BACKDROP,
-    justifyContent: 'flex-end',
+        justifyContent: 'flex-end',
   },
   sheet: {
-    // Lower than the shared GLASS_BODY on purpose: behind this one there
-    // is a real blur, and at 0.96 it would hide it completely.
-    backgroundColor: 'rgba(24,21,19,0.55)',
+    backgroundColor: GLASS_BODY_BLURRED,
     overflow: 'hidden',
     borderTopLeftRadius: 22,
     borderTopRightRadius: 22,

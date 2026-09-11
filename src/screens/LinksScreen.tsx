@@ -805,6 +805,23 @@ export default function LinksScreen({ route, navigation }: Props) {
           onClose={() => setDocumentPicker(null)}
         />
 
+
+        <TagPicker
+          visible={bulkTagPickerVisible}
+          kind={tagKind}
+          tags={tags}
+          selectedTagIds={[]}
+          onAttach={bulkAttachTag}
+          onDetach={() => {}}
+          onCreateAndAttach={bulkCreateAndAttachTag}
+          onRenameTag={renameTag}
+          onClose={() => setBulkTagPickerVisible(false)}
+        />
+
+
+      </ContentColumn>
+
+
         <TagPicker
           visible={tagPickerLink !== null}
           kind={tagKind}
@@ -817,18 +834,6 @@ export default function LinksScreen({ route, navigation }: Props) {
           }
           onRenameTag={renameTag}
           onClose={() => setTagPickerForId(null)}
-        />
-
-        <TagPicker
-          visible={bulkTagPickerVisible}
-          kind={tagKind}
-          tags={tags}
-          selectedTagIds={[]}
-          onAttach={bulkAttachTag}
-          onDetach={() => {}}
-          onCreateAndAttach={bulkCreateAndAttachTag}
-          onRenameTag={renameTag}
-          onClose={() => setBulkTagPickerVisible(false)}
         />
 
         <GroupPickerSheet
@@ -845,7 +850,6 @@ export default function LinksScreen({ route, navigation }: Props) {
           onPickNew={bulkCopyToNew}
           onClose={() => setBulkCopyModalVisible(false)}
         />
-      </ContentColumn>
 
       <TagsDrawer
         tags={drawerTags}

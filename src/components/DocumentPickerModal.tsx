@@ -1,12 +1,13 @@
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   GLASS_BACKDROP,
-  GLASS_BODY,
+  GLASS_BODY_BLURRED,
   GLASS_LINE,
   GLASS_TEXT,
   GLASS_TEXT_FAINT,
 } from '../constants/glass';
+import GlassLayer from './GlassLayer';
 
 const ACCENT = '#3B82F6';
 
@@ -24,7 +25,7 @@ type Props = {
 // its "go to document" icon opens this instead of navigating straight there.
 export default function DocumentPickerModal({ visible, subtitle, documents, onPick, onClose }: Props) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <GlassLayer visible={visible} onClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.handle} />
@@ -47,18 +48,17 @@ export default function DocumentPickerModal({ visible, subtitle, documents, onPi
           ))}
         </Pressable>
       </Pressable>
-    </Modal>
+    </GlassLayer>
   );
 }
 
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: GLASS_BACKDROP,
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: GLASS_BODY,
+    backgroundColor: GLASS_BODY_BLURRED,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,

@@ -791,6 +791,23 @@ export default function PhotosScreen() {
           onClose={() => setDocumentPicker(null)}
         />
 
+
+        <TagPicker
+          visible={bulkTagPickerVisible}
+          kind="photo"
+          tags={tags}
+          selectedTagIds={[]}
+          onAttach={bulkAttachTag}
+          onDetach={() => {}}
+          onCreateAndAttach={bulkCreateAndAttachTag}
+          onRenameTag={renameTag}
+          onClose={() => setBulkTagPickerVisible(false)}
+        />
+
+
+      </ContentColumn>
+
+
         <TagPicker
           visible={tagPickerPhoto !== null}
           kind="photo"
@@ -803,18 +820,6 @@ export default function PhotosScreen() {
           }
           onRenameTag={renameTag}
           onClose={() => setTagPickerForId(null)}
-        />
-
-        <TagPicker
-          visible={bulkTagPickerVisible}
-          kind="photo"
-          tags={tags}
-          selectedTagIds={[]}
-          onAttach={bulkAttachTag}
-          onDetach={() => {}}
-          onCreateAndAttach={bulkCreateAndAttachTag}
-          onRenameTag={renameTag}
-          onClose={() => setBulkTagPickerVisible(false)}
         />
 
         <GroupPickerSheet
@@ -831,7 +836,6 @@ export default function PhotosScreen() {
           onPickNew={bulkCopyToNew}
           onClose={() => setBulkCopyModalVisible(false)}
         />
-      </ContentColumn>
 
       <TagsDrawer
         tags={drawerTags}

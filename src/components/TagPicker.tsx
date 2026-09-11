@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 // gesture-handler's ScrollView, not the core RN one: on Android a drag that
 // starts on a TextInput never reaches an RN ScrollView's scroll recognition,
 // so a sheet with a search/name field only scrolled when a finger happened to
 // land between rows. Same fix, same reason, as FieldsEditorSheet.
-import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { Tag, TaggableKind } from '../types';
 import { TAG_COLORS, TAG_ICONS } from '../constants/tags';
@@ -13,12 +13,13 @@ import { useHiddenTags } from '../hooks/useHiddenTags';
 import RenamePrompt from './RenamePrompt';
 import {
   GLASS_BACKDROP,
-  GLASS_BODY,
+  GLASS_BODY_BLURRED,
   GLASS_LINE,
   GLASS_TEXT,
   GLASS_TEXT_FAINT,
   GLASS_TEXT_MUTED,
 } from '../constants/glass';
+import GlassLayer from './GlassLayer';
 
 const ACCENT = '#3B82F6';
 
@@ -149,11 +150,7 @@ export default function TagPicker({
       : TAG_ICONS.filter((name) => name.includes(iconQuery.trim().toLowerCase()));
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      {/* RN's Modal is its own native window on Android, outside App.tsx's
-          GestureHandlerRootView - the ScrollView inside needs a root
-          re-declared here or it does not scroll at all. */}
-      <GestureHandlerRootView style={{ flex: 1 }}>
+    <GlassLayer visible={visible} onClose={onClose}>
       {/* Backdrop as a SIBLING behind the sheet, not its parent - as a
           parent it took the RN touch responder for every drag that did not
           land on a deeper child, which is what kept the list from
@@ -294,7 +291,6 @@ export default function TagPicker({
           )}
         </View>
       </View>
-      </GestureHandlerRootView>
 
       <RenamePrompt
         visible={renamingTag !== null}
@@ -306,18 +302,17 @@ export default function TagPicker({
           setRenamingTag(null);
         }}
       />
-    </Modal>
+    </GlassLayer>
   );
 }
 
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: GLASS_BACKDROP,
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: GLASS_BODY,
+    backgroundColor: GLASS_BODY_BLURRED,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
