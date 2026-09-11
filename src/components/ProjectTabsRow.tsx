@@ -2,7 +2,6 @@ import { RefObject } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { GLASS_ISLAND } from '../constants/glass';
-import { RAIL_WIDTH } from '../constants/rail';
 
 // Sentinel for "no group/project assigned" - an id string, since a real
 // document's id (a Firestore auto-id) can never collide with it. `null`
@@ -178,11 +177,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.08)',
   },
-  // As thick as the rail is wide, in the rail's own glass - one width
-  // runs through the capsule, the round buttons, the navigation island
-  // and these pills.
+  // In the rail's glass, but NOT at the rail's width: the pills went up
+  // with the capsule to 64 and that was too much for a row of them.
   tabDark: {
-    height: RAIL_WIDTH,
+    height: 45,
     // Keeps each pill's blur inside its own rounded shape, so the edge
     // stays a clean line.
     overflow: 'hidden',
