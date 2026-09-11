@@ -25,11 +25,6 @@ export const NAV_HEIGHT = NAV_BUTTON * NAV_ROUTES + NAV_GAP * (NAV_ROUTES - 1) +
 // left sitting under the capsule or the island.
 export const RAIL_CLEARANCE = RAIL_RIGHT + RAIL_WIDTH + RAIL_GAP;
 
-// A halo is drawn on a square twice the button's size, centred on it -
-// the button's own box would clip it.
-export const HALO = RAIL_WIDTH * 2;
-export const HALO_INSET = (HALO - RAIL_WIDTH) / 2;
-
 // The tag row that scrolls along the foot of the screen, opposite the
 // group tabs at the head of it.
 export const TAG_ROW_HEIGHT = 45;

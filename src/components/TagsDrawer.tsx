@@ -5,8 +5,7 @@ import { useIsFocused } from '@react-navigation/native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Tag } from '../types';
 import { FONT_REGULAR, FONT_SEMIBOLD, FONT_BOLD, FONT_EXTRABOLD } from '../utils/fonts';
-import GlowHalo from './GlowHalo';
-import { HALO, HALO_INSET, RAIL_CLEARANCE, RAIL_RIGHT, TAG_ROW_HEIGHT } from '../constants/rail';
+import { RAIL_CLEARANCE, RAIL_RIGHT, TAG_ROW_HEIGHT } from '../constants/rail';
 import { GLASS_ISLAND } from '../constants/glass';
 import { useRail } from '../hooks/useRail';
 import { GLASS_BODY, GLASS_BODY_BLURRED, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
@@ -369,12 +368,21 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
       )}
 
       {isFocused && !isOpen && !hideOpenButton && (
-        <View style={[styles.openSlot, { bottom: rail.tagBottom - HALO_INSET }]} pointerEvents="box-none">
-          <GlowHalo color={GLASS_TEXT} />
-          <Pressable style={styles.openButton} onPress={openDrawer}>
+        // Through the portal like the rest of the rail - the blur that
+        // fills it cannot live inside the view it blurs.
+        <GlassPortal>
+          <Pressable style={[styles.openButton, { bottom: rail.tagBottom }]} onPress={openDrawer}>
+            <BlurView
+              intensity={60}
+              tint="dark"
+              blurMethod="dimezisBlurView"
+              blurTarget={blurTarget ?? undefined}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
             <Text style={styles.openButtonHash}>#</Text>
           </Pressable>
-        </View>
+        </GlassPortal>
       )}
     </>
   );
@@ -540,29 +548,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     maxWidth: 160,
   },
-  openSlot: {
-    position: 'absolute',
-    right: RAIL_RIGHT - HALO_INSET,
-    width: HALO,
-    height: HALO,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   openButton: {
-    // On the rail at the right edge now, above the add button and under
-    // the control capsule - a plain tap, no drag: dragging from the
-    // screen's edge was exactly where Android's own edge-back gesture
-    // kept stealing the touch stream mid-swipe.
+    // On the rail at the right edge, above the add button and under the
+    // control capsule - a plain tap, no drag: dragging from the screen's
+    // edge was exactly where Android's own edge-back gesture kept
+    // stealing the touch stream mid-swipe.
+    position: 'absolute',
+    right: RAIL_RIGHT,
     width: OPEN_BUTTON_SIZE,
     height: OPEN_BUTTON_SIZE,
     borderRadius: 999,
-    backgroundColor: GLASS_BODY,
+    // Glass, like everything else on the rail: the blur separates it from
+    // the cards under it, so the fill only tints.
+    overflow: 'hidden',
+    backgroundColor: GLASS_ISLAND,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.16,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 6 },
     elevation: 6,
   },
   openButtonHash: {

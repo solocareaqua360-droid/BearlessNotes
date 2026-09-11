@@ -58,12 +58,9 @@ import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import SketchEditor from '../components/SketchEditor';
 import { BlurView } from 'expo-blur';
 import { GlassPortal } from '../components/GlassPortal';
-import GlowHalo from '../components/GlowHalo';
 import {
   CAPSULE_DROP,
   CHROME_TOP,
-  HALO,
-  HALO_INSET,
   NAV_HEIGHT,
   RAIL_CLEARANCE,
   RAIL_GAP,
@@ -82,6 +79,11 @@ const documentsPrefsDoc = doc(db, 'settings', 'documentsPrefs');
 const stickersCollection = collection(db, 'stickers');
 const STICKER_YELLOW = '#FBE97A';
 const STICKER_DARK = '#4a3f05';
+// The rail's buttons are glass, so their own colours only tint what the
+// blur behind them already carries - at full strength they were solid
+// discs again.
+const ACCENT_GLASS = 'rgba(190,118,87,0.55)';
+const STICKER_GLASS = 'rgba(251,233,122,0.6)';
 // Exported so ShareIntentHandler can apply the same cap when a shared
 // text lands as a standalone sticker instead of through the FAB here.
 export const FREE_STICKER_LIMIT = 10;
@@ -766,11 +768,12 @@ export default function DocumentsScreen() {
           />
         )}
 
-        {!isSelectMode && (
-          <View style={[styles.fabSlot, { bottom: rail.addBottom - HALO_INSET }]} pointerEvents="box-none">
-          <GlowHalo color={fabPressed ? STICKER_YELLOW : ACCENT} />
+        {/* Through the portal, like the rest of the rail: the blur that
+            fills it has to sit outside the view it blurs. */}
+        {isFocused && !isSelectMode && !(isTwoPane && !!openDoc && paneFullscreen) && (
+        <GlassPortal>
           <Pressable
-            style={[styles.fab, fabPressed && styles.fabSticker]}
+            style={[styles.fab, { bottom: rail.addBottom }, fabPressed && styles.fabSticker]}
             onPress={createDocument}
             // The two halves of a mechanical key: resistance under the
             // finger, rebound when it lifts (see hapticButtonDown/Up).
@@ -785,9 +788,17 @@ export default function DocumentsScreen() {
             }}
             delayLongPress={400}
           >
+            <BlurView
+              intensity={60}
+              tint="dark"
+              blurMethod="dimezisBlurView"
+              blurTarget={blurTarget ?? undefined}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
             <Ionicons name="add" size={28} color={fabPressed ? STICKER_DARK : '#fff'} />
           </Pressable>
-          </View>
+        </GlassPortal>
         )}
         </View>
 
@@ -1105,34 +1116,27 @@ const styles = StyleSheet.create({
   },
   // The square the halo is drawn on: twice the button across, centred on
   // it, because the button's own box would clip the light.
-  fabSlot: {
-    position: 'absolute',
-    right: RAIL_RIGHT - HALO_INSET,
-    width: HALO,
-    height: HALO,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  // Glass like everything else on the rail, in its own colour rather than
+  // a solid disc with a light around it: the blur is what separates it
+  // from the cards underneath, so the fill only has to tint.
   fab: {
+    position: 'absolute',
+    right: RAIL_RIGHT,
     width: RAIL_WIDTH,
     height: RAIL_WIDTH,
     borderRadius: 999,
-    backgroundColor: ACCENT,
+    overflow: 'hidden',
+    backgroundColor: ACCENT_GLASS,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 4,
-    // Colored shadow (matches the button's own hue) instead of a plain
-    // black one.
-    shadowColor: ACCENT,
-    shadowOpacity: 0.5,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 6,
   },
   // Long-pressing the FAB switches it to sticker-creation mode - the color
   // swap away from ACCENT is the only feedback the gesture has fired,
   // since it fires while still held rather than on release.
   fabSticker: {
-    backgroundColor: STICKER_YELLOW,
-    shadowColor: STICKER_YELLOW,
+    backgroundColor: STICKER_GLASS,
   },
 });
