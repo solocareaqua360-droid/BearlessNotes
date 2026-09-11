@@ -65,7 +65,7 @@ import { sortItems } from '../utils/sortItems';
 import DownloadToast from '../components/DownloadToast';
 import SortMenuRows from '../components/SortMenuRows';
 import ContentColumn from '../components/ContentColumn';
-import { RAIL_ADD_BOTTOM } from '../constants/rail';
+import { useRail } from '../hooks/useRail';
 
 const ACCENT = '#EC4899';
 const groupsCollection = collection(db, 'groups');
@@ -170,6 +170,7 @@ function PhotoThumb({
 }
 
 export default function PhotosScreen() {
+  const rail = useRail();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
@@ -855,7 +856,7 @@ export default function PhotosScreen() {
       />
 
       {!isSelectMode && (
-        <Pressable style={styles.fab} onPress={() => setAddPhotoSheetVisible(true)}>
+        <Pressable style={[styles.fab, { bottom: rail.addBottom }]} onPress={() => setAddPhotoSheetVisible(true)}>
           <Ionicons name="add" size={28} color="#fff" />
         </Pressable>
       )}
@@ -914,8 +915,6 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    // Clear of the navigation island, which now stands at this edge.
-    bottom: RAIL_ADD_BOTTOM,
     width: 56,
     height: 56,
     borderRadius: 18,

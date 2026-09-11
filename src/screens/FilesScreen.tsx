@@ -58,7 +58,7 @@ import { sortItems } from '../utils/sortItems';
 import { colorForDocument } from '../utils/documentColor';
 import SortMenuRows from '../components/SortMenuRows';
 import ContentColumn from '../components/ContentColumn';
-import { RAIL_ADD_BOTTOM } from '../constants/rail';
+import { useRail } from '../hooks/useRail';
 
 const ACCENT = '#0EA5E9';
 const DANGER = '#EF4444';
@@ -104,6 +104,7 @@ function fileIconColorFor(name: string): string {
 }
 
 export default function FilesScreen() {
+  const rail = useRail();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [files, setFiles] = useState<FileItem[]>([]);
@@ -770,7 +771,7 @@ export default function FilesScreen() {
       />
 
       {!isSelectMode && (
-        <Pressable style={styles.fab} onPress={addFileDirectly}>
+        <Pressable style={[styles.fab, { bottom: rail.addBottom }]} onPress={addFileDirectly}>
           <Ionicons name="add" size={28} color="#fff" />
         </Pressable>
       )}
@@ -822,8 +823,6 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    // Clear of the navigation island, which now stands at this edge.
-    bottom: RAIL_ADD_BOTTOM,
     width: 56,
     height: 56,
     borderRadius: 18,

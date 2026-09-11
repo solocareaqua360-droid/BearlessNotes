@@ -60,13 +60,8 @@ import SketchEditor from '../components/SketchEditor';
 import { BlurView } from 'expo-blur';
 import { GlassPortal } from '../components/GlassPortal';
 import GlowHalo from '../components/GlowHalo';
-import {
-  HALO,
-  HALO_INSET,
-  RAIL_ADD_BOTTOM,
-  RAIL_RIGHT,
-  RAIL_WIDTH,
-} from '../constants/rail';
+import { HALO, HALO_INSET, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
+import { useRail } from '../hooks/useRail';
 import { useBlurTarget } from '../components/GlassTarget';
 
 // Палітра №3 (Теплий Теракотовий) - the create/edit action color across
@@ -166,6 +161,7 @@ export default function DocumentsScreen() {
   // has to withdraw when this screen isn't the one on show.
   const isFocused = useIsFocused();
   const blurTarget = useBlurTarget();
+  const rail = useRail();
 
   useEffect(() => {
     return onSnapshot(documentsPrefsDoc, (snapshot) => {
@@ -751,7 +747,7 @@ export default function DocumentsScreen() {
         )}
 
         {!isSelectMode && (
-          <View style={styles.fabSlot} pointerEvents="box-none">
+          <View style={[styles.fabSlot, { bottom: rail.addBottom - HALO_INSET }]} pointerEvents="box-none">
           <GlowHalo color={fabPressed ? STICKER_YELLOW : ACCENT} />
           <Pressable
             style={[styles.fab, fabPressed && styles.fabSticker]}
@@ -1079,14 +1075,14 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingVertical: 8,
-    paddingBottom: 120,
+    // Clear of the tag row at the foot of the screen.
+    paddingBottom: 140,
   },
   // The square the halo is drawn on: twice the button across, centred on
   // it, because the button's own box would clip the light.
   fabSlot: {
     position: 'absolute',
     right: RAIL_RIGHT - HALO_INSET,
-    bottom: RAIL_ADD_BOTTOM - HALO_INSET,
     width: HALO,
     height: HALO,
     alignItems: 'center',

@@ -56,7 +56,7 @@ import { sortItems } from '../utils/sortItems';
 import { colorForDocument } from '../utils/documentColor';
 import SortMenuRows from '../components/SortMenuRows';
 import ContentColumn from '../components/ContentColumn';
-import { RAIL_ADD_BOTTOM } from '../constants/rail';
+import { useRail } from '../hooks/useRail';
 
 const ACCENT = '#14B8A6';
 const DANGER = '#EF4444';
@@ -158,6 +158,7 @@ function hostnameOf(url: string): string {
 type Props = NativeStackScreenProps<RootStackParamList, 'Links'>;
 
 export default function LinksScreen({ route, navigation }: Props) {
+  const rail = useRail();
   const { category } = route.params;
   const info = CATEGORY_INFO[category];
   // Geo/video/other share this one screen's code, but each is its own
@@ -869,7 +870,7 @@ export default function LinksScreen({ route, navigation }: Props) {
       />
 
       {!isSelectMode && (
-        <Pressable style={styles.fab} onPress={() => setAddLinkUrlPromptVisible(true)}>
+        <Pressable style={[styles.fab, { bottom: rail.addBottom }]} onPress={() => setAddLinkUrlPromptVisible(true)}>
           <Ionicons name="add" size={28} color="#fff" />
         </Pressable>
       )}
@@ -926,8 +927,6 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    // Clear of the navigation island, which now stands at this edge.
-    bottom: RAIL_ADD_BOTTOM,
     width: 56,
     height: 56,
     borderRadius: 18,

@@ -28,3 +28,30 @@ export const RAIL_TAG_BOTTOM = RAIL_ADD_BOTTOM + RAIL_WIDTH + RAIL_GAP;
 // the button's own box would clip it.
 export const HALO = RAIL_WIDTH * 2;
 export const HALO_INSET = (HALO - RAIL_WIDTH) / 2;
+
+// The tag row that scrolls along the foot of the screen, opposite the
+// group tabs at the head of it.
+export const TAG_ROW_HEIGHT = 45;
+export const TAG_ROW_PAD = 10;
+
+// What the rail has to fit between: the group tabs above and the tag row
+// below. The capsule hangs under the tabs and the navigation island
+// stands over the tags; the two round buttons space themselves out in
+// what is left. Constants rather than measurements - four components
+// share this column, and they cannot all measure each other.
+const CHROME_TOP = 10;
+const GROUPS_ROW_HEIGHT = 55;
+// 3 buttons at 24, 18 of padding at each end, two dividers, two borders.
+const CAPSULE_HEIGHT = 148;
+
+export function useRailLayout(windowHeight: number, insetTop: number, insetBottom: number) {
+  const tagRowBottom = insetBottom + TAG_ROW_PAD;
+  const foot = tagRowBottom + TAG_ROW_HEIGHT + RAIL_GAP;
+  const head = insetTop + CHROME_TOP + GROUPS_ROW_HEIGHT + 8 + CAPSULE_HEIGHT;
+  const free = windowHeight - head - foot;
+  const gap = Math.max(RAIL_GAP, (free - (RAIL_WIDTH * 2 + NAV_HEIGHT)) / 4);
+  const navBottom = foot + gap;
+  const addBottom = navBottom + NAV_HEIGHT + gap;
+  const tagBottom = addBottom + RAIL_WIDTH + gap;
+  return { tagRowBottom, navBottom, addBottom, tagBottom };
+}

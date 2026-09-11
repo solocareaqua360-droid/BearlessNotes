@@ -5,7 +5,8 @@ import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { GlassPortal } from './GlassPortal';
 import { useBlurTarget } from './GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
-import { NAV_BOTTOM, NAV_BUTTON, NAV_GAP, NAV_PADDING, RAIL_RIGHT } from '../constants/rail';
+import { NAV_BUTTON, NAV_GAP, NAV_PADDING, RAIL_RIGHT } from '../constants/rail';
+import { useRail } from '../hooks/useRail';
 
 const ICON_BY_ROUTE: Record<string, keyof typeof Ionicons.glyphMap> = {
   Документи: 'document-text-outline',
@@ -23,10 +24,11 @@ const ICON_BY_ROUTE: Record<string, keyof typeof Ionicons.glyphMap> = {
 // target wraps.
 export default function FloatingIslandTabBar({ state, navigation }: BottomTabBarProps) {
   const blurTarget = useBlurTarget();
+  const rail = useRail();
 
   return (
     <GlassPortal>
-      <View style={styles.wrap} pointerEvents="box-none">
+      <View style={[styles.wrap, { bottom: rail.navBottom }]} pointerEvents="box-none">
         <View style={styles.island}>
           <BlurView
             intensity={60}
@@ -62,7 +64,9 @@ const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
     right: RAIL_RIGHT,
-    bottom: NAV_BOTTOM,
+    // `bottom` comes from useRail - the rail spaces its four pieces out
+    // between the group tabs at the head of the screen and the tag row at
+    // its foot.
   },
   island: {
     gap: NAV_GAP,

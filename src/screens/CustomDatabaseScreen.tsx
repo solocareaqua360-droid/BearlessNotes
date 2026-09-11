@@ -103,7 +103,7 @@ import {
 } from '../utils/customRowQuery';
 import { colorForDocument } from '../utils/documentColor';
 import { MONTH_FULL, WEEKDAY_SHORT, dateKey, getMonthGrid, isSameDay, parseDateKey } from '../utils/dateLocale';
-import { RAIL_ADD_BOTTOM } from '../constants/rail';
+import { useRail } from '../hooks/useRail';
 
 const ACCENT = '#A05C7B';
 const DANGER = '#EF4444';
@@ -160,6 +160,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'CustomDatabase'>;
 // true inline per-cell editing - Table view is still a real at-a-glance
 // overview of every field across every row, it just isn't edited in place.
 export default function CustomDatabaseScreen({}: Props) {
+  const rail = useRail();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute();
   const { databaseId, openRowId, openViewId } = route.params as {
@@ -1881,7 +1882,7 @@ export default function CustomDatabaseScreen({}: Props) {
       )}
 
       {!isSelectMode && (
-        <Pressable style={styles.fab} onPress={openNewRow}>
+        <Pressable style={[styles.fab, { bottom: rail.addBottom }]} onPress={openNewRow}>
           <Ionicons name="add" size={28} color="#fff" />
         </Pressable>
       )}
@@ -2827,8 +2828,6 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    // Clear of the navigation island, which now stands at this edge.
-    bottom: RAIL_ADD_BOTTOM,
     width: 56,
     height: 56,
     borderRadius: 18,

@@ -5,7 +5,16 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from '
 import { Tag } from '../types';
 import { FONT_REGULAR, FONT_SEMIBOLD, FONT_BOLD, FONT_EXTRABOLD } from '../utils/fonts';
 import GlowHalo from './GlowHalo';
-import { HALO, HALO_INSET, RAIL_RIGHT, RAIL_TAG_BOTTOM } from '../constants/rail';
+import {
+  HALO,
+  HALO_INSET,
+  RAIL_GAP,
+  RAIL_RIGHT,
+  RAIL_WIDTH,
+  TAG_ROW_HEIGHT,
+} from '../constants/rail';
+import { GLASS_ISLAND } from '../constants/glass';
+import { useRail } from '../hooks/useRail';
 import { GLASS_BODY, GLASS_BODY_BLURRED, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import { BlurView } from 'expo-blur';
 import { useBlurTarget } from './GlassTarget';
@@ -175,6 +184,7 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
   // Modal actually unmounts, instead of yanking the drawer away instantly.
   const [isRendered, setIsRendered] = useState(false);
   const blurTarget = useBlurTarget();
+  const rail = useRail();
   const { width: windowWidth } = useWindowDimensions();
   const drawerWidth = Math.round(windowWidth * DRAWER_FRACTION);
   const [filterMode, setFilterMode] = useState<TagFilterMode>('multi');
@@ -307,8 +317,58 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
       </GlassPortal>
       )}
 
+      {/* The tags scroll along the foot of the screen, opposite the group
+          tabs at its head - the cards pass under them the same way.
+          Through the portal, like every other piece of glass here. */}
+      {!isOpen && !hideOpenButton && tags.length > 0 && (
+        <GlassPortal>
+          <View style={[styles.tagRow, { bottom: rail.tagRowBottom }]} pointerEvents="box-none">
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tagRowContent}
+            >
+              {tags.map((tag) => {
+                const active = selectedTagIds.has(tag.id);
+                return (
+                  <Pressable
+                    key={tag.id}
+                    style={[styles.tagPill, active && styles.tagPillActive]}
+                    // The drawer's own toggle, so the foot row and the
+                    // tree agree on the filter mode in force.
+                    onPress={() => toggleTag(tag)}
+                  >
+                    {!active && (
+                      <BlurView
+                        intensity={60}
+                        tint="dark"
+                        blurMethod="dimezisBlurView"
+                        blurTarget={blurTarget ?? undefined}
+                        style={StyleSheet.absoluteFill}
+                        pointerEvents="none"
+                      />
+                    )}
+                    <Ionicons
+                      name={tag.icon as keyof typeof Ionicons.glyphMap}
+                      size={15}
+                      color={active ? '#171310' : tag.color}
+                    />
+                    <Text
+                      style={[styles.tagPillLabel, { color: active ? '#171310' : 'rgba(255,255,255,0.8)' }]}
+                      numberOfLines={1}
+                    >
+                      {tag.path}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </GlassPortal>
+      )}
+
       {!isOpen && !hideOpenButton && (
-        <View style={styles.openSlot} pointerEvents="box-none">
+        <View style={[styles.openSlot, { bottom: rail.tagBottom - HALO_INSET }]} pointerEvents="box-none">
           <GlowHalo color={GLASS_TEXT} />
           <Pressable style={styles.openButton} onPress={openDrawer}>
             <Text style={styles.openButtonHash}>#</Text>
@@ -438,10 +498,45 @@ const styles = StyleSheet.create({
   },
   // The square the halo is drawn on - twice the button across and centred
   // on it, because the button's own box would clip the light.
+  // The row of tags along the foot of the screen. It stops short of the
+  // rail so the navigation island never sits on top of a pill.
+  tagRow: {
+    position: 'absolute',
+    left: 0,
+    right: RAIL_RIGHT + RAIL_WIDTH + RAIL_GAP,
+    height: TAG_ROW_HEIGHT,
+  },
+  tagRowContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+  },
+  tagPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: TAG_ROW_HEIGHT,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: GLASS_ISLAND,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  // The same inversion an active group tab makes.
+  tagPillActive: {
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderColor: 'transparent',
+  },
+  tagPillLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    maxWidth: 160,
+  },
   openSlot: {
     position: 'absolute',
     right: RAIL_RIGHT - HALO_INSET,
-    bottom: RAIL_TAG_BOTTOM - HALO_INSET,
     width: HALO,
     height: HALO,
     alignItems: 'center',

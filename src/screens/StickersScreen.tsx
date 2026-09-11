@@ -25,7 +25,7 @@ import DocumentPickerModal, { PickableDocument } from '../components/DocumentPic
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import SketchEditor from '../components/SketchEditor';
 import ContentColumn from '../components/ContentColumn';
-import { RAIL_ADD_BOTTOM } from '../constants/rail';
+import { useRail } from '../hooks/useRail';
 
 const STICKER_YELLOW = '#FBE97A';
 const STICKER_DARK = '#4a3f05';
@@ -49,6 +49,7 @@ type StickerItem = {
 };
 
 export default function StickersScreen() {
+  const rail = useRail();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [stickers, setStickers] = useState<StickerItem[]>([]);
@@ -252,7 +253,7 @@ export default function StickersScreen() {
         )}
 
         {!viewingTrash && (
-          <Pressable style={styles.fab} onPress={openCreate}>
+          <Pressable style={[styles.fab, { bottom: rail.addBottom }]} onPress={openCreate}>
             <Ionicons name="add" size={26} color={STICKER_DARK} />
           </Pressable>
         )}
@@ -421,8 +422,6 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    // Clear of the navigation island, which now stands at this edge.
-    bottom: RAIL_ADD_BOTTOM,
     width: 56,
     height: 56,
     borderRadius: 18,
