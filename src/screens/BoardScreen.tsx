@@ -30,7 +30,16 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
-import { addDoc, collection, doc, getDoc, getDocFromCache, setDoc, updateDoc } from '@react-native-firebase/firestore';
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  getDocFromCache,
+  onSnapshot,
+  setDoc,
+  updateDoc,
+} from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import { BoardsStackParamList, RootStackParamList } from '../navigation';
 import { Block, BoardCard, BoardColumn, BoardConnection } from '../types';
@@ -57,7 +66,12 @@ import { linkDocId } from '../utils/linkId';
 import { blockFromFile, blockFromLink, blockFromPhoto } from '../utils/copyToNote';
 import { backupFileToDrive } from '../utils/googleDrive';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
-import { blocksEqual, buildBlocksFromBoard, generateDocumentFromBoard } from '../utils/boardToDocument';
+import {
+  blocksEqual,
+  buildBlocksFromBoard,
+  contentEqual,
+  generateDocumentFromBoard,
+} from '../utils/boardToDocument';
 import BoardDocumentPreview from '../components/BoardDocumentPreview';
 import DocumentEditorScreen from './DocumentEditorScreen';
 
@@ -969,6 +983,10 @@ export default function BoardScreen() {
     if (!isLoaded) return;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
+      // Cleared as the write goes out: the listener above reads this to
+      // tell "a local change is waiting to be written" from "nothing
+      // pending, so whatever arrives is news".
+      saveTimeoutRef.current = null;
       setDoc(
         doc(db, 'boards', boardId),
         { title, cards, connections, columns, updatedAt: Date.now() },
@@ -1442,6 +1460,30 @@ export default function BoardScreen() {
       prev.map((c) => (c.id === card.id ? { ...c, documentExpanded: !c.documentExpanded } : c))
     );
   }
+
+  // The other half of the live link, and the half that was missing: this
+  // screen read its cards once, at open, and wrote them back from memory
+  // ever after. A card the document made never appeared here - and worse,
+  // the next autosave overwrote it with this screen's older list, which is
+  // what had the two sides writing each other in circles.
+  //
+  // Same rule as the document's own listener: take what arrives, but only
+  // while nothing local is in flight - no pending save, no card or column
+  // under the finger - and never when it matches what's already here.
+  useEffect(() => {
+    if (!isLoaded) return;
+    return onSnapshot(doc(db, 'boards', boardId), (snapshot) => {
+      const data = snapshot.data() as { cards?: BoardCard[]; columns?: BoardColumn[] } | undefined;
+      if (!data) return;
+      if (saveTimeoutRef.current || syncingRef.current) return;
+      if (draggedCardId || draggingColumnId) return;
+      const incomingCards = data.cards ?? [];
+      const incomingColumns = data.columns ?? [];
+      setCards((current) => (contentEqual(current, incomingCards) ? current : incomingCards));
+      setColumns((current) => (contentEqual(current, incomingColumns) ? current : incomingColumns));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, boardId, draggedCardId, draggingColumnId]);
 
   // Once a board has a document, that document follows it: change the
   // board and the document is rebuilt on the same beat, with no button in

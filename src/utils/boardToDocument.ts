@@ -180,6 +180,13 @@ export function blocksEqual(a: Block[], b: Block[]): boolean {
   return stable(a) === stable(b);
 }
 
+// The same content comparison for anything else the two sides hold - a
+// board's cards and columns, read back from Firestore against the ones in
+// memory.
+export function contentEqual(a: unknown, b: unknown): boolean {
+  return stable(a) === stable(b);
+}
+
 // An edit that belongs to a document card's source document rather than to
 // the board: the whole new block list for that document, as read back out
 // of this one. The caller compares it with what that document currently
