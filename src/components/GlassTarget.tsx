@@ -1,5 +1,6 @@
-import { createContext, ReactNode, RefObject, useContext } from 'react';
-import { View } from 'react-native';
+import { createContext, ReactNode, RefObject, useContext, useRef } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { BlurTargetView } from 'expo-blur';
 
 // What the blur blurs. On Android expo-blur needs to be told WHICH view to
 // blur - without that ref it silently falls back to "none", which is a
@@ -11,15 +12,24 @@ import { View } from 'react-native';
 // through the context rather than each screen having to arrange its own.
 const BlurTargetContext = createContext<RefObject<View | null> | null>(null);
 
-// DISABLED: wrapping the app in BlurTargetView crashed it on launch, so
-// the provider hands out nothing and every BlurView falls back to its
-// translucent fill - the app works, the glass is a dim. Re-enable only
-// with a way to see the crash, which needs the phone on a cable.
 export function GlassTargetProvider({ children }: { children: ReactNode }) {
-  return <BlurTargetContext.Provider value={null}>{children}</BlurTargetContext.Provider>;
+  const ref = useRef<View>(null);
+  return (
+    <BlurTargetContext.Provider value={ref}>
+      <BlurTargetView ref={ref} style={styles.fill}>
+        {children}
+      </BlurTargetView>
+    </BlurTargetContext.Provider>
+  );
 }
 
 // null when nothing has been wrapped - a caller then simply doesn't blur.
 export function useBlurTarget(): RefObject<View | null> | null {
   return useContext(BlurTargetContext);
 }
+
+const styles = StyleSheet.create({
+  fill: {
+    flex: 1,
+  },
+});

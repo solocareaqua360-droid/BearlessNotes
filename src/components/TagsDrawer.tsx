@@ -7,6 +7,7 @@ import { FONT_REGULAR, FONT_SEMIBOLD, FONT_BOLD, FONT_EXTRABOLD } from '../utils
 import { GLASS_BODY, GLASS_BODY_BLURRED, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import { BlurView } from 'expo-blur';
 import { useBlurTarget } from './GlassTarget';
+import { GlassPortal } from './GlassPortal';
 
 // Two thirds of the window, measured per render (useWindowDimensions) and
 // never captured once at module scope from Dimensions.get() - see
@@ -247,7 +248,10 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
       // A layer, not a Modal: a Modal is its own window on Android, and a
       // blur only reaches what is in the window it lives in. The dim below
       // fades in on its own timing (see dimAmount), so it stays an animated
-      // view rather than moving into GlassLayer.
+      // view rather than moving into GlassLayer - but it goes through the
+      // same portal, for the same reason: a blur drawn inside the target it
+      // blurs draws itself.
+      <GlassPortal>
       <View style={styles.layer} pointerEvents="box-none">
         <Animated.View style={[styles.backdrop, backdropStyle]} pointerEvents={isOpen ? 'auto' : 'none'}>
           <BlurView
@@ -298,6 +302,7 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
           </ScrollView>
         </Animated.View>
       </View>
+      </GlassPortal>
       )}
 
       {!isOpen && !hideOpenButton && (

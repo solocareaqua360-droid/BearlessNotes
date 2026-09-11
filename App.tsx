@@ -33,6 +33,7 @@ import ShareIntentHandler from './src/components/ShareIntentHandler';
 import { navigationRef } from './src/navigationRef';
 import { BoardsStackParamList, RootStackParamList } from './src/navigation';
 import { GlassTargetProvider } from './src/components/GlassTarget';
+import { GlassPortalHost } from './src/components/GlassPortal';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -100,18 +101,22 @@ export default function App() {
         <View style={{ flex: 1, backgroundColor: '#705648' }} />
       ) : (
         <GestureHandlerRootView style={{ flex: 1 }}>
-          {/* Everything the glass sheets blur. expo-blur on Android has to
-              be handed the view to blur; wrapped once here, every sheet
-              finds it through the context. */}
-          <GlassTargetProvider>
           {/* Feeds the document editor per-frame keyboard progress (see
               DocumentEditorScreen's useKeyboardHandler), so the block being
               edited can ride up in the same motion as the keyboard instead of
               jumping after it has finished. */}
           <KeyboardProvider>
           <NavigationContainer ref={navigationRef}>
+          {/* The glass, in two halves that must stay in this order. The
+              portal host is where every sheet is actually drawn - inside
+              NavigationContainer, so a sheet that navigates still can, and
+              OUTSIDE the blur target below, because a blur inside the
+              picture it blurs tries to draw itself. The target wraps only
+              the screens: that is what a sheet blurs. */}
+          <GlassPortalHost>
             <StatusBar style="auto" />
             <ShareIntentHandler />
+            <GlassTargetProvider>
             <Stack.Navigator screenOptions={{ headerShown: false }}>
               {/* animation: 'none' only on the root screen - the navigator
                   mounts after the splash view above hands over, and its
@@ -136,9 +141,10 @@ export default function App() {
                 {({ route }) => <PlaceholderScreen icon={route.params.icon} label={route.params.label} />}
               </Stack.Screen>
             </Stack.Navigator>
+            </GlassTargetProvider>
+          </GlassPortalHost>
           </NavigationContainer>
           </KeyboardProvider>
-          </GlassTargetProvider>
         </GestureHandlerRootView>
       )}
     </ShareIntentProvider>

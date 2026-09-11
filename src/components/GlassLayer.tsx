@@ -2,6 +2,7 @@ import { ReactNode, useEffect } from 'react';
 import { BackHandler, Pressable, StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useBlurTarget } from './GlassTarget';
+import { GlassPortal } from './GlassPortal';
 import { GLASS_BACKDROP } from '../constants/glass';
 
 // What a bottom sheet sits in, now that a sheet is a layer rather than a
@@ -40,6 +41,7 @@ export default function GlassLayer({
   if (!visible) return null;
 
   return (
+    <GlassPortal>
     <View style={styles.layer}>
       {/* The blur covers the whole screen, not just the sheet: what is
           beside a sheet is as much "behind the glass" as what is under it,
@@ -59,6 +61,7 @@ export default function GlassLayer({
       <Pressable style={[StyleSheet.absoluteFill, styles.dim]} onPress={onClose} />
       {children}
     </View>
+    </GlassPortal>
   );
 }
 
