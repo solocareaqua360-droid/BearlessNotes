@@ -56,6 +56,10 @@
           // splash doesn't flash a different background before the app
           // draws - see App.tsx's own stand-in view, which uses the same.
           "backgroundColor": "#705648",
+          // Required, not optional: with only a width the plugin still
+          // points the generated theme at a drawable it never writes, and
+          // the build fails linking it.
+          "image": "./assets/splash-icon.png",
           "imageWidth": 200
         }
       ],

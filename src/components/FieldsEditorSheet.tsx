@@ -7,6 +7,7 @@ import { Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimen
 // reason as DocumentEditorScreen's block list.
 import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { FieldDef, FieldOption, FieldType, RelationTarget } from '../types';
 import { canJoinTitle } from '../utils/customRowDisplay';
 import { TAG_COLORS } from '../constants/tags';
@@ -297,6 +298,18 @@ export default function FieldsEditorSheet({
             },
           ]}
         >
+          {/* The real glass, at last. On Android this blurs what is behind
+              it WITHIN ITS OWN WINDOW - and a sheet like this one is its
+              own window - so if the screen behind stays sharp, the fix is
+              to make these sheets a layer inside the screen instead of a
+              window over it. This one is the test of that. */}
+          <BlurView
+            intensity={60}
+            tint="dark"
+            blurMethod="dimezisBlurView"
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
           <View style={styles.handle} />
           <Text style={styles.title}>Поля</Text>
 
@@ -593,7 +606,10 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: GLASS_BODY,
+    // Lower than the shared GLASS_BODY on purpose: behind this one there
+    // is a real blur, and at 0.96 it would hide it completely.
+    backgroundColor: 'rgba(24,21,19,0.55)',
+    overflow: 'hidden',
     borderTopLeftRadius: 22,
     borderTopRightRadius: 22,
     borderTopWidth: 1,
