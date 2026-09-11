@@ -117,6 +117,11 @@ export default function CalendarScreen() {
   // pages are sized against the wrong width is exactly how this screen
   // broke twice (see PLATE_MARGIN's comment above).
   const [calendarPaneWidth, setCalendarPaneWidth] = useState(0);
+  // Either column can be put away to give the note the room - both at once
+  // is "the note full screen", which is what the button on the note itself
+  // toggles. Only ever applies while there are columns to hide.
+  const [showCalendarPane, setShowCalendarPane] = useState(true);
+  const [showHistoryPane, setShowHistoryPane] = useState(true);
   const stripWidth = (isTwoPane && calendarPaneWidth > 0 ? calendarPaneWidth : windowWidth) - PLATE_MARGIN * 2;
   const today = useMemo(() => new Date(), []);
 
@@ -200,6 +205,12 @@ export default function CalendarScreen() {
   // BELOW it. Side by side, typing in the note has no reason to take the
   // calendar off the screen.
   const foldedAway = isWriting && !isTwoPane;
+  const noteFullscreen = !showCalendarPane && (!isThreePane || !showHistoryPane);
+  function toggleNoteFullscreen() {
+    const goingFull = !noteFullscreen;
+    setShowCalendarPane(!goingFull);
+    setShowHistoryPane(!goingFull);
+  }
   const expandAmount = useSharedValue(0); // 0 = week strip, 1 = month grid
   const visibleAmount = useSharedValue(1); // 0 = folded away (writing)
 
@@ -405,7 +416,13 @@ export default function CalendarScreen() {
   // or the taller FILLED_ROW_HEIGHT (weekday header's space folded in) for
   // the "only filled days" strip. Total calendarWrap height is unaffected
   // either way - only how it's split between the header row and this one.
-  const weekRowHeight = onlyFilledDays ? FILLED_ROW_HEIGHT : WEEK_AREA_HEIGHT;
+  // In a column of its own the month is about 250dp wide, and 40dp rows
+  // make it a tall rectangle over a square grid of days. Shorter rows put
+  // it back in proportion with its own width.
+  const rowHeight = isTwoPane ? 32 : ROW_HEIGHT;
+  const monthAreaHeight = rowHeight * 6;
+  const filledRowHeight = rowHeight + WEEKDAY_HEADER_HEIGHT;
+  const weekRowHeight = onlyFilledDays ? filledRowHeight : rowHeight;
   // calendarPlate's own border/padding used to be plain (non-animated)
   // styling around calendarWrap - so even once calendarWrap's own height
   // animated down to 0 while writing, this border+padding stayed put as a
@@ -419,22 +436,29 @@ export default function CalendarScreen() {
   }));
   const calendarWrapStyle = useAnimatedStyle(() => {
     const navHeight = MONTH_NAV_HEIGHT * expandAmount.value;
-    const gridHeight = weekRowHeight + (MONTH_AREA_HEIGHT - weekRowHeight) * expandAmount.value;
+    const gridHeight = weekRowHeight + (monthAreaHeight - weekRowHeight) * expandAmount.value;
     const weekdayHeight = onlyFilledDays ? 0 : WEEKDAY_HEADER_HEIGHT;
     return {
       height: (navHeight + weekdayHeight + gridHeight) * visibleAmount.value,
       opacity: visibleAmount.value,
     };
-  }, [weekRowHeight, onlyFilledDays]);
+  }, [weekRowHeight, monthAreaHeight, onlyFilledDays]);
   const monthNavStyle = useAnimatedStyle(() => ({
     height: MONTH_NAV_HEIGHT * expandAmount.value,
     opacity: expandAmount.value,
   }));
   const gridClipStyle = useAnimatedStyle(() => ({
-    height: weekRowHeight + (MONTH_AREA_HEIGHT - weekRowHeight) * expandAmount.value,
-  }), [weekRowHeight]);
+    height: weekRowHeight + (monthAreaHeight - weekRowHeight) * expandAmount.value,
+  }), [weekRowHeight, monthAreaHeight]);
   const weekLayerStyle = useAnimatedStyle(() => ({ opacity: 1 - expandAmount.value }));
   const monthLayerStyle = useAnimatedStyle(() => ({ opacity: expandAmount.value }));
+
+  useEffect(() => {
+    if (!isTwoPane) {
+      setShowCalendarPane(true);
+      setShowHistoryPane(true);
+    }
+  }, [isTwoPane]);
 
   const monthGrid = useMemo(
     () => getMonthGrid(visibleMonth.year, visibleMonth.month),
@@ -528,6 +552,25 @@ export default function CalendarScreen() {
             <Ionicons name="checkmark" size={17} color={noteSaveStatus === 'saved' ? '#171310' : '#fff'} />
           </View>
           <View style={styles.headerButtons}>
+            {/* Only where there's a column to put away. A filled icon means
+                the column is showing, an outline that it's hidden - same
+                on/off reading as the sticker button on Documents. */}
+            {isTwoPane && (
+              <>
+                <Pressable hitSlop={6} onPress={() => setShowCalendarPane((v) => !v)}>
+                  <Ionicons name={showCalendarPane ? 'calendar' : 'calendar-outline'} size={17} color="#fff" />
+                </Pressable>
+                <View style={styles.headerButtonsDivider} />
+              </>
+            )}
+            {isThreePane && (
+              <>
+                <Pressable hitSlop={6} onPress={() => setShowHistoryPane((v) => !v)}>
+                  <Ionicons name={showHistoryPane ? 'time' : 'time-outline'} size={17} color="#fff" />
+                </Pressable>
+                <View style={styles.headerButtonsDivider} />
+              </>
+            )}
             <Pressable hitSlop={6} onPress={() => navigation.navigate('Diary')}>
               <Ionicons name="search" size={17} color="#fff" />
             </Pressable>
@@ -564,10 +607,13 @@ export default function CalendarScreen() {
           in the row, so they split the window evenly. */}
       <View style={isTwoPane ? styles.paneRow : styles.stack}>
         <View
-          style={isTwoPane ? styles.sidePane : undefined}
+          style={[
+            isTwoPane ? styles.sidePane : null,
+            isTwoPane && !showCalendarPane ? styles.paneHidden : null,
+          ]}
           onLayout={(e) => setCalendarPaneWidth(e.nativeEvent.layout.width)}
         >
-          <Animated.View style={[styles.calendarPlate, calendarPlateStyle]}>
+          <Animated.View style={[styles.calendarPlate, isTwoPane && styles.calendarPlatePaned, calendarPlateStyle]}>
           <Animated.View style={[styles.calendarWrap, calendarWrapStyle]}>
             <Animated.View style={[styles.monthNavWrap, monthNavStyle]}>
               <View style={styles.monthNav}>
@@ -609,7 +655,7 @@ export default function CalendarScreen() {
                     horizontal
                     pagingEnabled
                     showsHorizontalScrollIndicator={false}
-                    style={[styles.weekScroll, { height: FILLED_ROW_HEIGHT }]}
+                    style={[styles.weekScroll, { height: filledRowHeight }]}
                     contentOffset={{ x: stripWidth, y: 0 }}
                     onLayout={() => filledScrollRef.current?.scrollTo({ x: stripWidth, animated: false })}
                     onMomentumScrollEnd={handleFilledScrollEnd}
@@ -628,6 +674,7 @@ export default function CalendarScreen() {
                               date={date}
                               isToday={isToday}
                               isSelected={dateStr === selectedKey}
+                              height={filledRowHeight}
                               compact
                               onPress={() => selectDay(date)}
                             />
@@ -662,6 +709,7 @@ export default function CalendarScreen() {
                               isSelected={key === selectedKey}
                               filled={filledDates.has(key)}
                               hasHistory={historyDates.has(key)}
+                              height={rowHeight}
                               onPress={() => selectDay(date)}
                             />
                           );
@@ -673,7 +721,7 @@ export default function CalendarScreen() {
               </Animated.View>
 
               <Animated.View
-                style={[styles.calendarLayer, { height: MONTH_AREA_HEIGHT }, monthLayerStyle]}
+                style={[styles.calendarLayer, { height: monthAreaHeight }, monthLayerStyle]}
                 pointerEvents={monthOpen ? 'auto' : 'none'}
               >
                 <View style={styles.monthGrid}>
@@ -699,6 +747,7 @@ export default function CalendarScreen() {
                             muted={!inMonth}
                             filled={filledDates.has(key)}
                             hasHistory={historyDates.has(key)}
+                            height={rowHeight}
                             inGrid
                             onPress={() => selectDay(date)}
                           />
@@ -723,7 +772,7 @@ export default function CalendarScreen() {
               with the month always open, and the history has its own
               column - an empty row would just leave a gap. */}
           {!foldedAway && !isThreePane && (
-            <View style={styles.capsuleRow}>
+            <View style={[styles.capsuleRow, isTwoPane && styles.calendarPlatePaned]}>
               {/* The month capsule IS the expand button, named after the month
                   it opens - with two panes the month is already open and it
                   would toggle nothing, so it goes away and the nav row inside
@@ -740,7 +789,7 @@ export default function CalendarScreen() {
           )}
 
           {!foldedAway && dueElsewhere.length > 0 && (
-            <View style={styles.dueCard}>
+            <View style={[styles.dueCard, isTwoPane && styles.calendarPlatePaned]}>
               {dueElsewhere.map((task, index) => (
                 <Pressable
                   key={task.id}
@@ -791,9 +840,21 @@ export default function CalendarScreen() {
               onSelectModeChange={setNoteSelectMode}
               onSaveStatusChange={setNoteSaveStatus}
             />
+            {/* On the sheet itself, not in the header: it's about this one
+                thing - the note taking the whole window and giving it
+                back. */}
+            {isTwoPane && (
+              <Pressable style={styles.noteExpandButton} onPress={toggleNoteFullscreen} hitSlop={6}>
+                <Ionicons
+                  name={noteFullscreen ? 'contract-outline' : 'expand-outline'}
+                  size={17}
+                  color="#6B7280"
+                />
+              </Pressable>
+            )}
           </View>
         )}
-        {isThreePane && (
+        {isThreePane && showHistoryPane && (
           <View style={styles.historyPane}>
             <DayHistoryList items={historyByDate.get(selectedKey) ?? []} fill />
           </View>
@@ -818,6 +879,7 @@ function DayCell({
   hasHistory,
   inGrid,
   compact,
+  height,
   onPress,
 }: {
   date: Date;
@@ -838,11 +900,21 @@ function DayCell({
   // of a plain day-number circle, since these dates jump around freely and
   // a bare "8" would be ambiguous about which month it's in.
   compact?: boolean;
+  // The row height this cell has to fill - it shrinks when the calendar
+  // sits in a column (see rowHeight above), and the two must agree or the
+  // grid's own clipped height and its cells drift apart.
+  height?: number;
   onPress: () => void;
 }) {
   const numColor = isToday ? styles.dayNumToday : muted ? styles.dayNumMuted : null;
   return (
-    <Pressable style={compact ? styles.filledDayCell : inGrid ? styles.gridCell : styles.dayCell} onPress={onPress}>
+    <Pressable
+      style={[
+        compact ? styles.filledDayCell : inGrid ? styles.gridCell : styles.dayCell,
+        height !== undefined && { height },
+      ]}
+      onPress={onPress}
+    >
       <View
         style={[
           styles.dayCircle,
@@ -1015,6 +1087,28 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     marginHorizontal: 16,
     overflow: 'hidden',
+  },
+  // Between the calendar and the note there were two margins (the plate's
+  // and the note's) where between the note and the history there is one -
+  // so the same gap read wider on the left than on the right. The plate
+  // drops its own on that side and both come out at 16.
+  calendarPlatePaned: {
+    marginRight: 0,
+  },
+  paneHidden: {
+    display: 'none',
+  },
+  noteExpandButton: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(17,24,39,0.06)',
+    zIndex: 5,
   },
   monthNavWrap: {
     overflow: 'hidden',
