@@ -85,6 +85,8 @@ import {
   setPresenceOp,
   sortLabelFor,
   sortRows,
+  groupRows,
+  groupableFieldsOf,
   sortableFieldsOf,
   toggleFacet,
   viewMatchesState,
@@ -148,9 +150,12 @@ export default function CustomDatabaseScreen({}: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [menuOpen, setMenuOpen] = useState(false);
   const [paramsCollapsed, setParamsCollapsed] = useState(false);
-  const [openParam, setOpenParam] = useState<'view' | 'sort' | 'filter' | 'views' | null>(null);
+  const [openParam, setOpenParam] = useState<'view' | 'sort' | 'filter' | 'views' | 'group' | null>(null);
   const [sortPref, setSortPref] = useState<RowSort>(DEFAULT_ROW_SORT);
   const [filters, setFilters] = useState<RowFilter[]>([]);
+  // Which field the list is broken into groups by, if any - each group
+  // headed by its own value and count.
+  const [groupFieldId, setGroupFieldId] = useState<string | null>(null);
   // Which field's values the filter dropdown is currently showing. null is
   // its top level, the list of fields.
   const [filterFieldId, setFilterFieldId] = useState<string | null>(null);
@@ -422,6 +427,7 @@ export default function CustomDatabaseScreen({}: Props) {
           : DEFAULT_ROW_SORT
       );
       setFilters((data?.rowFilters as RowFilter[] | undefined) ?? []);
+      setGroupFieldId((data?.groupFieldId as string | undefined) ?? null);
     });
   }, [prefsKey]);
 
@@ -483,6 +489,9 @@ export default function CustomDatabaseScreen({}: Props) {
       )
     : [];
   const sortFields = sortableFieldsOf(database);
+  const groupFields = groupableFieldsOf(database);
+  const groupField = groupFieldId ? (groupFields.find((f) => f.id === groupFieldId) ?? null) : null;
+  const rowGroups = groupField ? groupRows(displayedRows, groupField, displayContext) : [];
   const openChipLayout = openParam ? chipLayouts[openParam] ?? null : null;
   // A chip's onLayout position is relative to the scrolling strip's
   // content, not the screen - undo the current scroll offset to place the
@@ -507,6 +516,11 @@ export default function CustomDatabaseScreen({}: Props) {
 
   function applyFilters(next: RowFilter[]) {
     setDoc(prefsDoc, { rowFilters: next }, { merge: true });
+  }
+
+  function selectGroupField(fieldId: string | null) {
+    setDoc(prefsDoc, { groupFieldId: fieldId ?? deleteField() }, { merge: true });
+    closeParamList();
   }
 
   function rememberChip(key: string, layout: ChipLayout) {
@@ -558,7 +572,7 @@ export default function CustomDatabaseScreen({}: Props) {
     ]);
   }
 
-  function openParamList(key: 'view' | 'sort' | 'filter' | 'views') {
+  function openParamList(key: 'view' | 'sort' | 'filter' | 'views' | 'group') {
     setFilterFieldId(null);
     setOpenParam((prev) => (prev === key ? null : key));
   }
@@ -1343,6 +1357,20 @@ export default function CustomDatabaseScreen({}: Props) {
               <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
             </Pressable>
           )}
+
+          {groupFields.length > 0 && (
+            <Pressable
+              style={[styles.paramChip, !!groupField && styles.paramChipActive]}
+              onLayout={(e) => rememberChip('group', e.nativeEvent.layout)}
+              onPress={() => openParamList('group')}
+            >
+              <Ionicons name="layers-outline" size={13} color="rgba(255,255,255,0.85)" />
+              <Text style={styles.paramChipLabel} numberOfLines={1}>
+                {groupField ? groupField.name : 'Групувати'}
+              </Text>
+              <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
+            </Pressable>
+          )}
         </ScrollView>
       )}
 
@@ -1523,6 +1551,51 @@ export default function CustomDatabaseScreen({}: Props) {
               </>
             )}
 
+            {openParam === 'group' && (
+              <>
+                <Pressable style={styles.paramExpandedHead} onPress={closeParamList}>
+                  <Ionicons name="layers-outline" size={13} color="#fff" />
+                  <Text style={styles.paramChipLabel} numberOfLines={1}>
+                    {groupField ? groupField.name : 'Групувати'}
+                  </Text>
+                  <Ionicons name="chevron-up" size={12} color="rgba(255,255,255,0.6)" />
+                </Pressable>
+                <View style={styles.paramScrollWrap}>
+                  <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+                    <Pressable style={styles.paramOption} onPress={() => selectGroupField(null)}>
+                      <Text style={[styles.paramOptionLabel, !groupField && styles.paramOptionLabelActive]}>
+                        Без групування
+                      </Text>
+                      {!groupField && <Ionicons name="checkmark" size={14} color="#fff" />}
+                    </Pressable>
+                    {groupFields.map((field) => (
+                      <Pressable
+                        key={field.id}
+                        style={styles.paramOption}
+                        onPress={() => selectGroupField(field.id)}
+                      >
+                        <Ionicons
+                          name={FIELD_TYPE_ICON[field.type]}
+                          size={14}
+                          color={groupField?.id === field.id ? '#fff' : 'rgba(255,255,255,0.7)'}
+                        />
+                        <Text
+                          style={[
+                            styles.paramOptionLabel,
+                            groupField?.id === field.id && styles.paramOptionLabelActive,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {field.name}
+                        </Text>
+                        {groupField?.id === field.id && <Ionicons name="checkmark" size={14} color="#fff" />}
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+              </>
+            )}
+
             {openParam === 'filter' && (
               <>
                 <Pressable
@@ -1688,6 +1761,27 @@ export default function CustomDatabaseScreen({}: Props) {
               }
             />
           ))}
+        </ScrollView>
+      ) : groupField ? (
+        // Grouped by one field: a header per value with its own count, and
+        // the total under the last group - the "how many working, how many
+        // in for repair, how many altogether" read.
+        <ScrollView contentContainerStyle={[styles.list, isSelectMode && styles.listWithBulkBar]}>
+          {rowGroups.map((group) => (
+            <View key={group.key || '__empty__'} style={styles.groupSection}>
+              <View style={styles.groupHeader}>
+                <Text style={styles.groupHeaderLabel} numberOfLines={1}>
+                  {group.label}
+                </Text>
+                <Text style={styles.groupHeaderCount}>{group.rows.length}</Text>
+              </View>
+              {group.rows.map(renderRowCard)}
+            </View>
+          ))}
+          <View style={styles.groupTotal}>
+            <Text style={styles.groupTotalLabel}>Усього</Text>
+            <Text style={styles.groupTotalCount}>{displayedRows.length}</Text>
+          </View>
         </ScrollView>
       ) : (
         <ScrollView contentContainerStyle={[styles.list, isSelectMode && styles.listWithBulkBar]}>
@@ -2733,6 +2827,47 @@ const styles = StyleSheet.create({
   // dark tabs - flexGrow/flexShrink: 0 keeps it from competing for height
   // with the row list below it (same fix, same reason, as that
   // component's own `scroll` style).
+  groupSection: {
+    gap: 8,
+    marginBottom: 18,
+  },
+  groupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+  },
+  groupHeaderLabel: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  groupHeaderCount: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.6)',
+  },
+  // Sits apart from the groups above it: it counts the whole filtered
+  // list, not any one group.
+  groupTotal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.25)',
+  },
+  groupTotalLabel: {
+    flex: 1,
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.75)',
+  },
+  groupTotalCount: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
+  },
   // The record page: a plain light sheet, deliberately not the dark
   // gradient the database list sits on - it reads as a document about one
   // record rather than another view of the list.

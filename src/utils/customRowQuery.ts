@@ -269,3 +269,62 @@ export function viewMatchesState(
     filtersEqual(view.filters ?? [], filters)
   );
 }
+
+// ---------------------------------------------------------------------
+// Grouping
+// ---------------------------------------------------------------------
+
+// Which fields can head a group. The same facet machinery filtering uses
+// (facetsOfRow/facetLabel), so a field groupable here is exactly a field
+// filterable there - a select's options, a relation's targets, a text or
+// number's distinct values.
+export function groupableFieldsOf(database: CustomDatabase | null | undefined): FieldDef[] {
+  return (database?.fields ?? []).slice(1).filter((f) => !f.hidden && f.type !== 'backlink');
+}
+
+export type RowGroup = { key: string; label: string; rows: CustomDatabaseRow[] };
+
+// Rows split into groups by one field's value, already in the order they
+// should be shown. A row with nothing in that field lands in a trailing
+// "Без значення" group rather than vanishing; a multiSelect row genuinely
+// belongs to several groups and appears under each, which is what that
+// field type means.
+export function groupRows(
+  rows: CustomDatabaseRow[],
+  field: FieldDef | null,
+  ctx: RowDisplayContext
+): RowGroup[] {
+  if (!field) return [];
+  const byKey = new Map<string, CustomDatabaseRow[]>();
+  const empty: CustomDatabaseRow[] = [];
+  rows.forEach((row) => {
+    const keys = facetsOfRow(field, row);
+    if (keys.length === 0) {
+      empty.push(row);
+      return;
+    }
+    keys.forEach((key) => {
+      const list = byKey.get(key) ?? [];
+      list.push(row);
+      byKey.set(key, list);
+    });
+  });
+
+  let groups: RowGroup[] = [...byKey.entries()].map(([key, groupRows_]) => ({
+    key,
+    label: facetLabel(field, key, ctx),
+    rows: groupRows_,
+  }));
+
+  // select/multiSelect keep the order the options were arranged in; any
+  // other field has no inherent order, so alphabetical.
+  if (field.type === 'select' || field.type === 'multiSelect') {
+    const order = new Map((field.options ?? []).map((o, i) => [o.id, i]));
+    groups = groups.sort((a, b) => (order.get(a.key) ?? 999) - (order.get(b.key) ?? 999));
+  } else {
+    groups = groups.sort((a, b) => a.label.localeCompare(b.label, 'uk', { sensitivity: 'base', numeric: true }));
+  }
+
+  if (empty.length > 0) groups.push({ key: '', label: 'Без значення', rows: empty });
+  return groups;
+}
