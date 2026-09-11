@@ -131,6 +131,11 @@ export default function DocumentsScreen() {
   // Visual feedback while the FAB's long-press-to-create-a-sticker gesture
   // is armed - see the FAB's onLongPress/onPressOut below.
   const [fabPressed, setFabPressed] = useState(false);
+  // Where the list of documents starts inside the pane - the side island
+  // hangs from the same line as the first card's top edge, and only the
+  // list itself knows where that is (the title, the tabs and the sticker
+  // strip all come and go above it).
+  const [listTop, setListTop] = useState(0);
 
   useEffect(() => {
     return onSnapshot(documentsPrefsDoc, (snapshot) => {
@@ -417,7 +422,7 @@ export default function DocumentsScreen() {
             screen instead of sharing a line with the group tabs - it was
             the tabs' own room it was taking. The "..." menu opens to its
             left, at the same height, so the two travel together. */}
-        <View style={styles.sideIslandLayer} pointerEvents="box-none">
+        <View style={[styles.sideIslandLayer, { top: listTop }]} pointerEvents="box-none">
           <View style={styles.sideIslandRow}>
             {menuOpen && (
               <View style={styles.menuPanel}>
@@ -437,19 +442,19 @@ export default function DocumentsScreen() {
             )}
             <View style={styles.sideIsland}>
               <Pressable hitSlop={8} onPress={() => navigation.navigate('Search')}>
-                <Ionicons name="search" size={17} color="#fff" />
+                <Ionicons name="search" size={21} color="#fff" />
               </Pressable>
               <View style={styles.sideIslandDivider} />
               <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-                <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
+                <Ionicons name="ellipsis-horizontal" size={21} color="#fff" />
               </Pressable>
               <View style={styles.sideIslandDivider} />
               <Pressable hitSlop={8} onPress={toggleSelectMode}>
-                <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
+                <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={21} color="#fff" />
               </Pressable>
               <View style={styles.sideIslandDivider} />
               <Pressable hitSlop={8} onPress={toggleStickersCollapsed}>
-                <Ionicons name={stickersCollapsed ? 'albums-outline' : 'albums'} size={17} color="#fff" />
+                <Ionicons name={stickersCollapsed ? 'albums-outline' : 'albums'} size={21} color="#fff" />
               </Pressable>
             </View>
           </View>
@@ -615,6 +620,7 @@ export default function DocumentsScreen() {
             numColumns={viewMode === 'grid' ? 2 : 1}
             columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
             contentContainerStyle={styles.list}
+            onLayout={(e) => setListTop(e.nativeEvent.layout.y + 8)}
             renderItem={({ item }) => {
               // Grid cards reclaim the thumbnail's space for text when a
               // document has no image (see DocumentCard's own noImage
@@ -784,12 +790,10 @@ const styles = StyleSheet.create({
   // below it from swallowing taps meant for the list.
   sideIslandLayer: {
     position: 'absolute',
-    top: 0,
-    bottom: 0,
+    // `top` comes from the list's own layout - see listTop.
     // Android keeps ~20px at each edge for its own back gesture, so the
     // island sits a little in from the edge rather than against it.
     right: 14,
-    justifyContent: 'center',
     // Above the menu's backdrop (5), so the "..." button can also close
     // the menu it opened.
     zIndex: 6,
@@ -801,9 +805,9 @@ const styles = StyleSheet.create({
   },
   sideIsland: {
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 7,
+    gap: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 11,
     borderRadius: 999,
     backgroundColor: 'rgba(20,20,20,0.35)',
     borderWidth: 1,
@@ -811,7 +815,7 @@ const styles = StyleSheet.create({
   },
   // The divider turns with the capsule: a short rule across it, not down it.
   sideIslandDivider: {
-    width: 16,
+    width: 20,
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.3)',
   },
