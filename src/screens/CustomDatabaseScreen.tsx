@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Image,
   Keyboard,
   Modal,
@@ -389,6 +390,18 @@ export default function CustomDatabaseScreen({}: Props) {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [referencedDbIdsKey]);
+
+  // A Modal handled the hardware back button for free; a plain overlay has
+  // to claim it, or back would leave the database entirely with the page
+  // still notionally open.
+  useEffect(() => {
+    if (!rowPageId) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setRowPageId(null);
+      return true;
+    });
+    return () => sub.remove();
+  }, [rowPageId]);
 
   // Arrived from a 'dbRow' block in a document (see openCustomRowBlock):
   // open that row's editor as soon as the rows are in. The ref makes it a
@@ -1892,14 +1905,14 @@ export default function CustomDatabaseScreen({}: Props) {
       </Modal>
 
       {/* The record as a page: a structured reference to read, with editing
-          a deliberate step away rather than the only mode. The form below
-          stacks on top of it, so "Редагувати" never loses this page. */}
-      <Modal
-        visible={rowPageRow !== null}
-        animationType="slide"
-        onRequestClose={() => setRowPageId(null)}
-      >
-        <GestureHandlerRootView style={{ flex: 1 }}>
+          a deliberate step away rather than the only mode.
+          Deliberately NOT a Modal. The form opens on top of this, and the
+          form's own pickers on top of THAT - as three Modals that is three
+          native windows on Android, and the topmost one renders but never
+          receives touches. As a plain overlay inside this screen, the page
+          costs no window at all and the form/picker pair goes back to the
+          two-window arrangement that has always worked. */}
+      {rowPageRow !== null && (
           <View style={styles.pageContainer}>
             <View style={styles.pageHeader}>
               <Pressable hitSlop={10} onPress={() => setRowPageId(null)}>
@@ -2015,8 +2028,7 @@ export default function CustomDatabaseScreen({}: Props) {
               </GestureScrollView>
             )}
           </View>
-        </GestureHandlerRootView>
-      </Modal>
+      )}
 
       <Modal visible={rowEditor !== null} transparent animationType="fade" onRequestClose={cancelRowEditor}>
         {/* RN's Modal renders into its own native window on Android, outside
@@ -2128,6 +2140,7 @@ export default function CustomDatabaseScreen({}: Props) {
           photos={photosList}
           relatedDatabase={relatedDatabases[backlinkPickerField.backlinkSource.databaseId] ?? null}
           relatedRows={relatedRows[backlinkPickerField.backlinkSource.databaseId] ?? []}
+          keyboardHeight={keyboardHeight}
           onCreateRow={(title) => createBacklinkRow(backlinkPickerField, title, editingRowId)}
           onChange={(pickedId) => {
             if (pickedId) linkBacklinkRow(backlinkPickerField, pickedId, editingRowId).catch(() => {});
@@ -2157,6 +2170,8 @@ export default function CustomDatabaseScreen({}: Props) {
               : Promise.resolve('')
           }
           onChange={(value) => setDraftValue(relationPickerField.id, value)}
+          onChangeMany={(values) => setDraftValue(relationPickerField.id, values)}
+          keyboardHeight={keyboardHeight}
           onClose={() => setRelationPickerFieldId(null)}
         />
       )}
@@ -2200,6 +2215,7 @@ export default function CustomDatabaseScreen({}: Props) {
           }
           onChange={(value) => writeRowValue(cellPicker.rowId, cellPicker.field.id, value)}
           onChangeMany={(values) => writeRowValue(cellPicker.rowId, cellPicker.field.id, values)}
+          keyboardHeight={keyboardHeight}
           onClose={() => setCellPicker(null)}
         />
       )}
@@ -2413,6 +2429,7 @@ function RelationPickerSheet({
   onCreateRow,
   onChange,
   onChangeMany,
+  keyboardHeight,
   onClose,
 }: {
   field: FieldDef;
@@ -2428,6 +2445,9 @@ function RelationPickerSheet({
   onChange: (value: string) => void;
   // Only for a `multiple` field - the whole new list of ids.
   onChangeMany?: (values: string[]) => void;
+  // Lifts the sheet above the keyboard its own search field raises -
+  // without it the field being typed into is the one thing covered.
+  keyboardHeight: number;
   onClose: () => void;
 }) {
   const [search, setSearch] = useState('');
@@ -2467,7 +2487,7 @@ function RelationPickerSheet({
     return (
       <Modal visible transparent animationType="fade" onRequestClose={onClose}>
         <Pressable style={styles.backdrop} onPress={onClose}>
-          <Pressable style={styles.sheet} onPress={() => {}}>
+          <Pressable style={[styles.sheet, { marginBottom: keyboardHeight }]} onPress={() => {}}>
             <View style={styles.handle} />
             <Text style={styles.title}>{field.name}</Text>
             <TextInput
@@ -2515,7 +2535,7 @@ function RelationPickerSheet({
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={() => {}}>
+        <Pressable style={[styles.sheet, { marginBottom: keyboardHeight }]} onPress={() => {}}>
           <View style={styles.handle} />
           <Text style={styles.title}>{field.name}</Text>
           <TextInput
@@ -2974,8 +2994,15 @@ const styles = StyleSheet.create({
   // gradient the database list sits on - it reads as a document about one
   // record rather than another view of the list.
   pageContainer: {
-    flex: 1,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
     backgroundColor: '#fff',
+    // Above everything this screen draws: the capsule strip (20), an open
+    // param dropdown (30) and the "..." menu (60/61).
+    zIndex: 100,
   },
   pageHeader: {
     flexDirection: 'row',
