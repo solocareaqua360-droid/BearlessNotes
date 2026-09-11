@@ -1,79 +1,112 @@
-import Svg, { Rect } from 'react-native-svg';
-import { View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { BoardCard, BoardColumn } from '../types';
 import { APPROX_CARD_HEIGHT, COLUMN_MIN_HEIGHT, COLUMN_WIDTH } from '../utils/boardLayout';
 
-// A board's own shape, drawn from its cards rather than captured from the
-// screen. A screenshot would need a native capture module, would have to be
-// taken at some moment and stored, and would be out of date from the next
-// edit onward; this is computed from the same data the list already holds,
-// so it is never stale and costs nothing to keep.
+// A board in miniature, built from its own cards rather than captured from
+// the screen. A screenshot would need a native capture module, would be
+// taken at some particular moment and would be out of date from the next
+// edit onward; this is the cards themselves, scaled down, so it cannot be
+// stale.
 //
-// What it shows is the layout, not the content: where the columns stand,
-// how full they are, what sits loose on the canvas. At this size that is
-// the only thing readable - and it is what makes one board recognisable
-// from another at a glance.
+// Real content where there is any: a photo card shows its photo, a sticky
+// keeps its colour, everything else is a pale block. Small, that reads as
+// the shape of the board; large, as the board.
 export default function BoardMiniMap({
   cards,
   columns,
-  size,
-  tint = 'rgba(255,255,255,0.85)',
-  laneTint = 'rgba(255,255,255,0.25)',
+  width,
+  height,
+  showText,
 }: {
   cards: BoardCard[];
   columns?: BoardColumn[];
-  size: number;
-  tint?: string;
-  laneTint?: string;
+  width: number;
+  height: number;
+  // Text cards draw a couple of lines standing in for their words - only
+  // worth it on a tile big enough for them to be lines rather than specks.
+  showText?: boolean;
 }) {
   const lanes = (columns ?? []).map((column) => ({
     x: column.x,
     y: column.y,
     width: COLUMN_WIDTH,
-    // Without measured card heights this is an estimate, and it only has
-    // to be right enough to place the lane among its neighbours.
+    // An estimate: without measured card heights it only has to be close
+    // enough to place the lane among its neighbours.
     height: Math.max(COLUMN_MIN_HEIGHT, 44 + cards.filter((c) => c.columnId === column.id).length * 100),
   }));
-  const boxes = cards.map((card) => ({
-    x: card.x,
-    y: card.y,
-    width: card.width,
-    height: APPROX_CARD_HEIGHT,
-  }));
+  const boxes = cards.map((card) => ({ x: card.x, y: card.y, width: card.width, height: APPROX_CARD_HEIGHT }));
   const all = [...lanes, ...boxes];
-  if (all.length === 0) return <View style={{ width: size, height: size }} />;
+  if (all.length === 0) return <View style={{ width, height }} />;
 
   const minX = Math.min(...all.map((b) => b.x));
   const minY = Math.min(...all.map((b) => b.y));
   const maxX = Math.max(...all.map((b) => b.x + b.width));
   const maxY = Math.max(...all.map((b) => b.y + b.height));
-  // One scale for both axes, so the layout keeps its proportions instead of
-  // being stretched into the square it's drawn in.
-  const span = Math.max(maxX - minX, maxY - minY, 1);
-  const scale = (size - 4) / span;
-  const offsetX = 2 + ((size - 4) - (maxX - minX) * scale) / 2;
-  const offsetY = 2 + ((size - 4) - (maxY - minY) * scale) / 2;
-
+  // One scale for both axes, so the board keeps its proportions instead of
+  // being stretched into whatever box it's drawn in.
+  const scale = Math.min((width - 8) / Math.max(maxX - minX, 1), (height - 8) / Math.max(maxY - minY, 1));
+  const offsetX = 4 + (width - 8 - (maxX - minX) * scale) / 2;
+  const offsetY = 4 + (height - 8 - (maxY - minY) * scale) / 2;
   const place = (b: { x: number; y: number; width: number; height: number }) => ({
-    x: offsetX + (b.x - minX) * scale,
-    y: offsetY + (b.y - minY) * scale,
-    // Nothing below a pixel: a card scaled to 0.4px simply disappears, and
-    // an empty square says less than a rough one.
-    width: Math.max(1.5, b.width * scale),
-    height: Math.max(1.5, b.height * scale),
+    left: offsetX + (b.x - minX) * scale,
+    top: offsetY + (b.y - minY) * scale,
+    width: Math.max(2, b.width * scale),
+    height: Math.max(2, b.height * scale),
   });
 
   return (
-    <Svg width={size} height={size}>
-      {lanes.map((lane, index) => {
-        const r = place(lane);
-        return <Rect key={`lane-${index}`} {...r} rx={2} fill={laneTint} />;
+    <View style={[styles.canvas, { width, height }]}>
+      {lanes.map((lane, index) => (
+        <View key={`lane-${index}`} style={[styles.lane, place(lane)]} />
+      ))}
+      {cards.map((card, index) => {
+        const frame = place(boxes[index]);
+        const type = card.type ?? 'paragraph';
+        if (type === 'image' && card.imageUri) {
+          return (
+            <Image key={card.id} source={{ uri: card.imageUri }} style={[styles.card, frame]} resizeMode="cover" />
+          );
+        }
+        const isSticky = type === 'paragraph' && !!card.color;
+        return (
+          <View
+            key={card.id}
+            style={[styles.card, frame, isSticky ? { backgroundColor: card.color } : styles.plainCard]}
+          >
+            {showText && frame.height > 18 && (
+              <Text style={styles.cardText} numberOfLines={Math.max(1, Math.floor(frame.height / 9))}>
+                {card.text || card.documentTitle || card.linkTitle || card.fileTitle || ''}
+              </Text>
+            )}
+          </View>
+        );
       })}
-      {boxes.map((box, index) => {
-        const r = place(box);
-        const card = cards[index];
-        return <Rect key={`card-${index}`} {...r} rx={1.5} fill={card.color ?? tint} opacity={card.color ? 0.95 : 0.85} />;
-      })}
-    </Svg>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  canvas: {
+    overflow: 'hidden',
+  },
+  lane: {
+    position: 'absolute',
+    borderRadius: 3,
+    backgroundColor: 'rgba(17,24,39,0.06)',
+  },
+  card: {
+    position: 'absolute',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  plainCard: {
+    backgroundColor: 'rgba(255,255,255,0.92)',
+  },
+  cardText: {
+    fontSize: 4,
+    lineHeight: 5,
+    color: 'rgba(17,24,39,0.7)',
+    paddingHorizontal: 2,
+    paddingTop: 1,
+  },
+});

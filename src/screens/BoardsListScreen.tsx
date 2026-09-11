@@ -4,14 +4,24 @@ import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc } from '@react-native-firebase/firestore';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  setDoc,
+  updateDoc,
+} from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import { BoardsStackParamList } from '../navigation';
 import { BoardItem } from '../types';
 import { colorForDocument } from '../utils/documentColor';
 import BoardMiniMap from '../components/BoardMiniMap';
 import RenamePrompt from '../components/RenamePrompt';
-import ContentColumn from '../components/ContentColumn';
+import ContentColumn, { MAX_CONTENT_WIDTH } from '../components/ContentColumn';
 import { GLASS_BODY, GLASS_TEXT } from '../constants/glass';
 
 const ACCENT = '#8B5CF6';
@@ -27,6 +37,20 @@ export default function BoardsListScreen() {
   const [boards, setBoards] = useState<BoardItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [cardMenuBoardId, setCardMenuBoardId] = useState<string | null>(null);
+  // Rows or tiles. The mini-map in a row is 48px - enough to tell two
+  // boards apart, not enough to see what's on one - so the tile view
+  // exists to give it room.
+  const [viewMode, setViewMode] = useState<'list' | 'cards'>('list');
+  useEffect(() => {
+    return onSnapshot(doc(db, 'settings', 'boardsPrefs'), (snapshot) => {
+      const mode = snapshot.data()?.viewMode;
+      if (mode === 'list' || mode === 'cards') setViewMode(mode);
+    });
+  }, []);
+  async function changeViewMode(mode: 'list' | 'cards') {
+    setViewMode(mode);
+    await setDoc(doc(db, 'settings', 'boardsPrefs'), { viewMode: mode }, { merge: true });
+  }
   const [renamingBoard, setRenamingBoard] = useState<BoardItem | null>(null);
 
   useEffect(() => {
@@ -50,6 +74,13 @@ export default function BoardsListScreen() {
   }, []);
 
   const cardMenuBoard = cardMenuBoardId ? boards.find((b) => b.id === cardMenuBoardId) ?? null : null;
+
+  // Same rule as a database's card grid: a tile stays near 300dp and the
+  // grid takes as many columns as fit - two on a phone, more on a wide
+  // screen. The content column caps the width it divides.
+  const gridWidth = Math.min(windowWidth, MAX_CONTENT_WIDTH) - 40;
+  const tileColumns = Math.max(2, Math.min(4, Math.floor(gridWidth / 300)));
+  const tileWidth = Math.floor((gridWidth - 12 * (tileColumns - 1)) / tileColumns);
 
   async function createBoard() {
     const now = Date.now();
@@ -94,7 +125,7 @@ export default function BoardsListScreen() {
             plain icon while there is nothing on the canvas to draw. */}
         <View style={styles.rowIcon}>
           {item.cards.length > 0 || (item.columns?.length ?? 0) > 0 ? (
-            <BoardMiniMap cards={item.cards} columns={item.columns} size={48} tint={text} laneTint={textMuted} />
+            <BoardMiniMap cards={item.cards} columns={item.columns} width={48} height={48} />
           ) : (
             <Ionicons name="apps-outline" size={20} color={text} />
           )}
@@ -110,6 +141,39 @@ export default function BoardsListScreen() {
         <Pressable hitSlop={8} onPress={() => setCardMenuBoardId(item.id)} style={styles.rowActionButton}>
           <Ionicons name="ellipsis-horizontal" size={16} color={textMuted} />
         </Pressable>
+      </Pressable>
+    );
+  }
+
+  // A board as a tile: its own miniature at a size where the cards are
+  // cards, with the name under it.
+  function renderBoardTile(item: BoardItem, tileWidth: number) {
+    const { background, text, textMuted } = colorForDocument(item.id);
+    const mapHeight = Math.round(tileWidth * 0.72);
+    return (
+      <Pressable
+        key={item.id}
+        style={[styles.tile, { width: tileWidth, backgroundColor: background }]}
+        onPress={() => openBoard(item)}
+        onLongPress={() => setCardMenuBoardId(item.id)}
+      >
+        <View style={[styles.tileMap, { height: mapHeight }]}>
+          {item.cards.length > 0 || (item.columns?.length ?? 0) > 0 ? (
+            <BoardMiniMap cards={item.cards} columns={item.columns} width={tileWidth} height={mapHeight} showText />
+          ) : (
+            <View style={styles.tileEmpty}>
+              <Ionicons name="apps-outline" size={24} color={textMuted} />
+            </View>
+          )}
+        </View>
+        <View style={styles.tileBody}>
+          <Text style={[styles.rowTitle, { color: text }]} numberOfLines={1}>
+            {item.title || 'Без назви'}
+          </Text>
+          <Text style={[styles.rowMeta, { color: textMuted }]}>
+            {item.cards.length} {item.cards.length === 1 ? 'картка' : 'карток'}
+          </Text>
+        </View>
       </Pressable>
     );
   }
@@ -139,9 +203,18 @@ export default function BoardsListScreen() {
             does have somewhere to go back to within the same nested stack. */}
         <View style={styles.headerRow}>
           <Text style={styles.header}>Дошка</Text>
-          <Pressable hitSlop={8} style={styles.addButton} onPress={createBoard}>
-            <Ionicons name="add" size={20} color="#fff" />
-          </Pressable>
+          <View style={styles.headerActions}>
+            <Pressable
+              hitSlop={8}
+              style={styles.addButton}
+              onPress={() => changeViewMode(viewMode === 'list' ? 'cards' : 'list')}
+            >
+              <Ionicons name={viewMode === 'cards' ? 'reorder-four-outline' : 'grid-outline'} size={18} color="#fff" />
+            </Pressable>
+            <Pressable hitSlop={8} style={styles.addButton} onPress={createBoard}>
+              <Ionicons name="add" size={20} color="#fff" />
+            </Pressable>
+          </View>
         </View>
 
         {isLoading ? (
@@ -157,7 +230,11 @@ export default function BoardsListScreen() {
             <Text style={styles.emptyHint}>Дошка - вільний канвас для карток, які потім можна зібрати в документ</Text>
           </View>
         ) : (
-          <ScrollView contentContainerStyle={styles.list}>{boards.map(renderBoardRow)}</ScrollView>
+          <ScrollView contentContainerStyle={viewMode === 'cards' ? styles.tileGrid : styles.list}>
+            {viewMode === 'cards'
+              ? boards.map((board) => renderBoardTile(board, tileWidth))
+              : boards.map(renderBoardRow)}
+          </ScrollView>
         )}
 
         <Modal
@@ -257,6 +334,37 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(255,255,255,0.55)',
     textAlign: 'center',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  tileGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    paddingBottom: 140,
+  },
+  tile: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(176,176,176,0.5)',
+  },
+  tileMap: {
+    width: '100%',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  tileEmpty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tileBody: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 2,
   },
   list: {
     paddingVertical: 8,
