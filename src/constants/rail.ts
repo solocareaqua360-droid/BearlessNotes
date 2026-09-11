@@ -32,17 +32,26 @@ export const HALO_INSET = (HALO - RAIL_WIDTH) / 2;
 // The tag row that scrolls along the foot of the screen, opposite the
 // group tabs at the head of it.
 export const TAG_ROW_HEIGHT = 45;
-export const TAG_ROW_PAD = 10;
+export const TAG_ROW_PAD = 4;
 
 // What the rail has to fit between: the group tabs above and the tag row
 // below. The capsule hangs under the tabs and the navigation island
 // stands over the tags; the two round buttons space themselves out in
 // what is left. Constants rather than measurements - four components
-// share this column, and they cannot all measure each other.
-const CHROME_TOP = 10;
-const GROUPS_ROW_HEIGHT = 55;
-// 3 buttons at 24, 18 of padding at each end, two dividers, two borders.
-const CAPSULE_HEIGHT = 148;
+// share this column, and they cannot all measure each other, so these
+// have to be kept in step with the real styles by hand (DocumentsScreen's
+// sideIsland/groupsRow, TagsDrawer's tag row) whenever those change.
+//
+// How far in from the very top edge the group tabs start - shared with
+// DocumentsScreen's own chromeTop, so the two never drift apart.
+export const CHROME_TOP = 4;
+// A pill (45) plus the row's own bottom padding (6).
+const GROUPS_ROW_HEIGHT = 51;
+// 3 buttons at 24 + 18 of padding at each end + 2 dividers at 1 + 4 gaps
+// at 18 + the 1px border top and bottom. This was still the old 4-button,
+// 21px-icon capsule's height (148) after the capsule grew - the mismatch
+// was exactly why the round buttons didn't have room to sit clear of it.
+const CAPSULE_HEIGHT = 184;
 
 export function useRailLayout(windowHeight: number, insetTop: number, insetBottom: number) {
   const tagRowBottom = insetBottom + TAG_ROW_PAD;

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useIsFocused } from '@react-navigation/native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Tag } from '../types';
 import { FONT_REGULAR, FONT_SEMIBOLD, FONT_BOLD, FONT_EXTRABOLD } from '../utils/fonts';
@@ -174,6 +175,13 @@ type Props = {
 // "used" tags, which is what prunes empty branches for them - see
 // buildTree above).
 export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpenButton }: Props) {
+  // Bottom tabs stay mounted when another tab is on screen (React
+  // Navigation doesn't unmount them), and this drawer's own floating
+  // pieces are drawn through a portal that reaches over the WHOLE app -
+  // so without this, the tag row and the "#" button from a screen the
+  // user has merely visited once kept floating over whichever tab they
+  // actually navigated to next.
+  const isFocused = useIsFocused();
   const [isOpen, setIsOpen] = useState(false);
   // The backdrop+panel live inside a real Modal (a separate Android window,
   // always painted above the whole activity - including the floating
@@ -320,7 +328,7 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
       {/* The tags scroll along the foot of the screen, opposite the group
           tabs at its head - the cards pass under them the same way.
           Through the portal, like every other piece of glass here. */}
-      {!isOpen && !hideOpenButton && tags.length > 0 && (
+      {isFocused && !isOpen && !hideOpenButton && tags.length > 0 && (
         <GlassPortal>
           <View style={[styles.tagRow, { bottom: rail.tagRowBottom }]} pointerEvents="box-none">
             <ScrollView
@@ -367,7 +375,7 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
         </GlassPortal>
       )}
 
-      {!isOpen && !hideOpenButton && (
+      {isFocused && !isOpen && !hideOpenButton && (
         <View style={[styles.openSlot, { bottom: rail.tagBottom - HALO_INSET }]} pointerEvents="box-none">
           <GlowHalo color={GLASS_TEXT} />
           <Pressable style={styles.openButton} onPress={openDrawer}>

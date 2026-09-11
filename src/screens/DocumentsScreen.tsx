@@ -46,7 +46,6 @@ import { useSortPref } from '../hooks/useSortPref';
 import { sortItems } from '../utils/sortItems';
 import SortMenuRows from '../components/SortMenuRows';
 import TagsDrawer, { TagFilter, matchesTagFilter, removeTagFromFilter } from '../components/TagsDrawer';
-import TabsTunnel from '../components/TabsTunnel';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
@@ -60,7 +59,7 @@ import SketchEditor from '../components/SketchEditor';
 import { BlurView } from 'expo-blur';
 import { GlassPortal } from '../components/GlassPortal';
 import GlowHalo from '../components/GlowHalo';
-import { HALO, HALO_INSET, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
+import { CHROME_TOP, HALO, HALO_INSET, NAV_HEIGHT, RAIL_GAP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import { useRail } from '../hooks/useRail';
 import { useBlurTarget } from '../components/GlassTarget';
 
@@ -152,7 +151,7 @@ export default function DocumentsScreen() {
   // not the whole window - the open document has the other half.
   const [paneRect, setPaneRect] = useState({ x: 0, width: 0 });
   const insets = useSafeAreaInsets();
-  const chromeTop = insets.top + 10;
+  const chromeTop = insets.top + CHROME_TOP;
   const chromeBottom = chromeTop + chromeHeight + 8;
   // The menu is cut to the island's own height, so it has to be measured
   // rather than guessed - the icons decide it.
@@ -162,6 +161,10 @@ export default function DocumentsScreen() {
   const isFocused = useIsFocused();
   const blurTarget = useBlurTarget();
   const rail = useRail();
+  // How far the list has to clear the bottom edge so its last card never
+  // ends up sitting behind the navigation island - the island is the
+  // tallest thing on the rail's foot and the closest to that edge.
+  const listBottomPad = rail.navBottom + NAV_HEIGHT + RAIL_GAP;
 
   useEffect(() => {
     return onSnapshot(documentsPrefsDoc, (snapshot) => {
@@ -574,18 +577,21 @@ export default function DocumentsScreen() {
           onLayout={(e) => setChromeHeight(e.nativeEvent.layout.height)}
         >
           {groups.length > 0 && (
+            // No TabsTunnel here any more: it drew a capsule blending
+            // scrolled-off pills into whatever sat beside them in the row
+            // - the control capsule, before it moved to the rail. Alone in
+            // its own row now, the tunnel was just a stray oval floating
+            // at the row's right edge with nothing to blend into.
             <View style={styles.groupsRow}>
-              <TabsTunnel>
-                <ProjectTabsRow
-                  items={groups}
-                  selected={groupFilter}
-                  onSelect={setGroupFilter}
-                  unassignedLabel="Без групи"
-                  pinnedTab={{ id: STICKERS_GROUP, label: 'Стікери' }}
-                  dark
-                  blurTarget={blurTarget}
-                />
-              </TabsTunnel>
+              <ProjectTabsRow
+                items={groups}
+                selected={groupFilter}
+                onSelect={setGroupFilter}
+                unassignedLabel="Без групи"
+                pinnedTab={{ id: STICKERS_GROUP, label: 'Стікери' }}
+                dark
+                blurTarget={blurTarget}
+              />
             </View>
           )}
           {activeFilter && (
@@ -663,7 +669,7 @@ export default function DocumentsScreen() {
               keyExtractor={(item) => item.id}
               numColumns={viewMode === 'grid' ? 2 : 1}
               columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
-              contentContainerStyle={[styles.list, { paddingTop: chromeBottom }]}
+              contentContainerStyle={[styles.list, { paddingTop: chromeBottom, paddingBottom: listBottomPad }]}
               renderItem={({ item }) => (
                 <Pressable
                   style={[
@@ -715,7 +721,7 @@ export default function DocumentsScreen() {
             columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
             // The cards start below the floating tabs and scroll up under
             // them from there.
-            contentContainerStyle={[styles.list, { paddingTop: chromeBottom }]}
+            contentContainerStyle={[styles.list, { paddingTop: chromeBottom, paddingBottom: listBottomPad }]}
             renderItem={({ item }) => {
               // Grid cards reclaim the thumbnail's space for text when a
               // document has no image (see DocumentCard's own noImage
@@ -1075,8 +1081,8 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingVertical: 8,
-    // Clear of the tag row at the foot of the screen.
-    paddingBottom: 140,
+    // paddingBottom comes from listBottomPad - it depends on the window
+    // size and the tag/add buttons' own spread, not a fixed number.
   },
   // The square the halo is drawn on: twice the button across, centred on
   // it, because the button's own box would clip the light.
