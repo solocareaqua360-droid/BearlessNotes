@@ -6,7 +6,9 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export type BoardSection = { title: string | null; cards: BoardCard[] };
+// columnId is null for the cards that never landed in a column - the
+// section is real, it just has no heading and no lane behind it.
+export type BoardSection = { columnId: string | null; title: string | null; cards: BoardCard[] };
 
 // The board read as a document would read it: columns left to right, the
 // cards inside one top to bottom, and whatever never landed in a column
@@ -16,13 +18,14 @@ export type BoardSection = { title: string | null; cards: BoardCard[] };
 export function boardSections(board: { cards: BoardCard[]; columns?: BoardColumn[] }): BoardSection[] {
   const columns = [...(board.columns ?? [])].sort((a, b) => a.x - b.x || a.y - b.y);
   const sections: BoardSection[] = columns.map((column) => ({
+    columnId: column.id,
     title: column.title?.trim() || 'Без назви',
     cards: board.cards.filter((c) => c.columnId === column.id).sort((a, b) => a.y - b.y),
   }));
   const loose = board.cards
     .filter((c) => !c.columnId || !columns.some((col) => col.id === c.columnId))
     .sort((a, b) => a.y - b.y || a.x - b.x);
-  if (loose.length > 0) sections.push({ title: null, cards: loose });
+  if (loose.length > 0) sections.push({ columnId: null, title: null, cards: loose });
   return sections;
 }
 

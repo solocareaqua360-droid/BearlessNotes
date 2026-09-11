@@ -12,7 +12,9 @@ import {
   View,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+// gesture-handler's ScrollView for the outline: it lives over a canvas
+// that claims pans of its own, and the core RN one loses the drag to it.
+import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import Animated, {
   makeMutable,
   runOnJS,
@@ -55,7 +57,8 @@ import { linkDocId } from '../utils/linkId';
 import { blockFromFile, blockFromLink, blockFromPhoto } from '../utils/copyToNote';
 import { backupFileToDrive } from '../utils/googleDrive';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
-import { generateDocumentFromBoard } from '../utils/boardToDocument';
+import { boardSections, generateDocumentFromBoard } from '../utils/boardToDocument';
+import { stripFormatting } from '../utils/documentPreview';
 import DocumentEditorScreen from './DocumentEditorScreen';
 
 const AUTOSAVE_DELAY_MS = 600;
@@ -820,6 +823,12 @@ export default function BoardScreen() {
   // reopen and the document can find its way back here.
   const [generatedDocId, setGeneratedDocId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  // The board read as the document it adds up to: same cards, same order,
+  // stacked vertically instead of spread over a canvas. Not a separate
+  // copy of anything - it renders the very cards the canvas does, through
+  // the same boardSections() the generated document is built from, so what
+  // you read here is what you get on export.
+  const [outlineMode, setOutlineMode] = useState(false);
   const [paneFullscreen, setPaneFullscreen] = useState(false);
   // The canvas's own size, which stops being the window's the moment a
   // document takes half of it. Screen->world maths below reads this, not
@@ -1485,6 +1494,60 @@ export default function BoardScreen() {
     );
   }
 
+  // Moving a card one place up or down in reading order. Inside a column
+  // that's a swap of the two cards' y (the column's own stacking recomputes
+  // the real positions from that order - see reflowColumns); at a column's
+  // edge it hands the card to the neighbouring column instead, which is
+  // the same move a drag across the canvas would make.
+  function moveCardInOutline(cardId: string, delta: -1 | 1) {
+    setCards((prev) => {
+      const sections = boardSections({ cards: prev, columns });
+      const sectionIndex = sections.findIndex((s) => s.cards.some((c) => c.id === cardId));
+      if (sectionIndex < 0) return prev;
+      const section = sections[sectionIndex];
+      const index = section.cards.findIndex((c) => c.id === cardId);
+      const neighbour = section.cards[index + delta];
+
+      if (neighbour) {
+        return prev.map((card) => {
+          if (card.id === cardId) return { ...card, y: neighbour.y };
+          if (card.id === neighbour.id) return { ...card, y: section.cards[index].y };
+          return card;
+        });
+      }
+
+      // Past the end of this section: the next one, if there is one.
+      const target = sections[sectionIndex + delta];
+      if (!target) return prev;
+      const edgeY =
+        target.cards.length === 0
+          ? 0
+          : delta === 1
+            ? Math.min(...target.cards.map((c) => c.y)) - 1
+            : Math.max(...target.cards.map((c) => c.y)) + 1;
+      return prev.map((card) => {
+        if (card.id !== cardId) return card;
+        if (target.columnId === null) {
+          // Into the loose section: the key is dropped rather than set to
+          // undefined, which Firestore rejects outright.
+          const { columnId: _columnId, ...rest } = card;
+          return { ...rest, y: edgeY };
+        }
+        return { ...card, columnId: target.columnId, y: edgeY };
+      });
+    });
+  }
+
+  // One line of the outline: what this card would read as in the document.
+  function outlineCardLabel(card: BoardCard): string {
+    if (card.type === 'document') return card.documentTitle?.trim() || 'Документ';
+    if (card.type === 'link') return card.linkTitle?.trim() || card.linkUrl || 'Посилання';
+    if (card.type === 'image') return card.imageTitle?.trim() || 'Зображення';
+    if (card.type === 'file') return card.fileTitle?.trim() || 'Файл';
+    const text = stripFormatting(card.text ?? '').trim();
+    return text || 'Порожня картка';
+  }
+
   function editDocumentCard(card: BoardCard) {
     if (!card.documentId) return;
     if (isTwoPane) {
@@ -1858,6 +1921,62 @@ export default function BoardScreen() {
           </View>
         </GestureDetector>
 
+        {outlineMode && (
+          // Over the canvas rather than instead of it: the canvas keeps its
+          // pan, its zoom and every measured card height, so switching back
+          // lands exactly where it was left.
+          <ScrollView style={styles.outline} contentContainerStyle={styles.outlineContent}>
+            {boardSections({ cards, columns }).map((section, sectionIndex) => (
+              <View key={section.columnId ?? 'loose'} style={styles.outlineSection}>
+                <Text style={styles.outlineHeading}>{section.title ?? 'Поза колонками'}</Text>
+                {section.cards.length === 0 && <Text style={styles.outlineEmpty}>Порожня колонка</Text>}
+                {section.cards.map((card, index) => (
+                  <View key={card.id} style={styles.outlineRow}>
+                    <Ionicons
+                      name={
+                        card.type === 'document'
+                          ? 'document-text-outline'
+                          : card.type === 'link'
+                            ? 'link-outline'
+                            : card.type === 'image'
+                              ? 'image-outline'
+                              : card.type === 'file'
+                                ? 'document-attach-outline'
+                                : 'ellipse-outline'
+                      }
+                      size={16}
+                      color="#6B7280"
+                    />
+                    <Pressable
+                      style={styles.outlineLabelTap}
+                      onPress={() => (card.type === 'document' ? editDocumentCard(card) : undefined)}
+                    >
+                      <Text style={styles.outlineLabel} numberOfLines={2}>
+                        {outlineCardLabel(card)}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      hitSlop={6}
+                      style={styles.outlineMove}
+                      disabled={sectionIndex === 0 && index === 0}
+                      onPress={() => moveCardInOutline(card.id, -1)}
+                    >
+                      <Ionicons
+                        name="chevron-up"
+                        size={18}
+                        color={sectionIndex === 0 && index === 0 ? '#D1D5DB' : '#6B7280'}
+                      />
+                    </Pressable>
+                    <Pressable hitSlop={6} style={styles.outlineMove} onPress={() => moveCardInOutline(card.id, 1)}>
+                      <Ionicons name="chevron-down" size={18} color="#6B7280" />
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            ))}
+          </ScrollView>
+        )}
+
         <View style={styles.headerRow} pointerEvents="box-none">
           <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
             <Ionicons name="chevron-back" size={24} color="#111827" />
@@ -1866,6 +1985,12 @@ export default function BoardScreen() {
             <Text style={styles.headerTitle} numberOfLines={1}>
               {title || 'Без назви'}
             </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.toolButton, outlineMode && styles.toolButtonActive]}
+            onPress={() => setOutlineMode((v) => !v)}
+          >
+            <Ionicons name="list-outline" size={20} color={outlineMode ? '#fff' : '#111827'} />
           </Pressable>
           <Pressable style={styles.toolButton} onPress={confirmBuildBoardDocument}>
             <Ionicons
@@ -2215,6 +2340,54 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 15,
     color: '#6B7280',
+  },
+  outline: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: '#F3F4F6',
+  },
+  outlineContent: {
+    // Clear of the header capsule above (top: 56 plus its own height) and
+    // of the floating tab bar below.
+    paddingTop: 104,
+    paddingHorizontal: 20,
+    paddingBottom: 160,
+    gap: 18,
+  },
+  outlineSection: {
+    gap: 6,
+  },
+  outlineHeading: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  outlineEmpty: {
+    fontSize: 13,
+    color: '#9CA3AF',
+  },
+  outlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  outlineLabelTap: {
+    flex: 1,
+  },
+  outlineLabel: {
+    fontSize: 14,
+    color: '#111827',
+  },
+  outlineMove: {
+    width: 28,
+    alignItems: 'center',
   },
   headerRow: {
     position: 'absolute',
