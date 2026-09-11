@@ -4,7 +4,7 @@
     "slug": "bearless-notes",
     "version": "1.0.0",
     "scheme": "mindeva",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
@@ -20,6 +20,11 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
+      // DeX and any other desktop window: without this Android refuses the
+      // app a real window and upscales a phone-sized one instead, which is
+      // why the interface looked like stretched pixels there rather than
+      // like itself at a larger size.
+      "resizeableActivity": true,
       "predictiveBackGestureEnabled": false,
       "softwareKeyboardLayoutMode": "resize",
       "package": "com.bearlessnotes.notes",
@@ -44,20 +49,32 @@
           "cameraPermission": "mindEva потребує доступу до камери, щоб сканувати документи"
         }
       ],
+      [
+        "expo-splash-screen",
+        {
+          // The colour the first screen's gradient starts with, so the
+          // splash doesn't flash a different background before the app
+          // draws - see App.tsx's own stand-in view, which uses the same.
+          "backgroundColor": "#705648",
+          "imageWidth": 200
+        }
+      ],
       "expo-notifications",
       "expo-audio",
       [
         "expo-share-intent",
         {
-          // "*/*" alone already matches every single-item share (text,
-          // links, photos, PDFs, whatever else) - this is Android-only
-          // for now (the app has no iOS build), so the iOS-specific
-          // options above this (activation rules, extension name) are
-          // left at their defaults and never exercised.
-          "androidIntentFilters": ["*/*"],
-          "androidMultiIntentFilters": ["image/*", "video/*", "*/*"]
+          "androidIntentFilters": [
+            "*/*"
+          ],
+          "androidMultiIntentFilters": [
+            "image/*",
+            "video/*",
+            "*/*"
+          ]
         }
-      ]
+      ],
+      "expo-splash-screen"
     ],
     "extra": {
       "eas": {
