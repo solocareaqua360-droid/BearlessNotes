@@ -636,7 +636,18 @@ export default function CalendarScreen() {
   // the header above doesn't name it.
   function renderDayNote(key: string, date: Date, primary: boolean) {
     return (
-      <View style={[styles.noteArea, isTwoPane && styles.notePane]}>
+      <View
+        style={[
+          styles.noteArea,
+          isTwoPane && styles.notePane,
+          // Two pages run edge to edge, the way a single document does -
+          // no margin, no rounded corner, nothing of the background around
+          // them. The hairline between them is the only thing saying there
+          // are two, and only the second page carries it.
+          twoPages && styles.notePageFull,
+          twoPages && !primary && styles.notePageSecond,
+        ]}
+      >
         {spread && (
           <Text style={styles.pageDateLabel}>
             {WEEKDAY_SHORT[mondayIndex(date)]}, {formatBigDate(date)}
@@ -1333,6 +1344,14 @@ const styles = StyleSheet.create({
   // rather than a grid and a list of cards that size themselves.
   sidePane: {
     flex: 1,
+  },
+  notePageFull: {
+    marginHorizontal: 0,
+    borderRadius: 0,
+  },
+  notePageSecond: {
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(17,24,39,0.12)',
   },
   notePane: {
     flex: 1.3,
