@@ -2553,7 +2553,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       //    TextInput remounts it, which drops the keyboard mid-sentence.
       if (saveTimeoutRef.current || saveStatus === 'saving' || boardSyncingRef.current) return;
       if (focusedBlockIdRef.current) return;
-      setBlocks((current) => (blocksEqual(current, incoming) ? current : incoming));
+      setBlocks((current) => {
+        // Same rule from this side: a line typed here that hasn't become a
+        // card yet means this copy is the newer one, whatever arrives.
+        const localIsAhead = current.some(
+          (block) => !block.sourceCardId && !block.sourceColumnId && !block.sourceDocumentId
+        );
+        if (localIsAhead) return current;
+        return blocksEqual(current, incoming) ? current : incoming;
+      });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceBoardId, isLoaded, documentId, saveStatus]);

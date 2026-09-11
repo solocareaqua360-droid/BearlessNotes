@@ -1507,6 +1507,24 @@ export default function BoardScreen() {
         const ref = doc(db, 'documents', generatedDocId);
         const snapshot = await getDoc(ref);
         const current = (snapshot.data()?.blocks ?? []) as Block[];
+
+        // Never overwrite a document that is AHEAD of this board. Two ways
+        // it can be, and both end with text vanishing from under the user
+        // if this rebuild goes through:
+        //  - a paragraph typed into the document that hasn't become a card
+        //    yet (no source of any kind on it - the document side makes the
+        //    card a moment later, and this rebuild would erase the line
+        //    before that happens);
+        //  - a block naming a card this screen hasn't heard about yet,
+        //    because the write that created it is still on its way here.
+        const cardIds = new Set(cards.map((c) => c.id));
+        const documentIsAhead = current.some(
+          (block) =>
+            (!block.sourceCardId && !block.sourceColumnId && !block.sourceDocumentId) ||
+            (block.sourceCardId && !cardIds.has(block.sourceCardId))
+        );
+        if (documentIsAhead) return;
+
         const next = await buildBlocksFromBoard({ cards, columns });
         if (cancelled || blocksEqual(current, next)) return;
         await updateDoc(ref, { blocks: next, updatedAt: Date.now() });
