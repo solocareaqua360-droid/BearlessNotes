@@ -57,7 +57,7 @@ import { linkDocId } from '../utils/linkId';
 import { blockFromFile, blockFromLink, blockFromPhoto } from '../utils/copyToNote';
 import { backupFileToDrive } from '../utils/googleDrive';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
-import { buildBlocksFromBoard, generateDocumentFromBoard } from '../utils/boardToDocument';
+import { blocksEqual, buildBlocksFromBoard, generateDocumentFromBoard } from '../utils/boardToDocument';
 import BoardDocumentPreview from '../components/BoardDocumentPreview';
 import DocumentEditorScreen from './DocumentEditorScreen';
 
@@ -823,6 +823,11 @@ export default function BoardScreen() {
   // reopen and the document can find its way back here.
   const [generatedDocId, setGeneratedDocId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  // Whether the document open in the pane has keystrokes it hasn't saved
+  // yet. While it does, the rebuild below waits: the side being touched is
+  // the source, and rebuilding from the board would overwrite a line that
+  // hasn't reached the board yet.
+  const [paneSaving, setPaneSaving] = useState(false);
   // The board seen as the document it would make - built in memory from
   // the cards, shown in the right-hand half, and written to the Documents
   // database only when "Сформувати" is pressed. Opened by long-pressing a
@@ -1437,6 +1442,41 @@ export default function BoardScreen() {
       prev.map((c) => (c.id === card.id ? { ...c, documentExpanded: !c.documentExpanded } : c))
     );
   }
+
+  // Once a board has a document, that document follows it: change the
+  // board and the document is rebuilt on the same beat, with no button in
+  // between. Three rules keep this from turning into two writes chasing
+  // each other (see the document side, which does the reverse):
+  //  - build, compare, and write ONLY if the result differs from what is
+  //    already stored, so a cycle stops as soon as both sides agree;
+  //  - a longer debounce than the editor's own save, so a document being
+  //    typed into lands its write first and this rebuild sees it;
+  //  - one direction at a time (syncingRef), so this screen's own write
+  //    doesn't come back as somebody else's change.
+  const syncingRef = useRef(false);
+  useEffect(() => {
+    if (!isLoaded || !generatedDocId) return;
+    if (paneSaving && paneDocId === generatedDocId) return;
+    let cancelled = false;
+    const timeout = setTimeout(async () => {
+      if (syncingRef.current) return;
+      syncingRef.current = true;
+      try {
+        const ref = doc(db, 'documents', generatedDocId);
+        const snapshot = await getDoc(ref);
+        const current = (snapshot.data()?.blocks ?? []) as Block[];
+        const next = await buildBlocksFromBoard({ cards, columns });
+        if (cancelled || blocksEqual(current, next)) return;
+        await updateDoc(ref, { blocks: next, updatedAt: Date.now() });
+      } finally {
+        syncingRef.current = false;
+      }
+    }, 1200);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [isLoaded, generatedDocId, cards, columns, paneSaving, paneDocId]);
 
   // The preview is rebuilt from the board as the board changes - move a
   // card and the document you're reading beside it moves with it. Debounced
@@ -2166,6 +2206,7 @@ export default function BoardScreen() {
             navigation={navigation as unknown as NativeStackNavigationProp<RootStackParamList>}
             isFullscreen={paneFullscreen}
             onToggleFullscreen={() => setPaneFullscreen((v) => !v)}
+            onSaveStatusChange={(status) => setPaneSaving(status === 'saving')}
             onClose={() => {
               setPaneDocId(null);
               setPaneFullscreen(false);

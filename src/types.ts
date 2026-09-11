@@ -109,6 +109,22 @@ export interface Block {
   // duplicate.
   driveFileId?: string;
   driveBytes?: number;
+  // Where this block came from, when it was generated from a board (see
+  // boardToDocument.ts). This is what makes the link two-way: without it a
+  // rebuild is the only possible direction, because an edited block has no
+  // way to say which card it belongs to.
+  //
+  // Exactly one of these is set on a generated block:
+  //  - sourceCardId: it IS that board card, and editing it edits the card;
+  //  - sourceColumnId: it's the column's own heading or the rule above it;
+  //  - sourceDocumentId + sourceBlockId: it was inlined from a document
+  //    card, so it belongs to THAT document, not to the board.
+  // A block with none of them is one written into the document by hand -
+  // which is how a new card gets made from the document side.
+  sourceCardId?: string;
+  sourceColumnId?: string;
+  sourceDocumentId?: string;
+  sourceBlockId?: string;
   // 'image' blocks only - a user-given name, always renamable (see
   // PhotosScreen). Absent until the user names it; the photo grid falls
   // back to a generic "Без назви" label, never the raw local file path.

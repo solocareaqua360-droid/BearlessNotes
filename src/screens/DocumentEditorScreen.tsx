@@ -70,7 +70,9 @@ import {
 } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
-import { Block, BlockType, Group, SketchElement, Tag, TableRow } from '../types';
+import { Block, BlockType, BoardCard, BoardColumn, Group, SketchElement, Tag, TableRow } from '../types';
+import { applyDocumentToBoard, blocksEqual } from '../utils/boardToDocument';
+import { DEFAULT_CARD_WIDTH, WORLD_CENTER } from '../utils/boardLayout';
 import { groupAppliesTo } from '../utils/groups';
 import { RootStackParamList } from '../navigation';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
@@ -1954,6 +1956,10 @@ type Props =
       // the button would toggle nothing.
       isFullscreen?: boolean;
       onToggleFullscreen?: () => void;
+      // Mirrored out so the screen around this pane can hold off writing
+      // the same document while there are keystrokes here that haven't
+      // been saved yet - see BoardScreen's live rebuild.
+      onSaveStatusChange?: (status: 'saved' | 'saving') => void;
     };
 
 export type DocumentEditorHandle = {
@@ -1967,7 +1973,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const navigation = props.navigation;
   const extraFields = 'embedded' in props ? (props.extraFields ?? {}) : {};
   const onSelectModeChange = 'embedded' in props ? props.onSelectModeChange : undefined;
-  const onSaveStatusChange = 'embedded' in props ? props.onSaveStatusChange : undefined;
+  const onSaveStatusChange =
+    'embedded' in props ? props.onSaveStatusChange : 'pane' in props ? props.onSaveStatusChange : undefined;
   // In a pane there is nothing on a stack to go back to - the arrow empties
   // the pane and leaves the list beside it alone.
   const closePane = 'pane' in props ? props.onClose : null;
@@ -2502,7 +2509,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           ...extraFields,
         },
         { merge: true }
-      ).then(() => setSaveStatus('saved'));
+      ).then(() => {
+        setSaveStatus('saved');
+        syncBoardFromDocument(blocks);
+      });
       syncTasksForDocument(blocks);
       syncLinksForDocument(blocks);
       syncPhotosForDocument(blocks);
@@ -2516,6 +2526,76 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, blocks, coverImageUri, paperColorEnabled, groupId, isLoaded]);
+
+  // A document built from a board is no longer only written here: the
+  // board rewrites it whenever it changes, including while this editor is
+  // open beside it. So it listens, and takes what arrives - but only while
+  // there is nothing unsaved of its own, which is the whole "the side
+  // you're touching is the source" rule. Equal content is ignored, so this
+  // never reacts to its own write.
+  useEffect(() => {
+    if (!sourceBoardId || !isLoaded) return;
+    return onSnapshot(doc(db, 'documents', documentId), (snapshot) => {
+      const incoming = (snapshot.data()?.blocks ?? []) as Block[];
+      if (incoming.length === 0) return;
+      setBlocks((current) => {
+        if (saveStatus === 'saving') return current;
+        return blocksEqual(current, incoming) ? current : incoming;
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceBoardId, isLoaded, documentId, saveStatus]);
+
+  // The other half of the live link (the board writes this document; see
+  // BoardScreen's own rebuild). Runs after the document's own save has
+  // landed, so the board is never read back against text that isn't stored
+  // yet, and writes only what actually differs - which is what stops the
+  // two sides from writing each other in circles.
+  const boardSyncingRef = useRef(false);
+  async function syncBoardFromDocument(currentBlocks: Block[]) {
+    if (!sourceBoardId || boardSyncingRef.current) return;
+    boardSyncingRef.current = true;
+    try {
+      const boardRef = doc(db, 'boards', sourceBoardId);
+      const snapshot = await getDoc(boardRef);
+      const data = snapshot.data() as { cards?: BoardCard[]; columns?: BoardColumn[] } | undefined;
+      if (!data) return;
+      const result = applyDocumentToBoard(currentBlocks, { cards: data.cards ?? [], columns: data.columns }, {
+        defaultCardWidth: DEFAULT_CARD_WIDTH,
+        looseOrigin: { x: WORLD_CENTER, y: WORLD_CENTER },
+      });
+      if (!result.changed) return;
+      // The one thing worth stopping for. A mismatch in the mapping would
+      // show up as a pile of cards disappearing at once, and by then the
+      // board is already empty - so past a few, it asks first.
+      if (result.removedCardIds.length > 3) {
+        Alert.alert(
+          'Видалити картки?',
+          `Зміни в документі прибирають ${result.removedCardIds.length} карток із дошки.`,
+          [
+            { text: 'Не чіпати дошку', style: 'cancel' },
+            {
+              text: 'Видалити',
+              style: 'destructive',
+              onPress: () => {
+                updateDoc(boardRef, { cards: result.cards, columns: result.columns, updatedAt: Date.now() });
+              },
+            },
+          ]
+        );
+        return;
+      }
+      await updateDoc(boardRef, { cards: result.cards, columns: result.columns, updatedAt: Date.now() });
+      // A paragraph typed straight into the document now has a card behind
+      // it; stamping that onto the block is what keeps the next pass from
+      // making a second card for the same line.
+      if (!blocksEqual(result.blocks, currentBlocks)) {
+        setBlocks(result.blocks);
+      }
+    } finally {
+      boardSyncingRef.current = false;
+    }
+  }
 
   // Whoever set focusIdRef wants that block to be the live input next. A
   // block only has a TextInput while it's the active one, so this first
