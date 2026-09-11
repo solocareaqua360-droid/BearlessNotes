@@ -149,7 +149,11 @@ export default function BoardColumnDocument({
           inputs.current[card.id] = ref;
         }}
         style={styles.paragraph}
-        defaultValue={card.text ?? ''}
+        // Controlled, not defaultValue: this view and the canvas show the
+        // same card, and an uncontrolled input keeps whatever it was given
+        // when it mounted - so a card edited on the board sat here
+        // unchanged until the pane was reopened.
+        value={card.text ?? ''}
         onChangeText={(text) => onChangeCardText(card.id, text)}
         multiline
         placeholder="Текст"
@@ -192,7 +196,7 @@ export default function BoardColumnDocument({
         {type === 'bulleted' && <Text style={styles.blockBullet}>•</Text>}
         <TextInput
           style={styles.paragraph}
-          defaultValue={block.text ?? ''}
+          value={block.text ?? ''}
           onChangeText={(text) => changeDocumentBlock(documentId, block.id, text)}
           multiline
         />
