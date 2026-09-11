@@ -9,6 +9,7 @@ import { db } from '../firebase';
 import { BoardsStackParamList } from '../navigation';
 import { BoardItem } from '../types';
 import { colorForDocument } from '../utils/documentColor';
+import BoardMiniMap from '../components/BoardMiniMap';
 import RenamePrompt from '../components/RenamePrompt';
 import ContentColumn from '../components/ContentColumn';
 
@@ -37,6 +38,7 @@ export default function BoardsListScreen() {
             id: docSnapshot.id,
             title: data.title ?? 'Без назви',
             cards: data.cards ?? [],
+            columns: data.columns ?? [],
             createdAt: data.createdAt ?? 0,
             updatedAt: data.updatedAt ?? 0,
           };
@@ -86,8 +88,15 @@ export default function BoardsListScreen() {
         onPress={() => openBoard(item)}
         onLongPress={() => setCardMenuBoardId(item.id)}
       >
+        {/* The board's own layout in miniature, drawn from its cards -
+            always current, because it is the cards. Falls back to the
+            plain icon while there is nothing on the canvas to draw. */}
         <View style={styles.rowIcon}>
-          <Ionicons name="apps-outline" size={20} color={text} />
+          {item.cards.length > 0 || (item.columns?.length ?? 0) > 0 ? (
+            <BoardMiniMap cards={item.cards} columns={item.columns} size={48} tint={text} laneTint={textMuted} />
+          ) : (
+            <Ionicons name="apps-outline" size={20} color={text} />
+          )}
         </View>
         <View style={styles.rowBody}>
           <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
@@ -271,8 +280,8 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   rowIcon: {
-    width: 40,
-    height: 40,
+    width: 52,
+    height: 52,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
