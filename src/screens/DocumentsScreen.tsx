@@ -412,29 +412,52 @@ export default function DocumentsScreen() {
         </View>
 
         {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
-        {menuOpen && (
-          <View style={styles.menuPanel}>
-            <Text style={styles.menuSectionLabel}>Вигляд</Text>
-            <Pressable style={styles.menuRow} onPress={() => changeViewMode('list')}>
-              <Ionicons name="reorder-four-outline" size={17} color={GLASS_TEXT} />
-              <Text style={styles.menuRowLabel}>Список</Text>
-              {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-            </Pressable>
-            <Pressable style={styles.menuRow} onPress={() => changeViewMode('grid')}>
-              <Ionicons name="grid-outline" size={17} color={GLASS_TEXT} />
-              <Text style={styles.menuRowLabel}>Сітка</Text>
-              {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-            </Pressable>
-            <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
-          </View>
-        )}
 
-        {/* Groups and the whole control capsule share one row - the title
-            keeps the line above to itself, same as CustomDatabaseScreen.
-            The capsule's fourth button is what shows/hides the sticker
-            strip below. */}
-        <View style={styles.groupsRow}>
-          {groups.length > 0 ? (
+        {/* The control capsule stands on its edge at the right of the
+            screen instead of sharing a line with the group tabs - it was
+            the tabs' own room it was taking. The "..." menu opens to its
+            left, at the same height, so the two travel together. */}
+        <View style={styles.sideIslandLayer} pointerEvents="box-none">
+          <View style={styles.sideIslandRow}>
+            {menuOpen && (
+              <View style={styles.menuPanel}>
+                <Text style={styles.menuSectionLabel}>Вигляд</Text>
+                <Pressable style={styles.menuRow} onPress={() => changeViewMode('list')}>
+                  <Ionicons name="reorder-four-outline" size={17} color={GLASS_TEXT} />
+                  <Text style={styles.menuRowLabel}>Список</Text>
+                  {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+                </Pressable>
+                <Pressable style={styles.menuRow} onPress={() => changeViewMode('grid')}>
+                  <Ionicons name="grid-outline" size={17} color={GLASS_TEXT} />
+                  <Text style={styles.menuRowLabel}>Сітка</Text>
+                  {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+                </Pressable>
+                <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
+              </View>
+            )}
+            <View style={styles.sideIsland}>
+              <Pressable hitSlop={8} onPress={() => navigation.navigate('Search')}>
+                <Ionicons name="search" size={17} color="#fff" />
+              </Pressable>
+              <View style={styles.sideIslandDivider} />
+              <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
+                <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
+              </Pressable>
+              <View style={styles.sideIslandDivider} />
+              <Pressable hitSlop={8} onPress={toggleSelectMode}>
+                <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
+              </Pressable>
+              <View style={styles.sideIslandDivider} />
+              <Pressable hitSlop={8} onPress={toggleStickersCollapsed}>
+                <Ionicons name={stickersCollapsed ? 'albums-outline' : 'albums'} size={17} color="#fff" />
+              </Pressable>
+            </View>
+          </View>
+        </View>
+
+        {/* The tabs now have the whole line to themselves. */}
+        {groups.length > 0 && (
+          <View style={styles.groupsRow}>
             <TabsTunnel>
               <ProjectTabsRow
                 items={groups}
@@ -444,27 +467,8 @@ export default function DocumentsScreen() {
                 dark
               />
             </TabsTunnel>
-          ) : (
-            <View style={styles.groupsSpacer} />
-          )}
-          <View style={[styles.headerButtons, groups.length > 0 && styles.headerButtonsOffset]}>
-            <Pressable hitSlop={6} onPress={() => navigation.navigate('Search')}>
-              <Ionicons name="search" size={17} color="#fff" />
-            </Pressable>
-            <View style={styles.headerButtonsDivider} />
-            <Pressable hitSlop={6} onPress={() => setMenuOpen((v) => !v)}>
-              <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
-            </Pressable>
-            <View style={styles.headerButtonsDivider} />
-            <Pressable hitSlop={6} onPress={toggleSelectMode}>
-              <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
-            </Pressable>
-            <View style={styles.headerButtonsDivider} />
-            <Pressable hitSlop={6} onPress={toggleStickersCollapsed}>
-              <Ionicons name={stickersCollapsed ? 'albums-outline' : 'albums'} size={17} color="#fff" />
-            </Pressable>
           </View>
-        </View>
+        )}
 
         {!stickersCollapsed && freeStickers.length > 0 && (
           <ScrollView
@@ -774,29 +778,41 @@ const styles = StyleSheet.create({
     // title needs to sit on it in white now.
     color: '#fff',
   },
-  // Search + "..." (stub) merged into one elongated glass capsule instead
-  // of two separate circles.
-  headerButtons: {
+  // The capsule, stood on its end against the right edge. A full-height
+  // layer rather than a `top: 50%` offset, so it centres itself without
+  // knowing how tall it is; box-none keeps the empty column above and
+  // below it from swallowing taps meant for the list.
+  sideIslandLayer: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    // Android keeps ~20px at each edge for its own back gesture, so the
+    // island sits a little in from the edge rather than against it.
+    right: 14,
+    justifyContent: 'center',
+    // Above the menu's backdrop (5), so the "..." button can also close
+    // the menu it opened.
+    zIndex: 6,
+  },
+  sideIslandRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+  },
+  sideIsland: {
+    alignItems: 'center',
     gap: 12,
-    // Same height as a group pill next to it (see ProjectTabsRow's tab).
-    paddingVertical: 7,
-    paddingHorizontal: 14,
-    marginRight: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 7,
     borderRadius: 999,
     backgroundColor: 'rgba(20,20,20,0.35)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
   },
-  // The tabs row's own bottom padding would otherwise leave the capsule
-  // sitting lower than the pills it stands next to.
-  headerButtonsOffset: {
-    marginBottom: 10,
-  },
-  headerButtonsDivider: {
-    width: 1,
-    height: 16,
+  // The divider turns with the capsule: a short rule across it, not down it.
+  sideIslandDivider: {
+    width: 16,
+    height: 1,
     backgroundColor: 'rgba(255,255,255,0.3)',
   },
   menuBackdrop: {
@@ -807,10 +823,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 5,
   },
+  // Sits in the island's own row now, so it needs no coordinates of its
+  // own - it opens level with the button that opened it.
   menuPanel: {
-    position: 'absolute',
-    top: 96,
-    right: 20,
     width: 200,
     backgroundColor: GLASS_BODY,
     borderRadius: 14,
@@ -820,7 +835,6 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
     elevation: 10,
-    zIndex: 6,
   },
   menuSectionLabel: {
     fontSize: 11,
@@ -849,19 +863,13 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 20,
   },
-  // Groups on the left, the control capsule on the right, one line.
+  // The groups have the line to themselves now the capsule has moved to
+  // the edge. Still a row: TabsTunnel's inner `flex: 1` only means
+  // "the rest of the width" inside a row.
   groupsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    // Same breathing room between the tunnel and the capsule as
-    // CustomDatabaseScreen's controlsRow.
-    gap: 8,
     paddingBottom: 6,
-  },
-  // Pushes the capsule to the right when there are no groups to fill the
-  // row's left side.
-  groupsSpacer: {
-    flex: 1,
   },
   // Without flexGrow/flexShrink: 0, this horizontal ScrollView competes for
   // height with the documents FlatList below it and gets squeezed shorter
