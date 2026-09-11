@@ -54,6 +54,8 @@ import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { linkDocId } from '../utils/linkId';
 import { blockFromFile, blockFromLink, blockFromPhoto } from '../utils/copyToNote';
 import { backupFileToDrive } from '../utils/googleDrive';
+import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
+import DocumentEditorScreen from './DocumentEditorScreen';
 
 const AUTOSAVE_DELAY_MS = 600;
 const MIN_SCALE = 0.4;
@@ -806,6 +808,18 @@ export default function BoardScreen() {
   const { params } = useRoute<Props['route']>();
   const { boardId } = params;
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const { isTwoPane } = useResponsiveLayout();
+  // A document card opened beside the board instead of over it: the board
+  // keeps panning and scrolling while the document is being written, which
+  // is the whole point of a board full of documents. Full screen is still
+  // a tap away, so nothing that worked before stops working.
+  const [paneDocId, setPaneDocId] = useState<string | null>(null);
+  const [paneFullscreen, setPaneFullscreen] = useState(false);
+  // The canvas's own size, which stops being the window's the moment a
+  // document takes half of it. Screen->world maths below reads this, not
+  // the window - the gestures report x/y relative to the canvas surface,
+  // so the two must be the same rectangle.
+  const [viewport, setViewport] = useState({ width: windowWidth, height: windowHeight });
   // Added on top of the fixed 104 the FAB/selection bar already clear the
   // floating tab bar by - a device with a tall gesture-nav inset needs more
   // than that fixed number to keep either from sitting partly behind it.
@@ -1130,8 +1144,8 @@ export default function BoardScreen() {
   // once at the start, then the gesture's own translation from there.
   const connectGesture = Gesture.Pan()
     .onStart((e) => {
-      const wx = (e.x - windowWidth / 2 - translateX.value) / scale.value + WORLD_CENTER;
-      const wy = (e.y - windowHeight / 2 - translateY.value) / scale.value + WORLD_CENTER;
+      const wx = (e.x - viewport.width / 2 - translateX.value) / scale.value + WORLD_CENTER;
+      const wy = (e.y - viewport.height / 2 - translateY.value) / scale.value + WORLD_CENTER;
       connectStartX.value = wx;
       connectStartY.value = wy;
       connectEndX.value = wx;
@@ -1161,8 +1175,8 @@ export default function BoardScreen() {
   // trick card-dragging already uses), no repeated screen<->world math.
   const selectGesture = Gesture.Pan()
     .onStart((e) => {
-      const wx = (e.x - windowWidth / 2 - translateX.value) / scale.value + WORLD_CENTER;
-      const wy = (e.y - windowHeight / 2 - translateY.value) / scale.value + WORLD_CENTER;
+      const wx = (e.x - viewport.width / 2 - translateX.value) / scale.value + WORLD_CENTER;
+      const wy = (e.y - viewport.height / 2 - translateY.value) / scale.value + WORLD_CENTER;
       marqueeStartX.value = wx;
       marqueeStartY.value = wy;
       marqueeCurrentX.value = wx;
@@ -1409,6 +1423,10 @@ export default function BoardScreen() {
 
   function editDocumentCard(card: BoardCard) {
     if (!card.documentId) return;
+    if (isTwoPane) {
+      setPaneDocId(card.documentId);
+      return;
+    }
     // The modal-presented registration of the same Editor screen (see
     // App.tsx) - slides up over the board and swipes back down to it,
     // rather than the sideways push/pop of a regular stack screen, so
@@ -1648,361 +1666,406 @@ export default function BoardScreen() {
   );
 
   return (
-    <View style={styles.container}>
-      <GestureDetector gesture={canvasGesture}>
-        <View style={[StyleSheet.absoluteFill, styles.canvasSurface]}>
-          <Animated.View style={[styles.world, worldAnimatedStyle]}>
-            {/* Underneath everything - a column is a backdrop its cards sit
-                on. box-none so only the header takes touches and the rest
-                of the lane still pans the canvas. */}
-            {columns.map((column) => {
-              const members = columnMembers(cards, column.id);
-              return (
-                <DraggableColumn
-                  key={column.id}
-                  column={column}
-                  memberCount={members.length}
-                  height={columnHeight(members, cardHeights)}
-                  isDragging={column.id === draggingColumnId}
-                  canvasScale={scale}
-                  canvasPanGesture={canvasBlockingGesture}
-                  columnOffsetX={columnOffsetX}
-                  columnOffsetY={columnOffsetY}
-                  onDragStart={setDraggingColumnId}
-                  onDragEnd={commitColumnDrag}
-                  onRename={setRenamingColumn}
-                  onDelete={confirmDeleteColumn}
-                />
-              );
-            })}
-
-            {/* Before the cards, so a link passes UNDER the two cards it
-                joins rather than across their faces. Each connection gets
-                its own small Svg sized to that pair's bounding box - one
-                canvas the size of the whole 6000px world would be a lot to
-                hand the renderer for a handful of thin curves. */}
-            {connections.map((connection) => {
-              const from = cardById.get(connection.fromCardId);
-              const to = cardById.get(connection.toCardId);
-              if (!from || !to) return null;
-              // While either end is in motion the line is drawn live off
-              // the cards' own shared positions instead - the resting
-              // curve below is computed from React state, which doesn't
-              // update until the drop commits.
-              if (movingCardIds && (movingCardIds.has(from.id) || movingCardIds.has(to.id))) {
+    <View style={styles.splitRoot}>
+      {/* The board keeps every pixel it had until a document is opened
+          beside it, and all of them again when that document goes full
+          screen - hidden rather than unmounted, so the canvas comes back
+          at the same pan and zoom. */}
+      <View
+        style={[styles.container, isTwoPane && paneDocId !== null && paneFullscreen ? styles.paneHidden : null]}
+        onLayout={(e) =>
+          setViewport({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })
+        }
+      >
+        <GestureDetector gesture={canvasGesture}>
+          <View style={[StyleSheet.absoluteFill, styles.canvasSurface]}>
+            <Animated.View style={[styles.world, worldAnimatedStyle]}>
+              {/* Underneath everything - a column is a backdrop its cards sit
+                  on. box-none so only the header takes touches and the rest
+                  of the lane still pans the canvas. */}
+              {columns.map((column) => {
+                const members = columnMembers(cards, column.id);
                 return (
-                  <LiveConnectionLine
-                    key={connection.id}
-                    from={liveEndpointFor(from)}
-                    to={liveEndpointFor(to)}
+                  <DraggableColumn
+                    key={column.id}
+                    column={column}
+                    memberCount={members.length}
+                    height={columnHeight(members, cardHeights)}
+                    isDragging={column.id === draggingColumnId}
+                    canvasScale={scale}
+                    canvasPanGesture={canvasBlockingGesture}
+                    columnOffsetX={columnOffsetX}
+                    columnOffsetY={columnOffsetY}
+                    onDragStart={setDraggingColumnId}
+                    onDragEnd={commitColumnDrag}
+                    onRename={setRenamingColumn}
+                    onDelete={confirmDeleteColumn}
                   />
                 );
-              }
-              const { x1, y1, x2, y2 } = connectionEndpoints(from, to, cardHeights);
-              const left = Math.min(x1, x2) - CONNECTION_PADDING;
-              const top = Math.min(y1, y2) - CONNECTION_PADDING;
-              const width = Math.abs(x2 - x1) + CONNECTION_PADDING * 2;
-              const height = Math.abs(y2 - y1) + CONNECTION_PADDING * 2;
-              return (
-                <Svg
-                  key={connection.id}
-                  style={[styles.connection, { left, top }]}
-                  width={width}
-                  height={height}
-                  pointerEvents="none"
-                >
-                  <Path
-                    d={curvePath(x1 - left, y1 - top, x2 - left, y2 - top)}
-                    stroke={CONNECTION_COLOR}
-                    strokeWidth={2}
-                    fill="none"
+              })}
+
+              {/* Before the cards, so a link passes UNDER the two cards it
+                  joins rather than across their faces. Each connection gets
+                  its own small Svg sized to that pair's bounding box - one
+                  canvas the size of the whole 6000px world would be a lot to
+                  hand the renderer for a handful of thin curves. */}
+              {connections.map((connection) => {
+                const from = cardById.get(connection.fromCardId);
+                const to = cardById.get(connection.toCardId);
+                if (!from || !to) return null;
+                // While either end is in motion the line is drawn live off
+                // the cards' own shared positions instead - the resting
+                // curve below is computed from React state, which doesn't
+                // update until the drop commits.
+                if (movingCardIds && (movingCardIds.has(from.id) || movingCardIds.has(to.id))) {
+                  return (
+                    <LiveConnectionLine
+                      key={connection.id}
+                      from={liveEndpointFor(from)}
+                      to={liveEndpointFor(to)}
+                    />
+                  );
+                }
+                const { x1, y1, x2, y2 } = connectionEndpoints(from, to, cardHeights);
+                const left = Math.min(x1, x2) - CONNECTION_PADDING;
+                const top = Math.min(y1, y2) - CONNECTION_PADDING;
+                const width = Math.abs(x2 - x1) + CONNECTION_PADDING * 2;
+                const height = Math.abs(y2 - y1) + CONNECTION_PADDING * 2;
+                return (
+                  <Svg
+                    key={connection.id}
+                    style={[styles.connection, { left, top }]}
+                    width={width}
+                    height={height}
+                    pointerEvents="none"
+                  >
+                    <Path
+                      d={curvePath(x1 - left, y1 - top, x2 - left, y2 - top)}
+                      stroke={CONNECTION_COLOR}
+                      strokeWidth={2}
+                      fill="none"
+                    />
+                  </Svg>
+                );
+              })}
+
+              {cards.map((card) => {
+                const isSelected = selectedCardIds.has(card.id);
+                const position = positionOf(card);
+                return (
+                  <DraggableCard
+                    key={card.id}
+                    card={card}
+                    posX={position.x}
+                    posY={position.y}
+                    canvasScale={scale}
+                    canvasPanGesture={canvasBlockingGesture}
+                    isDragging={card.id === draggedCardId}
+                    isSelected={isSelected}
+                    isGroupDrag={isSelected && selectedCardIds.size > 1}
+                    groupOffsetX={groupOffsetX}
+                    groupOffsetY={groupOffsetY}
+                    followsColumnDrag={!!card.columnId && card.columnId === draggingColumnId}
+                    columnOffsetX={columnOffsetX}
+                    columnOffsetY={columnOffsetY}
+                    dragEnabled={canvasTool !== 'connect'}
+                    onMeasure={measureCard}
+                    onDragStart={handleDragStart}
+                    onDragEnd={commitCardDrag}
+                    onGroupDragEnd={commitGroupDrag}
+                    onTap={handleCardTap}
+                    onLongPress={handleCardLongPress}
                   />
-                </Svg>
-              );
-            })}
+                );
+              })}
 
-            {cards.map((card) => {
-              const isSelected = selectedCardIds.has(card.id);
-              const position = positionOf(card);
-              return (
-                <DraggableCard
-                  key={card.id}
-                  card={card}
-                  posX={position.x}
-                  posY={position.y}
-                  canvasScale={scale}
-                  canvasPanGesture={canvasBlockingGesture}
-                  isDragging={card.id === draggedCardId}
-                  isSelected={isSelected}
-                  isGroupDrag={isSelected && selectedCardIds.size > 1}
-                  groupOffsetX={groupOffsetX}
-                  groupOffsetY={groupOffsetY}
-                  followsColumnDrag={!!card.columnId && card.columnId === draggingColumnId}
-                  columnOffsetX={columnOffsetX}
-                  columnOffsetY={columnOffsetY}
-                  dragEnabled={canvasTool !== 'connect'}
-                  onMeasure={measureCard}
-                  onDragStart={handleDragStart}
-                  onDragEnd={commitCardDrag}
-                  onGroupDragEnd={commitGroupDrag}
-                  onTap={handleCardTap}
-                  onLongPress={handleCardLongPress}
-                />
-              );
-            })}
+              {/* The rubber-band line a connect-drag trails behind the
+                  finger - live (shared values), so an animated style rather
+                  than plain React state. */}
+              <ConnectDraftLine
+                startX={connectStartX}
+                startY={connectStartY}
+                endX={connectEndX}
+                endY={connectEndY}
+                visible={connectVisible}
+              />
+              <Animated.View style={[styles.marquee, marqueeAnimatedStyle]} pointerEvents="none" />
+            </Animated.View>
+          </View>
+        </GestureDetector>
 
-            {/* The rubber-band line a connect-drag trails behind the
-                finger - live (shared values), so an animated style rather
-                than plain React state. */}
-            <ConnectDraftLine
-              startX={connectStartX}
-              startY={connectStartY}
-              endX={connectEndX}
-              endY={connectEndY}
-              visible={connectVisible}
+        <View style={styles.headerRow} pointerEvents="box-none">
+          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={24} color="#111827" />
+          </Pressable>
+          <Pressable style={styles.titleTap} onPress={() => setRenamingTitle(true)}>
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {title || 'Без назви'}
+            </Text>
+          </Pressable>
+          {/* One button cycling move -> select -> connect, each with its own
+              icon, rather than three buttons crowding the header. */}
+          <Pressable
+            style={[styles.toolButton, canvasTool !== 'move' && styles.toolButtonActive]}
+            onPress={toggleCanvasTool}
+          >
+            <MaterialCommunityIcons
+              name={
+                canvasTool === 'select' ? 'selection-drag' : canvasTool === 'connect' ? 'vector-line' : 'cursor-move'
+              }
+              size={20}
+              color={canvasTool !== 'move' ? '#fff' : '#111827'}
             />
-            <Animated.View style={[styles.marquee, marqueeAnimatedStyle]} pointerEvents="none" />
-          </Animated.View>
+          </Pressable>
         </View>
-      </GestureDetector>
 
-      <View style={styles.headerRow} pointerEvents="box-none">
-        <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={24} color="#111827" />
-        </Pressable>
-        <Pressable style={styles.titleTap} onPress={() => setRenamingTitle(true)}>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {title || 'Без назви'}
-          </Text>
-        </Pressable>
-        {/* One button cycling move -> select -> connect, each with its own
-            icon, rather than three buttons crowding the header. */}
-        <Pressable
-          style={[styles.toolButton, canvasTool !== 'move' && styles.toolButtonActive]}
-          onPress={toggleCanvasTool}
+        {selectedCardIds.size > 0 ? (
+          // Compact, content-hugging, centred capsule - same look as the
+          // shared BulkActionBar component (Documents/Files/Photos/Links'
+          // own multi-select bar), kept local rather than reusing that
+          // component directly since its action set (tag/group/copy)
+          // doesn't apply to board cards.
+          <View style={[styles.selectionBarWrap, { bottom: 104 + bottomInset }]} pointerEvents="box-none">
+            <View style={styles.selectionBarCapsule}>
+              <Text style={styles.selectionBarCount}>{selectedCardIds.size}</Text>
+              <View style={styles.selectionBarDivider} />
+              {onlySelectedDocumentCard && (
+                <Pressable
+                  style={styles.selectionBarAction}
+                  hitSlop={6}
+                  onPress={() => editDocumentCard(onlySelectedDocumentCard)}
+                >
+                  <Ionicons name="create-outline" size={18} color="#fff" />
+                  <Text style={styles.selectionBarActionLabel}>Редагувати</Text>
+                </Pressable>
+              )}
+              {selectionHasConnections && (
+                <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={disconnectSelectedCards}>
+                  <MaterialCommunityIcons name="vector-line" size={18} color="#fff" />
+                  <Text style={styles.selectionBarActionLabel}>Відʼєднати</Text>
+                </Pressable>
+              )}
+              <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={() => setSelectedCardIds(new Set())}>
+                <Ionicons name="close" size={18} color="#fff" />
+                <Text style={styles.selectionBarActionLabel}>Скасувати</Text>
+              </Pressable>
+              <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={deleteSelectedCards}>
+                <Ionicons name="trash-outline" size={18} color="#fff" />
+                <Text style={styles.selectionBarActionLabel}>Видалити</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <Pressable style={[styles.fab, { bottom: 104 + bottomInset }]} onPress={() => setAddSheetVisible(true)}>
+            <Ionicons name="add" size={26} color="#fff" />
+          </Pressable>
+        )}
+
+        <Modal visible={addSheetVisible} transparent animationType="fade" onRequestClose={() => setAddSheetVisible(false)}>
+          <Pressable style={styles.sheetBackdrop} onPress={() => setAddSheetVisible(false)}>
+            <Pressable style={styles.sheet} onPress={() => {}}>
+              <View style={styles.sheetHandle} />
+              <Pressable style={styles.sheetRow} onPress={addTextCard}>
+                <Ionicons name="text-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>Текст</Text>
+              </Pressable>
+              <Pressable style={styles.sheetRow} onPress={createDocumentCard}>
+                <Ionicons name="document-text-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>Документ</Text>
+              </Pressable>
+              <Pressable style={styles.sheetRow} onPress={() => openLinkPrompt('other')}>
+                <Ionicons name="link-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>Посилання</Text>
+              </Pressable>
+              <Pressable style={styles.sheetRow} onPress={() => openLinkPrompt('video')}>
+                <Ionicons name="videocam-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>YouTube / TikTok</Text>
+              </Pressable>
+              <Pressable style={styles.sheetRow} onPress={() => openLinkPrompt('geo')}>
+                <Ionicons name="location-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>Геоточка</Text>
+              </Pressable>
+              <Pressable style={styles.sheetRow} onPress={createImageCard}>
+                <Ionicons name="image-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>Зображення</Text>
+              </Pressable>
+              <Pressable style={styles.sheetRow} onPress={createFileCard}>
+                <Ionicons name="document-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>Файл</Text>
+              </Pressable>
+              <Pressable style={styles.sheetRow} onPress={openExistingItemPicker}>
+                <Ionicons name="search-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>З бази даних</Text>
+              </Pressable>
+              <Pressable style={styles.sheetRow} onPress={addColumn}>
+                <MaterialCommunityIcons name="view-column-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>Стовпчик</Text>
+              </Pressable>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        <AddExistingItemModal
+          visible={existingItemPickerVisible}
+          onPick={addExistingCard}
+          onClose={() => setExistingItemPickerVisible(false)}
+          excludeIds={existingItemExcludeIds}
+          includeDocuments
+          onPickDocument={addDocumentCard}
+        />
+
+        <VideoPlayerModal url={playingVideoUrl} onClose={() => setPlayingVideoUrl(null)} />
+
+        <RenamePrompt
+          visible={renamingTitle}
+          title="Назва дошки"
+          initialValue={title}
+          onCancel={() => setRenamingTitle(false)}
+          onSave={(value) => {
+            setRenamingTitle(false);
+            setTitle(value);
+          }}
+        />
+
+        {/* One dialog for both steps of adding a link - see linkPrompt's own
+            comment on why they can't be two. */}
+        <RenamePrompt
+          visible={linkPrompt !== null}
+          title={
+            linkPrompt?.step === 'title'
+              ? 'Назва посилання'
+              : linkPrompt?.kind === 'video'
+                ? 'Посилання на YouTube / TikTok'
+                : linkPrompt?.kind === 'geo'
+                  ? 'Посилання на місце'
+                  : 'Нове посилання'
+          }
+          placeholder={linkPrompt?.step === 'title' ? 'Назва' : 'https://…'}
+          initialValue=""
+          busy={linkPrompt?.step === 'url' && linkPrompt.busy}
+          onCancel={() => setLinkPrompt(null)}
+          onSave={submitLinkStep}
+        />
+
+        <RenamePrompt
+          visible={renamingColumn !== null}
+          title="Назва стовпчика"
+          initialValue={renamingColumn?.title ?? ''}
+          onCancel={() => setRenamingColumn(null)}
+          onSave={(value) => {
+            if (renamingColumn) renameColumn(renamingColumn, value);
+          }}
+        />
+
+        <Modal
+          visible={deletingColumn !== null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setDeletingColumn(null)}
         >
-          <MaterialCommunityIcons
-            name={
-              canvasTool === 'select' ? 'selection-drag' : canvasTool === 'connect' ? 'vector-line' : 'cursor-move'
-            }
-            size={20}
-            color={canvasTool !== 'move' ? '#fff' : '#111827'}
-          />
-        </Pressable>
+          <Pressable style={styles.glassConfirmBackdrop} onPress={() => setDeletingColumn(null)}>
+            <Pressable style={styles.glassConfirmCard} onPress={() => {}}>
+              <Text style={styles.glassConfirmTitle}>Видалити стовпчик?</Text>
+              <Text style={styles.glassConfirmBody}>Картки з нього залишаться на дошці.</Text>
+              <View style={styles.glassConfirmButtons}>
+                <Pressable style={styles.glassConfirmButton} onPress={() => setDeletingColumn(null)}>
+                  <Text style={styles.glassConfirmButtonLabel}>Скасувати</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.glassConfirmButton, styles.glassConfirmButtonDanger]}
+                  onPress={deleteColumn}
+                >
+                  <Text style={styles.glassConfirmButtonLabel}>Видалити</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        {/* A plain overlay View sibling of the gesture-driven canvas, not a
+            Modal and not a child of the canvas - same reasoning as
+            SketchEditor's own text-entry overlay: a Modal here would fight a
+            nested Modal (AddExistingItemModal) for focus, and a child of the
+            canvas would fight its Pan/Pinch gesture for touch focus. */}
+        {editingCard && (
+          <View style={styles.textEditBackdrop}>
+            <View style={styles.textEditCard}>
+              <TextInput
+                autoFocus
+                multiline
+                value={editingText}
+                onChangeText={setEditingText}
+                placeholder="Текст…"
+                style={styles.textEditInput}
+              />
+              <View style={styles.textEditColors}>
+                {STICKY_COLORS.map((color) => (
+                  <Pressable
+                    key={color}
+                    onPress={() => setEditingCardColor(color)}
+                    style={[
+                      styles.textEditColorSwatch,
+                      { backgroundColor: color },
+                      editingCard.color === color && styles.textEditColorSwatchActive,
+                    ]}
+                  />
+                ))}
+              </View>
+              <View style={styles.textEditButtons}>
+                <Pressable style={styles.textEditCancel} onPress={() => setEditingCard(null)}>
+                  <Text style={styles.textEditCancelLabel}>Скасувати</Text>
+                </Pressable>
+                <Pressable style={styles.textEditSave} onPress={saveEditingText}>
+                  <Text style={styles.textEditSaveLabel}>Зберегти</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        )}
       </View>
 
-      {selectedCardIds.size > 0 ? (
-        // Compact, content-hugging, centred capsule - same look as the
-        // shared BulkActionBar component (Documents/Files/Photos/Links'
-        // own multi-select bar), kept local rather than reusing that
-        // component directly since its action set (tag/group/copy)
-        // doesn't apply to board cards.
-        <View style={[styles.selectionBarWrap, { bottom: 104 + bottomInset }]} pointerEvents="box-none">
-          <View style={styles.selectionBarCapsule}>
-            <Text style={styles.selectionBarCount}>{selectedCardIds.size}</Text>
-            <View style={styles.selectionBarDivider} />
-            {onlySelectedDocumentCard && (
-              <Pressable
-                style={styles.selectionBarAction}
-                hitSlop={6}
-                onPress={() => editDocumentCard(onlySelectedDocumentCard)}
-              >
-                <Ionicons name="create-outline" size={18} color="#fff" />
-                <Text style={styles.selectionBarActionLabel}>Редагувати</Text>
-              </Pressable>
-            )}
-            {selectionHasConnections && (
-              <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={disconnectSelectedCards}>
-                <MaterialCommunityIcons name="vector-line" size={18} color="#fff" />
-                <Text style={styles.selectionBarActionLabel}>Відʼєднати</Text>
-              </Pressable>
-            )}
-            <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={() => setSelectedCardIds(new Set())}>
-              <Ionicons name="close" size={18} color="#fff" />
-              <Text style={styles.selectionBarActionLabel}>Скасувати</Text>
-            </Pressable>
-            <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={deleteSelectedCards}>
-              <Ionicons name="trash-outline" size={18} color="#fff" />
-              <Text style={styles.selectionBarActionLabel}>Видалити</Text>
-            </Pressable>
-          </View>
-        </View>
-      ) : (
-        <Pressable style={[styles.fab, { bottom: 104 + bottomInset }]} onPress={() => setAddSheetVisible(true)}>
-          <Ionicons name="add" size={26} color="#fff" />
-        </Pressable>
-      )}
-
-      <Modal visible={addSheetVisible} transparent animationType="fade" onRequestClose={() => setAddSheetVisible(false)}>
-        <Pressable style={styles.sheetBackdrop} onPress={() => setAddSheetVisible(false)}>
-          <Pressable style={styles.sheet} onPress={() => {}}>
-            <View style={styles.sheetHandle} />
-            <Pressable style={styles.sheetRow} onPress={addTextCard}>
-              <Ionicons name="text-outline" size={18} color="#111827" />
-              <Text style={styles.sheetRowLabel}>Текст</Text>
-            </Pressable>
-            <Pressable style={styles.sheetRow} onPress={createDocumentCard}>
-              <Ionicons name="document-text-outline" size={18} color="#111827" />
-              <Text style={styles.sheetRowLabel}>Документ</Text>
-            </Pressable>
-            <Pressable style={styles.sheetRow} onPress={() => openLinkPrompt('other')}>
-              <Ionicons name="link-outline" size={18} color="#111827" />
-              <Text style={styles.sheetRowLabel}>Посилання</Text>
-            </Pressable>
-            <Pressable style={styles.sheetRow} onPress={() => openLinkPrompt('video')}>
-              <Ionicons name="videocam-outline" size={18} color="#111827" />
-              <Text style={styles.sheetRowLabel}>YouTube / TikTok</Text>
-            </Pressable>
-            <Pressable style={styles.sheetRow} onPress={() => openLinkPrompt('geo')}>
-              <Ionicons name="location-outline" size={18} color="#111827" />
-              <Text style={styles.sheetRowLabel}>Геоточка</Text>
-            </Pressable>
-            <Pressable style={styles.sheetRow} onPress={createImageCard}>
-              <Ionicons name="image-outline" size={18} color="#111827" />
-              <Text style={styles.sheetRowLabel}>Зображення</Text>
-            </Pressable>
-            <Pressable style={styles.sheetRow} onPress={createFileCard}>
-              <Ionicons name="document-outline" size={18} color="#111827" />
-              <Text style={styles.sheetRowLabel}>Файл</Text>
-            </Pressable>
-            <Pressable style={styles.sheetRow} onPress={openExistingItemPicker}>
-              <Ionicons name="search-outline" size={18} color="#111827" />
-              <Text style={styles.sheetRowLabel}>З бази даних</Text>
-            </Pressable>
-            <Pressable style={styles.sheetRow} onPress={addColumn}>
-              <MaterialCommunityIcons name="view-column-outline" size={18} color="#111827" />
-              <Text style={styles.sheetRowLabel}>Стовпчик</Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      <AddExistingItemModal
-        visible={existingItemPickerVisible}
-        onPick={addExistingCard}
-        onClose={() => setExistingItemPickerVisible(false)}
-        excludeIds={existingItemExcludeIds}
-        includeDocuments
-        onPickDocument={addDocumentCard}
-      />
-
-      <VideoPlayerModal url={playingVideoUrl} onClose={() => setPlayingVideoUrl(null)} />
-
-      <RenamePrompt
-        visible={renamingTitle}
-        title="Назва дошки"
-        initialValue={title}
-        onCancel={() => setRenamingTitle(false)}
-        onSave={(value) => {
-          setRenamingTitle(false);
-          setTitle(value);
-        }}
-      />
-
-      {/* One dialog for both steps of adding a link - see linkPrompt's own
-          comment on why they can't be two. */}
-      <RenamePrompt
-        visible={linkPrompt !== null}
-        title={
-          linkPrompt?.step === 'title'
-            ? 'Назва посилання'
-            : linkPrompt?.kind === 'video'
-              ? 'Посилання на YouTube / TikTok'
-              : linkPrompt?.kind === 'geo'
-                ? 'Посилання на місце'
-                : 'Нове посилання'
-        }
-        placeholder={linkPrompt?.step === 'title' ? 'Назва' : 'https://…'}
-        initialValue=""
-        busy={linkPrompt?.step === 'url' && linkPrompt.busy}
-        onCancel={() => setLinkPrompt(null)}
-        onSave={submitLinkStep}
-      />
-
-      <RenamePrompt
-        visible={renamingColumn !== null}
-        title="Назва стовпчика"
-        initialValue={renamingColumn?.title ?? ''}
-        onCancel={() => setRenamingColumn(null)}
-        onSave={(value) => {
-          if (renamingColumn) renameColumn(renamingColumn, value);
-        }}
-      />
-
-      <Modal
-        visible={deletingColumn !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setDeletingColumn(null)}
-      >
-        <Pressable style={styles.glassConfirmBackdrop} onPress={() => setDeletingColumn(null)}>
-          <Pressable style={styles.glassConfirmCard} onPress={() => {}}>
-            <Text style={styles.glassConfirmTitle}>Видалити стовпчик?</Text>
-            <Text style={styles.glassConfirmBody}>Картки з нього залишаться на дошці.</Text>
-            <View style={styles.glassConfirmButtons}>
-              <Pressable style={styles.glassConfirmButton} onPress={() => setDeletingColumn(null)}>
-                <Text style={styles.glassConfirmButtonLabel}>Скасувати</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.glassConfirmButton, styles.glassConfirmButtonDanger]}
-                onPress={deleteColumn}
-              >
-                <Text style={styles.glassConfirmButtonLabel}>Видалити</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* A plain overlay View sibling of the gesture-driven canvas, not a
-          Modal and not a child of the canvas - same reasoning as
-          SketchEditor's own text-entry overlay: a Modal here would fight a
-          nested Modal (AddExistingItemModal) for focus, and a child of the
-          canvas would fight its Pan/Pinch gesture for touch focus. */}
-      {editingCard && (
-        <View style={styles.textEditBackdrop}>
-          <View style={styles.textEditCard}>
-            <TextInput
-              autoFocus
-              multiline
-              value={editingText}
-              onChangeText={setEditingText}
-              placeholder="Текст…"
-              style={styles.textEditInput}
-            />
-            <View style={styles.textEditColors}>
-              {STICKY_COLORS.map((color) => (
-                <Pressable
-                  key={color}
-                  onPress={() => setEditingCardColor(color)}
-                  style={[
-                    styles.textEditColorSwatch,
-                    { backgroundColor: color },
-                    editingCard.color === color && styles.textEditColorSwatchActive,
-                  ]}
-                />
-              ))}
-            </View>
-            <View style={styles.textEditButtons}>
-              <Pressable style={styles.textEditCancel} onPress={() => setEditingCard(null)}>
-                <Text style={styles.textEditCancelLabel}>Скасувати</Text>
-              </Pressable>
-              <Pressable style={styles.textEditSave} onPress={saveEditingText}>
-                <Text style={styles.textEditSaveLabel}>Зберегти</Text>
-              </Pressable>
-            </View>
-          </View>
+      {isTwoPane && paneDocId !== null && (
+        <View style={styles.docPane}>
+          <DocumentEditorScreen
+            key={paneDocId}
+            pane
+            documentId={paneDocId}
+            // This screen's navigation carries the boards stack's own
+            // routes as well; the editor only ever pushes root-stack ones
+            // (Links/Photos/Files), which a nested navigator forwards
+            // upwards at runtime - the cast is purely about the wider
+            // param list this prop is typed against.
+            navigation={navigation as unknown as NativeStackNavigationProp<RootStackParamList>}
+            isFullscreen={paneFullscreen}
+            onToggleFullscreen={() => setPaneFullscreen((v) => !v)}
+            onClose={() => {
+              setPaneDocId(null);
+              setPaneFullscreen(false);
+            }}
+          />
         </View>
       )}
-
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  splitRoot: {
+    flex: 1,
+    flexDirection: 'row',
+  },
   container: {
     flex: 1,
     backgroundColor: '#F3F4F6',
+  },
+  paneHidden: {
+    display: 'none',
+  },
+  docPane: {
+    flex: 1,
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(17,24,39,0.12)',
+    overflow: 'hidden',
   },
   canvasSurface: {
     alignItems: 'center',
