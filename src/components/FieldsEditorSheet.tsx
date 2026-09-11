@@ -17,8 +17,12 @@ const ACCENT = '#3B82F6';
 // translucent body with a hairline white edge - instead of the white card
 // every other sheet in the app still uses. On that body the flat blue and
 // red of a white sheet go muddy, so both are lightened.
-const GLASS_BODY = 'rgba(26,23,21,0.86)';
-const GLASS_CARD = 'rgba(255,255,255,0.08)';
+// Nearly opaque on purpose. A real blur (expo-blur) is what this wants,
+// but that's a native module: it can only arrive with the next native
+// build, never over the air. Until then the body carries the glass edge
+// and the capsules, and lets only a hint of the screen through - at 0.86
+// the list behind it was legible straight through the sheet.
+const GLASS_BODY = 'rgba(24,21,19,0.96)';
 const GLASS_EDGE = 'rgba(255,255,255,0.22)';
 const TEXT = '#fff';
 const TEXT_MUTED = 'rgba(255,255,255,0.62)';
@@ -580,9 +584,7 @@ export default function FieldsEditorSheet({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    // Lighter than the white sheets' backdrop: the sheet itself is dark
-    // now, and two dark layers over each other buried the screen behind.
-    backgroundColor: 'rgba(17,24,39,0.3)',
+    backgroundColor: 'rgba(17,24,39,0.45)',
     justifyContent: 'flex-end',
   },
   sheet: {
@@ -618,7 +620,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   fieldCard: {
-    backgroundColor: GLASS_CARD,
+    backgroundColor: 'rgba(255,255,255,0.07)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.14)',
     borderRadius: 14,
