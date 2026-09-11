@@ -66,14 +66,8 @@ import { linkDocId } from '../utils/linkId';
 import { blockFromFile, blockFromLink, blockFromPhoto } from '../utils/copyToNote';
 import { backupFileToDrive } from '../utils/googleDrive';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
-import {
-  blocksEqual,
-  buildBlocksFromBoard,
-  contentEqual,
-  generateDocumentFromBoard,
-  isEmptyBlock,
-} from '../utils/boardToDocument';
-import BoardDocumentPreview from '../components/BoardDocumentPreview';
+import { contentEqual, generateDocumentFromBoard } from '../utils/boardToDocument';
+import BoardColumnDocument from '../components/BoardColumnDocument';
 import DocumentEditorScreen from './DocumentEditorScreen';
 
 const AUTOSAVE_DELAY_MS = 600;
@@ -843,13 +837,11 @@ export default function BoardScreen() {
   // the source, and rebuilding from the board would overwrite a line that
   // hasn't reached the board yet.
   const [paneSaving, setPaneSaving] = useState(false);
-  // The board seen as the document it would make - built in memory from
-  // the cards, shown in the right-hand half, and written to the Documents
-  // database only when "Сформувати" is pressed. Opened by long-pressing a
-  // column header, where the reading order it previews is decided.
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewBlocks, setPreviewBlocks] = useState<Block[]>([]);
-  const [previewBuilding, setPreviewBuilding] = useState(false);
+  // One column read as flowing text in the right-hand half. Not a document
+  // and not a copy: it edits the cards themselves, which is why nothing
+  // here is synchronised with anything. Opened by long-pressing a column
+  // header. "Сформувати" from inside it still writes a real document, and
+  // that document is a snapshot from then on.
   const [paneFullscreen, setPaneFullscreen] = useState(false);
   // The canvas's own size, which stops being the window's the moment a
   // document takes half of it. Screen->world maths below reads this, not
@@ -1476,7 +1468,7 @@ export default function BoardScreen() {
     return onSnapshot(doc(db, 'boards', boardId), (snapshot) => {
       const data = snapshot.data() as { cards?: BoardCard[]; columns?: BoardColumn[] } | undefined;
       if (!data) return;
-      if (saveTimeoutRef.current || syncingRef.current) return;
+      if (saveTimeoutRef.current) return;
       if (draggedCardId || draggingColumnId) return;
       const incomingCards = data.cards ?? [];
       const incomingColumns = data.columns ?? [];
@@ -1486,81 +1478,14 @@ export default function BoardScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, boardId, draggedCardId, draggingColumnId]);
 
-  // Once a board has a document, that document follows it: change the
-  // board and the document is rebuilt on the same beat, with no button in
-  // between. Three rules keep this from turning into two writes chasing
-  // each other (see the document side, which does the reverse):
-  //  - build, compare, and write ONLY if the result differs from what is
-  //    already stored, so a cycle stops as soon as both sides agree;
-  //  - a longer debounce than the editor's own save, so a document being
-  //    typed into lands its write first and this rebuild sees it;
-  //  - one direction at a time (syncingRef), so this screen's own write
-  //    doesn't come back as somebody else's change.
-  const syncingRef = useRef(false);
-  useEffect(() => {
-    if (!isLoaded || !generatedDocId) return;
-    if (paneSaving && paneDocId === generatedDocId) return;
-    let cancelled = false;
-    const timeout = setTimeout(async () => {
-      if (syncingRef.current) return;
-      syncingRef.current = true;
-      try {
-        const ref = doc(db, 'documents', generatedDocId);
-        const snapshot = await getDoc(ref);
-        const current = (snapshot.data()?.blocks ?? []) as Block[];
+  // One column read as flowing text in the right-hand half - see
+  // BoardColumnDocument. Editing there edits the cards themselves, so
+  // there is nothing to keep in step with anything.
+  const [viewerColumnId, setViewerColumnId] = useState<string | null>(null);
 
-        // Never overwrite a document that is AHEAD of this board: a block
-        // with no source on it is a line typed into the document that
-        // hasn't become a card yet, and rebuilding would erase it a moment
-        // before the document side turns it into one.
-        //
-        // Deliberately NOT "a block naming a card this board doesn't have"
-        // - that is also exactly what deleting a card looks like, and
-        // treating it as being behind left this rebuild switched off for
-        // good, which is how board edits stopped reaching the document at
-        // all.
-        const documentIsAhead = current.some(
-          (block) =>
-            !block.sourceCardId && !block.sourceColumnId && !block.sourceDocumentId && !isEmptyBlock(block)
-        );
-        if (documentIsAhead) return;
-
-        const next = await buildBlocksFromBoard({ cards, columns });
-        if (cancelled || blocksEqual(current, next)) return;
-        await updateDoc(ref, { blocks: next, updatedAt: Date.now() });
-      } finally {
-        syncingRef.current = false;
-      }
-    }, 1200);
-    return () => {
-      cancelled = true;
-      clearTimeout(timeout);
-    };
-  }, [isLoaded, generatedDocId, cards, columns, paneSaving, paneDocId]);
-
-  // The preview is rebuilt from the board as the board changes - move a
-  // card and the document you're reading beside it moves with it. Debounced
-  // because a drag writes `cards` on every frame it settles, and each
-  // rebuild reads every document card's source.
-  useEffect(() => {
-    if (!previewOpen) return;
-    let cancelled = false;
-    setPreviewBuilding(true);
-    const timeout = setTimeout(async () => {
-      const blocks = await buildBlocksFromBoard({ cards, columns });
-      if (cancelled) return;
-      setPreviewBlocks(blocks);
-      setPreviewBuilding(false);
-    }, 400);
-    return () => {
-      cancelled = true;
-      clearTimeout(timeout);
-    };
-  }, [previewOpen, cards, columns]);
-
-  // Rebuilding replaces the document's blocks outright, so the second time
-  // round it asks first: by then the document may have been written in by
-  // hand, and a rebuild has no way to keep that.
+  // Forming the document a second time replaces what it holds, so it asks
+  // first: that document is an ordinary one from the moment it's made, and
+  // may well have been written in since.
   function confirmGenerateFromPreview() {
     if (!generatedDocId) {
       generateFromPreview();
@@ -1594,7 +1519,7 @@ export default function BoardScreen() {
       // Straight into the real editor in the same half of the screen: what
       // was a preview a moment ago is now a document, and the board is
       // still there beside it.
-      setPreviewOpen(false);
+      setViewerColumnId(null);
       if (isTwoPane) setPaneDocId(id);
       else navigation.navigate('EditorModal', { documentId: id });
     } finally {
@@ -1744,6 +1669,38 @@ export default function BoardScreen() {
   // what to do with the column, because that header is where the reading
   // order lives - it's the natural place to ask for the document this
   // board would make. (Renaming is still a plain tap.)
+  const viewerColumn = viewerColumnId ? (columns.find((c) => c.id === viewerColumnId) ?? null) : null;
+
+  // Writing in the text view writes the card itself - no document, no
+  // second copy, nothing to reconcile afterwards. The board's own autosave
+  // carries it from here like any other card change.
+  function changeCardText(cardId: string, text: string) {
+    setCards((prev) => prev.map((c) => (c.id === cardId ? { ...c, text } : c)));
+  }
+
+  // Carrying on past the end of the column: a new text card at the bottom
+  // of it. Returns the id so the caller can put the cursor in it.
+  function appendTextCard(columnId: string): string {
+    const id = generateId();
+    const members = columnMembers(cards, columnId);
+    const lastY = members.length > 0 ? members[members.length - 1].y : 0;
+    setCards((prev) => [
+      ...prev,
+      {
+        id,
+        text: '',
+        type: 'paragraph',
+        columnId,
+        x: 0,
+        y: lastY + 1,
+        width: DEFAULT_CARD_WIDTH,
+        color: STICKY_COLORS[prev.length % STICKY_COLORS.length],
+        createdAt: Date.now(),
+      },
+    ]);
+    return id;
+  }
+
   function handleColumnLongPress(column: BoardColumn) {
     Alert.alert(column.title?.trim() || 'Колонка', undefined, [
       { text: 'Скасувати', style: 'cancel' },
@@ -1753,14 +1710,14 @@ export default function BoardScreen() {
         onPress: () => confirmDeleteColumn(column),
       },
       {
-        text: 'Переглянути як документ',
+        text: 'Читати як текст',
         onPress: () => {
           setPaneDocId(null);
-          setPreviewOpen(true);
+          setViewerColumnId(column.id);
           if (!isTwoPane) {
             Alert.alert(
               'Замало місця',
-              'Попередній перегляд поруч із дошкою показується на широкому екрані. Розклади телефон або поверни його.'
+              'Колонка читається текстом поруч із дошкою, тож для цього треба широкий екран. Розклади телефон або поверни його.'
             );
           }
         },
@@ -2239,15 +2196,17 @@ export default function BoardScreen() {
         )}
       </View>
 
-      {isTwoPane && previewOpen && (
+      {isTwoPane && viewerColumn !== null && (
         <View style={styles.docPane}>
-          <BoardDocumentPreview
-            title={title}
-            blocks={previewBlocks}
-            building={previewBuilding}
+          <BoardColumnDocument
+            title={viewerColumn.title?.trim() || 'Колонка'}
+            cards={columnMembers(cards, viewerColumn.id)}
             hasDocument={generatedDocId !== null}
+            onChangeCardText={changeCardText}
+            onStartWriting={() => appendTextCard(viewerColumn.id)}
+            onOpenCard={handleCardTap}
             onGenerate={confirmGenerateFromPreview}
-            onClose={() => setPreviewOpen(false)}
+            onClose={() => setViewerColumnId(null)}
           />
         </View>
       )}

@@ -70,9 +70,7 @@ import {
 } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
-import { Block, BlockType, BoardCard, BoardColumn, Group, SketchElement, Tag, TableRow } from '../types';
-import { applyDocumentToBoard, blocksEqual, isEmptyBlock, SourceDocumentEdit } from '../utils/boardToDocument';
-import { DEFAULT_CARD_WIDTH, WORLD_CENTER } from '../utils/boardLayout';
+import { Block, BlockType, Group, SketchElement, Tag, TableRow } from '../types';
 import { groupAppliesTo } from '../utils/groups';
 import { RootStackParamList } from '../navigation';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
@@ -2513,10 +2511,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           ...extraFields,
         },
         { merge: true }
-      ).then(() => {
-        setSaveStatus('saved');
-        syncBoardFromDocument(blocks);
-      });
+      ).then(() => setSaveStatus('saved'));
       syncTasksForDocument(blocks);
       syncLinksForDocument(blocks);
       syncPhotosForDocument(blocks);
@@ -2530,153 +2525,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, blocks, coverImageUri, paperColorEnabled, groupId, isLoaded]);
-
-  // A document built from a board is no longer only written here: the
-  // board rewrites it whenever it changes, including while this editor is
-  // open beside it. So it listens, and takes what arrives - but only while
-  // there is nothing unsaved of its own, which is the whole "the side
-  // you're touching is the source" rule. Equal content is ignored, so this
-  // never reacts to its own write.
-  useEffect(() => {
-    if (!sourceBoardId || !isLoaded) return;
-    return onSnapshot(doc(db, 'documents', documentId), (snapshot) => {
-      const incoming = (snapshot.data()?.blocks ?? []) as Block[];
-      if (incoming.length === 0) return;
-      // Everything here is a reason the arriving version is OLDER than
-      // what's on screen, not newer:
-      //  - a save is scheduled or in flight (this very edit, not yet
-      //    written), and applying the stored version would undo it;
-      //  - the board sync is mid-flight, which stamps blocks locally with
-      //    the cards it just made for them - the write that carries those
-      //    stamps hasn't happened yet;
-      //  - a block is focused, and replacing the array under a live
-      //    TextInput remounts it, which drops the keyboard mid-sentence.
-      if (saveTimeoutRef.current || saveStatus === 'saving' || boardSyncingRef.current) return;
-      if (focusedBlockIdRef.current) return;
-      setBlocks((current) => {
-        // Same rule from this side: a line typed here that hasn't become a
-        // card yet means this copy is the newer one, whatever arrives.
-        const localIsAhead = current.some(
-          (block) =>
-            !block.sourceCardId && !block.sourceColumnId && !block.sourceDocumentId && !isEmptyBlock(block)
-        );
-        if (localIsAhead) return current;
-        return blocksEqual(current, incoming) ? current : incoming;
-      });
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceBoardId, isLoaded, documentId, saveStatus]);
-
-  // The other half of the live link (the board writes this document; see
-  // BoardScreen's own rebuild). Runs after the document's own save has
-  // landed, so the board is never read back against text that isn't stored
-  // yet, and writes only what actually differs - which is what stops the
-  // two sides from writing each other in circles.
-  const boardSyncingRef = useRef(false);
-  // Which cards this document was last seen to contain. Deleting a card is
-  // only allowed for one that was in here and has gone since - see
-  // applyDocumentToBoard's knownCardIds.
-  const knownCardIdsRef = useRef<Set<string> | null>(null);
-
-  // Edits that landed among a document card's own text belong to that
-  // document, not to the board (see SourceDocumentEdit). Same rules as the
-  // board write: nothing is written unless it differs, and a wholesale
-  // disappearance is stopped rather than performed - a mapping mistake
-  // here would empty somebody else's document.
-  async function writeSourceDocumentEdits(edits: SourceDocumentEdit[]) {
-    for (const edit of edits) {
-      const ref = doc(db, 'documents', edit.documentId);
-      const snapshot = await getDoc(ref);
-      const current = (snapshot.data()?.blocks ?? []) as Block[];
-      if (current.length === 0 || blocksEqual(current, edit.blocks)) continue;
-      if (current.length - edit.blocks.length > 3) {
-        Alert.alert(
-          'Забагато видалень',
-          `Правки зачіпають документ "${snapshot.data()?.title ?? ''}" і прибирають ${
-            current.length - edit.blocks.length
-          } його блоків. Змінив його не я - відкрий той документ і зроби це там.`
-        );
-        continue;
-      }
-      await updateDoc(ref, { blocks: edit.blocks, updatedAt: Date.now() });
-    }
-  }
-  async function syncBoardFromDocument(currentBlocks: Block[]) {
-    if (!sourceBoardId || boardSyncingRef.current) return;
-    boardSyncingRef.current = true;
-    try {
-      const boardRef = doc(db, 'boards', sourceBoardId);
-      const snapshot = await getDoc(boardRef);
-      const data = snapshot.data() as { cards?: BoardCard[]; columns?: BoardColumn[] } | undefined;
-      if (!data) return;
-      const result = applyDocumentToBoard(currentBlocks, { cards: data.cards ?? [], columns: data.columns }, {
-        defaultCardWidth: DEFAULT_CARD_WIDTH,
-        looseOrigin: { x: WORLD_CENTER, y: WORLD_CENTER },
-        knownCardIds: knownCardIdsRef.current ?? undefined,
-      });
-      // Whatever this document holds now is what it will be compared
-      // against next time - including the cards just made for it.
-      knownCardIdsRef.current = new Set(
-        result.blocks.map((block) => block.sourceCardId).filter((id): id is string => !!id)
-      );
-      if (!result.changed) return;
-      // The one thing worth stopping for. A mismatch in the mapping would
-      // show up as a pile of cards disappearing at once, and by then the
-      // board is already empty - so past a few, it asks first.
-      if (result.removedCardIds.length > 3) {
-        Alert.alert(
-          'Видалити картки?',
-          `Зміни в документі прибирають ${result.removedCardIds.length} карток із дошки.`,
-          [
-            { text: 'Не чіпати дошку', style: 'cancel' },
-            {
-              text: 'Видалити',
-              style: 'destructive',
-              onPress: () => {
-                updateDoc(boardRef, { cards: result.cards, columns: result.columns, updatedAt: Date.now() });
-                writeSourceDocumentEdits(result.documentEdits);
-              },
-            },
-          ]
-        );
-        return;
-      }
-      await updateDoc(boardRef, { cards: result.cards, columns: result.columns, updatedAt: Date.now() });
-      await writeSourceDocumentEdits(result.documentEdits);
-      // A paragraph typed straight into the document now has a card behind
-      // it; stamping that onto the block is what keeps the next pass from
-      // making a second card for the same line.
-      //
-      // Only the stamps are applied, never the whole array. This runs a
-      // second or two after the save it follows, and by then more may well
-      // have been typed - putting back the list as it was at save time is
-      // what made a freshly added block disappear under the user.
-      const stamps = new Map<string, Block>();
-      result.blocks.forEach((block, index) => {
-        const before = currentBlocks[index];
-        if (before && before.id !== block.id) stamps.set(before.id, block);
-      });
-      if (stamps.size > 0) {
-        setBlocks((live) =>
-          live.map((block) => {
-            const stamped = stamps.get(block.id);
-            if (!stamped) return block;
-            // Identity from the sync, content from what's on screen now.
-            return {
-              ...block,
-              id: stamped.id,
-              ...(stamped.sourceCardId ? { sourceCardId: stamped.sourceCardId } : {}),
-              ...(stamped.sourceDocumentId
-                ? { sourceDocumentId: stamped.sourceDocumentId, sourceBlockId: stamped.sourceBlockId }
-                : {}),
-            };
-          })
-        );
-      }
-    } finally {
-      boardSyncingRef.current = false;
-    }
-  }
 
   // Whoever set focusIdRef wants that block to be the live input next. A
   // block only has a TextInput while it's the active one, so this first
