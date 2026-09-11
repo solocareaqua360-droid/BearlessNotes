@@ -472,7 +472,14 @@ export default function CalendarScreen() {
   function renderCalendarPlate() {
     return (
       <>
-        <Animated.View style={[styles.calendarPlate, isTwoPane && !twoPages && styles.calendarPlatePaned, calendarPlateStyle]}>
+        <Animated.View
+          style={[
+            styles.calendarPlate,
+            isTwoPane && !twoPages && styles.calendarPlatePaned,
+            twoPages && styles.calendarPlateInline,
+            calendarPlateStyle,
+          ]}
+        >
         <Animated.View style={[styles.calendarWrap, calendarWrapStyle]}>
           <Animated.View style={[styles.monthNavWrap, monthNavStyle]}>
             <View style={styles.monthNav}>
@@ -723,7 +730,7 @@ export default function CalendarScreen() {
         <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#calendarBg)" />
       </Svg>
 
-      <View style={styles.headerRow}>
+      <View style={[styles.headerRow, twoPages && styles.headerRowPages]}>
         <View style={styles.headerLeft}>
           <Pressable style={styles.todayButton} onPress={jumpToToday}>
             <Text style={styles.todayButtonLabel}>Сьогодні</Text>
@@ -739,6 +746,19 @@ export default function CalendarScreen() {
             {isWriting && <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.7)" />}
           </Pressable>
         </View>
+        {/* In the two-page layout the week strip is the whole calendar, so
+            it rides in the header itself rather than taking a band of its
+            own below it - which is what lets the two sheets start right
+            under the header, the way a single note does. */}
+        {twoPages && (
+          <View
+            style={styles.headerStrip}
+            onLayout={(e) => setCalendarPaneWidth(e.nativeEvent.layout.width + PLATE_MARGIN * 2)}
+          >
+            {renderCalendarPlate()}
+          </View>
+        )}
+
         <View style={styles.headerRightGroup}>
           {/* A separate circle, not a 4th icon inside the capsule - folded
               into the pill it read as just another button, which it isn't
@@ -792,8 +812,6 @@ export default function CalendarScreen() {
           strip above them, or a single sheet with the calendar opened out
           beside it. On a narrow screen neither applies and the page below
           is the one it always was. */}
-      {twoPages && <View onLayout={(e) => setCalendarPaneWidth(e.nativeEvent.layout.width)}>{renderCalendarPlate()}</View>}
-
       <View style={isTwoPane ? styles.paneRow : styles.stack}>
         {!twoPages && (
           <View
@@ -980,6 +998,18 @@ const styles = StyleSheet.create({
     paddingTop: 90,
     paddingBottom: 8,
   },
+  // The strip's seat in the header row: it takes whatever the date on the
+  // left and the capsule on the right leave between them.
+  headerStrip: {
+    flex: 1,
+    minWidth: 0,
+  },
+  // Two pages sit higher: the calendar has moved into this row, so there
+  // is no band under it to leave room for, and the same top inset the note
+  // editor uses puts the sheets where its own page starts.
+  headerRowPages: {
+    paddingTop: 56,
+  },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1114,6 +1144,12 @@ const styles = StyleSheet.create({
   // drops its own on that side and both come out at 16.
   calendarPlatePaned: {
     marginRight: 0,
+  },
+  // In the header the row's own padding is the margin, and a smaller
+  // radius keeps it the same shape as the capsule beside it.
+  calendarPlateInline: {
+    marginHorizontal: 0,
+    borderRadius: 18,
   },
   monthNavWrap: {
     overflow: 'hidden',
