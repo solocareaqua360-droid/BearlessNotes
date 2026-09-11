@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, PixelRatio, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 // Safe to import here: the native module is already in every build of this
 // app (that's what makes OTA updates work at all), so this adds nothing
@@ -46,6 +46,12 @@ export default function SettingsScreen() {
   // a cold start and only applies it on the NEXT one, silently. This card
   // shows which bundle is running and forces the whole cycle on demand.
   const [updateBusy, setUpdateBusy] = useState(false);
+  // The actual layout size of this window, in the units every breakpoint in
+  // this app is written in. Spec sheets quote pixels, and a phone's own
+  // "screen zoom" setting changes the density those pixels divide by - so
+  // the only way to know which side of a breakpoint a device really falls
+  // on is to read it off the device.
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [email, setEmail] = useState<string | null>(() => (isDriveConnected() ? getConnectedEmail() : null));
   const [busy, setBusy] = useState(false);
   const [stats, setStats] = useState<{ totalBytesStored: number; fileCount: number } | null>(null);
@@ -162,7 +168,13 @@ export default function SettingsScreen() {
             Нові версії приходять по повітрю: застосунок завантажує їх при запуску, а застосовує при наступному. Кнопка
             нижче робить обидва кроки одразу.
           </Text>
-          <Pressable style={styles.checkButton} onPress={handleCheckUpdate} disabled={updateBusy}>
+          <View style={styles.trafficRow}>
+          <Ionicons name="phone-landscape-outline" size={15} color="#6B7280" />
+          <Text style={styles.trafficLabel}>
+            Екран: {Math.round(windowWidth)} × {Math.round(windowHeight)} dp (щільність {PixelRatio.get()})
+          </Text>
+        </View>
+        <Pressable style={styles.checkButton} onPress={handleCheckUpdate} disabled={updateBusy}>
             {updateBusy ? (
               <ActivityIndicator color={ACCENT} />
             ) : (
