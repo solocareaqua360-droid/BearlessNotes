@@ -40,11 +40,12 @@ import {
   setDoc,
   updateDoc,
 } from '@react-native-firebase/firestore';
+import * as Clipboard from 'expo-clipboard';
 import { db } from '../firebase';
 import { BoardsStackParamList, RootStackParamList } from '../navigation';
 import { Block, BoardCard, BoardColumn, BoardConnection } from '../types';
 import CustomRowBlockCard from '../components/CustomRowBlockCard';
-import { hapticDrop, hapticPickUp } from '../utils/haptics';
+import { hapticDrop, hapticPickUp, hapticSuccess } from '../utils/haptics';
 import {
   APPROX_CARD_HEIGHT,
   COLUMN_CARD_GAP,
@@ -1760,6 +1761,44 @@ export default function BoardScreen() {
       ? cards.find((c) => selectedCardIds.has(c.id) && (c.type ?? 'paragraph') === 'document')
       : undefined;
 
+  // The one selected card, whatever its kind - what the copy and read
+  // actions below work on.
+  const onlySelectedCard =
+    selectedCardIds.size === 1 ? cards.find((c) => selectedCardIds.has(c.id)) : undefined;
+
+  // A card's text as text: its own for a sticky, its document's whole body
+  // for a document card - the preview on the card is clipped, and copying
+  // half a document silently is worse than not offering it.
+  async function textOfCard(card: BoardCard): Promise<string> {
+    if ((card.type ?? 'paragraph') === 'document' && card.documentId) {
+      const snapshot = await getDoc(doc(db, 'documents', card.documentId));
+      const data = snapshot.data();
+      if (!data) return card.documentPreviewText ?? '';
+      const title = (data.title as string) ?? '';
+      const body = blocksToPreviewText((data.blocks ?? []) as Block[]);
+      return [title, body].filter((part) => part.trim() !== '').join('\n\n');
+    }
+    return card.text ?? '';
+  }
+
+  async function copyCardText(card: BoardCard) {
+    const text = await textOfCard(card);
+    if (!text.trim()) return;
+    await Clipboard.setStringAsync(text);
+    hapticSuccess();
+    setSelectedCardIds(new Set());
+  }
+
+  // Reading a card's text without opening anything that could change it -
+  // and selecting part of it by hand, which is the whole point: a plain
+  // Text on the canvas can't be selected, because a long press there means
+  // "pick this card".
+  const [readingCard, setReadingCard] = useState<{ card: BoardCard; text: string } | null>(null);
+  async function openCardText(card: BoardCard) {
+    setSelectedCardIds(new Set());
+    setReadingCard({ card, text: await textOfCard(card) });
+  }
+
   const cardById = new Map(cards.map((c) => [c.id, c]));
   // A dragged card's live position lives in its own shared values, which
   // the connection lines (drawn from React state) can't see - so rather
@@ -1961,6 +2000,26 @@ export default function BoardScreen() {
             <View style={styles.selectionBarCapsule}>
               <Text style={styles.selectionBarCount}>{selectedCardIds.size}</Text>
               <View style={styles.selectionBarDivider} />
+              {!!onlySelectedCard && (
+                <Pressable
+                  style={styles.selectionBarAction}
+                  hitSlop={6}
+                  onPress={() => copyCardText(onlySelectedCard)}
+                >
+                  <Ionicons name="copy-outline" size={18} color="#fff" />
+                  <Text style={styles.selectionBarActionLabel}>Копіювати</Text>
+                </Pressable>
+              )}
+              {!!onlySelectedDocumentCard && (
+                <Pressable
+                  style={styles.selectionBarAction}
+                  hitSlop={6}
+                  onPress={() => openCardText(onlySelectedDocumentCard)}
+                >
+                  <Ionicons name="reader-outline" size={18} color="#fff" />
+                  <Text style={styles.selectionBarActionLabel}>Текст</Text>
+                </Pressable>
+              )}
               {onlySelectedDocumentCard && (
                 <Pressable
                   style={styles.selectionBarAction}
@@ -2184,6 +2243,43 @@ export default function BoardScreen() {
             SketchEditor's own text-entry overlay: a Modal here would fight a
             nested Modal (AddExistingItemModal) for focus, and a child of the
             canvas would fight its Pan/Pinch gesture for touch focus. */}
+        {readingCard && (
+          <View style={styles.textEditBackdrop}>
+            <View style={styles.textEditCard}>
+              <Text style={styles.readTitle} numberOfLines={1}>
+                {readingCard.card.documentTitle?.trim() || 'Текст картки'}
+              </Text>
+              {/* A read-only input rather than a Text: it can't be edited,
+                  but it CAN be selected, which a Text on this canvas
+                  cannot. */}
+              <ScrollView style={styles.readBody}>
+                <TextInput
+                  style={styles.textEditInput}
+                  value={readingCard.text}
+                  editable={false}
+                  multiline
+                  scrollEnabled={false}
+                />
+              </ScrollView>
+              <View style={styles.textEditButtons}>
+                <Pressable style={styles.textEditCancel} onPress={() => setReadingCard(null)}>
+                  <Text style={styles.textEditCancelLabel}>Закрити</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.textEditSave}
+                  onPress={async () => {
+                    await Clipboard.setStringAsync(readingCard.text);
+                    hapticSuccess();
+                    setReadingCard(null);
+                  }}
+                >
+                  <Text style={styles.textEditSaveLabel}>Копіювати все</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        )}
+
         {editingCard && (
           <View style={styles.textEditBackdrop}>
             <View style={styles.textEditCard}>
@@ -2627,6 +2723,14 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     gap: 12,
+  },
+  readTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  readBody: {
+    maxHeight: 360,
   },
   textEditInput: {
     minHeight: 100,
