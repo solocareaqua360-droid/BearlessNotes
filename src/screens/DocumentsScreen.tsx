@@ -59,6 +59,14 @@ import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import SketchEditor from '../components/SketchEditor';
 import { BlurView } from 'expo-blur';
 import { GlassPortal } from '../components/GlassPortal';
+import GlowHalo from '../components/GlowHalo';
+import {
+  HALO,
+  HALO_INSET,
+  RAIL_ADD_BOTTOM,
+  RAIL_RIGHT,
+  RAIL_WIDTH,
+} from '../constants/rail';
 import { useBlurTarget } from '../components/GlassTarget';
 
 // Палітра №3 (Теплий Теракотовий) - the create/edit action color across
@@ -546,19 +554,19 @@ export default function DocumentsScreen() {
                 pointerEvents="none"
               />
               <Pressable hitSlop={8} onPress={() => navigation.navigate('Search')}>
-                <Ionicons name="search" size={21} color="#fff" />
+                <Ionicons name="search" size={24} color="#fff" />
               </Pressable>
               <View style={styles.sideIslandDivider} />
               <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-                <Ionicons name="ellipsis-horizontal" size={21} color="#fff" />
+                <Ionicons name="ellipsis-horizontal" size={24} color="#fff" />
               </Pressable>
               <View style={styles.sideIslandDivider} />
               <Pressable hitSlop={8} onPress={toggleSelectMode}>
-                <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={21} color="#fff" />
+                <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={24} color="#fff" />
               </Pressable>
               <View style={styles.sideIslandDivider} />
               <Pressable hitSlop={8} onPress={toggleStickersCollapsed}>
-                <Ionicons name={stickersCollapsed ? 'albums-outline' : 'albums'} size={21} color="#fff" />
+                <Ionicons name={stickersCollapsed ? 'albums-outline' : 'albums'} size={24} color="#fff" />
               </Pressable>
             </View>
           </View>
@@ -728,6 +736,8 @@ export default function DocumentsScreen() {
         )}
 
         {!isSelectMode && (
+          <View style={styles.fabSlot} pointerEvents="box-none">
+          <GlowHalo color={fabPressed ? STICKER_YELLOW : ACCENT} />
           <Pressable
             style={[styles.fab, fabPressed && styles.fabSticker]}
             onPress={createDocument}
@@ -746,6 +756,7 @@ export default function DocumentsScreen() {
           >
             <Ionicons name="add" size={28} color={fabPressed ? STICKER_DARK : '#fff'} />
           </Pressable>
+          </View>
         )}
         </View>
 
@@ -870,7 +881,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 18,
     paddingVertical: 18,
-    paddingHorizontal: 11,
+    // As wide as the navigation island is thick: 19 + a 24px icon + 19,
+    // inside a 1px border on each side.
+    paddingHorizontal: 19,
     borderRadius: 999,
     // The blur fills this view; overflow keeps it inside the rounded
     // shape, so the edge stays a clean line instead of being smeared out
@@ -1052,13 +1065,21 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingBottom: 120,
   },
-  fab: {
+  // The square the halo is drawn on: twice the button across, centred on
+  // it, because the button's own box would clip the light.
+  fabSlot: {
     position: 'absolute',
-    right: 20,
-    bottom: 100,
-    width: 56,
-    height: 56,
-    borderRadius: 18,
+    right: RAIL_RIGHT - HALO_INSET,
+    bottom: RAIL_ADD_BOTTOM - HALO_INSET,
+    width: HALO,
+    height: HALO,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fab: {
+    width: RAIL_WIDTH,
+    height: RAIL_WIDTH,
+    borderRadius: 999,
     backgroundColor: ACCENT,
     alignItems: 'center',
     justifyContent: 'center',

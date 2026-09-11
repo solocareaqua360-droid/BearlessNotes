@@ -103,6 +103,7 @@ import {
 } from '../utils/customRowQuery';
 import { colorForDocument } from '../utils/documentColor';
 import { MONTH_FULL, WEEKDAY_SHORT, dateKey, getMonthGrid, isSameDay, parseDateKey } from '../utils/dateLocale';
+import { RAIL_ADD_BOTTOM } from '../constants/rail';
 
 const ACCENT = '#A05C7B';
 const DANGER = '#EF4444';
@@ -2826,7 +2827,8 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 100,
+    // Clear of the navigation island, which now stands at this edge.
+    bottom: RAIL_ADD_BOTTOM,
     width: 56,
     height: 56,
     borderRadius: 18,

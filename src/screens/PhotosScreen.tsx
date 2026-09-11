@@ -65,6 +65,7 @@ import { sortItems } from '../utils/sortItems';
 import DownloadToast from '../components/DownloadToast';
 import SortMenuRows from '../components/SortMenuRows';
 import ContentColumn from '../components/ContentColumn';
+import { RAIL_ADD_BOTTOM } from '../constants/rail';
 
 const ACCENT = '#EC4899';
 const groupsCollection = collection(db, 'groups');
@@ -913,7 +914,8 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 100,
+    // Clear of the navigation island, which now stands at this edge.
+    bottom: RAIL_ADD_BOTTOM,
     width: 56,
     height: 56,
     borderRadius: 18,

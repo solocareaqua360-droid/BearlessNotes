@@ -4,6 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Tag } from '../types';
 import { FONT_REGULAR, FONT_SEMIBOLD, FONT_BOLD, FONT_EXTRABOLD } from '../utils/fonts';
+import GlowHalo from './GlowHalo';
+import { HALO, HALO_INSET, RAIL_RIGHT, RAIL_TAG_BOTTOM } from '../constants/rail';
 import { GLASS_BODY, GLASS_BODY_BLURRED, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import { BlurView } from 'expo-blur';
 import { useBlurTarget } from './GlassTarget';
@@ -306,9 +308,12 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
       )}
 
       {!isOpen && !hideOpenButton && (
-        <Pressable style={styles.openButton} onPress={openDrawer}>
-          <Text style={styles.openButtonHash}>#</Text>
-        </Pressable>
+        <View style={styles.openSlot} pointerEvents="box-none">
+          <GlowHalo color={GLASS_TEXT} />
+          <Pressable style={styles.openButton} onPress={openDrawer}>
+            <Text style={styles.openButtonHash}>#</Text>
+          </Pressable>
+        </View>
       )}
     </>
   );
@@ -431,17 +436,25 @@ const styles = StyleSheet.create({
     fontFamily: FONT_REGULAR,
     flexShrink: 1,
   },
-  openButton: {
+  // The square the halo is drawn on - twice the button across and centred
+  // on it, because the button's own box would clip the light.
+  openSlot: {
     position: 'absolute',
-    // Same size and bottom offset as the island, standing on its own to
-    // its left (see the videobookmark reference) - a plain tap, no more
-    // drag: dragging from the screen's edge was exactly where Android's
-    // own edge-back gesture kept stealing the touch stream mid-swipe.
-    left: 20,
-    bottom: 24,
+    right: RAIL_RIGHT - HALO_INSET,
+    bottom: RAIL_TAG_BOTTOM - HALO_INSET,
+    width: HALO,
+    height: HALO,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  openButton: {
+    // On the rail at the right edge now, above the add button and under
+    // the control capsule - a plain tap, no drag: dragging from the
+    // screen's edge was exactly where Android's own edge-back gesture
+    // kept stealing the touch stream mid-swipe.
     width: OPEN_BUTTON_SIZE,
     height: OPEN_BUTTON_SIZE,
-    borderRadius: 16,
+    borderRadius: 999,
     backgroundColor: GLASS_BODY,
     alignItems: 'center',
     justifyContent: 'center',

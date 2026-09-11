@@ -56,6 +56,7 @@ import { sortItems } from '../utils/sortItems';
 import { colorForDocument } from '../utils/documentColor';
 import SortMenuRows from '../components/SortMenuRows';
 import ContentColumn from '../components/ContentColumn';
+import { RAIL_ADD_BOTTOM } from '../constants/rail';
 
 const ACCENT = '#14B8A6';
 const DANGER = '#EF4444';
@@ -925,7 +926,8 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 100,
+    // Clear of the navigation island, which now stands at this edge.
+    bottom: RAIL_ADD_BOTTOM,
     width: 56,
     height: 56,
     borderRadius: 18,

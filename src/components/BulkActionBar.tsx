@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { RAIL_GAP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 
 type Props = {
   count: number;
@@ -89,7 +90,8 @@ const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
     left: 0,
-    right: 0,
+    // Clear of the navigation island, which stands at the right edge now.
+    right: RAIL_RIGHT + RAIL_WIDTH + RAIL_GAP,
     alignItems: 'center',
   },
   capsule: {

@@ -74,6 +74,7 @@ import { useGroupItems } from '../hooks/useGroupItems';
 import { importGroupToBoard } from '../utils/importGroupToBoard';
 import { Group } from '../types';
 import DocumentEditorScreen from './DocumentEditorScreen';
+import { RAIL_ADD_BOTTOM } from '../constants/rail';
 
 const AUTOSAVE_DELAY_MS = 600;
 const MIN_SCALE = 0.4;
@@ -2023,7 +2024,7 @@ export default function BoardScreen() {
           // own multi-select bar), kept local rather than reusing that
           // component directly since its action set (tag/group/copy)
           // doesn't apply to board cards.
-          <View style={[styles.selectionBarWrap, { bottom: 104 + bottomInset }]} pointerEvents="box-none">
+          <View style={[styles.selectionBarWrap, { bottom: RAIL_ADD_BOTTOM + bottomInset }]} pointerEvents="box-none">
             <View style={styles.selectionBarCapsule}>
               <Text style={styles.selectionBarCount}>{selectedCardIds.size}</Text>
               <View style={styles.selectionBarDivider} />
@@ -2074,7 +2075,7 @@ export default function BoardScreen() {
             </View>
           </View>
         ) : (
-          <Pressable style={[styles.fab, { bottom: 104 + bottomInset }]} onPress={() => setAddSheetVisible(true)}>
+          <Pressable style={[styles.fab, { bottom: RAIL_ADD_BOTTOM + bottomInset }]} onPress={() => setAddSheetVisible(true)}>
             <Ionicons name="add" size={26} color="#fff" />
           </Pressable>
         )}

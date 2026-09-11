@@ -25,6 +25,7 @@ import DocumentPickerModal, { PickableDocument } from '../components/DocumentPic
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import SketchEditor from '../components/SketchEditor';
 import ContentColumn from '../components/ContentColumn';
+import { RAIL_ADD_BOTTOM } from '../constants/rail';
 
 const STICKER_YELLOW = '#FBE97A';
 const STICKER_DARK = '#4a3f05';
@@ -420,7 +421,8 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 32,
+    // Clear of the navigation island, which now stands at this edge.
+    bottom: RAIL_ADD_BOTTOM,
     width: 56,
     height: 56,
     borderRadius: 18,
