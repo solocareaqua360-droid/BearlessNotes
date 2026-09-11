@@ -132,10 +132,28 @@ export function displayFieldValue(
       .filter(Boolean)
       .join(', ');
   }
-  if (field.type === 'relation' && typeof value === 'string') {
-    return resolveRelationValue(field, value, ctx)?.label ?? '';
+  if (field.type === 'relation') {
+    // A gallery's chip is its count - several names joined would swamp a
+    // card, and the pictures themselves are the point anyway.
+    if (field.multiple || Array.isArray(value)) {
+      const count = resolveRelationList(field, value, ctx).length;
+      return count > 0 ? String(count) : '';
+    }
+    if (typeof value === 'string') return resolveRelationValue(field, value, ctx)?.label ?? '';
+    return '';
   }
   return String(value);
+}
+
+// Every target of a relation field, whether it holds one id or an array -
+// one shape for both so callers don't branch on `multiple` themselves.
+export function resolveRelationList(
+  field: FieldDef,
+  value: string | number | string[] | undefined,
+  ctx: RowDisplayContext
+): ResolvedRelation[] {
+  const ids = Array.isArray(value) ? value : typeof value === 'string' && value ? [value] : [];
+  return ids.map((id) => resolveRelationValue(field, id, ctx)).filter((r): r is ResolvedRelation => r !== null);
 }
 
 export type RowDisplay = {

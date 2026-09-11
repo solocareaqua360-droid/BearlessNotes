@@ -435,6 +435,10 @@ export interface FieldDef {
   // and removed by the relation field's own "показувати з іншого боку"
   // toggle (see FieldsEditorSheet), never picked as a field type by hand.
   backlinkSource?: { databaseId: string; fieldId: string };
+  // 'relation' only - the row holds an ARRAY of target ids instead of one,
+  // and the picker becomes a multi-select. What a gallery is: several
+  // photos of the same car, as against the single cover below.
+  multiple?: boolean;
   // 'relation' only - marks this as THE field whose value renders as a
   // thumbnail cover in list/table (and, later, card) views, instead of a
   // plain text value. At most one field per database should carry this -

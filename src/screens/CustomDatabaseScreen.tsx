@@ -49,6 +49,7 @@ import {
   displayFieldValue,
   resolveRelationValue,
   resolveBacklinkRows,
+  resolveRelationList,
   rowTitleOf,
   visibleFieldsOf,
   RowDisplayContext,
@@ -57,6 +58,7 @@ import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import FieldsEditorSheet, { FIELD_TYPE_ICON } from '../components/FieldsEditorSheet';
 import ImportTableSheet from '../components/ImportTableSheet';
+import PhotoCarousel from '../components/PhotoCarousel';
 import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
@@ -925,6 +927,26 @@ export default function CustomDatabaseScreen({}: Props) {
         </Pressable>
       );
     }
+    if (field.type === 'relation' && field.multiple) {
+      const resolvedList = resolveRelationList(field, value, displayContext);
+      return (
+        <Pressable style={styles.fieldPressable} onPress={() => setRelationPickerFieldId(field.id)}>
+          {resolvedList.length > 0 ? (
+            <View style={styles.galleryThumbs}>
+              {resolvedList.slice(0, 4).map((item, i) =>
+                item.thumbUri ? (
+                  <RelationThumb key={`${item.label}-${i}`} uri={item.thumbUri} driveFileId={item.driveFileId} size={34} radius={8} />
+                ) : null
+              )}
+              {resolvedList.length > 4 && <Text style={styles.fieldPressableValue}>+{resolvedList.length - 4}</Text>}
+            </View>
+          ) : (
+            <Text style={styles.fieldPressablePlaceholder}>Обрати</Text>
+          )}
+          <Ionicons name="chevron-down" size={16} color="#9CA3AF" />
+        </Pressable>
+      );
+    }
     if (field.type === 'relation') {
       const resolved = typeof value === 'string' ? resolveRelation(field, value) : null;
       return (
@@ -1129,6 +1151,20 @@ export default function CustomDatabaseScreen({}: Props) {
             {count || '—'}
           </Text>
         </View>
+      );
+    }
+    if (field.type === 'relation' && field.multiple) {
+      const count = resolveRelationList(field, raw, displayContext).length;
+      return (
+        <Pressable
+          key={field.id}
+          style={[styles.tableCellTap, { width: TABLE_COLUMN_WIDTH }]}
+          onPress={() => beginCellEdit(row, field)}
+        >
+          <Text style={count ? styles.tableCell : styles.tableCellEmpty} numberOfLines={1}>
+            {count || '—'}
+          </Text>
+        </Pressable>
       );
     }
     if (field.type === 'relation') {
@@ -1926,6 +1962,21 @@ export default function CustomDatabaseScreen({}: Props) {
                     );
                   }
                   const raw = rowPageRow.values[field.id];
+                  if (field.type === 'relation' && field.multiple) {
+                    const photos = resolveRelationList(field, raw, displayContext)
+                      .filter((item) => !!item.thumbUri)
+                      .map((item) => ({ uri: item.thumbUri as string, driveFileId: item.driveFileId }));
+                    return (
+                      <View key={field.id} style={styles.pageField}>
+                        <Text style={styles.pageFieldLabel}>{field.name}</Text>
+                        {photos.length === 0 ? (
+                          <Text style={styles.pageFieldEmpty}>—</Text>
+                        ) : (
+                          <PhotoCarousel items={photos} horizontalMargin={16} />
+                        )}
+                      </View>
+                    );
+                  }
                   if (field.type === 'relation') {
                     const resolved = typeof raw === 'string' ? resolveRelation(field, raw) : null;
                     return (
@@ -2148,6 +2199,7 @@ export default function CustomDatabaseScreen({}: Props) {
               : Promise.resolve('')
           }
           onChange={(value) => writeRowValue(cellPicker.rowId, cellPicker.field.id, value)}
+          onChangeMany={(values) => writeRowValue(cellPicker.rowId, cellPicker.field.id, values)}
           onClose={() => setCellPicker(null)}
         />
       )}
@@ -2360,6 +2412,7 @@ function RelationPickerSheet({
   relatedRows,
   onCreateRow,
   onChange,
+  onChangeMany,
   onClose,
 }: {
   field: FieldDef;
@@ -2373,14 +2426,30 @@ function RelationPickerSheet({
   // a trip over there to create it first (the Notion behaviour).
   onCreateRow: (title: string) => Promise<string>;
   onChange: (value: string) => void;
+  // Only for a `multiple` field - the whole new list of ids.
+  onChangeMany?: (values: string[]) => void;
   onClose: () => void;
 }) {
   const [search, setSearch] = useState('');
-  const currentId = typeof value === 'string' ? value : undefined;
+  const isMulti = !!field.multiple;
+  const selectedIds = Array.isArray(value) ? value : typeof value === 'string' && value ? [value] : [];
+  const currentId = isMulti ? undefined : typeof value === 'string' ? value : undefined;
   const isPhotos = (field.relationTarget?.kind ?? 'photos') === 'photos';
   const needle = search.trim().toLowerCase();
 
-  const clearRow = currentId ? (
+  // In multi mode a tap toggles membership and the sheet stays open, so
+  // several photos can be picked in one go; in single mode it picks and
+  // closes, as before.
+  function choose(id: string) {
+    if (!isMulti) {
+      onChange(id);
+      onClose();
+      return;
+    }
+    onChangeMany?.(selectedIds.includes(id) ? selectedIds.filter((v) => v !== id) : [...selectedIds, id]);
+  }
+
+  const clearRow = currentId && !isMulti ? (
     <Pressable
       style={styles.optionPickerRow}
       onPress={() => {
@@ -2411,16 +2480,9 @@ function RelationPickerSheet({
             <ScrollView style={styles.relationPickerScroll} keyboardShouldPersistTaps="handled">
               <View style={styles.relationPhotoGrid}>
                 {filtered.map((photo) => (
-                  <Pressable
-                    key={photo.id}
-                    style={styles.relationPhotoCell}
-                    onPress={() => {
-                      onChange(photo.id);
-                      onClose();
-                    }}
-                  >
+                  <Pressable key={photo.id} style={styles.relationPhotoCell} onPress={() => choose(photo.id)}>
                     <RelationThumb uri={photo.imageUri} driveFileId={photo.driveFileId} size={72} radius={10} />
-                    {photo.id === currentId && (
+                    {selectedIds.includes(photo.id) && (
                       <View style={styles.relationPhotoCheck}>
                         <Ionicons name="checkmark-circle" size={18} color={ACCENT} />
                       </View>
@@ -2430,6 +2492,11 @@ function RelationPickerSheet({
                 {filtered.length === 0 && <Text style={styles.optionPickerEmpty}>Немає фото.</Text>}
               </View>
             </ScrollView>
+            {isMulti && (
+              <Pressable style={styles.relationDoneButton} onPress={onClose}>
+                <Text style={styles.relationDoneLabel}>Готово · {selectedIds.length}</Text>
+              </Pressable>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
@@ -2488,21 +2555,19 @@ function RelationPickerSheet({
               // field and only the composed name tells them apart.
               const title = rowTitleOf(relatedDatabase, r);
               return (
-                <Pressable
-                  key={r.id}
-                  style={styles.optionPickerRow}
-                  onPress={() => {
-                    onChange(r.id);
-                    onClose();
-                  }}
-                >
+                <Pressable key={r.id} style={styles.optionPickerRow} onPress={() => choose(r.id)}>
                   <Text style={styles.optionPickerLabel}>{title}</Text>
-                  {r.id === currentId && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+                  {selectedIds.includes(r.id) && <Ionicons name="checkmark" size={18} color={ACCENT} />}
                 </Pressable>
               );
             })}
             {rowsFiltered.length === 0 && <Text style={styles.optionPickerEmpty}>Нічого не знайдено.</Text>}
           </ScrollView>
+          {isMulti && (
+            <Pressable style={styles.relationDoneButton} onPress={onClose}>
+              <Text style={styles.relationDoneLabel}>Готово · {selectedIds.length}</Text>
+            </Pressable>
+          )}
         </Pressable>
       </Pressable>
     </Modal>
@@ -2985,6 +3050,24 @@ const styles = StyleSheet.create({
   pageTags: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+  },
+  galleryThumbs: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  relationDoneButton: {
+    backgroundColor: ACCENT,
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  relationDoneLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
   },
   backlinkList: {
     gap: 6,

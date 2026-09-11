@@ -208,6 +208,13 @@ export default function FieldsEditorSheet({
     });
   }
 
+  // A relation holding several targets instead of one - a gallery rather
+  // than a single pick. Switching it off leaves any array already stored
+  // alone; the picker simply starts using the first of them again.
+  function toggleMultiple(id: string) {
+    setDraft((prev) => prev.map((f) => (f.id === id ? { ...f, multiple: !f.multiple } : f)));
+  }
+
   function toggleHidden(id: string) {
     setDraft((prev) => prev.map((f) => (f.id === id ? { ...f, hidden: !f.hidden } : f)));
   }
@@ -434,6 +441,14 @@ export default function FieldsEditorSheet({
                         )}
                       </View>
                     )}
+                    <Pressable style={styles.coverToggleRow} onPress={() => toggleMultiple(field.id)}>
+                      <Ionicons
+                        name={field.multiple ? 'checkbox' : 'square-outline'}
+                        size={18}
+                        color={field.multiple ? ACCENT : '#9CA3AF'}
+                      />
+                      <Text style={styles.coverToggleLabel}>Кілька значень (галерея)</Text>
+                    </Pressable>
                     <Pressable style={styles.coverToggleRow} onPress={() => toggleCoverField(field.id)}>
                       <Ionicons
                         name={field.isCover ? 'checkbox' : 'square-outline'}

@@ -29,7 +29,11 @@ const SORTABLE_TYPES: FieldDef['type'][] = ['text', 'number', 'date', 'select', 
 // because it IS the built-in 'title' sort, under the user's own name for
 // it - offering both would be the same ordering listed twice.
 export function sortableFieldsOf(database: CustomDatabase | null | undefined): FieldDef[] {
-  return (database?.fields ?? []).slice(1).filter((f) => !f.hidden && SORTABLE_TYPES.includes(f.type));
+  // A multi-value relation is excluded for the same reason multiSelect is:
+  // a row holding three targets has no single position in an ordering.
+  return (database?.fields ?? [])
+    .slice(1)
+    .filter((f) => !f.hidden && SORTABLE_TYPES.includes(f.type) && !f.multiple);
 }
 
 // Everything past the title can be filtered, whatever its type - even a
