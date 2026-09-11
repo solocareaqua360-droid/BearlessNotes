@@ -1934,13 +1934,29 @@ export default function CustomDatabaseScreen({}: Props) {
 
             {rowPageRow && (
               <GestureScrollView contentContainerStyle={styles.pageBody}>
+                {/* The cover field leads the page as the record's own
+                    picture - no label above it, and skipped further down
+                    so the same photos aren't listed twice. A gallery cover
+                    is the whole carousel here, not just its first frame:
+                    the page has the room a card doesn't. */}
                 {(() => {
-                  const cover = coverField ? resolveRelation(coverField, rowPageRow.values[coverField.id] as string | undefined) : null;
-                  return cover?.thumbUri ? (
-                    <View style={styles.pageCover}>
-                      <RelationThumb uri={cover.thumbUri} driveFileId={cover.driveFileId} fill />
+                  if (!coverField) return null;
+                  const photos = resolveRelationList(coverField, rowPageRow.values[coverField.id], displayContext)
+                    .filter((item) => !!item.thumbUri)
+                    .map((item) => ({ uri: item.thumbUri as string, driveFileId: item.driveFileId }));
+                  if (photos.length === 0) return null;
+                  if (photos.length === 1) {
+                    return (
+                      <View style={styles.pageCover}>
+                        <RelationThumb uri={photos[0].uri} driveFileId={photos[0].driveFileId} fill />
+                      </View>
+                    );
+                  }
+                  return (
+                    <View style={styles.pageCoverCarousel}>
+                      <PhotoCarousel items={photos} horizontalMargin={16} />
                     </View>
-                  ) : null;
+                  );
                 })()}
 
                 <Text style={styles.pageTitle}>{titleOf(rowPageRow)}</Text>
@@ -1949,6 +1965,7 @@ export default function CustomDatabaseScreen({}: Props) {
                     Empty ones are shown too, greyed - on a reference page
                     "this is not filled in" is information. */}
                 {database.fields.slice(1).map((field) => {
+                  if (field.id === coverField?.id) return null;
                   if (field.type === 'section') {
                     return (
                       <Text key={field.id} style={styles.pageSectionHeading}>
@@ -3043,6 +3060,9 @@ const styles = StyleSheet.create({
     aspectRatio: 1.5,
     borderRadius: 16,
     overflow: 'hidden',
+    marginBottom: 16,
+  },
+  pageCoverCarousel: {
     marginBottom: 16,
   },
   pageTitle: {
