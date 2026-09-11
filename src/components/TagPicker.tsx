@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+// gesture-handler's ScrollView, not the core RN one: on Android a drag that
+// starts on a TextInput never reaches an RN ScrollView's scroll recognition,
+// so a sheet with a search/name field only scrolled when a finger happened to
+// land between rows. Same fix, same reason, as FieldsEditorSheet.
+import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { Tag, TaggableKind } from '../types';
 import { TAG_COLORS, TAG_ICONS } from '../constants/tags';
@@ -137,8 +142,17 @@ export default function TagPicker({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={[styles.sheet, { marginBottom: keyboardHeight }]} onPress={() => {}}>
+      {/* RN's Modal is its own native window on Android, outside App.tsx's
+          GestureHandlerRootView - the ScrollView inside needs a root
+          re-declared here or it does not scroll at all. */}
+      <GestureHandlerRootView style={{ flex: 1 }}>
+      {/* Backdrop as a SIBLING behind the sheet, not its parent - as a
+          parent it took the RN touch responder for every drag that did not
+          land on a deeper child, which is what kept the list from
+          scrolling. A tap outside still closes it. */}
+      <View style={styles.backdrop}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={[styles.sheet, { marginBottom: keyboardHeight }]}>
           <View style={styles.handle} />
 
           {mode === 'list' ? (
@@ -270,8 +284,9 @@ export default function TagPicker({
               </View>
             </>
           )}
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
+      </GestureHandlerRootView>
 
       <RenamePrompt
         visible={renamingTag !== null}
