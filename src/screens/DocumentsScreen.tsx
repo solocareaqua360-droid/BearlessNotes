@@ -96,7 +96,10 @@ export default function DocumentsScreen() {
   // over the top of the list. Folding the phone shut resizes the window,
   // which drops straight back to one column with the same document still
   // remembered - unfolding brings it back where it was.
-  const { isTwoPane, listPaneWidth } = useResponsiveLayout();
+  const { isTwoPane } = useResponsiveLayout();
+  // The document pane taking the whole window. Only reachable from the
+  // editor's own header, and only while there are two panes to collapse.
+  const [paneFullscreen, setPaneFullscreen] = useState(false);
   // Which document the right-hand pane holds. Only ever read in two-pane
   // mode; on a phone a document is a pushed screen, as before.
   const [openDoc, setOpenDoc] = useState<{ id: string; autoFocusTitle?: boolean } | null>(null);
@@ -262,8 +265,18 @@ export default function DocumentsScreen() {
   // subscription has delivered anything, doesn't count as "gone".
   useEffect(() => {
     if (!openDoc || isLoading) return;
-    if (!documents.some((d) => d.id === openDoc.id)) setOpenDoc(null);
+    if (!documents.some((d) => d.id === openDoc.id)) {
+      setOpenDoc(null);
+      setPaneFullscreen(false);
+    }
   }, [documents, isLoading, openDoc]);
+
+  // Folding the phone shut takes the second pane away; full screen has to
+  // go with it, or the list stays hidden on a single-column screen with
+  // nothing left to bring it back.
+  useEffect(() => {
+    if (!isTwoPane) setPaneFullscreen(false);
+  }, [isTwoPane]);
 
   // The one place that decides what "open a document" means: a pane on a
   // wide screen, a pushed screen on a narrow one.
@@ -389,7 +402,10 @@ export default function DocumentsScreen() {
           below - stays outside this row, so a drawer still covers the
           screen rather than half of it. */}
       <View style={styles.paneRow}>
-        <View style={[styles.pane, isTwoPane && { flex: 0, width: listPaneWidth }]}>
+        {/* Hidden rather than unmounted while the document is full screen:
+            the list keeps its scroll position and its subscriptions, so
+            coming back out of full screen lands where it left off. */}
+        <View style={[styles.pane, isTwoPane && !!openDoc && paneFullscreen && styles.paneHidden]}>
         <View style={styles.headerRow}>
           <Text style={styles.header}>Документи</Text>
         </View>
@@ -657,7 +673,12 @@ export default function DocumentsScreen() {
                 documentId={openDoc.id}
                 autoFocusTitle={openDoc.autoFocusTitle}
                 navigation={navigation}
-                onClose={() => setOpenDoc(null)}
+                onClose={() => {
+                  setOpenDoc(null);
+                  setPaneFullscreen(false);
+                }}
+                isFullscreen={paneFullscreen}
+                onToggleFullscreen={() => setPaneFullscreen((v) => !v)}
               />
             ) : (
               <View style={styles.editorPaneEmpty}>
@@ -712,6 +733,9 @@ const styles = StyleSheet.create({
   },
   pane: {
     flex: 1,
+  },
+  paneHidden: {
+    display: 'none',
   },
   editorPane: {
     flex: 1,

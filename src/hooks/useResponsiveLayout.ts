@@ -10,15 +10,11 @@ import { useWindowDimensions } from 'react-native';
 // scope - see the calendar's own scars).
 export const TWO_PANE_MIN_WIDTH = 840;
 
-// The list pane. Wide enough for a document card to read as a card rather
-// than a strip, narrow enough that the editor beside it keeps a full
-// text column.
-function listPaneWidth(width: number): number {
-  return Math.round(Math.min(420, Math.max(340, width * 0.36)));
-}
-
 export function useResponsiveLayout() {
   const { width, height } = useWindowDimensions();
-  const isTwoPane = width >= TWO_PANE_MIN_WIDTH;
-  return { width, height, isTwoPane, listPaneWidth: listPaneWidth(width) };
+  // The two panes split the window evenly. A narrower list pane leaves the
+  // editor more room, but at 984dp half is still ~490dp - wider than any
+  // phone this app runs on - and the list is the half that suffers first
+  // when it's squeezed: its cards are two columns of thumbnails, not text.
+  return { width, height, isTwoPane: width >= TWO_PANE_MIN_WIDTH };
 }

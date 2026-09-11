@@ -1949,6 +1949,11 @@ type Props =
       navigation: NativeStackNavigationProp<RootStackParamList>;
       autoFocusTitle?: boolean;
       onClose: () => void;
+      // The pane taking the whole window, list and all. Offered only in
+      // pane mode: on a phone every document is already full-screen, so
+      // the button would toggle nothing.
+      isFullscreen?: boolean;
+      onToggleFullscreen?: () => void;
     };
 
 export type DocumentEditorHandle = {
@@ -1966,6 +1971,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // In a pane there is nothing on a stack to go back to - the arrow empties
   // the pane and leaves the list beside it alone.
   const closePane = 'pane' in props ? props.onClose : null;
+  const paneFullscreen = 'pane' in props ? !!props.isFullscreen : false;
+  const onToggleFullscreen = 'pane' in props ? props.onToggleFullscreen : undefined;
   // Only set right after DocumentsScreen creates a brand-new document - see
   // navigation.ts's own comment on this param.
   const autoFocusTitle =
@@ -3864,6 +3871,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           <Pressable hitSlop={8} onPress={() => (closePane ? closePane() : navigation.goBack())}>
             <Ionicons name="arrow-back" size={22} color={paperColor?.text ?? '#111827'} />
           </Pressable>
+          {!!onToggleFullscreen && (
+            <Pressable hitSlop={8} onPress={onToggleFullscreen}>
+              <Ionicons
+                name={paneFullscreen ? 'contract-outline' : 'expand-outline'}
+                size={20}
+                color={paperColor?.text ?? '#111827'}
+              />
+            </Pressable>
+          )}
         </View>
         <View style={styles.headerRightGroup}>
           {/* A separate circle, not a 4th chip inside the pill - matches
