@@ -66,7 +66,7 @@ import { linkDocId } from '../utils/linkId';
 import { blockFromFile, blockFromLink, blockFromPhoto } from '../utils/copyToNote';
 import { backupFileToDrive } from '../utils/googleDrive';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
-import { contentEqual, generateDocumentFromBoard } from '../utils/boardToDocument';
+import { contentEqual, generateDocumentFromColumn } from '../utils/boardToDocument';
 import BoardColumnDocument from '../components/BoardColumnDocument';
 import GroupImportSheet from '../components/GroupImportSheet';
 import { useGroupItems } from '../hooks/useGroupItems';
@@ -831,16 +831,7 @@ export default function BoardScreen() {
   // is the whole point of a board full of documents. Full screen is still
   // a tap away, so nothing that worked before stops working.
   const [paneDocId, setPaneDocId] = useState<string | null>(null);
-  // The document generated from this board, if there is one - see
-  // boardToDocument.ts. Stored on the board itself, so it survives a
-  // reopen and the document can find its way back here.
-  const [generatedDocId, setGeneratedDocId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
-  // Whether the document open in the pane has keystrokes it hasn't saved
-  // yet. While it does, the rebuild below waits: the side being touched is
-  // the source, and rebuilding from the board would overwrite a line that
-  // hasn't reached the board yet.
-  const [paneSaving, setPaneSaving] = useState(false);
   // One column read as flowing text in the right-hand half. Not a document
   // and not a copy: it edits the cards themselves, which is why nothing
   // here is synchronised with anything. Opened by long-pressing a column
@@ -970,7 +961,6 @@ export default function BoardScreen() {
       setCards(data?.cards ?? []);
       setConnections(data?.connections ?? []);
       setColumns(data?.columns ?? []);
-      setGeneratedDocId(data?.documentId ?? null);
       setIsLoaded(true);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1498,7 +1488,7 @@ export default function BoardScreen() {
   // first: that document is an ordinary one from the moment it's made, and
   // may well have been written in since.
   function confirmGenerateFromPreview() {
-    if (!generatedDocId) {
+    if (!viewerColumn?.documentId) {
       generateFromPreview();
       return;
     }
@@ -1513,20 +1503,18 @@ export default function BoardScreen() {
   }
 
   async function generateFromPreview() {
-    if (generating) return;
+    if (generating || !viewerColumn) return;
     setGenerating(true);
     try {
-      const id = await generateDocumentFromBoard({
-        id: boardId,
-        title,
-        cards,
-        connections,
-        columns,
-        documentId: generatedDocId ?? undefined,
-        createdAt: 0,
-        updatedAt: 0,
-      });
-      setGeneratedDocId(id);
+      const { documentId, columns: nextColumns } = await generateDocumentFromColumn(
+        { id: boardId, title, cards, connections, columns, createdAt: 0, updatedAt: 0 },
+        viewerColumn.id
+      );
+      // The column now remembers its document; taking that back into state
+      // keeps this screen's own autosave from writing the older list over
+      // it a moment later.
+      setColumns(nextColumns);
+      const id = documentId;
       // Straight into the real editor in the same half of the screen: what
       // was a preview a moment ago is now a document, and the board is
       // still there beside it.
@@ -2295,7 +2283,7 @@ export default function BoardScreen() {
           <BoardColumnDocument
             title={viewerColumn.title?.trim() || 'Колонка'}
             cards={columnMembers(cards, viewerColumn.id)}
-            hasDocument={generatedDocId !== null}
+            hasDocument={!!viewerColumn.documentId}
             onChangeCardText={changeCardText}
             onStartWriting={() => appendTextCard(viewerColumn.id)}
             onOpenCard={handleCardTap}
@@ -2319,7 +2307,6 @@ export default function BoardScreen() {
             navigation={navigation as unknown as NativeStackNavigationProp<RootStackParamList>}
             isFullscreen={paneFullscreen}
             onToggleFullscreen={() => setPaneFullscreen((v) => !v)}
-            onSaveStatusChange={(status) => setPaneSaving(status === 'saving')}
             onClose={() => {
               setPaneDocId(null);
               setPaneFullscreen(false);

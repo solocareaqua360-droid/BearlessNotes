@@ -358,6 +358,11 @@ export interface BoardColumn {
   // Columns from importGroupToBoard.ts don't set this - a fresh column
   // per import batch is the point there, never reused across imports.
   kind?: string;
+  // The document formed from this column (see boardToDocument.ts). Per
+  // column rather than per board: a board holds several themes at once -
+  // a group import alone makes a column per kind - and a document is one
+  // of them, not the canvas they share.
+  documentId?: string;
 }
 
 export interface BoardItem {
@@ -366,11 +371,8 @@ export interface BoardItem {
   cards: BoardCard[];
   connections?: BoardConnection[];
   columns?: BoardColumn[];
-  // The document generated from this board (see boardToDocument.ts). The
-  // document carries the reverse pointer, so either one can open the other
-  // beside it: the document says what was decided, the board next to it
-  // says why - its connections and comment cards are exactly the part that
-  // can't travel into a linear text.
+  // Boards formed before documents became per-column carry this; nothing
+  // writes it any more (see BoardColumn.documentId).
   documentId?: string;
   createdAt: number;
   updatedAt: number;

@@ -126,28 +126,43 @@ export async function buildBlocksFromBoard(board: {
 // both directions: the document remembers which board it came from, the
 // board which document came out of it. That pair is what lets either one
 // open the other beside it.
-export async function generateDocumentFromBoard(board: BoardItem): Promise<string> {
-  const blocks = await buildBlocksFromBoard(board);
+// The document of ONE column. A board gathers several themes side by side -
+// and a group import makes a column per kind, so a board can easily hold
+// half a dozen - while a document is one line of thought: the column you
+// were reading, not everything that happens to share the canvas with it.
+//
+// Which is why the document belongs to the column rather than to the
+// board: each column keeps its own, and re-forming rewrites that one.
+export async function generateDocumentFromColumn(
+  board: BoardItem,
+  columnId: string
+): Promise<{ documentId: string; columns: BoardColumn[] }> {
+  const columns = board.columns ?? [];
+  const column = columns.find((c) => c.id === columnId);
+  const cards = board.cards.filter((c) => c.columnId === columnId);
+  const blocks = await buildBlocksFromBoard({ cards, columns: column ? [column] : [] });
   const now = Date.now();
+  const title = column?.title?.trim() || board.title?.trim() || 'Дошка';
 
-  if (board.documentId) {
-    const ref = doc(db, 'documents', board.documentId);
+  if (column?.documentId) {
+    const ref = doc(db, 'documents', column.documentId);
     const existing = await getDoc(ref);
     if (existing.data() !== undefined) {
       await updateDoc(ref, { blocks, updatedAt: now, boardId: board.id });
-      return board.documentId;
+      return { documentId: column.documentId, columns };
     }
   }
 
   const created = await addDoc(collection(db, 'documents'), {
-    title: board.title?.trim() || 'Дошка',
+    title,
     blocks,
     createdAt: now,
     updatedAt: now,
     boardId: board.id,
   });
-  await updateDoc(doc(db, 'boards', board.id), { documentId: created.id });
-  return created.id;
+  const nextColumns = columns.map((c) => (c.id === columnId ? { ...c, documentId: created.id } : c));
+  await updateDoc(doc(db, 'boards', board.id), { columns: nextColumns });
+  return { documentId: created.id, columns: nextColumns };
 }
 
 // ---------------------------------------------------------------------------
