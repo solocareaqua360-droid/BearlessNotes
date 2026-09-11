@@ -154,12 +154,30 @@ export async function generateDocumentFromBoard(board: BoardItem): Promise<strin
 // The other direction: a document read back onto the board it came from.
 // ---------------------------------------------------------------------------
 
-// Compared field by field rather than by reference: both sides rebuild
-// constantly, and writing only when something actually differs is what
-// stops the two from writing each other in a loop. Ids are derived (see
-// cardBlockId), so identical content really does compare equal.
+// A value as a string that depends on its CONTENT and nothing else: keys
+// in a fixed order, and keys holding undefined dropped the way Firestore
+// drops them. Plain JSON.stringify was the first attempt and it was wrong
+// in the worst way - a document read back from Firestore has its keys in
+// a different order than the object that was written, so every comparison
+// said "different", both sides wrote on every pass, and the two chased
+// each other in a loop that showed up as the save dot flickering.
+function stable(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${k}:${stable(v)}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+// Both sides rebuild constantly; writing only when something actually
+// differs is what stops them from writing each other in a loop. Ids are
+// derived (see cardBlockId), so identical content really does compare
+// equal.
 export function blocksEqual(a: Block[], b: Block[]): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return stable(a) === stable(b);
 }
 
 // An edit that belongs to a document card's source document rather than to
@@ -293,7 +311,7 @@ export function applyDocumentToBoard(
     let card: BoardCard;
     if (existing) {
       card = { ...existing, ...cardFieldsFromBlock(block) };
-      if (JSON.stringify(card) !== JSON.stringify(existing)) changed = true;
+      if (stable(card) !== stable(existing)) changed = true;
       nextBlocks.push(block);
     } else {
       // No card behind it: a paragraph written straight into the document.
