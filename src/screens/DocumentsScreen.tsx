@@ -60,6 +60,7 @@ import { BlurView } from 'expo-blur';
 import { GlassPortal } from '../components/GlassPortal';
 import GlowHalo from '../components/GlowHalo';
 import {
+  CAPSULE_DROP,
   CHROME_TOP,
   HALO,
   HALO_INSET,
@@ -511,7 +512,10 @@ export default function DocumentsScreen() {
         {isFocused && !(isTwoPane && !!openDoc && paneFullscreen) && (
         <GlassPortal>
         <View
-          style={[styles.sideIslandLayer, { top: chromeTop, left: paneRect.x, width: paneRect.width }]}
+          style={[
+            styles.sideIslandLayer,
+            { top: chromeTop + CAPSULE_DROP, left: paneRect.x, width: paneRect.width },
+          ]}
           pointerEvents="box-none"
         >
           <View style={styles.sideIslandRow}>
@@ -886,9 +890,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     // `top`, `left` and `width` come from the pane's own layout - on a
     // Fold the capsule hugs the list's pane, not the window. It stands
-    // level with the group tabs rather than under them: the tabs keep the
-    // rail's width clear, and hanging it lower left the rail without the
-    // height to fit its four pieces.
+    // part way over the group tabs' band rather than below it: the tabs
+    // keep the rail's width clear, and hanging it all the way under them
+    // left the rail without the height to fit its four pieces.
     // Android keeps ~20px at each edge for its own back gesture, so it
     // sits a little in from the edge rather than against it.
     alignItems: 'flex-end',

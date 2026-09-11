@@ -52,17 +52,19 @@ export const CHROME_TOP = 4;
 // was exactly why the round buttons didn't have room to sit clear of it.
 const CAPSULE_HEIGHT = 184;
 
+// How far the capsule hangs below the top of the chrome band, and how far
+// the island drops into the tag row's own band. Both rows keep the rail's
+// width clear, so the two may overlap their bands without ever covering a
+// pill - these are the two numbers that decide how much height the rail's
+// four pieces have to share, and both were dialled in by eye on the
+// device: the capsule 15 above where it used to hang, the island 10 below.
+export const CAPSULE_DROP = 44;
+const ISLAND_DROP = 10;
+
 export function useRailLayout(windowHeight: number, insetTop: number, insetBottom: number) {
   const tagRowBottom = insetBottom + TAG_ROW_PAD;
-  // The island drops all the way into the tag row's own band rather than
-  // stopping above it. It can: both rows keep the rail's width clear, so
-  // there is never a pill down there for it to cover.
-  const foot = tagRowBottom;
-  // And the capsule starts level with the group tabs instead of hanging
-  // under them, for the same reason. Between them that is some 120px the
-  // four pieces of the rail get back - without it they simply did not fit
-  // on a screen this size, and rode up over one another.
-  const head = insetTop + CHROME_TOP + CAPSULE_HEIGHT;
+  const foot = tagRowBottom + TAG_ROW_HEIGHT + RAIL_GAP - ISLAND_DROP;
+  const head = insetTop + CHROME_TOP + CAPSULE_DROP + CAPSULE_HEIGHT;
   const free = windowHeight - head - foot;
   const gap = Math.max(RAIL_GAP, (free - (RAIL_WIDTH * 2 + NAV_HEIGHT)) / 4);
   const navBottom = foot + gap;
