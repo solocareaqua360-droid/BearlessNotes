@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+// Safe to import here: the native module is already in every build of this
+// app (that's what makes OTA updates work at all), so this adds nothing
+// native and ships over the air like any other change.
+import * as Updates from 'expo-updates';
 import { doc, onSnapshot } from '@react-native-firebase/firestore';
 import { db } from '../firebase';
 import {
@@ -27,7 +31,20 @@ function formatBytes(bytes: number): string {
   return `${(mb / 1024).toFixed(2)} ГБ`;
 }
 
+// dd.MM, HH:mm - enough to tell two updates published the same day apart,
+// which is the whole question this card answers.
+function formatUpdateTime(date: Date | null): string {
+  if (!date) return '—';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}, ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export default function SettingsScreen() {
+  // "Is the change I just published actually on this phone?" - by default
+  // nothing in the app answers that: expo-updates downloads a new bundle on
+  // a cold start and only applies it on the NEXT one, silently. This card
+  // shows which bundle is running and forces the whole cycle on demand.
+  const [updateBusy, setUpdateBusy] = useState(false);
   const [email, setEmail] = useState<string | null>(() => (isDriveConnected() ? getConnectedEmail() : null));
   const [busy, setBusy] = useState(false);
   const [stats, setStats] = useState<{ totalBytesStored: number; fileCount: number } | null>(null);
@@ -56,6 +73,28 @@ export default function SettingsScreen() {
     if (email) loadQuota();
     else setQuota(null);
   }, [email]);
+
+  async function handleCheckUpdate() {
+    setUpdateBusy(true);
+    try {
+      const check = await Updates.checkForUpdateAsync();
+      if (!check.isAvailable) {
+        Alert.alert('Оновлень немає', 'Встановлена версія - найновіша.');
+        return;
+      }
+      await Updates.fetchUpdateAsync();
+      Alert.alert('Оновлення завантажено', 'Перезапустити застосунок зараз?', [
+        { text: 'Пізніше', style: 'cancel' },
+        { text: 'Перезапустити', onPress: () => Updates.reloadAsync() },
+      ]);
+    } catch (e) {
+      // The usual one: a build running from Metro can't check for updates
+      // at all, and says so in its own words.
+      Alert.alert('Не вдалося перевірити', e instanceof Error ? e.message : String(e));
+    } finally {
+      setUpdateBusy(false);
+    }
+  }
 
   async function handleConnect() {
     setBusy(true);
@@ -105,6 +144,29 @@ export default function SettingsScreen() {
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.header}>Налаштування</Text>
+      </View>
+
+      <View style={[styles.card, styles.updateCard]}>
+        <View style={styles.cardHeader}>
+          <Ionicons name="cloud-download-outline" size={22} color={ACCENT} />
+          <Text style={styles.cardTitle}>Версія застосунку</Text>
+        </View>
+        <Text style={styles.cardBody}>
+          {Updates.isEmbeddedLaunch
+            ? 'Працює версія з APK (жодного оновлення ще не застосовано)'
+            : `Оновлення ${(Updates.updateId ?? '').slice(0, 8)} від ${formatUpdateTime(Updates.createdAt)}`}
+        </Text>
+        <Text style={styles.cardHint}>
+          Нові версії приходять по повітрю: застосунок завантажує їх при запуску, а застосовує при наступному. Кнопка
+          нижче робить обидва кроки одразу.
+        </Text>
+        <Pressable style={styles.checkButton} onPress={handleCheckUpdate} disabled={updateBusy}>
+          {updateBusy ? (
+            <ActivityIndicator color={ACCENT} />
+          ) : (
+            <Text style={styles.checkLabel}>Перевірити оновлення</Text>
+          )}
+        </Pressable>
       </View>
 
       <View style={styles.card}>
@@ -183,6 +245,9 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: '#111827',
+  },
+  updateCard: {
+    marginBottom: 14,
   },
   card: {
     marginHorizontal: 20,
