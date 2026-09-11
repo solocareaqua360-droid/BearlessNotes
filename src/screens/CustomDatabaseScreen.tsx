@@ -2736,13 +2736,16 @@ const styles = StyleSheet.create({
     height: 16,
     backgroundColor: 'rgba(255,255,255,0.3)',
   },
+  // Above the capsule strip (zIndex 20) and the dropdown overlay (30) -
+  // the "..." menu is the topmost thing on this screen while it's open,
+  // and at its old zIndex the capsules were drawn straight over it.
   menuBackdrop: {
     position: 'absolute',
     left: 0,
     right: 0,
     top: 0,
     bottom: 0,
-    zIndex: 5,
+    zIndex: 60,
   },
   menuPanel: {
     position: 'absolute',
@@ -2757,7 +2760,7 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
     elevation: 8,
-    zIndex: 6,
+    zIndex: 61,
   },
   menuSectionLabel: {
     fontSize: 11,
