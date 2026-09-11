@@ -868,6 +868,7 @@ export default function CustomDatabaseScreen({}: Props) {
 
   function renderFieldInput(field: FieldDef) {
     const value = draftValues[field.id];
+    if (field.type === 'section') return null;
     if (field.type === 'backlink') {
       const linked = editingRowId ? resolveBacklinkRows(field, editingRowId, displayContext) : [];
       const sourceDb = field.backlinkSource ? relatedDatabases[field.backlinkSource.databaseId] : undefined;
@@ -1899,6 +1900,13 @@ export default function CustomDatabaseScreen({}: Props) {
                     Empty ones are shown too, greyed - on a reference page
                     "this is not filled in" is information. */}
                 {database.fields.slice(1).map((field) => {
+                  if (field.type === 'section') {
+                    return (
+                      <Text key={field.id} style={styles.pageSectionHeading}>
+                        {field.name}
+                      </Text>
+                    );
+                  }
                   if (field.type === 'backlink') {
                     const linked = resolveBacklinkRows(field, rowPageRow.id, displayContext);
                     const sourceDb = field.backlinkSource ? relatedDatabases[field.backlinkSource.databaseId] : undefined;
@@ -1995,15 +2003,21 @@ export default function CustomDatabaseScreen({}: Props) {
                 dismisses the keyboard - the tap never reaches the control,
                 so the picker appears not to open at all. */}
             <GestureScrollView style={styles.editorScroll} keyboardShouldPersistTaps="handled">
-              {database.fields.map((field) => (
-                <View key={field.id} style={styles.editorField}>
-                  <View style={styles.editorFieldLabelRow}>
-                    <Ionicons name={FIELD_TYPE_ICON[field.type]} size={12} color="#6B7280" />
-                    <Text style={styles.editorFieldLabel}>{field.name}</Text>
+              {database.fields.map((field) =>
+                field.type === 'section' ? (
+                  <Text key={field.id} style={styles.sectionHeading}>
+                    {field.name}
+                  </Text>
+                ) : (
+                  <View key={field.id} style={styles.editorField}>
+                    <View style={styles.editorFieldLabelRow}>
+                      <Ionicons name={FIELD_TYPE_ICON[field.type]} size={12} color="#6B7280" />
+                      <Text style={styles.editorFieldLabel}>{field.name}</Text>
+                    </View>
+                    {renderFieldInput(field)}
                   </View>
-                  {renderFieldInput(field)}
-                </View>
-              ))}
+                )
+              )}
               <View style={styles.editorField}>
                 <Text style={styles.editorFieldLabel}>Теги</Text>
                 <Pressable style={styles.fieldPressable} onPress={() => setTagPickerVisible(true)}>
@@ -2827,6 +2841,26 @@ const styles = StyleSheet.create({
   // dark tabs - flexGrow/flexShrink: 0 keeps it from competing for height
   // with the row list below it (same fix, same reason, as that
   // component's own `scroll` style).
+  // A 'section' field's heading, in the row form and on the record page -
+  // the fields after it read as belonging to it.
+  sectionHeading: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#6B7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: 18,
+    marginBottom: 4,
+  },
+  pageSectionHeading: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: ACCENT,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: 22,
+    marginBottom: 2,
+  },
   groupSection: {
     gap: 8,
     marginBottom: 18,

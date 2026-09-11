@@ -38,7 +38,11 @@ export function sortableFieldsOf(database: CustomDatabase | null | undefined): F
 // out on purpose: its facet list would be one entry per row, which is
 // what search is for.
 export function filterableFieldsOf(database: CustomDatabase | null | undefined): FieldDef[] {
-  return (database?.fields ?? []).slice(1).filter((f) => !f.hidden);
+  // A section holds no value, and a backlink's value lives on other rows -
+  // neither has facets of its own to filter by.
+  return (database?.fields ?? [])
+    .slice(1)
+    .filter((f) => !f.hidden && f.type !== 'section' && f.type !== 'backlink');
 }
 
 export function sortLabelFor(sort: RowSort, database: CustomDatabase | null | undefined): string {
@@ -279,7 +283,9 @@ export function viewMatchesState(
 // filterable there - a select's options, a relation's targets, a text or
 // number's distinct values.
 export function groupableFieldsOf(database: CustomDatabase | null | undefined): FieldDef[] {
-  return (database?.fields ?? []).slice(1).filter((f) => !f.hidden && f.type !== 'backlink');
+  return (database?.fields ?? [])
+    .slice(1)
+    .filter((f) => !f.hidden && f.type !== 'backlink' && f.type !== 'section');
 }
 
 export type RowGroup = { key: string; label: string; rows: CustomDatabaseRow[] };

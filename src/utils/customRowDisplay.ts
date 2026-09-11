@@ -35,7 +35,9 @@ export function coverFieldOf(database: CustomDatabase | null | undefined): Field
 // NOT use this: hiding a field must not make it impossible to give it a
 // value.
 export function visibleFieldsOf(database: CustomDatabase | null | undefined): FieldDef[] {
-  return (database?.fields ?? []).filter((f) => !f.hidden);
+  // A 'section' is a heading, not a value - it has nothing to show in a
+  // list, a card chip or a table column.
+  return (database?.fields ?? []).filter((f) => !f.hidden && f.type !== 'section');
 }
 
 // Which field types may be appended to the name - ones whose stored value
@@ -160,7 +162,7 @@ export function buildRowDisplay(
     cover: !cover ? undefined : typeof coverRaw === 'string' ? resolveRelationValue(cover, coverRaw, ctx) : null,
     chips: database.fields
       .slice(1)
-      .filter((f) => !f.hidden && f.id !== cover?.id)
+      .filter((f) => !f.hidden && f.type !== 'section' && f.id !== cover?.id)
       .map((f) => ({
         field: f,
         // A backlink holds nothing in row.values - its "value" is however

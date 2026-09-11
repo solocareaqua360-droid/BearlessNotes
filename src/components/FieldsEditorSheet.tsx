@@ -26,6 +26,7 @@ export const FIELD_TYPE_LABEL: Record<FieldType, string> = {
   multiSelect: 'Множинний список',
   relation: 'Пов’язана база',
   backlink: 'Зворотні посилання',
+  section: 'Розділ',
 };
 
 // Shared with CustomDatabaseScreen's table header / row form, so a field's
@@ -38,12 +39,15 @@ export const FIELD_TYPE_ICON: Record<FieldType, keyof typeof Ionicons.glyphMap> 
   multiSelect: 'list-outline',
   relation: 'git-network-outline',
   backlink: 'return-down-back-outline',
+  section: 'bookmarks-outline',
 };
 
 const TYPE_LABEL = FIELD_TYPE_LABEL;
 const TYPE_ICON = FIELD_TYPE_ICON;
 
-const TYPE_ORDER: FieldType[] = ['text', 'number', 'date', 'select', 'multiSelect', 'relation'];
+// 'backlink' is missing on purpose: it's created by a relation's own
+// "показувати з іншого боку" switch, never picked here by hand.
+const TYPE_ORDER: FieldType[] = ['text', 'number', 'date', 'select', 'multiSelect', 'relation', 'section'];
 
 function relationTargetLabel(
   target: RelationTarget | undefined,
@@ -191,6 +195,19 @@ export default function FieldsEditorSheet({
     setDraft((prev) => prev.map((f) => (f.id === id ? { ...f, inTitle: !f.inTitle } : f)));
   }
 
+  // Moves a field one place up or down. The title field stays put at the
+  // top (it's the row's name everywhere), so nothing can move above it.
+  function moveField(id: string, delta: -1 | 1) {
+    setDraft((prev) => {
+      const index = prev.findIndex((f) => f.id === id);
+      const target = index + delta;
+      if (index < 1 || target < 1 || target >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
   function toggleHidden(id: string) {
     setDraft((prev) => prev.map((f) => (f.id === id ? { ...f, hidden: !f.hidden } : f)));
   }
@@ -278,7 +295,7 @@ export default function FieldsEditorSheet({
                   {/* fields[0] is the row's title everywhere else in this
                       database - renameable but never deletable or retyped,
                       so the app never ends up with zero display name. */}
-                  {index > 0 && (
+                  {index > 0 && field.type !== 'section' && (
                     <Pressable hitSlop={8} onPress={() => toggleHidden(field.id)}>
                       <Ionicons
                         name={field.hidden ? 'eye-off-outline' : 'eye-outline'}
@@ -286,6 +303,28 @@ export default function FieldsEditorSheet({
                         color={field.hidden ? DANGER : '#6B7280'}
                       />
                     </Pressable>
+                  )}
+                  {index > 0 && (
+                    <View style={styles.moveButtons}>
+                      <Pressable hitSlop={6} disabled={index <= 1} onPress={() => moveField(field.id, -1)}>
+                        <Ionicons
+                          name="chevron-up"
+                          size={16}
+                          color={index <= 1 ? '#E5E7EB' : '#6B7280'}
+                        />
+                      </Pressable>
+                      <Pressable
+                        hitSlop={6}
+                        disabled={index >= draft.length - 1}
+                        onPress={() => moveField(field.id, 1)}
+                      >
+                        <Ionicons
+                          name="chevron-down"
+                          size={16}
+                          color={index >= draft.length - 1 ? '#E5E7EB' : '#6B7280'}
+                        />
+                      </Pressable>
+                    </View>
                   )}
                   {index > 0 && canJoinTitle(field.type) && (
                     <Pressable hitSlop={8} onPress={() => toggleInTitle(field.id)}>
@@ -533,6 +572,11 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: '#111827',
+  },
+  moveButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
   },
   inTitleHint: {
     fontSize: 12,

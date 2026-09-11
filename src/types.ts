@@ -390,6 +390,13 @@ export type FieldType =
   | 'select'
   | 'multiSelect'
   | 'relation'
+  // A heading in the field list, with no value of its own: everything
+  // after it, until the next one, reads as belonging to it. Grouping the
+  // fields IS the field order, so no separate layout description has to be
+  // kept in step with the schema. Shown on the record page and in the row
+  // form; ignored by every list/table/filter/sort/group, which are about
+  // values and a section has none.
+  | 'section'
   // The other end of somebody else's 'relation' field: every row of THAT
   // database currently pointing at this one. Deliberately stores nothing
   // in a row's own `values` - it is computed at render time from rows that
