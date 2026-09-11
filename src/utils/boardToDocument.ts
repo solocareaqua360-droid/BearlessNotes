@@ -220,14 +220,32 @@ function isStructural(block: Block): boolean {
   return !!block.sourceColumnId || !!block.sourceDocumentId;
 }
 
-// Everything a card takes from its block. Placement and the card-only
-// display fields are deliberately left alone - those are the board's own
-// business and nothing in the document describes them.
+// Everything an EXISTING card takes from its block. Placement and the
+// card-only display fields are deliberately left alone - those are the
+// board's own business and nothing in the document describes them.
 function cardFieldsFromBlock(block: Block): Partial<BoardCard> {
   const fields: Partial<BoardCard> = { text: block.text ?? '' };
   if (block.type !== undefined) fields.type = block.type;
   if (block.checked !== undefined) fields.checked = block.checked;
   return fields;
+}
+
+// A NEW card takes the whole block, minus its identity and the stamps that
+// only mean something inside a document. Copying just text and type was
+// enough to make the card but not to rebuild the block from it: the
+// rebuilt version came out missing fields (createdAt among them), never
+// equalled what was stored, and so the two sides wrote each other on every
+// pass over a difference neither of them could resolve.
+function cardContentFromBlock(block: Block): Partial<BoardCard> {
+  const {
+    id: _id,
+    sourceCardId: _card,
+    sourceColumnId: _column,
+    sourceDocumentId: _document,
+    sourceBlockId: _block,
+    ...rest
+  } = block;
+  return rest as Partial<BoardCard>;
 }
 
 export function applyDocumentToBoard(
@@ -327,7 +345,7 @@ export function applyDocumentToBoard(
       const id = generateId();
       const count = order.get(sectionKey)?.length ?? 0;
       card = {
-        ...(cardFieldsFromBlock(block) as BoardCard),
+        ...(cardContentFromBlock(block) as BoardCard),
         id,
         text: block.text ?? '',
         x: options.looseOrigin.x,

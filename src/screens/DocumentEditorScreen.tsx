@@ -2635,8 +2635,32 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // A paragraph typed straight into the document now has a card behind
       // it; stamping that onto the block is what keeps the next pass from
       // making a second card for the same line.
-      if (!blocksEqual(result.blocks, currentBlocks)) {
-        setBlocks(result.blocks);
+      //
+      // Only the stamps are applied, never the whole array. This runs a
+      // second or two after the save it follows, and by then more may well
+      // have been typed - putting back the list as it was at save time is
+      // what made a freshly added block disappear under the user.
+      const stamps = new Map<string, Block>();
+      result.blocks.forEach((block, index) => {
+        const before = currentBlocks[index];
+        if (before && before.id !== block.id) stamps.set(before.id, block);
+      });
+      if (stamps.size > 0) {
+        setBlocks((live) =>
+          live.map((block) => {
+            const stamped = stamps.get(block.id);
+            if (!stamped) return block;
+            // Identity from the sync, content from what's on screen now.
+            return {
+              ...block,
+              id: stamped.id,
+              ...(stamped.sourceCardId ? { sourceCardId: stamped.sourceCardId } : {}),
+              ...(stamped.sourceDocumentId
+                ? { sourceDocumentId: stamped.sourceDocumentId, sourceBlockId: stamped.sourceBlockId }
+                : {}),
+            };
+          })
+        );
       }
     } finally {
       boardSyncingRef.current = false;

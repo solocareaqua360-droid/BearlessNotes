@@ -1508,20 +1508,18 @@ export default function BoardScreen() {
         const snapshot = await getDoc(ref);
         const current = (snapshot.data()?.blocks ?? []) as Block[];
 
-        // Never overwrite a document that is AHEAD of this board. Two ways
-        // it can be, and both end with text vanishing from under the user
-        // if this rebuild goes through:
-        //  - a paragraph typed into the document that hasn't become a card
-        //    yet (no source of any kind on it - the document side makes the
-        //    card a moment later, and this rebuild would erase the line
-        //    before that happens);
-        //  - a block naming a card this screen hasn't heard about yet,
-        //    because the write that created it is still on its way here.
-        const cardIds = new Set(cards.map((c) => c.id));
+        // Never overwrite a document that is AHEAD of this board: a block
+        // with no source on it is a line typed into the document that
+        // hasn't become a card yet, and rebuilding would erase it a moment
+        // before the document side turns it into one.
+        //
+        // Deliberately NOT "a block naming a card this board doesn't have"
+        // - that is also exactly what deleting a card looks like, and
+        // treating it as being behind left this rebuild switched off for
+        // good, which is how board edits stopped reaching the document at
+        // all.
         const documentIsAhead = current.some(
-          (block) =>
-            (!block.sourceCardId && !block.sourceColumnId && !block.sourceDocumentId) ||
-            (block.sourceCardId && !cardIds.has(block.sourceCardId))
+          (block) => !block.sourceCardId && !block.sourceColumnId && !block.sourceDocumentId
         );
         if (documentIsAhead) return;
 
