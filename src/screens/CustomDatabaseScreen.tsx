@@ -110,6 +110,10 @@ const VIEW_ICONS: Record<ViewMode, keyof typeof Ionicons.glyphMap> = {
   cards: 'albums-outline',
   table: 'grid-outline',
 };
+// The card grid's own padding and gap, as numbers because the tile width is
+// computed from them (see gridTileWidth) as well as applied in the style.
+const CARD_GRID_PADDING = 20;
+const CARD_GRID_GAP = 12;
 const TABLE_COLUMN_WIDTH = 150;
 const TABLE_HANDLE_WIDTH = 34;
 // The title column is the one column whose content the user can't shorten:
@@ -469,6 +473,17 @@ export default function CustomDatabaseScreen({}: Props) {
       </View>
     );
   }
+
+  // Card tiles used to be a flat 47% of the row - two columns whatever the
+  // screen. On a Fold's inner screen in landscape that's two tiles of ~460,
+  // which is a poster, not a card. One tile stays around 300dp wide and the
+  // grid takes as many columns as fit: two on a phone, three on that
+  // screen, four on a tablet. Widths are exact rather than percentages,
+  // since the gaps between columns have to come out of them.
+  const gridColumns = Math.max(2, Math.min(4, Math.floor(windowWidth / 300)));
+  const gridTileWidth = Math.floor(
+    (windowWidth - CARD_GRID_PADDING * 2 - CARD_GRID_GAP * (gridColumns - 1)) / gridColumns
+  );
 
   const titleOf = (row: CustomDatabaseRow) => rowTitleOf(database, row);
   const coverField = coverFieldOf(database);
@@ -1809,6 +1824,7 @@ export default function CustomDatabaseScreen({}: Props) {
             <CustomRowGridCard
               key={row.id}
               rowId={row.id}
+              width={gridTileWidth}
               display={buildRowDisplay(database, row, displayContext)}
               documentCount={documentIdsOf(row).length}
               onPress={() => (isSelectMode ? toggleSelected(row.id) : setRowPageId(row.id))}
@@ -3291,10 +3307,13 @@ const styles = StyleSheet.create({
   cardGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    // flex-start, not space-between: the tiles now carry exact widths that
+    // already account for the gap, so spreading them would double it and
+    // leave a short last row strung across the screen.
+    justifyContent: 'flex-start',
+    paddingHorizontal: CARD_GRID_PADDING,
     paddingVertical: 8,
-    gap: 12,
+    gap: CARD_GRID_GAP,
     paddingBottom: 170,
   },
   listWithBulkBar: {

@@ -223,6 +223,7 @@ export function CustomRowGridCard({
   onLongPress,
   documentCount,
   right,
+  width,
 }: {
   rowId: string;
   display: RowDisplay;
@@ -230,12 +231,17 @@ export function CustomRowGridCard({
   onLongPress?: () => void;
   documentCount?: number;
   right?: ReactNode;
+  // An exact width from the caller, which is the only place that knows how
+  // much room the grid has and how many columns fit in it. Without one the
+  // tile falls back to half a row, the two-column layout this grid had
+  // before any of them were measured.
+  width?: number;
 }) {
   const { background, text, textMuted } = colorForDocument(rowId);
   const hasCover = display.cover !== undefined;
   return (
     <Pressable
-      style={[gridStyles.tile, { backgroundColor: background }]}
+      style={[gridStyles.tile, width !== undefined && { width }, { backgroundColor: background }]}
       onPress={onPress}
       onLongPress={onLongPress}
       disabled={!onPress && !onLongPress}
