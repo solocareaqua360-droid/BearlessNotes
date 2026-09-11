@@ -13,6 +13,11 @@ export const GLASS_BODY = 'rgba(24,21,19,0.96)';
 // only has to darken what the blur already softened, and at 0.96 it would
 // hide it completely.
 export const GLASS_BODY_BLURRED = 'rgba(24,21,19,0.55)';
+// A small piece of glass that floats over the screen rather than covering
+// it - the control island and the menu that opens beside it. Lighter than
+// a sheet's fill: at sheet strength a capsule this size reads as a black
+// pebble, and the blur under it stops showing at all.
+export const GLASS_ISLAND = 'rgba(24,21,19,0.42)';
 export const GLASS_EDGE = 'rgba(255,255,255,0.22)';
 // A card or a row inside the sheet - a lift off the body, not a border.
 export const GLASS_CARD = 'rgba(255,255,255,0.07)';

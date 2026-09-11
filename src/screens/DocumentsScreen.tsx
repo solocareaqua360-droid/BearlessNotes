@@ -15,7 +15,7 @@ import {
 import Svg, { Defs, LinearGradient, Stop, Rect, Path, Text as SvgText } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { useNavigation } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   addDoc,
@@ -31,7 +31,7 @@ import {
   updateDoc,
   writeBatch,
 } from '@react-native-firebase/firestore';
-import { GLASS_BODY, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
+import { GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import { db } from '../firebase';
 import { DocumentItem, Group, SketchElement } from '../types';
 import { groupAppliesTo } from '../utils/groups';
@@ -56,6 +56,9 @@ import { FONT_REGULAR, FONT_BOLD, FONT_SEMIBOLD } from '../utils/fonts';
 import StickerComposer from '../components/StickerComposer';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import SketchEditor from '../components/SketchEditor';
+import { BlurView } from 'expo-blur';
+import { GlassPortal } from '../components/GlassPortal';
+import { useBlurTarget } from '../components/GlassTarget';
 
 // Палітра №3 (Теплий Теракотовий) - the create/edit action color across
 // this redesign; replaces the old blue ACCENT wherever this screen used it.
@@ -131,11 +134,19 @@ export default function DocumentsScreen() {
   // Visual feedback while the FAB's long-press-to-create-a-sticker gesture
   // is armed - see the FAB's onLongPress/onPressOut below.
   const [fabPressed, setFabPressed] = useState(false);
-  // Where the list of documents starts inside the pane - the side island
-  // hangs from the same line as the first card's top edge, and only the
-  // list itself knows where that is (the title, the tabs and the sticker
-  // strip all come and go above it).
-  const [listTop, setListTop] = useState(0);
+  // Where the island hangs. Measured off the title and the group tabs -
+  // NOT off the list: the sticker strip sits between them and comes and
+  // goes, and an island that follows the list slides up and down with it.
+  // These two don't move, so neither does the island.
+  const [headerBottom, setHeaderBottom] = useState(0);
+  const [groupsBottom, setGroupsBottom] = useState(0);
+  // The menu is cut to the island's own height, so it has to be measured
+  // rather than guessed - the icons decide it.
+  const [islandHeight, setIslandHeight] = useState(0);
+  // The island is drawn through the portal, over the whole window, so it
+  // has to withdraw when this screen isn't the one on show.
+  const isFocused = useIsFocused();
+  const blurTarget = useBlurTarget();
 
   useEffect(() => {
     return onSnapshot(documentsPrefsDoc, (snapshot) => {
@@ -412,7 +423,10 @@ export default function DocumentsScreen() {
             the list keeps its scroll position and its subscriptions, so
             coming back out of full screen lands where it left off. */}
         <View style={[styles.pane, isTwoPane && !!openDoc && paneFullscreen && styles.paneHidden]}>
-        <View style={styles.headerRow}>
+        <View
+          style={styles.headerRow}
+          onLayout={(e) => setHeaderBottom(e.nativeEvent.layout.y + e.nativeEvent.layout.height)}
+        >
           <Text style={styles.header}>Документи</Text>
         </View>
 
@@ -421,26 +435,59 @@ export default function DocumentsScreen() {
         {/* The control capsule stands on its edge at the right of the
             screen instead of sharing a line with the group tabs - it was
             the tabs' own room it was taking. The "..." menu opens to its
-            left, at the same height, so the two travel together. */}
-        <View style={[styles.sideIslandLayer, { top: listTop }]} pointerEvents="box-none">
+            left, cut to the same height, so the two read as one object.
+
+            Drawn through the portal for the same reason every sheet is:
+            the blur has to sit OUTSIDE the view it blurs, and the screens
+            are what the blur target wraps. That also puts it in window
+            coordinates rather than the pane's. */}
+        {isFocused && !(isTwoPane && !!openDoc && paneFullscreen) && (
+        <GlassPortal>
+        <View
+          style={[styles.sideIslandLayer, { top: (groups.length > 0 ? groupsBottom : headerBottom) + 8 }]}
+          pointerEvents="box-none"
+        >
           <View style={styles.sideIslandRow}>
             {menuOpen && (
-              <View style={styles.menuPanel}>
-                <Text style={styles.menuSectionLabel}>Вигляд</Text>
-                <Pressable style={styles.menuRow} onPress={() => changeViewMode('list')}>
-                  <Ionicons name="reorder-four-outline" size={17} color={GLASS_TEXT} />
-                  <Text style={styles.menuRowLabel}>Список</Text>
-                  {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-                </Pressable>
-                <Pressable style={styles.menuRow} onPress={() => changeViewMode('grid')}>
-                  <Ionicons name="grid-outline" size={17} color={GLASS_TEXT} />
-                  <Text style={styles.menuRowLabel}>Сітка</Text>
-                  {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-                </Pressable>
-                <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
+              <View style={[styles.menuPanel, islandHeight > 0 && { height: islandHeight }]}>
+                <BlurView
+                  intensity={60}
+                  tint="dark"
+                  blurMethod="dimezisBlurView"
+                  blurTarget={blurTarget ?? undefined}
+                  style={StyleSheet.absoluteFill}
+                  pointerEvents="none"
+                />
+                {/* Cut to the island's height, so the rows scroll inside
+                    rather than the panel growing past it. */}
+                <ScrollView contentContainerStyle={styles.menuScroll} showsVerticalScrollIndicator={false}>
+                  <Text style={styles.menuSectionLabel}>Вигляд</Text>
+                  <Pressable style={styles.menuRow} onPress={() => changeViewMode('list')}>
+                    <Ionicons name="reorder-four-outline" size={17} color={GLASS_TEXT} />
+                    <Text style={styles.menuRowLabel}>Список</Text>
+                    {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+                  </Pressable>
+                  <Pressable style={styles.menuRow} onPress={() => changeViewMode('grid')}>
+                    <Ionicons name="grid-outline" size={17} color={GLASS_TEXT} />
+                    <Text style={styles.menuRowLabel}>Сітка</Text>
+                    {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+                  </Pressable>
+                  <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
+                </ScrollView>
               </View>
             )}
-            <View style={styles.sideIsland}>
+            <View
+              style={styles.sideIsland}
+              onLayout={(e) => setIslandHeight(e.nativeEvent.layout.height)}
+            >
+              <BlurView
+                intensity={60}
+                tint="dark"
+                blurMethod="dimezisBlurView"
+                blurTarget={blurTarget ?? undefined}
+                style={StyleSheet.absoluteFill}
+                pointerEvents="none"
+              />
               <Pressable hitSlop={8} onPress={() => navigation.navigate('Search')}>
                 <Ionicons name="search" size={21} color="#fff" />
               </Pressable>
@@ -459,10 +506,15 @@ export default function DocumentsScreen() {
             </View>
           </View>
         </View>
+        </GlassPortal>
+        )}
 
         {/* The tabs now have the whole line to themselves. */}
         {groups.length > 0 && (
-          <View style={styles.groupsRow}>
+          <View
+            style={styles.groupsRow}
+            onLayout={(e) => setGroupsBottom(e.nativeEvent.layout.y + e.nativeEvent.layout.height)}
+          >
             <TabsTunnel>
               <ProjectTabsRow
                 items={groups}
@@ -620,7 +672,6 @@ export default function DocumentsScreen() {
             numColumns={viewMode === 'grid' ? 2 : 1}
             columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
             contentContainerStyle={styles.list}
-            onLayout={(e) => setListTop(e.nativeEvent.layout.y + 8)}
             renderItem={({ item }) => {
               // Grid cards reclaim the thumbnail's space for text when a
               // document has no image (see DocumentCard's own noImage
@@ -809,7 +860,11 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     paddingHorizontal: 11,
     borderRadius: 999,
-    backgroundColor: 'rgba(20,20,20,0.35)',
+    // The blur fills this view; overflow keeps it inside the rounded
+    // shape, so the edge stays a clean line instead of being smeared out
+    // with everything else.
+    overflow: 'hidden',
+    backgroundColor: GLASS_ISLAND,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
   },
@@ -828,17 +883,24 @@ const styles = StyleSheet.create({
     zIndex: 5,
   },
   // Sits in the island's own row now, so it needs no coordinates of its
-  // own - it opens level with the button that opened it.
+  // own - it opens level with the button that opened it, in the island's
+  // own glass rather than the near-solid dark it used to be: with the
+  // blur behind it, that darkness isn't needed to stay readable.
   menuPanel: {
     width: 200,
-    backgroundColor: GLASS_BODY,
-    borderRadius: 14,
-    padding: 6,
+    backgroundColor: GLASS_ISLAND,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    borderRadius: 20,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOpacity: 0.18,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
     elevation: 10,
+  },
+  menuScroll: {
+    padding: 6,
   },
   menuSectionLabel: {
     fontSize: 11,
