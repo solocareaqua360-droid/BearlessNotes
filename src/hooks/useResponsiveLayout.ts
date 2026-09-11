@@ -9,6 +9,11 @@ import { useWindowDimensions } from 'react-native';
 // useWindowDimensions reports live (never Dimensions.get() at module
 // scope - see the calendar's own scars).
 export const TWO_PANE_MIN_WIDTH = 840;
+// A third column needs a real column's worth of room for each: at 960 every
+// one is still ~320dp, a phone's width. A Fold's inner screen clears this
+// in both orientations (984 portrait, 1092 landscape); a tablet held
+// upright (800) stays on two.
+export const THREE_PANE_MIN_WIDTH = 960;
 
 export function useResponsiveLayout() {
   const { width, height } = useWindowDimensions();
@@ -16,5 +21,10 @@ export function useResponsiveLayout() {
   // editor more room, but at 984dp half is still ~490dp - wider than any
   // phone this app runs on - and the list is the half that suffers first
   // when it's squeezed: its cards are two columns of thumbnails, not text.
-  return { width, height, isTwoPane: width >= TWO_PANE_MIN_WIDTH };
+  return {
+    width,
+    height,
+    isTwoPane: width >= TWO_PANE_MIN_WIDTH,
+    isThreePane: width >= THREE_PANE_MIN_WIDTH,
+  };
 }

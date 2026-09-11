@@ -64,13 +64,17 @@ const SHOW_IN_DATABASE_KINDS: HistoryItemKind[] = ['task'];
 // for where the list itself comes from (nothing written for this feature,
 // only createdAt fields every kind already carries). Lives under the day's
 // own note in CalendarScreen, collapsed behind a capsule header.
-export default function DayHistoryList({ items }: { items: HistoryItem[] }) {
+// `fill` is the three-column layout: the list has a column of its own, so
+// there's nothing to collapse behind a pill and no reason to cap its
+// height - it simply takes the column and scrolls inside it. An empty day
+// then says so, instead of leaving a blank third of the screen.
+export default function DayHistoryList({ items, fill }: { items: HistoryItem[]; fill?: boolean }) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [expanded, setExpanded] = useState(false);
   const [viewerImageUri, setViewerImageUri] = useState<string | null>(null);
   const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
 
-  if (items.length === 0) return null;
+  if (items.length === 0 && !fill) return null;
 
   function showInDatabase(item: HistoryItem) {
     if (item.kind === 'task') navigation.navigate('Tasks');
@@ -202,6 +206,32 @@ export default function DayHistoryList({ items }: { items: HistoryItem[] }) {
     );
   }
 
+  if (fill) {
+    return (
+      <View style={styles.column}>
+        <View style={styles.columnHeader}>
+          <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.75)" />
+          <Text style={styles.headerLabel}>Історія ({items.length})</Text>
+        </View>
+        {items.length === 0 ? (
+          <Text style={styles.emptyLabel}>Цього дня нічого не додано</Text>
+        ) : (
+          <ScrollView style={styles.columnList} contentContainerStyle={styles.listContent}>
+            {items.map((item) => (
+              <View key={`${item.kind}-${item.id}`}>
+                {item.kind === 'photo' || item.kind === 'file' || item.kind.startsWith('link-')
+                  ? renderMediaCard(item)
+                  : renderPlainCard(item)}
+              </View>
+            ))}
+          </ScrollView>
+        )}
+        {viewerImageUri && <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />}
+        {playingVideoUrl && <VideoPlayerModal url={playingVideoUrl} onClose={() => setPlayingVideoUrl(null)} />}
+      </View>
+    );
+  }
+
   return (
     // A Fragment, not a wrapping View: the caller (CalendarScreen) places
     // the header pill in a flex-wrap row alongside its own month capsule,
@@ -265,6 +295,23 @@ const styles = StyleSheet.create({
   },
   list: {
     maxHeight: 360,
+  },
+  column: {
+    flex: 1,
+  },
+  columnHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingBottom: 2,
+  },
+  columnList: {
+    flex: 1,
+  },
+  emptyLabel: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.5)',
+    paddingTop: 10,
   },
   listContent: {
     gap: 8,

@@ -107,7 +107,11 @@ export default function CalendarScreen() {
   // the right. Same 840dp threshold as the documents list, and the same
   // reason it's a width and not an orientation - the inner screen is
   // nearly square, so the split earns its keep in portrait too.
-  const { isTwoPane } = useResponsiveLayout();
+  // Two columns from 840dp (calendar | note), three from 960 (calendar and
+  // its reminders | note | the day's history). The history is what gains
+  // most: under the calendar it's a pill that drops a 360px-tall list,
+  // which is exactly the cramped feeling a column of its own removes.
+  const { isTwoPane, isThreePane } = useResponsiveLayout();
   // The calendar's own column, measured rather than assumed: in two panes
   // the window is no longer the space the strip has, and a strip whose
   // pages are sized against the wrong width is exactly how this screen
@@ -560,7 +564,7 @@ export default function CalendarScreen() {
           in the row, so they split the window evenly. */}
       <View style={isTwoPane ? styles.paneRow : styles.stack}>
         <View
-          style={isTwoPane ? styles.calendarPane : undefined}
+          style={isTwoPane ? styles.sidePane : undefined}
           onLayout={(e) => setCalendarPaneWidth(e.nativeEvent.layout.width)}
         >
           <Animated.View style={[styles.calendarPlate, calendarPlateStyle]}>
@@ -715,7 +719,10 @@ export default function CalendarScreen() {
               the history capsule's own expanded list drop onto its own line
               below both pills instead of squeezing in beside them - see its
               width:'100%' body. */}
-          {!foldedAway && (
+          {/* Skipped outright in three columns: the month capsule is gone
+              with the month always open, and the history has its own
+              column - an empty row would just leave a gap. */}
+          {!foldedAway && !isThreePane && (
             <View style={styles.capsuleRow}>
               {/* The month capsule IS the expand button, named after the month
                   it opens - with two panes the month is already open and it
@@ -762,7 +769,9 @@ export default function CalendarScreen() {
               history" - that's the one strip where the note itself is often
               not the point of looking at the day at all, and having more
               history entries visible at once matters more than the note. */}
-          {!foldedAway && compactFilter === 'history' && (
+          {/* Collapsing the note only makes sense when it sits below the
+              calendar - beside it, there's nothing to make room for. */}
+          {!foldedAway && !isTwoPane && compactFilter === 'history' && (
             <Pressable style={styles.collapseNoteRow} onPress={() => setNoteCollapsed((v) => !v)}>
               <Ionicons name={noteCollapsed ? 'chevron-down' : 'chevron-up'} size={14} color="rgba(255,255,255,0.6)" />
               <Text style={styles.collapseNoteLabel}>{noteCollapsed ? 'Показати нотатку дня' : 'Згорнути нотатку дня'}</Text>
@@ -771,7 +780,7 @@ export default function CalendarScreen() {
         </View>
 
         {!(compactFilter === 'history' && noteCollapsed) && (
-          <View style={styles.noteArea}>
+          <View style={[styles.noteArea, isTwoPane && styles.notePane]}>
             <DocumentEditorScreen
               key={dailyDocId}
               ref={noteEditorRef}
@@ -782,6 +791,11 @@ export default function CalendarScreen() {
               onSelectModeChange={setNoteSelectMode}
               onSaveStatusChange={setNoteSaveStatus}
             />
+          </View>
+        )}
+        {isThreePane && (
+          <View style={styles.historyPane}>
+            <DayHistoryList items={historyByDate.get(selectedKey) ?? []} fill />
           </View>
         )}
       </View>
@@ -1164,8 +1178,19 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
   },
-  calendarPane: {
+  // The calendar and the history take a column each; the note takes a
+  // little more, since it's the one column whose content is text being
+  // written rather than a grid or a list of cards sized by their own.
+  sidePane: {
     flex: 1,
+  },
+  notePane: {
+    flex: 1.3,
+  },
+  historyPane: {
+    flex: 1,
+    marginRight: 16,
+    marginBottom: 8,
   },
   capsuleRow: {
     flexDirection: 'row',
