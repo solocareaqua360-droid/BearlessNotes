@@ -68,6 +68,10 @@ import { backupFileToDrive } from '../utils/googleDrive';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { contentEqual, generateDocumentFromBoard } from '../utils/boardToDocument';
 import BoardColumnDocument from '../components/BoardColumnDocument';
+import GroupImportSheet from '../components/GroupImportSheet';
+import { useGroupItems } from '../hooks/useGroupItems';
+import { importGroupToBoard } from '../utils/importGroupToBoard';
+import { Group } from '../types';
 import DocumentEditorScreen from './DocumentEditorScreen';
 
 const AUTOSAVE_DELAY_MS = 600;
@@ -1482,6 +1486,13 @@ export default function BoardScreen() {
   // BoardColumnDocument. Editing there edits the cards themselves, so
   // there is nothing to keep in step with anything.
   const [viewerColumnId, setViewerColumnId] = useState<string | null>(null);
+  // Pulling a group onto this board without going to the groups screen
+  // first. Same two steps as there - which group, then which of its items -
+  // except the board is already known, so the second question never
+  // arises.
+  const { groups, itemsByGroup, titleForItem, labelForItemKind } = useGroupItems();
+  const [groupPickerVisible, setGroupPickerVisible] = useState(false);
+  const [importingGroup, setImportingGroup] = useState<Group | null>(null);
 
   // Forming the document a second time replaces what it holds, so it asks
   // first: that document is an ordinary one from the moment it's made, and
@@ -1699,6 +1710,24 @@ export default function BoardScreen() {
       },
     ]);
     return id;
+  }
+
+  async function runGroupImport(group: Group, selected: { id: string; kind: string; databaseId?: string; data: Record<string, unknown> }[]) {
+    setImportingGroup(null);
+    await importGroupToBoard(
+      boardId,
+      group,
+      selected.map((item) => ({
+        id: item.id,
+        kind: item.kind,
+        title: titleForItem(item as Parameters<typeof titleForItem>[0]),
+        databaseId: item.databaseId,
+        data: item.data,
+      })),
+      labelForItemKind
+    );
+    // The import writes the board document directly; this screen hears
+    // about the new cards through its own listener.
   }
 
   function handleColumnLongPress(column: BoardColumn) {
@@ -2033,10 +2062,75 @@ export default function BoardScreen() {
           </Pressable>
         )}
 
+        <Modal
+          visible={groupPickerVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setGroupPickerVisible(false)}
+        >
+          <Pressable style={styles.sheetBackdrop} onPress={() => setGroupPickerVisible(false)}>
+            <Pressable style={styles.sheet} onPress={() => {}}>
+              <View style={styles.sheetHandle} />
+              <Text style={styles.sheetTitle}>З якої групи</Text>
+              <ScrollView style={styles.groupList}>
+                {groups
+                  .filter((group) => !group.archived)
+                  .map((group) => {
+                    const count = itemsByGroup[group.id]?.length ?? 0;
+                    return (
+                      <Pressable
+                        key={group.id}
+                        style={styles.sheetRow}
+                        onPress={() => {
+                          setGroupPickerVisible(false);
+                          setImportingGroup(group);
+                        }}
+                      >
+                        <View style={[styles.groupDot, { backgroundColor: group.color || '#6B7280' }]} />
+                        <Text style={styles.sheetRowLabel} numberOfLines={1}>
+                          {group.name}
+                        </Text>
+                        <Text style={styles.groupCount}>{count}</Text>
+                      </Pressable>
+                    );
+                  })}
+                {groups.filter((group) => !group.archived).length === 0 && (
+                  <Text style={styles.groupEmpty}>Поки немає жодної групи.</Text>
+                )}
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        <GroupImportSheet
+          visible={importingGroup !== null}
+          groupName={importingGroup?.name ?? ''}
+          items={importingGroup ? (itemsByGroup[importingGroup.id] ?? []) : []}
+          fixedBoardId={boardId}
+          labelForKind={labelForItemKind}
+          titleForItem={(item) => titleForItem(item as Parameters<typeof titleForItem>[0])}
+          onCancel={() => setImportingGroup(null)}
+          onConfirm={(selected) => {
+            if (importingGroup) runGroupImport(importingGroup, selected as Parameters<typeof runGroupImport>[1]);
+          }}
+        />
+
         <Modal visible={addSheetVisible} transparent animationType="fade" onRequestClose={() => setAddSheetVisible(false)}>
           <Pressable style={styles.sheetBackdrop} onPress={() => setAddSheetVisible(false)}>
             <Pressable style={styles.sheet} onPress={() => {}}>
               <View style={styles.sheetHandle} />
+              {/* First, because it's the one row that brings a whole
+                  theme's worth of material at once rather than one card. */}
+              <Pressable
+                style={styles.sheetRow}
+                onPress={() => {
+                  setAddSheetVisible(false);
+                  setGroupPickerVisible(true);
+                }}
+              >
+                <Ionicons name="albums-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>З групи</Text>
+              </Pressable>
               <Pressable style={styles.sheetRow} onPress={addTextCard}>
                 <Ionicons name="text-outline" size={18} color="#111827" />
                 <Text style={styles.sheetRowLabel}>Текст</Text>
@@ -2558,6 +2652,29 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 28,
   },
+  sheetTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 6,
+  },
+  groupList: {
+    maxHeight: 360,
+  },
+  groupDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  groupCount: {
+    fontSize: 13,
+    color: '#9CA3AF',
+  },
+  groupEmpty: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    paddingVertical: 10,
+  },
   sheetHandle: {
     width: 36,
     height: 4,
@@ -2573,6 +2690,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   sheetRowLabel: {
+    flex: 1,
     fontSize: 15,
     color: '#111827',
   },

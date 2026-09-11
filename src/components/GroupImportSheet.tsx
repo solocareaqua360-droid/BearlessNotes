@@ -13,6 +13,9 @@ type BoardRow = { id: string; title: string };
 type Props = {
   visible: boolean;
   groupName: string;
+  // Set when the sheet is opened FROM a board: there is nothing to choose
+  // about where the items go, so the second step is skipped entirely.
+  fixedBoardId?: string;
   items: ImportableItem[];
   labelForKind: (kind: string) => string;
   titleForItem: (item: ImportableItem) => string;
@@ -28,6 +31,7 @@ type Props = {
 export default function GroupImportSheet({
   visible,
   groupName,
+  fixedBoardId,
   items,
   labelForKind,
   titleForItem,
@@ -156,9 +160,13 @@ export default function GroupImportSheet({
                 <Pressable
                   style={[styles.saveButton, chosenItems.length === 0 && styles.saveButtonDisabled]}
                   disabled={chosenItems.length === 0}
-                  onPress={() => setStep('board')}
+                  onPress={() =>
+                    fixedBoardId ? onConfirm(chosenItems, { boardId: fixedBoardId }) : setStep('board')
+                  }
                 >
-                  <Text style={styles.saveLabel}>Далі ({chosenItems.length})</Text>
+                  <Text style={styles.saveLabel}>
+                    {fixedBoardId ? 'Додати' : 'Далі'} ({chosenItems.length})
+                  </Text>
                 </Pressable>
               </View>
             </>
