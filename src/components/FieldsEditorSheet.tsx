@@ -1,11 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import {
+  BackHandler,
+  Keyboard,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 // gesture-handler's ScrollView, not the core RN one: a drag that starts on
 // a field's name input (every row here has one) never reaches an RN
 // ScrollView's scroll recognition on Android, so this list only scrolled
 // when a finger happened to land between two cards. Same fix and same
 // reason as DocumentEditorScreen's block list.
-import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { FieldDef, FieldOption, FieldType, RelationTarget } from '../types';
@@ -143,6 +152,16 @@ export default function FieldsEditorSheet({
     if (visible) setDraft(fields);
   }, [visible, fields]);
 
+  // What onRequestClose did while this was a Modal.
+  useEffect(() => {
+    if (!visible) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [visible, onClose]);
+
   function updateField(id: string, patch: Partial<FieldDef>) {
     setDraft((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)));
   }
@@ -274,12 +293,20 @@ export default function FieldsEditorSheet({
     onSave(draft.map((f) => ({ ...f, name: f.name.trim() || 'Поле' })));
   }
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      {/* RN's Modal is its own native window on Android, outside App.tsx's
-          GestureHandlerRootView - the ScrollView above needs a root
-          re-declared here or it doesn't scroll at all. */}
-      <GestureHandlerRootView style={{ flex: 1 }}>
+    // NOT a Modal. A Modal is its own native window on Android, and a blur
+    // only blurs what is in ITS OWN window - so behind a sheet in a window
+    // of its own there is nothing to blur, and the screen shows through
+    // sharp. As a layer inside the screen the blur has the screen to work
+    // with, which is the whole point of the glass.
+    //
+    // Two things the Modal used to provide have to be provided here: the
+    // hardware back button (see the effect above) and the gesture root,
+    // which App.tsx's own now covers since this is no longer a separate
+    // window.
+    <View style={StyleSheet.absoluteFill}>
       {/* Backdrop as a SIBLING behind the sheet, not its parent - as a
           parent it took the RN touch responder for every drag that didn't
           land on a deeper child, which is what kept this list from
@@ -594,8 +621,7 @@ export default function FieldsEditorSheet({
           </View>
         </View>
       </View>
-      </GestureHandlerRootView>
-    </Modal>
+    </View>
   );
 }
 
