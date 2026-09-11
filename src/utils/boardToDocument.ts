@@ -365,7 +365,13 @@ export function applyDocumentToBoard(
     const existing = block.sourceCardId ? byId.get(block.sourceCardId) : undefined;
     let card: BoardCard;
     if (existing) {
-      card = { ...existing, ...cardFieldsFromBlock(block) };
+      // A document card is shown here as a bold line with its title, because
+      // a document has no block type for "another document" - so that line
+      // describes the card, it isn't the card's content. Copying it back
+      // turned the card into a plain paragraph and the reference to the
+      // other document was gone. From this side such a card can only be
+      // deleted (by deleting its line), never rewritten.
+      card = existing.type === 'document' ? existing : { ...existing, ...cardFieldsFromBlock(block) };
       if (stable(card) !== stable(existing)) changed = true;
       nextBlocks.push(block);
     } else {
