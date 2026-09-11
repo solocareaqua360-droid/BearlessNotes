@@ -57,8 +57,8 @@ import { linkDocId } from '../utils/linkId';
 import { blockFromFile, blockFromLink, blockFromPhoto } from '../utils/copyToNote';
 import { backupFileToDrive } from '../utils/googleDrive';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
-import { boardSections, generateDocumentFromBoard } from '../utils/boardToDocument';
-import { stripFormatting } from '../utils/documentPreview';
+import { buildBlocksFromBoard, generateDocumentFromBoard } from '../utils/boardToDocument';
+import BoardDocumentPreview from '../components/BoardDocumentPreview';
 import DocumentEditorScreen from './DocumentEditorScreen';
 
 const AUTOSAVE_DELAY_MS = 600;
@@ -823,12 +823,13 @@ export default function BoardScreen() {
   // reopen and the document can find its way back here.
   const [generatedDocId, setGeneratedDocId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
-  // The board read as the document it adds up to: same cards, same order,
-  // stacked vertically instead of spread over a canvas. Not a separate
-  // copy of anything - it renders the very cards the canvas does, through
-  // the same boardSections() the generated document is built from, so what
-  // you read here is what you get on export.
-  const [outlineMode, setOutlineMode] = useState(false);
+  // The board seen as the document it would make - built in memory from
+  // the cards, shown in the right-hand half, and written to the Documents
+  // database only when "Сформувати" is pressed. Opened by long-pressing a
+  // column header, where the reading order it previews is decided.
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewBlocks, setPreviewBlocks] = useState<Block[]>([]);
+  const [previewBuilding, setPreviewBuilding] = useState(false);
   const [paneFullscreen, setPaneFullscreen] = useState(false);
   // The canvas's own size, which stops being the window's the moment a
   // document takes half of it. Screen->world maths below reads this, not
@@ -1437,17 +1438,27 @@ export default function BoardScreen() {
     );
   }
 
-  // Arriving from the document's own "show the board" button: the document
-  // that sent us here opens beside the board it came from.
+  // The preview is rebuilt from the board as the board changes - move a
+  // card and the document you're reading beside it moves with it. Debounced
+  // because a drag writes `cards` on every frame it settles, and each
+  // rebuild reads every document card's source.
   useEffect(() => {
-    if (openDocumentId && isTwoPane) setPaneDocId(openDocumentId);
-  }, [openDocumentId, isTwoPane]);
+    if (!previewOpen) return;
+    let cancelled = false;
+    setPreviewBuilding(true);
+    const timeout = setTimeout(async () => {
+      const blocks = await buildBlocksFromBoard({ cards, columns });
+      if (cancelled) return;
+      setPreviewBlocks(blocks);
+      setPreviewBuilding(false);
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [previewOpen, cards, columns]);
 
-  // Builds the document this board adds up to - columns as headings, cards
-  // as blocks, in reading order. Run a second time it rewrites the same
-  // document rather than making another, which is why it warns first: a
-  // rebuild replaces whatever was edited in the document by hand.
-  async function buildBoardDocument() {
+  async function generateFromPreview() {
     if (generating) return;
     setGenerating(true);
     try {
@@ -1462,6 +1473,10 @@ export default function BoardScreen() {
         updatedAt: 0,
       });
       setGeneratedDocId(id);
+      // Straight into the real editor in the same half of the screen: what
+      // was a preview a moment ago is now a document, and the board is
+      // still there beside it.
+      setPreviewOpen(false);
       if (isTwoPane) setPaneDocId(id);
       else navigation.navigate('EditorModal', { documentId: id });
     } finally {
@@ -1469,84 +1484,11 @@ export default function BoardScreen() {
     }
   }
 
-  function confirmBuildBoardDocument() {
-    if (!generatedDocId) {
-      Alert.alert('Сформувати документ', 'Колонки стануть заголовками, картки - блоками, у тому ж порядку.', [
-        { text: 'Скасувати', style: 'cancel' },
-        { text: 'Сформувати', onPress: buildBoardDocument },
-      ]);
-      return;
-    }
-    Alert.alert(
-      'Документ уже сформовано',
-      'Оновити його з поточної дошки? Правки, зроблені в самому документі, будуть замінені.',
-      [
-        { text: 'Скасувати', style: 'cancel' },
-        {
-          text: 'Відкрити',
-          onPress: () =>
-            isTwoPane
-              ? setPaneDocId(generatedDocId)
-              : navigation.navigate('EditorModal', { documentId: generatedDocId }),
-        },
-        { text: 'Оновити', style: 'destructive', onPress: buildBoardDocument },
-      ]
-    );
-  }
-
-  // Moving a card one place up or down in reading order. Inside a column
-  // that's a swap of the two cards' y (the column's own stacking recomputes
-  // the real positions from that order - see reflowColumns); at a column's
-  // edge it hands the card to the neighbouring column instead, which is
-  // the same move a drag across the canvas would make.
-  function moveCardInOutline(cardId: string, delta: -1 | 1) {
-    setCards((prev) => {
-      const sections = boardSections({ cards: prev, columns });
-      const sectionIndex = sections.findIndex((s) => s.cards.some((c) => c.id === cardId));
-      if (sectionIndex < 0) return prev;
-      const section = sections[sectionIndex];
-      const index = section.cards.findIndex((c) => c.id === cardId);
-      const neighbour = section.cards[index + delta];
-
-      if (neighbour) {
-        return prev.map((card) => {
-          if (card.id === cardId) return { ...card, y: neighbour.y };
-          if (card.id === neighbour.id) return { ...card, y: section.cards[index].y };
-          return card;
-        });
-      }
-
-      // Past the end of this section: the next one, if there is one.
-      const target = sections[sectionIndex + delta];
-      if (!target) return prev;
-      const edgeY =
-        target.cards.length === 0
-          ? 0
-          : delta === 1
-            ? Math.min(...target.cards.map((c) => c.y)) - 1
-            : Math.max(...target.cards.map((c) => c.y)) + 1;
-      return prev.map((card) => {
-        if (card.id !== cardId) return card;
-        if (target.columnId === null) {
-          // Into the loose section: the key is dropped rather than set to
-          // undefined, which Firestore rejects outright.
-          const { columnId: _columnId, ...rest } = card;
-          return { ...rest, y: edgeY };
-        }
-        return { ...card, columnId: target.columnId, y: edgeY };
-      });
-    });
-  }
-
-  // One line of the outline: what this card would read as in the document.
-  function outlineCardLabel(card: BoardCard): string {
-    if (card.type === 'document') return card.documentTitle?.trim() || 'Документ';
-    if (card.type === 'link') return card.linkTitle?.trim() || card.linkUrl || 'Посилання';
-    if (card.type === 'image') return card.imageTitle?.trim() || 'Зображення';
-    if (card.type === 'file') return card.fileTitle?.trim() || 'Файл';
-    const text = stripFormatting(card.text ?? '').trim();
-    return text || 'Порожня картка';
-  }
+  // Arriving from the document's own "show the board" button: the document
+  // that sent us here opens beside the board it came from.
+  useEffect(() => {
+    if (openDocumentId && isTwoPane) setPaneDocId(openDocumentId);
+  }, [openDocumentId, isTwoPane]);
 
   function editDocumentCard(card: BoardCard) {
     if (!card.documentId) return;
@@ -1680,6 +1622,34 @@ export default function BoardScreen() {
   // bottom action bar the marquee/select tool uses for a multi-card
   // selection - "Редагувати" for a lone document card, "Видалити" either
   // way - rather than jumping straight to a delete confirmation.
+  // Long-pressing a column header used to delete it outright. It now asks
+  // what to do with the column, because that header is where the reading
+  // order lives - it's the natural place to ask for the document this
+  // board would make. (Renaming is still a plain tap.)
+  function handleColumnLongPress(column: BoardColumn) {
+    Alert.alert(column.title?.trim() || 'Колонка', undefined, [
+      { text: 'Скасувати', style: 'cancel' },
+      {
+        text: 'Видалити колонку',
+        style: 'destructive',
+        onPress: () => confirmDeleteColumn(column),
+      },
+      {
+        text: 'Переглянути як документ',
+        onPress: () => {
+          setPaneDocId(null);
+          setPreviewOpen(true);
+          if (!isTwoPane) {
+            Alert.alert(
+              'Замало місця',
+              'Попередній перегляд поруч із дошкою показується на широкому екрані. Розклади телефон або поверни його.'
+            );
+          }
+        },
+      },
+    ]);
+  }
+
   function handleCardLongPress(card: BoardCard) {
     setSelectedCardIds(new Set([card.id]));
   }
@@ -1826,7 +1796,7 @@ export default function BoardScreen() {
                     onDragStart={setDraggingColumnId}
                     onDragEnd={commitColumnDrag}
                     onRename={setRenamingColumn}
-                    onDelete={confirmDeleteColumn}
+                    onDelete={handleColumnLongPress}
                   />
                 );
               })}
@@ -1921,62 +1891,6 @@ export default function BoardScreen() {
           </View>
         </GestureDetector>
 
-        {outlineMode && (
-          // Over the canvas rather than instead of it: the canvas keeps its
-          // pan, its zoom and every measured card height, so switching back
-          // lands exactly where it was left.
-          <ScrollView style={styles.outline} contentContainerStyle={styles.outlineContent}>
-            {boardSections({ cards, columns }).map((section, sectionIndex) => (
-              <View key={section.columnId ?? 'loose'} style={styles.outlineSection}>
-                <Text style={styles.outlineHeading}>{section.title ?? 'Поза колонками'}</Text>
-                {section.cards.length === 0 && <Text style={styles.outlineEmpty}>Порожня колонка</Text>}
-                {section.cards.map((card, index) => (
-                  <View key={card.id} style={styles.outlineRow}>
-                    <Ionicons
-                      name={
-                        card.type === 'document'
-                          ? 'document-text-outline'
-                          : card.type === 'link'
-                            ? 'link-outline'
-                            : card.type === 'image'
-                              ? 'image-outline'
-                              : card.type === 'file'
-                                ? 'document-attach-outline'
-                                : 'ellipse-outline'
-                      }
-                      size={16}
-                      color="#6B7280"
-                    />
-                    <Pressable
-                      style={styles.outlineLabelTap}
-                      onPress={() => (card.type === 'document' ? editDocumentCard(card) : undefined)}
-                    >
-                      <Text style={styles.outlineLabel} numberOfLines={2}>
-                        {outlineCardLabel(card)}
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      hitSlop={6}
-                      style={styles.outlineMove}
-                      disabled={sectionIndex === 0 && index === 0}
-                      onPress={() => moveCardInOutline(card.id, -1)}
-                    >
-                      <Ionicons
-                        name="chevron-up"
-                        size={18}
-                        color={sectionIndex === 0 && index === 0 ? '#D1D5DB' : '#6B7280'}
-                      />
-                    </Pressable>
-                    <Pressable hitSlop={6} style={styles.outlineMove} onPress={() => moveCardInOutline(card.id, 1)}>
-                      <Ionicons name="chevron-down" size={18} color="#6B7280" />
-                    </Pressable>
-                  </View>
-                ))}
-              </View>
-            ))}
-          </ScrollView>
-        )}
-
         <View style={styles.headerRow} pointerEvents="box-none">
           <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
             <Ionicons name="chevron-back" size={24} color="#111827" />
@@ -1985,19 +1899,6 @@ export default function BoardScreen() {
             <Text style={styles.headerTitle} numberOfLines={1}>
               {title || 'Без назви'}
             </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.toolButton, outlineMode && styles.toolButtonActive]}
-            onPress={() => setOutlineMode((v) => !v)}
-          >
-            <Ionicons name="list-outline" size={20} color={outlineMode ? '#fff' : '#111827'} />
-          </Pressable>
-          <Pressable style={styles.toolButton} onPress={confirmBuildBoardDocument}>
-            <Ionicons
-              name={generatedDocId ? 'document-text' : 'document-text-outline'}
-              size={20}
-              color="#111827"
-            />
           </Pressable>
           {/* One button cycling move -> select -> connect, each with its own
               icon, rather than three buttons crowding the header. */}
@@ -2220,6 +2121,19 @@ export default function BoardScreen() {
         )}
       </View>
 
+      {isTwoPane && previewOpen && (
+        <View style={styles.docPane}>
+          <BoardDocumentPreview
+            title={title}
+            blocks={previewBlocks}
+            building={previewBuilding}
+            hasDocument={generatedDocId !== null}
+            onGenerate={generateFromPreview}
+            onClose={() => setPreviewOpen(false)}
+          />
+        </View>
+      )}
+
       {isTwoPane && paneDocId !== null && (
         <View style={styles.docPane}>
           <DocumentEditorScreen
@@ -2237,6 +2151,13 @@ export default function BoardScreen() {
             onClose={() => {
               setPaneDocId(null);
               setPaneFullscreen(false);
+              // The card that opened this pane shows a snapshot of the
+              // document (title, text, first image), so it has to be read
+              // again now that the document has been edited. Twice: the
+              // editor saves on a debounce, and the first read can land
+              // before that write is even issued.
+              refreshDocumentPreviews();
+              setTimeout(refreshDocumentPreviews, 1000);
             }}
           />
         </View>
@@ -2340,54 +2261,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 15,
     color: '#6B7280',
-  },
-  outline: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: '#F3F4F6',
-  },
-  outlineContent: {
-    // Clear of the header capsule above (top: 56 plus its own height) and
-    // of the floating tab bar below.
-    paddingTop: 104,
-    paddingHorizontal: 20,
-    paddingBottom: 160,
-    gap: 18,
-  },
-  outlineSection: {
-    gap: 6,
-  },
-  outlineHeading: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  outlineEmpty: {
-    fontSize: 13,
-    color: '#9CA3AF',
-  },
-  outlineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  outlineLabelTap: {
-    flex: 1,
-  },
-  outlineLabel: {
-    fontSize: 14,
-    color: '#111827',
-  },
-  outlineMove: {
-    width: 28,
-    alignItems: 'center',
   },
   headerRow: {
     position: 'absolute',
