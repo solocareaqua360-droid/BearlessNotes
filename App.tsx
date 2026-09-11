@@ -32,6 +32,7 @@ import FloatingIslandTabBar from './src/components/FloatingIslandTabBar';
 import ShareIntentHandler from './src/components/ShareIntentHandler';
 import { navigationRef } from './src/navigationRef';
 import { BoardsStackParamList, RootStackParamList } from './src/navigation';
+import { GlassTargetProvider } from './src/components/GlassTarget';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -99,6 +100,10 @@ export default function App() {
         <View style={{ flex: 1, backgroundColor: '#705648' }} />
       ) : (
         <GestureHandlerRootView style={{ flex: 1 }}>
+          {/* Everything the glass sheets blur. expo-blur on Android has to
+              be handed the view to blur; wrapped once here, every sheet
+              finds it through the context. */}
+          <GlassTargetProvider>
           {/* Feeds the document editor per-frame keyboard progress (see
               DocumentEditorScreen's useKeyboardHandler), so the block being
               edited can ride up in the same motion as the keyboard instead of
@@ -133,6 +138,7 @@ export default function App() {
             </Stack.Navigator>
           </NavigationContainer>
           </KeyboardProvider>
+          </GlassTargetProvider>
         </GestureHandlerRootView>
       )}
     </ShareIntentProvider>

@@ -1,6 +1,7 @@
 import { ReactNode, useEffect } from 'react';
 import { BackHandler, Pressable, StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { useBlurTarget } from './GlassTarget';
 import { GLASS_BACKDROP } from '../constants/glass';
 
 // What a bottom sheet sits in, now that a sheet is a layer rather than a
@@ -23,6 +24,10 @@ export default function GlassLayer({
   children: ReactNode;
   intensity?: number;
 }) {
+  // Without this ref expo-blur falls back to a plain translucent view on
+  // Android - which is what made the first two attempts look like a dim.
+  const blurTarget = useBlurTarget();
+
   useEffect(() => {
     if (!visible) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -43,6 +48,7 @@ export default function GlassLayer({
         intensity={intensity}
         tint="dark"
         blurMethod="dimezisBlurView"
+        blurTarget={blurTarget ?? undefined}
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
