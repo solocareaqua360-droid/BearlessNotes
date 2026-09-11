@@ -1458,6 +1458,24 @@ export default function BoardScreen() {
     };
   }, [previewOpen, cards, columns]);
 
+  // Rebuilding replaces the document's blocks outright, so the second time
+  // round it asks first: by then the document may have been written in by
+  // hand, and a rebuild has no way to keep that.
+  function confirmGenerateFromPreview() {
+    if (!generatedDocId) {
+      generateFromPreview();
+      return;
+    }
+    Alert.alert(
+      'Переформувати документ?',
+      'Він буде зібраний із дошки заново. Правки, зроблені в самому документі, будуть замінені.',
+      [
+        { text: 'Скасувати', style: 'cancel' },
+        { text: 'Переформувати', style: 'destructive', onPress: generateFromPreview },
+      ]
+    );
+  }
+
   async function generateFromPreview() {
     if (generating) return;
     setGenerating(true);
@@ -2128,7 +2146,7 @@ export default function BoardScreen() {
             blocks={previewBlocks}
             building={previewBuilding}
             hasDocument={generatedDocId !== null}
-            onGenerate={generateFromPreview}
+            onGenerate={confirmGenerateFromPreview}
             onClose={() => setPreviewOpen(false)}
           />
         </View>
