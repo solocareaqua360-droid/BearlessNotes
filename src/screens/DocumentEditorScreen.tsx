@@ -71,7 +71,7 @@ import {
 import { db } from '../firebase';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import { Block, BlockType, BoardCard, BoardColumn, Group, SketchElement, Tag, TableRow } from '../types';
-import { applyDocumentToBoard, blocksEqual } from '../utils/boardToDocument';
+import { applyDocumentToBoard, blocksEqual, SourceDocumentEdit } from '../utils/boardToDocument';
 import { DEFAULT_CARD_WIDTH, WORLD_CENTER } from '../utils/boardLayout';
 import { groupAppliesTo } from '../utils/groups';
 import { RootStackParamList } from '../navigation';
@@ -2552,6 +2552,30 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // yet, and writes only what actually differs - which is what stops the
   // two sides from writing each other in circles.
   const boardSyncingRef = useRef(false);
+
+  // Edits that landed among a document card's own text belong to that
+  // document, not to the board (see SourceDocumentEdit). Same rules as the
+  // board write: nothing is written unless it differs, and a wholesale
+  // disappearance is stopped rather than performed - a mapping mistake
+  // here would empty somebody else's document.
+  async function writeSourceDocumentEdits(edits: SourceDocumentEdit[]) {
+    for (const edit of edits) {
+      const ref = doc(db, 'documents', edit.documentId);
+      const snapshot = await getDoc(ref);
+      const current = (snapshot.data()?.blocks ?? []) as Block[];
+      if (current.length === 0 || blocksEqual(current, edit.blocks)) continue;
+      if (current.length - edit.blocks.length > 3) {
+        Alert.alert(
+          'Забагато видалень',
+          `Правки зачіпають документ "${snapshot.data()?.title ?? ''}" і прибирають ${
+            current.length - edit.blocks.length
+          } його блоків. Змінив його не я - відкрий той документ і зроби це там.`
+        );
+        continue;
+      }
+      await updateDoc(ref, { blocks: edit.blocks, updatedAt: Date.now() });
+    }
+  }
   async function syncBoardFromDocument(currentBlocks: Block[]) {
     if (!sourceBoardId || boardSyncingRef.current) return;
     boardSyncingRef.current = true;
@@ -2579,6 +2603,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               style: 'destructive',
               onPress: () => {
                 updateDoc(boardRef, { cards: result.cards, columns: result.columns, updatedAt: Date.now() });
+                writeSourceDocumentEdits(result.documentEdits);
               },
             },
           ]
@@ -2586,6 +2611,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         return;
       }
       await updateDoc(boardRef, { cards: result.cards, columns: result.columns, updatedAt: Date.now() });
+      await writeSourceDocumentEdits(result.documentEdits);
       // A paragraph typed straight into the document now has a card behind
       // it; stamping that onto the block is what keeps the next pass from
       // making a second card for the same line.

@@ -39,6 +39,14 @@ function cardBlockId(cardId: string): string {
   return `c_${cardId}`;
 }
 
+// A block belonging to a document card's source document, seen through
+// this board's document: addressed by the card it came through AND its own
+// id over there, so the same document pinned to the board twice still has
+// two distinguishable copies here.
+function inlineBlockId(cardId: string, blockId: string): string {
+  return `i_${cardId}_${blockId}`;
+}
+
 // A card is already a Block plus placement (see BoardCard's own comment) -
 // becoming a block is dropping the placement, nothing more.
 function blockFromCard(card: BoardCard): Block {
@@ -98,7 +106,7 @@ export async function buildBlocksFromBoard(board: {
         (data?.blocks ?? []).forEach((block) =>
           blocks.push({
             ...block,
-            id: `i_${card.id}_${block.id}`,
+            id: inlineBlockId(card.id, block.id),
             // These belong to the document they were inlined from, not to
             // the board - an edit here has to travel there, so they carry
             // that address instead of a card's.
@@ -154,6 +162,15 @@ export function blocksEqual(a: Block[], b: Block[]): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+// An edit that belongs to a document card's source document rather than to
+// the board: the whole new block list for that document, as read back out
+// of this one. The caller compares it with what that document currently
+// holds - it's the one that has to read it anyway.
+export type SourceDocumentEdit = {
+  documentId: string;
+  blocks: Block[];
+};
+
 export type DocumentToBoardResult = {
   cards: BoardCard[];
   columns: BoardColumn[];
@@ -162,6 +179,10 @@ export type DocumentToBoardResult = {
   // instead of making a second card for the same paragraph.
   blocks: Block[];
   removedCardIds: string[];
+  // Blocks inlined from a document card belong to THAT document - editing
+  // one of them, or writing a new paragraph among them, has to travel
+  // there instead of making a card here.
+  documentEdits: SourceDocumentEdit[];
   changed: boolean;
 };
 
@@ -203,9 +224,23 @@ export function applyDocumentToBoard(
   // Which section the blocks being read belong to - set by the heading and
   // divider blocks they follow, exactly as the eye reads it.
   let sectionKey = LOOSE;
+  // The document card whose content we're currently inside, if any. It
+  // opens at the first block inlined from that document and closes at the
+  // first block that isn't - and while it's open, a paragraph with no
+  // source of its own belongs to THAT document rather than to the board,
+  // because that's where it was written.
+  let inline: { documentId: string; cardId: string; blocks: Block[] } | null = null;
+  const documentEdits: SourceDocumentEdit[] = [];
+
+  function closeInline() {
+    if (!inline) return;
+    documentEdits.push({ documentId: inline.documentId, blocks: inline.blocks });
+    inline = null;
+  }
 
   for (const block of blocks) {
     if (block.sourceColumnId) {
+      closeInline();
       sectionKey = block.sourceColumnId;
       // A renamed heading renames its column - the heading IS the column's
       // title, so editing one has to be editing the other.
@@ -219,10 +254,40 @@ export function applyDocumentToBoard(
       continue;
     }
     if (block.sourceDocumentId) {
-      // Belongs to another document; this pass never touches it.
+      // Belongs to a document card's source document. Collected rather
+      // than skipped: an edit here is an edit THERE, and it travels with
+      // the rest of that document's blocks.
+      if (!inline || inline.documentId !== block.sourceDocumentId) {
+        closeInline();
+        inline = { documentId: block.sourceDocumentId, cardId: '', blocks: [] };
+      }
+      const match = block.id.match(/^i_(.+?)_(.*)$/);
+      if (match) inline.cardId = match[1];
+      // Back into the shape that document stores it in: its own id, none
+      // of the addressing this document wrapped around it.
+      const { sourceDocumentId: _d, sourceBlockId: _b, ...plain } = block;
+      inline.blocks.push({ ...(plain as Block), id: block.sourceBlockId ?? block.id });
       nextBlocks.push(block);
       continue;
     }
+
+    // A paragraph written among a document card's own text belongs to that
+    // document too - it was written there, between its lines, not on the
+    // board. It gets an id over there and this document's copy is stamped
+    // to point at it, exactly as a new card's block is.
+    if (inline && !block.sourceCardId) {
+      const newId = generateId();
+      inline.blocks.push({ ...block, id: newId });
+      nextBlocks.push({
+        ...block,
+        id: inlineBlockId(inline.cardId, newId),
+        sourceDocumentId: inline.documentId,
+        sourceBlockId: newId,
+      });
+      changed = true;
+      continue;
+    }
+    closeInline();
 
     const existing = block.sourceCardId ? byId.get(block.sourceCardId) : undefined;
     let card: BoardCard;
@@ -252,6 +317,8 @@ export function applyDocumentToBoard(
     order.set(sectionKey, list);
     placed.push(card);
   }
+
+  closeInline();
 
   // Positions are rewritten only where the order actually changed. A
   // column's cards carry the real coordinates reflowColumns gave them, and
@@ -286,5 +353,14 @@ export function applyDocumentToBoard(
   const removedCardIds = board.cards.filter((c) => !kept.has(c.id)).map((c) => c.id);
   if (removedCardIds.length > 0) changed = true;
 
-  return { cards, columns, blocks: nextBlocks, removedCardIds, changed };
+  // The same document pinned to the board twice arrives here as two
+  // separate runs of blocks, and there is no honest way to turn two runs
+  // into one block list for it - so neither is written. Rare, and losing
+  // the edit is better than writing the wrong half over the right one.
+  const seenDocuments = new Map<string, number>();
+  documentEdits.forEach((edit) => seenDocuments.set(edit.documentId, (seenDocuments.get(edit.documentId) ?? 0) + 1));
+  const uniqueEdits = documentEdits.filter((edit) => seenDocuments.get(edit.documentId) === 1);
+  if (uniqueEdits.length > 0) changed = true;
+
+  return { cards, columns, blocks: nextBlocks, removedCardIds, documentEdits: uniqueEdits, changed };
 }
