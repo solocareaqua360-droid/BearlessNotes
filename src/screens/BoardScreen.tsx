@@ -1056,6 +1056,46 @@ export default function BoardScreen() {
     });
   }, []);
 
+  // While a document is open in the pane beside the board, its card keeps
+  // up with it: the editor saves on its own 600ms beat and this hears
+  // every one of those writes, so the card on the canvas changes as the
+  // document is written rather than when the pane is closed.
+  useEffect(() => {
+    if (!paneDocId) return;
+    return onSnapshot(doc(db, 'documents', paneDocId), (snapshot) => {
+      const data = snapshot.data();
+      if (!data) return;
+      const blocks: Block[] = data.blocks ?? [];
+      const title = (data.title as string) ?? 'Без назви';
+      const text = blocksToPreviewText(blocks).slice(0, 20000);
+      const imageUri = (data.coverImageUri as string | undefined) ?? firstImageUri(blocks);
+      setCards((prev) => {
+        let changed = false;
+        const next = prev.map((card) => {
+          if (card.documentId !== paneDocId) return card;
+          if (
+            card.documentTitle === title &&
+            (card.documentPreviewText ?? '') === text &&
+            card.documentPreviewImageUri === imageUri
+          ) {
+            return card;
+          }
+          changed = true;
+          // Key-deletes rather than undefined values, for the reason
+          // refreshDocumentPreviews spells out: Firestore rejects
+          // undefined, and a removed image has to lose its field.
+          const updated: BoardCard = { ...card, documentTitle: title };
+          if (text) updated.documentPreviewText = text;
+          else delete updated.documentPreviewText;
+          if (imageUri) updated.documentPreviewImageUri = imageUri;
+          else delete updated.documentPreviewImageUri;
+          return updated;
+        });
+        return changed ? next : prev;
+      });
+    });
+  }, [paneDocId]);
+
   useFocusEffect(
     useCallback(() => {
       if (!isLoaded) return;
