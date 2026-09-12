@@ -5,10 +5,10 @@ import { useIsFocused } from '@react-navigation/native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Tag } from '../types';
 import { FONT_REGULAR, FONT_SEMIBOLD, FONT_BOLD, FONT_EXTRABOLD } from '../utils/fonts';
-import { RAIL_CLEARANCE, RAIL_RIGHT, TAG_ROW_HEIGHT } from '../constants/rail';
+import { RAIL_RIGHT } from '../constants/rail';
 import { GLASS_ISLAND } from '../constants/glass';
 import { useRail } from '../hooks/useRail';
-import { GLASS_BODY, GLASS_BODY_BLURRED, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
+import { GLASS_BODY, GLASS_BODY_BLURRED, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import { BlurView } from 'expo-blur';
 import { useBlurTarget } from './GlassTarget';
 import { GlassPortal } from './GlassPortal';
@@ -78,9 +78,20 @@ function buildTree(tags: Tag[]): TreeNode {
   return root;
 }
 
+// One line of the tree, drawn the way Explorer's side pane draws one: a
+// gutter cell per level of nesting, each either blank or carrying the
+// vertical line of an ancestor that still has folders below it, and an
+// elbow in the row's own cell - a corner if this is the last child of its
+// parent, a tee if more follow. The lines are what makes the nesting
+// legible; indentation alone left it to be inferred.
+//
+// `guides` is one flag per cell, computed by the parent: cells before the
+// row's own carry a line when that ancestor has siblings still to come.
 function TreeRow({
   node,
   depth,
+  guides,
+  isLast,
   expanded,
   selectedIds,
   onToggleExpand,
@@ -88,6 +99,8 @@ function TreeRow({
 }: {
   node: TreeNode;
   depth: number;
+  guides: boolean[];
+  isLast: boolean;
   expanded: Set<string>;
   selectedIds: Set<string>;
   onToggleExpand: (path: string) => void;
@@ -103,8 +116,29 @@ function TreeRow({
   // chevron/icon/text that go with it - stay neutral gray instead.
   const tint = node.tag ? node.tag.color : GLASS_TEXT_FAINT;
 
+  // What the children draw in their own gutters: everything this row had,
+  // then a line in this row's own cell if - and only if - the branch
+  // carries on under it.
+  const childGuides = [...guides.slice(0, Math.max(0, depth - 1)), !isLast, false];
+
   return (
-    <View style={{ marginLeft: depth * 18 }}>
+    <View>
+      <View style={styles.treeLine}>
+        {Array.from({ length: depth }).map((_, i) =>
+          i === depth - 1 ? (
+            // This row's own cell: the elbow. Its stem stops at the label's
+            // middle when nothing follows, and runs the whole way down when
+            // something does.
+            <View key={i} style={styles.guideCell}>
+              <View style={[styles.guideStem, !isLast && styles.guideStemFull]} />
+              <View style={styles.guideArm} />
+            </View>
+          ) : (
+            <View key={i} style={styles.guideCell}>
+              {guides[i] && <View style={styles.guidePipe} />}
+            </View>
+          )
+        )}
       <Pressable style={[styles.treeRow, { borderColor: tint }]} onPress={() => (node.tag ? onToggleTag(node.tag) : onToggleExpand(node.fullPath))}>
         {hasChildren ? (
           <Pressable hitSlop={8} onPress={() => onToggleExpand(node.fullPath)}>
@@ -127,13 +161,16 @@ function TreeRow({
           {isSelected && node.tag && <Ionicons name="checkmark" size={14} color={tint} />}
         </View>
       </Pressable>
+      </View>
       {hasChildren &&
         isExpanded &&
-        children.map((child) => (
+        children.map((child, i) => (
           <TreeRow
             key={child.fullPath}
             node={child}
             depth={depth + 1}
+            guides={childGuides}
+            isLast={i === children.length - 1}
             expanded={expanded}
             selectedIds={selectedIds}
             onToggleExpand={onToggleExpand}
@@ -300,11 +337,13 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
           </Pressable>
 
           <ScrollView style={styles.scroll}>
-            {topLevel.map((node) => (
+            {topLevel.map((node, i) => (
               <TreeRow
                 key={node.fullPath}
                 node={node}
                 depth={0}
+                guides={[]}
+                isLast={i === topLevel.length - 1}
                 expanded={expanded}
                 selectedIds={selectedTagIds}
                 onToggleExpand={toggleExpand}
@@ -315,56 +354,6 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
         </Animated.View>
       </View>
       </GlassPortal>
-      )}
-
-      {/* The tags scroll along the foot of the screen, opposite the group
-          tabs at its head - the cards pass under them the same way.
-          Through the portal, like every other piece of glass here. */}
-      {isFocused && !isOpen && !hideOpenButton && tags.length > 0 && (
-        <GlassPortal>
-          <View style={[styles.tagRow, { bottom: rail.tagRowBottom }]} pointerEvents="box-none">
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.tagRowContent}
-            >
-              {tags.map((tag) => {
-                const active = selectedTagIds.has(tag.id);
-                return (
-                  <Pressable
-                    key={tag.id}
-                    style={[styles.tagPill, active && styles.tagPillActive]}
-                    // The drawer's own toggle, so the foot row and the
-                    // tree agree on the filter mode in force.
-                    onPress={() => toggleTag(tag)}
-                  >
-                    {!active && (
-                      <BlurView
-                        intensity={60}
-                        tint="dark"
-                        blurMethod="dimezisBlurView"
-                        blurTarget={blurTarget ?? undefined}
-                        style={StyleSheet.absoluteFill}
-                        pointerEvents="none"
-                      />
-                    )}
-                    <Ionicons
-                      name={tag.icon as keyof typeof Ionicons.glyphMap}
-                      size={15}
-                      color={active ? '#171310' : tag.color}
-                    />
-                    <Text
-                      style={[styles.tagPillLabel, { color: active ? '#171310' : 'rgba(255,255,255,0.8)' }]}
-                      numberOfLines={1}
-                    >
-                      {tag.path}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-        </GlassPortal>
       )}
 
       {isFocused && !isOpen && !hideOpenButton && (
@@ -482,6 +471,48 @@ const styles = StyleSheet.create({
   scroll: {
     flex: 1,
   },
+  // A row and its gutters. alignItems stretch, so a gutter's line runs the
+  // full height of the row it belongs to and meets the one above it.
+  treeLine: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  guideCell: {
+    width: 18,
+  },
+  // A line through the whole cell: an ancestor whose branch carries on
+  // below this row.
+  guidePipe: {
+    position: 'absolute',
+    left: 8,
+    top: 0,
+    bottom: 0,
+    width: 1,
+    backgroundColor: GLASS_LINE,
+  },
+  // The elbow: down to the row's middle...
+  guideStem: {
+    position: 'absolute',
+    left: 8,
+    top: 0,
+    height: '50%',
+    width: 1,
+    backgroundColor: GLASS_LINE,
+  },
+  // ...and on down, when this isn't the last child.
+  guideStemFull: {
+    bottom: 0,
+    height: undefined,
+  },
+  // ...then across, to meet the row.
+  guideArm: {
+    position: 'absolute',
+    left: 8,
+    right: 0,
+    top: '50%',
+    height: 1,
+    backgroundColor: GLASS_LINE,
+  },
   treeRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -507,47 +538,6 @@ const styles = StyleSheet.create({
   },
   // The square the halo is drawn on - twice the button across and centred
   // on it, because the button's own box would clip the light.
-  // The row of tags along the foot of the screen. Full width, so a pill
-  // scrolled past the end is cut by the screen's own edge - clipping it
-  // against a box that ends short of the edge left a hard-edged rectangle
-  // of unblurred pill sitting in mid-screen instead.
-  tagRow: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: TAG_ROW_HEIGHT,
-  },
-  tagRowContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingLeft: 20,
-    // The rail's own width, kept free: at rest no pill is left standing
-    // under the navigation island.
-    paddingRight: RAIL_CLEARANCE,
-  },
-  tagPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    height: TAG_ROW_HEIGHT,
-    paddingHorizontal: 16,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-  },
-  // The same inversion an active group tab makes.
-  tagPillActive: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderColor: 'transparent',
-  },
-  tagPillLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    maxWidth: 160,
-  },
   openButton: {
     // On the rail at the right edge, above the add button and under the
     // control capsule - a plain tap, no drag: dragging from the screen's

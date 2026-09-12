@@ -25,8 +25,11 @@ export const NAV_HEIGHT = NAV_BUTTON * NAV_ROUTES + NAV_GAP * (NAV_ROUTES - 1) +
 // left sitting under the capsule or the island.
 export const RAIL_CLEARANCE = RAIL_RIGHT + RAIL_WIDTH + RAIL_GAP;
 
-// The tag row that scrolls along the foot of the screen, opposite the
-// group tabs at the head of it.
+// The band at the foot of the screen the island stops short of. It was
+// the row of smart folders that used to scroll along there; that row is
+// gone (they live in the drawer now), but the numbers stay as they are -
+// they are what the rail's spacing was dialled in against on the device,
+// and changing them would move every button again.
 export const TAG_ROW_HEIGHT = 45;
 export const TAG_ROW_PAD = 4;
 
