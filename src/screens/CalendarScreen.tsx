@@ -13,7 +13,8 @@ import {
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { collection, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from '@react-native-firebase/firestore';
 import { GLASS_BODY, GLASS_TEXT } from '../constants/glass';
@@ -39,6 +40,12 @@ import {
   mondayOf,
   parseDateKey,
 } from '../utils/dateLocale';
+import { BlurView } from 'expo-blur';
+import { GlassPortal } from '../components/GlassPortal';
+import { useBlurTarget } from '../components/GlassTarget';
+import SaveRing from '../components/SaveRing';
+import { GLASS_ISLAND } from '../constants/glass';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
 const ACCENT = '#3B82F6';
 // calendarPlate carries its own marginHorizontal:16 on each side, so the
@@ -167,6 +174,12 @@ export default function CalendarScreen() {
     { id: string; text: string; checked: boolean; documentId: string; reminderTime?: string }[]
   >([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  // The capsule stands on the rail at the right edge now, drawn through
+  // the portal for its blur - so it has to withdraw when the calendar
+  // isn't the screen on show.
+  const calendarBlurTarget = useBlurTarget();
+  const calendarFocused = useIsFocused();
+  const calendarInsets = useSafeAreaInsets();
   // Mirrors the embedded note editor's own internal state (see
   // DocumentEditorScreen's onSelectModeChange/onSaveStatusChange) so this
   // screen's own header capsule can show the right icon/checkmark for
@@ -565,65 +578,81 @@ export default function CalendarScreen() {
             {isWriting && <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.7)" />}
           </Pressable>
         </View>
-        <View style={styles.headerRightGroup}>
-          {/* A separate circle, not a 4th icon inside the capsule - folded
-              into the pill it read as just another button, which it isn't
-              (nothing happens when you tap it). */}
-          <View style={[styles.saveDot, noteSaveStatus === 'saved' && styles.saveDotSaved]}>
-            <Ionicons name="checkmark" size={17} color={noteSaveStatus === 'saved' ? '#171310' : '#fff'} />
-          </View>
-          <View style={styles.headerButtons}>
-            {/* Only where there's a column to put away. A filled icon means
-                the column is showing, an outline that it's hidden - same
-                on/off reading as the sticker button on Documents. */}
-            {isTwoPane && (
-              <>
-                <Pressable hitSlop={6} onPress={() => setShowCalendarPane((v) => !v)}>
-                  <Ionicons name={showCalendarPane ? 'calendar' : 'calendar-outline'} size={17} color="#fff" />
-                </Pressable>
-                <View style={styles.headerButtonsDivider} />
-              </>
-            )}
-            {/* Between the two column toggles, because that's what it is:
-                both of them at once. */}
-            {isTwoPane && (
-              <>
-                <Pressable hitSlop={6} onPress={toggleNoteFullscreen}>
-                  <Ionicons
-                    name={noteFullscreen ? 'contract-outline' : 'expand-outline'}
-                    size={17}
-                    color="#fff"
-                  />
-                </Pressable>
-                <View style={styles.headerButtonsDivider} />
-              </>
-            )}
-            {isThreePane && (
-              <>
-                <Pressable hitSlop={6} onPress={() => setShowHistoryPane((v) => !v)}>
-                  <Ionicons name={showHistoryPane ? 'time' : 'time-outline'} size={17} color="#fff" />
-                </Pressable>
-                <View style={styles.headerButtonsDivider} />
-              </>
-            )}
-            <Pressable hitSlop={6} onPress={() => navigation.navigate('Diary')}>
-              <Ionicons name="search" size={17} color="#fff" />
-            </Pressable>
-            <View style={styles.headerButtonsDivider} />
-            <Pressable hitSlop={6} onPress={() => setMenuOpen((v) => !v)}>
-              <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
-            </Pressable>
-            <View style={styles.headerButtonsDivider} />
-            <Pressable hitSlop={6} onPress={() => noteEditorRef.current?.toggleSelectMode()}>
-              <Ionicons name={noteSelectMode ? 'close' : 'ellipse-outline'} size={17} color="#fff" />
-            </Pressable>
-          </View>
-        </View>
       </View>
+
+      {/* The same rail the documents screen and the note have: at the
+          right edge, in the same glass, hanging from the same line. */}
+      {calendarFocused && (
+        <GlassPortal>
+          <View
+            style={[styles.calendarRail, { top: calendarInsets.top + CHROME_TOP + CAPSULE_DROP }]}
+            pointerEvents="box-none"
+          >
+            <View style={styles.headerButtons}>
+              <BlurView
+                intensity={60}
+                tint="dark"
+                blurMethod="dimezisBlurView"
+                blurTarget={calendarBlurTarget ?? undefined}
+                style={StyleSheet.absoluteFill}
+                pointerEvents="none"
+              />
+              {/* Only where there's a column to put away. A filled icon means
+                  the column is showing, an outline that it's hidden - same
+                  on/off reading as the sticker button on Documents. */}
+              {isTwoPane && (
+                <>
+                  <Pressable hitSlop={8} onPress={() => setShowCalendarPane((v) => !v)}>
+                    <Ionicons name={showCalendarPane ? 'calendar' : 'calendar-outline'} size={24} color="#fff" />
+                  </Pressable>
+                  <View style={styles.headerButtonsDivider} />
+                </>
+              )}
+              {/* Between the two column toggles, because that's what it is:
+                  both of them at once. */}
+              {isTwoPane && (
+                <>
+                  <Pressable hitSlop={8} onPress={toggleNoteFullscreen}>
+                    <Ionicons
+                      name={noteFullscreen ? 'contract-outline' : 'expand-outline'}
+                      size={24}
+                      color="#fff"
+                    />
+                  </Pressable>
+                  <View style={styles.headerButtonsDivider} />
+                </>
+              )}
+              {isThreePane && (
+                <>
+                  <Pressable hitSlop={8} onPress={() => setShowHistoryPane((v) => !v)}>
+                    <Ionicons name={showHistoryPane ? 'time' : 'time-outline'} size={24} color="#fff" />
+                  </Pressable>
+                  <View style={styles.headerButtonsDivider} />
+                </>
+              )}
+              <Pressable hitSlop={8} onPress={() => navigation.navigate('Diary')}>
+                <Ionicons name="search-outline" size={24} color="#fff" />
+              </Pressable>
+              <View style={styles.headerButtonsDivider} />
+              <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
+                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
+              </Pressable>
+              {/* The save indicator is the capsule's own outline now, not a
+                  circle standing beside it - see SaveRing. */}
+              <SaveRing saving={noteSaveStatus === 'saving'} />
+            </View>
+          </View>
+        </GlassPortal>
+      )}
 
       {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
       {menuOpen && (
-        <View style={styles.menuPanel}>
+        <View
+          style={[
+            styles.menuPanel,
+            { top: calendarInsets.top + CHROME_TOP + CAPSULE_DROP, right: RAIL_CLEARANCE },
+          ]}
+        >
           <Pressable style={styles.menuRow} onPress={() => toggleCompactFilter('filled')}>
             <Ionicons name="filter-outline" size={17} color={GLASS_TEXT} />
             <Text style={styles.menuRowLabel}>Лише заповнені дні</Text>
@@ -633,6 +662,21 @@ export default function CalendarScreen() {
             <Ionicons name="time-outline" size={17} color={GLASS_TEXT} />
             <Text style={styles.menuRowLabel}>Лише дні з історією</Text>
             {compactFilter === 'history' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+          </Pressable>
+          <View style={styles.menuRule} />
+          <Pressable
+            style={styles.menuRow}
+            onPress={() => {
+              setMenuOpen(false);
+              noteEditorRef.current?.toggleSelectMode();
+            }}
+          >
+            <Ionicons
+              name={noteSelectMode ? 'close-outline' : 'ellipse-outline'}
+              size={17}
+              color={GLASS_TEXT}
+            />
+            <Text style={styles.menuRowLabel}>{noteSelectMode ? 'Скасувати вибір' : 'Вибрати'}</Text>
           </Pressable>
         </View>
       )}
@@ -1005,46 +1049,31 @@ const styles = StyleSheet.create({
     fontFamily: FONT_SEMIBOLD,
     color: '#fff',
   },
-  headerRightGroup: {
-    flexDirection: 'row',
+  // The column the calendar's own controls stand in - same edge, same
+  // width, same glass as the documents screen's rail.
+  calendarRail: {
+    position: 'absolute',
+    right: RAIL_RIGHT,
     alignItems: 'center',
-    gap: 8,
   },
-  // Search (→ DiaryScreen) + "..." (the only-filled-days menu) merged into
-  // one elongated glass capsule, same as DocumentsScreen's headerButtons.
+  // Search (→ DiaryScreen) + "..." (the only-filled-days menu) in one
+  // capsule, stood on its end.
   headerButtons: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    height: 38,
+    gap: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 19,
     borderRadius: 999,
-    paddingHorizontal: 14,
-    backgroundColor: 'rgba(20,20,20,0.35)',
+    overflow: 'hidden',
+    backgroundColor: GLASS_ISLAND,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
   },
+  // Turned with the capsule: a rule across it, not down it.
   headerButtonsDivider: {
-    width: 1,
-    height: 16,
+    width: 20,
+    height: 1,
     backgroundColor: 'rgba(255,255,255,0.3)',
-  },
-  // Dark-glass circle while saving (matching the capsule beside it), solid
-  // white once saved - diameter equals the capsule's own height so the two
-  // shapes read as a matched pair, not a stray small dot next to a much
-  // taller pill.
-  saveDot: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(20,20,20,0.35)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-  },
-  saveDotSaved: {
-    backgroundColor: '#fff',
-    borderColor: 'transparent',
   },
   menuBackdrop: {
     position: 'absolute',
@@ -1056,8 +1085,6 @@ const styles = StyleSheet.create({
   },
   menuPanel: {
     position: 'absolute',
-    top: 96,
-    right: 20,
     width: 260,
     backgroundColor: GLASS_BODY,
     borderRadius: 14,
@@ -1068,6 +1095,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 10,
     zIndex: 6,
+  },
+  menuRule: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    marginVertical: 6,
   },
   menuRow: {
     flexDirection: 'row',
@@ -1096,7 +1128,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(20,20,20,0.25)',
     borderColor: 'rgba(255,255,255,0.25)',
     borderRadius: 22,
-    marginHorizontal: 16,
+    marginLeft: 16,
+    // Stops before the rail rather than running under the capsule.
+    marginRight: RAIL_CLEARANCE,
     overflow: 'hidden',
   },
   // Between the calendar and the note there were two margins (the plate's
@@ -1291,7 +1325,8 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'flex-start',
     gap: 8,
-    marginHorizontal: 16,
+    marginLeft: 16,
+    marginRight: RAIL_CLEARANCE,
     // Equal above and below: the calendar plate sits flush on top of this
     // row (its height is exactly its own rows, no bottom padding), so
     // without the top margin the capsules hug the calendar while keeping a
