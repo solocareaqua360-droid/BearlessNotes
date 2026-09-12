@@ -19,13 +19,6 @@ function generateId(): string {
 // empty and the Drive copy is the only one there is. Same restore step
 // useCachedAttachment does for thumbnails, as a plain call for the one-off
 // case of reading a file to import it.
-export async function ensureLocalFile(uri: string, driveFileId?: string): Promise<boolean> {
-  const info = await LegacyFileSystem.getInfoAsync(uri);
-  if (info.exists) return true;
-  if (!driveFileId) return false;
-  return downloadFileFromDrive(driveFileId, uri);
-}
-
 // Whether a file in the Files database is worth offering as an import
 // source - by its own name, since that's what the user recognises and what
 // the picker filters on anyway.

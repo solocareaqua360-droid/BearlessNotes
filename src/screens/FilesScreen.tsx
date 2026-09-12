@@ -62,6 +62,7 @@ import { useRail } from '../hooks/useRail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
+import { ensureLocalFile } from '../utils/googleDrive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
@@ -292,6 +293,14 @@ export default function FilesScreen() {
   async function openFile(file: FileItem) {
     const available = await Sharing.isAvailableAsync();
     if (!available) return;
+    // The URI is a path on whichever device added the file. Anywhere else
+    // it points at nothing, and handing it straight to the OS opens
+    // nothing - silently, which is worse than saying so.
+    const restored = await ensureLocalFile(file.fileUri, file.driveFileId).catch(() => false);
+    if (!restored) {
+      Alert.alert('Файл недоступний', 'Його немає на цьому пристрої, а копії на Google Диску теж немає.');
+      return;
+    }
     await Sharing.shareAsync(file.fileUri, { mimeType: file.mimeType, dialogTitle: file.fileName });
   }
 

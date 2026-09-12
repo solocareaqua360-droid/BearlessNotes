@@ -375,3 +375,15 @@ export async function deleteFileFromDrive(driveFileId: string, bytes?: number): 
     return e instanceof Error ? e.message : String(e);
   }
 }
+
+// What every "open this attachment" path has to go through. A file's URI
+// is a path on the device that created it; on any other device that path
+// simply doesn't exist, and handing it to the OS opens nothing at all.
+// Same idea as useCachedAttachment, for the places that act on a file
+// rather than render one.
+export async function ensureLocalFile(uri: string, driveFileId?: string): Promise<boolean> {
+  const info = await LegacyFileSystem.getInfoAsync(uri);
+  if (info.exists) return true;
+  if (!driveFileId) return false;
+  return downloadFileFromDrive(driveFileId, uri);
+}

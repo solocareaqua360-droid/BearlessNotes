@@ -12,6 +12,7 @@ import MediaRowCard from './MediaRowCard';
 import ZoomableImageViewer from './ZoomableImageViewer';
 import VideoPlayerModal from './VideoPlayerModal';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { ensureLocalFile } from '../utils/googleDrive';
 
 const ICON_BY_KIND: Record<HistoryItemKind, keyof typeof Ionicons.glyphMap> = {
   file: 'document-outline',
@@ -104,6 +105,14 @@ export default function DayHistoryList({
         if (!fileUri) return;
         const available = await Sharing.isAvailableAsync();
         if (!available) return;
+        const restored = await ensureLocalFile(
+          fileUri,
+          item.data?.driveFileId as string | undefined
+        ).catch(() => false);
+        if (!restored) {
+          Alert.alert('Файл недоступний', 'Його немає на цьому пристрої, а копії на Google Диску теж немає.');
+          return;
+        }
         await Sharing.shareAsync(fileUri, {
           mimeType: item.data?.mimeType as string | undefined,
           dialogTitle: item.title,

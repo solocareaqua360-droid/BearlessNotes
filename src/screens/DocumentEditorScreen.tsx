@@ -81,7 +81,7 @@ import SketchEditor from '../components/SketchEditor';
 import EditorToolbar, { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolbar';
 import { BlockAction } from '../components/blockActions';
 import { clearCopiedObject, getCopiedObject, useCopiedObject } from '../utils/objectClipboard';
-import { backupFileToDrive } from '../utils/googleDrive';
+import { backupFileToDrive, ensureLocalFile } from '../utils/googleDrive';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
@@ -3876,6 +3876,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     if (!block?.fileUri) return;
     const available = await Sharing.isAvailableAsync();
     if (!available) return;
+    const restored = await ensureLocalFile(block.fileUri, block.driveFileId).catch(() => false);
+    if (!restored) {
+      Alert.alert('Файл недоступний', 'Його немає на цьому пристрої, а копії на Google Диску теж немає.');
+      return;
+    }
     await Sharing.shareAsync(block.fileUri, {
       mimeType: block.mimeType,
       dialogTitle: block.fileName,

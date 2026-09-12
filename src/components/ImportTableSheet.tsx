@@ -15,7 +15,6 @@ import {
   ColumnMapping,
   ParsedSheet,
   createDatabaseForImport,
-  ensureLocalFile,
   guessFieldType,
   isTableFileName,
   optionsFromColumn,
@@ -33,6 +32,7 @@ import {
 } from '../constants/glass';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { ensureLocalFile } from '../utils/googleDrive';
 
 const ACCENT = '#3B82F6';
 
