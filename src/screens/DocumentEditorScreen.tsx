@@ -1968,6 +1968,9 @@ type Props =
       // in two panes the rail belongs on the pane's edge, not the
       // window's, or it lands on top of the other half.
       railRight?: number;
+      // With the document on the LEFT half, its rail belongs on the
+      // window's left edge - the right one is the list's.
+      railLeft?: number;
       onToggleFullscreen?: () => void;
       // Mirrored out so the screen around this pane can hold off writing
       // the same document while there are keystrokes here that haven't
@@ -1989,6 +1992,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const editorFocused = useIsFocused();
   const editorInsets = useSafeAreaInsets();
   const railRight = 'pane' in props ? (props.railRight ?? RAIL_RIGHT) : RAIL_RIGHT;
+  const railLeft = 'pane' in props ? props.railLeft : undefined;
+  // Which edge the rail stands on, and which way its menu opens from it.
+  const railSide = railLeft !== undefined ? { left: railLeft } : { right: railRight };
+  const menuSide =
+    railLeft !== undefined
+      ? { left: railLeft + RAIL_WIDTH + 8 }
+      : { right: railRight + RAIL_WIDTH + 8 };
 
   // A document with nothing in it is not a document. Anything a block can
   // carry counts, not just text - an image or an embedded row with no
@@ -3979,17 +3989,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     >
       {!embedded && (
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          {!!onToggleFullscreen && (
-            <Pressable hitSlop={8} onPress={onToggleFullscreen}>
-              <Ionicons
-                name={paneFullscreen ? 'contract-outline' : 'expand-outline'}
-                size={20}
-                color={paperColor?.text ?? '#111827'}
-              />
-            </Pressable>
-          )}
-        </View>
+        {/* Empty now - both its buttons stand on the rail. It stays for
+            the top spacing it gives the title. */}
+        <View style={styles.headerLeft} />
       </View>
       )}
 
@@ -4004,7 +4006,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               other, and a capsule that shifted between them would read as
               a different control. */}
           <View
-            style={[styles.editorRail, { top: editorInsets.top + CHROME_TOP + CAPSULE_DROP, right: railRight }]}
+            style={[
+              styles.editorRail,
+              { top: editorInsets.top + CHROME_TOP + CAPSULE_DROP },
+              railSide,
+            ]}
             pointerEvents="box-none"
           >
             <View style={styles.headerRight}>
@@ -4026,6 +4032,19 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               <Pressable hitSlop={8} onPress={() => (closePane ? closePane() : navigation.goBack())}>
                 <Ionicons name="arrow-back-outline" size={24} color="#fff" />
               </Pressable>
+              {/* Only where there are two panes to collapse into one. */}
+              {!!onToggleFullscreen && (
+                <>
+                  <View style={styles.headerRightDivider} />
+                  <Pressable hitSlop={8} onPress={onToggleFullscreen}>
+                    <Ionicons
+                      name={paneFullscreen ? 'contract-outline' : 'expand-outline'}
+                      size={24}
+                      color="#fff"
+                    />
+                  </Pressable>
+                </>
+              )}
               {/* The save indicator lives on this capsule's own outline -
                   see SaveRing. Last child, so it draws over the blur. */}
               <SaveRing saving={saveStatus === 'saving'} />
@@ -4042,10 +4061,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         <View
           style={[
             styles.exportMenuPanel,
-            {
-              top: editorInsets.top + CHROME_TOP + CAPSULE_DROP,
-              right: railRight + RAIL_WIDTH + 8,
-            },
+            { top: editorInsets.top + CHROME_TOP + CAPSULE_DROP },
+            menuSide,
           ]}
         >
           <BlurView

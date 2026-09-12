@@ -178,9 +178,9 @@ export default function DocumentsScreen() {
   // The pane the list lives in. On a Fold the chrome must span that pane,
   // not the whole window - the open document has the other half.
   const [paneRect, setPaneRect] = useState({ x: 0, width: 0 });
-  // How far the open document's own pane ends from the window's right
-  // edge - what its rail has to stand in from.
-  const [editorPaneRight, setEditorPaneRight] = useState(0);
+  // Where the open document's own pane starts - what its rail stands in
+  // from, on the left.
+  const [editorPaneLeft, setEditorPaneLeft] = useState(0);
   const insets = useSafeAreaInsets();
   const chromeTop = insets.top + CHROME_TOP;
   const chromeBottom = chromeTop + chromeHeight + 8;
@@ -954,9 +954,7 @@ export default function DocumentsScreen() {
         {isTwoPane && (
           <View
             style={styles.editorPane}
-            onLayout={(e) =>
-              setEditorPaneRight(windowWidth - (e.nativeEvent.layout.x + e.nativeEvent.layout.width))
-            }
+            onLayout={(e) => setEditorPaneLeft(e.nativeEvent.layout.x)}
           >
             {openDoc ? (
               // Keyed by id so switching documents remounts the editor
@@ -972,9 +970,9 @@ export default function DocumentsScreen() {
                   setPaneFullscreen(false);
                 }}
                 isFullscreen={paneFullscreen}
-                // Its rail belongs on ITS pane's right edge, not the
-                // window's - the window's now belongs to the list.
-                railRight={editorPaneRight + RAIL_RIGHT}
+                // Its rail stands on the window's LEFT edge - this pane
+                // is the left half, and the right edge is the list's.
+                railLeft={editorPaneLeft + RAIL_RIGHT}
                 onToggleFullscreen={() => setPaneFullscreen((v) => !v)}
               />
             ) : (
