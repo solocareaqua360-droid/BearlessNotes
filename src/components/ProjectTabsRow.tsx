@@ -41,6 +41,10 @@ type Props = {
   // it and off the screen's own edge - which is a clean cut - but at rest
   // the last one stands clear of whatever the rail has parked there.
   endPadding?: number;
+  // Where the pills begin. On a Fold the row spans the WHOLE display so
+  // they can be scrolled across it, but at rest they should start at the
+  // edge of the pane they belong to - which is this.
+  startPadding?: number;
 };
 
 // Horizontal row of pills (see the videobookmark reference the user showed:
@@ -55,6 +59,7 @@ export default function ProjectTabsRow({
   dark,
   blurTarget,
   endPadding,
+  startPadding,
 }: Props) {
   return (
     <ScrollView
@@ -67,7 +72,11 @@ export default function ProjectTabsRow({
       // alignItems is 'stretch'). Same bug, same fix, as the calendar's own
       // week strip.
       style={styles.scroll}
-      contentContainerStyle={[styles.row, endPadding !== undefined && { paddingRight: endPadding }]}
+      contentContainerStyle={[
+        styles.row,
+        endPadding !== undefined && { paddingRight: endPadding },
+        startPadding !== undefined && { paddingLeft: startPadding },
+      ]}
     >
       <Tab
         label="Всі"

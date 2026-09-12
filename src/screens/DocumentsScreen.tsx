@@ -668,7 +668,7 @@ export default function DocumentsScreen() {
         {isFocused && !(isTwoPane && !!openDoc && paneFullscreen) && (
         <GlassPortal>
         <View
-          style={[styles.topChrome, { top: chromeTop, left: paneRect.x, width: paneRect.width }]}
+          style={[styles.topChrome, { top: chromeTop }]}
           pointerEvents="box-none"
           onLayout={(e) => setChromeHeight(e.nativeEvent.layout.height)}
         >
@@ -713,12 +713,13 @@ export default function DocumentsScreen() {
                 pinnedTab={{ id: STICKERS_GROUP, label: 'Стікери' }}
                 dark
                 blurTarget={blurTarget}
+                startPadding={paneRect.x + 20}
                 endPadding={RAIL_CLEARANCE}
               />
             </View>
           )}
           {activeFilter && (
-            <View style={styles.filterRow}>
+            <View style={[styles.filterRow, { paddingLeft: paneRect.x + 20 }]}>
               {activeFilter.type === 'untagged' ? (
                 <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
                   <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
@@ -1112,13 +1113,15 @@ const styles = StyleSheet.create({
   },
   // The band the group tabs and the tag chips float in, over the list.
   // The band the group tabs and the tag chips float in, over the list.
+  // The band the group tabs and the tag chips float in. It spans the
+  // WHOLE window rather than the list's own pane: on a Fold the tabs are
+  // MEANT to scroll out across the open document beside them. What keeps
+  // them starting at the pane's edge is padding inside the scroller, not
+  // the band's width.
   topChrome: {
     position: 'absolute',
-    // Android views don't clip their children unless told to. Without
-    // this the tabs scrolled straight out of this pane and across the
-    // open document beside it - the scroller's own bounds are the pane's,
-    // but nothing was enforcing them.
-    overflow: 'hidden',
+    left: 0,
+    right: 0,
     zIndex: 6,
   },
   sideIslandRow: {
