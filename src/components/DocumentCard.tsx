@@ -340,7 +340,12 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     // The card's own overflow: 'hidden' clips this to its corners.
-    opacity: 0.055,
+    //
+    // This multiplies with the tile's own per-pixel alpha (up to 90/255),
+    // so what lands on the card is roughly half of half of that - about
+    // 9%. Getting that wrong by one factor is how the first attempt came
+    // out at a third of a percent and looked like nothing at all.
+    opacity: 0.5,
   },
   row: {
     flexDirection: 'row',
