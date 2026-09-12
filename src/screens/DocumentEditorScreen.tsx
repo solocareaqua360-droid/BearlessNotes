@@ -83,7 +83,7 @@ import { BlockAction } from '../components/blockActions';
 import { clearCopiedObject, getCopiedObject, useCopiedObject } from '../utils/objectClipboard';
 import { backupFileToDrive } from '../utils/googleDrive';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
-import { useTags } from '../hooks/useTags';
+import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
@@ -101,7 +101,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
-import { GLASS_ISLAND } from '../constants/glass';
+import { GLASS_DANGER, GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import SaveRing from '../components/SaveRing';
 
@@ -1984,6 +1984,50 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const editorBlurTarget = useBlurTarget();
   const editorFocused = useIsFocused();
   const editorInsets = useSafeAreaInsets();
+
+  // A document with nothing in it is not a document. Anything a block can
+  // carry counts, not just text - an image or an embedded row with no
+  // caption is still content.
+  function hasContent(t: string, bs: Block[], cover?: string) {
+    const titled = t.trim() !== '' && t.trim() !== 'Без назви';
+    if (titled || cover) return true;
+    return bs.some(
+      (b) =>
+        !!b.text?.trim() ||
+        !!b.imageUri ||
+        !!b.fileUri ||
+        !!b.linkUrl ||
+        !!b.sketchElements?.length ||
+        !!b.dbRowDatabaseId ||
+        !!b.dbViewDatabaseId ||
+        b.type === 'divider' ||
+        b.type === 'table'
+    );
+  }
+
+  function confirmDeleteDocument() {
+    setExportMenuOpen(false);
+    Alert.alert('Видалити документ?', 'Його не можна буде повернути.', [
+      { text: 'Скасувати', style: 'cancel' },
+      {
+        text: 'Видалити',
+        style: 'destructive',
+        onPress: async () => {
+          // Let the tags it carried forget it too, the way the documents
+          // list's own delete does.
+          await Promise.all(
+            (tagIds ?? []).map((tagId) => {
+              const tag = tags.find((t) => t.id === tagId);
+              return tag ? detachTagFromDeletedItem(tag, 'document', documentId) : Promise.resolve();
+            })
+          );
+          await deleteDoc(doc(db, 'documents', documentId));
+          if (closePane) closePane();
+          else navigation.goBack();
+        },
+      },
+    ]);
+  }
   const documentId =
     'embedded' in props ? props.documentId : 'pane' in props ? props.documentId : props.route.params.documentId;
   const navigation = props.navigation;
@@ -2009,6 +2053,23 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // skipped entirely in embedded mode (CalendarScreen's daily notes),
   // matching the header/title/tags block right above them.
   const [coverImageUri, setCoverImageUri] = useState<string | undefined>(undefined);
+  // A note created and then left untouched shouldn't be kept. Gated on
+  // autoFocusTitle, which is set only when the document was made a moment
+  // ago by the "+" button - opening an existing empty note and backing out
+  // of it must never delete it.
+  const bornEmptyRef = useRef(autoFocusTitle);
+  const contentRef = useRef({ title, blocks, coverImageUri });
+  contentRef.current = { title, blocks, coverImageUri };
+  useEffect(
+    () => () => {
+      if (!bornEmptyRef.current) return;
+      const { title: t, blocks: b, coverImageUri: c } = contentRef.current;
+      if (hasContent(t, b, c)) return;
+      deleteDoc(doc(db, 'documents', documentId)).catch(() => {});
+    },
+    []
+  );
+
   // Recolors the page to this document's OWN card color (colorForDocument)
   // - the same color already shown for it everywhere else in the app
   // (Documents grid, Files/Links/BoardsList tiles) - rather than a
@@ -3970,6 +4031,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
 
       {exportMenuOpen && <Pressable style={styles.exportMenuBackdrop} onPress={() => setExportMenuOpen(false)} />}
       {exportMenuOpen && (
+        <GlassPortal>
         // Beside the rail rather than under the old header corner: its
         // top lines up with the rail's, and it stops short of it.
         <View
@@ -3981,15 +4043,23 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             },
           ]}
         >
+          <BlurView
+            intensity={60}
+            tint="dark"
+            blurMethod="dimezisBlurView"
+            blurTarget={editorBlurTarget ?? undefined}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
           <Text style={styles.exportMenuLabel}>Оформлення</Text>
           <Pressable style={styles.exportMenuRow} onPress={openCoverImageOptions}>
-            <Ionicons name="image-outline" size={17} color="#111827" />
+            <Ionicons name="image-outline" size={17} color={GLASS_TEXT} />
             <Text style={styles.exportMenuRowLabel}>
               {coverImageUri ? 'Змінити заставку' : 'Додати заставку'}
             </Text>
           </Pressable>
           <Pressable style={styles.exportMenuRow} onPress={() => setPaperColorEnabled((v) => !v)}>
-            <Ionicons name="color-palette-outline" size={17} color="#111827" />
+            <Ionicons name="color-palette-outline" size={17} color={GLASS_TEXT} />
             <Text style={styles.exportMenuRowLabel}>Колір паперу</Text>
             {paperColorEnabled && <Ionicons name="checkmark" size={18} color={ACCENT} />}
           </Pressable>
@@ -4001,7 +4071,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               setGroupPickerVisible(true);
             }}
           >
-            <Ionicons name="folder-outline" size={17} color="#111827" />
+            <Ionicons name="folder-outline" size={17} color={GLASS_TEXT} />
             <Text style={styles.exportMenuRowLabel}>
               {groups.find((g) => g.id === groupId)?.name ?? 'Додати в групу'}
             </Text>
@@ -4019,18 +4089,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   });
                 }}
               >
-                <Ionicons name="grid-outline" size={17} color="#111827" />
+                <Ionicons name="grid-outline" size={17} color={GLASS_TEXT} />
                 <Text style={styles.exportMenuRowLabel}>Показати дошку</Text>
               </Pressable>
             </>
           )}
           <Text style={styles.exportMenuLabel}>Експорт</Text>
           <Pressable style={styles.exportMenuRow} onPress={exportAsPdf}>
-            <Ionicons name="document-text-outline" size={17} color="#111827" />
+            <Ionicons name="document-text-outline" size={17} color={GLASS_TEXT} />
             <Text style={styles.exportMenuRowLabel}>У PDF</Text>
           </Pressable>
           <Pressable style={styles.exportMenuRow} onPress={exportAsTxt}>
-            <Ionicons name="reader-outline" size={17} color="#111827" />
+            <Ionicons name="reader-outline" size={17} color={GLASS_TEXT} />
             <Text style={styles.exportMenuRowLabel}>У TXT</Text>
           </Pressable>
           <View style={styles.exportMenuRule} />
@@ -4044,11 +4114,16 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             <Ionicons
               name={isSelectMode ? 'close-outline' : 'ellipse-outline'}
               size={17}
-              color="#111827"
+              color={GLASS_TEXT}
             />
             <Text style={styles.exportMenuRowLabel}>{isSelectMode ? 'Скасувати вибір' : 'Вибрати'}</Text>
           </Pressable>
+          <Pressable style={styles.exportMenuRow} onPress={confirmDeleteDocument}>
+            <Ionicons name="trash-outline" size={17} color={GLASS_DANGER} />
+            <Text style={[styles.exportMenuRowLabel, { color: GLASS_DANGER }]}>Видалити документ</Text>
+          </Pressable>
         </View>
+        </GlassPortal>
       )}
 
       {/* Embedded (CalendarScreen): the select-mode toggle and save
@@ -4505,9 +4580,12 @@ const styles = StyleSheet.create({
   },
   exportMenuPanel: {
     position: 'absolute',
-    width: 180,
-    backgroundColor: '#fff',
-    borderRadius: 14,
+    width: 200,
+    overflow: 'hidden',
+    backgroundColor: GLASS_ISLAND,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    borderRadius: 20,
     padding: 6,
     shadowColor: '#000',
     shadowOpacity: 0.18,
@@ -4521,7 +4599,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: FONT_BOLD,
     textTransform: 'uppercase',
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
     paddingHorizontal: 8,
     paddingTop: 4,
     paddingBottom: 2,
@@ -4535,14 +4613,14 @@ const styles = StyleSheet.create({
   },
   exportMenuRule: {
     height: 1,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: 'rgba(255,255,255,0.14)',
     marginVertical: 6,
   },
   exportMenuRowLabel: {
     flex: 1,
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   // A translucent-on-terracotta circle while saving, solid white once
   // saved - replaces the old "Збереження…"/"Збережено" text label

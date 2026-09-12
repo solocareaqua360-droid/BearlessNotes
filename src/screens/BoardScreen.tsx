@@ -76,8 +76,6 @@ import { Group } from '../types';
 import DocumentEditorScreen from './DocumentEditorScreen';
 import { useRail } from '../hooks/useRail';
 import { FONT_BOLD, FONT_EXTRABOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { BlurView } from 'expo-blur';
-import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
 
 const AUTOSAVE_DELAY_MS = 600;
@@ -866,7 +864,6 @@ export default function BoardScreen() {
   // Same fix as BulkActionBar's own bottom offset.
   const bottomInset = useSafeAreaInsets().bottom;
   const rail = useRail();
-  const boardBlurTarget = useBlurTarget();
 
   const [title, setTitle] = useState('');
   const [cards, setCards] = useState<BoardCard[]>([]);
@@ -2037,14 +2034,6 @@ export default function BoardScreen() {
             <Ionicons name="chevron-back" size={24} color="#111827" />
           </Pressable>
           <Pressable style={styles.titleTap} onPress={() => setRenamingTitle(true)}>
-            <BlurView
-              intensity={60}
-              tint="dark"
-              blurMethod="dimezisBlurView"
-              blurTarget={boardBlurTarget ?? undefined}
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
             <Text style={styles.headerTitle} numberOfLines={1}>
               {title || 'Без назви'}
             </Text>
@@ -2055,16 +2044,6 @@ export default function BoardScreen() {
             style={[styles.toolButton, canvasTool !== 'move' && styles.toolButtonActive]}
             onPress={toggleCanvasTool}
           >
-            {canvasTool === 'move' && (
-              <BlurView
-                intensity={60}
-                tint="dark"
-                blurMethod="dimezisBlurView"
-                blurTarget={boardBlurTarget ?? undefined}
-                style={StyleSheet.absoluteFill}
-                pointerEvents="none"
-              />
-            )}
             <MaterialCommunityIcons
               name={
                 canvasTool === 'select' ? 'selection-drag' : canvasTool === 'connect' ? 'vector-line' : 'cursor-move'
@@ -2133,14 +2112,6 @@ export default function BoardScreen() {
           </View>
         ) : (
           <Pressable style={[styles.fab, { bottom: rail.addBottom }]} onPress={() => setAddSheetVisible(true)}>
-            <BlurView
-              intensity={60}
-              tint="dark"
-              blurMethod="dimezisBlurView"
-              blurTarget={boardBlurTarget ?? undefined}
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
             <Ionicons name="add" size={26} color="#fff" />
           </Pressable>
         )}
@@ -2553,7 +2524,11 @@ const styles = StyleSheet.create({
   },
   titleTap: {
     flex: 1,
-    // The app's own glass, like every other floating control.
+    // The app's own glass. No BlurView behind it, deliberately: this
+    // screen is INSIDE the blur target, and a blur asked to blur a
+    // picture it is itself part of recurses and takes the app down - it
+    // did exactly that here. A blurred one would have to be drawn through
+    // GlassPortal, like the rail's.
     overflow: 'hidden',
     backgroundColor: GLASS_ISLAND,
     borderWidth: 1,
