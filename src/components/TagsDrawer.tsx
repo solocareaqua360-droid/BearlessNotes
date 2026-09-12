@@ -203,7 +203,7 @@ function TreeRow({
         {/* Reserved always, populated only when selected - so picking a
             folder doesn't shift the label. */}
         <View style={styles.treeCheckSlot}>
-          {isSelected && node.tag && <Ionicons name="checkmark" size={17} color={tint} />}
+          {isSelected && node.tag && <Ionicons name="checkmark-outline" size={17} color={tint} />}
         </View>
       </Pressable>
       </View>
@@ -429,7 +429,7 @@ export default function TagsDrawer({
                           {item.name}
                         </Text>
                         <View style={styles.treeCheckSlot}>
-                          {active && <Ionicons name="checkmark" size={17} color={item.color} />}
+                          {active && <Ionicons name="checkmark-outline" size={17} color={item.color} />}
                         </View>
                       </Pressable>
                     );
@@ -462,7 +462,7 @@ export default function TagsDrawer({
                 <Text style={styles.untaggedLabel}>Без тегів</Text>
                 <View style={styles.treeCheckSlot}>
                   {activeFilter?.type === 'untagged' && (
-                    <Ionicons name="checkmark" size={17} color={GLASS_TEXT_MUTED} />
+                    <Ionicons name="checkmark-outline" size={17} color={GLASS_TEXT_MUTED} />
                   )}
                 </View>
               </Pressable>

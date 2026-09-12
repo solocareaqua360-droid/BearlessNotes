@@ -39,7 +39,7 @@ export default function SortMenuRows({
             <Text style={[styles.rowLabel, active && { color: accentColor, fontWeight: '700' }]}>
               {FIELD_LABELS[field]}
             </Text>
-            {active && <Ionicons name={sortPref.dir === 'asc' ? 'arrow-up' : 'arrow-down'} size={16} color={accentColor} />}
+            {active && <Ionicons name={sortPref.dir === 'asc' ? 'arrow-up-outline' : 'arrow-down-outline'} size={16} color={accentColor} />}
           </Pressable>
         );
       })}

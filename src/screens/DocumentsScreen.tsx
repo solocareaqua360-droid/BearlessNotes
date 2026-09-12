@@ -547,12 +547,12 @@ export default function DocumentsScreen() {
                   <Pressable style={styles.menuRow} onPress={() => changeViewMode('list')}>
                     <Ionicons name="reorder-four-outline" size={17} color={GLASS_TEXT} />
                     <Text style={styles.menuRowLabel}>Список</Text>
-                    {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+                    {viewMode === 'list' && <Ionicons name="checkmark-outline" size={18} color={ACCENT} />}
                   </Pressable>
                   <Pressable style={styles.menuRow} onPress={() => changeViewMode('grid')}>
                     <Ionicons name="grid-outline" size={17} color={GLASS_TEXT} />
                     <Text style={styles.menuRowLabel}>Сітка</Text>
-                    {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+                    {viewMode === 'grid' && <Ionicons name="checkmark-outline" size={18} color={ACCENT} />}
                   </Pressable>
                   <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
                 </ScrollView>
@@ -571,11 +571,11 @@ export default function DocumentsScreen() {
                 pointerEvents="none"
               />
               <Pressable hitSlop={8} onPress={() => navigation.navigate('Search')}>
-                <Ionicons name="search" size={24} color="#fff" />
+                <Ionicons name="search-outline" size={24} color="#fff" />
               </Pressable>
               <View style={styles.sideIslandDivider} />
               <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-                <Ionicons name="ellipsis-horizontal" size={24} color="#fff" />
+                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
               </Pressable>
               <View style={styles.sideIslandDivider} />
               <Pressable hitSlop={8} onPress={toggleSelectMode}>
@@ -626,7 +626,7 @@ export default function DocumentsScreen() {
                   <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
                   <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без тегів</Text>
                   <Pressable hitSlop={8} onPress={() => setActiveFilter(null)}>
-                    <Ionicons name="close" size={14} color="#6B7280" />
+                    <Ionicons name="close-outline" size={14} color="#6B7280" />
                   </Pressable>
                 </View>
               ) : (
@@ -638,7 +638,7 @@ export default function DocumentsScreen() {
                       <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tag.color} />
                       <Text style={[styles.filterChipLabel, { color: tag.color }]}>{tag.path}</Text>
                       <Pressable hitSlop={8} onPress={() => setActiveFilter(removeTagFromFilter(activeFilter, tagId))}>
-                        <Ionicons name="close" size={14} color={tag.color} />
+                        <Ionicons name="close-outline" size={14} color={tag.color} />
                       </Pressable>
                     </View>
                   );
@@ -719,7 +719,7 @@ export default function DocumentsScreen() {
                 <Pressable style={styles.emptyIcon} onPress={createDocument}>
                   <Ionicons name="document-text-outline" size={32} color={ACCENT} />
                   <View style={styles.emptyBadge}>
-                    <Ionicons name="add" size={14} color="#fff" />
+                    <Ionicons name="add-outline" size={14} color="#fff" />
                   </View>
                 </Pressable>
                 <Text style={styles.emptyLabel}>Створити новий документ</Text>
@@ -805,7 +805,7 @@ export default function DocumentsScreen() {
               style={StyleSheet.absoluteFill}
               pointerEvents="none"
             />
-            <Ionicons name="add" size={28} color={fabPressed ? STICKER_DARK : '#fff'} />
+            <Ionicons name="add-outline" size={28} color={fabPressed ? STICKER_DARK : '#fff'} />
           </Pressable>
         </GlassPortal>
         )}

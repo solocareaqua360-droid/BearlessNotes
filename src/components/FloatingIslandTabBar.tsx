@@ -8,14 +8,16 @@ import { GLASS_ISLAND } from '../constants/glass';
 import { NAV_BUTTON, NAV_GAP, NAV_PADDING, RAIL_RIGHT } from '../constants/rail';
 import { useRail } from '../hooks/useRail';
 
-// Filled glyphs, not outlines: beside the capsule's own icons the outline
-// versions read as thinner and smaller, though they stood at the same
-// size. Same size as the capsule's too, now - 24.
+// Outline glyphs at 24, the same set and the same size as everything else
+// on this screen - what made these read as thinner and smaller before was
+// standing at 20 next to the capsule's 24, not the weight. One pack, one
+// weight: a window with both filled and outline icons in it reads as two
+// different sets of icons.
 const ICON_BY_ROUTE: Record<string, keyof typeof Ionicons.glyphMap> = {
-  Документи: 'document-text',
-  Календар: 'calendar',
-  Дошки: 'apps',
-  Більше: 'ellipsis-horizontal',
+  Документи: 'document-text-outline',
+  Календар: 'calendar-outline',
+  Дошки: 'apps-outline',
+  Більше: 'ellipsis-horizontal-outline',
 };
 
 const ICON_SIZE = 24;
@@ -45,7 +47,7 @@ export default function FloatingIslandTabBar({ state, navigation }: BottomTabBar
           />
           {state.routes.map((route, index) => {
             const focused = state.index === index;
-            const icon = ICON_BY_ROUTE[route.name] ?? 'ellipse';
+            const icon = ICON_BY_ROUTE[route.name] ?? 'ellipse-outline';
             return (
               <Pressable
                 key={route.key}
