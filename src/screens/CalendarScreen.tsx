@@ -630,39 +630,6 @@ export default function CalendarScreen() {
                 style={StyleSheet.absoluteFill}
                 pointerEvents="none"
               />
-              {/* Only where there's a column to put away. A filled icon means
-                  the column is showing, an outline that it's hidden - same
-                  on/off reading as the sticker button on Documents. */}
-              {isTwoPane && (
-                <>
-                  <Pressable hitSlop={8} onPress={() => setShowCalendarPane((v) => !v)}>
-                    <Ionicons name={showCalendarPane ? 'calendar' : 'calendar-outline'} size={24} color="#fff" />
-                  </Pressable>
-                  <View style={styles.headerButtonsDivider} />
-                </>
-              )}
-              {/* Between the two column toggles, because that's what it is:
-                  both of them at once. */}
-              {isTwoPane && (
-                <>
-                  <Pressable hitSlop={8} onPress={toggleNoteFullscreen}>
-                    <Ionicons
-                      name={noteFullscreen ? 'contract-outline' : 'expand-outline'}
-                      size={24}
-                      color="#fff"
-                    />
-                  </Pressable>
-                  <View style={styles.headerButtonsDivider} />
-                </>
-              )}
-              {isThreePane && (
-                <>
-                  <Pressable hitSlop={8} onPress={() => setShowHistoryPane((v) => !v)}>
-                    <Ionicons name={showHistoryPane ? 'time' : 'time-outline'} size={24} color="#fff" />
-                  </Pressable>
-                  <View style={styles.headerButtonsDivider} />
-                </>
-              )}
               <Pressable hitSlop={8} onPress={() => navigation.navigate('Diary')}>
                 <Ionicons name="search-outline" size={24} color="#fff" />
               </Pressable>
@@ -699,7 +666,7 @@ export default function CalendarScreen() {
                 />
               </Pressable>
             )}
-            {!isThreePane && (historyByDate.get(selectedKey)?.length ?? 0) > 0 && (
+            {!isTwoPane && (historyByDate.get(selectedKey)?.length ?? 0) > 0 && (
               <Pressable
                 style={[styles.railButton, historyExpanded && styles.railButtonActive]}
                 onPress={() => setHistoryExpanded((v) => !v)}
@@ -760,10 +727,7 @@ export default function CalendarScreen() {
           in the row, so they split the window evenly. */}
       <View style={isTwoPane ? styles.paneRow : styles.stack}>
         <View
-          style={[
-            isTwoPane ? styles.sidePane : null,
-            isTwoPane && !showCalendarPane ? styles.paneHidden : null,
-          ]}
+          style={isTwoPane ? styles.sidePane : null}
           onLayout={(e) => setCalendarPaneWidth(e.nativeEvent.layout.width)}
         >
           <Animated.View style={[styles.calendarPlate, isTwoPane && styles.calendarPlatePaned, calendarPlateStyle]}>
@@ -924,8 +888,17 @@ export default function CalendarScreen() {
           {/* Skipped outright in three columns: the month capsule is gone
               with the month always open, and the history has its own
               column - an empty row would just leave a gap. */}
-          {!foldedAway && !isThreePane && (
-            <View style={[styles.capsuleRow, isTwoPane && styles.calendarPlatePaned]}>
+          {/* Beside the note, the history has the room under the calendar
+              and simply takes it: no pill to open, no column of its own.
+              On a phone it stays what it was - a list behind a button. */}
+          {isTwoPane && (
+            <View style={styles.historyUnderCalendar}>
+              <DayHistoryList items={historyByDate.get(selectedKey) ?? []} fill />
+            </View>
+          )}
+
+          {!foldedAway && !isTwoPane && (
+            <View style={styles.capsuleRow}>
               {/* Only the list itself: both buttons that used to head this
                   row now stand on the rail. */}
               <DayHistoryList
@@ -979,11 +952,6 @@ export default function CalendarScreen() {
 
         {!(compactFilter === 'history' && noteCollapsed) && renderDayNote(selectedKey, true)}
 
-        {isThreePane && showHistoryPane && (
-          <View style={styles.historyPane}>
-            <DayHistoryList items={historyByDate.get(selectedKey) ?? []} fill />
-          </View>
-        )}
       </View>
 
     </View>
@@ -1411,7 +1379,13 @@ const styles = StyleSheet.create({
   notePane: {
     flex: 1.3,
   },
-  historyPane: {
+  // Under the calendar, taking whatever height is left in the column.
+  historyUnderCalendar: {
+    flex: 1,
+    marginLeft: 16,
+    marginTop: 8,
+  },
+    historyPane: {
     flex: 1,
     marginRight: 16,
     marginBottom: 8,
