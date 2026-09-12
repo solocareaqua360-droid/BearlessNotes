@@ -4,11 +4,15 @@ import { PreviewChecklistItem, TextMatch, formatUpdatedAt } from '../utils/docum
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_REGULAR, FONT_BOLD } from '../utils/fonts';
 
-// A tile of fine grain laid over every card, repeated rather than
-// stretched. Two things keep it reading as paper tooth and not as dirt:
-// the specks are half lighter and half darker than the card under them,
-// and the whole layer sits at a few percent. It goes UNDER the content
-// and takes no touches.
+// Fine grain laid over every card. Two things keep it reading as paper
+// tooth and not as dirt: the specks are half lighter and half darker than
+// the card under them, and the whole layer sits at a few percent. It goes
+// UNDER the content and takes no touches.
+//
+// One 512px image per card, covering it - NOT resizeMode "repeat", which
+// on Android here drew a single tile in the corner and left the rest of
+// the card bare. 512 is bigger than any card, so "cover" only ever scales
+// it down and the specks stay crisp.
 const GRAIN = require('../../assets/paper-grain.png');
 
 const THUMB_SIZE = 72;
@@ -275,7 +279,7 @@ export default function DocumentCard({
   if (isGrid) {
     return (
       <View style={[styles.gridCard, { backgroundColor: background }]}>
-        <Image source={GRAIN} resizeMode="repeat" style={styles.grain} />
+        <Image source={GRAIN} resizeMode="cover" style={styles.grain} />
         <Pressable style={styles.gridTap} onPress={isSelectMode ? onToggleSelect : onPress}>
           {/* Bleeds flush to the card's own top/left/right edges - no
               padding, no border-radius of its own. The card's overflow:
@@ -318,7 +322,7 @@ export default function DocumentCard({
 
   return (
     <View style={[styles.row, { backgroundColor: background }]}>
-      <Image source={GRAIN} resizeMode="repeat" style={styles.grain} />
+      <Image source={GRAIN} resizeMode="cover" style={styles.grain} />
       <Pressable style={styles.tap} onPress={isSelectMode ? onToggleSelect : onPress}>
         {thumbNode}
         <View style={styles.body}>
@@ -341,11 +345,11 @@ const styles = StyleSheet.create({
     bottom: 0,
     // The card's own overflow: 'hidden' clips this to its corners.
     //
-    // This multiplies with the tile's own per-pixel alpha (up to 90/255),
-    // so what lands on the card is roughly half of half of that - about
-    // 9%. Getting that wrong by one factor is how the first attempt came
-    // out at a third of a percent and looked like nothing at all.
-    opacity: 0.5,
+    // This multiplies with the image's own alpha - 30% of its pixels
+    // carry 20-110 of 255 - so what lands on the card is around 7%.
+    // Getting that product wrong by one factor is how the first attempt
+    // came out at a third of a percent and looked like nothing at all.
+    opacity: 0.85,
   },
   row: {
     flexDirection: 'row',
