@@ -69,9 +69,25 @@ const SHOW_IN_DATABASE_KINDS: HistoryItemKind[] = ['task'];
 // there's nothing to collapse behind a pill and no reason to cap its
 // height - it simply takes the column and scrolls inside it. An empty day
 // then says so, instead of leaving a blank third of the screen.
-export default function DayHistoryList({ items, fill }: { items: HistoryItem[]; fill?: boolean }) {
+export default function DayHistoryList({
+  items,
+  fill,
+  expanded: expandedProp,
+  onToggleExpanded,
+  hideHeader,
+}: {
+  items: HistoryItem[];
+  fill?: boolean;
+  // Driven from outside when the button that opens it isn't the pill
+  // here - CalendarScreen moved that button onto its rail, and a control
+  // somewhere else can only work if the state is somewhere both can see.
+  expanded?: boolean;
+  onToggleExpanded?: () => void;
+  hideHeader?: boolean;
+}) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [expanded, setExpanded] = useState(false);
+  const [expandedSelf, setExpandedSelf] = useState(false);
+  const expanded = expandedProp ?? expandedSelf;
   const [viewerImageUri, setViewerImageUri] = useState<string | null>(null);
   const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
 
@@ -239,11 +255,16 @@ export default function DayHistoryList({ items, fill }: { items: HistoryItem[]; 
     // and relies on the expanded body's own width:'100%' to force it onto
     // its own line below both rather than squeezing in beside them.
     <>
-      <Pressable style={styles.header} onPress={() => setExpanded((v) => !v)}>
-        <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.75)" />
-        <Text style={styles.headerLabel}>Історія ({items.length})</Text>
-        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color="rgba(255,255,255,0.6)" />
-      </Pressable>
+      {!hideHeader && (
+        <Pressable
+          style={styles.header}
+          onPress={() => (onToggleExpanded ? onToggleExpanded() : setExpandedSelf((v) => !v))}
+        >
+          <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.75)" />
+          <Text style={styles.headerLabel}>Історія ({items.length})</Text>
+          <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color="rgba(255,255,255,0.6)" />
+        </Pressable>
+      )}
 
       {expanded && (
         <View style={styles.bodyRow}>

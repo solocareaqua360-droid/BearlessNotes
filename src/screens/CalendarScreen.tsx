@@ -45,7 +45,7 @@ import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import SaveRing from '../components/SaveRing';
 import { GLASS_ISLAND } from '../constants/glass';
-import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 
 const ACCENT = '#3B82F6';
 // calendarPlate carries its own marginHorizontal:16 on each side, so the
@@ -177,6 +177,7 @@ export default function CalendarScreen() {
   // The capsule stands on the rail at the right edge now, drawn through
   // the portal for its blur - so it has to withdraw when the calendar
   // isn't the screen on show.
+  const [historyExpanded, setHistoryExpanded] = useState(false);
   const calendarBlurTarget = useBlurTarget();
   const calendarFocused = useIsFocused();
   const calendarInsets = useSafeAreaInsets();
@@ -444,8 +445,10 @@ export default function CalendarScreen() {
   // makes the whole plate disappear.
   const calendarPlateStyle = useAnimatedStyle(() => ({
     opacity: visibleAmount.value,
-    paddingTop: 6 * visibleAmount.value,
-    paddingBottom: 10 * visibleAmount.value,
+    // Padded out to the capsule's own height: 27 + the weekday header
+    // (22) + a row (40) + 32 + the border comes to the same 123.
+    paddingTop: 27 * visibleAmount.value,
+    paddingBottom: 32 * visibleAmount.value,
     borderWidth: visibleAmount.value,
   }));
   const calendarWrapStyle = useAnimatedStyle(() => {
@@ -641,6 +644,47 @@ export default function CalendarScreen() {
                   circle standing beside it - see SaveRing. */}
               <SaveRing saving={noteSaveStatus === 'saving'} />
             </View>
+
+            {/* The month and the day's history were pills lying under the
+                calendar; they are round buttons on the rail now, the way
+                the documents screen's own two are. Each is only there when
+                it has something to open. */}
+            {!onlyFilledDays && !isTwoPane && (
+              <Pressable
+                style={[styles.railButton, isMonthExpanded && styles.railButtonActive]}
+                onPress={() => setIsMonthExpanded((prev) => !prev)}
+              >
+                <BlurView
+                  intensity={60}
+                  tint="dark"
+                  blurMethod="dimezisBlurView"
+                  blurTarget={calendarBlurTarget ?? undefined}
+                  style={StyleSheet.absoluteFill}
+                  pointerEvents="none"
+                />
+                <Ionicons
+                  name="calendar-outline"
+                  size={24}
+                  color={isMonthExpanded ? '#171310' : '#fff'}
+                />
+              </Pressable>
+            )}
+            {!isThreePane && (historyByDate.get(selectedKey)?.length ?? 0) > 0 && (
+              <Pressable
+                style={[styles.railButton, historyExpanded && styles.railButtonActive]}
+                onPress={() => setHistoryExpanded((v) => !v)}
+              >
+                <BlurView
+                  intensity={60}
+                  tint="dark"
+                  blurMethod="dimezisBlurView"
+                  blurTarget={calendarBlurTarget ?? undefined}
+                  style={StyleSheet.absoluteFill}
+                  pointerEvents="none"
+                />
+                <Ionicons name="time-outline" size={24} color={historyExpanded ? '#171310' : '#fff'} />
+              </Pressable>
+            )}
           </View>
         </GlassPortal>
       )}
@@ -852,18 +896,14 @@ export default function CalendarScreen() {
               column - an empty row would just leave a gap. */}
           {!foldedAway && !isThreePane && (
             <View style={[styles.capsuleRow, isTwoPane && styles.calendarPlatePaned]}>
-              {/* The month capsule IS the expand button, named after the month
-                  it opens - with two panes the month is already open and it
-                  would toggle nothing, so it goes away and the nav row inside
-                  the plate (arrows + month name) carries the month instead. */}
-              {!onlyFilledDays && !isTwoPane && (
-                <Pressable style={styles.monthCapsule} onPress={() => setIsMonthExpanded((prev) => !prev)}>
-                  <Ionicons name="calendar-outline" size={14} color="rgba(255,255,255,0.75)" />
-                  <Text style={styles.monthCapsuleLabel}>{MONTH_FULL[visibleMonth.month]}</Text>
-                  <Ionicons name={isMonthExpanded ? 'chevron-up' : 'chevron-down'} size={14} color="rgba(255,255,255,0.6)" />
-                </Pressable>
-              )}
-              <DayHistoryList items={historyByDate.get(selectedKey) ?? []} />
+              {/* Only the list itself: both buttons that used to head this
+                  row now stand on the rail. */}
+              <DayHistoryList
+                items={historyByDate.get(selectedKey) ?? []}
+                expanded={historyExpanded}
+                onToggleExpanded={() => setHistoryExpanded((v) => !v)}
+                hideHeader
+              />
             </View>
           )}
 
@@ -1055,6 +1095,25 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: RAIL_RIGHT,
     alignItems: 'center',
+    gap: 12,
+  },
+  // Round, the width of the rail - the same shape the documents screen's
+  // own two buttons take.
+  railButton: {
+    width: RAIL_WIDTH,
+    height: RAIL_WIDTH,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    backgroundColor: GLASS_ISLAND,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  // Open reads the way an active tab does: solid white, dark glyph.
+  railButtonActive: {
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderColor: 'transparent',
   },
   // Search (→ DiaryScreen) + "..." (the only-filled-days menu) in one
   // capsule, stood on its end.
@@ -1127,7 +1186,10 @@ const styles = StyleSheet.create({
   calendarPlate: {
     backgroundColor: 'rgba(20,20,20,0.25)',
     borderColor: 'rgba(255,255,255,0.25)',
-    borderRadius: 22,
+    // A capsule, like the one on the rail. Which is why the days need
+    // room at each end: at this height the rounded ends are 60 wide.
+    borderRadius: 999,
+    paddingHorizontal: 20,
     marginLeft: 16,
     // Stops before the rail rather than running under the capsule.
     marginRight: RAIL_CLEARANCE,
