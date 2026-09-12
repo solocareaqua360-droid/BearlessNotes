@@ -103,6 +103,7 @@ import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
 import { RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
+import SaveRing from '../components/SaveRing';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -3935,25 +3936,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       {!embedded && editorFocused && (
         <GlassPortal>
           <View style={[styles.editorRail, { top: editorInsets.top + 26 }]} pointerEvents="box-none">
-            {/* A circle of its own rather than a chip inside the capsule:
-                it reports rather than does. */}
-            <View style={[styles.saveDot, saveStatus === 'saved' && styles.saveDotSaved]}>
-              {saveStatus !== 'saved' && (
-                <BlurView
-                  intensity={60}
-                  tint="dark"
-                  blurMethod="dimezisBlurView"
-                  blurTarget={editorBlurTarget ?? undefined}
-                  style={StyleSheet.absoluteFill}
-                  pointerEvents="none"
-                />
-              )}
-              <Ionicons
-                name="checkmark-outline"
-                size={24}
-                color={saveStatus === 'saved' ? '#171310' : '#fff'}
-              />
-            </View>
             <View style={styles.headerRight}>
               <BlurView
                 intensity={60}
@@ -3970,6 +3952,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               <Pressable hitSlop={8} onPress={toggleSelectMode}>
                 <Ionicons name={isSelectMode ? 'close-outline' : 'ellipse-outline'} size={24} color="#fff" />
               </Pressable>
+              {/* The save indicator lives on this capsule's own outline -
+                  see SaveRing. Last child, so it draws over the blur. */}
+              <SaveRing saving={saveStatus === 'saving'} />
             </View>
           </View>
         </GlassPortal>
@@ -4532,21 +4517,6 @@ const styles = StyleSheet.create({
   // saved - replaces the old "Збереження…"/"Збережено" text label
   // entirely. Diameter matches headerRight's own height so the circle and
   // the pill read as a matched pair beside each other.
-  saveDot: {
-    width: RAIL_WIDTH,
-    height: RAIL_WIDTH,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-  },
-  saveDotSaved: {
-    backgroundColor: '#fff',
-    borderColor: 'transparent',
-  },
   scrollArea: {
     flex: 1,
   },
