@@ -60,6 +60,13 @@ import SortMenuRows from '../components/SortMenuRows';
 import ContentColumn from '../components/ContentColumn';
 import { useRail } from '../hooks/useRail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { BlurView } from 'expo-blur';
+import { useIsFocused } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GlassPortal } from '../components/GlassPortal';
+import { useBlurTarget } from '../components/GlassTarget';
+import { GLASS_ISLAND } from '../constants/glass';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
 const ACCENT = '#0EA5E9';
 const DANGER = '#EF4444';
@@ -105,6 +112,9 @@ function fileIconColorFor(name: string): string {
 }
 
 export default function FilesScreen() {
+  const railBlurTarget = useBlurTarget();
+  const railFocused = useIsFocused();
+  const railInsets = useSafeAreaInsets();
   const rail = useRail();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -541,6 +551,41 @@ export default function FilesScreen() {
         </Defs>
         <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#filesBg)" />
       </Svg>
+      {/* The rail, as on every other screen: right edge, same width, same
+          glass, hanging from the same line. Through the portal, which is
+          where a blur is safe - inside the screen it would be blurring a
+          picture it is part of. */}
+      {railFocused && (
+        <GlassPortal>
+          <View
+            style={[styles.railWrap, { top: railInsets.top + CHROME_TOP + CAPSULE_DROP }]}
+            pointerEvents="box-none"
+          >
+            <View style={styles.headerButtons}>
+                <BlurView
+                  intensity={60}
+                  tint="dark"
+                  blurMethod="dimezisBlurView"
+                  blurTarget={railBlurTarget ?? undefined}
+                  style={StyleSheet.absoluteFill}
+                  pointerEvents="none"
+                />
+              <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
+                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
+              </Pressable>
+              <View style={styles.headerButtonsDivider} />
+              <Pressable hitSlop={8} onPress={toggleSelectMode}>
+                <Ionicons name={isSelectMode ? 'close-outline' : 'checkmark-circle-outline'} size={24} color="#fff" />
+              </Pressable>
+              <View style={styles.headerButtonsDivider} />
+              <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
+                <Ionicons name={isSearching ? 'close-outline' : 'search-outline'} size={24} color="#fff" />
+              </Pressable>
+            </View>
+          </View>
+        </GlassPortal>
+      )}
+
       <ContentColumn>
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
@@ -548,19 +593,6 @@ export default function FilesScreen() {
               <Ionicons name="chevron-back" size={24} color="#fff" />
             </Pressable>
             <Text style={styles.header}>Файли</Text>
-          </View>
-          <View style={styles.headerButtons}>
-            <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-              <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
-            </Pressable>
-            <View style={styles.headerButtonsDivider} />
-            <Pressable hitSlop={8} onPress={toggleSelectMode}>
-              <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
-            </Pressable>
-            <View style={styles.headerButtonsDivider} />
-            <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
-              <Ionicons name={isSearching ? 'close' : 'search'} size={17} color="#fff" />
-            </Pressable>
           </View>
         </View>
 
@@ -860,20 +892,27 @@ const styles = StyleSheet.create({
   },
   // One elongated glass capsule instead of three bare gray icons - matches
   // Documents/Calendar's own header capsule.
-  headerButtons: {
-    flexDirection: 'row',
+  railWrap: {
+    position: 'absolute',
+    right: RAIL_RIGHT,
     alignItems: 'center',
-    gap: 12,
-    height: 38,
+  },
+  // Stood on its end, like every other screen's.
+  headerButtons: {
+    alignItems: 'center',
+    gap: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 19,
     borderRadius: 999,
-    paddingHorizontal: 14,
-    backgroundColor: 'rgba(20,20,20,0.35)',
+    overflow: 'hidden',
+    backgroundColor: GLASS_ISLAND,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
   },
+  // Turned with the capsule.
   headerButtonsDivider: {
-    width: 1,
-    height: 16,
+    width: 20,
+    height: 1,
     backgroundColor: 'rgba(255,255,255,0.3)',
   },
   menuBackdrop: {
@@ -887,7 +926,7 @@ const styles = StyleSheet.create({
   menuPanel: {
     position: 'absolute',
     top: 96,
-    right: 20,
+    right: RAIL_CLEARANCE,
     width: 200,
     backgroundColor: '#fff',
     borderRadius: 14,
@@ -995,12 +1034,14 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingVertical: 8,
-    paddingHorizontal: 20,
+    paddingLeft: 20,
+    paddingRight: RAIL_CLEARANCE,
     gap: 10,
   },
   gridList: {
     paddingVertical: 8,
-    paddingHorizontal: 20,
+    paddingLeft: 20,
+    paddingRight: RAIL_CLEARANCE,
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,

@@ -105,6 +105,13 @@ import { colorForDocument } from '../utils/documentColor';
 import { MONTH_FULL, WEEKDAY_SHORT, dateKey, getMonthGrid, isSameDay, parseDateKey } from '../utils/dateLocale';
 import { useRail } from '../hooks/useRail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { BlurView } from 'expo-blur';
+import { useIsFocused } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GlassPortal } from '../components/GlassPortal';
+import { useBlurTarget } from '../components/GlassTarget';
+import { GLASS_ISLAND } from '../constants/glass';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
 const ACCENT = '#A05C7B';
 const DANGER = '#EF4444';
@@ -161,6 +168,9 @@ type Props = NativeStackScreenProps<RootStackParamList, 'CustomDatabase'>;
 // true inline per-cell editing - Table view is still a real at-a-glance
 // overview of every field across every row, it just isn't edited in place.
 export default function CustomDatabaseScreen({}: Props) {
+  const railBlurTarget = useBlurTarget();
+  const railFocused = useIsFocused();
+  const railInsets = useSafeAreaInsets();
   const rail = useRail();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute();
@@ -1280,9 +1290,55 @@ export default function CustomDatabaseScreen({}: Props) {
         </View>
       </View>
 
-      {/* Groups and the whole control capsule share one row - the title
-          keeps the line above to itself. The capsule's fourth button, the
-          gear, is what shows the view/sort capsules below. */}
+      {/* The rail, as on every other screen. */}
+      {railFocused && (
+        <GlassPortal>
+          <View
+            style={[styles.railWrap, { top: railInsets.top + CHROME_TOP + CAPSULE_DROP }]}
+            pointerEvents="box-none"
+          >
+            <View style={styles.headerButtons}>
+                  <BlurView
+                    intensity={60}
+                    tint="dark"
+                    blurMethod="dimezisBlurView"
+                    blurTarget={railBlurTarget ?? undefined}
+                    style={StyleSheet.absoluteFill}
+                    pointerEvents="none"
+                  />
+              <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
+                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
+              </Pressable>
+              <View style={styles.headerButtonsDivider} />
+              <Pressable
+                hitSlop={8}
+                onPress={() => {
+                  // Closing the search clears it too - leaving a filter
+                  // applied behind a hidden input is how a database looks
+                  // half-empty for no visible reason.
+                  setIsSearching((prev) => {
+                    if (prev) setSearchQuery('');
+                    return !prev;
+                  });
+                }}
+              >
+                <Ionicons name={isSearching ? 'close-outline' : 'search-outline'} size={24} color="#fff" />
+              </Pressable>
+              <View style={styles.headerButtonsDivider} />
+              <Pressable hitSlop={8} onPress={toggleSelectMode}>
+                <Ionicons name={isSelectMode ? 'close-outline' : 'checkmark-circle-outline'} size={24} color="#fff" />
+              </Pressable>
+              <View style={styles.headerButtonsDivider} />
+              <Pressable hitSlop={8} onPress={toggleParamsCollapsed}>
+                <Ionicons name={paramsCollapsed ? 'settings-outline' : 'settings'} size={24} color="#fff" />
+              </Pressable>
+            </View>
+          </View>
+        </GlassPortal>
+      )}
+
+      {/* The tabs have this row to themselves now that the capsule stands
+          on the rail. */}
       <View style={styles.controlsRow}>
         {groups.length > 0 ? (
           <TabsTunnel>
@@ -1292,39 +1348,12 @@ export default function CustomDatabaseScreen({}: Props) {
               onSelect={setGroupFilter}
               unassignedLabel="Без групи"
               dark
+              endPadding={RAIL_CLEARANCE}
             />
           </TabsTunnel>
         ) : (
           <View style={styles.controlsSpacer} />
         )}
-        <View style={[styles.headerButtons, groups.length > 0 && styles.controlsCapsuleOffset]}>
-          <Pressable hitSlop={6} onPress={() => setMenuOpen((v) => !v)}>
-            <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
-          </Pressable>
-          <View style={styles.headerButtonsDivider} />
-          <Pressable
-            hitSlop={6}
-            onPress={() => {
-              // Closing the search clears it too - leaving a filter
-              // applied behind a hidden input is how a database looks
-              // half-empty for no visible reason.
-              setIsSearching((prev) => {
-                if (prev) setSearchQuery('');
-                return !prev;
-              });
-            }}
-          >
-            <Ionicons name={isSearching ? 'close' : 'search'} size={17} color="#fff" />
-          </Pressable>
-          <View style={styles.headerButtonsDivider} />
-          <Pressable hitSlop={6} onPress={toggleSelectMode}>
-            <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={17} color="#fff" />
-          </Pressable>
-          <View style={styles.headerButtonsDivider} />
-          <Pressable hitSlop={6} onPress={toggleParamsCollapsed}>
-            <Ionicons name={paramsCollapsed ? 'settings-outline' : 'settings'} size={17} color="#fff" />
-          </Pressable>
-        </View>
       </View>
 
       {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
@@ -2850,7 +2879,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
-    paddingHorizontal: 20,
+    paddingLeft: 20,
+    // Clear of the rail.
+    paddingRight: RAIL_CLEARANCE,
     paddingTop: 90,
     paddingBottom: 8,
   },
@@ -2867,22 +2898,27 @@ const styles = StyleSheet.create({
     color: '#fff',
     flexShrink: 1,
   },
-  headerButtons: {
-    flexDirection: 'row',
+  railWrap: {
+    position: 'absolute',
+    right: RAIL_RIGHT,
     alignItems: 'center',
-    gap: 12,
-    // A group tab's own vertical metrics instead of a fixed height, so the
-    // capsule and the tabs beside it come out exactly the same height.
-    paddingVertical: 7,
+  },
+  // Stood on its end, like every other screen's.
+  headerButtons: {
+    alignItems: 'center',
+    gap: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 19,
     borderRadius: 999,
-    paddingHorizontal: 14,
-    backgroundColor: 'rgba(20,20,20,0.35)',
+    overflow: 'hidden',
+    backgroundColor: GLASS_ISLAND,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
   },
+  // Turned with the capsule.
   headerButtonsDivider: {
-    width: 1,
-    height: 16,
+    width: 20,
+    height: 1,
     backgroundColor: 'rgba(255,255,255,0.3)',
   },
   // Above the capsule strip (zIndex 20) and the dropdown overlay (30) -
@@ -2970,7 +3006,8 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingVertical: 8,
-    paddingHorizontal: 20,
+    paddingLeft: 20,
+    paddingRight: RAIL_CLEARANCE,
     gap: 10,
     // Clears the floating "+" (bottom: 100, 56 tall) so the last row can be
     // scrolled out from under it.
@@ -2979,8 +3016,6 @@ const styles = StyleSheet.create({
   controlsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingRight: 20,
     paddingBottom: 6,
   },
   // The tabs row's own bottom padding would otherwise leave the capsule
@@ -3222,7 +3257,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    paddingHorizontal: 20,
+    paddingLeft: 20,
+    paddingRight: RAIL_CLEARANCE,
     paddingBottom: 10,
   },
   // Holds a capsule and the list it opens. The list is positioned against
