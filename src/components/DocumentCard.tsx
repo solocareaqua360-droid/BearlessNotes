@@ -345,11 +345,12 @@ const styles = StyleSheet.create({
     bottom: 0,
     // The card's own overflow: 'hidden' clips this to its corners.
     //
-    // This multiplies with the image's own alpha - 30% of its pixels
-    // carry 20-110 of 255 - so what lands on the card is around 7%.
-    // Getting that product wrong by one factor is how the first attempt
-    // came out at a third of a percent and looked like nothing at all.
-    opacity: 0.85,
+    // This multiplies with the image's own alpha - about one pixel in
+    // eight carries 20-75 of 255 - so what lands on the card is a couple
+    // of percent. Getting that product wrong by one factor is how the
+    // first attempt came out at a third of a percent and looked like
+    // nothing at all, and the second like television static.
+    opacity: 0.9,
   },
   row: {
     flexDirection: 'row',
