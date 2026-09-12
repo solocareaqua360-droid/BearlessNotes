@@ -1186,10 +1186,11 @@ const styles = StyleSheet.create({
   calendarPlate: {
     backgroundColor: 'rgba(20,20,20,0.25)',
     borderColor: 'rgba(255,255,255,0.25)',
-    // A capsule, like the one on the rail. Which is why the days need
-    // room at each end: at this height the rounded ends are 60 wide.
-    borderRadius: 999,
-    paddingHorizontal: 20,
+    // The capsule's own radius - RAIL_WIDTH is its width, so half of that
+    // is the curve its ends are drawn with. Not 999: that would pull the
+    // whole plate into one long capsule, and this one keeps straight sides
+    // with matching corners.
+    borderRadius: RAIL_WIDTH / 2,
     marginLeft: 16,
     // Stops before the rail rather than running under the capsule.
     marginRight: RAIL_CLEARANCE,
