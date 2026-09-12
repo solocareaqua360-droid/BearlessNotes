@@ -366,19 +366,26 @@ export default function TagsDrawer({
       // blurs draws itself.
       <GlassPortal>
       <View style={styles.layer} pointerEvents="box-none">
+        {/* A plain dim, no blur: the screen beside the drawer should stay
+            readable - only what is BEHIND the drawer is frosted. */}
         <Animated.View style={[styles.backdrop, backdropStyle]} pointerEvents={isOpen ? 'auto' : 'none'}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeDrawer} />
+        </Animated.View>
+
+        <Animated.View style={[styles.panel, { width: drawerWidth }, panelStyle]}>
+          {/* The frost, clipped to the panel by its overflow. Under its own
+              tint, which is why the panel itself carries no background:
+              a child paints over its parent's fill, so the colour has to
+              be a layer of its own on top of the blur. */}
           <BlurView
-            intensity={45}
+            intensity={60}
             tint="dark"
             blurMethod="dimezisBlurView"
             blurTarget={blurTarget ?? undefined}
             style={StyleSheet.absoluteFill}
             pointerEvents="none"
           />
-          <Pressable style={StyleSheet.absoluteFill} onPress={closeDrawer} />
-        </Animated.View>
-
-        <Animated.View style={[styles.panel, { width: drawerWidth }, panelStyle]}>
+          <View style={[StyleSheet.absoluteFill, styles.panelTint]} pointerEvents="none" />
           <Text style={styles.title}>Теги</Text>
 
           <View style={styles.segmented}>
@@ -539,15 +546,20 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: GLASS_BODY_BLURRED,
+    // No elevation and no shadow: on Android elevation paints a black
+    // halo right round the view, which is the dark outline that was
+    // running down the drawer's whole perimeter. A hairline on the edge
+    // it actually has - the one facing the screen - does the job.
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(255,255,255,0.18)',
+    // The blur inside is clipped to this.
+    overflow: 'hidden',
     paddingTop: 56,
     paddingHorizontal: 16,
     paddingBottom: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 20,
-    shadowOffset: { width: 4, height: 0 },
-    elevation: 8,
+  },
+  panelTint: {
+    backgroundColor: GLASS_BODY_BLURRED,
   },
   title: {
     fontSize: 22,
