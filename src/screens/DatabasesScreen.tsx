@@ -15,6 +15,13 @@ import RenamePrompt from '../components/RenamePrompt';
 import ImportTableSheet from '../components/ImportTableSheet';
 import ContentColumn from '../components/ContentColumn';
 import { GLASS_BODY, GLASS_TEXT } from '../constants/glass';
+import { BlurView } from 'expo-blur';
+import { useIsFocused } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GlassPortal } from '../components/GlassPortal';
+import { useBlurTarget } from '../components/GlassTarget';
+import { GLASS_ISLAND } from '../constants/glass';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
 type Tile = {
   key: string;
@@ -67,6 +74,9 @@ function defaultColorFor(key: string): string {
 }
 
 export default function DatabasesScreen() {
+  const databasesBlurTarget = useBlurTarget();
+  const databasesFocused = useIsFocused();
+  const databasesInsets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [tileColors, setTileColors] = useState<Record<string, string>>({});
@@ -146,18 +156,39 @@ export default function DatabasesScreen() {
         </Defs>
         <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#databasesBg)" />
       </Svg>
+      {/* The rail, as on every other screen: right edge, same width, same
+          glass, hanging from the same line. Through the portal for the
+          blur, so it withdraws when this screen isn't the one on show. */}
+      {databasesFocused && (
+        <GlassPortal>
+          <View
+            style={[styles.railWrap, { top: databasesInsets.top + CHROME_TOP + CAPSULE_DROP }]}
+            pointerEvents="box-none"
+          >
+            <View style={styles.headerButtons}>
+              <BlurView
+                intensity={60}
+                tint="dark"
+                blurMethod="dimezisBlurView"
+                blurTarget={databasesBlurTarget ?? undefined}
+                style={StyleSheet.absoluteFill}
+                pointerEvents="none"
+              />
+              <Pressable hitSlop={8} onPress={() => navigation.navigate('Search')}>
+                <Ionicons name="search-outline" size={24} color="#fff" />
+              </Pressable>
+              <View style={styles.headerButtonsDivider} />
+              <Pressable hitSlop={8} onPress={() => navigation.navigate('Settings')}>
+                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
+              </Pressable>
+            </View>
+          </View>
+        </GlassPortal>
+      )}
+
       <ContentColumn>
         <View style={styles.headerRow}>
           <Text style={styles.header}>Бази даних</Text>
-          <View style={styles.headerButtons}>
-            <Pressable hitSlop={6} onPress={() => navigation.navigate('Search')}>
-              <Ionicons name="search" size={17} color="#fff" />
-            </Pressable>
-            <View style={styles.headerButtonsDivider} />
-            <Pressable hitSlop={6} onPress={() => navigation.navigate('Settings')}>
-              <Ionicons name="ellipsis-horizontal" size={17} color="#fff" />
-            </Pressable>
-          </View>
         </View>
         <ScrollView contentContainerStyle={styles.content}>
           <Pressable style={styles.wideTile} onPress={() => navigation.navigate('Tasks')}>
@@ -270,7 +301,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    paddingLeft: 20,
+    paddingRight: RAIL_CLEARANCE,
     // Same level as DocumentsScreen's title.
     paddingTop: 90,
     paddingBottom: 12,
@@ -282,24 +314,34 @@ const styles = StyleSheet.create({
     fontFamily: FONT_BOLD,
     color: '#fff',
   },
-  headerButtons: {
-    flexDirection: 'row',
+  railWrap: {
+    position: 'absolute',
+    right: RAIL_RIGHT,
     alignItems: 'center',
-    gap: 12,
-    height: 38,
-    borderRadius: 19,
-    paddingHorizontal: 14,
-    backgroundColor: 'rgba(20,20,20,0.35)',
+  },
+  // Stood on its end, like every other screen's.
+  headerButtons: {
+    alignItems: 'center',
+    gap: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 19,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: GLASS_ISLAND,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
   },
+  // Turned with the capsule.
   headerButtonsDivider: {
-    width: 1,
-    height: 16,
+    width: 20,
+    height: 1,
     backgroundColor: 'rgba(255,255,255,0.3)',
   },
   content: {
-    paddingHorizontal: 20,
+    paddingLeft: 20,
+    // Clear of the rail, so a tile never sits under the capsule or the
+    // island.
+    paddingRight: RAIL_CLEARANCE,
     // Clears FloatingIslandTabBar (bottom: 24, ~64 tall) so the last tile
     // can be scrolled out from under it - same 120 DocumentsScreen's own
     // list already uses.

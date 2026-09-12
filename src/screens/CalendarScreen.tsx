@@ -1063,7 +1063,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
-    paddingHorizontal: 20,
+    // The same edges the calendar plate under it keeps, so "Сьогодні" and
+    // the date start on the plate's own left edge rather than 4px in from
+    // it, and neither runs under the rail.
+    paddingLeft: 16,
+    paddingRight: RAIL_CLEARANCE,
     // paddingTop is computed - see headerPadTop.
     paddingBottom: HEADER_GAP,
   },
