@@ -22,7 +22,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
 } from 'react-native-reanimated';
-import Svg, { Defs, Path, Pattern, Rect } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -107,8 +107,6 @@ const ACCENT_GLASS = 'rgba(139,92,246,0.55)';
 // almost always meant to stay in it, and pulling one out deliberately is
 // the rarer move.
 const COLUMN_SNAP_MARGIN = 220;
-// One cross every 48 world units.
-const GRID_STEP = 48;
 const CONNECTION_COLOR = '#8B5CF6';
 // Padding around a connection's own bounding box, so the curve's bulge and
 // the stroke width itself aren't clipped by the little Svg canvas each
@@ -1890,31 +1888,6 @@ export default function BoardScreen() {
         <GestureDetector gesture={canvasGesture}>
           <View style={[StyleSheet.absoluteFill, styles.canvasSurface]}>
             <Animated.View style={[styles.world, worldAnimatedStyle]}>
-              {/* Small crosses across the whole world, under everything.
-                  Inside the world rather than behind it on purpose: it is
-                  scaled with the cards, so how big the crosses come out is
-                  what tells you how far you have zoomed. An SVG pattern,
-                  which the renderer tiles natively - Image's own "repeat"
-                  draws a single tile here and leaves the rest bare. */}
-              <Svg width={WORLD_SIZE} height={WORLD_SIZE} style={StyleSheet.absoluteFill} pointerEvents="none">
-                <Defs>
-                  <Pattern
-                    id="boardGrid"
-                    x="0"
-                    y="0"
-                    width={GRID_STEP}
-                    height={GRID_STEP}
-                    patternUnits="userSpaceOnUse"
-                  >
-                    <Path
-                      d={`M${GRID_STEP / 2 - 4} ${GRID_STEP / 2} H${GRID_STEP / 2 + 4} M${GRID_STEP / 2} ${GRID_STEP / 2 - 4} V${GRID_STEP / 2 + 4}`}
-                      stroke="rgba(17,24,39,0.16)"
-                      strokeWidth={1}
-                    />
-                  </Pattern>
-                </Defs>
-                <Rect width={WORLD_SIZE} height={WORLD_SIZE} fill="url(#boardGrid)" />
-              </Svg>
               {/* Underneath everything - a column is a backdrop its cards sit
                   on. box-none so only the header takes touches and the rest
                   of the lane still pans the canvas. */}
