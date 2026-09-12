@@ -59,9 +59,19 @@ export type GoogleSignInResult = { uid: string; email: string | null; hadToSwitc
 export async function signInWithGoogleAccount(): Promise<GoogleSignInResult> {
   ensureGoogleConfigured();
   await GoogleSignin.hasPlayServices();
+  // Sign out of Google first. The device is very likely already signed in
+  // for Drive - that session was established before this app ever asked for
+  // an idToken, so it carries none, and signIn() would hand the cached one
+  // straight back without going near Google. Starting clean is what makes
+  // it issue a token for the audience configured above.
+  await GoogleSignin.signOut().catch(() => {});
   const response = await GoogleSignin.signIn();
   const idToken = response.data?.idToken;
-  if (!idToken) throw new Error('Google не повернув токен');
+  if (!idToken) {
+    throw new Error(
+      'Google не повернув токен. Найчастіше це означає, що SHA-1 цієї збірки не доданий у проєкті, якому належить клієнт входу.'
+    );
+  }
   const credential = GoogleAuthProvider.credential(idToken);
 
   const current = auth.currentUser;

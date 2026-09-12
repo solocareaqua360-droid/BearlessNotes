@@ -12,7 +12,19 @@ import { GoogleSignin } from '@react-native-google-signin/google-signin';
 // signing in as the Drive project's client, and Firebase is told to accept
 // its tokens (Authentication → Google → "Safelist client IDs from external
 // projects"). A client ID is public by design; this is not a secret.
-const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '';
+// Written here rather than read from .env, and deliberately. A client ID is
+// public by design - it is in every APK already - so there is nothing to
+// hide, and an env var bought only one thing: a way for this to arrive
+// EMPTY. Which it did: `eas update --environment preview` takes variables
+// from the EAS environment, not the local .env, and that environment has
+// none - so the published bundle asked Google for a token with no audience
+// and got "Google не повернув токен" with nothing to point at.
+//
+// The env var still overrides it, for anyone running against another
+// project.
+const WEB_CLIENT_ID =
+  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+  '502504187063-rvq5euk4tragb83sg99o0d04g215rh1u.apps.googleusercontent.com';
 
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 
