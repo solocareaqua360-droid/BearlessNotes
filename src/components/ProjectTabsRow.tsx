@@ -218,9 +218,19 @@ const styles = StyleSheet.create({
     backgroundColor: GLASS_ISLAND,
     borderColor: 'rgba(255,255,255,0.4)',
   },
+  // The selected pill is solid white, which reads perfectly against the
+  // dark gradient it was designed on - and vanishes the moment the row is
+  // scrolled across an open document's white page. A hairline and a drop
+  // shadow give it an edge on both: the line is invisible on the dark, the
+  // shadow is what separates it on the light.
   tabDarkActive: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderColor: 'transparent',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderColor: 'rgba(0,0,0,0.14)',
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
   dot: {
     width: 6,
