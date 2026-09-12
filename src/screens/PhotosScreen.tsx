@@ -1252,9 +1252,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    paddingLeft: 16,
-    // Clear of the rail.
-    paddingRight: RAIL_CLEARANCE,
+    paddingHorizontal: 16,
     paddingBottom: 8,
     gap: 12,
   },

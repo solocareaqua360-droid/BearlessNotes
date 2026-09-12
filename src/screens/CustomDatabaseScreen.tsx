@@ -3038,8 +3038,7 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingVertical: 8,
-    paddingLeft: 20,
-    paddingRight: RAIL_CLEARANCE,
+    paddingHorizontal: 20,
     gap: 10,
     // Clears the floating "+" (bottom: 100, 56 tall) so the last row can be
     // scrolled out from under it.

@@ -1068,14 +1068,12 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingVertical: 8,
-    paddingLeft: 20,
-    paddingRight: RAIL_CLEARANCE,
+    paddingHorizontal: 20,
     gap: 10,
   },
   gridList: {
     paddingVertical: 8,
-    paddingLeft: 20,
-    paddingRight: RAIL_CLEARANCE,
+    paddingHorizontal: 20,
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,

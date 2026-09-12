@@ -338,10 +338,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.3)',
   },
   content: {
-    paddingLeft: 20,
-    // Clear of the rail, so a tile never sits under the capsule or the
-    // island.
-    paddingRight: RAIL_CLEARANCE,
+    // Full width: the tiles pass UNDER the rail, and the glass over them
+    // is the point of it.
+    paddingHorizontal: 20,
     // Clears FloatingIslandTabBar (bottom: 24, ~64 tall) so the last tile
     // can be scrolled out from under it - same 120 DocumentsScreen's own
     // list already uses.
