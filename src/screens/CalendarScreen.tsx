@@ -1432,7 +1432,10 @@ const styles = StyleSheet.create({
   },
   noteArea: {
     flex: 1,
-    marginHorizontal: 16,
+    marginLeft: 16,
+    // The same right edge the calendar plate keeps: the rail runs down
+    // that side, and the sheet's own block handles sit against it.
+    marginRight: RAIL_CLEARANCE,
     borderRadius: 16,
     overflow: 'hidden',
   },

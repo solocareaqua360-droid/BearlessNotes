@@ -1417,10 +1417,10 @@ function BlockRow({
         rowPaperColor && !isSelected && { backgroundColor: 'transparent' },
       ]}
     >
-      {/* On the LEFT. It used to sit on the right, under the header's own
-          select toggle so the two read as one control - but that toggle
-          has since moved into the "..." menu, and the right edge belongs
-          to the rail now, which was sitting on top of these. */}
+      {content}
+      {/* On the right. The rail runs down that edge, so whatever holds
+          these blocks has to stop short of it - see the note plate's own
+          right margin. */}
       <Pressable
         hitSlop={8}
         disabled={!isSelectMode}
@@ -1433,7 +1433,6 @@ function BlockRow({
           color={isSelected ? ACCENT : '#9CA3AF'}
         />
       </Pressable>
-      {content}
     </View>
   );
 }
