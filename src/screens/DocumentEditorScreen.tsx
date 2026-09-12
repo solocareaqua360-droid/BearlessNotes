@@ -96,6 +96,13 @@ import AddExistingItemModal from '../components/AddExistingItemModal';
 import CustomRowBlockCard from '../components/CustomRowBlockCard';
 import CustomDatabaseViewBlockCard from '../components/CustomDatabaseViewBlockCard';
 import { FONT_BOLD, FONT_EXTRABOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { BlurView } from 'expo-blur';
+import { useIsFocused } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GlassPortal } from '../components/GlassPortal';
+import { useBlurTarget } from '../components/GlassTarget';
+import { GLASS_ISLAND } from '../constants/glass';
+import { RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -1968,6 +1975,13 @@ export type DocumentEditorHandle = {
 
 function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHandle>) {
   const embedded = 'embedded' in props;
+  // The editor's own controls stand on the right edge the way the
+  // documents screen's do. Drawn through the portal for the blur's sake,
+  // which means they have to withdraw when this screen isn't the one on
+  // show - a native stack keeps the screen under the top one mounted.
+  const editorBlurTarget = useBlurTarget();
+  const editorFocused = useIsFocused();
+  const editorInsets = useSafeAreaInsets();
   const documentId =
     'embedded' in props ? props.documentId : 'pane' in props ? props.documentId : props.route.params.documentId;
   const navigation = props.navigation;
@@ -3911,28 +3925,66 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             </Pressable>
           )}
         </View>
-        <View style={styles.headerRightGroup}>
-          {/* A separate circle, not a 4th chip inside the pill - matches
-              CalendarScreen's own saveDot treatment. */}
-          <View style={[styles.saveDot, saveStatus === 'saved' && styles.saveDotSaved]}>
-            <Ionicons name="checkmark" size={17} color={saveStatus === 'saved' ? '#171310' : '#fff'} />
-          </View>
-          <View style={styles.headerRight}>
-            <Pressable hitSlop={6} onPress={() => setExportMenuOpen((v) => !v)}>
-              <Ionicons name="ellipsis-horizontal-outline" size={19} color="#fff" />
-            </Pressable>
-            <View style={styles.headerRightDivider} />
-            <Pressable hitSlop={6} onPress={toggleSelectMode}>
-              <Ionicons name={isSelectMode ? 'close' : 'ellipse-outline'} size={19} color="#fff" />
-            </Pressable>
-          </View>
-        </View>
       </View>
+      )}
+
+      {/* The same rail the documents screen has: standing on the right
+          edge, in the same glass, at the same size, with its own blur -
+          which is why it goes through the portal, like every other piece
+          of glass here. */}
+      {!embedded && editorFocused && (
+        <GlassPortal>
+          <View style={[styles.editorRail, { top: editorInsets.top + 26 }]} pointerEvents="box-none">
+            {/* A circle of its own rather than a chip inside the capsule:
+                it reports rather than does. */}
+            <View style={[styles.saveDot, saveStatus === 'saved' && styles.saveDotSaved]}>
+              {saveStatus !== 'saved' && (
+                <BlurView
+                  intensity={60}
+                  tint="dark"
+                  blurMethod="dimezisBlurView"
+                  blurTarget={editorBlurTarget ?? undefined}
+                  style={StyleSheet.absoluteFill}
+                  pointerEvents="none"
+                />
+              )}
+              <Ionicons
+                name="checkmark-outline"
+                size={24}
+                color={saveStatus === 'saved' ? '#171310' : '#fff'}
+              />
+            </View>
+            <View style={styles.headerRight}>
+              <BlurView
+                intensity={60}
+                tint="dark"
+                blurMethod="dimezisBlurView"
+                blurTarget={editorBlurTarget ?? undefined}
+                style={StyleSheet.absoluteFill}
+                pointerEvents="none"
+              />
+              <Pressable hitSlop={8} onPress={() => setExportMenuOpen((v) => !v)}>
+                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
+              </Pressable>
+              <View style={styles.headerRightDivider} />
+              <Pressable hitSlop={8} onPress={toggleSelectMode}>
+                <Ionicons name={isSelectMode ? 'close-outline' : 'ellipse-outline'} size={24} color="#fff" />
+              </Pressable>
+            </View>
+          </View>
+        </GlassPortal>
       )}
 
       {exportMenuOpen && <Pressable style={styles.exportMenuBackdrop} onPress={() => setExportMenuOpen(false)} />}
       {exportMenuOpen && (
-        <View style={styles.exportMenuPanel}>
+        // Beside the rail rather than under the old header corner: its
+        // top lines up with the rail's, and it stops short of it.
+        <View
+          style={[
+            styles.exportMenuPanel,
+            { top: editorInsets.top + 26, right: RAIL_RIGHT + RAIL_WIDTH + 8 },
+          ]}
+        >
           <Text style={styles.exportMenuLabel}>Оформлення</Text>
           <Pressable style={styles.exportMenuRow} onPress={openCoverImageOptions}>
             <Ionicons name="image-outline" size={17} color="#111827" />
@@ -4405,26 +4457,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 16,
   },
-  headerRightGroup: {
-    flexDirection: 'row',
+  // The column the editor's own controls stand in, at the right edge -
+  // the same place, width and glass as the documents screen's rail. `top`
+  // comes from the safe-area inset.
+  editorRail: {
+    position: 'absolute',
+    right: RAIL_RIGHT,
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
   },
-  // Select-mode toggle + "..." merged into one pill, filled with the
-  // editor's accent rather than separate plain icon buttons.
+  // Select-mode toggle + "..." in one capsule, stood on its end.
   headerRight: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    height: 34,
-    borderRadius: 17,
-    paddingHorizontal: 12,
-    backgroundColor: EDIT_FAB_COLOR,
+    gap: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 19,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: GLASS_ISLAND,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
   },
+  // Turned with the capsule: a rule across it, not down it.
   headerRightDivider: {
-    width: 1,
-    height: 14,
-    backgroundColor: 'rgba(255,255,255,0.4)',
+    width: 20,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.3)',
   },
   exportMenuBackdrop: {
     position: 'absolute',
@@ -4436,8 +4494,6 @@ const styles = StyleSheet.create({
   },
   exportMenuPanel: {
     position: 'absolute',
-    top: 96,
-    right: 20,
     width: 180,
     backgroundColor: '#fff',
     borderRadius: 14,
@@ -4477,14 +4533,15 @@ const styles = StyleSheet.create({
   // entirely. Diameter matches headerRight's own height so the circle and
   // the pill read as a matched pair beside each other.
   saveDot: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: RAIL_WIDTH,
+    height: RAIL_WIDTH,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.18)',
+    overflow: 'hidden',
+    backgroundColor: GLASS_ISLAND,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
+    borderColor: 'rgba(255,255,255,0.4)',
   },
   saveDotSaved: {
     backgroundColor: '#fff',
