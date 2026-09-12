@@ -69,6 +69,9 @@ import { GLASS_ISLAND } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
 const ACCENT = '#0EA5E9';
+// The same half-strength tint the documents screen's add button takes -
+// the blur behind it is what separates it, so the colour only tints.
+const ACCENT_GLASS = 'rgba(14,165,233,0.55)';
 const DANGER = '#EF4444';
 const groupsCollection = collection(db, 'groups');
 const filesPrefsDoc = doc(db, 'settings', 'filesPrefs');
@@ -574,10 +577,6 @@ export default function FilesScreen() {
                 <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
               </Pressable>
               <View style={styles.headerButtonsDivider} />
-              <Pressable hitSlop={8} onPress={toggleSelectMode}>
-                <Ionicons name={isSelectMode ? 'close-outline' : 'checkmark-circle-outline'} size={24} color="#fff" />
-              </Pressable>
-              <View style={styles.headerButtonsDivider} />
               <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
                 <Ionicons name={isSearching ? 'close-outline' : 'search-outline'} size={24} color="#fff" />
               </Pressable>
@@ -611,6 +610,21 @@ export default function FilesScreen() {
               {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
             </Pressable>
             <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
+            <View style={styles.menuRule} />
+            <Pressable
+              style={styles.menuRow}
+              onPress={() => {
+                setMenuOpen(false);
+                toggleSelectMode();
+              }}
+            >
+              <Ionicons
+                name={isSelectMode ? 'close-outline' : 'checkmark-circle-outline'}
+                size={17}
+                color="#111827"
+              />
+              <Text style={styles.menuRowLabel}>{isSelectMode ? 'Скасувати вибір' : 'Вибрати'}</Text>
+            </Pressable>
           </View>
         )}
 
@@ -803,10 +817,22 @@ export default function FilesScreen() {
         onDelete={confirmDeleteSelected}
       />
 
-      {!isSelectMode && (
-        <Pressable style={[styles.fab, { bottom: rail.addBottom }]} onPress={addFileDirectly}>
-          <Ionicons name="add" size={28} color="#fff" />
-        </Pressable>
+      {/* Through the portal, where its blur is safe - inside the screen
+          it would be blurring a picture it is itself part of. */}
+      {railFocused && !isSelectMode && (
+        <GlassPortal>
+          <Pressable style={[styles.fab, { bottom: rail.addBottom }]} onPress={addFileDirectly}>
+            <BlurView
+              intensity={60}
+              tint="dark"
+              blurMethod="dimezisBlurView"
+              blurTarget={railBlurTarget ?? undefined}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+            <Ionicons name="add-outline" size={28} color="#fff" />
+          </Pressable>
+        </GlassPortal>
       )}
 
       {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
@@ -858,8 +884,11 @@ const styles = StyleSheet.create({
     right: 20,
     width: 56,
     height: 56,
-    borderRadius: 18,
-    backgroundColor: ACCENT,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: ACCENT_GLASS,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 4,
@@ -949,7 +978,12 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 2,
   },
-  menuRow: {
+  menuRule: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 6,
+  },
+    menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,

@@ -114,6 +114,8 @@ import { GLASS_ISLAND } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
 const ACCENT = '#A05C7B';
+// The same half-strength tint the documents screen's add button takes.
+const ACCENT_GLASS = 'rgba(160,92,123,0.55)';
 const DANGER = '#EF4444';
 
 function generateId(): string {
@@ -1325,10 +1327,6 @@ export default function CustomDatabaseScreen({}: Props) {
                 <Ionicons name={isSearching ? 'close-outline' : 'search-outline'} size={24} color="#fff" />
               </Pressable>
               <View style={styles.headerButtonsDivider} />
-              <Pressable hitSlop={8} onPress={toggleSelectMode}>
-                <Ionicons name={isSelectMode ? 'close-outline' : 'checkmark-circle-outline'} size={24} color="#fff" />
-              </Pressable>
-              <View style={styles.headerButtonsDivider} />
               <Pressable hitSlop={8} onPress={toggleParamsCollapsed}>
                 <Ionicons name={paramsCollapsed ? 'settings-outline' : 'settings'} size={24} color="#fff" />
               </Pressable>
@@ -1402,6 +1400,21 @@ export default function CustomDatabaseScreen({}: Props) {
           >
             <Ionicons name="trash-outline" size={17} color={DANGER} />
             <Text style={[styles.menuRowLabel, { color: DANGER }]}>Видалити базу</Text>
+          </Pressable>
+          <View style={styles.menuRule} />
+          <Pressable
+            style={styles.menuRow}
+            onPress={() => {
+              setMenuOpen(false);
+              toggleSelectMode();
+            }}
+          >
+            <Ionicons
+              name={isSelectMode ? 'close-outline' : 'checkmark-circle-outline'}
+              size={17}
+              color={GLASS_TEXT}
+            />
+            <Text style={styles.menuRowLabel}>{isSelectMode ? 'Скасувати вибір' : 'Вибрати'}</Text>
           </Pressable>
         </View>
       )}
@@ -1911,10 +1924,21 @@ export default function CustomDatabaseScreen({}: Props) {
         </ScrollView>
       )}
 
-      {!isSelectMode && (
-        <Pressable style={[styles.fab, { bottom: rail.addBottom }]} onPress={openNewRow}>
-          <Ionicons name="add" size={28} color="#fff" />
-        </Pressable>
+      {/* Through the portal, where its blur is safe. */}
+      {railFocused && !isSelectMode && (
+        <GlassPortal>
+          <Pressable style={[styles.fab, { bottom: rail.addBottom }]} onPress={openNewRow}>
+            <BlurView
+              intensity={60}
+              tint="dark"
+              blurMethod="dimezisBlurView"
+              blurTarget={railBlurTarget ?? undefined}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+            <Ionicons name="add-outline" size={28} color="#fff" />
+          </Pressable>
+        </GlassPortal>
       )}
 
       <RenamePrompt
@@ -2864,8 +2888,11 @@ const styles = StyleSheet.create({
     right: 20,
     width: 56,
     height: 56,
-    borderRadius: 18,
-    backgroundColor: ACCENT,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: ACCENT_GLASS,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 4,
@@ -2958,7 +2985,12 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 2,
   },
-  menuRow: {
+  menuRule: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    marginVertical: 6,
+  },
+    menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
