@@ -8,12 +8,17 @@ import { GLASS_ISLAND } from '../constants/glass';
 import { NAV_BUTTON, NAV_GAP, NAV_PADDING, RAIL_RIGHT } from '../constants/rail';
 import { useRail } from '../hooks/useRail';
 
+// Filled glyphs, not outlines: beside the capsule's own icons the outline
+// versions read as thinner and smaller, though they stood at the same
+// size. Same size as the capsule's too, now - 24.
 const ICON_BY_ROUTE: Record<string, keyof typeof Ionicons.glyphMap> = {
-  Документи: 'document-text-outline',
-  Календар: 'calendar-outline',
-  Дошки: 'apps-outline',
-  Більше: 'ellipsis-horizontal-outline',
+  Документи: 'document-text',
+  Календар: 'calendar',
+  Дошки: 'apps',
+  Більше: 'ellipsis-horizontal',
 };
+
+const ICON_SIZE = 24;
 
 // The navigation island. It used to lie across the bottom of the screen;
 // it now stands on its end at the right edge, at the foot of the rail
@@ -40,7 +45,7 @@ export default function FloatingIslandTabBar({ state, navigation }: BottomTabBar
           />
           {state.routes.map((route, index) => {
             const focused = state.index === index;
-            const icon = ICON_BY_ROUTE[route.name] ?? 'ellipse-outline';
+            const icon = ICON_BY_ROUTE[route.name] ?? 'ellipse';
             return (
               <Pressable
                 key={route.key}
@@ -50,7 +55,11 @@ export default function FloatingIslandTabBar({ state, navigation }: BottomTabBar
                   if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
                 }}
               >
-                <Ionicons name={icon} size={20} color={focused ? '#171310' : 'rgba(255,255,255,0.75)'} />
+                <Ionicons
+                  name={icon}
+                  size={ICON_SIZE}
+                  color={focused ? '#171310' : 'rgba(255,255,255,0.85)'}
+                />
               </Pressable>
             );
           })}
