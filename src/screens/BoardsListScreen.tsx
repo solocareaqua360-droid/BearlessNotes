@@ -24,8 +24,18 @@ import RenamePrompt from '../components/RenamePrompt';
 import ContentColumn, { MAX_CONTENT_WIDTH } from '../components/ContentColumn';
 import { GLASS_BODY, GLASS_TEXT } from '../constants/glass';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { BlurView } from 'expo-blur';
+import { useIsFocused } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GlassPortal } from '../components/GlassPortal';
+import { useBlurTarget } from '../components/GlassTarget';
+import { GLASS_ISLAND } from '../constants/glass';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
 
 const ACCENT = '#8B5CF6';
+// Where the content starts now that the screen has no header: the same
+// line the capsule hangs from, so the first board sits level with it.
+const RAIL_TOP_PAD = 96;
 const boardsCollection = collection(db, 'boards');
 
 // List of "Дошка" boards - Stage 1 of the board feature (see DEVELOPMENT_PLAN.md).
@@ -33,6 +43,9 @@ const boardsCollection = collection(db, 'boards');
 // menu or bulk-select yet - a handful of boards doesn't need them, and
 // nothing in the brief for this stage asks for them.
 export default function BoardsListScreen() {
+  const railBlurTarget = useBlurTarget();
+  const railFocused = useIsFocused();
+  const railInsets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<BoardsStackParamList>>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [boards, setBoards] = useState<BoardItem[]>([]);
@@ -197,26 +210,43 @@ export default function BoardsListScreen() {
         <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#boardsBg)" />
       </Svg>
       <ContentColumn>
-        {/* No back-chevron here - this screen is the "Дошки" tab's own root
-            now (see App.tsx's BoardsStack), same as Документи/Календар/
-            Більше's headers, none of which have one either. BoardScreen's
-            own chevron (returning to this list) stays, since Board really
-            does have somewhere to go back to within the same nested stack. */}
-        <View style={styles.headerRow}>
-          <Text style={styles.header}>Дошка</Text>
-          <View style={styles.headerActions}>
-            <Pressable
-              hitSlop={8}
-              style={styles.addButton}
-              onPress={() => changeViewMode(viewMode === 'list' ? 'cards' : 'list')}
-            >
-              <Ionicons name={viewMode === 'cards' ? 'reorder-four-outline' : 'grid-outline'} size={18} color="#fff" />
-            </Pressable>
-            <Pressable hitSlop={8} style={styles.addButton} onPress={createBoard}>
-              <Ionicons name="add" size={20} color="#fff" />
-            </Pressable>
+      {/* The rail, as on every other screen: right edge, same width, same
+          glass, hanging from the same line. Through the portal, which is
+          where a blur is safe. The section's own title is gone with the
+          header that carried it. */}
+      {railFocused && (
+        <GlassPortal>
+          <View
+            style={[styles.railWrap, { top: railInsets.top + CHROME_TOP + CAPSULE_DROP }]}
+            pointerEvents="box-none"
+          >
+            <View style={styles.headerButtons}>
+              <BlurView
+                intensity={60}
+                tint="dark"
+                blurMethod="dimezisBlurView"
+                blurTarget={railBlurTarget ?? undefined}
+                style={StyleSheet.absoluteFill}
+                pointerEvents="none"
+              />
+              <Pressable
+                hitSlop={8}
+                onPress={() => changeViewMode(viewMode === 'list' ? 'cards' : 'list')}
+              >
+                <Ionicons
+                  name={viewMode === 'cards' ? 'reorder-four-outline' : 'grid-outline'}
+                  size={24}
+                  color="#fff"
+                />
+              </Pressable>
+              <View style={styles.headerButtonsDivider} />
+              <Pressable hitSlop={8} onPress={createBoard}>
+                <Ionicons name="add-outline" size={24} color="#fff" />
+              </Pressable>
+            </View>
           </View>
-        </View>
+        </GlassPortal>
+      )}
 
         {isLoading ? (
           <View style={styles.emptyState}>
@@ -287,32 +317,32 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  headerRow: {
-    flexDirection: 'row',
+  railWrap: {
+    position: 'absolute',
+    right: RAIL_RIGHT,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 90,
-    paddingBottom: 12,
   },
-  header: {
-    fontSize: 46,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    color: '#fff',
-  },
-  addButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  // Stood on its end, like every other screen's.
+  headerButtons: {
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(20,20,20,0.35)',
+    gap: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 19,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: GLASS_ISLAND,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
   },
+  // Turned with the capsule.
+  headerButtonsDivider: {
+    width: 20,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
   emptyState: {
     flex: 1,
+    paddingTop: RAIL_TOP_PAD,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,
@@ -339,15 +369,12 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.55)',
     textAlign: 'center',
   },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
   tileGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
+    paddingTop: RAIL_TOP_PAD,
+    paddingHorizontal: 20,
     paddingBottom: 140,
   },
   tile: {
@@ -371,7 +398,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   list: {
-    paddingVertical: 8,
+    paddingTop: RAIL_TOP_PAD,
     paddingHorizontal: 20,
     gap: 10,
     // Clears FloatingIslandTabBar the same way DocumentsScreen's list does -

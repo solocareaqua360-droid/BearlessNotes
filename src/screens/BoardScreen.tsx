@@ -77,6 +77,11 @@ import DocumentEditorScreen from './DocumentEditorScreen';
 import { useRail } from '../hooks/useRail';
 import { FONT_BOLD, FONT_EXTRABOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_ISLAND } from '../constants/glass';
+import { BlurView } from 'expo-blur';
+import { useIsFocused } from '@react-navigation/native';
+import { GlassPortal } from '../components/GlassPortal';
+import { useBlurTarget } from '../components/GlassTarget';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
 const AUTOSAVE_DELAY_MS = 600;
 const MIN_SCALE = 0.4;
@@ -829,6 +834,8 @@ type Props = NativeStackScreenProps<BoardsStackParamList, 'Board'>;
 // existing file/photo/link comes straight out of AddExistingItemModal
 // unmodified, exactly like inserting one into a document does.
 export default function BoardScreen() {
+  const boardFocused = useIsFocused();
+  const boardInsets = useSafeAreaInsets();
   // Typed against BOTH param lists - this screen lives inside the "Дошки"
   // tab's own nested BoardsStack (goBack to BoardsList) but also reaches
   // UP into the root stack to open Editor/EditorModal, which React
@@ -862,6 +869,7 @@ export default function BoardScreen() {
   // Same fix as BulkActionBar's own bottom offset.
   const bottomInset = useSafeAreaInsets().bottom;
   const rail = useRail();
+  const boardBlurTarget = useBlurTarget();
 
   const [title, setTitle] = useState('');
   const [cards, setCards] = useState<BoardCard[]>([]);
@@ -2002,30 +2010,58 @@ export default function BoardScreen() {
           </View>
         </GestureDetector>
 
+        {/* Only the board's name stays up here - it needs the width. The
+            way back and the tool button stand on the rail with everything
+            else. */}
         <View style={styles.headerRow} pointerEvents="box-none">
-          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={24} color="#111827" />
-          </Pressable>
           <Pressable style={styles.titleTap} onPress={() => setRenamingTitle(true)}>
             <Text style={styles.headerTitle} numberOfLines={1}>
               {title || 'Без назви'}
             </Text>
           </Pressable>
-          {/* One button cycling move -> select -> connect, each with its own
-              icon, rather than three buttons crowding the header. */}
-          <Pressable
-            style={[styles.toolButton, canvasTool !== 'move' && styles.toolButtonActive]}
-            onPress={toggleCanvasTool}
-          >
-            <MaterialCommunityIcons
-              name={
-                canvasTool === 'select' ? 'selection-drag' : canvasTool === 'connect' ? 'vector-line' : 'cursor-move'
-              }
-              size={20}
-              color="#fff"
-            />
-          </Pressable>
         </View>
+
+        {/* Through the portal, where a blur is safe - drawn inside this
+            screen it would be blurring a picture it is part of, which is
+            what took this board down twice. */}
+        {boardFocused && (
+          <GlassPortal>
+            <View
+              style={[styles.railWrap, { top: boardInsets.top + CHROME_TOP + CAPSULE_DROP }]}
+              pointerEvents="box-none"
+            >
+              <View style={styles.boardCapsule}>
+                <BlurView
+                  intensity={60}
+                  tint="dark"
+                  blurMethod="dimezisBlurView"
+                  blurTarget={boardBlurTarget ?? undefined}
+                  style={StyleSheet.absoluteFill}
+                  pointerEvents="none"
+                />
+                <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+                  <Ionicons name="arrow-back-outline" size={24} color="#fff" />
+                </Pressable>
+                <View style={styles.boardCapsuleDivider} />
+                {/* One button cycling move -> select -> connect, each with
+                    its own icon, rather than three crowding the rail. */}
+                <Pressable onPress={toggleCanvasTool} hitSlop={8}>
+                  <MaterialCommunityIcons
+                    name={
+                      canvasTool === 'select'
+                        ? 'selection-drag'
+                        : canvasTool === 'connect'
+                          ? 'vector-line'
+                          : 'cursor-move'
+                    }
+                    size={24}
+                    color={canvasTool !== 'move' ? SELECTION_COLOR : '#fff'}
+                  />
+                </Pressable>
+              </View>
+            </View>
+          </GlassPortal>
+        )}
 
         {selectedCardIds.size > 0 ? (
           // Compact, content-hugging, centred capsule - same look as the
@@ -2489,7 +2525,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 56,
     left: 20,
-    right: 20,
+    right: RAIL_CLEARANCE,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -2590,21 +2626,27 @@ const styles = StyleSheet.create({
     fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
   },
-  toolButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 999,
+  railWrap: {
+    position: 'absolute',
+    right: RAIL_RIGHT,
     alignItems: 'center',
-    justifyContent: 'center',
+  },
+  // Stood on its end, like every other screen's.
+  boardCapsule: {
+    alignItems: 'center',
+    gap: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 19,
+    borderRadius: 999,
     overflow: 'hidden',
     backgroundColor: GLASS_ISLAND,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
   },
-  // A tool other than "move" is a mode you are IN, so it goes solid.
-  toolButtonActive: {
-    backgroundColor: SELECTION_COLOR,
-    borderColor: 'transparent',
+  boardCapsuleDivider: {
+    width: 20,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.3)',
   },
   // Same compact, content-hugging dark-glass pill as the shared
   // BulkActionBar component (Documents/Files/Photos/Links' own
