@@ -590,7 +590,7 @@ export default function DocumentsScreen() {
               </Pressable>
               <View style={styles.sideIslandDivider} />
               <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-                <Ionicons name="apps-outline" size={24} color="#fff" />
+                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
               </Pressable>
             </View>
           </View>

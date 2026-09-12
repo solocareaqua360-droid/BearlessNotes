@@ -17,7 +17,7 @@ const ICON_BY_ROUTE: Record<string, keyof typeof Ionicons.glyphMap> = {
   Документи: 'document-text-outline',
   Календар: 'calendar-outline',
   Дошки: 'easel-outline',
-  Більше: 'ellipsis-horizontal-outline',
+  Більше: 'apps-outline',
 };
 
 const ICON_SIZE = 24;
