@@ -20,6 +20,7 @@ import {
   GLASS_TEXT_MUTED,
 } from '../constants/glass';
 import GlassLayer from './GlassLayer';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#3B82F6';
 
@@ -331,6 +332,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
     marginBottom: 10,
   },
@@ -346,6 +348,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   list: {
@@ -375,10 +378,12 @@ const styles = StyleSheet.create({
   },
   rowLabel: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   rowMeta: {
     fontSize: 11,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_FAINT,
     marginTop: 1,
   },
@@ -413,6 +418,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: ACCENT,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
   createHeaderRow: {
     flexDirection: 'row',
@@ -422,16 +428,19 @@ const styles = StyleSheet.create({
   },
   createHeaderCancel: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_MUTED,
   },
   createHeaderTitle: {
     fontSize: 17,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
   },
   createHeaderSave: {
     fontSize: 15,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: ACCENT,
   },
   createPreviewRow: {
@@ -450,6 +459,7 @@ const styles = StyleSheet.create({
   createPreviewPath: {
     flex: 1,
     fontSize: 17,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
     borderBottomWidth: 1.5,
     borderBottomColor: GLASS_LINE,
@@ -458,6 +468,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: 13,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: GLASS_TEXT_MUTED,
     marginBottom: 8,
   },
@@ -488,6 +499,7 @@ const styles = StyleSheet.create({
   iconSearchInput: {
     flex: 1,
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   iconGridScroll: {
@@ -521,9 +533,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: ACCENT,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
   typeHint: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_FAINT,
   },
 });

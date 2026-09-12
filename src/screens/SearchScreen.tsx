@@ -10,6 +10,7 @@ import { RootStackParamList } from '../navigation';
 import DocumentCard from '../components/DocumentCard';
 import { documentMatchesQuery, extractPreview, findBodyMatch, findTitleMatch } from '../utils/documentPreview';
 import ContentColumn from '../components/ContentColumn';
+import { FONT_REGULAR } from '../utils/fonts';
 
 const documentsCollection = collection(db, 'documents');
 
@@ -116,6 +117,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   list: {

@@ -4,6 +4,7 @@ import { Tag } from '../types';
 import { useCustomRowData } from '../hooks/useCustomRowData';
 import { buildRowDisplay } from '../utils/customRowDisplay';
 import CustomRowCard from './CustomRowCard';
+import { FONT_REGULAR } from '../utils/fonts';
 
 type Props = {
   databaseId: string | undefined;
@@ -86,6 +87,7 @@ const styles = StyleSheet.create({
   missingLabel: {
     flex: 1,
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
   },
 });

@@ -5,6 +5,7 @@ import { Tag } from '../types';
 import { useCustomDatabaseViewData } from '../hooks/useCustomDatabaseViewData';
 import { buildRowDisplay } from '../utils/customRowDisplay';
 import CustomRowCard from './CustomRowCard';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 // How many rows show before the block asks the reader to tap for more,
 // rather than a hard cap - the row count itself never changes, just how
@@ -112,14 +113,17 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#111827',
   },
   headerCount: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
   },
   emptyLabel: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
     paddingVertical: 6,
   },
@@ -131,6 +135,7 @@ const styles = StyleSheet.create({
   moreLabel: {
     fontSize: 13,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#3B82F6',
   },
   missing: {
@@ -149,6 +154,7 @@ const styles = StyleSheet.create({
   missingLabel: {
     flex: 1,
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
   },
 });

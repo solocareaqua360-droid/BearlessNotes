@@ -8,6 +8,7 @@ import { db } from '../firebase';
 import { SketchElement } from '../types';
 import { backupFileToDrive } from '../utils/googleDrive';
 import SketchEditor from './SketchEditor';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const STICKER_TEXT_LIMIT = 140;
 
@@ -236,6 +237,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#111827',
     marginBottom: 10,
   },
@@ -247,6 +249,7 @@ const styles = StyleSheet.create({
   },
   rowLabel: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   textBackdrop: {
@@ -267,11 +270,13 @@ const styles = StyleSheet.create({
   textInput: {
     minHeight: 100,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
     textAlignVertical: 'top',
   },
   counter: {
     fontSize: 11,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
     textAlign: 'right',
   },
@@ -287,6 +292,7 @@ const styles = StyleSheet.create({
   },
   cancelLabel: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#6B7280',
   },
   saveButton: {
@@ -301,6 +307,7 @@ const styles = StyleSheet.create({
   saveLabel: {
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#fff',
   },
 });

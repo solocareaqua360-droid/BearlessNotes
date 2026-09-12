@@ -1,6 +1,7 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { BoardCard, BoardColumn } from '../types';
 import { APPROX_CARD_HEIGHT, COLUMN_MIN_HEIGHT, COLUMN_WIDTH } from '../utils/boardLayout';
+import { FONT_REGULAR } from '../utils/fonts';
 
 // A board in miniature, built from its own cards rather than captured from
 // the screen. A screenshot would need a native capture module, would be
@@ -104,6 +105,7 @@ const styles = StyleSheet.create({
   },
   cardText: {
     fontSize: 4,
+    fontFamily: FONT_REGULAR,
     lineHeight: 5,
     color: 'rgba(17,24,39,0.7)',
     paddingHorizontal: 2,

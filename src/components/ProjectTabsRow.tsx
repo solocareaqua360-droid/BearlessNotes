@@ -2,6 +2,7 @@ import { RefObject } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { GLASS_ISLAND } from '../constants/glass';
+import { FONT_SEMIBOLD } from '../utils/fonts';
 
 // Sentinel for "no group/project assigned" - an id string, since a real
 // document's id (a Firestore auto-id) can never collide with it. `null`
@@ -220,5 +221,6 @@ const styles = StyleSheet.create({
   tabLabel: {
     fontSize: 13,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
 });

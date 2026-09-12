@@ -2,6 +2,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 
 export type ViewerAction = {
   key: string;
@@ -151,6 +152,7 @@ const styles = StyleSheet.create({
   },
   actionLabel: {
     fontSize: 11,
+    fontFamily: FONT_REGULAR,
     color: '#D4D4D8',
   },
   actionBadge: {
@@ -168,6 +170,7 @@ const styles = StyleSheet.create({
   actionBadgeLabel: {
     fontSize: 9,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#fff',
   },
 });

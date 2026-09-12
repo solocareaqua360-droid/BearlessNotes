@@ -17,6 +17,7 @@ import {
   runDriveDiagnostics,
 } from '../utils/googleDrive';
 import ContentColumn from '../components/ContentColumn';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -260,6 +261,7 @@ const styles = StyleSheet.create({
   header: {
     fontSize: 22,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#111827',
   },
   updateCard: {
@@ -280,17 +282,21 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 16,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#111827',
   },
   cardBody: {
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   emailText: {
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
   cardHint: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: '#6B7280',
   },
   trafficRow: {
@@ -301,6 +307,7 @@ const styles = StyleSheet.create({
   trafficLabel: {
     flex: 1,
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: '#6B7280',
   },
   connectButton: {
@@ -313,6 +320,7 @@ const styles = StyleSheet.create({
   connectLabel: {
     color: '#fff',
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     fontSize: 15,
   },
   checkButton: {
@@ -326,6 +334,7 @@ const styles = StyleSheet.create({
   checkLabel: {
     color: ACCENT,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     fontSize: 15,
   },
   disconnectButton: {
@@ -339,6 +348,7 @@ const styles = StyleSheet.create({
   disconnectLabel: {
     color: DANGER,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     fontSize: 15,
   },
 });

@@ -27,6 +27,7 @@ import {
   GLASS_TEXT_MUTED,
 } from '../constants/glass';
 import GlassLayer from './GlassLayer';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#3B82F6';
 const STICKER_YELLOW = '#FBE97A';
@@ -591,6 +592,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
     marginBottom: 10,
   },
@@ -617,6 +619,7 @@ const styles = StyleSheet.create({
   tabLabel: {
     fontSize: 13,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: GLASS_TEXT_MUTED,
   },
   tabLabelActive: {
@@ -635,10 +638,12 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   emptyLabel: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_FAINT,
     textAlign: 'center',
     paddingVertical: 16,
@@ -646,6 +651,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: 11,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: GLASS_TEXT_FAINT,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
@@ -682,10 +688,12 @@ const styles = StyleSheet.create({
   backRowText: {
     color: GLASS_TEXT_MUTED,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
   rowText: {
     flex: 1,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
 });

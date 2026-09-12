@@ -14,6 +14,7 @@ import {
   GLASS_TEXT_FAINT,
 } from '../constants/glass';
 import GlassLayer from './GlassLayer';
+import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 
 const ACCENT = '#3B82F6';
 const GROUP_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
@@ -180,6 +181,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
     marginBottom: 8,
   },
@@ -203,11 +205,13 @@ const styles = StyleSheet.create({
   rowText: {
     flex: 1,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   renameInput: {
     flex: 1,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
     paddingVertical: 2,
     borderBottomWidth: 1,
@@ -226,6 +230,7 @@ const styles = StyleSheet.create({
   addInput: {
     flex: 1,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
     backgroundColor: GLASS_INPUT,
     borderRadius: 10,

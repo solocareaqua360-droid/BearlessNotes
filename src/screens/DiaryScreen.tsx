@@ -11,6 +11,7 @@ import DocumentCard from '../components/DocumentCard';
 import { documentMatchesQuery, extractPreview, findBodyMatch, hasNoteContent } from '../utils/documentPreview';
 import { formatShortDate, parseDateKey } from '../utils/dateLocale';
 import ContentColumn from '../components/ContentColumn';
+import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 
 const documentsCollection = collection(db, 'documents');
 
@@ -121,6 +122,7 @@ const styles = StyleSheet.create({
   header: {
     fontSize: 22,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#111827',
   },
   searchRow: {
@@ -137,6 +139,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   list: {

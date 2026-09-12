@@ -75,6 +75,7 @@ import { importGroupToBoard } from '../utils/importGroupToBoard';
 import { Group } from '../types';
 import DocumentEditorScreen from './DocumentEditorScreen';
 import { useRail } from '../hooks/useRail';
+import { FONT_BOLD, FONT_EXTRABOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const AUTOSAVE_DELAY_MS = 600;
 const MIN_SCALE = 0.4;
@@ -2436,6 +2437,7 @@ const styles = StyleSheet.create({
   },
   stickyText: {
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   dbRowCard: {
@@ -2467,10 +2469,12 @@ const styles = StyleSheet.create({
   refLabel: {
     fontSize: 12,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#111827',
   },
   documentPreviewText: {
     fontSize: 11,
+    fontFamily: FONT_REGULAR,
     lineHeight: 15,
     color: '#6B7280',
   },
@@ -2494,6 +2498,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 16,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#111827',
     textAlign: 'center',
   },
@@ -2561,10 +2566,12 @@ const styles = StyleSheet.create({
   columnTitle: {
     fontSize: 13,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#374151',
   },
   columnCount: {
     fontSize: 11,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
   },
   toolButton: {
@@ -2608,6 +2615,7 @@ const styles = StyleSheet.create({
   selectionBarCount: {
     fontSize: 14,
     fontWeight: '800',
+    fontFamily: FONT_EXTRABOLD,
     color: '#fff',
   },
   selectionBarDivider: {
@@ -2622,6 +2630,7 @@ const styles = StyleSheet.create({
   selectionBarActionLabel: {
     fontSize: 9.5,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#fff',
   },
   // Same dark-glass treatment as the selection bar's own capsule above,
@@ -2652,10 +2661,12 @@ const styles = StyleSheet.create({
   glassConfirmTitle: {
     fontSize: 17,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#fff',
   },
   glassConfirmBody: {
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.7)',
     lineHeight: 19,
   },
@@ -2677,6 +2688,7 @@ const styles = StyleSheet.create({
   glassConfirmButtonLabel: {
     fontSize: 14,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#fff',
   },
   sheetBackdrop: {
@@ -2695,6 +2707,7 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontSize: 16,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#111827',
     marginBottom: 6,
   },
@@ -2708,10 +2721,12 @@ const styles = StyleSheet.create({
   },
   groupCount: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
   },
   groupEmpty: {
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
     paddingVertical: 10,
   },
@@ -2732,6 +2747,7 @@ const styles = StyleSheet.create({
   sheetRowLabel: {
     flex: 1,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   textEditBackdrop: {
@@ -2756,6 +2772,7 @@ const styles = StyleSheet.create({
   readTitle: {
     fontSize: 15,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#111827',
   },
   readBody: {
@@ -2764,6 +2781,7 @@ const styles = StyleSheet.create({
   textEditInput: {
     minHeight: 100,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
     textAlignVertical: 'top',
   },
@@ -2791,6 +2809,7 @@ const styles = StyleSheet.create({
   },
   textEditCancelLabel: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#6B7280',
   },
   textEditSave: {
@@ -2802,6 +2821,7 @@ const styles = StyleSheet.create({
   textEditSaveLabel: {
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#fff',
   },
 });

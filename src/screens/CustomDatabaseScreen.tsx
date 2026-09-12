@@ -104,6 +104,7 @@ import {
 import { colorForDocument } from '../utils/documentColor';
 import { MONTH_FULL, WEEKDAY_SHORT, dateKey, getMonthGrid, isSameDay, parseDateKey } from '../utils/dateLocale';
 import { useRail } from '../hooks/useRail';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#A05C7B';
 const DANGER = '#EF4444';
@@ -2746,6 +2747,7 @@ const miniStyles = StyleSheet.create({
   navTitle: {
     fontSize: 15,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#111827',
   },
   weekdayRow: {
@@ -2755,6 +2757,7 @@ const miniStyles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     fontSize: 11,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
     marginBottom: 4,
   },
@@ -2783,6 +2786,7 @@ const miniStyles = StyleSheet.create({
   },
   dayNum: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   dayNumMuted: {
@@ -2791,6 +2795,7 @@ const miniStyles = StyleSheet.create({
   dayNumSelected: {
     color: '#fff',
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
   },
 });
 
@@ -2858,6 +2863,7 @@ const styles = StyleSheet.create({
   header: {
     fontSize: 32,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#fff',
     flexShrink: 1,
   },
@@ -2908,6 +2914,7 @@ const styles = StyleSheet.create({
   menuSectionLabel: {
     fontSize: 11,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     letterSpacing: 0.04,
     textTransform: 'uppercase',
     color: GLASS_TEXT_FAINT,
@@ -2925,6 +2932,7 @@ const styles = StyleSheet.create({
   menuRowLabel: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   menuDivider: {
@@ -2949,12 +2957,14 @@ const styles = StyleSheet.create({
   emptyLabel: {
     marginTop: 16,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
   },
   emptyHint: {
     marginTop: 6,
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.55)',
     textAlign: 'center',
   },
@@ -2992,6 +3002,7 @@ const styles = StyleSheet.create({
   sectionHeading: {
     fontSize: 13,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#6B7280',
     textTransform: 'uppercase',
     letterSpacing: 0.4,
@@ -3001,6 +3012,7 @@ const styles = StyleSheet.create({
   pageSectionHeading: {
     fontSize: 13,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: ACCENT,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
@@ -3021,11 +3033,13 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#fff',
   },
   groupHeaderCount: {
     fontSize: 13,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: 'rgba(255,255,255,0.6)',
   },
   // Sits apart from the groups above it: it counts the whole filtered
@@ -3041,11 +3055,13 @@ const styles = StyleSheet.create({
   groupTotalLabel: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.75)',
   },
   groupTotalCount: {
     fontSize: 14,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#fff',
   },
   // The record page: a plain light sheet, deliberately not the dark
@@ -3076,6 +3092,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#111827',
   },
   pageEditButton: {
@@ -3090,6 +3107,7 @@ const styles = StyleSheet.create({
   pageEditLabel: {
     fontSize: 13,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#fff',
   },
   pageBody: {
@@ -3109,6 +3127,7 @@ const styles = StyleSheet.create({
   pageTitle: {
     fontSize: 24,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#111827',
     marginBottom: 16,
   },
@@ -3120,14 +3139,17 @@ const styles = StyleSheet.create({
   },
   pageFieldLabel: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
   },
   pageFieldValue: {
     fontSize: 16,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   pageFieldEmpty: {
     fontSize: 16,
+    fontFamily: FONT_REGULAR,
     color: '#D1D5DB',
   },
   pageRelationValue: {
@@ -3155,6 +3177,7 @@ const styles = StyleSheet.create({
   relationDoneLabel: {
     fontSize: 15,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#fff',
   },
   backlinkList: {
@@ -3172,6 +3195,7 @@ const styles = StyleSheet.create({
   backlinkRowLabel: {
     flex: 1,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   backlinkAddRow: {
@@ -3184,6 +3208,7 @@ const styles = StyleSheet.create({
   backlinkAddLabel: {
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: ACCENT,
   },
   paramsScroll: {
@@ -3228,6 +3253,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(255,255,255,0.85)',
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
   // The open capsule: the same glass body as the pill, just taller and
   // squarer, drawn over the collapsed one it replaces.
@@ -3269,10 +3295,12 @@ const styles = StyleSheet.create({
   paramOptionLabel: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.7)',
   },
   paramOptionCount: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.45)',
   },
   paramDivider: {
@@ -3295,6 +3323,7 @@ const styles = StyleSheet.create({
   paramOptionLabelActive: {
     color: '#fff',
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
   },
   searchRow: {
     flexDirection: 'row',
@@ -3310,6 +3339,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   cardGrid: {
@@ -3364,6 +3394,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#fff',
   },
   tableRow: {
@@ -3386,15 +3417,18 @@ const styles = StyleSheet.create({
   },
   tableCell: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: '#fff',
   },
   tableCellEmpty: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.35)',
   },
   tableCellInput: {
     height: TABLE_ROW_HEIGHT - 1,
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: '#fff',
     paddingHorizontal: 8,
     paddingVertical: 0,
@@ -3433,6 +3467,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
     marginBottom: 8,
   },
@@ -3454,10 +3489,12 @@ const styles = StyleSheet.create({
   editorFieldLabel: {
     fontSize: 12,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: GLASS_TEXT_MUTED,
   },
   optionPickerEmpty: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_FAINT,
     paddingVertical: 12,
   },
@@ -3468,6 +3505,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   fieldPressable: {
@@ -3483,10 +3521,12 @@ const styles = StyleSheet.create({
   },
   fieldPressableValue: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   fieldPressablePlaceholder: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_FAINT,
   },
   optionChipsRow: {
@@ -3503,6 +3543,7 @@ const styles = StyleSheet.create({
   optionChipLabel: {
     fontSize: 12,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
   optionDot: {
     width: 10,
@@ -3518,6 +3559,7 @@ const styles = StyleSheet.create({
   optionPickerLabel: {
     flex: 1,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   relationValueRow: {
@@ -3539,6 +3581,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
     marginBottom: 4,
   },
@@ -3573,6 +3616,7 @@ const styles = StyleSheet.create({
   },
   cancelLabel: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_MUTED,
   },
   saveButton: {
@@ -3585,6 +3629,7 @@ const styles = StyleSheet.create({
   saveLabel: {
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#fff',
   },
   glassConfirmBackdrop: {
@@ -3606,11 +3651,13 @@ const styles = StyleSheet.create({
   glassConfirmTitle: {
     fontSize: 16,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#fff',
     marginBottom: 8,
   },
   glassConfirmBody: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.75)',
     marginBottom: 16,
   },
@@ -3630,6 +3677,7 @@ const styles = StyleSheet.create({
   glassConfirmButtonLabel: {
     fontSize: 14,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#fff',
   },
   cardMenuBackdrop: {
@@ -3653,6 +3701,7 @@ const styles = StyleSheet.create({
   },
   cardMenuRowLabel: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
 });

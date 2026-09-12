@@ -8,6 +8,7 @@ import { RootStackParamList } from '../navigation';
 import { useTags } from '../hooks/useTags';
 import TagEditSheet from '../components/TagEditSheet';
 import ContentColumn from '../components/ContentColumn';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const DANGER = '#EF4444';
 
@@ -127,10 +128,12 @@ const styles = StyleSheet.create({
   header: {
     fontSize: 22,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#111827',
   },
   subtitle: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
     paddingHorizontal: 20,
     paddingTop: 4,
@@ -153,12 +156,14 @@ const styles = StyleSheet.create({
   emptyLabel: {
     marginTop: 16,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
     textAlign: 'center',
   },
   emptyHint: {
     marginTop: 6,
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
     textAlign: 'center',
   },
@@ -192,10 +197,12 @@ const styles = StyleSheet.create({
   rowLabel: {
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#111827',
   },
   rowMeta: {
     fontSize: 11,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
     marginTop: 1,
   },

@@ -14,6 +14,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Svg, { Circle, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SketchElement, SketchPathElement, SketchShape } from '../types';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const COLORS = ['#111827', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
 const WIDTHS = [3, 6, 10];
@@ -605,6 +606,7 @@ const styles = StyleSheet.create({
   doneLabel: {
     color: '#fff',
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
   canvas: {
     flex: 1,
@@ -685,6 +687,7 @@ const styles = StyleSheet.create({
   textPromptTitle: {
     fontSize: 17,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#111827',
   },
   textPromptInput: {
@@ -694,6 +697,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   textPromptButtons: {
@@ -708,6 +712,7 @@ const styles = StyleSheet.create({
   },
   textPromptCancelLabel: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#6B7280',
   },
   textPromptSave: {
@@ -722,6 +727,7 @@ const styles = StyleSheet.create({
   textPromptSaveLabel: {
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#fff',
   },
 });

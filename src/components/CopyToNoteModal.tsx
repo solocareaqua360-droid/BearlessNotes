@@ -16,6 +16,7 @@ import {
   GLASS_TEXT_FAINT,
 } from '../constants/glass';
 import GlassLayer from './GlassLayer';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#3B82F6';
 const documentsCollection = collection(db, 'documents');
@@ -79,7 +80,7 @@ export default function CopyToNoteModal({ visible, onPickExisting, onPickNew, on
             <View style={styles.newIcon}>
               <Ionicons name="add" size={16} color={ACCENT} />
             </View>
-            <Text style={[styles.rowText, { color: ACCENT, fontWeight: '600' }]}>Новий документ</Text>
+            <Text style={[styles.rowText, { color: ACCENT, fontFamily: FONT_SEMIBOLD }]}>Новий документ</Text>
           </Pressable>
 
           <View style={styles.searchRow}>
@@ -139,6 +140,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
     marginBottom: 8,
   },
@@ -155,10 +157,12 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   emptyLabel: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_FAINT,
     textAlign: 'center',
     paddingVertical: 16,
@@ -191,6 +195,7 @@ const styles = StyleSheet.create({
   rowText: {
     flex: 1,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
 });

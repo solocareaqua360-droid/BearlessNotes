@@ -40,6 +40,7 @@ import { cancelReminder, scheduleReminder } from '../utils/reminders';
 import { formatShortDate, parseDateKey } from '../utils/dateLocale';
 import { sortItems } from '../utils/sortItems';
 import ContentColumn from '../components/ContentColumn';
+import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#4E9A6B';
 const DANGER = '#EF4444';
@@ -954,6 +955,7 @@ const styles = StyleSheet.create({
   header: {
     fontSize: 22,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#111827',
   },
   // Icon-only, frosted glass - this screen's own background is plain
@@ -1027,6 +1029,7 @@ const styles = StyleSheet.create({
   selectionCount: {
     fontSize: 15,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#111827',
   },
   selectionDeleteBtn: {
@@ -1037,6 +1040,7 @@ const styles = StyleSheet.create({
   selectionDeleteLabel: {
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: DANGER,
   },
   emptyState: {
@@ -1056,17 +1060,20 @@ const styles = StyleSheet.create({
   emptyLabel: {
     marginTop: 16,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   emptyFilterLabel: {
     textAlign: 'center',
     marginTop: 24,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
   },
   emptyHint: {
     marginTop: 6,
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
     textAlign: 'center',
   },
@@ -1098,6 +1105,7 @@ const styles = StyleSheet.create({
   groupTitle: {
     fontSize: 13,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     letterSpacing: 0.5,
   },
   collapseToggle: {
@@ -1109,6 +1117,7 @@ const styles = StyleSheet.create({
   },
   collapseLabel: {
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
   },
   row: {
@@ -1124,6 +1133,7 @@ const styles = StyleSheet.create({
   },
   rowText: {
     fontSize: 16,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   rowTextChecked: {
@@ -1150,6 +1160,7 @@ const styles = StyleSheet.create({
   chipText: {
     fontSize: 12,
     fontWeight: '500',
+    fontFamily: FONT_MEDIUM,
   },
   reminderChip: {
     flexDirection: 'row',
@@ -1164,6 +1175,7 @@ const styles = StyleSheet.create({
   reminderChipText: {
     fontSize: 11.5,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: ACCENT,
   },
   rowDelete: {
@@ -1193,6 +1205,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 17,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#111827',
     marginBottom: 4,
   },
@@ -1215,6 +1228,7 @@ const styles = StyleSheet.create({
   },
   modalRowText: {
     fontSize: 16,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
     flexGrow: 1,
   },
@@ -1232,12 +1246,14 @@ const styles = StyleSheet.create({
   modalInput: {
     flex: 1,
     fontSize: 16,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
     paddingVertical: 6,
   },
   modalRenameInput: {
     flex: 1,
     fontSize: 16,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
     paddingVertical: 2,
     borderBottomWidth: 1,
@@ -1261,6 +1277,7 @@ const styles = StyleSheet.create({
   kanbanColumnTitle: {
     fontSize: 13,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
     color: '#6B7280',
@@ -1268,6 +1285,7 @@ const styles = StyleSheet.create({
   kanbanColumnCount: {
     fontSize: 11,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#9CA3AF',
     backgroundColor: '#F3F4F6',
     borderRadius: 8,
@@ -1304,6 +1322,7 @@ const styles = StyleSheet.create({
   },
   kanbanCardText: {
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
     lineHeight: 19,
   },

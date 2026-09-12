@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Tag } from '../types';
+import { FONT_MEDIUM, FONT_REGULAR } from '../utils/fonts';
 
 type Props = {
   tags: Tag[];
@@ -60,6 +61,7 @@ const styles = StyleSheet.create({
   chipLabel: {
     fontSize: 11,
     fontWeight: '500',
+    fontFamily: FONT_MEDIUM,
   },
   chipGlass: {
     backgroundColor: 'rgba(20,20,20,0.35)',
@@ -90,6 +92,7 @@ const styles = StyleSheet.create({
   },
   addChipLabel: {
     fontSize: 11,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
   },
 });

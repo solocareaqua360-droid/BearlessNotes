@@ -5,7 +5,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { hapticButtonDown } from '../utils/haptics';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Tag } from '../types';
-import { FONT_REGULAR, FONT_SEMIBOLD, FONT_BOLD } from '../utils/fonts';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { RAIL_RIGHT } from '../constants/rail';
 import { GLASS_ISLAND } from '../constants/glass';
 import { useRail } from '../hooks/useRail';
@@ -628,6 +628,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: 12,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     letterSpacing: 0.06,
     textTransform: 'uppercase',
     color: GLASS_TEXT_FAINT,

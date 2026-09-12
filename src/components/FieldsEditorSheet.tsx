@@ -30,6 +30,7 @@ import {
   GLASS_TEXT_MUTED,
 } from '../constants/glass';
 import GlassLayer from './GlassLayer';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#3B82F6';
 // The palette this sheet is drawn in. It sits over the database screen's
@@ -617,6 +618,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: TEXT,
     marginBottom: 12,
   },
@@ -646,6 +648,7 @@ const styles = StyleSheet.create({
   fieldNameInput: {
     flex: 1,
     fontSize: 16,
+    fontFamily: FONT_REGULAR,
     color: TEXT,
     paddingVertical: 6,
   },
@@ -674,6 +677,7 @@ const styles = StyleSheet.create({
   typeBadgeLabel: {
     fontSize: 13,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: 'rgba(255,255,255,0.85)',
   },
   typeMenu: {
@@ -691,6 +695,7 @@ const styles = StyleSheet.create({
   typeMenuLabel: {
     flex: 1,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: TEXT,
   },
   moveButtons: {
@@ -699,6 +704,7 @@ const styles = StyleSheet.create({
   },
   inTitleHint: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
     color: ACCENT_ON_GLASS,
     marginTop: 4,
   },
@@ -725,6 +731,7 @@ const styles = StyleSheet.create({
   optionLabel: {
     fontSize: 13,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: TEXT,
   },
   optionRemove: {
@@ -740,6 +747,7 @@ const styles = StyleSheet.create({
   addOptionInput: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: TEXT,
     backgroundColor: 'rgba(255,255,255,0.10)',
     borderRadius: 10,
@@ -756,10 +764,12 @@ const styles = StyleSheet.create({
   relationTargetLabel: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: TEXT,
   },
   relationEmptyHint: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: TEXT_MUTED,
     paddingVertical: 6,
   },
@@ -776,6 +786,7 @@ const styles = StyleSheet.create({
   },
   coverToggleLabel: {
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: TEXT,
   },
   addFieldRow: {
@@ -788,6 +799,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: ACCENT_ON_GLASS,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
   buttons: {
     flexDirection: 'row',
@@ -806,6 +818,7 @@ const styles = StyleSheet.create({
   cancelLabel: {
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: 'rgba(255,255,255,0.85)',
   },
   saveButton: {
@@ -817,6 +830,7 @@ const styles = StyleSheet.create({
   saveLabel: {
     fontSize: 15,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#fff',
   },
 });

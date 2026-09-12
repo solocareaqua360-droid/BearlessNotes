@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { FONT_REGULAR } from '../utils/fonts';
 
 export default function PlaceholderScreen({
   icon,
@@ -26,6 +27,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
   },
 });

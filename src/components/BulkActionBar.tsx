@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RAIL_GAP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
+import { FONT_EXTRABOLD, FONT_SEMIBOLD } from '../utils/fonts';
 
 type Props = {
   count: number;
@@ -113,6 +114,7 @@ const styles = StyleSheet.create({
   count: {
     fontSize: 14,
     fontWeight: '800',
+    fontFamily: FONT_EXTRABOLD,
     color: '#fff',
   },
   divider: {
@@ -127,6 +129,7 @@ const styles = StyleSheet.create({
   actionLabel: {
     fontSize: 9.5,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#fff',
   },
 });

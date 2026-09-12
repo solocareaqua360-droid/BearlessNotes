@@ -8,6 +8,7 @@ import {
   GLASS_TEXT_FAINT,
 } from '../constants/glass';
 import GlassLayer from './GlassLayer';
+import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 
 const ACCENT = '#3B82F6';
 
@@ -76,10 +77,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
   },
   subtitle: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_FAINT,
     marginTop: 2,
     marginBottom: 4,
@@ -100,6 +103,7 @@ const styles = StyleSheet.create({
   },
   rowText: {
     fontSize: 16,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
     flex: 1,
   },

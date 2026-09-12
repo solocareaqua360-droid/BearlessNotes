@@ -16,6 +16,7 @@ import {
   GLASS_TEXT_FAINT,
 } from '../constants/glass';
 import GlassLayer from './GlassLayer';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#3B82F6';
 const documentsCollection = collection(db, 'documents');
@@ -229,12 +230,14 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
     marginBottom: 4,
   },
   sectionLabel: {
     fontSize: 11,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: GLASS_TEXT_FAINT,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
@@ -254,10 +257,12 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   emptyLabel: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_FAINT,
     textAlign: 'center',
     paddingVertical: 10,
@@ -287,10 +292,12 @@ const styles = StyleSheet.create({
   rowText: {
     flex: 1,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   rowTextAction: {
     color: ACCENT,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
 });

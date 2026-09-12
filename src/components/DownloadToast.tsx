@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 export default function DownloadToast({
   fileName,
@@ -40,6 +41,7 @@ const styles = StyleSheet.create({
   },
   message: {
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: '#fff',
   },
   actions: {
@@ -49,11 +51,13 @@ const styles = StyleSheet.create({
   action: {
     fontSize: 14,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#60A5FA',
   },
   ignore: {
     fontSize: 14,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#9CA3AF',
   },
 });

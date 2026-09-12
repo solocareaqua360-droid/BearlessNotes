@@ -23,6 +23,7 @@ import BoardMiniMap from '../components/BoardMiniMap';
 import RenamePrompt from '../components/RenamePrompt';
 import ContentColumn, { MAX_CONTENT_WIDTH } from '../components/ContentColumn';
 import { GLASS_BODY, GLASS_TEXT } from '../constants/glass';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#8B5CF6';
 const boardsCollection = collection(db, 'boards');
@@ -297,6 +298,7 @@ const styles = StyleSheet.create({
   header: {
     fontSize: 46,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#fff',
   },
   addButton: {
@@ -326,12 +328,14 @@ const styles = StyleSheet.create({
   emptyLabel: {
     marginTop: 16,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
   },
   emptyHint: {
     marginTop: 6,
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.55)',
     textAlign: 'center',
   },
@@ -404,9 +408,11 @@ const styles = StyleSheet.create({
   rowTitle: {
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
   rowMeta: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
   },
   rowActionButton: {
     padding: 6,
@@ -440,6 +446,7 @@ const styles = StyleSheet.create({
   },
   cardMenuRowLabel: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
 });

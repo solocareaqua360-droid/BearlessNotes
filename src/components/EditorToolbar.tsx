@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { BLOCK_ACTIONS, BlockAction, BlockActionIcon } from './blockActions';
+import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 
 const TEXT_COLORS = ['#111827', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
 const HIGHLIGHT_COLORS = ['#FEF08A', '#BBF7D0', '#BFDBFE', '#FBCFE8', '#E9D5FF'];
@@ -80,7 +81,7 @@ export default function EditorToolbar({
         keyboardShouldPersistTaps="always"
       >
         <Pressable hitSlop={6} accessibilityLabel="Жирний" onPress={() => onApplyMarker('**', '**')}>
-          <Text style={[styles.formatButtonLabel, { fontWeight: '700' }]}>Ж</Text>
+          <Text style={[styles.formatButtonLabel, { fontFamily: FONT_BOLD }]}>Ж</Text>
         </Pressable>
         <Pressable hitSlop={6} accessibilityLabel="Курсив" onPress={() => onApplyMarker('*', '*')}>
           <Text style={[styles.formatButtonLabel, { fontStyle: 'italic' }]}>К</Text>
@@ -188,6 +189,7 @@ const styles = StyleSheet.create({
   },
   formatButtonLabel: {
     fontSize: 17,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
     minWidth: 20,
     textAlign: 'center',

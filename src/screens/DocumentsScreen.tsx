@@ -52,7 +52,7 @@ import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
 import DocumentCard from '../components/DocumentCard';
 import { extractPreview, EXPANDED_PREVIEW_LENGTH } from '../utils/documentPreview';
-import { FONT_REGULAR, FONT_BOLD, FONT_SEMIBOLD } from '../utils/fonts';
+import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import StickerComposer from '../components/StickerComposer';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import SketchEditor from '../components/SketchEditor';
@@ -930,6 +930,7 @@ const styles = StyleSheet.create({
   },
   editorPaneEmptyLabel: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.5)',
   },
   // The capsule, stood on its end against the right edge. A full-height
@@ -1019,6 +1020,7 @@ const styles = StyleSheet.create({
   menuSectionLabel: {
     fontSize: 11,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     letterSpacing: 0.04,
     textTransform: 'uppercase',
     color: GLASS_TEXT_FAINT,
@@ -1092,6 +1094,7 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     color: STICKER_DARK,
     fontWeight: '500',
+    fontFamily: FONT_MEDIUM,
   },
   filterRow: {
     flexDirection: 'row',

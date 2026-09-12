@@ -32,6 +32,7 @@ import {
   GLASS_TEXT_MUTED,
 } from '../constants/glass';
 import GlassLayer from './GlassLayer';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#3B82F6';
 
@@ -595,6 +596,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
     marginBottom: 8,
   },
@@ -607,11 +609,13 @@ const styles = StyleSheet.create({
   },
   hint: {
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_MUTED,
   },
   sectionLabel: {
     fontSize: 11,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: GLASS_TEXT_FAINT,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
@@ -636,11 +640,13 @@ const styles = StyleSheet.create({
   },
   chipLabel: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   chipLabelActive: {
     color: ACCENT,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
   switchRow: {
     flexDirection: 'row',
@@ -650,6 +656,7 @@ const styles = StyleSheet.create({
   },
   switchLabel: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   input: {
@@ -659,6 +666,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   columnCard: {
@@ -680,20 +688,24 @@ const styles = StyleSheet.create({
   columnName: {
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: GLASS_TEXT,
   },
   columnSample: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_FAINT,
   },
   titleBadge: {
     fontSize: 11,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: ACCENT,
   },
   titleBadgePick: {
     fontSize: 11,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: GLASS_TEXT_FAINT,
   },
   titleControls: {
@@ -703,6 +715,7 @@ const styles = StyleSheet.create({
   },
   titlePreview: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_MUTED,
     marginBottom: 8,
   },
@@ -719,6 +732,7 @@ const styles = StyleSheet.create({
   mappingLabel: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   mappingLabelSkip: {
@@ -738,10 +752,12 @@ const styles = StyleSheet.create({
   menuRowLabel: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   menuRowType: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_FAINT,
   },
   storedList: {
@@ -756,6 +772,7 @@ const styles = StyleSheet.create({
   storedLabel: {
     flex: 1,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   primaryButton: {
@@ -768,6 +785,7 @@ const styles = StyleSheet.create({
   primaryButtonLabel: {
     fontSize: 15,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#fff',
   },
 });

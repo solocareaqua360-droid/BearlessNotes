@@ -7,6 +7,7 @@ import { colorForDocument } from '../utils/documentColor';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { FIELD_TYPE_ICON } from './FieldsEditorSheet';
 import TagChips from './TagChips';
+import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 // A square thumbnail for a resolved relation target - same
 // checking/ready/missing states as PhotosScreen's own PhotoThumb, without
@@ -163,6 +164,7 @@ const styles = StyleSheet.create({
   rowTitle: {
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
   rowFieldChips: {
     flexDirection: 'row',
@@ -178,6 +180,7 @@ const styles = StyleSheet.create({
   },
   rowFieldChipValue: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
     flexShrink: 1,
   },
   rowMeta: {
@@ -312,6 +315,7 @@ const gridStyles = StyleSheet.create({
   title: {
     fontSize: 14,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
   chip: {
     flexDirection: 'row',
@@ -320,6 +324,7 @@ const gridStyles = StyleSheet.create({
   },
   chipValue: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
     flexShrink: 1,
   },
   corner: {

@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 
 // `actionLabel` defaults to "Скасувати" (its original, only job) - Files/
 // Photos/Links also reuse this exact shape for "Додано у Файли · Перемістити"
@@ -41,11 +42,13 @@ const styles = StyleSheet.create({
   message: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: '#fff',
   },
   undo: {
     fontSize: 14,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#60A5FA',
   },
 });

@@ -26,6 +26,7 @@ import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import SketchEditor from '../components/SketchEditor';
 import ContentColumn from '../components/ContentColumn';
 import { useRail } from '../hooks/useRail';
+import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR } from '../utils/fonts';
 
 const STICKER_YELLOW = '#FBE97A';
 const STICKER_DARK = '#4a3f05';
@@ -320,6 +321,7 @@ const styles = StyleSheet.create({
   header: {
     fontSize: 46,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#fff',
   },
   // Same frosted-glass round button as other dark-header icon toggles in
@@ -356,12 +358,14 @@ const styles = StyleSheet.create({
   emptyLabel: {
     marginTop: 16,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
   },
   emptyHint: {
     marginTop: 6,
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.55)',
     textAlign: 'center',
   },
@@ -403,6 +407,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: STICKER_DARK,
     fontWeight: '500',
+    fontFamily: FONT_MEDIUM,
   },
   cardFooter: {
     flexDirection: 'row',
@@ -416,6 +421,7 @@ const styles = StyleSheet.create({
   },
   cardStatus: {
     fontSize: 10,
+    fontFamily: FONT_REGULAR,
     color: STICKER_DARK,
     opacity: 0.75,
   },

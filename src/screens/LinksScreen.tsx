@@ -57,6 +57,7 @@ import { colorForDocument } from '../utils/documentColor';
 import SortMenuRows from '../components/SortMenuRows';
 import ContentColumn from '../components/ContentColumn';
 import { useRail } from '../hooks/useRail';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#14B8A6';
 const DANGER = '#EF4444';
@@ -973,6 +974,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     fontSize: 46,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#fff',
   },
   // One elongated glass capsule instead of three bare gray icons - matches
@@ -1020,6 +1022,7 @@ const styles = StyleSheet.create({
   menuSectionLabel: {
     fontSize: 11,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     letterSpacing: 0.04,
     textTransform: 'uppercase',
     color: '#9CA3AF',
@@ -1037,6 +1040,7 @@ const styles = StyleSheet.create({
   menuRowLabel: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   filterRow: {
@@ -1062,6 +1066,7 @@ const styles = StyleSheet.create({
   filterChipLabel: {
     fontSize: 13,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
   searchRow: {
     flexDirection: 'row',
@@ -1077,6 +1082,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   emptyState: {
@@ -1096,12 +1102,14 @@ const styles = StyleSheet.create({
   emptyLabel: {
     marginTop: 16,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
   },
   emptyHint: {
     marginTop: 6,
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.55)',
     textAlign: 'center',
   },
@@ -1150,9 +1158,11 @@ const styles = StyleSheet.create({
   gridTitle: {
     fontSize: 13,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
   },
   gridCaption: {
     fontSize: 11,
+    fontFamily: FONT_REGULAR,
   },
   gridSelectBox: {
     position: 'absolute',
@@ -1222,10 +1232,12 @@ const styles = StyleSheet.create({
   rowTitle: {
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#111827',
   },
   rowCaption: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
   },
   rowMeta: {
@@ -1271,6 +1283,7 @@ const styles = StyleSheet.create({
   },
   cardMenuRowLabel: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
 });

@@ -25,7 +25,7 @@ import { hasNoteContent } from '../utils/documentPreview';
 import { useDayHistory } from '../hooks/useDayHistory';
 import DayHistoryList from '../components/DayHistoryList';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
-import { FONT_REGULAR, FONT_MEDIUM, FONT_SEMIBOLD, FONT_BOLD } from '../utils/fonts';
+import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import {
   MONTH_FULL,
   WEEKDAY_SHORT,
@@ -1213,6 +1213,7 @@ const styles = StyleSheet.create({
   },
   dayNumCompact: {
     fontSize: 18,
+    fontFamily: FONT_REGULAR,
     lineHeight: 21,
   },
   dayMonthCompact: {
@@ -1316,6 +1317,7 @@ const styles = StyleSheet.create({
   monthCapsuleLabel: {
     fontSize: 13,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: 'rgba(255,255,255,0.85)',
   },
   noteArea: {
@@ -1335,6 +1337,7 @@ const styles = StyleSheet.create({
   },
   collapseNoteLabel: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.6)',
   },
   dueCard: {

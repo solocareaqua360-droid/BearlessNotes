@@ -18,6 +18,7 @@ import {
   GLASS_TEXT_MUTED,
 } from '../constants/glass';
 import GlassLayer from './GlassLayer';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#3B82F6';
 const DANGER = GLASS_DANGER;
@@ -237,6 +238,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
     marginBottom: 14,
   },
@@ -249,6 +251,7 @@ const styles = StyleSheet.create({
   calHeadTitle: {
     fontSize: 13.5,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
   },
   calHeadArrows: {
@@ -264,6 +267,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 10.5,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: GLASS_TEXT_FAINT,
   },
   grid: {
@@ -292,6 +296,7 @@ const styles = StyleSheet.create({
   },
   dayNum: {
     fontSize: 12.5,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   dayNumMuted: {
@@ -300,6 +305,7 @@ const styles = StyleSheet.create({
   dayNumSelected: {
     color: '#fff',
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
   },
   timeRow: {
     flexDirection: 'row',
@@ -313,6 +319,7 @@ const styles = StyleSheet.create({
   timeLabel: {
     fontSize: 14,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: GLASS_TEXT,
   },
   timeToggle: {
@@ -330,6 +337,7 @@ const styles = StyleSheet.create({
   timeToggleText: {
     fontSize: 12.5,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: GLASS_TEXT_MUTED,
   },
   timeToggleTextOn: {
@@ -361,6 +369,7 @@ const styles = StyleSheet.create({
   stepperValue: {
     fontSize: 22,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
     fontVariant: ['tabular-nums'],
     width: 34,
@@ -369,6 +378,7 @@ const styles = StyleSheet.create({
   stepperColon: {
     fontSize: 22,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
   },
   actions: {
@@ -383,6 +393,7 @@ const styles = StyleSheet.create({
   clearBtnText: {
     fontSize: 14,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: DANGER,
   },
   cancelBtn: {
@@ -397,6 +408,7 @@ const styles = StyleSheet.create({
   cancelBtnText: {
     fontSize: 14,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#6B6558',
   },
   saveBtn: {
@@ -409,6 +421,7 @@ const styles = StyleSheet.create({
   saveBtnText: {
     fontSize: 14,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#fff',
   },
 });

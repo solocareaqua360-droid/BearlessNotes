@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#3B82F6';
 
@@ -108,6 +109,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#111827',
   },
   input: {
@@ -117,6 +119,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   inputBusy: {
@@ -142,6 +145,7 @@ const styles = StyleSheet.create({
   },
   cancelLabel: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#6B7280',
   },
   saveButton: {
@@ -156,6 +160,7 @@ const styles = StyleSheet.create({
   saveLabel: {
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#fff',
   },
 });

@@ -11,6 +11,7 @@ import { colorForDocument } from '../utils/documentColor';
 import MediaRowCard from './MediaRowCard';
 import ZoomableImageViewer from './ZoomableImageViewer';
 import VideoPlayerModal from './VideoPlayerModal';
+import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ICON_BY_KIND: Record<HistoryItemKind, keyof typeof Ionicons.glyphMap> = {
   file: 'document-outline',
@@ -291,6 +292,7 @@ const styles = StyleSheet.create({
   headerLabel: {
     fontSize: 13,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: 'rgba(255,255,255,0.85)',
   },
   list: {
@@ -310,6 +312,7 @@ const styles = StyleSheet.create({
   },
   emptyLabel: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.5)',
     paddingTop: 10,
   },
@@ -345,9 +348,11 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 14,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
   cardCaption: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
   },
   dbButton: {
     padding: 4,

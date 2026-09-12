@@ -27,6 +27,7 @@ import { groupKindFields, kindsOf, labelForKind } from '../utils/groups';
 import { rowTitleOf } from '../utils/customRowDisplay';
 import ContentColumn from '../components/ContentColumn';
 import { GroupItem, useGroupItems } from '../hooks/useGroupItems';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#69736E';
 const DANGER = '#EF4444';
@@ -372,6 +373,7 @@ const styles = StyleSheet.create({
   header: {
     fontSize: 40,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#fff',
   },
   emptyState: {
@@ -381,6 +383,7 @@ const styles = StyleSheet.create({
   },
   emptyHint: {
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.6)',
     textAlign: 'center',
     paddingHorizontal: 24,
@@ -414,10 +417,12 @@ const styles = StyleSheet.create({
   rowTitle: {
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#fff',
   },
   rowMeta: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.6)',
   },
   archiveToggle: {
@@ -431,6 +436,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(255,255,255,0.6)',
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
   backdrop: {
     flex: 1,
@@ -462,6 +468,7 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontSize: 17,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
     flexShrink: 1,
   },
@@ -483,6 +490,7 @@ const styles = StyleSheet.create({
   },
   actionLabel: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   itemList: {
@@ -491,6 +499,7 @@ const styles = StyleSheet.create({
   },
   sheetEmpty: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
     paddingVertical: 16,
   },
@@ -510,11 +519,13 @@ const styles = StyleSheet.create({
   },
   itemTitle: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
     flexShrink: 1,
   },
   itemKind: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
   },
 });

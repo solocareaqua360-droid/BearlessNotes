@@ -1,6 +1,7 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colorForDocument } from '../utils/documentColor';
+import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 type Props = {
   // Only used to pick the card's colour (colorForDocument) - same
@@ -85,8 +86,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
   caption: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
   },
 });

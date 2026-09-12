@@ -95,6 +95,7 @@ import DownloadToast from '../components/DownloadToast';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import CustomRowBlockCard from '../components/CustomRowBlockCard';
 import CustomDatabaseViewBlockCard from '../components/CustomDatabaseViewBlockCard';
+import { FONT_BOLD, FONT_EXTRABOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -4451,6 +4452,7 @@ const styles = StyleSheet.create({
   exportMenuLabel: {
     fontSize: 11,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     textTransform: 'uppercase',
     color: '#9CA3AF',
     paddingHorizontal: 8,
@@ -4467,6 +4469,7 @@ const styles = StyleSheet.create({
   exportMenuRowLabel: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   // A translucent-on-terracotta circle while saving, solid white once
@@ -4509,6 +4512,7 @@ const styles = StyleSheet.create({
     // At least 2x the previous 24.
     fontSize: 48,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#111827',
     paddingHorizontal: 20,
     paddingBottom: 12,
@@ -4549,6 +4553,7 @@ const styles = StyleSheet.create({
   blockInput: {
     flex: 1,
     fontSize: 16,
+    fontFamily: FONT_REGULAR,
     lineHeight: 22,
     includeFontPadding: false,
     textAlignVertical: 'top',
@@ -4563,6 +4568,7 @@ const styles = StyleSheet.create({
   },
   blockDisplayText: {
     fontSize: 16,
+    fontFamily: FONT_REGULAR,
     lineHeight: 22,
     includeFontPadding: false,
   },
@@ -4592,14 +4598,17 @@ const styles = StyleSheet.create({
   checkboxReminderText: {
     fontSize: 11,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: ACCENT,
   },
   checkboxReminderTextEmpty: {
     color: '#9CA3AF',
     fontWeight: '500',
+    fontFamily: FONT_MEDIUM,
   },
   bulletMark: {
     fontSize: 18,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
     paddingLeft: 4,
   },
@@ -4631,11 +4640,13 @@ const styles = StyleSheet.create({
   tableFormulaRefText: {
     fontSize: 12,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#6B7280',
   },
   tableFormulaInput: {
     flex: 1,
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -4664,6 +4675,7 @@ const styles = StyleSheet.create({
   tableGutterText: {
     fontSize: 11,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#9CA3AF',
   },
   tableColumnHeaderCell: {
@@ -4675,6 +4687,7 @@ const styles = StyleSheet.create({
   tableColumnHeaderText: {
     fontSize: 11,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#9CA3AF',
   },
   tableRow: {
@@ -4698,6 +4711,7 @@ const styles = StyleSheet.create({
   },
   tableCellText: {
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   tableRowRemove: {
@@ -4716,6 +4730,7 @@ const styles = StyleSheet.create({
   tableControlLabel: {
     fontSize: 12,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#6B7280',
   },
   blockImageWrap: {
@@ -4759,6 +4774,7 @@ const styles = StyleSheet.create({
   fileBlockName: {
     flex: 1,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   fileDbButton: {
@@ -4793,6 +4809,7 @@ const styles = StyleSheet.create({
   },
   attachmentStatusLabel: {
     fontSize: 11,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
   },
   linkCardVideo: {
@@ -4874,10 +4891,12 @@ const styles = StyleSheet.create({
   linkCardTitle: {
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#111827',
   },
   linkCardCaption: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
   },
   linkCardCompact: {
@@ -4913,6 +4932,7 @@ const styles = StyleSheet.create({
   linkCompactText: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   linkPromptBackdrop: {
@@ -4933,10 +4953,12 @@ const styles = StyleSheet.create({
   linkPromptTitle: {
     fontSize: 17,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#111827',
   },
   linkPromptHint: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: '#6B7280',
     lineHeight: 18,
   },
@@ -4947,6 +4969,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   linkPromptButtons: {
@@ -4961,6 +4984,7 @@ const styles = StyleSheet.create({
   },
   linkPromptCancelLabel: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#6B7280',
   },
   linkPromptSaveButton: {
@@ -4975,6 +4999,7 @@ const styles = StyleSheet.create({
   linkPromptSaveLabel: {
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#fff',
   },
   dropLine: {
@@ -5001,6 +5026,7 @@ const styles = StyleSheet.create({
   },
   addBlockLabel: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   selectedActionsWrap: {
@@ -5029,6 +5055,7 @@ const styles = StyleSheet.create({
   selectedActionsCount: {
     fontSize: 14,
     fontWeight: '800',
+    fontFamily: FONT_EXTRABOLD,
     color: '#fff',
   },
   selectedActionsDivider: {
@@ -5044,6 +5071,7 @@ const styles = StyleSheet.create({
   selectedActionLabel: {
     fontSize: 13,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#fff',
   },
 });

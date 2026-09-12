@@ -9,6 +9,7 @@ import { RootStackParamList } from '../navigation';
 import { TaggableKind } from '../types';
 import { useTags, itemsCollectionForKind, parseUsedInKey } from '../hooks/useTags';
 import ContentColumn from '../components/ContentColumn';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const documentsCollection = collection(db, 'documents');
 
@@ -182,11 +183,13 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: '#111827',
     flexShrink: 1,
   },
   subtitle: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
     paddingLeft: 68,
     paddingTop: 4,
@@ -199,6 +202,7 @@ const styles = StyleSheet.create({
   },
   emptyLabel: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#6B7280',
   },
   list: {
@@ -224,6 +228,7 @@ const styles = StyleSheet.create({
   rowLabel: {
     flex: 1,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   createRow: {
@@ -242,5 +247,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#3B82F6',
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
 });

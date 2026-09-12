@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { Ionicons } from '@expo/vector-icons';
 import { Tag } from '../types';
 import TagPicker from './TagPicker';
+import { FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#3B82F6';
 
@@ -141,6 +142,7 @@ const styles = StyleSheet.create({
   chipLabel: {
     fontSize: 12,
     fontWeight: '500',
+    fontFamily: FONT_MEDIUM,
   },
   inputWrap: {
     flexDirection: 'row',
@@ -154,6 +156,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
     padding: 0,
   },
@@ -183,6 +186,7 @@ const styles = StyleSheet.create({
   },
   suggestionLabel: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: '#111827',
   },
   createRow: {
@@ -196,5 +200,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: ACCENT,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
 });

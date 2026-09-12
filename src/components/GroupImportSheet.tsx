@@ -14,6 +14,7 @@ import {
   GLASS_TEXT_MUTED,
 } from '../constants/glass';
 import GlassLayer from './GlassLayer';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#3B82F6';
 
@@ -236,6 +237,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
     marginBottom: 8,
   },
@@ -244,6 +246,7 @@ const styles = StyleSheet.create({
   },
   empty: {
     fontSize: 13,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_FAINT,
     paddingVertical: 16,
   },
@@ -259,15 +262,18 @@ const styles = StyleSheet.create({
   kindLabel: {
     fontSize: 13,
     fontWeight: '700',
+    fontFamily: FONT_BOLD,
     color: GLASS_TEXT_MUTED,
   },
   kindCount: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_FAINT,
   },
   kindCountCapped: {
     color: ACCENT,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
   },
   itemRow: {
     flexDirection: 'row',
@@ -281,6 +287,7 @@ const styles = StyleSheet.create({
   itemLabel: {
     flex: 1,
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
   itemLabelBlocked: {
@@ -288,6 +295,7 @@ const styles = StyleSheet.create({
   },
   capHint: {
     fontSize: 12,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_FAINT,
     paddingBottom: 8,
   },
@@ -317,6 +325,7 @@ const styles = StyleSheet.create({
   },
   cancelLabel: {
     fontSize: 15,
+    fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_MUTED,
   },
   saveButton: {
@@ -331,6 +340,7 @@ const styles = StyleSheet.create({
   saveLabel: {
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
     color: '#fff',
   },
 });
