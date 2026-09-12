@@ -555,6 +555,21 @@ export default function DocumentsScreen() {
                     {viewMode === 'grid' && <Ionicons name="checkmark-outline" size={18} color={ACCENT} />}
                   </Pressable>
                   <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
+                  <View style={styles.menuRule} />
+                  <Pressable
+                    style={styles.menuRow}
+                    onPress={() => {
+                      setMenuOpen(false);
+                      toggleSelectMode();
+                    }}
+                  >
+                    <Ionicons
+                      name={isSelectMode ? 'close-outline' : 'checkmark-circle-outline'}
+                      size={17}
+                      color={GLASS_TEXT}
+                    />
+                    <Text style={styles.menuRowLabel}>{isSelectMode ? 'Скасувати вибір' : 'Вибрати'}</Text>
+                  </Pressable>
                 </ScrollView>
               </View>
             )}
@@ -575,11 +590,7 @@ export default function DocumentsScreen() {
               </Pressable>
               <View style={styles.sideIslandDivider} />
               <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
-              </Pressable>
-              <View style={styles.sideIslandDivider} />
-              <Pressable hitSlop={8} onPress={toggleSelectMode}>
-                <Ionicons name={isSelectMode ? 'close' : 'checkmark-circle-outline'} size={24} color="#fff" />
+                <Ionicons name="apps-outline" size={24} color="#fff" />
               </Pressable>
             </View>
           </View>
@@ -996,6 +1007,11 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
     elevation: 10,
+  },
+  menuRule: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    marginVertical: 6,
   },
   menuScroll: {
     padding: 6,

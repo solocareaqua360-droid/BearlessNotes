@@ -5,7 +5,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { hapticButtonDown } from '../utils/haptics';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Tag } from '../types';
-import { FONT_REGULAR, FONT_SEMIBOLD, FONT_BOLD, FONT_EXTRABOLD } from '../utils/fonts';
+import { FONT_REGULAR, FONT_SEMIBOLD, FONT_BOLD } from '../utils/fonts';
 import { RAIL_RIGHT } from '../constants/rail';
 import { GLASS_ISLAND } from '../constants/glass';
 import { useRail } from '../hooks/useRail';
@@ -515,7 +515,7 @@ export default function TagsDrawer({
               style={StyleSheet.absoluteFill}
               pointerEvents="none"
             />
-            <Text style={styles.openButtonHash}>#</Text>
+            <Ionicons name="folder-outline" size={28} color={GLASS_TEXT} />
           </Pressable>
         </GlassPortal>
       )}
@@ -742,11 +742,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 6,
-  },
-  openButtonHash: {
-    fontSize: 26,
-    fontWeight: '700',
-    fontFamily: FONT_EXTRABOLD,
-    color: GLASS_TEXT,
   },
 });

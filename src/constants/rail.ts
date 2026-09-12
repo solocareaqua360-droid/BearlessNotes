@@ -44,11 +44,11 @@ export const TAG_ROW_PAD = 4;
 // How far in from the very top edge the group tabs start - shared with
 // DocumentsScreen's own chromeTop, so the two never drift apart.
 export const CHROME_TOP = 4;
-// 3 buttons at 24 + 18 of padding at each end + 2 dividers at 1 + 4 gaps
-// at 18 + the 1px border top and bottom. This was still the old 4-button,
-// 21px-icon capsule's height (148) after the capsule grew - the mismatch
-// was exactly why the round buttons didn't have room to sit clear of it.
-const CAPSULE_HEIGHT = 184;
+// 2 buttons at 24 + 18 of padding at each end + 1 divider + 2 gaps at 18
+// + the 1px border top and bottom. Keep this in step with the capsule
+// itself: when it was left saying 184 for a capsule that had grown, the
+// round buttons ended up with no room to sit clear of it.
+const CAPSULE_HEIGHT = 123;
 
 // How far the capsule hangs below the top of the chrome band, and how far
 // the island drops into the tag row's own band. Both rows keep the rail's

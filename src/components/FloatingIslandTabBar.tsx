@@ -16,7 +16,7 @@ import { useRail } from '../hooks/useRail';
 const ICON_BY_ROUTE: Record<string, keyof typeof Ionicons.glyphMap> = {
   Документи: 'document-text-outline',
   Календар: 'calendar-outline',
-  Дошки: 'apps-outline',
+  Дошки: 'easel-outline',
   Більше: 'ellipsis-horizontal-outline',
 };
 
