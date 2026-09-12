@@ -451,7 +451,22 @@ export default function CalendarScreen() {
   // make it a tall rectangle over a square grid of days. Shorter rows put
   // it back in proportion with its own width.
   const rowHeight = isTwoPane ? 32 : ROW_HEIGHT;
-  const monthAreaHeight = rowHeight * 6;
+  const monthGrid = useMemo(
+    () => getMonthGrid(visibleMonth.year, visibleMonth.month),
+    [visibleMonth.year, visibleMonth.month]
+  );
+  // The grid is always 42 cells, but a month rarely spans all six weeks -
+  // September 2026 ends on the fifth, and the sixth was a row of nothing
+  // but next month's greyed-out numbers padding the plate out. Draw only
+  // the rows this month reaches into.
+  const monthRows = useMemo(() => {
+    let last = 0;
+    monthGrid.forEach((cell, i) => {
+      if (cell.inMonth) last = Math.floor(i / 7);
+    });
+    return last + 1;
+  }, [monthGrid]);
+  const monthAreaHeight = rowHeight * monthRows;
   const filledRowHeight = rowHeight + WEEKDAY_HEADER_HEIGHT;
   const weekRowHeight = onlyFilledDays ? filledRowHeight : rowHeight;
   // calendarPlate's own border/padding used to be plain (non-animated)
@@ -513,10 +528,6 @@ export default function CalendarScreen() {
     );
   }
 
-  const monthGrid = useMemo(
-    () => getMonthGrid(visibleMonth.year, visibleMonth.month),
-    [visibleMonth.year, visibleMonth.month]
-  );
   const selectedKey = dateKey(selectedDate);
   const dailyDocId = `day_${selectedKey}`;
 
@@ -875,7 +886,7 @@ export default function CalendarScreen() {
                       next visual row instead of staying in this one - the same
                       flex:1-per-row technique the week strip below already uses
                       safely (dayCell), just applied per week instead of once. */}
-                  {Array.from({ length: 6 }, (_, row) => (
+                  {Array.from({ length: monthRows }, (_, row) => (
                     <View key={row} style={styles.monthGridRow}>
                       {monthGrid.slice(row * 7, row * 7 + 7).map(({ date, inMonth }) => {
                         const key = dateKey(date);
