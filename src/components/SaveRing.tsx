@@ -29,9 +29,15 @@ export default function SaveRing({ saving, color = '#fff' }: { saving: boolean; 
   const arcOpacity = useSharedValue(0);
   const ringOpacity = useSharedValue(0);
 
-  const radius = size.w / 2 - STROKE / 2;
-  // A stadium: two straight sides and two half-circle ends.
-  const perimeter = Math.max(1, 2 * Math.max(0, size.h - size.w) + 2 * Math.PI * radius);
+  // A stadium's radius comes from its SHORT side, whichever that is: the
+  // capsule stands on its end against the right edge and lies down in the
+  // top-left corner, and taking the width both times drew an ellipse far
+  // wider than the button it was meant to trace.
+  const short = Math.min(size.w, size.h);
+  const long = Math.max(size.w, size.h);
+  const radius = short / 2 - STROKE / 2;
+  // Two straight sides and two half-circle ends.
+  const perimeter = Math.max(1, 2 * (long - short) + 2 * Math.PI * radius);
 
   useEffect(() => {
     if (saving) {
