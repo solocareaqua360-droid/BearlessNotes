@@ -1995,6 +1995,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const railLeft = 'pane' in props ? props.railLeft : undefined;
   // Which edge the rail stands on, and which way its menu opens from it.
   const railSide = railLeft !== undefined ? { left: railLeft } : { right: railRight };
+  // On the left edge the capsule lies down: standing on its end there it
+  // ran straight through the title and the first blocks, which is the one
+  // thing the rail must never do on the side the text starts from.
+  const railHorizontal = railLeft !== undefined;
   const menuSide =
     railLeft !== undefined
       ? { left: railLeft + RAIL_WIDTH + 8 }
@@ -3990,8 +3994,22 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       {!embedded && (
       <View style={styles.header}>
         {/* Empty now - both its buttons stand on the rail. It stays for
-            the top spacing it gives the title. */}
-        <View style={styles.headerLeft} />
+            the top spacing it gives the title, which on the left edge has
+            to clear the capsule lying across the corner. */}
+        <View
+          style={[
+            styles.headerLeft,
+            railHorizontal && {
+              // What is left after the header's own 56 above and 12 below:
+              // enough that the title starts a gap under the capsule
+              // rather than behind it.
+              paddingTop: Math.max(
+                0,
+                editorInsets.top + CHROME_TOP + CAPSULE_DROP + RAIL_WIDTH + 12 - 68
+              ),
+            },
+          ]}
+        />
       </View>
       )}
 
@@ -4035,7 +4053,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               {/* Only where there are two panes to collapse into one. */}
               {!!onToggleFullscreen && (
                 <>
-                  <View style={styles.headerRightDivider} />
+                  <View
+                    style={[styles.headerRightDivider, railHorizontal && styles.headerRightDividerRow]}
+                  />
                   <Pressable hitSlop={8} onPress={onToggleFullscreen}>
                     <Ionicons
                       name={paneFullscreen ? 'contract-outline' : 'expand-outline'}
@@ -4575,7 +4595,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  // Select-mode toggle + "..." in one capsule, stood on its end.
+  // "...", the way out and full screen in one capsule. Stood on its end
+  // against the right edge; laid down in the top-left corner, where it
+  // would otherwise run through the text.
+  headerRightRow: {
+    flexDirection: 'row',
+    paddingVertical: 19,
+    paddingHorizontal: 18,
+  },
+  headerRightDividerRow: {
+    width: 1,
+    height: 20,
+  },
   headerRight: {
     alignItems: 'center',
     gap: 18,
