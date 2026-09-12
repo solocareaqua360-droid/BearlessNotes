@@ -102,7 +102,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
-import { RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import SaveRing from '../components/SaveRing';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -3935,7 +3935,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           of glass here. */}
       {!embedded && editorFocused && (
         <GlassPortal>
-          <View style={[styles.editorRail, { top: editorInsets.top + 26 }]} pointerEvents="box-none">
+          {/* The same line the documents screen's capsule hangs from, off
+              the same constants - the two screens sit one behind the
+              other, and a capsule that shifted between them would read as
+              a different control. */}
+          <View
+            style={[styles.editorRail, { top: editorInsets.top + CHROME_TOP + CAPSULE_DROP }]}
+            pointerEvents="box-none"
+          >
             <View style={styles.headerRight}>
               <BlurView
                 intensity={60}
@@ -3967,7 +3974,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         <View
           style={[
             styles.exportMenuPanel,
-            { top: editorInsets.top + 26, right: RAIL_RIGHT + RAIL_WIDTH + 8 },
+            {
+              top: editorInsets.top + CHROME_TOP + CAPSULE_DROP,
+              right: RAIL_RIGHT + RAIL_WIDTH + 8,
+            },
           ]}
         >
           <Text style={styles.exportMenuLabel}>Оформлення</Text>
