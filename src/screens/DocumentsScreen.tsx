@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -296,6 +296,30 @@ export default function DocumentsScreen() {
       );
     });
   }, []);
+
+  // What the drawer's numbers say. Totals over everything, not over what
+  // the current filter leaves standing - a count that moved as you
+  // filtered would tell you nothing about where to go next.
+  const drawerCounts = useMemo(() => {
+    const byTag: Record<string, number> = {};
+    let untagged = 0;
+    for (const d of documents) {
+      const ids = d.tagIds ?? [];
+      if (ids.length === 0) untagged += 1;
+      for (const id of ids) byTag[id] = (byTag[id] ?? 0) + 1;
+    }
+    return { byTag, untagged };
+  }, [documents]);
+
+  const groupCounts = useMemo(() => {
+    const byGroup: Record<string, number> = {};
+    let ungrouped = 0;
+    for (const d of documents) {
+      if (d.groupId) byGroup[d.groupId] = (byGroup[d.groupId] ?? 0) + 1;
+      else ungrouped += 1;
+    }
+    return { byGroup, ungrouped };
+  }, [documents]);
 
   // Search reaches every document, not just the group in view - narrowing
   // by two things at once is rarely what anyone means by searching.
@@ -953,14 +977,30 @@ export default function DocumentsScreen() {
         activeFilter={activeFilter}
         onSelectFilter={setActiveFilter}
         hideOpenButton={isSelectMode}
+        counts={drawerCounts}
         groupSection={{
           // The same list the tabs show, sentinels and all, so the two
           // never disagree about what there is to pick.
           items: [
-            { id: null, name: 'Всі', color: GLASS_TEXT_MUTED },
-            ...groups.map((g) => ({ id: g.id, name: g.name, color: g.color })),
-            { id: UNASSIGNED_ID, name: 'Без групи', color: GLASS_TEXT_MUTED },
-            { id: STICKERS_GROUP, name: 'Стікери', color: STICKER_YELLOW },
+            { id: null, name: 'Всі', color: GLASS_TEXT_MUTED, count: documents.length },
+            ...groups.map((g) => ({
+              id: g.id,
+              name: g.name,
+              color: g.color,
+              count: groupCounts.byGroup[g.id] ?? 0,
+            })),
+            {
+              id: UNASSIGNED_ID,
+              name: 'Без групи',
+              color: GLASS_TEXT_MUTED,
+              count: groupCounts.ungrouped,
+            },
+            {
+              id: STICKERS_GROUP,
+              name: 'Стікери',
+              color: STICKER_YELLOW,
+              count: freeStickers.length,
+            },
           ],
           selected: groupFilter,
           onSelect: setGroupFilter,

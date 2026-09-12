@@ -95,6 +95,16 @@ function buildTree(tags: Tag[]): TreeNode {
 //
 // `guides` is one flag per cell, computed by the parent: cells before the
 // row's own carry a line when that ancestor has siblings still to come.
+// What a row's number says. A folder with a tag of its own counts the
+// items carrying that tag; a branch that is only a path segment has no
+// tag to count, so it stands for everything under it.
+function countFor(node: TreeNode, counts: Record<string, number>): number {
+  if (node.tag) return counts[node.tag.id] ?? 0;
+  let total = 0;
+  for (const child of node.children.values()) total += countFor(child, counts);
+  return total;
+}
+
 // The head of a section, and the handle that folds it away. Same shape as
 // a row in it, one notch quieter.
 function SectionHeader({
@@ -125,6 +135,7 @@ function TreeRow({
   isLast,
   expanded,
   selectedIds,
+  counts,
   onToggleExpand,
   onToggleTag,
 }: {
@@ -134,6 +145,7 @@ function TreeRow({
   isLast: boolean;
   expanded: Set<string>;
   selectedIds: Set<string>;
+  counts: Record<string, number>;
   onToggleExpand: (path: string) => void;
   onToggleTag: (tag: Tag) => void;
 }) {
@@ -200,6 +212,7 @@ function TreeRow({
         >
           {node.name}
         </Text>
+        <Text style={styles.rowCount}>{countFor(node, counts)}</Text>
         {/* Reserved always, populated only when selected - so picking a
             folder doesn't shift the label. */}
         <View style={styles.treeCheckSlot}>
@@ -218,6 +231,7 @@ function TreeRow({
             isLast={i === children.length - 1}
             expanded={expanded}
             selectedIds={selectedIds}
+            counts={counts}
             onToggleExpand={onToggleExpand}
             onToggleTag={onToggleTag}
           />
@@ -238,8 +252,11 @@ type Props = {
   // head of the drawer, over a rule, above the smart folders. A screen
   // that passes nothing here simply has no such section, and the long
   // press that shows and hides its row does nothing.
+  // How many documents sit behind each folder and each group. The calling
+  // screen counts them - it is the one that knows what it is listing.
+  counts?: { byTag: Record<string, number>; untagged: number };
   groupSection?: {
-    items: { id: string | null; name: string; color: string }[];
+    items: { id: string | null; name: string; color: string; count: number }[];
     selected: string | null;
     onSelect: (id: string | null) => void;
     rowVisible: boolean;
@@ -264,6 +281,7 @@ export default function TagsDrawer({
   activeFilter,
   onSelectFilter,
   hideOpenButton,
+  counts,
   groupSection,
 }: Props) {
   // Bottom tabs stay mounted when another tab is on screen (React
@@ -428,6 +446,7 @@ export default function TagsDrawer({
                         <Text style={[styles.treeLabel, { color: GLASS_TEXT }]} numberOfLines={1}>
                           {item.name}
                         </Text>
+                        <Text style={styles.rowCount}>{item.count}</Text>
                         <View style={styles.treeCheckSlot}>
                           {active && <Ionicons name="checkmark-outline" size={17} color={item.color} />}
                         </View>
@@ -460,6 +479,7 @@ export default function TagsDrawer({
                 <View style={{ width: 17 }} />
                 <Ionicons name="pricetag-outline" size={19} color={GLASS_TEXT_MUTED} />
                 <Text style={styles.untaggedLabel}>Без тегів</Text>
+                <Text style={styles.rowCount}>{counts?.untagged ?? 0}</Text>
                 <View style={styles.treeCheckSlot}>
                   {activeFilter?.type === 'untagged' && (
                     <Ionicons name="checkmark-outline" size={17} color={GLASS_TEXT_MUTED} />
@@ -477,6 +497,7 @@ export default function TagsDrawer({
                   isLast={i === topLevel.length - 1}
                   expanded={expanded}
                   selectedIds={selectedTagIds}
+                  counts={counts?.byTag ?? {}}
                   onToggleExpand={toggleExpand}
                   onToggleTag={toggleTag}
                 />
@@ -715,6 +736,14 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   // Fixed-width slot for the checkmark, always rendered - see TreeRow.
+  // Right up against the checkmark slot, quiet enough to read as a count
+  // rather than as part of the name.
+  rowCount: {
+    fontSize: 13,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT_FAINT,
+    marginLeft: 4,
+  },
   treeCheckSlot: {
     width: 17,
     alignItems: 'center',
