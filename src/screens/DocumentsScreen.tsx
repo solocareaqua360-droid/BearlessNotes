@@ -66,6 +66,7 @@ import SketchEditor from '../components/SketchEditor';
 import { BlurView } from 'expo-blur';
 import { GlassPortal } from '../components/GlassPortal';
 import {
+  CAPSULE_DROP,
   CHROME_TOP,
   NAV_HEIGHT,
   RAIL_CLEARANCE,
@@ -196,7 +197,7 @@ export default function DocumentsScreen() {
   // menu should have anyway.
   const menuHeight = Math.max(
     180,
-    windowHeight - rail.tagBottom - RAIL_WIDTH - RAIL_GAP - chromeBottom
+    windowHeight - rail.tagBottom - RAIL_WIDTH - RAIL_GAP - (chromeTop + CAPSULE_DROP)
   );
 
 
@@ -575,9 +576,11 @@ export default function DocumentsScreen() {
         <View
           style={[
             styles.sideIslandLayer,
-            // Level with the top edge of the first card, whatever the
-            // chrome above it happens to be.
-            { top: chromeBottom, left: paneRect.x, width: paneRect.width },
+            // A fixed line, NOT the list's own top: tied to that, the
+            // capsule jumped up with the cards every time the group row
+            // was put away. Same place it would have been with the row
+            // showing - which is the place that was wanted.
+            { top: chromeTop + CAPSULE_DROP, left: paneRect.x, width: paneRect.width },
           ]}
           pointerEvents="box-none"
         >

@@ -56,11 +56,11 @@ const CAPSULE_HEIGHT = 123;
 // pill - these are the two numbers that decide how much height the rail's
 // four pieces have to share.
 //
-// The capsule's own top is measured, not taken from here (see
-// DocumentsScreen's chromeBottom): it stands exactly level with the top
-// edge of the first card. This is that same line as an estimate - the
-// group row plus the gap under it - for the spacing maths, which cannot
-// measure anything.
+// The capsule hangs from this line and stays there. It was briefly tied
+// to the list's own top instead, so that it stood exactly level with the
+// first card - but then it jumped up with the cards whenever the group
+// row was hidden. A constant is the whole point: 59 is that row plus the
+// gap under it, which is where it sits with the row showing.
 export const CAPSULE_DROP = 59;
 const ISLAND_DROP = 10;
 
