@@ -9,6 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -51,7 +52,13 @@ import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
 import DocumentCard from '../components/DocumentCard';
-import { extractPreview, EXPANDED_PREVIEW_LENGTH } from '../utils/documentPreview';
+import {
+  documentMatchesQuery,
+  extractPreview,
+  findBodyMatch,
+  findTitleMatch,
+  EXPANDED_PREVIEW_LENGTH,
+} from '../utils/documentPreview';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import StickerComposer from '../components/StickerComposer';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
@@ -149,6 +156,11 @@ export default function DocumentsScreen() {
   // puts the row away.
   const [groupsRowHidden, setGroupsRowHidden] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Search happens here rather than on a screen of its own: it was pushing
+  // a whole stack screen that kept its own second copy of the documents
+  // collection just to filter the same list this one is already showing.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchText, setSearchText] = useState('');
   const [freeStickers, setFreeStickers] = useState<StripSticker[]>([]);
   const [stickerComposerVisible, setStickerComposerVisible] = useState(false);
   const [editingTextSticker, setEditingTextSticker] = useState<{ id: string; text: string } | null>(null);
@@ -284,6 +296,14 @@ export default function DocumentsScreen() {
       );
     });
   }, []);
+
+  // Search reaches every document, not just the group in view - narrowing
+  // by two things at once is rarely what anyone means by searching.
+  const needle = searchText.trim();
+  const searching = searchOpen && needle.length > 0;
+  const searchMatches = searching
+    ? documents.filter((d) => documentMatchesQuery(d.title ?? '', d.blocks, needle))
+    : [];
 
   // The stickers' tab isn't a filter over the documents - it replaces
   // them.
@@ -589,8 +609,14 @@ export default function DocumentsScreen() {
                 style={StyleSheet.absoluteFill}
                 pointerEvents="none"
               />
-              <Pressable hitSlop={8} onPress={() => navigation.navigate('Search')}>
-                <Ionicons name="search-outline" size={24} color="#fff" />
+              <Pressable
+                hitSlop={8}
+                onPress={() => {
+                  setSearchOpen((v) => !v);
+                  setSearchText('');
+                }}
+              >
+                <Ionicons name={searchOpen ? 'close-outline' : 'search-outline'} size={24} color="#fff" />
               </Pressable>
               <View style={styles.sideIslandDivider} />
               <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
@@ -615,6 +641,32 @@ export default function DocumentsScreen() {
           pointerEvents="box-none"
           onLayout={(e) => setChromeHeight(e.nativeEvent.layout.height)}
         >
+          {searchOpen && (
+            <View style={styles.searchRow}>
+              <BlurView
+                intensity={60}
+                tint="dark"
+                blurMethod="dimezisBlurView"
+                blurTarget={blurTarget ?? undefined}
+                style={StyleSheet.absoluteFill}
+                pointerEvents="none"
+              />
+              <Ionicons name="search-outline" size={19} color={GLASS_TEXT_MUTED} />
+              <TextInput
+                autoFocus
+                value={searchText}
+                onChangeText={setSearchText}
+                placeholder="Пошук документів"
+                placeholderTextColor={GLASS_TEXT_FAINT}
+                style={styles.searchInput}
+              />
+              {searchText.length > 0 && (
+                <Pressable hitSlop={8} onPress={() => setSearchText('')}>
+                  <Ionicons name="close-outline" size={19} color={GLASS_TEXT_MUTED} />
+                </Pressable>
+              )}
+            </View>
+          )}
           {groups.length > 0 && !groupsRowHidden && (
             // No TabsTunnel here any more: it drew a capsule blending
             // scrolled-off pills into whatever sat beside them in the row
@@ -697,7 +749,49 @@ export default function DocumentsScreen() {
           onClose={() => setSketchEditing(null)}
         />
 
-        {showingStickers ? (
+        {searching ? (
+          searchMatches.length === 0 ? (
+            <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
+              <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
+            </View>
+          ) : (
+            <FlatList
+              key={`search-${viewMode}`}
+              data={searchMatches}
+              keyExtractor={(item) => item.id}
+              numColumns={viewMode === 'grid' ? 2 : 1}
+              columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
+              contentContainerStyle={[styles.list, { paddingTop: chromeBottom, paddingBottom: listBottomPad }]}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => {
+                // The title's match wins; only when the hit is in the body
+                // does the card show the snippet around it instead.
+                const titleMatch = findTitleMatch(item.title ?? '', needle);
+                const bodyMatch = titleMatch ? null : findBodyMatch(item.blocks, needle);
+                const { imageUri, imageUris, previewText, checklistItems } = extractPreview(
+                  item.blocks,
+                  item.coverImageUri,
+                  viewMode === 'grid' ? EXPANDED_PREVIEW_LENGTH : undefined
+                );
+                return (
+                  <DocumentCard
+                    id={item.id}
+                    title={item.title}
+                    updatedAt={item.updatedAt}
+                    imageUri={imageUri}
+                    imageUris={imageUris}
+                    previewText={previewText}
+                    checklistItems={checklistItems}
+                    titleMatch={titleMatch}
+                    bodyMatch={bodyMatch}
+                    onPress={() => openDocument(item.id)}
+                    layout={viewMode}
+                  />
+                );
+              }}
+            />
+          )
+        ) : showingStickers ? (
           freeStickers.length === 0 ? (
             <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
               <Text style={styles.emptyLabel}>Немає вільних стікерів</Text>
@@ -1050,6 +1144,30 @@ const styles = StyleSheet.create({
   gridRow: {
     gap: 12,
     paddingHorizontal: 20,
+  },
+  // The field, in the same glass as the pills under it. Stops short of the
+  // rail, like they do.
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    height: 45,
+    marginLeft: 20,
+    marginRight: RAIL_CLEARANCE,
+    marginBottom: 8,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: GLASS_ISLAND,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT,
+    padding: 0,
   },
   // Still a row even though the capsule has left it: TabsTunnel's inner
   // `flex: 1` only means "the rest of the width" inside a row.
