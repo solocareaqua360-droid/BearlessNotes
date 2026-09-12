@@ -72,7 +72,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
-import { GLASS_ISLAND } from '../constants/glass';
+import { GLASS_ISLAND, GLASS_TEXT_MUTED } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
 const ACCENT = '#EC4899';
@@ -213,6 +213,25 @@ export default function PhotosScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [addPhotoSheetVisible, setAddPhotoSheetVisible] = useState(false);
   const { sortPref, selectSortField } = useSortPref('photosPrefs');
+  // The group row at the head of the screen is a convenience now that the
+  // groups also live in the drawer - held down, the folder button puts it
+  // away. Same arrangement as the documents screen.
+  const [groupsRowHidden, setGroupsRowHidden] = useState(false);
+  // The chrome floats over the grid, so its height decides where the
+  // first card rests.
+  const [chromeHeight, setChromeHeight] = useState(0);
+  const chromeTop = railInsets.top + CHROME_TOP;
+  const chromeBottom = chromeTop + chromeHeight + 8;
+  useEffect(
+    () =>
+      onSnapshot(doc(db, 'settings', 'photosPrefs'), (snapshot) => {
+        setGroupsRowHidden(!!snapshot.data()?.groupsRowHidden);
+      }),
+    []
+  );
+  function toggleGroupsRow() {
+    setDoc(doc(db, 'settings', 'photosPrefs'), { groupsRowHidden: !groupsRowHidden }, { merge: true });
+  }
   const { filterPending, requestDelete, requestDeleteMany, undo, toast } = usePendingDelete<PhotoItem>();
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
   const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, clear: clearSelection } =
@@ -649,6 +668,13 @@ export default function PhotosScreen() {
                   style={StyleSheet.absoluteFill}
                   pointerEvents="none"
                 />
+              {/* The way back, where the arrow in the header's corner used
+                  to be - the capsule is where this screen's controls
+                  live now. */}
+              <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+                <Ionicons name="arrow-back-outline" size={24} color="#fff" />
+              </Pressable>
+              <View style={styles.headerButtonsDivider} />
               <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
                 <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
               </Pressable>
@@ -662,14 +688,6 @@ export default function PhotosScreen() {
       )}
 
       <ContentColumn>
-        <View style={styles.headerRow}>
-          <View style={styles.headerLeft}>
-            <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-              <Ionicons name="chevron-back" size={24} color="#fff" />
-            </Pressable>
-            <Text style={styles.header}>Зображення</Text>
-          </View>
-        </View>
 
         {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
         {menuOpen && (
@@ -693,8 +711,29 @@ export default function PhotosScreen() {
           </View>
         )}
 
-        {groups.length > 0 && (
-          <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" dark />
+        {/* The tabs float over the grid rather than standing above it, so a
+            card slides under them and off the top of the screen. Through
+            the portal, like every other piece of glass here. */}
+        {railFocused && (
+          <GlassPortal>
+            <View
+              style={[styles.topChrome, { top: chromeTop }]}
+              pointerEvents="box-none"
+              onLayout={(e) => setChromeHeight(e.nativeEvent.layout.height)}
+            >
+              {groups.length > 0 && !groupsRowHidden && (
+                <ProjectTabsRow
+                  items={groups}
+                  selected={groupFilter}
+                  onSelect={setGroupFilter}
+                  unassignedLabel="Без групи"
+                  dark
+                  blurTarget={railBlurTarget}
+                  endPadding={RAIL_CLEARANCE}
+                />
+              )}
+            </View>
+          </GlassPortal>
         )}
 
         {tagFilter && (
@@ -756,7 +795,13 @@ export default function PhotosScreen() {
             )}
           </View>
         ) : (
-          <ScrollView contentContainerStyle={[styles.grid, isSelectMode && styles.gridWithBulkBar]}>
+          <ScrollView
+            contentContainerStyle={[
+              styles.grid,
+              { paddingTop: chromeBottom },
+              isSelectMode && styles.gridWithBulkBar,
+            ]}
+          >
             {displayedPhotos.map((photo) => (
               <Pressable
                 key={photo.id}
@@ -891,6 +936,27 @@ export default function PhotosScreen() {
         activeFilter={tagFilter}
         onSelectFilter={setTagFilter}
         hideOpenButton={isSelectMode}
+        groupSection={{
+          items: [
+            { id: null, name: 'Всі', color: GLASS_TEXT_MUTED, count: photos.length },
+            ...groups.map((g) => ({
+              id: g.id,
+              name: g.name,
+              color: g.color,
+              count: photos.filter((x) => x.groupId === g.id).length,
+            })),
+            {
+              id: UNASSIGNED_ID,
+              name: 'Без групи',
+              color: GLASS_TEXT_MUTED,
+              count: photos.filter((x) => !x.groupId).length,
+            },
+          ],
+          selected: groupFilter,
+          onSelect: setGroupFilter,
+          rowVisible: !groupsRowHidden,
+          onToggleRow: toggleGroupsRow,
+        }}
       />
 
       <BulkActionBar
@@ -1072,7 +1138,14 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 5,
   },
-  menuRule: {
+  // The band the group tabs float in, over the grid.
+  topChrome: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 6,
+  },
+    menuRule: {
     height: 1,
     backgroundColor: '#E5E7EB',
     marginVertical: 6,
@@ -1179,8 +1252,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingLeft: 16,
+    // Clear of the rail.
+    paddingRight: RAIL_CLEARANCE,
+    paddingBottom: 8,
     gap: 12,
   },
   gridWithBulkBar: {
