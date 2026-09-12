@@ -132,7 +132,13 @@ export default function CalendarScreen() {
   // toggles. Only ever applies while there are columns to hide.
   const [showCalendarPane, setShowCalendarPane] = useState(true);
   const [showHistoryPane, setShowHistoryPane] = useState(true);
-  const stripWidth = (isTwoPane && calendarPaneWidth > 0 ? calendarPaneWidth : windowWidth) - PLATE_MARGIN * 2;
+  // The plate no longer keeps PLATE_MARGIN on BOTH sides: its right edge
+  // is the rail's, so a page sized against 16 twice is 74 too wide and the
+  // last day of the week drops off the end - which is exactly the failure
+  // PLATE_MARGIN's own comment above describes, arriving a third time.
+  const plateRightMargin = isTwoPane ? 0 : RAIL_CLEARANCE;
+  const stripWidth =
+    (isTwoPane && calendarPaneWidth > 0 ? calendarPaneWidth : windowWidth) - PLATE_MARGIN - plateRightMargin;
   const today = useMemo(() => new Date(), []);
 
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
