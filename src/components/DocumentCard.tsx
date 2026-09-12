@@ -4,6 +4,13 @@ import { PreviewChecklistItem, TextMatch, formatUpdatedAt } from '../utils/docum
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_REGULAR, FONT_BOLD } from '../utils/fonts';
 
+// A tile of fine grain laid over every card, repeated rather than
+// stretched. Two things keep it reading as paper tooth and not as dirt:
+// the specks are half lighter and half darker than the card under them,
+// and the whole layer sits at a few percent. It goes UNDER the content
+// and takes no touches.
+const GRAIN = require('../../assets/paper-grain.png');
+
 const THUMB_SIZE = 72;
 const GRID_THUMB_HEIGHT = 96;
 // Every grid card is exactly this tall, image or not - 20% past what a
@@ -268,6 +275,7 @@ export default function DocumentCard({
   if (isGrid) {
     return (
       <View style={[styles.gridCard, { backgroundColor: background }]}>
+        <Image source={GRAIN} resizeMode="repeat" style={styles.grain} />
         <Pressable style={styles.gridTap} onPress={isSelectMode ? onToggleSelect : onPress}>
           {/* Bleeds flush to the card's own top/left/right edges - no
               padding, no border-radius of its own. The card's overflow:
@@ -310,6 +318,7 @@ export default function DocumentCard({
 
   return (
     <View style={[styles.row, { backgroundColor: background }]}>
+      <Image source={GRAIN} resizeMode="repeat" style={styles.grain} />
       <Pressable style={styles.tap} onPress={isSelectMode ? onToggleSelect : onPress}>
         {thumbNode}
         <View style={styles.body}>
@@ -324,6 +333,15 @@ export default function DocumentCard({
 }
 
 const styles = StyleSheet.create({
+  grain: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    // The card's own overflow: 'hidden' clips this to its corners.
+    opacity: 0.055,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -338,6 +356,9 @@ const styles = StyleSheet.create({
     // both the warm and the cool end of that gradient.
     borderWidth: 1,
     borderColor: 'rgba(176,176,176,0.5)',
+    // Clips the grain to the card's rounded corners. The elevation shadow
+    // is drawn by the system outside these bounds, so it survives.
+    overflow: 'hidden',
     // Drop shadow onto the gradient behind the card - previously a flat
     // row with no shadow at all.
     shadowColor: '#000',

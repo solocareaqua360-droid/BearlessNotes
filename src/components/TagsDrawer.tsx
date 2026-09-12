@@ -552,6 +552,8 @@ const styles = StyleSheet.create({
     // it actually has - the one facing the screen - does the job.
     borderRightWidth: 1,
     borderRightColor: 'rgba(255,255,255,0.18)',
+    borderTopRightRadius: 24,
+    borderBottomRightRadius: 24,
     // The blur inside is clipped to this.
     overflow: 'hidden',
     paddingTop: 56,
@@ -576,7 +578,7 @@ const styles = StyleSheet.create({
     gap: 4,
     marginBottom: 14,
     padding: 4,
-    borderRadius: 12,
+    borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
   segmentButton: {
@@ -584,7 +586,7 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 9,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: 'transparent',
   },
@@ -692,7 +694,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    borderRadius: 8,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: 'transparent',
     paddingVertical: 8,
