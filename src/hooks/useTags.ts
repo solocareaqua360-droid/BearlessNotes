@@ -12,7 +12,7 @@ import {
   updateDoc,
   writeBatch,
 } from '@react-native-firebase/firestore';
-import { db } from '../firebase';
+import { auth, db } from '../firebase';
 import { Tag, TaggableKind } from '../types';
 
 const tagsCollection = collection(db, 'tags');
@@ -126,7 +126,11 @@ export function useTags() {
       types: arrayUnion(kind),
     });
     batch.update(doc(db, itemsCollection, itemId), { tagIds: arrayUnion(tag.id) });
-    batch.set(doc(db, 'hiddenTags', kind), { tagIds: arrayRemove(tag.id) }, { merge: true });
+    batch.set(
+      doc(db, 'hiddenTags', kind),
+      { tagIds: arrayRemove(tag.id), ownerId: auth.currentUser?.uid ?? null },
+      { merge: true }
+    );
     await batch.commit();
   }
 
@@ -148,6 +152,9 @@ export function useTags() {
       color,
       types: [kind],
       usedIn: { [usedInKey(kind, itemId)]: true },
+      // By hand here: a batched write has no wrapper to go through (see
+      // utils/owned), and the owner-only rules refuse a create without it.
+      ownerId: auth.currentUser?.uid ?? null,
     });
     batch.update(doc(db, itemsCollection, itemId), { tagIds: arrayUnion(tagRef.id) });
     await batch.commit();

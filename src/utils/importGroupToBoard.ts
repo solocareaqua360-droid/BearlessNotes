@@ -1,4 +1,10 @@
-import { addDoc, collection, doc, getDoc, updateDoc } from '@react-native-firebase/firestore';
+import {
+  collection,
+  doc,
+  getDoc,
+  updateDoc,
+} from '@react-native-firebase/firestore';
+import { addDoc } from './owned';
 import { db } from '../firebase';
 import { BoardCard, BoardColumn, Group } from '../types';
 import { blockFromCustomRow, blockFromFile, blockFromLink, blockFromPhoto } from './copyToNote';

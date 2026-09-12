@@ -1,8 +1,15 @@
 import * as XLSX from 'xlsx';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { downloadFileFromDrive } from './googleDrive';
-import { addDoc, collection, doc, getDocs, query, writeBatch } from '@react-native-firebase/firestore';
-import { db } from '../firebase';
+import {
+  collection,
+  doc,
+  getDocs,
+  query,
+  writeBatch,
+} from '@react-native-firebase/firestore';
+import { addDoc } from './owned';
+import { auth, db } from '../firebase';
 import { CustomDatabaseRow, FieldDef, FieldType } from '../types';
 
 // One sheet as a plain grid of strings, header row included - everything
@@ -223,6 +230,7 @@ export async function runTableImport(opts: {
 
       const now = Date.now();
       batch.set(doc(db, 'customDatabaseRows', generateId()), {
+        ownerId: auth.currentUser?.uid ?? null,
         databaseId,
         values,
         tagIds: [],
@@ -237,6 +245,7 @@ export async function runTableImport(opts: {
       resolver.takeCreated().forEach((created) => {
         const now = Date.now();
         batch.set(doc(db, 'customDatabaseRows', created.id), {
+          ownerId: auth.currentUser?.uid ?? null,
           databaseId: created.databaseId,
           values: created.values,
           tagIds: [],

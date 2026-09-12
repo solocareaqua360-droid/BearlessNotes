@@ -31,15 +31,14 @@ import * as LegacyFileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import {
-  addDoc,
   collection,
   doc,
   getDoc,
   getDocFromCache,
   onSnapshot,
-  setDoc,
   updateDoc,
 } from '@react-native-firebase/firestore';
+import { addDoc, setDoc } from '../utils/owned';
 import * as Clipboard from 'expo-clipboard';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import { db } from '../firebase';

@@ -2,7 +2,11 @@ import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { DRIVE_SCOPE, ensureGoogleConfigured } from './googleClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
-import { doc, increment, setDoc } from '@react-native-firebase/firestore';
+import {
+  doc,
+  increment,
+} from '@react-native-firebase/firestore';
+import { setDoc } from './owned';
 import { db } from '../firebase';
 
 const driveStatsDoc = doc(db, 'settings', 'driveStats');

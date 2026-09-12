@@ -35,10 +35,10 @@ import {
   onSnapshot,
   orderBy,
   query,
-  setDoc,
   updateDoc,
   writeBatch,
 } from '@react-native-firebase/firestore';
+import { setDoc } from '../utils/owned';
 import {
   GLASS_BODY,
   GLASS_LINE,

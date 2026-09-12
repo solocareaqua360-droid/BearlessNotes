@@ -27,10 +27,10 @@ import {
   onSnapshot,
   orderBy,
   query,
-  setDoc,
   updateDoc,
   writeBatch,
 } from '@react-native-firebase/firestore';
+import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { Block, Group } from '../types';
 import { groupAppliesTo } from '../utils/groups';

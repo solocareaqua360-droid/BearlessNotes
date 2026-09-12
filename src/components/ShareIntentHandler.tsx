@@ -2,16 +2,15 @@ import { useRef, useState, useEffect } from 'react';
 import { Alert } from 'react-native';
 import { useShareIntentContext, ShareIntentFile } from 'expo-share-intent';
 import {
-  addDoc,
   arrayUnion,
   collection,
   doc,
   getDocs,
   orderBy,
   query,
-  setDoc,
   updateDoc,
 } from '@react-native-firebase/firestore';
+import { addDoc, setDoc } from '../utils/owned';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { db } from '../firebase';
 import { Block, BlockType } from '../types';

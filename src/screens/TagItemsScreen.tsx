@@ -3,7 +3,12 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
-import { addDoc, collection, doc, getDoc } from '@react-native-firebase/firestore';
+import {
+  collection,
+  doc,
+  getDoc,
+} from '@react-native-firebase/firestore';
+import { addDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { RootStackParamList } from '../navigation';
 import { TaggableKind } from '../types';

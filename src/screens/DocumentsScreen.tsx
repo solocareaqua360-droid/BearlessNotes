@@ -20,7 +20,6 @@ import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
-  addDoc,
   collection,
   deleteDoc,
   deleteField,
@@ -29,10 +28,10 @@ import {
   onSnapshot,
   orderBy,
   query,
-  setDoc,
   updateDoc,
   writeBatch,
 } from '@react-native-firebase/firestore';
+import { addDoc, setDoc } from '../utils/owned';
 import { GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { db } from '../firebase';
 import { DocumentItem, Group, SketchElement } from '../types';

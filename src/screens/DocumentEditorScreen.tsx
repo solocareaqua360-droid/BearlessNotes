@@ -65,9 +65,9 @@ import {
   onSnapshot,
   orderBy,
   query,
-  setDoc,
   updateDoc,
 } from '@react-native-firebase/firestore';
+import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import { Block, BlockType, Group, SketchElement, Tag, TableRow } from '../types';

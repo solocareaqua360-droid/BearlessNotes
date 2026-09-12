@@ -16,7 +16,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
-  addDoc,
   collection,
   deleteDoc,
   deleteField,
@@ -27,6 +26,7 @@ import {
   query,
   updateDoc,
 } from '@react-native-firebase/firestore';
+import { addDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { Block, Project } from '../types';
 import { hapticToggle } from '../utils/haptics';

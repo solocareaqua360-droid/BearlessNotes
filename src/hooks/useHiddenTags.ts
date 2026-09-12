@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import { arrayUnion, doc, onSnapshot, setDoc } from '@react-native-firebase/firestore';
+import {
+  arrayUnion,
+  doc,
+  onSnapshot,
+} from '@react-native-firebase/firestore';
+import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { TaggableKind } from '../types';
 

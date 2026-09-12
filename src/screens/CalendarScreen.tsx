@@ -16,7 +16,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { collection, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from '@react-native-firebase/firestore';
+import {
+  collection,
+  doc,
+  getDoc,
+  onSnapshot,
+  query,
+  updateDoc,
+  where,
+} from '@react-native-firebase/firestore';
+import { setDoc } from '../utils/owned';
 import { GLASS_BODY, GLASS_TEXT } from '../constants/glass';
 import { db } from '../firebase';
 import { Block } from '../types';

@@ -4,7 +4,14 @@ import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { addDoc, collection, doc, onSnapshot, orderBy, query, setDoc } from '@react-native-firebase/firestore';
+import {
+  collection,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+} from '@react-native-firebase/firestore';
+import { addDoc, setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { RootStackParamList } from '../navigation';
 import { CustomDatabase } from '../types';
