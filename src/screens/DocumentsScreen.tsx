@@ -178,6 +178,9 @@ export default function DocumentsScreen() {
   // The pane the list lives in. On a Fold the chrome must span that pane,
   // not the whole window - the open document has the other half.
   const [paneRect, setPaneRect] = useState({ x: 0, width: 0 });
+  // How far the open document's own pane ends from the window's right
+  // edge - what its rail has to stand in from.
+  const [editorPaneRight, setEditorPaneRight] = useState(0);
   const insets = useSafeAreaInsets();
   const chromeTop = insets.top + CHROME_TOP;
   const chromeBottom = chromeTop + chromeHeight + 8;
@@ -949,7 +952,12 @@ export default function DocumentsScreen() {
         </View>
 
         {isTwoPane && (
-          <View style={styles.editorPane}>
+          <View
+            style={styles.editorPane}
+            onLayout={(e) =>
+              setEditorPaneRight(windowWidth - (e.nativeEvent.layout.x + e.nativeEvent.layout.width))
+            }
+          >
             {openDoc ? (
               // Keyed by id so switching documents remounts the editor
               // rather than re-seeding one instance's state mid-edit.
@@ -964,6 +972,9 @@ export default function DocumentsScreen() {
                   setPaneFullscreen(false);
                 }}
                 isFullscreen={paneFullscreen}
+                // Its rail belongs on ITS pane's right edge, not the
+                // window's - the window's now belongs to the list.
+                railRight={editorPaneRight + RAIL_RIGHT}
                 onToggleFullscreen={() => setPaneFullscreen((v) => !v)}
               />
             ) : (
@@ -1050,7 +1061,11 @@ const styles = StyleSheet.create({
   },
   paneRow: {
     flex: 1,
-    flexDirection: 'row',
+    // Reversed: the list sits on the RIGHT, against the rail that belongs
+    // to it, and the open document takes the left half. Written as a
+    // direction rather than by swapping the two children, so the list
+    // stays the first thing in the tree - it is the screen.
+    flexDirection: 'row-reverse',
   },
   pane: {
     flex: 1,

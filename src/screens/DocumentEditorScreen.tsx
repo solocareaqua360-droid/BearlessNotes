@@ -1964,6 +1964,10 @@ type Props =
       // pane mode: on a phone every document is already full-screen, so
       // the button would toggle nothing.
       isFullscreen?: boolean;
+      // Where this pane's right edge is, measured in from the window's -
+      // in two panes the rail belongs on the pane's edge, not the
+      // window's, or it lands on top of the other half.
+      railRight?: number;
       onToggleFullscreen?: () => void;
       // Mirrored out so the screen around this pane can hold off writing
       // the same document while there are keystrokes here that haven't
@@ -1984,6 +1988,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const editorBlurTarget = useBlurTarget();
   const editorFocused = useIsFocused();
   const editorInsets = useSafeAreaInsets();
+  const railRight = 'pane' in props ? (props.railRight ?? RAIL_RIGHT) : RAIL_RIGHT;
 
   // A document with nothing in it is not a document. Anything a block can
   // carry counts, not just text - an image or an embedded row with no
@@ -3999,7 +4004,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               other, and a capsule that shifted between them would read as
               a different control. */}
           <View
-            style={[styles.editorRail, { top: editorInsets.top + CHROME_TOP + CAPSULE_DROP }]}
+            style={[styles.editorRail, { top: editorInsets.top + CHROME_TOP + CAPSULE_DROP, right: railRight }]}
             pointerEvents="box-none"
           >
             <View style={styles.headerRight}>
@@ -4039,7 +4044,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             styles.exportMenuPanel,
             {
               top: editorInsets.top + CHROME_TOP + CAPSULE_DROP,
-              right: RAIL_RIGHT + RAIL_WIDTH + 8,
+              right: railRight + RAIL_WIDTH + 8,
             },
           ]}
         >
@@ -4548,7 +4553,8 @@ const styles = StyleSheet.create({
   // comes from the safe-area inset.
   editorRail: {
     position: 'absolute',
-    right: RAIL_RIGHT,
+    // `right` is set inline - in two panes it is the pane's edge, not the
+    // window's (see railRight).
     alignItems: 'center',
     gap: 12,
   },
