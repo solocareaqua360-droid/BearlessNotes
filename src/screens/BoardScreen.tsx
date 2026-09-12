@@ -22,7 +22,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
 } from 'react-native-reanimated';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Defs, Path, Pattern, Rect } from 'react-native-svg';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -76,6 +76,9 @@ import { Group } from '../types';
 import DocumentEditorScreen from './DocumentEditorScreen';
 import { useRail } from '../hooks/useRail';
 import { FONT_BOLD, FONT_EXTRABOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { BlurView } from 'expo-blur';
+import { useBlurTarget } from '../components/GlassTarget';
+import { GLASS_ISLAND } from '../constants/glass';
 
 const AUTOSAVE_DELAY_MS = 600;
 const MIN_SCALE = 0.4;
@@ -99,7 +102,15 @@ const SELECTION_COLOR = '#2563EB';
 // was written into the "+" button's style as a number, which is how a
 // screen ends up with a colour nothing else knows about.
 const ACCENT = '#8B5CF6';
-const COLUMN_SNAP_MARGIN = 90;
+// The same half-strength tint the documents screen's add button uses.
+const ACCENT_GLASS = 'rgba(139,92,246,0.55)';
+// Raised from 90: a card was coming loose from its column on the
+// slightest drag, which is the wrong default - a card in a column is
+// almost always meant to stay in it, and pulling one out deliberately is
+// the rarer move.
+const COLUMN_SNAP_MARGIN = 220;
+// One cross every 48 world units.
+const GRID_STEP = 48;
 const CONNECTION_COLOR = '#8B5CF6';
 // Padding around a connection's own bounding box, so the curve's bulge and
 // the stroke width itself aren't clipped by the little Svg canvas each
@@ -855,6 +866,7 @@ export default function BoardScreen() {
   // Same fix as BulkActionBar's own bottom offset.
   const bottomInset = useSafeAreaInsets().bottom;
   const rail = useRail();
+  const boardBlurTarget = useBlurTarget();
 
   const [title, setTitle] = useState('');
   const [cards, setCards] = useState<BoardCard[]>([]);
@@ -1881,6 +1893,31 @@ export default function BoardScreen() {
         <GestureDetector gesture={canvasGesture}>
           <View style={[StyleSheet.absoluteFill, styles.canvasSurface]}>
             <Animated.View style={[styles.world, worldAnimatedStyle]}>
+              {/* Small crosses across the whole world, under everything.
+                  Inside the world rather than behind it on purpose: it is
+                  scaled with the cards, so how big the crosses come out is
+                  what tells you how far you have zoomed. An SVG pattern,
+                  which the renderer tiles natively - Image's own "repeat"
+                  draws a single tile here and leaves the rest bare. */}
+              <Svg width={WORLD_SIZE} height={WORLD_SIZE} style={StyleSheet.absoluteFill} pointerEvents="none">
+                <Defs>
+                  <Pattern
+                    id="boardGrid"
+                    x="0"
+                    y="0"
+                    width={GRID_STEP}
+                    height={GRID_STEP}
+                    patternUnits="userSpaceOnUse"
+                  >
+                    <Path
+                      d={`M${GRID_STEP / 2 - 4} ${GRID_STEP / 2} H${GRID_STEP / 2 + 4} M${GRID_STEP / 2} ${GRID_STEP / 2 - 4} V${GRID_STEP / 2 + 4}`}
+                      stroke="rgba(17,24,39,0.16)"
+                      strokeWidth={1}
+                    />
+                  </Pattern>
+                </Defs>
+                <Rect width={WORLD_SIZE} height={WORLD_SIZE} fill="url(#boardGrid)" />
+              </Svg>
               {/* Underneath everything - a column is a backdrop its cards sit
                   on. box-none so only the header takes touches and the rest
                   of the lane still pans the canvas. */}
@@ -2000,6 +2037,14 @@ export default function BoardScreen() {
             <Ionicons name="chevron-back" size={24} color="#111827" />
           </Pressable>
           <Pressable style={styles.titleTap} onPress={() => setRenamingTitle(true)}>
+            <BlurView
+              intensity={60}
+              tint="dark"
+              blurMethod="dimezisBlurView"
+              blurTarget={boardBlurTarget ?? undefined}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
             <Text style={styles.headerTitle} numberOfLines={1}>
               {title || 'Без назви'}
             </Text>
@@ -2010,12 +2055,22 @@ export default function BoardScreen() {
             style={[styles.toolButton, canvasTool !== 'move' && styles.toolButtonActive]}
             onPress={toggleCanvasTool}
           >
+            {canvasTool === 'move' && (
+              <BlurView
+                intensity={60}
+                tint="dark"
+                blurMethod="dimezisBlurView"
+                blurTarget={boardBlurTarget ?? undefined}
+                style={StyleSheet.absoluteFill}
+                pointerEvents="none"
+              />
+            )}
             <MaterialCommunityIcons
               name={
                 canvasTool === 'select' ? 'selection-drag' : canvasTool === 'connect' ? 'vector-line' : 'cursor-move'
               }
               size={20}
-              color={canvasTool !== 'move' ? '#fff' : '#111827'}
+              color="#fff"
             />
           </Pressable>
         </View>
@@ -2078,6 +2133,14 @@ export default function BoardScreen() {
           </View>
         ) : (
           <Pressable style={[styles.fab, { bottom: rail.addBottom }]} onPress={() => setAddSheetVisible(true)}>
+            <BlurView
+              intensity={60}
+              tint="dark"
+              blurMethod="dimezisBlurView"
+              blurTarget={boardBlurTarget ?? undefined}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
             <Ionicons name="add" size={26} color="#fff" />
           </Pressable>
         )}
@@ -2490,16 +2553,20 @@ const styles = StyleSheet.create({
   },
   titleTap: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    // The app's own glass, like every other floating control.
+    overflow: 'hidden',
+    backgroundColor: GLASS_ISLAND,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
   headerTitle: {
     fontSize: 16,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: '#111827',
+    color: '#fff',
     textAlign: 'center',
   },
   // `bottom` is set inline (104 + the device's real safe-area inset) -
@@ -2512,14 +2579,15 @@ const styles = StyleSheet.create({
     right: 20,
     width: 56,
     height: 56,
-    borderRadius: 18,
-    backgroundColor: ACCENT,
+    borderRadius: 999,
+    // Its own colour, but as glass - the same half-strength tint the
+    // documents screen's own add button takes.
+    overflow: 'hidden',
+    backgroundColor: ACCENT_GLASS,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#8B5CF6',
-    shadowOpacity: 0.5,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 6,
     elevation: 6,
   },
   marquee: {
@@ -2575,15 +2643,20 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
   },
   toolButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.85)',
+    overflow: 'hidden',
+    backgroundColor: GLASS_ISLAND,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
   },
+  // A tool other than "move" is a mode you are IN, so it goes solid.
   toolButtonActive: {
     backgroundColor: SELECTION_COLOR,
+    borderColor: 'transparent',
   },
   // Same compact, content-hugging dark-glass pill as the shared
   // BulkActionBar component (Documents/Files/Photos/Links' own
