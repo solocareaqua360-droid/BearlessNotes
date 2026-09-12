@@ -973,6 +973,9 @@ export default function DocumentsScreen() {
                 // Its rail stands on the window's LEFT edge - this pane
                 // is the left half, and the right edge is the list's.
                 railLeft={editorPaneLeft + RAIL_RIGHT}
+                // The line this screen's own cards start on, so the two
+                // halves begin together.
+                railTop={chromeBottom}
                 onToggleFullscreen={() => setPaneFullscreen((v) => !v)}
               />
             ) : (

@@ -1971,6 +1971,10 @@ type Props =
       // With the document on the LEFT half, its rail belongs on the
       // window's left edge - the right one is the list's.
       railLeft?: number;
+      // The line the list's own cards start on. In two panes the document
+      // starts there too, so the two halves read as one row - and the
+      // capsule sits on that line, over the cover.
+      railTop?: number;
       onToggleFullscreen?: () => void;
       // Mirrored out so the screen around this pane can hold off writing
       // the same document while there are keystrokes here that haven't
@@ -1993,6 +1997,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const editorInsets = useSafeAreaInsets();
   const railRight = 'pane' in props ? (props.railRight ?? RAIL_RIGHT) : RAIL_RIGHT;
   const railLeft = 'pane' in props ? props.railLeft : undefined;
+  const railTop = 'pane' in props ? props.railTop : undefined;
   // Which edge the rail stands on, and which way its menu opens from it.
   const railSide = railLeft !== undefined ? { left: railLeft } : { right: railRight };
   // On the left edge the capsule lies down: standing on its end there it
@@ -3992,24 +3997,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       ]}
     >
       {!embedded && (
-      <View style={styles.header}>
-        {/* Empty now - both its buttons stand on the rail. It stays for
-            the top spacing it gives the title, which on the left edge has
-            to clear the capsule lying across the corner. */}
-        <View
-          style={[
-            styles.headerLeft,
-            railHorizontal && {
-              // What is left after the header's own 56 above and 12 below:
-              // enough that the title starts a gap under the capsule
-              // rather than behind it.
-              paddingTop: Math.max(
-                0,
-                editorInsets.top + CHROME_TOP + CAPSULE_DROP + RAIL_WIDTH + 12 - 68
-              ),
-            },
-          ]}
-        />
+      <View
+        style={[
+          styles.header,
+          // In a pane the document starts on the same line the list's
+          // cards do - so the cover, not empty space, is what the capsule
+          // lies across.
+          railTop !== undefined && { paddingTop: railTop, paddingBottom: 0 },
+        ]}
+      >
+        {/* Empty - both its buttons stand on the rail. It stays for the
+            top spacing it gives whatever comes first. */}
+        <View style={styles.headerLeft} />
       </View>
       )}
 
@@ -4026,7 +4025,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           <View
             style={[
               styles.editorRail,
-              { top: editorInsets.top + CHROME_TOP + CAPSULE_DROP },
+              { top: railTop ?? editorInsets.top + CHROME_TOP + CAPSULE_DROP },
               railSide,
             ]}
             pointerEvents="box-none"
@@ -4081,7 +4080,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         <View
           style={[
             styles.exportMenuPanel,
-            { top: editorInsets.top + CHROME_TOP + CAPSULE_DROP },
+            { top: railTop ?? editorInsets.top + CHROME_TOP + CAPSULE_DROP },
             menuSide,
           ]}
         >
