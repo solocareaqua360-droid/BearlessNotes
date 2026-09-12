@@ -32,7 +32,7 @@ import {
   updateDoc,
   writeBatch,
 } from '@react-native-firebase/firestore';
-import { GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
+import { GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { db } from '../firebase';
 import { DocumentItem, Group, SketchElement } from '../types';
 import { groupAppliesTo } from '../utils/groups';
@@ -144,6 +144,10 @@ export default function DocumentsScreen() {
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
+  // The group tabs at the head of the screen are a convenience now that
+  // the groups themselves live in the drawer - held down, the "#" button
+  // puts the row away.
+  const [groupsRowHidden, setGroupsRowHidden] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [freeStickers, setFreeStickers] = useState<StripSticker[]>([]);
   const [stickerComposerVisible, setStickerComposerVisible] = useState(false);
@@ -182,6 +186,7 @@ export default function DocumentsScreen() {
     return onSnapshot(documentsPrefsDoc, (snapshot) => {
       const data = snapshot.data();
       setViewMode((data?.viewMode as ViewMode | undefined) ?? 'list');
+      setGroupsRowHidden(!!data?.groupsRowHidden);
     });
   }, []);
 
@@ -353,6 +358,10 @@ export default function DocumentsScreen() {
       );
     }
     openDocument(newDoc.id, true);
+  }
+
+  function toggleGroupsRow() {
+    setDoc(documentsPrefsDoc, { groupsRowHidden: !groupsRowHidden }, { merge: true });
   }
 
   async function changeViewMode(mode: ViewMode) {
@@ -591,7 +600,7 @@ export default function DocumentsScreen() {
           pointerEvents="box-none"
           onLayout={(e) => setChromeHeight(e.nativeEvent.layout.height)}
         >
-          {groups.length > 0 && (
+          {groups.length > 0 && !groupsRowHidden && (
             // No TabsTunnel here any more: it drew a capsule blending
             // scrolled-off pills into whatever sat beside them in the row
             // - the control capsule, before it moved to the rail. Alone in
@@ -830,7 +839,26 @@ export default function DocumentsScreen() {
         )}
       </View>
 
-      <TagsDrawer tags={drawerTags} activeFilter={activeFilter} onSelectFilter={setActiveFilter} hideOpenButton={isSelectMode} />
+      <TagsDrawer
+        tags={drawerTags}
+        activeFilter={activeFilter}
+        onSelectFilter={setActiveFilter}
+        hideOpenButton={isSelectMode}
+        groupSection={{
+          // The same list the tabs show, sentinels and all, so the two
+          // never disagree about what there is to pick.
+          items: [
+            { id: null, name: 'Всі', color: GLASS_TEXT_MUTED },
+            ...groups.map((g) => ({ id: g.id, name: g.name, color: g.color })),
+            { id: UNASSIGNED_ID, name: 'Без групи', color: GLASS_TEXT_MUTED },
+            { id: STICKERS_GROUP, name: 'Стікери', color: STICKER_YELLOW },
+          ],
+          selected: groupFilter,
+          onSelect: setGroupFilter,
+          rowVisible: !groupsRowHidden,
+          onToggleRow: toggleGroupsRow,
+        }}
+      />
 
       <TagPicker
         visible={bulkTagPickerVisible}

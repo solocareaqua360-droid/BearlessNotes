@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
+import { hapticButtonDown } from '../utils/haptics';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Tag } from '../types';
 import { FONT_REGULAR, FONT_SEMIBOLD, FONT_BOLD, FONT_EXTRABOLD } from '../utils/fonts';
@@ -210,6 +211,17 @@ type Props = {
   // it has to get out of the way while their own bulk-select bar is on
   // screen (same bottom-left corner, would otherwise overlap it).
   hideOpenButton?: boolean;
+  // Groups, when the calling screen has them: a section of its own at the
+  // head of the drawer, over a rule, above the smart folders. A screen
+  // that passes nothing here simply has no such section, and the long
+  // press that shows and hides its row does nothing.
+  groupSection?: {
+    items: { id: string | null; name: string; color: string }[];
+    selected: string | null;
+    onSelect: (id: string | null) => void;
+    rowVisible: boolean;
+    onToggleRow: () => void;
+  };
 };
 
 // A standalone round button at the bottom-left (same size as the floating
@@ -224,7 +236,13 @@ type Props = {
 // whatever `tags` list it's given (Files/Photos/Links pass only their own
 // "used" tags, which is what prunes empty branches for them - see
 // buildTree above).
-export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpenButton }: Props) {
+export default function TagsDrawer({
+  tags,
+  activeFilter,
+  onSelectFilter,
+  hideOpenButton,
+  groupSection,
+}: Props) {
   // Bottom tabs stay mounted when another tab is on screen (React
   // Navigation doesn't unmount them), and this drawer's own floating
   // pieces are drawn through a portal that reaches over the WHOLE app -
@@ -371,6 +389,33 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
           </Pressable>
 
           <ScrollView style={styles.scroll}>
+            {groupSection && (
+              <>
+                <Text style={styles.sectionLabel}>Групи</Text>
+                {groupSection.items.map((item) => {
+                  const active = groupSection.selected === item.id;
+                  return (
+                    <Pressable
+                      key={item.id ?? '__all__'}
+                      style={[styles.treeRow, active && styles.treeRowSelected]}
+                      onPress={() => groupSection.onSelect(item.id)}
+                    >
+                      {active && <View style={[styles.treeRowMark, { backgroundColor: item.color }]} />}
+                      <View style={{ width: 14 }} />
+                      <Ionicons name="albums-outline" size={16} color={item.color} />
+                      <Text style={[styles.treeLabel, { color: GLASS_TEXT }]} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      <View style={styles.treeCheckSlot}>
+                        {active && <Ionicons name="checkmark" size={14} color={item.color} />}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+                <View style={styles.sectionRule} />
+                <Text style={styles.sectionLabel}>Смартпапки</Text>
+              </>
+            )}
             {topLevel.map((node, i) => (
               <TreeRow
                 key={node.fullPath}
@@ -394,7 +439,22 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
         // Through the portal like the rest of the rail - the blur that
         // fills it cannot live inside the view it blurs.
         <GlassPortal>
-          <Pressable style={[styles.openButton, { bottom: rail.tagBottom }]} onPress={openDrawer}>
+          <Pressable
+            style={[styles.openButton, { bottom: rail.tagBottom }]}
+            onPress={openDrawer}
+            // Held down, it shows and hides the group tabs at the head of
+            // the screen instead of opening the drawer - they live here
+            // now, and the row up there is a convenience you can put away.
+            onLongPress={
+              groupSection
+                ? () => {
+                    hapticButtonDown();
+                    groupSection.onToggleRow();
+                  }
+                : undefined
+            }
+            delayLongPress={400}
+          >
             <BlurView
               intensity={60}
               tint="dark"
@@ -493,6 +553,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_MUTED,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.06,
+    textTransform: 'uppercase',
+    color: GLASS_TEXT_FAINT,
+    paddingLeft: 10,
+    paddingTop: 2,
+    paddingBottom: 6,
+  },
+  sectionRule: {
+    height: 1,
+    backgroundColor: GLASS_LINE,
+    marginTop: 8,
+    marginBottom: 10,
   },
   scroll: {
     flex: 1,
