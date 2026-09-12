@@ -4031,7 +4031,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             ]}
             pointerEvents="box-none"
           >
-            <View style={styles.headerRight}>
+            <View style={[styles.headerRight, railHorizontal && styles.headerRightRow]}>
               <BlurView
                 intensity={60}
                 tint="dark"
@@ -4043,7 +4043,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               <Pressable hitSlop={8} onPress={() => setExportMenuOpen((v) => !v)}>
                 <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
               </Pressable>
-              <View style={styles.headerRightDivider} />
+              <View style={[styles.headerRightDivider, railHorizontal && styles.headerRightDividerRow]} />
               {/* The way out of the document, where the back arrow in the
                   header's corner used to be - the capsule is where this
                   screen's controls live now. */}
