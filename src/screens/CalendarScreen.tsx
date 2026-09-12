@@ -91,6 +91,8 @@ const WEEK_AREA_HEIGHT = ROW_HEIGHT;
 const MONTH_AREA_HEIGHT = ROW_HEIGHT * 6;
 const MONTH_NAV_HEIGHT = 36;
 const WEEKDAY_HEADER_HEIGHT = 22;
+// Between "Сьогодні"/the date and the calendar under them.
+const HEADER_GAP = 8;
 // The "only filled days" strip has no weekday header (its dates aren't a
 // real calendar week, so weekday letters would be meaningless) - that
 // reclaimed height goes straight into taller day cells instead of just
@@ -178,9 +180,17 @@ export default function CalendarScreen() {
   // the portal for its blur - so it has to withdraw when the calendar
   // isn't the screen on show.
   const [historyExpanded, setHistoryExpanded] = useState(false);
+  // "Сьогодні" and the date sit above the calendar, and the calendar has
+  // to start on the capsule's own line - so the row's top padding is
+  // whatever is left once its content and the gap under it are taken off
+  // that line. Measured from the content itself, which doesn't depend on
+  // the padding, rather than from the row, which would chase itself.
+  const [headerContentHeight, setHeaderContentHeight] = useState(0);
   const calendarBlurTarget = useBlurTarget();
   const calendarFocused = useIsFocused();
   const calendarInsets = useSafeAreaInsets();
+  const capsuleTop = calendarInsets.top + CHROME_TOP + CAPSULE_DROP;
+  const headerPadTop = Math.max(calendarInsets.top + 8, capsuleTop - headerContentHeight - HEADER_GAP);
   // Mirrors the embedded note editor's own internal state (see
   // DocumentEditorScreen's onSelectModeChange/onSaveStatusChange) so this
   // screen's own header capsule can show the right icon/checkmark for
@@ -565,8 +575,11 @@ export default function CalendarScreen() {
         <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#calendarBg)" />
       </Svg>
 
-      <View style={styles.headerRow}>
-        <View style={styles.headerLeft}>
+      <View style={[styles.headerRow, { paddingTop: headerPadTop }]}>
+        <View
+          style={styles.headerLeft}
+          onLayout={(e) => setHeaderContentHeight(e.nativeEvent.layout.height)}
+        >
           <Pressable style={styles.todayButton} onPress={jumpToToday}>
             <Text style={styles.todayButtonLabel}>Сьогодні</Text>
           </Pressable>
@@ -1051,9 +1064,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
     paddingHorizontal: 20,
-    // Matches DocumentsScreen's own header capsule's vertical position.
-    paddingTop: 90,
-    paddingBottom: 8,
+    // paddingTop is computed - see headerPadTop.
+    paddingBottom: HEADER_GAP,
   },
   headerLeft: {
     flexDirection: 'row',
