@@ -169,9 +169,6 @@ export default function DocumentsScreen() {
   const insets = useSafeAreaInsets();
   const chromeTop = insets.top + CHROME_TOP;
   const chromeBottom = chromeTop + chromeHeight + 8;
-  // The menu is cut to the island's own height, so it has to be measured
-  // rather than guessed - the icons decide it.
-  const [islandHeight, setIslandHeight] = useState(0);
   // The island is drawn through the portal, over the whole window, so it
   // has to withdraw when this screen isn't the one on show.
   const isFocused = useIsFocused();
@@ -181,6 +178,16 @@ export default function DocumentsScreen() {
   // ends up sitting behind the navigation island - the island is the
   // tallest thing on the rail's foot and the closest to that edge.
   const listBottomPad = rail.navBottom + NAV_HEIGHT + RAIL_GAP;
+  // The menu runs from the capsule's top down to the folder button under
+  // it, rather than being cut to the capsule itself - at two buttons the
+  // capsule is far too short to hold a menu, and the rows were clipped
+  // mid-word. It is the rail's own free stretch, which is the shape the
+  // menu should have anyway.
+  const menuHeight = Math.max(
+    180,
+    windowHeight - rail.tagBottom - RAIL_WIDTH - RAIL_GAP - (chromeTop + CAPSULE_DROP)
+  );
+
 
   useEffect(() => {
     return onSnapshot(documentsPrefsDoc, (snapshot) => {
@@ -531,7 +538,7 @@ export default function DocumentsScreen() {
         >
           <View style={styles.sideIslandRow}>
             {menuOpen && (
-              <View style={[styles.menuPanel, islandHeight > 0 && { height: islandHeight }]}>
+              <View style={[styles.menuPanel, { height: menuHeight }]}>
                 <BlurView
                   intensity={60}
                   tint="dark"
@@ -573,10 +580,7 @@ export default function DocumentsScreen() {
                 </ScrollView>
               </View>
             )}
-            <View
-              style={styles.sideIsland}
-              onLayout={(e) => setIslandHeight(e.nativeEvent.layout.height)}
-            >
+            <View style={styles.sideIsland}>
               <BlurView
                 intensity={60}
                 tint="dark"
@@ -959,7 +963,9 @@ const styles = StyleSheet.create({
   },
   sideIslandRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    // Top-aligned, not centred: the menu is taller than the capsule, and
+    // centring it would hang it off the top of the screen.
+    alignItems: 'flex-start',
     gap: 8,
   },
   sideIsland: {
