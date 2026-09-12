@@ -3913,9 +3913,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       {!embedded && (
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Pressable hitSlop={8} onPress={() => (closePane ? closePane() : navigation.goBack())}>
-            <Ionicons name="arrow-back" size={22} color={paperColor?.text ?? '#111827'} />
-          </Pressable>
           {!!onToggleFullscreen && (
             <Pressable hitSlop={8} onPress={onToggleFullscreen}>
               <Ionicons
@@ -3956,8 +3953,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                 <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
               </Pressable>
               <View style={styles.headerRightDivider} />
-              <Pressable hitSlop={8} onPress={toggleSelectMode}>
-                <Ionicons name={isSelectMode ? 'close-outline' : 'ellipse-outline'} size={24} color="#fff" />
+              {/* The way out of the document, where the back arrow in the
+                  header's corner used to be - the capsule is where this
+                  screen's controls live now. */}
+              <Pressable hitSlop={8} onPress={() => (closePane ? closePane() : navigation.goBack())}>
+                <Ionicons name="arrow-back-outline" size={24} color="#fff" />
               </Pressable>
               {/* The save indicator lives on this capsule's own outline -
                   see SaveRing. Last child, so it draws over the blur. */}
@@ -4031,6 +4031,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           <Pressable style={styles.exportMenuRow} onPress={exportAsTxt}>
             <Ionicons name="reader-outline" size={17} color="#111827" />
             <Text style={styles.exportMenuRowLabel}>У TXT</Text>
+          </Pressable>
+          <View style={styles.exportMenuRule} />
+          <Pressable
+            style={styles.exportMenuRow}
+            onPress={() => {
+              setExportMenuOpen(false);
+              toggleSelectMode();
+            }}
+          >
+            <Ionicons
+              name={isSelectMode ? 'close-outline' : 'ellipse-outline'}
+              size={17}
+              color="#111827"
+            />
+            <Text style={styles.exportMenuRowLabel}>{isSelectMode ? 'Скасувати вибір' : 'Вибрати'}</Text>
           </Pressable>
         </View>
       )}
@@ -4516,6 +4531,11 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 10,
     paddingHorizontal: 8,
+  },
+  exportMenuRule: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 6,
   },
   exportMenuRowLabel: {
     flex: 1,

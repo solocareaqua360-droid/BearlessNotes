@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { useIsFocused } from '@react-navigation/native';
 import { GlassPortal } from './GlassPortal';
 import { useBlurTarget } from './GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
@@ -32,6 +33,12 @@ const ICON_SIZE = 24;
 export default function FloatingIslandTabBar({ state, navigation }: BottomTabBarProps) {
   const blurTarget = useBlurTarget();
   const rail = useRail();
+  // The island draws through the portal, which reaches over the whole app
+  // - including screens pushed on top of the tabs. Without this it stayed
+  // floating over an open note, where there is nothing to navigate to.
+  const tabsFocused = useIsFocused();
+
+  if (!tabsFocused) return null;
 
   return (
     <GlassPortal>
