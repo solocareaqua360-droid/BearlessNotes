@@ -95,6 +95,29 @@ function buildTree(tags: Tag[]): TreeNode {
 //
 // `guides` is one flag per cell, computed by the parent: cells before the
 // row's own carry a line when that ancestor has siblings still to come.
+// The head of a section, and the handle that folds it away. Same shape as
+// a row in it, one notch quieter.
+function SectionHeader({
+  label,
+  collapsed,
+  onPress,
+}: {
+  label: string;
+  collapsed: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={styles.sectionHeader} onPress={onPress}>
+      <Ionicons
+        name={collapsed ? 'chevron-forward' : 'chevron-down'}
+        size={15}
+        color={GLASS_TEXT_FAINT}
+      />
+      <Text style={styles.sectionLabel}>{label}</Text>
+    </Pressable>
+  );
+}
+
 function TreeRow({
   node,
   depth,
@@ -159,16 +182,16 @@ function TreeRow({
           <Pressable hitSlop={8} onPress={() => onToggleExpand(node.fullPath)}>
             <Ionicons
               name={isExpanded ? 'chevron-down' : 'chevron-forward'}
-              size={14}
+              size={17}
               color={GLASS_TEXT_MUTED}
             />
           </Pressable>
         ) : (
-          <View style={{ width: 14 }} />
+          <View style={{ width: 17 }} />
         )}
         <Ionicons
           name={(node.tag ? node.tag.icon : 'folder-outline') as keyof typeof Ionicons.glyphMap}
-          size={16}
+          size={19}
           color={tint}
         />
         <Text
@@ -180,7 +203,7 @@ function TreeRow({
         {/* Reserved always, populated only when selected - so picking a
             folder doesn't shift the label. */}
         <View style={styles.treeCheckSlot}>
-          {isSelected && node.tag && <Ionicons name="checkmark" size={14} color={tint} />}
+          {isSelected && node.tag && <Ionicons name="checkmark" size={17} color={tint} />}
         </View>
       </Pressable>
       </View>
@@ -264,6 +287,8 @@ export default function TagsDrawer({
   const { width: windowWidth } = useWindowDimensions();
   const drawerWidth = Math.round(windowWidth * DRAWER_FRACTION);
   const [filterMode, setFilterMode] = useState<TagFilterMode>('multi');
+  const [groupsCollapsed, setGroupsCollapsed] = useState(false);
+  const [foldersCollapsed, setFoldersCollapsed] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   // How far open the panel is, 0 (closed) .. drawerWidth (fully open).
   // Kept separate from the backdrop's own dim-in below - the panel itself
@@ -357,78 +382,98 @@ export default function TagsDrawer({
           <Text style={styles.title}>Теги</Text>
 
           <View style={styles.segmented}>
-            <Pressable style={styles.segmentButton} onPress={() => selectFilterMode('multi')}>
+            <Pressable
+              style={[styles.segmentButton, filterMode === 'multi' && styles.segmentButtonActive]}
+              onPress={() => selectFilterMode('multi')}
+            >
               <Text style={[styles.segmentLabel, filterMode === 'multi' && styles.segmentLabelActive]}>Мульти</Text>
             </Pressable>
-            <Pressable style={styles.segmentButton} onPress={() => selectFilterMode('isolating')}>
+            <Pressable
+              style={[styles.segmentButton, filterMode === 'isolating' && styles.segmentButtonActive]}
+              onPress={() => selectFilterMode('isolating')}
+            >
               <Text style={[styles.segmentLabel, filterMode === 'isolating' && styles.segmentLabelActive]}>
                 Ізолюючий
               </Text>
             </Pressable>
           </View>
 
-          {/* Drawn as one of the tree's own rows - it stands at the head of
-              the same list and reads as one of them. */}
-          <Pressable
-            style={[
-              styles.treeRow,
-              styles.untaggedRow,
-              activeFilter?.type === 'untagged' && styles.treeRowSelected,
-            ]}
-            onPress={toggleUntagged}
-          >
-            {activeFilter?.type === 'untagged' && (
-              <View style={[styles.treeRowMark, { backgroundColor: GLASS_TEXT_MUTED }]} />
-            )}
-            <View style={{ width: 14 }} />
-            <Ionicons name="pricetag-outline" size={16} color={GLASS_TEXT_MUTED} />
-            <Text style={styles.untaggedLabel}>Без тегів</Text>
-            <View style={styles.treeCheckSlot}>
-              {activeFilter?.type === 'untagged' && <Ionicons name="checkmark" size={14} color={GLASS_TEXT_MUTED} />}
-            </View>
-          </Pressable>
-
           <ScrollView style={styles.scroll}>
             {groupSection && (
               <>
-                <Text style={styles.sectionLabel}>Групи</Text>
-                {groupSection.items.map((item) => {
-                  const active = groupSection.selected === item.id;
-                  return (
-                    <Pressable
-                      key={item.id ?? '__all__'}
-                      style={[styles.treeRow, active && styles.treeRowSelected]}
-                      onPress={() => groupSection.onSelect(item.id)}
-                    >
-                      {active && <View style={[styles.treeRowMark, { backgroundColor: item.color }]} />}
-                      <View style={{ width: 14 }} />
-                      <Ionicons name="albums-outline" size={16} color={item.color} />
-                      <Text style={[styles.treeLabel, { color: GLASS_TEXT }]} numberOfLines={1}>
-                        {item.name}
-                      </Text>
-                      <View style={styles.treeCheckSlot}>
-                        {active && <Ionicons name="checkmark" size={14} color={item.color} />}
-                      </View>
-                    </Pressable>
-                  );
-                })}
+                <SectionHeader
+                  label="Групи"
+                  collapsed={groupsCollapsed}
+                  onPress={() => setGroupsCollapsed((v) => !v)}
+                />
+                {!groupsCollapsed &&
+                  groupSection.items.map((item) => {
+                    const active = groupSection.selected === item.id;
+                    return (
+                      <Pressable
+                        key={item.id ?? '__all__'}
+                        style={[styles.treeRow, active && styles.treeRowSelected]}
+                        onPress={() => groupSection.onSelect(item.id)}
+                      >
+                        {active && <View style={[styles.treeRowMark, { backgroundColor: item.color }]} />}
+                        <View style={{ width: 17 }} />
+                        <Ionicons name="albums-outline" size={19} color={item.color} />
+                        <Text style={[styles.treeLabel, { color: GLASS_TEXT }]} numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                        <View style={styles.treeCheckSlot}>
+                          {active && <Ionicons name="checkmark" size={17} color={item.color} />}
+                        </View>
+                      </Pressable>
+                    );
+                  })}
                 <View style={styles.sectionRule} />
-                <Text style={styles.sectionLabel}>Смартпапки</Text>
               </>
             )}
-            {topLevel.map((node, i) => (
-              <TreeRow
-                key={node.fullPath}
-                node={node}
-                depth={0}
-                guides={[]}
-                isLast={i === topLevel.length - 1}
-                expanded={expanded}
-                selectedIds={selectedTagIds}
-                onToggleExpand={toggleExpand}
-                onToggleTag={toggleTag}
-              />
-            ))}
+
+            <SectionHeader
+              label="Смартпапки"
+              collapsed={foldersCollapsed}
+              onPress={() => setFoldersCollapsed((v) => !v)}
+            />
+            {!foldersCollapsed && (
+              // Drawn as one of the tree's own rows - it stands at the head
+              // of the same list and reads as one of them.
+              <Pressable
+                style={[
+                  styles.treeRow,
+                  styles.untaggedRow,
+                  activeFilter?.type === 'untagged' && styles.treeRowSelected,
+                ]}
+                onPress={toggleUntagged}
+              >
+                {activeFilter?.type === 'untagged' && (
+                  <View style={[styles.treeRowMark, { backgroundColor: GLASS_TEXT_MUTED }]} />
+                )}
+                <View style={{ width: 17 }} />
+                <Ionicons name="pricetag-outline" size={19} color={GLASS_TEXT_MUTED} />
+                <Text style={styles.untaggedLabel}>Без тегів</Text>
+                <View style={styles.treeCheckSlot}>
+                  {activeFilter?.type === 'untagged' && (
+                    <Ionicons name="checkmark" size={17} color={GLASS_TEXT_MUTED} />
+                  )}
+                </View>
+              </Pressable>
+            )}
+            {!foldersCollapsed &&
+              topLevel.map((node, i) => (
+                <TreeRow
+                  key={node.fullPath}
+                  node={node}
+                  depth={0}
+                  guides={[]}
+                  isLast={i === topLevel.length - 1}
+                  expanded={expanded}
+                  selectedIds={selectedTagIds}
+                  onToggleExpand={toggleExpand}
+                  onToggleTag={toggleTag}
+                />
+              ))}
           </ScrollView>
         </Animated.View>
       </View>
@@ -505,35 +550,41 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   title: {
-    fontSize: 19,
+    fontSize: 22,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
     marginBottom: 12,
   },
+  // A track with the chosen half lifted out of it - the same soft panel a
+  // selected row gets, rather than two bordered capsules with only their
+  // labels telling them apart.
   segmented: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
+    gap: 4,
+    marginBottom: 14,
+    padding: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
-  // Same height as a tag pill, wide enough for "Ізолюючий" - always a
-  // black-bordered white capsule; only the label's color (below) says
-  // which one is active.
   segmentButton: {
-    paddingVertical: 7,
-    paddingHorizontal: 16,
+    flex: 1,
+    paddingVertical: 9,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: GLASS_BODY,
-    borderWidth: 1.5,
-    borderColor: GLASS_TEXT,
-    borderRadius: 999,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  segmentButtonActive: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderColor: 'rgba(255,255,255,0.2)',
   },
   segmentLabel: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_FAINT,
+    color: GLASS_TEXT_MUTED,
   },
   segmentLabelActive: {
     color: GLASS_TEXT,
@@ -550,19 +601,24 @@ const styles = StyleSheet.create({
   },
   untaggedLabel: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_MUTED,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingLeft: 6,
+    paddingTop: 2,
+    paddingBottom: 6,
+  },
   sectionLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.06,
     textTransform: 'uppercase',
     color: GLASS_TEXT_FAINT,
-    paddingLeft: 10,
-    paddingTop: 2,
-    paddingBottom: 6,
   },
   sectionRule: {
     height: 1,
@@ -580,13 +636,13 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
   },
   guideCell: {
-    width: 18,
+    width: 22,
   },
   // A line through the whole cell: an ancestor whose branch carries on
   // below this row.
   guidePipe: {
     position: 'absolute',
-    left: 8,
+    left: 10,
     top: 0,
     bottom: 0,
     width: 1,
@@ -595,7 +651,7 @@ const styles = StyleSheet.create({
   // The elbow: down to the row's middle...
   guideStem: {
     position: 'absolute',
-    left: 8,
+    left: 10,
     top: 0,
     height: '50%',
     width: 1,
@@ -609,7 +665,7 @@ const styles = StyleSheet.create({
   // ...then across, to meet the row.
   guideArm: {
     position: 'absolute',
-    left: 8,
+    left: 10,
     right: 0,
     top: '50%',
     height: 1,
@@ -626,7 +682,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: 'transparent',
-    paddingVertical: 6,
+    paddingVertical: 8,
     paddingLeft: 10,
     paddingRight: 8,
     marginBottom: 2,
@@ -645,11 +701,11 @@ const styles = StyleSheet.create({
   },
   // Fixed-width slot for the checkmark, always rendered - see TreeRow.
   treeCheckSlot: {
-    width: 14,
+    width: 17,
     alignItems: 'center',
   },
   treeLabel: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: FONT_REGULAR,
     flexShrink: 1,
   },
