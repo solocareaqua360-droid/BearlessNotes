@@ -1111,8 +1111,14 @@ const styles = StyleSheet.create({
     zIndex: 6,
   },
   // The band the group tabs and the tag chips float in, over the list.
+  // The band the group tabs and the tag chips float in, over the list.
   topChrome: {
     position: 'absolute',
+    // Android views don't clip their children unless told to. Without
+    // this the tabs scrolled straight out of this pane and across the
+    // open document beside it - the scroller's own bounds are the pane's,
+    // but nothing was enforcing them.
+    overflow: 'hidden',
     zIndex: 6,
   },
   sideIslandRow: {

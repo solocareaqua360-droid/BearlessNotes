@@ -4039,13 +4039,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                 style={StyleSheet.absoluteFill}
                 pointerEvents="none"
               />
-              <Pressable hitSlop={8} onPress={() => setExportMenuOpen((v) => !v)}>
-                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
-              </Pressable>
-              <View style={[styles.headerRightDivider, railHorizontal && styles.headerRightDividerRow]} />
-              {/* The way out of the document, where the back arrow in the
-                  header's corner used to be - the capsule is where this
-                  screen's controls live now. */}
+              {/* The way out first, full screen in the middle, the menu
+                  last - reading order on a capsule lying down, and the
+                  one you reach for most at the end nearest the text. */}
               <Pressable hitSlop={8} onPress={() => (closePane ? closePane() : navigation.goBack())}>
                 <Ionicons name="arrow-back-outline" size={24} color="#fff" />
               </Pressable>
@@ -4064,6 +4060,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   </Pressable>
                 </>
               )}
+              <View style={[styles.headerRightDivider, railHorizontal && styles.headerRightDividerRow]} />
+              <Pressable hitSlop={8} onPress={() => setExportMenuOpen((v) => !v)}>
+                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
+              </Pressable>
               {/* The save indicator lives on this capsule's own outline -
                   see SaveRing. Last child, so it draws over the blur. */}
               <SaveRing saving={saveStatus === 'saving'} />
