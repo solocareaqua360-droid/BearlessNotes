@@ -54,9 +54,14 @@ const CAPSULE_HEIGHT = 123;
 // the island drops into the tag row's own band. Both rows keep the rail's
 // width clear, so the two may overlap their bands without ever covering a
 // pill - these are the two numbers that decide how much height the rail's
-// four pieces have to share, and both were dialled in by eye on the
-// device: the capsule 15 above where it used to hang, the island 10 below.
-export const CAPSULE_DROP = 44;
+// four pieces have to share.
+//
+// The capsule's own top is measured, not taken from here (see
+// DocumentsScreen's chromeBottom): it stands exactly level with the top
+// edge of the first card. This is that same line as an estimate - the
+// group row plus the gap under it - for the spacing maths, which cannot
+// measure anything.
+export const CAPSULE_DROP = 59;
 const ISLAND_DROP = 10;
 
 export function useRailLayout(windowHeight: number, insetTop: number, insetBottom: number) {

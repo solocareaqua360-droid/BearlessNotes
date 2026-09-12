@@ -66,7 +66,6 @@ import SketchEditor from '../components/SketchEditor';
 import { BlurView } from 'expo-blur';
 import { GlassPortal } from '../components/GlassPortal';
 import {
-  CAPSULE_DROP,
   CHROME_TOP,
   NAV_HEIGHT,
   RAIL_CLEARANCE,
@@ -197,7 +196,7 @@ export default function DocumentsScreen() {
   // menu should have anyway.
   const menuHeight = Math.max(
     180,
-    windowHeight - rail.tagBottom - RAIL_WIDTH - RAIL_GAP - (chromeTop + CAPSULE_DROP)
+    windowHeight - rail.tagBottom - RAIL_WIDTH - RAIL_GAP - chromeBottom
   );
 
 
@@ -576,7 +575,9 @@ export default function DocumentsScreen() {
         <View
           style={[
             styles.sideIslandLayer,
-            { top: chromeTop + CAPSULE_DROP, left: paneRect.x, width: paneRect.width },
+            // Level with the top edge of the first card, whatever the
+            // chrome above it happens to be.
+            { top: chromeBottom, left: paneRect.x, width: paneRect.width },
           ]}
           pointerEvents="box-none"
         >
