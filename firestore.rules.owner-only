@@ -1,0 +1,32 @@
+rules_version = '2';
+
+// NOT DEPLOYED YET - the owner-only rules, kept here so they are written and
+// reviewed before they are switched on.
+//
+// Deploy this ONLY after every device has signed in with Google and
+// claimExistingData has stamped ownerId across every collection. In the
+// other order the app locks itself out of its own data: nothing carries an
+// owner, so nothing matches, and there is no way in from the client to fix
+// it afterwards.
+//
+// What changes from the rules this replaces: those accepted ANY signed-in
+// request, including an anonymous one. On a phone that meant an attacker had
+// to pull the APK apart first. On the web the config sits in the page, and
+// signInAnonymously() from the console is two lines - which is why this has
+// to land before a web version exists, not after.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{collection}/{docId} {
+      // Reading: only your own.
+      allow read: if request.auth != null && resource.data.ownerId == request.auth.uid;
+      // Creating: you may only stamp yourself as the owner.
+      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
+      // Updating and deleting: only what is already yours, and you may not
+      // hand it to anyone else on the way.
+      allow update: if request.auth != null
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.ownerId == request.auth.uid;
+    }
+  }
+}
