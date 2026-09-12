@@ -1,4 +1,5 @@
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import { DRIVE_SCOPE, ensureGoogleConfigured } from './googleClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { doc, increment, setDoc } from '@react-native-firebase/firestore';
@@ -8,7 +9,6 @@ const driveStatsDoc = doc(db, 'settings', 'driveStats');
 
 // drive.file (not the full "drive" scope) - this app can only see/manage
 // files it creates itself, never the rest of the user's Drive.
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const FOLDER_NAME = 'Bearless Notes';
 const FOLDER_ID_STORAGE_KEY = 'bearlessNotes.driveFolderId';
 
@@ -20,12 +20,7 @@ const SUBFOLDER_ID_STORAGE_KEY: Record<DriveSubFolder, string> = {
   Files: 'bearlessNotes.driveFolderId.files',
 };
 
-let configured = false;
-function ensureConfigured() {
-  if (configured) return;
-  GoogleSignin.configure({ scopes: [DRIVE_SCOPE] });
-  configured = true;
-}
+const ensureConfigured = ensureGoogleConfigured;
 
 export function isDriveConnected(): boolean {
   ensureConfigured();

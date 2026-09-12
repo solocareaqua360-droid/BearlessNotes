@@ -9,6 +9,7 @@ import {
   signOut,
 } from '@react-native-firebase/auth';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import { ensureGoogleConfigured } from './utils/googleClient';
 
 // The native Firebase SDK reads its config from google-services.json (wired
 // via app.json's android.googleServicesFile), not from JS - so there's no
@@ -56,6 +57,7 @@ export function ensureSignedIn(): Promise<void> {
 export type GoogleSignInResult = { uid: string; email: string | null; hadToSwitch: boolean };
 
 export async function signInWithGoogleAccount(): Promise<GoogleSignInResult> {
+  ensureGoogleConfigured();
   await GoogleSignin.hasPlayServices();
   const response = await GoogleSignin.signIn();
   const idToken = response.data?.idToken;

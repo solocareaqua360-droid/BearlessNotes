@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 // native and ships over the air like any other change.
 import * as Updates from 'expo-updates';
 import { doc, onSnapshot } from '@react-native-firebase/firestore';
-import { db } from '../firebase';
+import { auth, db, signInWithGoogleAccount } from '../firebase';
 import {
   connectGoogleDrive,
   disconnectGoogleDrive,
@@ -18,6 +18,7 @@ import {
 } from '../utils/googleDrive';
 import ContentColumn from '../components/ContentColumn';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { claimExistingData } from '../utils/claimOwnership';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -42,6 +43,9 @@ function formatUpdateTime(date: Date | null): string {
 }
 
 export default function SettingsScreen() {
+  const [accountEmail, setAccountEmail] = useState<string | null>(auth.currentUser?.email ?? null);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [claimStatus, setClaimStatus] = useState('');
   // "Is the change I just published actually on this phone?" - by default
   // nothing in the app answers that: expo-updates downloads a new bundle on
   // a cold start and only applies it on the NEXT one, silently. This card
@@ -148,11 +152,65 @@ export default function SettingsScreen() {
     ]);
   }
 
+  async function handleGoogleSignIn() {
+    setAuthBusy(true);
+    setClaimStatus('');
+    try {
+      const result = await signInWithGoogleAccount();
+      setAccountEmail(result.email);
+      if (result.hadToSwitch) {
+        Alert.alert(
+          'Увійшли в наявний акаунт',
+          'Цим акаунтом уже входили раніше, тож прив\'язати до нього дані цього пристрою не вийшло - вони лишились під попередньою анонімною особою.'
+        );
+      }
+      // Stamping ownership is what makes owner-only rules possible later.
+      // Safe to re-run: it only touches documents that have no owner yet.
+      setClaimStatus('Позначаю дані...');
+      const claimed = await claimExistingData(result.uid, (p) =>
+        setClaimStatus(`${p.collection}: ${p.claimed}/${p.total}`)
+      );
+      setClaimStatus(claimed > 0 ? `Позначено записів: ${claimed}` : 'Усі дані вже позначені');
+    } catch (error) {
+      const message = (error as { message?: string }).message ?? 'Не вдалося увійти';
+      Alert.alert('Вхід не вдався', message);
+      setClaimStatus('');
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
   return (
     <View style={styles.container}>
       <ContentColumn>
         <View style={styles.headerRow}>
           <Text style={styles.header}>Налаштування</Text>
+        </View>
+
+        {/* The account everything belongs to. Above the version card
+            deliberately: it is the one thing here that decides what the app
+            can see at all. */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="person-circle-outline" size={22} color={ACCENT} />
+            <Text style={styles.cardTitle}>Обліковий запис</Text>
+          </View>
+          <Text style={styles.cardBody}>
+            {accountEmail ? accountEmail : 'Без входу - дані прив\'язані лише до цього пристрою'}
+          </Text>
+          <Text style={styles.cardHint}>
+            {accountEmail
+              ? 'Ці нотатки належать цьому акаунту. Увійди ним і на інших пристроях, щоб вони бачили те саме.'
+              : 'Поки входу немає, кожен пристрій - сам по собі. Вхід через Google робить їх одним цілим і дає доступ до файлів на Диску.'}
+          </Text>
+          {claimStatus !== '' && <Text style={styles.cardHint}>{claimStatus}</Text>}
+          <Pressable style={styles.checkButton} onPress={handleGoogleSignIn} disabled={authBusy}>
+            {authBusy ? (
+              <ActivityIndicator color={ACCENT} />
+            ) : (
+              <Text style={styles.checkLabel}>{accountEmail ? 'Змінити акаунт' : 'Увійти через Google'}</Text>
+            )}
+          </Pressable>
         </View>
 
         <View style={[styles.card, styles.updateCard]}>
