@@ -8,7 +8,14 @@ import { FONT_REGULAR, FONT_SEMIBOLD, FONT_BOLD, FONT_EXTRABOLD } from '../utils
 import { RAIL_RIGHT } from '../constants/rail';
 import { GLASS_ISLAND } from '../constants/glass';
 import { useRail } from '../hooks/useRail';
-import { GLASS_BODY, GLASS_BODY_BLURRED, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
+import {
+  GLASS_BODY,
+  GLASS_BODY_BLURRED,
+  GLASS_LINE,
+  GLASS_TEXT,
+  GLASS_TEXT_FAINT,
+  GLASS_TEXT_MUTED,
+} from '../constants/glass';
 import { BlurView } from 'expo-blur';
 import { useBlurTarget } from './GlassTarget';
 import { GlassPortal } from './GlassPortal';
@@ -139,24 +146,38 @@ function TreeRow({
             </View>
           )
         )}
-      <Pressable style={[styles.treeRow, { borderColor: tint }]} onPress={() => (node.tag ? onToggleTag(node.tag) : onToggleExpand(node.fullPath))}>
+      <Pressable
+        style={[styles.treeRow, isSelected && styles.treeRowSelected]}
+        onPress={() => (node.tag ? onToggleTag(node.tag) : onToggleExpand(node.fullPath))}
+      >
+        {/* The bar Explorer puts against a selected row, in this folder's
+            own colour - the one place the colour still shows now that the
+            rows aren't coloured capsules. */}
+        {isSelected && <View style={[styles.treeRowMark, { backgroundColor: tint }]} />}
         {hasChildren ? (
           <Pressable hitSlop={8} onPress={() => onToggleExpand(node.fullPath)}>
-            <Ionicons name={isExpanded ? 'chevron-down' : 'chevron-forward'} size={13} color={tint} />
+            <Ionicons
+              name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+              size={14}
+              color={GLASS_TEXT_MUTED}
+            />
           </Pressable>
         ) : (
-          <View style={{ width: 13 }} />
+          <View style={{ width: 14 }} />
         )}
         <Ionicons
           name={(node.tag ? node.tag.icon : 'folder-outline') as keyof typeof Ionicons.glyphMap}
-          size={13}
+          size={16}
           color={tint}
         />
-        <Text style={[styles.treeLabel, { color: tint }]} numberOfLines={1}>
+        <Text
+          style={[styles.treeLabel, { color: node.tag ? GLASS_TEXT : GLASS_TEXT_MUTED }]}
+          numberOfLines={1}
+        >
           {node.name}
         </Text>
         {/* Reserved always, populated only when selected - so picking a
-            tag doesn't add width to the pill and change its shape. */}
+            folder doesn't shift the label. */}
         <View style={styles.treeCheckSlot}>
           {isSelected && node.tag && <Ionicons name="checkmark" size={14} color={tint} />}
         </View>
@@ -328,11 +349,24 @@ export default function TagsDrawer({ tags, activeFilter, onSelectFilter, hideOpe
             </Pressable>
           </View>
 
-          <Pressable style={styles.untaggedRow} onPress={toggleUntagged}>
-            <Ionicons name="pricetag-outline" size={13} color={GLASS_TEXT_FAINT} />
+          {/* Drawn as one of the tree's own rows - it stands at the head of
+              the same list and reads as one of them. */}
+          <Pressable
+            style={[
+              styles.treeRow,
+              styles.untaggedRow,
+              activeFilter?.type === 'untagged' && styles.treeRowSelected,
+            ]}
+            onPress={toggleUntagged}
+          >
+            {activeFilter?.type === 'untagged' && (
+              <View style={[styles.treeRowMark, { backgroundColor: GLASS_TEXT_MUTED }]} />
+            )}
+            <View style={{ width: 14 }} />
+            <Ionicons name="pricetag-outline" size={16} color={GLASS_TEXT_MUTED} />
             <Text style={styles.untaggedLabel}>Без тегів</Text>
             <View style={styles.treeCheckSlot}>
-              {activeFilter?.type === 'untagged' && <Ionicons name="checkmark" size={14} color={GLASS_TEXT_FAINT} />}
+              {activeFilter?.type === 'untagged' && <Ionicons name="checkmark" size={14} color={GLASS_TEXT_MUTED} />}
             </View>
           </Pressable>
 
@@ -448,25 +482,17 @@ const styles = StyleSheet.create({
   // it has none of its own) - not just when active. Selection shows as the
   // checkmark in the reserved slot, not a shape/color change, so picking a
   // tag never resizes its pill.
+  // It takes the tree row's shape; only the breathing room under it is
+  // its own, to set it apart from the tree proper.
   untaggedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 8,
-    backgroundColor: GLASS_BODY,
-    borderWidth: 1.5,
-    borderColor: GLASS_TEXT_FAINT,
-    borderRadius: 999,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    marginBottom: 6,
-    maxWidth: '100%',
+    flexGrow: 0,
+    marginBottom: 8,
   },
   untaggedLabel: {
+    flex: 1,
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_FAINT,
-    flexShrink: 1,
+    color: GLASS_TEXT_MUTED,
   },
   scroll: {
     flex: 1,
@@ -513,18 +539,33 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: GLASS_LINE,
   },
+  // A plain line, not a capsule: only the selected row is drawn, and it is
+  // drawn the way Explorer draws one - a soft rounded panel running the
+  // rest of the width, rather than a pill hugging its own text.
   treeRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
     gap: 8,
-    backgroundColor: GLASS_BODY,
-    borderWidth: 1.5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    paddingVertical: 6,
+    paddingLeft: 10,
+    paddingRight: 8,
+    marginBottom: 2,
+  },
+  treeRowSelected: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  treeRowMark: {
+    position: 'absolute',
+    left: 3,
+    top: 7,
+    bottom: 7,
+    width: 3,
     borderRadius: 999,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    marginBottom: 6,
-    maxWidth: '100%',
   },
   // Fixed-width slot for the checkmark, always rendered - see TreeRow.
   treeCheckSlot: {
