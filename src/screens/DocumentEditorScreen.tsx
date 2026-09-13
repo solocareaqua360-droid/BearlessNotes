@@ -83,7 +83,12 @@ import { BlockAction } from '../components/blockActions';
 import { clearCopiedObject, getCopiedObject, useCopiedObject } from '../utils/objectClipboard';
 import { backupFileToDrive, ensureLocalFile } from '../utils/googleDrive';
 import { ensureFileIsHere, openFileExternally } from '../utils/openFileExternally';
-import TextRecognizer, { RecognizeProgress, RecognizeRequest } from '../components/TextRecognizer';
+import TextRecognizer, {
+  RecognizeProgress,
+  RecognizeRequest,
+  RecognizedPage,
+} from '../components/TextRecognizer';
+import TextSelection from '../components/TextSelection';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
@@ -2167,6 +2172,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const [recognizeProgress, setRecognizeProgress] = useState<RecognizeProgress | null>(null);
   // The pages just scanned, waiting to be told what to become.
   const [scanResult, setScanResult] = useState<{ blockId: string; pages: string[] } | null>(null);
+  // The recognised pages, waiting for the user to pick what they want
+  // off them.
+  const [selecting, setSelecting] = useState<{ pages: RecognizedPage[]; after: string } | null>(null);
 
   function startRecognizing(uris: string[], after: string) {
     setRecognizeProgress({ page: 1, of: uris.length, progress: 0 });
@@ -4045,20 +4053,31 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       .trim();
   }
 
-  function insertRecognizedText(pages: string[]) {
+  // The pages come back with every word and the box it sits in, so the
+  // next step is not "here is the text" but "choose what you want off the
+  // page" - see TextSelection.
+  function showRecognized(pages: RecognizedPage[]) {
     const after = recognizing?.after;
     setRecognizing(null);
     setRecognizeProgress(null);
-    const text = tidyRecognized(pages.join('\n\n'));
-    if (!after || !text) {
-      if (!text) Alert.alert('Нічого не знайшлось', 'На цьому знімку не вдалося прочитати текст.');
+    const anything = pages.some((page) => page.words.length > 0);
+    if (!after || !anything) {
+      Alert.alert('Нічого не знайшлось', 'На цьому знімку не вдалося прочитати текст.');
       return;
     }
+    setSelecting({ pages, after });
+  }
+
+  function insertRecognizedText(text: string) {
+    const after = selecting?.after;
+    setSelecting(null);
+    const tidied = tidyRecognized(text);
+    if (!after || !tidied) return;
     setBlocks((prev) => {
       const index = prev.findIndex((b) => b.id === after);
       if (index < 0) return prev;
       const next = [...prev];
-      next.splice(index + 1, 0, { id: generateId(), text });
+      next.splice(index + 1, 0, { id: generateId(), text: tidied });
       return next;
     });
   }
@@ -4564,10 +4583,16 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         </Pressable>
       </Modal>
 
+      <TextSelection
+        pages={selecting?.pages ?? null}
+        onClose={() => setSelecting(null)}
+        onInsert={insertRecognizedText}
+      />
+
       <TextRecognizer
         request={recognizing?.request ?? null}
         onProgress={setRecognizeProgress}
-        onDone={insertRecognizedText}
+        onDone={showRecognized}
         onError={(message) => {
           setRecognizing(null);
           setRecognizeProgress(null);

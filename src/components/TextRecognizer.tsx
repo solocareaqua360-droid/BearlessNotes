@@ -28,6 +28,19 @@ export type RecognizeRequest = {
   uris: string[];
 };
 
+// One word and the box it occupies, in the recognised image's own pixels.
+export type RecognizedWord = { text: string; x0: number; y0: number; x1: number; y1: number };
+
+// A page as it came back: its whole text, and the words it is made of,
+// against the picture they were read from.
+export type RecognizedPage = {
+  text: string;
+  words: RecognizedWord[];
+  width: number;
+  height: number;
+  image: string;
+};
+
 async function assetUri(module: number): Promise<string> {
   const asset = Asset.fromModule(module);
   await asset.downloadAsync();
@@ -81,7 +94,22 @@ function pageFor(images: string[], dirUrl: string): string {
         post({ page: i + 1, of: images.length });
         // By name, next to the page - see the note about inlining.
         var result = await worker.recognize('${dirUrl}' + images[i]);
-        pages.push(result.data.text || '');
+        // Every word with the box it sits in, in reading order - what
+        // lets a finger drag across the picture and pick a passage out
+        // of it rather than taking the whole page or nothing.
+        var words = (result.data.words || []).map(function (w) {
+          return {
+            text: w.text,
+            x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1,
+          };
+        });
+        pages.push({
+          text: result.data.text || '',
+          words: words,
+          width: (result.data.imageWidth || 0),
+          height: (result.data.imageHeight || 0),
+          image: '${dirUrl}' + images[i],
+        });
       }
       await worker.terminate();
       post({ ok: true, pages: pages });
@@ -102,7 +130,7 @@ export default function TextRecognizer({
 }: {
   request: RecognizeRequest | null;
   onProgress: (progress: RecognizeProgress) => void;
-  onDone: (pages: string[]) => void;
+  onDone: (pages: RecognizedPage[]) => void;
   onError: (message: string) => void;
 }) {
   const [pageUri, setPageUri] = useState<string | null>(null);
@@ -176,7 +204,7 @@ export default function TextRecognizer({
     try {
       const message = JSON.parse(raw) as {
         ok?: boolean;
-        pages?: string[];
+        pages?: RecognizedPage[];
         error?: string;
         page?: number;
         of?: number;
