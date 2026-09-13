@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
@@ -14,6 +14,8 @@ import {
 } from '../constants/databaseTiles';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { colorForDocument } from '../utils/documentColor';
+import { auth } from '../firebase';
+import { onAuthStateChanged } from '@react-native-firebase/auth';
 import { hapticButtonDown } from '../utils/haptics';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Tag } from '../types';
@@ -336,6 +338,11 @@ export default function TagsDrawer({
   // next line. A pixel of slack costs nothing and keeps them together.
   const tileWidth = Math.floor((drawerWidth - PANEL_PADDING * 2 - TILE_GAP * 2) / 3);
   const [filterMode, setFilterMode] = useState<TagFilterMode>('multi');
+  // Who everything belongs to, live - the row at the foot of the drawer
+  // is the way to the account, the app's version and its updates now that
+  // the island is going away, so it must never show a stale address.
+  const [accountEmail, setAccountEmail] = useState<string | null>(auth.currentUser?.email ?? null);
+  useEffect(() => onAuthStateChanged(auth, (user) => setAccountEmail(user?.email ?? null)), []);
   const [databasesCollapsed, setDatabasesCollapsed] = useState(false);
   const [groupsCollapsed, setGroupsCollapsed] = useState(false);
   const [foldersCollapsed, setFoldersCollapsed] = useState(false);
@@ -611,6 +618,31 @@ export default function TagsDrawer({
                 />
               ))}
           </ScrollView>
+
+          {/* Pinned to the foot of the panel, the way a profile sits at the
+              bottom of a sidebar: the account everything belongs to, and
+              behind it the app's version and its updates. This is the one
+              way into settings once the island is gone, so it stays put
+              while the lists above it scroll. */}
+          <Pressable
+            style={styles.accountRow}
+            onPress={() => openDatabase(() => navigation.navigate('Settings'))}
+          >
+            <View style={styles.accountAvatar}>
+              <Text style={styles.accountInitial}>
+                {(accountEmail ?? '?').slice(0, 1).toUpperCase()}
+              </Text>
+            </View>
+            <View style={styles.accountText}>
+              <Text style={styles.accountLabel} numberOfLines={1}>
+                {accountEmail ?? 'Увійти через Google'}
+              </Text>
+              <Text style={styles.accountHint} numberOfLines={1}>
+                Акаунт, версія, оновлення
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={GLASS_TEXT_FAINT} />
+          </Pressable>
         </Animated.View>
       </View>
       </GlassPortal>
@@ -763,6 +795,42 @@ const styles = StyleSheet.create({
     letterSpacing: 0.06,
     textTransform: 'uppercase',
     color: GLASS_TEXT_FAINT,
+  },
+  accountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    backgroundColor: GLASS_CARD,
+  },
+  accountAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  accountInitial: {
+    fontSize: 13,
+    fontFamily: FONT_BOLD,
+    color: GLASS_TEXT,
+  },
+  accountText: {
+    flex: 1,
+  },
+  accountLabel: {
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT,
+  },
+  accountHint: {
+    fontSize: 11,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT_MUTED,
   },
   // The database grid: three tiles to a row, the wide one across all of
   // them. Sized in JS (see tileWidth) rather than in percentages - a
