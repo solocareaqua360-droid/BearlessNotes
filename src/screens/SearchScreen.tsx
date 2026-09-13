@@ -1,126 +1,224 @@
-import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { collection, onSnapshot, orderBy, query } from '@react-native-firebase/firestore';
-import { db } from '../firebase';
-import { DocumentItem } from '../types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../navigation';
-import DocumentCard from '../components/DocumentCard';
-import { documentMatchesQuery, extractPreview, findBodyMatch, findTitleMatch } from '../utils/documentPreview';
 import ContentColumn from '../components/ContentColumn';
-import { FONT_REGULAR } from '../utils/fonts';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { GLASS_CARD, GLASS_INPUT, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
+import { TextMatch } from '../utils/documentPreview';
+import { SearchHit, SearchTarget, groupHits, useGlobalSearch } from '../hooks/useGlobalSearch';
 
-const documentsCollection = collection(db, 'documents');
-
-// Pushed as its own stack screen from the search icon on DocumentsScreen -
-// searches document titles AND body text, highlighting the matched
-// fragment (title match takes priority; otherwise the first body snippet
-// containing the match is shown, Bear-style). Tag browsing lives in the
-// pull-out TagsDrawer now, not here.
+// One search over every database (see useGlobalSearch) - reached from the
+// capsule on the databases screen. Results come back grouped by the
+// database they live in, in the same order the menu lists them.
 export default function SearchScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [documents, setDocuments] = useState<DocumentItem[]>([]);
-  const [query_, setQuery] = useState('');
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const [needle, setNeedle] = useState('');
+  const hits = useGlobalSearch(needle);
+  const groups = groupHits(hits);
 
-  useEffect(() => {
-    const documentsQuery = query(documentsCollection, orderBy('updatedAt', 'desc'));
-    return onSnapshot(documentsQuery, (snapshot) => {
-      setDocuments(
-        snapshot.docs
-          // Daily notes (CalendarScreen) live in this same collection but
-          // aren't part of this document search.
-          .filter((docSnapshot) => !docSnapshot.data().calendarDate)
-          .map((docSnapshot) => ({
-            id: docSnapshot.id,
-            title: docSnapshot.data().title,
-            updatedAt: docSnapshot.data().updatedAt,
-            blocks: docSnapshot.data().blocks ?? [],
-            coverImageUri: docSnapshot.data().coverImageUri,
-          }))
-      );
-    });
-  }, []);
-
-  const needle = query_.trim();
-  const matches = needle.length === 0 ? [] : documents.filter((d) => documentMatchesQuery(d.title ?? '', d.blocks, needle));
+  function open(target: SearchTarget) {
+    switch (target.kind) {
+      case 'document':
+        navigation.navigate('Editor', { documentId: target.documentId });
+        return;
+      case 'links':
+        navigation.navigate('Links', { category: target.category });
+        return;
+      case 'screen':
+        navigation.navigate(target.route);
+        return;
+      case 'customDatabase':
+        navigation.navigate('CustomDatabase', { databaseId: target.databaseId });
+        return;
+      case 'board':
+        navigation.navigate('Tabs', {
+          screen: 'Дошки',
+          params: { screen: 'Board', params: { boardId: target.boardId } },
+        });
+    }
+  }
 
   return (
     <View style={styles.container}>
-      <ContentColumn>
-        <View style={styles.headerRow}>
-          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={22} color="#111827" />
-          </Pressable>
-        </View>
+      {/* The same fixed gradient every other screen stands on. */}
+      <Svg
+        width={windowWidth + 2}
+        height={windowHeight + 2}
+        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
+        pointerEvents="none"
+      >
+        <Defs>
+          <LinearGradient id="searchBg" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0.03" stopColor="#705648" />
+            <Stop offset="0.52" stopColor="#69736E" />
+            <Stop offset="1" stopColor="#000000" />
+          </LinearGradient>
+        </Defs>
+        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#searchBg)" />
+      </Svg>
 
-        <View style={styles.searchRow}>
-          <Ionicons name="search" size={16} color="#9CA3AF" />
+      <ContentColumn>
+        {/* The way back sits in the search row itself: this screen is one
+            field and its results, and a capsule of its own beside them
+            would be three controls for a screen that has one. */}
+        <View style={[styles.searchRow, { marginTop: insets.top + 12 }]}>
+          <Pressable hitSlop={10} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back-outline" size={22} color={GLASS_TEXT} />
+          </Pressable>
           <TextInput
             autoFocus
-            value={query_}
-            onChangeText={setQuery}
-            placeholder="Пошук документів"
-            placeholderTextColor="#9CA3AF"
+            value={needle}
+            onChangeText={setNeedle}
+            placeholder="Пошук по всіх базах"
+            placeholderTextColor={GLASS_TEXT_FAINT}
             style={styles.searchInput}
           />
+          {needle.length > 0 && (
+            <Pressable hitSlop={10} onPress={() => setNeedle('')}>
+              <Ionicons name="close-outline" size={20} color={GLASS_TEXT_MUTED} />
+            </Pressable>
+          )}
         </View>
 
-        <ScrollView contentContainerStyle={styles.list}>
-          {matches.map((item) => {
-            const titleMatch = findTitleMatch(item.title ?? '', needle);
-            const bodyMatch = titleMatch ? null : findBodyMatch(item.blocks, needle);
-            const { imageUri, previewText } = extractPreview(item.blocks, item.coverImageUri);
-            return (
-              <DocumentCard
-                key={item.id}
-                id={item.id}
-                title={item.title}
-                updatedAt={item.updatedAt}
-                imageUri={imageUri}
-                previewText={previewText}
-                titleMatch={titleMatch}
-                bodyMatch={bodyMatch}
-                onPress={() => navigation.navigate('Editor', { documentId: item.id })}
-              />
-            );
-          })}
+        <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
+          {needle.trim().length > 0 && groups.length === 0 && (
+            <Text style={styles.empty}>Нічого не знайдено</Text>
+          )}
+
+          {groups.map((group) => (
+            <View key={group.section.key} style={styles.group}>
+              <View style={styles.groupHeader}>
+                <Ionicons name={group.section.icon} size={15} color={group.section.color} />
+                <Text style={[styles.groupLabel, { color: group.section.color }]}>{group.section.label}</Text>
+                <Text style={styles.groupCount}>{group.hits.length}</Text>
+              </View>
+              {group.hits.map((hit: SearchHit) => (
+                <Pressable key={hit.key} style={styles.row} onPress={() => open(hit.target)}>
+                  <View style={[styles.rowIcon, { backgroundColor: `${group.section.color}22` }]}>
+                    <Ionicons name={group.section.icon} size={16} color={group.section.color} />
+                  </View>
+                  <View style={styles.rowText}>
+                    <Text style={styles.rowTitle} numberOfLines={1}>
+                      {hit.title || 'Без назви'}
+                    </Text>
+                    {hit.match && <Highlighted match={hit.match} />}
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          ))}
         </ScrollView>
       </ContentColumn>
-
     </View>
+  );
+}
+
+// The matched fragment, lit up inside the line it was found in.
+function Highlighted({ match }: { match: TextMatch }) {
+  return (
+    <Text style={styles.rowSnippet} numberOfLines={1}>
+      {match.before}
+      <Text style={styles.rowHighlight}>{match.match}</Text>
+      {match.after}
+    </Text>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-  },
-  headerRow: {
-    paddingHorizontal: 20,
-    paddingTop: 56,
-    paddingBottom: 12,
   },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     marginHorizontal: 20,
-    marginBottom: 16,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 10,
-    paddingHorizontal: 12,
+    marginBottom: 12,
+    backgroundColor: GLASS_INPUT,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    paddingHorizontal: 16,
     paddingVertical: 10,
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
+    padding: 0,
   },
   list: {
-    paddingHorizontal: 0,
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+  },
+  empty: {
+    marginTop: 40,
+    textAlign: 'center',
+    fontSize: 14,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT_MUTED,
+  },
+  group: {
+    marginBottom: 18,
+  },
+  groupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingLeft: 4,
+    paddingBottom: 8,
+  },
+  groupLabel: {
+    fontSize: 12,
+    fontFamily: FONT_BOLD,
+    letterSpacing: 0.06,
+    textTransform: 'uppercase',
+  },
+  groupCount: {
+    fontSize: 12,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT_FAINT,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 10,
+    marginBottom: 6,
+    borderRadius: 14,
+    backgroundColor: GLASS_CARD,
+  },
+  rowIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowText: {
+    flex: 1,
+    gap: 2,
+  },
+  rowTitle: {
+    fontSize: 14,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT,
+  },
+  rowSnippet: {
+    fontSize: 12,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT_MUTED,
+  },
+  rowHighlight: {
+    color: GLASS_TEXT,
+    fontFamily: FONT_SEMIBOLD,
   },
 });

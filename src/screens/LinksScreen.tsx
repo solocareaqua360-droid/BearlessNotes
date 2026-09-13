@@ -31,6 +31,7 @@ import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { Block, Group, TaggableKind } from '../types';
 import { groupAppliesTo } from '../utils/groups';
+import { LinkCategory, categoryFromSiteName } from '../utils/linkCategory';
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
@@ -102,19 +103,6 @@ type LinkItem = {
   updatedAt: number;
   createdAt?: number;
 };
-
-type LinkCategory = 'video' | 'geo' | 'other';
-
-// Matches the exact siteName values fetchLinkPreview stamps on conversion
-// (see DocumentEditorScreen) - the one `links` collection holds every kind
-// of link, and this is what splits it back into three separate-looking
-// databases without needing three separate collections.
-function categoryFromSiteName(siteName?: string): LinkCategory {
-  const s = siteName ?? '';
-  if (s.includes('YouTube') || s.includes('TikTok')) return 'video';
-  if (s === 'Геоточка') return 'geo';
-  return 'other';
-}
 
 function categoryOf(link: LinkItem): LinkCategory {
   return categoryFromSiteName(link.siteName);
