@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc } from '@react-native-firebase/firestore';
-import { GLASS_BODY, GLASS_TEXT } from '../constants/glass';
+import { GLASS_BODY, GLASS_CARD, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { db } from '../firebase';
 import { CustomDatabase, CustomDatabaseRow, Group } from '../types';
 import { RootStackParamList } from '../navigation';
@@ -320,7 +320,7 @@ export default function GroupsScreen() {
                       <Ionicons
                         name={on ? 'checkbox' : 'square-outline'}
                         size={18}
-                        color={on ? ACCENT : '#9CA3AF'}
+                        color={on ? ACCENT : GLASS_TEXT_FAINT}
                       />
                       <Text style={styles.itemTitle}>{labelForKind(kind, customDatabaseNames)}</Text>
                     </Pressable>
@@ -455,7 +455,7 @@ const styles = StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: 'rgba(255,255,255,0.3)',
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -483,7 +483,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: GLASS_CARD,
     borderRadius: 10,
     paddingVertical: 8,
     paddingHorizontal: 12,
@@ -491,7 +491,7 @@ const styles = StyleSheet.create({
   actionLabel: {
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   itemList: {
     flexShrink: 1,
@@ -500,7 +500,7 @@ const styles = StyleSheet.create({
   sheetEmpty: {
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
+    color: GLASS_TEXT_MUTED,
     paddingVertical: 16,
   },
   itemRow: {
@@ -513,19 +513,19 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: 'rgba(255,255,255,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   itemTitle: {
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
     flexShrink: 1,
   },
   itemKind: {
     fontSize: 12,
     fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
+    color: GLASS_TEXT_MUTED,
   },
 });
