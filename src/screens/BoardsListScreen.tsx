@@ -30,7 +30,7 @@ import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
-import { confirm } from '../components/surfaces/Ask';
+import { ask, confirm } from '../components/surfaces/Ask';
 
 const ACCENT = '#8B5CF6';
 // Where the content starts now that the screen has no header: the same
@@ -50,7 +50,6 @@ export default function BoardsListScreen() {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [boards, setBoards] = useState<BoardItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [cardMenuBoardId, setCardMenuBoardId] = useState<string | null>(null);
   // Rows or tiles. The mini-map in a row is 48px - enough to tell two
   // boards apart, not enough to see what's on one - so the tile view
   // exists to give it room.
@@ -87,7 +86,6 @@ export default function BoardsListScreen() {
     });
   }, []);
 
-  const cardMenuBoard = cardMenuBoardId ? boards.find((b) => b.id === cardMenuBoardId) ?? null : null;
 
   // Same rule as a database's card grid: a tile stays near 300dp and the
   // grid takes as many columns as fit - two on a phone, more on a wide
@@ -111,8 +109,23 @@ export default function BoardsListScreen() {
     await updateDoc(doc(db, 'boards', board.id), { title });
   }
 
+  // What to do with one board, asked by its own name - the sheet this
+  // replaces was a white slab against the bottom edge, in nothing like
+  // the app's own colours.
+  function askBoardActions(board: BoardItem) {
+    ask({
+      title: board.title || 'Без назви',
+      actions: [
+        { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+        { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' },
+      ],
+    }).then((answer) => {
+      if (answer === 'rename') setRenamingBoard(board);
+      if (answer === 'delete') confirmDeleteBoard(board);
+    });
+  }
+
   function confirmDeleteBoard(board: BoardItem) {
-    setCardMenuBoardId(null);
     confirm({
       title: 'Видалити дошку?',
       message: board.title || 'Без назви',
@@ -130,7 +143,7 @@ export default function BoardsListScreen() {
         key={item.id}
         style={[styles.row, { backgroundColor: background }]}
         onPress={() => openBoard(item)}
-        onLongPress={() => setCardMenuBoardId(item.id)}
+        onLongPress={() => askBoardActions(item)}
       >
         {/* The board's own layout in miniature, drawn from its cards -
             always current, because it is the cards. Falls back to the
@@ -150,7 +163,7 @@ export default function BoardsListScreen() {
             {item.cards.length} {item.cards.length === 1 ? 'картка' : 'карток'}
           </Text>
         </View>
-        <Pressable hitSlop={8} onPress={() => setCardMenuBoardId(item.id)} style={styles.rowActionButton}>
+        <Pressable hitSlop={8} onPress={() => askBoardActions(item)} style={styles.rowActionButton}>
           <Ionicons name="ellipsis-horizontal" size={16} color={textMuted} />
         </Pressable>
       </Pressable>
@@ -167,7 +180,7 @@ export default function BoardsListScreen() {
         key={item.id}
         style={[styles.tile, { width: tileWidth, backgroundColor: background }]}
         onPress={() => openBoard(item)}
-        onLongPress={() => setCardMenuBoardId(item.id)}
+        onLongPress={() => askBoardActions(item)}
       >
         <View style={[styles.tileMap, { height: mapHeight }]}>
           {item.cards.length > 0 || (item.columns?.length ?? 0) > 0 ? (
@@ -266,35 +279,6 @@ export default function BoardsListScreen() {
           </ScrollView>
         )}
 
-        <Modal
-          visible={cardMenuBoard !== null}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setCardMenuBoardId(null)}
-        >
-          <Pressable style={styles.cardMenuBackdrop} onPress={() => setCardMenuBoardId(null)}>
-            <Pressable style={styles.cardMenuSheet} onPress={() => {}}>
-              <View style={styles.cardMenuHandle} />
-              <Pressable
-                style={styles.cardMenuRow}
-                onPress={() => {
-                  if (cardMenuBoard) setRenamingBoard(cardMenuBoard);
-                  setCardMenuBoardId(null);
-                }}
-              >
-                <Ionicons name="pencil-outline" size={18} color="#111827" />
-                <Text style={styles.cardMenuRowLabel}>Перейменувати</Text>
-              </Pressable>
-              <Pressable
-                style={styles.cardMenuRow}
-                onPress={() => cardMenuBoard && confirmDeleteBoard(cardMenuBoard)}
-              >
-                <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                <Text style={[styles.cardMenuRowLabel, { color: '#EF4444' }]}>Видалити</Text>
-              </Pressable>
-            </Pressable>
-          </Pressable>
-        </Modal>
 
         <RenamePrompt
           visible={renamingBoard !== null}
@@ -441,37 +425,5 @@ const styles = StyleSheet.create({
   },
   rowActionButton: {
     padding: 6,
-  },
-  cardMenuBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(17,24,39,0.45)',
-    justifyContent: 'flex-end',
-  },
-  cardMenuSheet: {
-    backgroundColor: GLASS_BODY,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 28,
-  },
-  cardMenuHandle: {
-    width: 36,
-    height: 4,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 12,
-  },
-  cardMenuRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-  },
-  cardMenuRowLabel: {
-    fontSize: 15,
-    fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
   },
 });

@@ -930,7 +930,6 @@ export default function BoardScreen() {
   // reposition, but its OWN height still has to catch up.
   const [cardHeights, setCardHeights] = useState<Map<string, number>>(new Map());
   const [renamingColumn, setRenamingColumn] = useState<BoardColumn | null>(null);
-  const [deletingColumn, setDeletingColumn] = useState<BoardColumn | null>(null);
   const [draggingColumnId, setDraggingColumnId] = useState<string | null>(null);
   // Both steps of adding a link live in ONE piece of state so they can
   // share ONE dialog: asking for the URL, waiting on its preview, then (if
@@ -1719,21 +1718,20 @@ export default function BoardScreen() {
     setRenamingColumn(null);
   }
 
-  // A custom glass-capsule confirm rather than the native Alert used for
-  // every OTHER destructive confirmation on this screen (single/multi-card
-  // delete) - this one specifically sits over the canvas next to the
-  // column itself, where the native dialog's plain white system look
-  // stood out against the board's own dark-glass chrome.
-  function confirmDeleteColumn(column: BoardColumn) {
-    setDeletingColumn(column);
-  }
-
-  function deleteColumn() {
-    if (!deletingColumn) return;
+  // This screen used to draw its own confirmation window, because the
+  // system's white dialog stood out against the board's dark glass. Now
+  // «Питання» looks like the board does, so there is nothing left to
+  // work around.
+  async function confirmDeleteColumn(column: BoardColumn) {
+    const yes = await confirm({
+      title: 'Видалити стовпчик?',
+      message: 'Картки з нього залишаться на дошці.',
+      confirmLabel: 'Видалити',
+    });
+    if (!yes) return;
     // Cards keep the position the column had them in - the reflow effect
     // below strips the now-dangling columnId when `columns` changes.
-    setColumns((prev) => prev.filter((c) => c.id !== deletingColumn.id));
-    setDeletingColumn(null);
+    setColumns((prev) => prev.filter((c) => c.id !== column.id));
   }
 
   // Long-pressing a card selects just that one, which surfaces the same
@@ -2341,30 +2339,6 @@ export default function BoardScreen() {
           }}
         />
 
-        <Modal
-          visible={deletingColumn !== null}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setDeletingColumn(null)}
-        >
-          <Pressable style={styles.glassConfirmBackdrop} onPress={() => setDeletingColumn(null)}>
-            <Pressable style={styles.glassConfirmCard} onPress={() => {}}>
-              <Text style={styles.glassConfirmTitle}>Видалити стовпчик?</Text>
-              <Text style={styles.glassConfirmBody}>Картки з нього залишаться на дошці.</Text>
-              <View style={styles.glassConfirmButtons}>
-                <Pressable style={styles.glassConfirmButton} onPress={() => setDeletingColumn(null)}>
-                  <Text style={styles.glassConfirmButtonLabel}>Скасувати</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.glassConfirmButton, styles.glassConfirmButtonDanger]}
-                  onPress={deleteColumn}
-                >
-                  <Text style={styles.glassConfirmButtonLabel}>Видалити</Text>
-                </Pressable>
-              </View>
-            </Pressable>
-          </Pressable>
-        </Modal>
 
         {/* A plain overlay View sibling of the gesture-driven canvas, not a
             Modal and not a child of the canvas - same reasoning as
@@ -2760,61 +2734,6 @@ const styles = StyleSheet.create({
   // Same dark-glass treatment as the selection bar's own capsule above,
   // for the one confirmation that sits over the canvas itself rather than
   // this app's usual native Alert.
-  glassConfirmBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  glassConfirmCard: {
-    width: '100%',
-    maxWidth: 340,
-    backgroundColor: 'rgba(30,30,34,0.9)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
-    borderRadius: 20,
-    padding: 20,
-    gap: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowOffset: { width: 0, height: 6 },
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  glassConfirmTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    color: '#fff',
-  },
-  glassConfirmBody: {
-    fontSize: 14,
-    fontFamily: FONT_REGULAR,
-    color: 'rgba(255,255,255,0.7)',
-    lineHeight: 19,
-  },
-  glassConfirmButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 8,
-    marginTop: 8,
-  },
-  glassConfirmButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-  },
-  glassConfirmButtonDanger: {
-    backgroundColor: '#EF4444',
-  },
-  glassConfirmButtonLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    fontFamily: FONT_SEMIBOLD,
-    color: '#fff',
-  },
   sheetBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(17,24,39,0.45)',

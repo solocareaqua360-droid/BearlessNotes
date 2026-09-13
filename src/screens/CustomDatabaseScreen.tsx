@@ -113,6 +113,7 @@ import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CAPSULE_DROP, CAPSULE_HEIGHT_3, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
+import Menu from '../components/surfaces/Menu';
 
 const ACCENT = '#A05C7B';
 // The same half-strength tint the documents screen's add button takes.
@@ -1360,70 +1361,27 @@ export default function CustomDatabaseScreen({}: Props) {
         )}
       </View>
 
-      {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
-      {menuOpen && (
-        <View style={styles.menuPanel}>
-          {/* View and sort live in the capsule strip below the header, not
-              here: they're changed constantly while working, and a menu
-              can't show which one is active without being opened. What's
-              left is the rare, per-database housekeeping. */}
-          <Pressable
-            style={styles.menuRow}
-            onPress={() => {
-              setMenuOpen(false);
-              setRenamingDatabase(true);
-            }}
-          >
-            <Ionicons name="pencil-outline" size={17} color={GLASS_TEXT} />
-            <Text style={styles.menuRowLabel}>Перейменувати базу</Text>
-          </Pressable>
-          <Pressable
-            style={styles.menuRow}
-            onPress={() => {
-              setMenuOpen(false);
-              setEditingFields(true);
-            }}
-          >
-            <Ionicons name="options-outline" size={17} color={GLASS_TEXT} />
-            <Text style={styles.menuRowLabel}>Поля</Text>
-          </Pressable>
-          <Pressable
-            style={styles.menuRow}
-            onPress={() => {
-              setMenuOpen(false);
-              setImporting(true);
-            }}
-          >
-            <Ionicons name="download-outline" size={17} color={GLASS_TEXT} />
-            <Text style={styles.menuRowLabel}>Імпортувати таблицю</Text>
-          </Pressable>
-          <Pressable
-            style={styles.menuRow}
-            onPress={() => {
-              setMenuOpen(false);
-              askToDeleteDatabase();
-            }}
-          >
-            <Ionicons name="trash-outline" size={17} color={DANGER} />
-            <Text style={[styles.menuRowLabel, { color: DANGER }]}>Видалити базу</Text>
-          </Pressable>
-          <View style={styles.menuRule} />
-          <Pressable
-            style={styles.menuRow}
-            onPress={() => {
-              setMenuOpen(false);
-              toggleSelectMode();
-            }}
-          >
-            <Ionicons
-              name={isSelectMode ? 'close-outline' : 'checkmark-circle-outline'}
-              size={17}
-              color={GLASS_TEXT}
-            />
-            <Text style={styles.menuRowLabel}>{isSelectMode ? 'Скасувати вибір' : 'Вибрати'}</Text>
-          </Pressable>
-        </View>
-      )}
+      <Menu
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        style={{ position: 'absolute', top: 96, right: 20 }}
+        entries={[
+          // View and sort live in the capsule strip below the header, not
+          // here: they're changed constantly while working, and a menu
+          // can't show which one is active without being opened. What's
+          // left is the rare, per-database housekeeping.
+          { label: 'Перейменувати базу', icon: 'pencil-outline', onPress: () => setRenamingDatabase(true) },
+          { label: 'Поля', icon: 'options-outline', onPress: () => setEditingFields(true) },
+          { label: 'Імпортувати таблицю', icon: 'download-outline', onPress: () => setImporting(true) },
+          { label: 'Видалити базу', icon: 'trash-outline', tone: 'danger', onPress: askToDeleteDatabase },
+          { kind: 'rule' },
+          {
+            label: isSelectMode ? 'Скасувати вибір' : 'Вибрати',
+            icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
+            onPress: toggleSelectMode,
+          },
+        ]}
+      />
 
       {/* The view, the sort, the filter: what is changed all day while
           working, and so always on the screen rather than behind a gear. */}
@@ -2920,29 +2878,6 @@ const styles = StyleSheet.create({
   // Above the capsule strip (zIndex 20) and the dropdown overlay (30) -
   // the "..." menu is the topmost thing on this screen while it's open,
   // and at its old zIndex the capsules were drawn straight over it.
-  menuBackdrop: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    zIndex: 60,
-  },
-  menuPanel: {
-    position: 'absolute',
-    top: 96,
-    right: 20,
-    width: 220,
-    backgroundColor: GLASS_BODY,
-    borderRadius: 14,
-    padding: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
-    zIndex: 61,
-  },
   menuSectionLabel: {
     fontSize: 11,
     fontWeight: '700',
@@ -2953,11 +2888,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingTop: 4,
     paddingBottom: 2,
-  },
-  menuRule: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    marginVertical: 6,
   },
     menuRow: {
     flexDirection: 'row',

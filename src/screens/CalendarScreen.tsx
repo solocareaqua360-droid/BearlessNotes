@@ -57,6 +57,7 @@ import { useBlurTarget } from '../components/GlassTarget';
 import SaveRing from '../components/SaveRing';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
+import Menu from '../components/surfaces/Menu';
 
 const ACCENT = '#3B82F6';
 // calendarPlate carries its own marginHorizontal:16 on each side, so the
@@ -723,61 +724,62 @@ export default function CalendarScreen() {
         </GlassPortal>
       )}
 
-      {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
-      {menuOpen && (
-        <View
-          style={[
-            styles.menuPanel,
-            { top: calendarInsets.top + CHROME_TOP + CAPSULE_DROP, right: RAIL_CLEARANCE },
-          ]}
-        >
-          {/* The month and the day's history were round buttons on the
-              rail; they are rows here now - both are switches, and a
-              switch reads better as a line with a tick than as one more
-              circle beside the capsule. Held down, the calendar still
-              does the same two things without opening this at all. */}
-          {!onlyFilledDays && !isTwoPane && (
-            <Pressable style={styles.menuRow} onPress={() => setIsMonthExpanded((prev) => !prev)}>
-              <Ionicons name="calendar-outline" size={17} color={GLASS_TEXT} />
-              <Text style={styles.menuRowLabel}>Місяць</Text>
-              {isMonthExpanded && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-            </Pressable>
-          )}
-          {!isTwoPane && (historyByDate.get(selectedKey)?.length ?? 0) > 0 && (
-            <Pressable style={styles.menuRow} onPress={() => setHistoryExpanded((v) => !v)}>
-              <Ionicons name="time-outline" size={17} color={GLASS_TEXT} />
-              <Text style={styles.menuRowLabel}>Історія дня</Text>
-              {historyExpanded && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-            </Pressable>
-          )}
-          <View style={styles.menuRule} />
-          <Pressable style={styles.menuRow} onPress={() => toggleCompactFilter('filled')}>
-            <Ionicons name="filter-outline" size={17} color={GLASS_TEXT} />
-            <Text style={styles.menuRowLabel}>Лише заповнені дні</Text>
-            {compactFilter === 'filled' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-          </Pressable>
-          <Pressable style={styles.menuRow} onPress={() => toggleCompactFilter('history')}>
-            <Ionicons name="time-outline" size={17} color={GLASS_TEXT} />
-            <Text style={styles.menuRowLabel}>Лише дні з історією</Text>
-            {compactFilter === 'history' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-          </Pressable>
-          <View style={styles.menuRule} />
-          <Pressable
-            style={styles.menuRow}
-            onPress={() => {
-              setMenuOpen(false);
-              noteEditorRef.current?.toggleSelectMode();
-            }}
-          >
-            <Ionicons
-              name={noteSelectMode ? 'close-outline' : 'ellipse-outline'}
-              size={17}
-              color={GLASS_TEXT}
-            />
-            <Text style={styles.menuRowLabel}>{noteSelectMode ? 'Скасувати вибір' : 'Вибрати'}</Text>
-          </Pressable>
-        </View>
-      )}
+      <Menu
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        accent={ACCENT}
+        style={{
+          position: 'absolute',
+          top: calendarInsets.top + CHROME_TOP + CAPSULE_DROP,
+          right: RAIL_CLEARANCE,
+        }}
+        entries={[
+          // The month and the day's history were round buttons on the
+          // rail; they are rows here - both are switches, and a switch
+          // reads better as a line with a tick than as one more circle
+          // beside the capsule. Held down, the calendar still does the
+          // same two things without opening this at all.
+          ...(!onlyFilledDays && !isTwoPane
+            ? [
+                {
+                  label: 'Місяць',
+                  icon: 'calendar-outline' as const,
+                  checked: isMonthExpanded,
+                  onPress: () => setIsMonthExpanded((prev) => !prev),
+                },
+              ]
+            : []),
+          ...(!isTwoPane && (historyByDate.get(selectedKey)?.length ?? 0) > 0
+            ? [
+                {
+                  label: 'Історія дня',
+                  icon: 'time-outline' as const,
+                  checked: historyExpanded,
+                  onPress: () => setHistoryExpanded((v) => !v),
+                },
+              ]
+            : []),
+          { kind: 'rule' as const },
+          {
+            label: 'Лише заповнені дні',
+            icon: 'filter-outline' as const,
+            checked: compactFilter === 'filled',
+            onPress: () => toggleCompactFilter('filled'),
+          },
+          {
+            label: 'Лише дні з історією',
+            icon: 'time-outline' as const,
+            checked: compactFilter === 'history',
+            onPress: () => toggleCompactFilter('history'),
+          },
+          { kind: 'rule' as const },
+          {
+            label: noteSelectMode ? 'Скасувати вибір' : 'Вибрати',
+            icon: noteSelectMode ? ('close-outline' as const) : ('ellipse-outline' as const),
+            onPress: () => noteEditorRef.current?.toggleSelectMode(),
+          },
+        ]}
+      />
 
       {/* One column on a phone (calendar, then the note under it), two on
           a wide screen (calendar left, note right). Both halves are flex:1
@@ -1180,46 +1182,6 @@ const styles = StyleSheet.create({
     width: 20,
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.3)',
-  },
-  menuBackdrop: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    zIndex: 5,
-  },
-  menuPanel: {
-    position: 'absolute',
-    width: 260,
-    backgroundColor: GLASS_BODY,
-    borderRadius: 14,
-    padding: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
-    zIndex: 6,
-  },
-  menuRule: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    marginVertical: 6,
-  },
-  menuRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-  },
-  menuRowLabel: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
   },
   // The glass plate under the calendar's numbers - a separate, unanimated
   // wrapper (see calendarPlate below) rather than styling this directly:
