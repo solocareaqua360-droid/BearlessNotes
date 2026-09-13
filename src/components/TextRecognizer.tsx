@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Asset } from 'expo-asset';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
 // Reading the text off a photographed page, on the device, offline.
 //
@@ -58,6 +59,8 @@ function pageFor(images: string[], dirUrl: string): string {
   // load - silence is the one thing this must never do.
   window.onerror = function (message) { fail(message, 'сторінка'); };
   var images = ${JSON.stringify(images)};
+  // Before anything else: proof that the page opened and its script ran.
+  post({ stage: 'Відкрито' });
   (async function () {
     try {
       if (typeof Tesseract === 'undefined') { fail('бібліотека не завантажилась', 'старт'); return; }
@@ -76,7 +79,8 @@ function pageFor(images: string[], dirUrl: string): string {
       var pages = [];
       for (var i = 0; i < images.length; i++) {
         post({ page: i + 1, of: images.length });
-        var result = await worker.recognize(images[i]);
+        // By name, next to the page - see the note about inlining.
+        var result = await worker.recognize('${dirUrl}' + images[i]);
         pages.push(result.data.text || '');
       }
       await worker.terminate();
@@ -129,14 +133,23 @@ export default function TextRecognizer({
           LegacyFileSystem.writeAsStringAsync(`${dir}tesseract-core.js`, core),
           LegacyFileSystem.copyAsync({ from: data, to: `${dir}ukr.traineddata` }).catch(() => {}),
         ]);
-        // The images travel as data URIs: a file:// page may not read
-        // other files, and copying them in would double every photo.
-        const images = await Promise.all(
-          request.uris.map(async (uri) => {
-            const base64 = await LegacyFileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-            return `data:image/jpeg;base64,${base64}`;
-          })
-        );
+        // Copied in beside the page and referred to by name - NOT
+        // inlined. A scan is several megabytes, and a page carrying two
+        // of them as base64 is a ten-megabyte document the WebView never
+        // finished opening: no error, no text, just a minute of nothing.
+        //
+        // Downscaled on the way in as well. On a real page 1600px across
+        // gave output identical to the full size, at a fraction of the
+        // work.
+        const images: string[] = [];
+        for (let i = 0; i < request.uris.length; i += 1) {
+          const name = `scan-${Date.now()}-${i}.jpg`;
+          const context = ImageManipulator.manipulate(request.uris[i]).resize({ width: 1600 });
+          const rendered = await context.renderAsync();
+          const saved = await rendered.saveAsync({ compress: 0.85, format: SaveFormat.JPEG });
+          await LegacyFileSystem.copyAsync({ from: saved.uri, to: `${dir}${name}` });
+          images.push(name);
+        }
         if (cancelled) return;
         const target = `${dir}page-${Date.now()}.html`;
         await LegacyFileSystem.writeAsStringAsync(target, pageFor(images, dir));
