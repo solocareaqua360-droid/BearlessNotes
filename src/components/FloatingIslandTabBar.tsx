@@ -111,6 +111,12 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
                   const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
                   if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
                 }}
+                // Held down, a button folds the island away just as its
+                // own edge does - the buttons cover nearly all of it, and
+                // a gesture that needs you to miss them is a gesture you
+                // have to aim for.
+                onLongPress={toggleCollapsed}
+                delayLongPress={400}
               >
                 <Ionicons
                   name={icon}
