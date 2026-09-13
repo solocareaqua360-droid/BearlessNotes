@@ -4,6 +4,7 @@ import { Tag } from '../types';
 import TagChips from './TagChips';
 import { colorForDocument } from '../utils/documentColor';
 import { formatUpdatedAt } from '../utils/documentPreview';
+import { useFilePreview } from '../hooks/useFilePreview';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { LINK_CATEGORY_INFO, categoryFromSiteName } from '../utils/linkCategory';
 import { fileIconColorFor, fileIconFor } from '../utils/fileIcons';
@@ -43,6 +44,8 @@ export type LinkCardItem = {
 export type FileCardItem = {
   id: string;
   fileName: string;
+  // Where the bytes are on this device - what the preview is made from.
+  fileUri?: string;
   title?: string;
   tagIds: string[];
   // When it was added - shown on the card, because "which of these is the
@@ -170,16 +173,28 @@ export function LinkGridCell({ link, ...rest }: { link: LinkCardItem } & Common)
 
 export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
   const { background, text, textMuted } = colorForDocument(file.id);
+  // What is actually inside it - the first page of a PDF, the first lines
+  // of a document. Worked out once, elsewhere (see FilePreviewWorker).
+  const preview = useFilePreview(file);
   return (
     <View style={[styles.row, { backgroundColor: background }]}>
       <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
-        <View style={[styles.thumbIcon, { backgroundColor: `${fileIconColorFor(file.fileName)}1A` }]}>
-          <Ionicons name={fileIconFor(file.fileName)} size={20} color={fileIconColorFor(file.fileName)} />
-        </View>
+        {preview?.thumbUri ? (
+          <Image source={{ uri: preview.thumbUri }} style={styles.thumb} resizeMode="cover" />
+        ) : (
+          <View style={[styles.thumbIcon, { backgroundColor: `${fileIconColorFor(file.fileName)}1A` }]}>
+            <Ionicons name={fileIconFor(file.fileName)} size={20} color={fileIconColorFor(file.fileName)} />
+          </View>
+        )}
         <View style={styles.rowBody}>
           <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
             {file.title || file.fileName}
           </Text>
+          {!!preview?.text && (
+            <Text style={[styles.rowCaption, { color: textMuted }]} numberOfLines={2}>
+              {preview.text}
+            </Text>
+          )}
           {!!(file.createdAt ?? file.updatedAt) && (
             <Text style={[styles.rowCaption, { color: textMuted }]}>
               {formatUpdatedAt((file.createdAt ?? file.updatedAt) as number)}
@@ -199,12 +214,27 @@ export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
 
 export function FileGridCell({ file, ...rest }: { file: FileCardItem } & Common) {
   const { background, text, textMuted } = colorForDocument(file.id);
+  const preview = useFilePreview(file);
   return (
     <View style={[styles.gridCard, { backgroundColor: background }]}>
       <Pressable style={styles.gridTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
-        <View style={[styles.gridThumb, styles.gridThumbIcon, { backgroundColor: `${fileIconColorFor(file.fileName)}1A` }]}>
-          <Ionicons name={fileIconFor(file.fileName)} size={26} color={fileIconColorFor(file.fileName)} />
-        </View>
+        {preview?.thumbUri ? (
+          <Image source={{ uri: preview.thumbUri }} style={styles.gridThumb} resizeMode="cover" />
+        ) : preview?.text ? (
+          // No picture to make from a document, but its own first lines
+          // say more than an icon of a page does.
+          <View style={[styles.gridThumb, styles.gridTextPreview]}>
+            <Text style={[styles.gridTextPreviewLabel, { color: textMuted }]} numberOfLines={5}>
+              {preview.text}
+            </Text>
+          </View>
+        ) : (
+          <View
+            style={[styles.gridThumb, styles.gridThumbIcon, { backgroundColor: `${fileIconColorFor(file.fileName)}1A` }]}
+          >
+            <Ionicons name={fileIconFor(file.fileName)} size={26} color={fileIconColorFor(file.fileName)} />
+          </View>
+        )}
         <Text style={[styles.gridTitle, { color: text }]} numberOfLines={2}>
           {file.title || file.fileName}
         </Text>
@@ -353,6 +383,16 @@ const styles = StyleSheet.create({
     height: 96,
     borderRadius: 10,
     marginBottom: 4,
+  },
+  gridTextPreview: {
+    backgroundColor: 'rgba(255,255,255,0.55)',
+    padding: 8,
+    overflow: 'hidden',
+  },
+  gridTextPreviewLabel: {
+    fontSize: 10,
+    lineHeight: 14,
+    fontFamily: FONT_REGULAR,
   },
   gridThumbIcon: {
     alignItems: 'center',

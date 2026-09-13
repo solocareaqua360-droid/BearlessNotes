@@ -55,6 +55,7 @@ import { downloadToFolder } from '../utils/downloadToFolder';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
+import FilePreviewWorker from '../components/FilePreviewWorker';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
@@ -526,6 +527,9 @@ export default function FilesScreen() {
       }
       overlay={
         <>
+          {/* The one hidden browser that makes every card's preview, a
+              file at a time - see FilePreviewWorker. */}
+          <FilePreviewWorker />
           {!isTwoPane && (
             <DocumentQuickLook
               file={quickLook}
