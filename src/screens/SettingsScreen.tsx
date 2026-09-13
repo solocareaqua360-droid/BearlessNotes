@@ -31,7 +31,9 @@ import { claimExistingData } from '../utils/claimOwnership';
 import { backfillDriveCopies } from '../utils/backfillDrive';
 import { STALE_AFTER_DAYS, localAttachmentUsage } from '../utils/attachmentCache';
 import { chooseDownloadFolder, currentDownloadFolder } from '../utils/downloadToFolder';
+import { getPexelsKey, setPexelsKey } from '../utils/pexelsKey';
 import { confirm, notify } from '../components/surfaces/Ask';
+import RenamePrompt from '../components/RenamePrompt';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -75,6 +77,14 @@ export default function SettingsScreen() {
   const [backfillProgress, setBackfillProgress] = useState<{ done: number; total: number } | null>(null);
   const [local, setLocal] = useState<{ count: number; bytes: number; withoutDrive: number } | null>(null);
   const [downloadFolder, setDownloadFolder] = useState<{ uri: string; label: string } | null>(null);
+  // The one free-image key the app can use but cannot ship with (see
+  // utils/pexelsKey) - undefined until it has been read once.
+  const [pexelsKey, setPexelsKeyState] = useState<string | null | undefined>(undefined);
+  const [enteringPexelsKey, setEnteringPexelsKey] = useState(false);
+  useEffect(() => {
+    getPexelsKey().then(setPexelsKeyState);
+  }, []);
+
   useEffect(() => {
     currentDownloadFolder().then(setDownloadFolder).catch(() => {});
   }, []);
@@ -393,9 +403,67 @@ export default function SettingsScreen() {
             </>
           )}
         </View>
+
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="image-outline" size={22} color={ACCENT} />
+            <Text style={styles.cardTitle}>Пошук зображень</Text>
+          </View>
+          {pexelsKey ? (
+            <>
+              <Text style={styles.cardBody}>Ключ Pexels підключено</Text>
+              <Text style={styles.cardHint}>
+                Ним користується пошук зображень для фону плиток бази даних - безкоштовна бібліотека фото, без
+                атрибуції.
+              </Text>
+              <Pressable style={styles.checkButton} onPress={() => setEnteringPexelsKey(true)} disabled={busy}>
+                <Text style={styles.checkLabel}>Змінити ключ</Text>
+              </Pressable>
+              <Pressable
+                style={styles.disconnectButton}
+                onPress={async () => {
+                  const yes = await confirm({
+                    title: 'Прибрати ключ Pexels?',
+                    message: 'Пошук зображень для фону плиток перестане працювати, доки не встановиш новий.',
+                    confirmLabel: 'Прибрати',
+                  });
+                  if (!yes) return;
+                  await setPexelsKey(null);
+                  setPexelsKeyState(null);
+                }}
+              >
+                <Text style={styles.disconnectLabel}>Прибрати</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text style={styles.cardHint}>
+                Безкоштовна бібліотека фото для фону плиток бази даних - як обкладинки сторінок у Notion. Зареєструйся
+                на pexels.com/api (хвилина, без підтвердження) і встав ключ тут.
+              </Text>
+              <Pressable style={styles.connectButton} onPress={() => setEnteringPexelsKey(true)} disabled={busy}>
+                <Text style={styles.connectLabel}>Встав ключ</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
         </ScrollView>
       </ContentColumn>
 
+      <RenamePrompt
+        visible={enteringPexelsKey}
+        title="Ключ Pexels"
+        initialValue={pexelsKey ?? ''}
+        placeholder="Встав ключ із pexels.com/api"
+        onCancel={() => setEnteringPexelsKey(false)}
+        onSave={async (value) => {
+          setEnteringPexelsKey(false);
+          const trimmed = value.trim();
+          if (!trimmed) return;
+          await setPexelsKey(trimmed);
+          setPexelsKeyState(trimmed);
+        }}
+      />
     </View>
   );
 }

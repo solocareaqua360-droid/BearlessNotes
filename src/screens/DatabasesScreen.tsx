@@ -31,13 +31,15 @@ import Animated, { LinearTransition } from 'react-native-reanimated';
 import { hapticButtonDown } from '../utils/haptics';
 import * as ImagePicker from 'expo-image-picker';
 import ImageCropper from '../components/ImageCropper';
+import BackgroundStylist from '../components/BackgroundStylist';
+import StockPhotoPicker from '../components/StockPhotoPicker';
 import { db } from '../firebase';
 import { RootStackParamList } from '../navigation';
 import { TAG_COLORS } from '../constants/tags';
 import { FONT_REGULAR, FONT_MEDIUM } from '../utils/fonts';
 import { colorForDocument } from '../utils/documentColor';
 import RenamePrompt from '../components/RenamePrompt';
-import { confirm, notify } from '../components/surfaces/Ask';
+import { ask, confirm, notify } from '../components/surfaces/Ask';
 import ImportTableSheet from '../components/ImportTableSheet';
 import ContentColumn from '../components/ContentColumn';
 import { GLASS_BODY, GLASS_DANGER, GLASS_TEXT } from '../constants/glass';
@@ -125,6 +127,12 @@ export default function DatabasesScreen() {
   // be cropped for it.
   const [backgroundFor, setBackgroundFor] = useState<{ key: string; aspect: number } | null>(null);
   const [cropping, setCropping] = useState<string | null>(null);
+  // The cropped picture waiting to be toned to the tile's own colour, and
+  // the search sheet - a second source for the same background, feeding
+  // the same pipeline as the gallery.
+  const [styling, setStyling] = useState<{ key: string; uri: string; color: string } | null>(null);
+  const [searchingFor, setSearchingFor] = useState<{ key: string; aspect: number } | null>(null);
+  const [searchedCropping, setSearchedCropping] = useState<string | null>(null);
   // Which groups and smart folders are on the board, and the sheet that
   // chooses them.
   const [pinnedKeys, setPinnedKeys] = useState<string[]>([]);
@@ -204,9 +212,26 @@ export default function DatabasesScreen() {
   }
 
   function saveBackground(uri: string) {
-    if (backgroundFor) setDoc(tileBackgroundsDoc, { [backgroundFor.key]: uri }, { merge: true });
+    if (backgroundFor) {
+      setStyling({ key: backgroundFor.key, uri, color: resolveTileColor(backgroundFor.key) });
+    }
     setCropping(null);
     setBackgroundFor(null);
+  }
+
+  // The colour a tile is showing right now - a custom database's own
+  // colour, a pinned group/tag's colour, or the shared per-tile palette -
+  // exactly the same three-way choice the tile itself renders with. What
+  // a picked background is toned to, so it reads as that tile's picture
+  // rather than carrying whatever hue it arrived with.
+  function resolveTileColor(key: string): string {
+    const database = customDatabases.find((d) => d.id === key);
+    if (database) return database.color ?? colorForDocument(database.id).background;
+    const group = pinnableGroups.find((g) => groupKey(g.id) === key);
+    if (group) return group.color;
+    const tag = pinnableTags.find((t) => tagKey(t.id) === key);
+    if (tag) return tag.color;
+    return colorFor(key);
   }
 
   function clearBackground(key: string) {
@@ -567,7 +592,23 @@ export default function DatabasesScreen() {
                 onPress={() => {
                   const key = colorMenuKey;
                   setColorMenuKey(null);
-                  if (key) pickBackground(key, sizeFor(key));
+                  if (!key) return;
+                  ask({
+                    title: 'Звідки взяти зображення?',
+                    actions: [
+                      { id: 'gallery', label: 'Галерея', icon: 'images-outline' },
+                      { id: 'stock', label: 'Пошук зображень', icon: 'search-outline' },
+                    ],
+                  }).then((answer) => {
+                    if (answer === 'gallery') pickBackground(key, sizeFor(key));
+                    if (answer === 'stock') {
+                      const size = sizeFor(key);
+                      const aspect =
+                        (size.w * cellSize + (size.w - 1) * gap) /
+                        Math.max(1, size.h * cellSize + (size.h - 1) * gap);
+                      setSearchingFor({ key, aspect });
+                    }
+                  });
                 }}
               >
                 <Ionicons name="image-outline" size={17} color={GLASS_TEXT} />
@@ -695,6 +736,41 @@ export default function DatabasesScreen() {
           setBackgroundFor(null);
         }}
         onDone={saveBackground}
+      />
+
+      {/* A picture picked from the search sheet is cropped exactly like a
+          gallery one - same shape, same toning, same result. */}
+      <ImageCropper
+        visible={searchedCropping !== null}
+        uri={searchedCropping}
+        aspect={searchingFor?.aspect ?? 1}
+        onCancel={() => {
+          setSearchedCropping(null);
+          setSearchingFor(null);
+        }}
+        onDone={(uri) => {
+          if (searchingFor) setStyling({ key: searchingFor.key, uri, color: resolveTileColor(searchingFor.key) });
+          setSearchedCropping(null);
+          setSearchingFor(null);
+        }}
+      />
+
+      <StockPhotoPicker
+        visible={searchingFor !== null && searchedCropping === null}
+        onClose={() => setSearchingFor(null)}
+        onPicked={(uri) => setSearchedCropping(uri)}
+      />
+
+      <BackgroundStylist
+        request={styling ? { uri: styling.uri, color: styling.color } : null}
+        onDone={(uri) => {
+          if (styling) setDoc(tileBackgroundsDoc, { [styling.key]: uri }, { merge: true });
+          setStyling(null);
+        }}
+        onError={(message) => {
+          notify('Не вдалося стилізувати фон', message);
+          setStyling(null);
+        }}
       />
     </View>
   );
