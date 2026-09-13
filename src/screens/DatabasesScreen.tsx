@@ -14,6 +14,7 @@ import {
   tileColorsDoc,
 } from '../constants/databaseTiles';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
+import { useDatabaseContents } from '../hooks/useDatabaseCounts';
 import { CustomDatabase } from '../types';
 import {
   DEFAULT_TILE_SIZE,
@@ -67,7 +68,9 @@ type BoardItem =
 function defaultSizeFor(key: string): TileSize {
   if (key === 'documents') return { w: 4, h: 2 };
   if (key === 'tasks') return { w: 4, h: 1 };
-  if (key === NEW_TILE_KEY || key === IMPORT_TILE_KEY) return { w: 1, h: 1 };
+  // Two cells across, not one: these two are buttons, and a button that
+  // has room only for its icon says nothing about what it will do.
+  if (key === NEW_TILE_KEY || key === IMPORT_TILE_KEY) return { w: 2, h: 1 };
   return DEFAULT_TILE_SIZE;
 }
 
@@ -78,6 +81,9 @@ export default function DatabasesScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const { colorFor, customDatabases } = useDatabaseTiles();
+  // What is inside each database, for the tiles to show - see
+  // useDatabaseContents.
+  const { counts, latest, photoThumbs } = useDatabaseContents();
   const [colorMenuKey, setColorMenuKey] = useState<string | null>(null);
   const [tileSizes, setTileSizes] = useState<Record<string, string>>({});
   // Held-down, the board goes into its arranging state: the tiles draw
@@ -367,6 +373,9 @@ export default function DatabasesScreen() {
                   cellSize={cellSize}
                   size={size}
                   background={tileBackgrounds[item.key]}
+                  count={counts[item.key]}
+                  latest={latest[item.key]}
+                  thumbs={item.key === 'photos' ? photoThumbs : undefined}
                   onOpen={() => {
                     if (item.kind === 'builtin') openTile(item.tile);
                     else if (item.kind === 'custom')
@@ -499,6 +508,9 @@ function BoardTile({
   height,
   color,
   background,
+  count,
+  latest,
+  thumbs,
   size,
   cellSize,
   editing,
@@ -519,6 +531,11 @@ function BoardTile({
   height: number;
   color: string;
   background?: string;
+  // How many records this database holds, the newest one's own name, and
+  // - for images - the newest few themselves.
+  count?: number;
+  latest?: string;
+  thumbs?: string[];
   size: TileSize;
   cellSize: number;
   editing: boolean;
@@ -553,6 +570,9 @@ function BoardTile({
   const isAction = item.kind === 'action';
   // A one-cell tile has room for the icon and nothing else.
   const tiny = size.w === 1 && size.h === 1;
+  const showThumbs = !!thumbs?.length && size.w >= 2 && size.h >= 2;
+  const showLatest = !!latest && !isAction && size.w >= 2 && (size.h >= 2 || size.w >= 3);
+  const showCount = count !== undefined && !isAction;
 
   // The grip: dragged, it turns the distance travelled into whole cells
   // and snaps to the nearest size the board allows, live, so the board
@@ -567,7 +587,9 @@ function BoardTile({
     const cells = Math.max(1, cellSize);
     const w = Math.max(1, Math.round((dragBase.current.width + dx) / cells));
     const h = Math.max(1, Math.round((dragBase.current.height + dy) / cells));
-    return snapTileSize(w, h);
+    // The two tiles that make new databases keep their label: they never
+    // shrink to the icon-only cell.
+    return snapTileSize(w, h, isAction ? 2 : 1);
   };
   const grip = Gesture.Pan()
     .runOnJS(true)
@@ -625,7 +647,17 @@ function BoardTile({
         onLongPress={onHold}
         delayLongPress={400}
       >
-        <Ionicons name={icon} size={tiny ? 24 : 22} color={isAction ? 'rgba(255,255,255,0.6)' : color} />
+        {/* The newest few images instead of an icon, once there is room
+            for them to be seen rather than guessed at. */}
+        {showThumbs ? (
+          <View style={styles.thumbRow}>
+            {thumbs!.slice(0, size.w >= 3 ? 4 : 2).map((uri) => (
+              <Image key={uri} source={{ uri }} style={styles.thumb} resizeMode="cover" />
+            ))}
+          </View>
+        ) : (
+          <Ionicons name={icon} size={tiny ? 24 : 22} color={isAction ? 'rgba(255,255,255,0.6)' : color} />
+        )}
         {!tiny && (
           <Text
             style={[styles.tileLabel, { color: isAction ? 'rgba(255,255,255,0.6)' : color }]}
@@ -634,8 +666,22 @@ function BoardTile({
             {label}
           </Text>
         )}
+        {/* The newest record's own name - only where the tile is tall
+            enough that it is a line of its own rather than a crush. */}
+        {showLatest && (
+          <Text style={styles.tileLatest} numberOfLines={size.h > 1 ? 2 : 1}>
+            {latest}
+          </Text>
+        )}
       </Pressable>
       </GestureDetector>
+
+      {/* How many are in there. Top corner, out of the label's way, and
+          gone while the board is being arranged so it cannot be mistaken
+          for a control. */}
+      {showCount && !editing && (
+        <Text style={[styles.tileCount, { color }]}>{count}</Text>
+      )}
 
       {editing && (
         <GestureDetector gesture={grip}>
@@ -757,6 +803,30 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: FONT_MEDIUM,
     color: '#171310',
+  },
+  tileCount: {
+    position: 'absolute',
+    top: 10,
+    right: 12,
+    fontSize: 13,
+    fontFamily: FONT_MEDIUM,
+    opacity: 0.75,
+  },
+  tileLatest: {
+    fontSize: 11,
+    fontFamily: FONT_REGULAR,
+    color: 'rgba(255,255,255,0.55)',
+  },
+  thumbRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  thumb: {
+    width: 34,
+    height: 34,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   tileLabel: {
     fontSize: 15,

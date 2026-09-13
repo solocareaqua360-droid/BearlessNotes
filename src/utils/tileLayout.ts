@@ -39,10 +39,14 @@ export function formatTileSize(size: TileSize): string {
 // in cells, with width counting double: dragging sideways is how a tile is
 // made wide, and a drag that clearly went wide should not land on a tall
 // tile just because the two are equally far away in raw numbers.
-export function snapTileSize(w: number, h: number): TileSize {
-  let best = TILE_SIZES[0];
+export function snapTileSize(w: number, h: number, minWidth = 1): TileSize {
+  let best = TILE_SIZES.find((size) => size.w >= minWidth) ?? TILE_SIZES[0];
   let bestDistance = Infinity;
   for (const size of TILE_SIZES) {
+    // Some tiles cannot be made narrow: one cell holds an icon and
+    // nothing else, which is fine for a database you recognise and
+    // useless for a button that has to say what it does.
+    if (size.w < minWidth) continue;
     const distance = Math.abs(size.w - w) * 2 + Math.abs(size.h - h);
     if (distance < bestDistance) {
       best = size;
