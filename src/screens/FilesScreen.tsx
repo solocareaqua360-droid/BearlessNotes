@@ -7,11 +7,8 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
-  useWindowDimensions,
   View,
 } from 'react-native';
-import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -32,40 +29,26 @@ import {
 } from '@react-native-firebase/firestore';
 import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
-import { Block, Group } from '../types';
-import { groupAppliesTo } from '../utils/groups';
+import { Block } from '../types';
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
-import BulkActionBar from '../components/BulkActionBar';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import GroupPickerSheet from '../components/GroupPickerSheet';
-import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
-import TagsDrawer, { TagFilter, matchesTagFilter, removeTagFromFilter } from '../components/TagsDrawer';
 import CopyToNoteModal from '../components/CopyToNoteModal';
-import { usePendingDelete } from '../hooks/usePendingDelete';
-import { useMultiSelect } from '../hooks/useMultiSelect';
-import { useSortPref } from '../hooks/useSortPref';
-import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
+import { useDatabaseList } from '../hooks/useDatabaseList';
+import DatabaseChrome from '../components/DatabaseChrome';
+import { detachTagFromDeletedItem } from '../hooks/useTags';
 import { appendBlocksToToday, blockFromFile, copyObjectsToNote } from '../utils/copyToNote';
 import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
 import SaveDestinationSheet from '../components/SaveDestinationSheet';
 import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
-import { sortItems } from '../utils/sortItems';
 import { colorForDocument } from '../utils/documentColor';
-import SortMenuRows from '../components/SortMenuRows';
-import ContentColumn from '../components/ContentColumn';
-import { useRail } from '../hooks/useRail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { BlurView } from 'expo-blur';
-import { useIsFocused } from '@react-navigation/native';
 import { ensureLocalFile } from '../utils/googleDrive';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { GlassPortal } from '../components/GlassPortal';
-import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
@@ -74,10 +57,7 @@ const ACCENT = '#0EA5E9';
 // the blur behind it is what separates it, so the colour only tints.
 const ACCENT_GLASS = 'rgba(14,165,233,0.55)';
 const DANGER = '#EF4444';
-const groupsCollection = collection(db, 'groups');
-const filesPrefsDoc = doc(db, 'settings', 'filesPrefs');
 
-type ViewMode = 'list' | 'grid';
 
 type JustAddedFile = { id: string; fileUri: string; fileName: string; mimeType?: string; createdAt: number };
 
@@ -116,12 +96,7 @@ function fileIconColorFor(name: string): string {
 }
 
 export default function FilesScreen() {
-  const railBlurTarget = useBlurTarget();
-  const railFocused = useIsFocused();
-  const railInsets = useSafeAreaInsets();
-  const rail = useRail();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [files, setFiles] = useState<FileItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [renamingFile, setRenamingFile] = useState<FileItem | null>(null);
@@ -129,14 +104,10 @@ export default function FilesScreen() {
     null
   );
   const [tagPickerForId, setTagPickerForId] = useState<string | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [groupFilter, setGroupFilter] = useState<string | null>(null);
-  const [tagFilter, setTagFilter] = useState<TagFilter | null>(null);
-  const [groups, setGroups] = useState<Group[]>([]);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
+  const [cardMenuFileId, setCardMenuFileId] = useState<string | null>(null);
   // The record a "+" add just created, waiting on the "Перемістити" toast
   // (see relocateJustAddedFile) - the file itself already lives in the
   // base regardless of what happens here.
@@ -149,14 +120,40 @@ export default function FilesScreen() {
     const timeoutId = setTimeout(() => setJustAddedFile(null), 4000);
     return () => clearTimeout(timeoutId);
   }, [justAddedFile, saveDestinationVisible]);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
-  const [cardMenuFileId, setCardMenuFileId] = useState<string | null>(null);
-  const { sortPref, selectSortField } = useSortPref('filesPrefs');
-  const { filterPending, requestDeleteMany, undo, toast } = usePendingDelete<FileItem>();
-  const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
-  const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, clear: clearSelection } =
-    useMultiSelect();
+
+  // The machine every database shares - see useDatabaseList. What stays in
+  // this file is only what files themselves do.
+  const list = useDatabaseList<FileItem>({
+    prefsKey: 'filesPrefs',
+    groupKind: 'file',
+    tagKind: 'file',
+    items: files,
+    tagIdsOf: (f) => f.tagIds,
+    groupIdOf: (f) => f.groupId,
+    titleOf: (f) => f.title || f.fileName,
+    createdAtOf: (f) => f.createdAt,
+    updatedAtOf: (f) => f.updatedAt,
+  });
+  const {
+    displayed: displayedFiles,
+    groups,
+    tags,
+    attachTag,
+    detachTag,
+    createAndAttachTag,
+    renameTag,
+    isSelectMode,
+    selectedIds,
+    toggle: toggleSelected,
+    clear: clearSelection,
+    requestDeleteMany,
+    undo,
+    toast,
+    selected: selectedFiles,
+    needle,
+    viewMode,
+    changeViewMode,
+  } = list;
 
   useEffect(() => {
     const filesQuery = query(collection(db, 'files'), orderBy('updatedAt', 'desc'));
@@ -184,53 +181,8 @@ export default function FilesScreen() {
     });
   }, []);
 
-  useEffect(() => {
-    return onSnapshot(filesPrefsDoc, (snapshot) => {
-      setViewMode((snapshot.data()?.viewMode as ViewMode | undefined) ?? 'list');
-    });
-  }, []);
-
-  useEffect(() => {
-    // Filtered client-side rather than with a `where('kind','==','file')`
-    // query - combining an equality filter with `orderBy` on a different
-    // field needs a composite index set up by hand in the Firebase
-    // console, which this app avoids everywhere else too (see
-    // TasksScreen's own comment on the same tradeoff).
-    return onSnapshot(query(groupsCollection, orderBy('name')), (snapshot) => {
-      setGroups(
-        snapshot.docs
-          .map((d) => ({ id: d.id, ...(d.data() as Omit<Group, 'id'>) }))
-          .filter((g) => groupAppliesTo(g, 'file'))
-      );
-    });
-  }, []);
-
-  const pendingFilteredFiles = filterPending(files);
-  const groupFilteredFiles =
-    groupFilter === null
-      ? pendingFilteredFiles
-      : groupFilter === UNASSIGNED_ID
-        ? pendingFilteredFiles.filter((f) => !f.groupId)
-        : pendingFilteredFiles.filter((f) => f.groupId === groupFilter);
-  const tagFilteredFiles = groupFilteredFiles.filter((f) => matchesTagFilter(f.tagIds, tagFilter));
-  // Only offer tags actually assigned to at least one file - not the whole
-  // app-wide tag list - so this drawer stays a short, relevant menu.
-  const usedTagIds = new Set(files.flatMap((f) => f.tagIds));
-  const drawerTags = tags.filter((t) => usedTagIds.has(t.id));
-  const needle = searchQuery.trim().toLowerCase();
-  const searchedFiles = needle
-    ? tagFilteredFiles.filter((f) => (f.title || f.fileName).toLowerCase().includes(needle))
-    : tagFilteredFiles;
-  const displayedFiles = sortItems(
-    searchedFiles,
-    sortPref,
-    (f) => f.title || f.fileName,
-    (f) => f.createdAt,
-    (f) => f.updatedAt
-  );
   const tagPickerFile = tagPickerForId ? files.find((f) => f.id === tagPickerForId) ?? null : null;
   const cardMenuFile = cardMenuFileId ? files.find((f) => f.id === cardMenuFileId) ?? null : null;
-  const selectedFiles = files.filter((f) => selectedIds.has(f.id));
 
   // The one selected row, put on the app's own clipboard as the block that
   // REFERENCES it - pasted into a document it stays this same record
@@ -425,11 +377,6 @@ export default function FilesScreen() {
     clearSelection();
   }
 
-  async function changeViewMode(mode: ViewMode) {
-    setMenuOpen(false);
-    await setDoc(filesPrefsDoc, { viewMode: mode }, { merge: true });
-  }
-
   async function bulkAssignGroup(groupId: string | null) {
     setBulkGroupPickerVisible(false);
     const batch = writeBatch(db);
@@ -547,143 +494,191 @@ export default function FilesScreen() {
 
 
   return (
-    <View style={styles.container}>
-      <Svg
-        width={windowWidth + 2}
-        height={windowHeight + 2}
-        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
-        pointerEvents="none"
-      >
-        <Defs>
-          <LinearGradient id="filesBg" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0.03" stopColor="#705648" />
-            <Stop offset="0.52" stopColor="#69736E" />
-            <Stop offset="1" stopColor="#000000" />
-          </LinearGradient>
-        </Defs>
-        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#filesBg)" />
-      </Svg>
-      {/* The rail, as on every other screen: right edge, same width, same
-          glass, hanging from the same line. Through the portal, which is
-          where a blur is safe - inside the screen it would be blurring a
-          picture it is part of. */}
-      {railFocused && (
-        <GlassPortal>
-          <View
-            style={[styles.railWrap, { top: railInsets.top + CHROME_TOP + CAPSULE_DROP }]}
-            pointerEvents="box-none"
+    <DatabaseChrome
+      list={list}
+      accent={ACCENT}
+      accentGlass={ACCENT_GLASS}
+      onBack={() => navigation.goBack()}
+      searchPlaceholder="Пошук файлів"
+      onAdd={addFileDirectly}
+      menuRows={(close) => (
+        <>
+          <Text style={styles.menuSectionLabel}>Вигляд</Text>
+          <Pressable
+            style={styles.menuRow}
+            onPress={() => {
+              close();
+              changeViewMode('list');
+            }}
           >
-            <View style={styles.headerButtons}>
-                <BlurView
-                  intensity={60}
-                  tint="dark"
-                  blurMethod="dimezisBlurView"
-                  blurTarget={railBlurTarget ?? undefined}
-                  style={StyleSheet.absoluteFill}
-                  pointerEvents="none"
-                />
-              <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
-              </Pressable>
-              <View style={styles.headerButtonsDivider} />
-              <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
-                <Ionicons name={isSearching ? 'close-outline' : 'search-outline'} size={24} color="#fff" />
-              </Pressable>
-            </View>
-          </View>
-        </GlassPortal>
+            <Ionicons name="reorder-four-outline" size={17} color="#111827" />
+            <Text style={styles.menuRowLabel}>Список</Text>
+            {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+          </Pressable>
+          <Pressable
+            style={styles.menuRow}
+            onPress={() => {
+              close();
+              changeViewMode('grid');
+            }}
+          >
+            <Ionicons name="grid-outline" size={17} color="#111827" />
+            <Text style={styles.menuRowLabel}>Сітка</Text>
+            {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+          </Pressable>
+        </>
       )}
-
-      <ContentColumn>
-        <View style={styles.headerRow}>
-          <View style={styles.headerLeft}>
-            <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-              <Ionicons name="chevron-back" size={24} color="#fff" />
-            </Pressable>
-            <Text style={styles.header}>Файли</Text>
-          </View>
-        </View>
-
-        {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
-        {menuOpen && (
-          <View style={styles.menuPanel}>
-            <Text style={styles.menuSectionLabel}>Вигляд</Text>
-            <Pressable style={styles.menuRow} onPress={() => changeViewMode('list')}>
-              <Ionicons name="reorder-four-outline" size={17} color="#111827" />
-              <Text style={styles.menuRowLabel}>Список</Text>
-              {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-            </Pressable>
-            <Pressable style={styles.menuRow} onPress={() => changeViewMode('grid')}>
-              <Ionicons name="grid-outline" size={17} color="#111827" />
-              <Text style={styles.menuRowLabel}>Сітка</Text>
-              {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-            </Pressable>
-            <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
-            <View style={styles.menuRule} />
-            <Pressable
-              style={styles.menuRow}
-              onPress={() => {
-                setMenuOpen(false);
-                toggleSelectMode();
-              }}
-            >
-              <Ionicons
-                name={isSelectMode ? 'close-outline' : 'checkmark-circle-outline'}
-                size={17}
-                color="#111827"
-              />
-              <Text style={styles.menuRowLabel}>{isSelectMode ? 'Скасувати вибір' : 'Вибрати'}</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {groups.length > 0 && (
-          <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" dark />
-        )}
-
-        {tagFilter && (
-          <View style={styles.filterRow}>
-            {tagFilter.type === 'untagged' ? (
-              <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
-                <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
-                <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без тегів</Text>
-                <Pressable hitSlop={8} onPress={() => setTagFilter(null)}>
-                  <Ionicons name="close" size={14} color="#6B7280" />
-                </Pressable>
-              </View>
-            ) : (
-              tagFilter.tagIds.map((tagId) => {
-                const tag = tags.find((t) => t.id === tagId);
-                if (!tag) return null;
-                return (
-                  <View key={tagId} style={[styles.filterChip, { borderColor: tag.color }]}>
-                    <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tag.color} />
-                    <Text style={[styles.filterChipLabel, { color: tag.color }]}>{tag.path}</Text>
-                    <Pressable hitSlop={8} onPress={() => setTagFilter(removeTagFromFilter(tagFilter, tagId))}>
-                      <Ionicons name="close" size={14} color={tag.color} />
-                    </Pressable>
-                  </View>
-                );
-              })
-            )}
-          </View>
-        )}
-
-        {isSearching && (
-          <View style={styles.searchRow}>
-            <Ionicons name="search" size={14} color="#9CA3AF" />
-            <TextInput
-              autoFocus
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Пошук файлів"
-              placeholderTextColor="#9CA3AF"
-              style={styles.searchInput}
+      bulk={{
+        onTag: () => setBulkTagPickerVisible(true),
+        onGroup: () => setBulkGroupPickerVisible(true),
+        onCopy: () => setBulkCopyModalVisible(true),
+        onCopyObject: copySelectedToClipboard,
+        onDelete: confirmDeleteSelected,
+      }}
+      overlay={
+        <>
+          {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
+          {!toast && justAddedFile && (
+            <UndoToast
+              message={`Додано у Файли: ${justAddedFile.fileName}`}
+              actionLabel="Перемістити"
+              onUndo={() => setSaveDestinationVisible(true)}
             />
-          </View>
-        )}
+          )}
 
-        {isLoading ? (
+          {/* The per-card "..." - rename, and the documents this file sits
+              in when it sits in any. */}
+          <Modal
+            visible={cardMenuFile !== null}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setCardMenuFileId(null)}
+          >
+            <Pressable style={styles.cardMenuBackdrop} onPress={() => setCardMenuFileId(null)}>
+              <Pressable style={styles.cardMenuSheet} onPress={() => {}}>
+                <View style={styles.cardMenuHandle} />
+                <Pressable
+                  style={styles.cardMenuRow}
+                  onPress={() => {
+                    if (cardMenuFile) setRenamingFile(cardMenuFile);
+                    setCardMenuFileId(null);
+                  }}
+                >
+                  <Ionicons name="pencil-outline" size={18} color="#111827" />
+                  <Text style={styles.cardMenuRowLabel}>Редагувати назву</Text>
+                </Pressable>
+                {cardMenuFile && cardMenuFile.documentIds.length > 0 && (
+                  <Pressable
+                    style={styles.cardMenuRow}
+                    onPress={() => {
+                      if (cardMenuFile) openDocumentIcon(cardMenuFile);
+                      setCardMenuFileId(null);
+                    }}
+                  >
+                    <Ionicons name="document-text-outline" size={18} color="#111827" />
+                    <Text style={styles.cardMenuRowLabel}>
+                      Документи{cardMenuFile.documentIds.length > 1 ? ` (${cardMenuFile.documentIds.length})` : ''}
+                    </Text>
+                  </Pressable>
+                )}
+              </Pressable>
+            </Pressable>
+          </Modal>
+
+          <RenamePrompt
+            visible={renamingFile !== null}
+            title="Назва файлу"
+            initialValue={renamingFile?.title ?? renamingFile?.fileName ?? ''}
+            onCancel={() => setRenamingFile(null)}
+            onSave={(title) => {
+              if (renamingFile) renameFile(renamingFile, title);
+            }}
+          />
+
+          <DocumentPickerModal
+            visible={documentPicker !== null}
+            subtitle={documentPicker?.file.title || documentPicker?.file.fileName}
+            documents={documentPicker?.documents ?? []}
+            onPick={pickDocument}
+            onClose={() => setDocumentPicker(null)}
+          />
+
+          <TagPicker
+            visible={tagPickerFile !== null}
+            kind="file"
+            tags={tags}
+            selectedTagIds={tagPickerFile?.tagIds ?? []}
+            onAttach={(tag) => tagPickerFile && attachTag(tag, 'file', tagPickerFile.id, 'files')}
+            onDetach={(tag) => tagPickerFile && detachTag(tag, 'file', tagPickerFile.id, 'files')}
+            onCreateAndAttach={(path, icon, color) =>
+              tagPickerFile && createAndAttachTag(path, icon, color, 'file', tagPickerFile.id, 'files')
+            }
+            onRenameTag={renameTag}
+            onClose={() => setTagPickerForId(null)}
+          />
+
+          <TagPicker
+            visible={bulkTagPickerVisible}
+            kind="file"
+            tags={tags}
+            selectedTagIds={[]}
+            onAttach={bulkAttachTag}
+            onDetach={() => {}}
+            onCreateAndAttach={bulkCreateAndAttachTag}
+            onRenameTag={renameTag}
+            onClose={() => setBulkTagPickerVisible(false)}
+          />
+
+          <GroupPickerSheet
+            visible={bulkGroupPickerVisible}
+            kind="file"
+            groups={groups}
+            onPick={bulkAssignGroup}
+            onClose={() => setBulkGroupPickerVisible(false)}
+          />
+
+          <CopyToNoteModal
+            visible={bulkCopyModalVisible}
+            onPickExisting={bulkCopyToExisting}
+            onPickNew={bulkCopyToNew}
+            onClose={() => setBulkCopyModalVisible(false)}
+          />
+
+          <SaveDestinationSheet
+            visible={saveDestinationVisible}
+            title="Куди додати файл?"
+            defaultLabel="Лишити в базі"
+            onPickDefault={() => relocateJustAddedFile(async () => {})}
+            onPickToday={() =>
+              relocateJustAddedFile((item) =>
+                appendBlocksToToday([fileToBlock(item)], [{ collectionName: 'files', id: item.id }])
+              )
+            }
+            onPickNew={() =>
+              relocateJustAddedFile((item) =>
+                copyObjectsToNote(null, [fileToBlock(item)], [{ collectionName: 'files', id: item.id }]).then(
+                  (newId) => navigation.navigate('Editor', { documentId: newId })
+                )
+              )
+            }
+            onPickExisting={(documentId) =>
+              relocateJustAddedFile((item) =>
+                copyObjectsToNote(documentId, [fileToBlock(item)], [{ collectionName: 'files', id: item.id }])
+              )
+            }
+            onPickNewBoard={() =>
+              relocateJustAddedFile((item) => createBoardAndAddItem('Без назви', fileToImportableItem(item)))
+            }
+            onPickExistingBoard={(boardId) =>
+              relocateJustAddedFile((item) => addItemToBoard(boardId, fileToImportableItem(item)))
+            }
+            onClose={() => setSaveDestinationVisible(false)}
+          />
+        </>
+      }
+    >
+      {(listTopPad) =>
+        isLoading ? (
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
           </View>
@@ -700,282 +695,32 @@ export default function FilesScreen() {
             )}
           </View>
         ) : viewMode === 'grid' ? (
-          <ScrollView contentContainerStyle={[styles.gridList, isSelectMode && styles.listWithBulkBar]}>
+          <ScrollView
+            contentContainerStyle={[
+              styles.gridList,
+              { paddingTop: listTopPad },
+              isSelectMode && styles.listWithBulkBar,
+            ]}
+          >
             {displayedFiles.map(renderFileGridCell)}
           </ScrollView>
         ) : (
-          <ScrollView contentContainerStyle={[styles.list, isSelectMode && styles.listWithBulkBar]}>
+          <ScrollView
+            contentContainerStyle={[
+              styles.list,
+              { paddingTop: listTopPad },
+              isSelectMode && styles.listWithBulkBar,
+            ]}
+          >
             {displayedFiles.map(renderFileRow)}
           </ScrollView>
-        )}
-
-        <Modal
-          visible={cardMenuFile !== null}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setCardMenuFileId(null)}
-        >
-          <Pressable style={styles.cardMenuBackdrop} onPress={() => setCardMenuFileId(null)}>
-            <Pressable style={styles.cardMenuSheet} onPress={() => {}}>
-              <View style={styles.cardMenuHandle} />
-              <Pressable
-                style={styles.cardMenuRow}
-                onPress={() => {
-                  if (cardMenuFile) setRenamingFile(cardMenuFile);
-                  setCardMenuFileId(null);
-                }}
-              >
-                <Ionicons name="pencil-outline" size={18} color="#111827" />
-                <Text style={styles.cardMenuRowLabel}>Редагувати назву</Text>
-              </Pressable>
-              {cardMenuFile && cardMenuFile.documentIds.length > 0 && (
-                <Pressable
-                  style={styles.cardMenuRow}
-                  onPress={() => {
-                    if (cardMenuFile) openDocumentIcon(cardMenuFile);
-                    setCardMenuFileId(null);
-                  }}
-                >
-                  <Ionicons name="document-text-outline" size={18} color="#111827" />
-                  <Text style={styles.cardMenuRowLabel}>
-                    Документи{cardMenuFile.documentIds.length > 1 ? ` (${cardMenuFile.documentIds.length})` : ''}
-                  </Text>
-                </Pressable>
-              )}
-            </Pressable>
-          </Pressable>
-        </Modal>
-
-        <RenamePrompt
-          visible={renamingFile !== null}
-          title="Назва файлу"
-          initialValue={renamingFile?.title ?? renamingFile?.fileName ?? ''}
-          onCancel={() => setRenamingFile(null)}
-          onSave={(title) => {
-            if (renamingFile) renameFile(renamingFile, title);
-          }}
-        />
-
-        <DocumentPickerModal
-          visible={documentPicker !== null}
-          subtitle={documentPicker?.file.title || documentPicker?.file.fileName}
-          documents={documentPicker?.documents ?? []}
-          onPick={pickDocument}
-          onClose={() => setDocumentPicker(null)}
-        />
-
-
-        <TagPicker
-          visible={bulkTagPickerVisible}
-          kind="file"
-          tags={tags}
-          selectedTagIds={[]}
-          onAttach={bulkAttachTag}
-          onDetach={() => {}}
-          onCreateAndAttach={bulkCreateAndAttachTag}
-          onRenameTag={renameTag}
-          onClose={() => setBulkTagPickerVisible(false)}
-        />
-
-
-      </ContentColumn>
-
-
-        <TagPicker
-          visible={tagPickerFile !== null}
-          kind="file"
-          tags={tags}
-          selectedTagIds={tagPickerFile?.tagIds ?? []}
-          onAttach={(tag) => tagPickerFile && attachTag(tag, 'file', tagPickerFile.id, 'files')}
-          onDetach={(tag) => tagPickerFile && detachTag(tag, 'file', tagPickerFile.id, 'files')}
-          onCreateAndAttach={(path, icon, color) =>
-            tagPickerFile && createAndAttachTag(path, icon, color, 'file', tagPickerFile.id, 'files')
-          }
-          onRenameTag={renameTag}
-          onClose={() => setTagPickerForId(null)}
-        />
-
-        <GroupPickerSheet
-          visible={bulkGroupPickerVisible}
-          kind="file"
-          groups={groups}
-          onPick={bulkAssignGroup}
-          onClose={() => setBulkGroupPickerVisible(false)}
-        />
-
-        <CopyToNoteModal
-          visible={bulkCopyModalVisible}
-          onPickExisting={bulkCopyToExisting}
-          onPickNew={bulkCopyToNew}
-          onClose={() => setBulkCopyModalVisible(false)}
-        />
-
-      <TagsDrawer
-        tags={drawerTags}
-        activeFilter={tagFilter}
-        onSelectFilter={setTagFilter}
-        hideOpenButton={isSelectMode}
-      />
-
-      <BulkActionBar
-        count={selectedIds.size}
-        onTag={() => setBulkTagPickerVisible(true)}
-        onGroup={() => setBulkGroupPickerVisible(true)}
-        onCopy={() => setBulkCopyModalVisible(true)}
-        onCopyObject={copySelectedToClipboard}
-        onDelete={confirmDeleteSelected}
-      />
-
-      {/* Through the portal, where its blur is safe - inside the screen
-          it would be blurring a picture it is itself part of. */}
-      {railFocused && !isSelectMode && (
-        <GlassPortal>
-          <Pressable style={[styles.fab, { bottom: rail.addBottom }]} onPress={addFileDirectly}>
-            <BlurView
-              intensity={60}
-              tint="dark"
-              blurMethod="dimezisBlurView"
-              blurTarget={railBlurTarget ?? undefined}
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
-            <Ionicons name="add-outline" size={28} color="#fff" />
-          </Pressable>
-        </GlassPortal>
-      )}
-
-      {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
-      {!toast && justAddedFile && (
-        <UndoToast
-          message={`Додано у Файли: ${justAddedFile.fileName}`}
-          actionLabel="Перемістити"
-          onUndo={() => setSaveDestinationVisible(true)}
-        />
-      )}
-
-      <SaveDestinationSheet
-        visible={saveDestinationVisible}
-        title="Куди додати файл?"
-        defaultLabel="Лишити в базі"
-        onPickDefault={() => relocateJustAddedFile(async () => {})}
-        onPickToday={() =>
-          relocateJustAddedFile((item) => appendBlocksToToday([fileToBlock(item)], [{ collectionName: 'files', id: item.id }]))
-        }
-        onPickNew={() =>
-          relocateJustAddedFile((item) =>
-            copyObjectsToNote(null, [fileToBlock(item)], [{ collectionName: 'files', id: item.id }]).then((newId) =>
-              navigation.navigate('Editor', { documentId: newId })
-            )
-          )
-        }
-        onPickExisting={(documentId) =>
-          relocateJustAddedFile((item) =>
-            copyObjectsToNote(documentId, [fileToBlock(item)], [{ collectionName: 'files', id: item.id }])
-          )
-        }
-        onPickNewBoard={() => relocateJustAddedFile((item) => createBoardAndAddItem('Без назви', fileToImportableItem(item)))}
-        onPickExistingBoard={(boardId) =>
-          relocateJustAddedFile((item) => addItemToBoard(boardId, fileToImportableItem(item)))
-        }
-        onClose={() => setSaveDestinationVisible(false)}
-      />
-    </View>
+        )
+      }
+    </DatabaseChrome>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  // Same floating "+" DocumentsScreen uses, not a header icon.
-  fab: {
-    position: 'absolute',
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: ACCENT_GLASS,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 4,
-    shadowColor: ACCENT,
-    shadowOpacity: 0.5,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 6,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    // Matches Documents/Databases' own header capsule vertical position.
-    paddingTop: 90,
-    paddingBottom: 8,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flexShrink: 1,
-  },
-  header: {
-    // At least 2x the previous 22, matching Documents/Databases.
-    fontSize: 46,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    color: '#fff',
-  },
-  // One elongated glass capsule instead of three bare gray icons - matches
-  // Documents/Calendar's own header capsule.
-  railWrap: {
-    position: 'absolute',
-    right: RAIL_RIGHT,
-    alignItems: 'center',
-  },
-  // Stood on its end, like every other screen's.
-  headerButtons: {
-    alignItems: 'center',
-    gap: 18,
-    paddingVertical: 18,
-    paddingHorizontal: 19,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-  },
-  // Turned with the capsule.
-  headerButtonsDivider: {
-    width: 20,
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-  },
-  menuBackdrop: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    zIndex: 5,
-  },
-  menuPanel: {
-    position: 'absolute',
-    top: 96,
-    right: RAIL_CLEARANCE,
-    width: 200,
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    padding: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
-    zIndex: 6,
-  },
   menuSectionLabel: {
     fontSize: 11,
     fontWeight: '700',
@@ -987,11 +732,6 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 2,
   },
-  menuRule: {
-    height: 1,
-    backgroundColor: '#E5E7EB',
-    marginVertical: 6,
-  },
     menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1000,48 +740,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   menuRowLabel: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: FONT_REGULAR,
-    color: '#111827',
-  },
-  filterRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    paddingHorizontal: 20,
-    paddingBottom: 8,
-  },
-  // White capsule, border + text in the tag's own color - same as
-  // DocumentsScreen's filterChip.
-  filterChip: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#fff',
-    borderWidth: 1.5,
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  filterChipLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    fontFamily: FONT_SEMIBOLD,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginHorizontal: 20,
-    marginBottom: 8,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  searchInput: {
     flex: 1,
     fontSize: 14,
     fontFamily: FONT_REGULAR,

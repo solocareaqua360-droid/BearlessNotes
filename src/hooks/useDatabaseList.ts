@@ -66,6 +66,9 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
   // groups also live in the drawer - held down, the folder button puts it
   // away.
   const [groupsRowHidden, setGroupsRowHidden] = useState(false);
+  // List or grid, for the databases that offer both - kept in the same
+  // per-database preferences document as the sort and the hidden row.
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
 
   const { sortPref, selectSortField } = useSortPref(prefsKey);
   const { filterPending, requestDelete, requestDeleteMany, undo, toast } = usePendingDelete<T>();
@@ -76,6 +79,7 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
     () =>
       onSnapshot(prefsDoc, (snapshot) => {
         setGroupsRowHidden(!!snapshot.data()?.groupsRowHidden);
+        setViewMode((snapshot.data()?.viewMode as 'list' | 'grid' | undefined) ?? 'list');
       }),
     [prefsKey]
   );
@@ -95,6 +99,10 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
       }),
     [groupKind]
   );
+
+  function changeViewMode(mode: 'list' | 'grid') {
+    setDoc(prefsDoc, { viewMode: mode }, { merge: true });
+  }
 
   function toggleGroupsRow() {
     setDoc(prefsDoc, { groupsRowHidden: !groupsRowHidden }, { merge: true });
@@ -151,6 +159,8 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
     groupSectionItems,
     groupsRowHidden,
     toggleGroupsRow,
+    viewMode,
+    changeViewMode,
     tagFilter,
     setTagFilter,
     drawerTags,
