@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } fro
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
-import { GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { DatabaseList } from '../hooks/useDatabaseList';
@@ -92,10 +91,10 @@ export default function DatabaseChrome<T extends { id: string }>({
   // The chrome floats over the cards, so its height decides where the
   // first one rests.
   const [chromeHeight, setChromeHeight] = useState(0);
-  // Pulled down from the top of the list, the search comes out.
-  const pull = usePullToSearch(() => list.setIsSearching(true));
   const chromeTop = insets.top + CHROME_TOP;
   const chromeBottom = chromeTop + chromeHeight + 8;
+  // Pulled down from the top of the list, the search comes out.
+  const pull = usePullToSearch(() => list.setIsSearching(true), chromeBottom);
 
   return (
     <View style={styles.container}>
@@ -259,11 +258,7 @@ export default function DatabaseChrome<T extends { id: string }>({
         {/* Only what floats above the cards pushes them down; once a chip
             row or the search field has already taken that space, the
             cards start right under it. */}
-        <GestureDetector gesture={pull.gesture}>
-          <View style={styles.listWrap}>
-            {children(list.tagFilter || list.isSearching ? 0 : chromeBottom, pull.listProps)}
-          </View>
-        </GestureDetector>
+        {children(list.tagFilter || list.isSearching ? 0 : chromeBottom, pull.listProps)}
       </ContentColumn>
 
       {overlay}
@@ -352,11 +347,6 @@ export const menuStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
-  // The pull gesture needs something to sit on that fills what is left of
-  // the screen under the chrome.
-  listWrap: {
     flex: 1,
   },
   railWrap: {
