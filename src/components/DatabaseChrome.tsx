@@ -306,9 +306,22 @@ export default function DatabaseChrome<T extends { id: string }>({
                 style={StyleSheet.absoluteFill}
                 pointerEvents="none"
               />
-              <Pressable hitSlop={8} onPress={() => list.setIsSearching((prev) => !prev)}>
+              {/* While selecting, the top button is the way OUT of it.
+                  It was only a row inside the "..." menu - two taps and
+                  invisible, on the one screen state you most need to be
+                  able to leave. */}
+              <Pressable
+                hitSlop={8}
+                onPress={() => {
+                  if (list.isSelectMode) {
+                    list.toggleSelectMode();
+                    return;
+                  }
+                  list.setIsSearching((prev) => !prev);
+                }}
+              >
                 <Ionicons
-                  name={list.isSearching ? 'close-outline' : 'search-outline'}
+                  name={list.isSelectMode || list.isSearching ? 'close-outline' : 'search-outline'}
                   size={24}
                   color="#fff"
                 />

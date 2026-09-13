@@ -1298,6 +1298,12 @@ export default function CustomDatabaseScreen({}: Props) {
               <Pressable
                 hitSlop={8}
                 onPress={() => {
+                  // While selecting, this is the way out of it - see the
+                  // same button on the shared chrome.
+                  if (isSelectMode) {
+                    toggleSelectMode();
+                    return;
+                  }
                   // Closing the search clears it too - leaving a filter
                   // applied behind a hidden input is how a database looks
                   // half-empty for no visible reason.
@@ -1307,7 +1313,11 @@ export default function CustomDatabaseScreen({}: Props) {
                   });
                 }}
               >
-                <Ionicons name={isSearching ? 'close-outline' : 'search-outline'} size={24} color="#fff" />
+                <Ionicons
+                  name={isSelectMode || isSearching ? 'close-outline' : 'search-outline'}
+                  size={24}
+                  color="#fff"
+                />
               </Pressable>
               <View style={styles.headerButtonsDivider} />
               <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
