@@ -34,17 +34,24 @@ function intentLauncher(): typeof import('expo-intent-launcher') | null {
   }
 }
 
+// Whether the file's bytes are on this device - pulled back from Drive
+// first if they are not, and said so plainly if they are nowhere. Shared
+// by the quick look and the hand-off below, so both restore the same way.
+export async function ensureFileIsHere(file: { fileUri: string; driveFileId?: string }): Promise<boolean> {
+  const restored = await ensureLocalFile(file.fileUri, file.driveFileId).catch(() => false);
+  if (!restored) {
+    Alert.alert('Файл недоступний', 'Його немає на цьому пристрої, а копії на Google Диску теж немає.');
+  }
+  return restored;
+}
+
 export async function openFileExternally(file: {
   fileUri: string;
   fileName: string;
   mimeType?: string;
   driveFileId?: string;
 }) {
-  const restored = await ensureLocalFile(file.fileUri, file.driveFileId).catch(() => false);
-  if (!restored) {
-    Alert.alert('Файл недоступний', 'Його немає на цьому пристрої, а копії на Google Диску теж немає.');
-    return;
-  }
+  if (!(await ensureFileIsHere(file))) return;
 
   const launcher = intentLauncher();
   if (launcher) {

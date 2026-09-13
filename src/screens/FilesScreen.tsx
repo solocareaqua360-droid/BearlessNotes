@@ -49,7 +49,8 @@ import SaveDestinationSheet from '../components/SaveDestinationSheet';
 import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { openFileExternally } from '../utils/openFileExternally';
+import { ensureFileIsHere, openFileExternally } from '../utils/openFileExternally';
+import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
@@ -98,6 +99,14 @@ export default function FilesScreen() {
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
   const [cardMenuFileId, setCardMenuFileId] = useState<string | null>(null);
+  // The file being looked at in the quick look, with the record it came
+  // from so "open elsewhere" can hand the same file on.
+  const [quickLook, setQuickLook] = useState<{
+    uri: string;
+    name: string;
+    kind: QuickLookKind;
+    file: FileItem;
+  } | null>(null);
   // The record a "+" add just created, waiting on the "Перемістити" toast
   // (see relocateJustAddedFile) - the file itself already lives in the
   // base regardless of what happens here.
@@ -232,7 +241,17 @@ export default function FilesScreen() {
     destination(item).catch((e) => console.warn('[FilesScreen] relocate failed', e));
   }
 
+  // A Word or Excel file is looked at right here; anything else goes to
+  // the app that opens it. Either way the bytes are fetched back from
+  // Drive first when this device does not have them.
   async function openFile(file: FileItem) {
+    const kind = quickLookKindFor(file.fileName);
+    if (kind) {
+      if (await ensureFileIsHere(file)) {
+        setQuickLook({ uri: file.fileUri, name: file.title || file.fileName, kind, file });
+      }
+      return;
+    }
     await openFileExternally(file);
   }
 
@@ -468,6 +487,15 @@ export default function FilesScreen() {
       }}
       overlay={
         <>
+          <DocumentQuickLook
+            file={quickLook}
+            onClose={() => setQuickLook(null)}
+            onOpenElsewhere={() => {
+              const file = quickLook?.file;
+              setQuickLook(null);
+              if (file) openFileExternally(file);
+            }}
+          />
           {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
           {!toast && justAddedFile && (
             <UndoToast

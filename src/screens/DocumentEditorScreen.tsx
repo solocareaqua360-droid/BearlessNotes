@@ -82,7 +82,8 @@ import EditorToolbar, { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolba
 import { BlockAction } from '../components/blockActions';
 import { clearCopiedObject, getCopiedObject, useCopiedObject } from '../utils/objectClipboard';
 import { backupFileToDrive, ensureLocalFile } from '../utils/googleDrive';
-import { openFileExternally } from '../utils/openFileExternally';
+import { ensureFileIsHere, openFileExternally } from '../utils/openFileExternally';
+import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
@@ -2159,6 +2160,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
   const [imageRenameId, setImageRenameId] = useState<string | null>(null);
   const [sketchEditorBlockId, setSketchEditorBlockId] = useState<string | null>(null);
+  // The Word or Excel file being looked at without leaving the note - see
+  // DocumentQuickLook. Carries the record so "open elsewhere" can hand the
+  // same file on.
+  const [quickLook, setQuickLook] = useState<{
+    uri: string;
+    name: string;
+    kind: QuickLookKind;
+    file: { fileUri: string; fileName: string; mimeType?: string; driveFileId?: string };
+  } | null>(null);
   const [existingItemPickerBlockId, setExistingItemPickerBlockId] = useState<string | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   // Set on a document generated from a board (see boardToDocument.ts).
@@ -3894,12 +3904,22 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   async function openFileBlock(id: string) {
     const block = blocks.find((b) => b.id === id);
     if (!block?.fileUri) return;
-    await openFileExternally({
+    const file = {
       fileUri: block.fileUri,
       fileName: block.fileName ?? 'Файл',
       mimeType: block.mimeType,
       driveFileId: block.driveFileId,
-    });
+    };
+    // A Word or Excel file is looked at right here (see DocumentQuickLook);
+    // anything else goes to the app that opens it.
+    const kind = quickLookKindFor(file.fileName);
+    if (kind) {
+      if (await ensureFileIsHere(file)) {
+        setQuickLook({ uri: file.fileUri, name: block.fileTitle || file.fileName, kind, file });
+      }
+      return;
+    }
+    await openFileExternally(file);
   }
 
   async function copySelectedBlocks() {
@@ -4455,6 +4475,16 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           />
         </Animated.View>
       )}
+
+      <DocumentQuickLook
+        file={quickLook}
+        onClose={() => setQuickLook(null)}
+        onOpenElsewhere={() => {
+          const file = quickLook?.file;
+          setQuickLook(null);
+          if (file) openFileExternally(file);
+        }}
+      />
 
       <SketchEditor
         visible={sketchEditorBlockId !== null}
