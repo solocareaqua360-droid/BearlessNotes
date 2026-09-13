@@ -111,9 +111,39 @@ function groupLines<T extends RecognizedWord>(words: T[]): T[][] {
   return lines;
 }
 
+// The order a person reads in, rebuilt from the boxes: lines top to
+// bottom, words left to right. The recogniser's own order is not that -
+// it hands over the blocks it found in the order it found them, and a
+// short reply it took for a block of its own ("— Я думаю...") arrived
+// after the paragraph it belongs at the head of. Every box has a place;
+// the place says where the word goes.
+function readingOrder<T extends RecognizedWord>(words: T[]): T[] {
+  const byMiddle = [...words].sort((a, b) => a.y0 + a.y1 - (b.y0 + b.y1));
+  const lines: { top: number; bottom: number; words: T[] }[] = [];
+  byMiddle.forEach((word) => {
+    const line = lines.find((candidate) => {
+      const overlap = Math.min(candidate.bottom, word.y1) - Math.max(candidate.top, word.y0);
+      const shorter = Math.min(candidate.bottom - candidate.top, word.y1 - word.y0);
+      return shorter > 0 && overlap > shorter * 0.5;
+    });
+    if (!line) {
+      lines.push({ top: word.y0, bottom: word.y1, words: [word] });
+      return;
+    }
+    line.words.push(word);
+    // The line's band is the average of its words, so one tall or low
+    // box cannot drag it into the line below on a page that is not flat.
+    const n = line.words.length;
+    line.top = line.top + (word.y0 - line.top) / n;
+    line.bottom = line.bottom + (word.y1 - line.bottom) / n;
+  });
+  lines.sort((a, b) => a.top - b.top);
+  return lines.flatMap((line) => line.words.sort((a, b) => a.x0 - b.x0));
+}
+
 // Noise out, broken words put back together.
 export function tidyWords(raw: ScoredWord[]): RecognizedWord[] {
-  const shaped = raw.filter(shapeOk);
+  const shaped = readingOrder(raw.filter(shapeOk));
   const anchors = shaped.filter(isAnchor);
   // Where the printed column is. Percentiles rather than the extremes, so
   // one surviving speck cannot widen it to the whole photograph - and
@@ -134,9 +164,13 @@ export function tidyWords(raw: ScoredWord[]): RecognizedWord[] {
 
   const kept: RecognizedWord[] = [];
   groupLines(shaped).forEach((line) => {
-    // A line with nothing solid on it is not a line of the book - it is a
-    // crease, or the edge of the page caught in the frame.
-    if (!line.some(isAnchor)) return;
+    // A line with no word on it at all - only specks and marks - is a
+    // crease, or the edge of the page caught in the frame. That is the
+    // whole test: it used to demand a SOLID word (four letters, read with
+    // confidence), and "— Я думаю..." - a short reply, its confidence
+    // dented by the ellipsis, handed over as a piece of its own - went
+    // out with the creases.
+    if (!line.some((word) => count(word.text, LETTER) >= 2)) return;
     line.forEach((word) => {
       if (column && (word.x0 > column.right + slack || word.x1 < column.left - slack)) return;
       kept.push({ text: word.text.trim(), x0: word.x0, y0: word.y0, x1: word.x1, y1: word.y1 });
