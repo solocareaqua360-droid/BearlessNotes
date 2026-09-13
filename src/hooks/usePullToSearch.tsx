@@ -34,6 +34,15 @@ export function usePullToSearch(onPull: () => void) {
     const list = Gesture.Native();
     const pull = Gesture.Pan()
       .simultaneousWithExternalGesture(list)
+      // Vertical only, and it gives up the moment the finger goes
+      // sideways: the pager that carries the tabs is the OTHER gesture
+      // this one shares the screen with, and a pan with no direction of
+      // its own competes with that too - which is what stopped the
+      // sideways swipe. activeOffsetY starts it only on a downward drag;
+      // failOffsetX drops it out of the running as soon as the movement
+      // reads as horizontal, handing the touch to the pager untouched.
+      .activeOffsetY(15)
+      .failOffsetX([-20, 20])
       .onBegin(() => {
         armed.value = atTop.value;
         fired.value = false;
