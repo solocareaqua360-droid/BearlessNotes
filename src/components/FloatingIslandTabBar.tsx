@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { useIsFocused } from '@react-navigation/native';
 import { GlassPortal } from './GlassPortal';
 import { useBlurTarget } from './GlassTarget';
@@ -30,7 +30,7 @@ const ICON_SIZE = 24;
 // Drawn through the portal, like every other piece of glass: the blur has
 // to sit outside the view it blurs, and the screens are what the blur
 // target wraps.
-export default function FloatingIslandTabBar({ state, navigation }: BottomTabBarProps) {
+export default function FloatingIslandTabBar({ state, navigation }: MaterialTopTabBarProps) {
   const blurTarget = useBlurTarget();
   const rail = useRail();
   // The island draws through the portal, which reaches over the whole app

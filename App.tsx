@@ -13,7 +13,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { ShareIntentProvider } from 'expo-share-intent';
 import { NavigationContainer } from '@react-navigation/native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ensureSignedIn } from './src/firebase';
 import DocumentsScreen from './src/screens/DocumentsScreen';
@@ -37,12 +37,19 @@ import DiaryScreen from './src/screens/DiaryScreen';
 import DocumentEditorScreen from './src/screens/DocumentEditorScreen';
 import FloatingIslandTabBar from './src/components/FloatingIslandTabBar';
 import ShareIntentHandler from './src/components/ShareIntentHandler';
+import * as SplashScreen from 'expo-splash-screen';
 import { navigationRef } from './src/navigationRef';
 import { BoardsStackParamList, RootStackParamList } from './src/navigation';
 import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
 
-const Tab = createBottomTabNavigator();
+// Material top tabs, not bottom tabs, for one reason: they are the
+// navigator that can be swiped. Documents and the calendar are the two
+// halves of a day and the swipe between them is how they are meant to be
+// crossed - the island is only the shortcut. Its "top" is nominal here;
+// the tab bar is our own floating island, drawn through the portal at the
+// right edge, and the navigator itself shows no bar of its own.
+const Tab = createMaterialTopTabNavigator();
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const BoardsStackNav = createNativeStackNavigator<BoardsStackParamList>();
 
@@ -65,14 +72,33 @@ function BoardsStack() {
 // through the floating-island tab bar instead of the default one.
 function Tabs() {
   return (
-    <Tab.Navigator screenOptions={{ headerShown: false }} tabBar={(props) => <FloatingIslandTabBar {...props} />}>
+    <Tab.Navigator
+      tabBar={(props) => <FloatingIslandTabBar {...props} />}
+      screenOptions={{
+        // The pages are full-bleed: each screen paints its own gradient
+        // edge to edge, so the pager must not put a colour behind them.
+        sceneStyle: { backgroundColor: 'transparent' },
+        // A swipe that has to travel a little before it takes over, so a
+        // list scrolled with a slightly crooked finger still scrolls.
+        swipeEnabled: true,
+      }}
+    >
       <Tab.Screen name="Документи" component={DocumentsScreen} />
       <Tab.Screen name="Календар" component={CalendarScreen} />
-      <Tab.Screen name="Дошки" component={BoardsStack} />
+      {/* The board is a canvas dragged with the finger - a swipe there is
+          the user moving the board, never a request for the next tab. */}
+      <Tab.Screen name="Дошки" component={BoardsStack} options={{ swipeEnabled: false }} />
       <Tab.Screen name="Більше" component={DatabasesScreen} />
     </Tab.Navigator>
   );
 }
+
+// Android dismisses the splash as soon as the app draws its first frame,
+// and this app's first frame is a stand-in view that appears almost at
+// once - so the icon-to-app morph was cut off just as it began. Held here
+// instead, and let go below once the fonts and the sign-in have resolved,
+// which is when there is really something to show.
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function App() {
   // Only the redesigned surfaces (Documents/Calendar and the components
@@ -90,6 +116,10 @@ export default function App() {
   useEffect(() => {
     ensureSignedIn().then(() => setSignedIn(true));
   }, []);
+  const ready = fontsLoaded && signedIn;
+  useEffect(() => {
+    if (ready) SplashScreen.hideAsync().catch(() => {});
+  }, [ready]);
 
   // ShareIntentProvider wraps BOTH branches below as one stable instance
   // (rather than each branch mounting its own) - a share can arrive while
@@ -100,12 +130,12 @@ export default function App() {
   // would otherwise need to read it.
   return (
     <ShareIntentProvider>
-      {!fontsLoaded || !signedIn ? (
-        // The same colour the first screen's gradient starts with, not
-        // white: this view stands in for the app while fonts and the
-        // anonymous sign-in resolve, and a white one made the handover
-        // read as a flash of a different screen.
-        <View style={{ flex: 1, backgroundColor: '#705648' }} />
+      {!ready ? (
+        // The splash's own colour, not white and no longer the gradient's
+        // brown: the splash is still up while this stands behind it, and
+        // two different grounds handing over to each other is exactly the
+        // flash this is meant to avoid.
+        <View style={{ flex: 1, backgroundColor: '#0F1839' }} />
       ) : (
         <GestureHandlerRootView style={{ flex: 1 }}>
           {/* Feeds the document editor per-frame keyboard progress (see
