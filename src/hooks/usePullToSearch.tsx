@@ -1,4 +1,5 @@
-import { RefreshControl } from 'react-native';
+import { useEffect } from 'react';
+import { Keyboard, RefreshControl } from 'react-native';
 import { hapticButtonDown } from '../utils/haptics';
 
 // Pull the list down from its top and the search field comes out.
@@ -20,6 +21,12 @@ import { hapticButtonDown } from '../utils/haptics';
 export function usePullToSearch(onPull: () => void) {
   return {
     listProps: {
+      // A tap on anything that is not a card, and a drag of the list
+      // itself, both put the keyboard away - which is what closes the
+      // field, since an empty search closes with its keyboard (see
+      // useSearchDismissal). Taps on a card still reach the card.
+      keyboardShouldPersistTaps: 'handled' as const,
+      keyboardDismissMode: 'on-drag' as const,
       refreshControl: (
         <RefreshControl
           refreshing={false}
@@ -42,4 +49,39 @@ export function usePullToSearch(onPull: () => void) {
       ),
     },
   };
+}
+
+// The search field closes itself when it is done being used: when the
+// keyboard goes away with nothing typed (a tap anywhere outside it, or the
+// back gesture), and whenever the screen stops being the one on show - a
+// swipe to the next tab leaves no field hanging open behind it.
+//
+// An empty field only: once something has been typed, the results are what
+// the user is looking at, and dismissing the keyboard to see more of them
+// must not throw the search away.
+export function useSearchDismissal({
+  isSearching,
+  query,
+  isFocused,
+  close,
+}: {
+  isSearching: boolean;
+  query: string;
+  isFocused: boolean;
+  close: () => void;
+}) {
+  useEffect(() => {
+    if (!isSearching) return;
+    const subscription = Keyboard.addListener('keyboardDidHide', () => {
+      if (query.trim().length === 0) close();
+    });
+    return () => subscription.remove();
+  }, [isSearching, query, close]);
+
+  useEffect(() => {
+    if (!isFocused && isSearching) {
+      Keyboard.dismiss();
+      close();
+    }
+  }, [isFocused, isSearching, close]);
 }

@@ -14,7 +14,7 @@ import SortMenuRows from './SortMenuRows';
 import TagsDrawer, { removeTagFromFilter } from './TagsDrawer';
 import BulkActionBar from './BulkActionBar';
 import { useRail } from '../hooks/useRail';
-import { usePullToSearch } from '../hooks/usePullToSearch';
+import { usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CAPSULE_DROP, CAPSULE_HEIGHT_3, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
@@ -95,6 +95,17 @@ export default function DatabaseChrome<T extends { id: string }>({
   const chromeBottom = chromeTop + chromeHeight + 8;
   // Pulled down from the top of the list, the search comes out.
   const pull = usePullToSearch(() => list.setIsSearching(true));
+  // ...and closes itself when the keyboard goes away empty, or when a
+  // swipe carries the screen off.
+  useSearchDismissal({
+    isSearching: list.isSearching,
+    query: list.searchQuery,
+    isFocused,
+    close: () => {
+      list.setIsSearching(false);
+      list.setSearchQuery('');
+    },
+  });
 
   return (
     <View style={styles.container}>

@@ -39,7 +39,7 @@ import { hapticButtonDown, hapticButtonUp } from '../utils/haptics';
 import { RootStackParamList } from '../navigation';
 import { detachTagFromDeletedItem, ITEMS_COLLECTION_BY_KIND } from '../hooks/useTags';
 import { useDatabaseList } from '../hooks/useDatabaseList';
-import { usePullToSearch } from '../hooks/usePullToSearch';
+import { usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import DocumentEditorScreen from './DocumentEditorScreen';
 import SortMenuRows from '../components/SortMenuRows';
@@ -333,6 +333,15 @@ export default function DocumentsScreen() {
   // Pulled down from the top of the list, the search comes out - see
   // usePullToSearch.
   const pull = usePullToSearch(() => setSearchOpen(true));
+  useSearchDismissal({
+    isSearching: searchOpen,
+    query: searchText,
+    isFocused,
+    close: () => {
+      setSearchOpen(false);
+      setSearchText('');
+    },
+  });
 
   // The stickers' tab isn't a filter over the documents - it replaces
   // them.
