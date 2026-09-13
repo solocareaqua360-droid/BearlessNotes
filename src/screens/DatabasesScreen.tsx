@@ -32,7 +32,7 @@ import ImageCropper from '../components/ImageCropper';
 import { db } from '../firebase';
 import { RootStackParamList } from '../navigation';
 import { TAG_COLORS } from '../constants/tags';
-import { FONT_REGULAR, FONT_MEDIUM, FONT_BOLD } from '../utils/fonts';
+import { FONT_REGULAR, FONT_MEDIUM } from '../utils/fonts';
 import { colorForDocument } from '../utils/documentColor';
 import RenamePrompt from '../components/RenamePrompt';
 import ImportTableSheet from '../components/ImportTableSheet';
@@ -44,7 +44,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
-import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
 
 const NEW_TILE_KEY = '__new__';
 const IMPORT_TILE_KEY = '__import__';
@@ -326,10 +326,15 @@ export default function DatabasesScreen() {
       )}
 
       <ContentColumn>
-        <View style={styles.headerRow}>
-          <Text style={styles.header}>Бази даних</Text>
-        </View>
-        <ScrollView contentContainerStyle={styles.content}>
+        {/* No title: the capsule says where this is, and the name cost
+            the board a screenful. The tiles run all the way up and scroll
+            off the top edge, the way the cards do everywhere else. */}
+        <ScrollView
+          contentContainerStyle={[
+            styles.content,
+            { paddingTop: databasesInsets.top + CHROME_TOP + 8 },
+          ]}
+        >
           {/* The board. Tiles are placed, not flowed - see packTiles for
               why a wrapping row cannot hold mixed sizes without leaving
               holes. Each one animates to its new cell whenever the packing
@@ -646,23 +651,6 @@ function BoardTile({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingLeft: 20,
-    paddingRight: RAIL_CLEARANCE,
-    // Same level as DocumentsScreen's title.
-    paddingTop: 90,
-    paddingBottom: 12,
-  },
-  header: {
-    // At least 2x the previous 22.
-    fontSize: 46,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    color: '#fff',
   },
   railWrap: {
     position: 'absolute',
