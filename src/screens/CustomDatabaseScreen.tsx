@@ -74,7 +74,6 @@ import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
-import TabsTunnel from '../components/TabsTunnel';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
@@ -197,7 +196,6 @@ export default function CustomDatabaseScreen({}: Props) {
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [paramsCollapsed, setParamsCollapsed] = useState(false);
   const [openParam, setOpenParam] = useState<'view' | 'sort' | 'filter' | 'views' | 'group' | null>(null);
   const [sortPref, setSortPref] = useState<RowSort>(DEFAULT_ROW_SORT);
   const [filters, setFilters] = useState<RowFilter[]>([]);
@@ -477,7 +475,6 @@ export default function CustomDatabaseScreen({}: Props) {
     return onSnapshot(prefsDoc, (snapshot) => {
       const data = snapshot.data();
       setViewMode((data?.viewMode as ViewMode | undefined) ?? 'list');
-      setParamsCollapsed(!!data?.paramsCollapsed);
       // Same two keys useSortPref writes on the other database screens, so
       // a sort chosen before this screen grew its own field-aware sorting
       // is still the sort it comes back with.
@@ -651,10 +648,6 @@ export default function CustomDatabaseScreen({}: Props) {
   function closeParamList() {
     setOpenParam(null);
     setFilterFieldId(null);
-  }
-
-  function toggleParamsCollapsed() {
-    setDoc(prefsDoc, { paramsCollapsed: !paramsCollapsed }, { merge: true });
   }
 
   async function renameDatabase(name: string) {
@@ -1280,16 +1273,11 @@ export default function CustomDatabaseScreen({}: Props) {
         <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#customDbBg)" />
       </Svg>
 
-      <View style={styles.headerRow}>
-        <View style={styles.headerLeft}>
-          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={24} color="#fff" />
-          </Pressable>
-          <Text style={styles.header} numberOfLines={1}>
-            {database.name}
-          </Text>
-        </View>
-      </View>
+      {/* No title, no arrow in the corner: the capsule holds the way out,
+          the tile the user came from said the name, and the row cost the
+          records a screenful. What is left of the header is the line the
+          tabs start on - the same one as every other database. */}
+      <View style={{ height: railInsets.top + CHROME_TOP + 8 }} />
 
       {/* The rail, as on every other screen. */}
       {railFocused && (
@@ -1307,10 +1295,6 @@ export default function CustomDatabaseScreen({}: Props) {
                     style={StyleSheet.absoluteFill}
                     pointerEvents="none"
                   />
-              <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
-              </Pressable>
-              <View style={styles.headerButtonsDivider} />
               <Pressable
                 hitSlop={8}
                 onPress={() => {
@@ -1326,8 +1310,14 @@ export default function CustomDatabaseScreen({}: Props) {
                 <Ionicons name={isSearching ? 'close-outline' : 'search-outline'} size={24} color="#fff" />
               </Pressable>
               <View style={styles.headerButtonsDivider} />
-              <Pressable hitSlop={8} onPress={toggleParamsCollapsed}>
-                <Ionicons name={paramsCollapsed ? 'settings-outline' : 'settings'} size={24} color="#fff" />
+              <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
+                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
+              </Pressable>
+              <View style={styles.headerButtonsDivider} />
+              {/* The way out of this database - the same place it is on
+                  every other one. */}
+              <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+                <Ionicons name="arrow-back-outline" size={24} color="#fff" />
               </Pressable>
             </View>
           </View>
@@ -1338,16 +1328,14 @@ export default function CustomDatabaseScreen({}: Props) {
           on the rail. */}
       <View style={styles.controlsRow}>
         {groups.length > 0 ? (
-          <TabsTunnel>
-            <ProjectTabsRow
-              items={groups}
-              selected={groupFilter}
-              onSelect={setGroupFilter}
-              unassignedLabel="Без групи"
-              dark
-              endPadding={RAIL_CLEARANCE}
-            />
-          </TabsTunnel>
+          <ProjectTabsRow
+            items={groups}
+            selected={groupFilter}
+            onSelect={setGroupFilter}
+            unassignedLabel="Без групи"
+            dark
+            endPadding={RAIL_CLEARANCE}
+          />
         ) : (
           <View style={styles.controlsSpacer} />
         )}
@@ -1418,8 +1406,9 @@ export default function CustomDatabaseScreen({}: Props) {
         </View>
       )}
 
-      {!paramsCollapsed && (
-        <ScrollView
+      {/* The view, the sort, the filter: what is changed all day while
+          working, and so always on the screen rather than behind a gear. */}
+      <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           // Frozen while a list is open: a horizontal drag meant to scroll
@@ -1505,7 +1494,6 @@ export default function CustomDatabaseScreen({}: Props) {
             </Pressable>
           )}
         </ScrollView>
-      )}
 
       {/* An open list is drawn HERE, over the whole screen, rather than
           inside the capsule it belongs to - even though it's positioned to
@@ -2899,30 +2887,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowOffset: { width: 0, height: 3 },
     shadowRadius: 6,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    paddingLeft: 20,
-    // Clear of the rail.
-    paddingRight: RAIL_CLEARANCE,
-    paddingTop: 90,
-    paddingBottom: 8,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flexShrink: 1,
-  },
-  header: {
-    fontSize: 32,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    color: '#fff',
-    flexShrink: 1,
   },
   railWrap: {
     position: 'absolute',
