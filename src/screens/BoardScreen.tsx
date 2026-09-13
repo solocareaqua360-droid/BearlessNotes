@@ -52,6 +52,7 @@ import {
   COLUMN_HEADER_HEIGHT,
   COLUMN_MIN_HEIGHT,
   COLUMN_PADDING,
+  widthInColumn,
   COLUMN_SPACING,
   COLUMN_WIDTH,
   DEFAULT_CARD_WIDTH,
@@ -734,7 +735,9 @@ function DraggableCard({
         onLayout={(e) => onMeasure(card.id, e.nativeEvent.layout.height)}
         style={[
           styles.card,
-          { width: card.width },
+          // A card in a column is drawn at the column's width, whatever
+          // its own is - see widthInColumn.
+          { width: widthInColumn(card) },
           // A plain (non-animated) style, not part of useAnimatedStyle -
           // isDragging only flips twice per drag (start/end), not per
           // frame, so it doesn't need to live on the UI thread. Elevation
@@ -1609,7 +1612,7 @@ export default function BoardScreen() {
       // height while deciding whether it landed back inside it.
       const others = dropped.filter((c) => c.id !== id);
       const centreY = y + heightOf(card, cardHeights) / 2;
-      const target = columnAtPoint(columns, others, cardHeights, x + card.width / 2, centreY);
+      const target = columnAtPoint(columns, others, cardHeights, x + widthInColumn(card) / 2, centreY);
       // Only a card that actually came to rest in a column gets the
       // "landed" feedback - one dropped on open canvas has nothing to
       // confirm, same rule the document editor's own drop follows.
@@ -1863,7 +1866,7 @@ export default function BoardScreen() {
       offsetY: inGroupDrag ? groupOffsetY : null,
       columnOffsetX: inColumnDrag ? columnOffsetX : null,
       columnOffsetY: inColumnDrag ? columnOffsetY : null,
-      width: card.width,
+      width: widthInColumn(card),
       height: heightOf(card, cardHeights),
     };
   }

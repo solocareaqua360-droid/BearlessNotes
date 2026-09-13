@@ -13,6 +13,15 @@ export const APPROX_CARD_HEIGHT = 140;
 // on both sides, so a card dropped in sits flush.
 export const COLUMN_PADDING = 12;
 export const COLUMN_WIDTH = DEFAULT_CARD_WIDTH + COLUMN_PADDING * 2;
+// What a card is drawn at once it is IN a column. A card keeps its own
+// width for the open canvas, but inside a column every card takes the
+// column's inner width - otherwise a wider one (an import, a resized
+// card) hangs out past its neighbours and the stack stops reading as a
+// stack.
+export const COLUMN_INNER_WIDTH = COLUMN_WIDTH - COLUMN_PADDING * 2;
+export function widthInColumn(card: { width: number; columnId?: string }): number {
+  return card.columnId ? COLUMN_INNER_WIDTH : card.width;
+}
 export const COLUMN_HEADER_HEIGHT = 44;
 export const COLUMN_CARD_GAP = 12;
 // A column with nothing in it still has to be a visible drop target.
