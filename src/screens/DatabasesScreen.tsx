@@ -84,6 +84,14 @@ export default function DatabasesScreen() {
   // before the drag ends and it is written down.
   const [draftSize, setDraftSize] = useState<{ key: string; size: TileSize } | null>(null);
 
+  // While the board is being arranged, the tabs stop swiping. A grip
+  // dragged sideways IS a horizontal drag, and the pager that carries the
+  // tabs was taking it first - so a tile could be made taller but never
+  // wider. Nothing else on this screen wants a sideways swipe anyway.
+  useEffect(() => {
+    navigation.setOptions({ swipeEnabled: !editing } as object);
+  }, [editing, navigation]);
+
   useEffect(() => {
     return onSnapshot(tileSizesDoc, (snapshot) => {
       setTileSizes((snapshot.data() as Record<string, string> | undefined) ?? {});
@@ -380,6 +388,9 @@ function BoardTile({
   // re-packs under the finger rather than after it.
   const grip = Gesture.Pan()
     .runOnJS(true)
+    // Claims the drag on the first pixel in any direction: this is a
+    // corner grip, the only thing it can mean is a resize.
+    .minDistance(0)
     .onUpdate((e) => {
       const w = Math.max(1, Math.round((width + e.translationX) / Math.max(1, cellSize)));
       const h = Math.max(1, Math.round((height + e.translationY) / Math.max(1, cellSize)));
