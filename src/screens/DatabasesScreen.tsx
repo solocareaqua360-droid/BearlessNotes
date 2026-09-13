@@ -91,6 +91,9 @@ export default function DatabasesScreen() {
   // the order the board is packing itself into while it is held there.
   const [drag, setDrag] = useState<{ key: string; x: number; y: number } | null>(null);
   const [draftOrder, setDraftOrder] = useState<string[] | null>(null);
+  // The order the board was in when the carry began - what every drop is
+  // measured against, so the target cannot drift under the finger.
+  const dragBaseOrder = useRef<string[] | null>(null);
 
   // While the board is being arranged, the tabs stop swiping. A grip
   // dragged sideways IS a horizontal drag, and the pager that carries the
@@ -191,22 +194,35 @@ export default function DatabasesScreen() {
   );
   const ruleRow = showRule ? placed.find((p) => p.item.key === firstOwnKey)?.y ?? 0 : 0;
 
-  // Where a carried tile would land: the cell under the finger decides
-  // which tile it goes in front of.
+  // Where a carried tile would land.
+  //
+  // Measured against the board WITHOUT the carried tile, packed from the
+  // order the drag started in - a fixed picture that does not move while
+  // the finger does. The first version compared against the live board
+  // instead, which was being re-packed by this very function on every
+  // move: the tile it was aiming at kept sliding away under it, and when
+  // nothing matched the answer was "last", which is how a tile halfway up
+  // the board could suddenly be flung to the end.
   function orderWithDrop(key: string, x: number, y: number): string[] {
-    const keys = orderedItems.map((item) => item.key);
-    const without = keys.filter((k) => k !== key);
-    if (cellStep <= 0) return keys;
+    const base = dragBaseOrder.current ?? orderedItems.map((item) => item.key);
+    const without = base.filter((k) => k !== key);
+    if (cellStep <= 0) return base;
+    const others = without
+      .map((k) => boardItems.find((item) => item.key === k))
+      .filter((item): item is BoardItem => !!item);
+    const { placed: stable } = packTiles(others, (item) => sizeFor(item.key));
+    // Both the finger and every tile become one number along the board's
+    // reading order, so the comparison is a single "before or after" and
+    // moves with the finger instead of jumping.
     const col = Math.max(0, Math.min(TILE_COLUMNS - 1, Math.round(x / cellStep)));
     const row = Math.max(0, Math.round(y / cellStep));
-    // The first tile whose cells start at or after that point, in reading
-    // order - the carried tile takes its place and pushes it along.
-    const target = placed.find(
-      (p) => p.item.key !== key && (p.y > row || (p.y + p.size.h > row && p.x + p.size.w > col))
+    const fingerAt = row * TILE_COLUMNS + col;
+    let index = stable.findIndex(
+      (p) => (p.y + p.size.h / 2) * TILE_COLUMNS + (p.x + p.size.w / 2) > fingerAt
     );
-    const index = target ? without.indexOf(target.item.key) : without.length;
+    if (index < 0) index = without.length;
     const next = [...without];
-    next.splice(index < 0 ? without.length : index, 0, key);
+    next.splice(index, 0, key);
     return next;
   }
 
@@ -325,8 +341,9 @@ export default function DatabasesScreen() {
                   carried={drag?.key === item.key ? { x: drag.x, y: drag.y } : null}
                   onCarryStart={() => {
                     hapticButtonDown();
+                    dragBaseOrder.current = orderedItems.map((i) => i.key);
                     setDrag({ key: item.key, x: x * cellStep, y: y * cellStep });
-                    setDraftOrder(orderedItems.map((i) => i.key));
+                    setDraftOrder(dragBaseOrder.current);
                   }}
                   onCarryMove={(dx, dy) => {
                     const nextX = x * cellStep + dx;
@@ -336,6 +353,7 @@ export default function DatabasesScreen() {
                   }}
                   onCarryEnd={() => {
                     const next = draftOrder;
+                    dragBaseOrder.current = null;
                     setDrag(null);
                     setDraftOrder(null);
                     if (next) setDoc(tileOrderDoc, { order: next }, { merge: true });
