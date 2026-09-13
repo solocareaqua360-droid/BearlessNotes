@@ -1,20 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import {
-  collection,
-  doc,
-  onSnapshot,
-  orderBy,
-  query,
-} from '@react-native-firebase/firestore';
+import { collection } from '@react-native-firebase/firestore';
 import { addDoc, setDoc } from '../utils/owned';
+import {
+  GRID_TILES,
+  Tile,
+  WIDE_TILE_ICON,
+  WIDE_TILE_KEY,
+  WIDE_TILE_LABEL,
+  openDatabaseTile,
+  tileColorsDoc,
+} from '../constants/databaseTiles';
+import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { db } from '../firebase';
 import { RootStackParamList } from '../navigation';
-import { CustomDatabase } from '../types';
 import { TAG_COLORS } from '../constants/tags';
 import { FONT_REGULAR, FONT_MEDIUM, FONT_BOLD } from '../utils/fonts';
 import { colorForDocument } from '../utils/documentColor';
@@ -30,84 +33,16 @@ import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
-type Tile = {
-  key: string;
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  // Set only for the three tiles backed by the one `links` mirror collection
-  // (see DocumentEditorScreen's fetchLinkPreview / LinksScreen's categoryOf) -
-  // each opens the same screen pre-filtered to its own slice instead of a
-  // "Скоро" placeholder.
-  linkCategory?: 'video' | 'geo' | 'other';
-  // Set for tiles with their own dedicated (paramless) screen.
-  route?: 'Photos' | 'Files' | 'Tags' | 'Groups' | 'Diary' | 'Stickers';
-  // The board tile - unlike the others, this opens a bottom TAB (see
-  // App.tsx's BoardsStack), not a root-stack screen, so it goes through
-  // `navigation.navigate('Tabs', { screen: 'Дошки' })` instead of `route`.
-  opensBoardsTab?: boolean;
-};
-
-// "Справи", the link-backed tiles, "Фото" and "Файли" are real, working
-// databases so far (see TasksScreen/LinksScreen/PhotosScreen/FilesScreen) -
-// only "нагадування" from PROJECT_BRIEF.md's default-types list is still a
-// placeholder, filled in the same way each of the above went from "just a
-// block" to a real cross-document list. Colors used to be hardcoded per
-// tile here - they're user-editable now (see tileColors below), so this
-// list only carries what's NOT a matter of preference: which screen a tile
-// opens.
-const WIDE_TILE_KEY = 'tasks';
-const GRID_TILES: Tile[] = [
-  { key: 'geo', label: 'Геоточки', icon: 'location-outline', linkCategory: 'geo' },
-  { key: 'links', label: 'Посилання', icon: 'link-outline', linkCategory: 'other' },
-  { key: 'photos', label: 'Зображення', icon: 'image-outline', route: 'Photos' },
-  { key: 'video', label: 'YouTube / TikTok', icon: 'videocam-outline', linkCategory: 'video' },
-  { key: 'files', label: 'Файли', icon: 'document-outline', route: 'Files' },
-  { key: 'stickers', label: 'Стікери', icon: 'reader-outline', route: 'Stickers' },
-  { key: 'board', label: 'Дошка', icon: 'apps-outline', opensBoardsTab: true },
-  { key: 'tags', label: 'Теги', icon: 'pricetag-outline', route: 'Tags' },
-  { key: 'groups', label: 'Групи', icon: 'albums-outline', route: 'Groups' },
-  { key: 'diary', label: 'Щоденник', icon: 'book-outline', route: 'Diary' },
-];
-
-const tileColorsDoc = doc(db, 'settings', 'databaseTileColors');
-
-// Deterministic starting color per tile (harmonious palette, cycled by
-// position) - only used until the user picks their own via the tile's
-// "..." menu, at which point Firestore's own value takes over.
-function defaultColorFor(key: string): string {
-  const allKeys = [WIDE_TILE_KEY, ...GRID_TILES.map((t) => t.key)];
-  const index = allKeys.indexOf(key);
-  return TAG_COLORS[index % TAG_COLORS.length];
-}
-
 export default function DatabasesScreen() {
   const databasesBlurTarget = useBlurTarget();
   const databasesFocused = useIsFocused();
   const databasesInsets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const [tileColors, setTileColors] = useState<Record<string, string>>({});
+  const { colorFor, customDatabases } = useDatabaseTiles();
   const [colorMenuKey, setColorMenuKey] = useState<string | null>(null);
-  const [customDatabases, setCustomDatabases] = useState<CustomDatabase[]>([]);
   const [creatingDatabase, setCreatingDatabase] = useState(false);
   const [importing, setImporting] = useState(false);
-
-  useEffect(() => {
-    return onSnapshot(tileColorsDoc, (snapshot) => {
-      setTileColors((snapshot.data() as Record<string, string> | undefined) ?? {});
-    });
-  }, []);
-
-  useEffect(() => {
-    return onSnapshot(query(collection(db, 'customDatabases'), orderBy('name')), (snapshot) => {
-      setCustomDatabases(
-        snapshot.docs.map((d) => {
-          const data = d.data();
-          return { id: d.id, name: data.name, icon: data.icon, color: data.color, fields: data.fields ?? [], createdAt: data.createdAt, updatedAt: data.updatedAt };
-        })
-      );
-    });
-  }, []);
 
   async function createDatabase(name: string) {
     setCreatingDatabase(false);
@@ -121,25 +56,13 @@ export default function DatabasesScreen() {
     navigation.navigate('CustomDatabase', { databaseId: ref.id });
   }
 
-  function colorFor(key: string): string {
-    return tileColors[key] ?? defaultColorFor(key);
-  }
-
   function pickColor(key: string, color: string) {
     setDoc(tileColorsDoc, { [key]: color }, { merge: true });
     setColorMenuKey(null);
   }
 
   function openTile(tile: Tile) {
-    if (tile.linkCategory) {
-      navigation.navigate('Links', { category: tile.linkCategory });
-    } else if (tile.opensBoardsTab) {
-      navigation.navigate('Tabs', { screen: 'Дошки' });
-    } else if (tile.route) {
-      navigation.navigate(tile.route);
-    } else {
-      navigation.navigate('Placeholder', { icon: tile.icon, label: 'Скоро' });
-    }
+    openDatabaseTile(navigation, tile);
   }
 
   return (
@@ -199,8 +122,8 @@ export default function DatabasesScreen() {
         </View>
         <ScrollView contentContainerStyle={styles.content}>
           <Pressable style={styles.wideTile} onPress={() => navigation.navigate('Tasks')}>
-            <Ionicons name="checkbox-outline" size={22} color={colorFor(WIDE_TILE_KEY)} />
-            <Text style={[styles.tileLabel, { color: colorFor(WIDE_TILE_KEY) }]}>Справи</Text>
+            <Ionicons name={WIDE_TILE_ICON} size={22} color={colorFor(WIDE_TILE_KEY)} />
+            <Text style={[styles.tileLabel, { color: colorFor(WIDE_TILE_KEY) }]}>{WIDE_TILE_LABEL}</Text>
             <Pressable
               hitSlop={8}
               style={styles.tileMenuButton}

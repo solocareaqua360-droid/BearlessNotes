@@ -1,7 +1,19 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../navigation';
+import {
+  GRID_TILES,
+  Tile,
+  WIDE_TILE_ICON,
+  WIDE_TILE_KEY,
+  WIDE_TILE_LABEL,
+  openDatabaseTile,
+} from '../constants/databaseTiles';
+import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
+import { colorForDocument } from '../utils/documentColor';
 import { hapticButtonDown } from '../utils/haptics';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Tag } from '../types';
@@ -12,6 +24,7 @@ import { useRail } from '../hooks/useRail';
 import {
   GLASS_BODY,
   GLASS_BODY_BLURRED,
+  GLASS_CARD,
   GLASS_LINE,
   GLASS_TEXT,
   GLASS_TEXT_FAINT,
@@ -26,6 +39,10 @@ import { GlassPortal } from './GlassPortal';
 // CalendarScreen's own PLATE_MARGIN comment for why that value can simply
 // be the wrong window, and what it looks like when it is.
 const DRAWER_FRACTION = 2 / 3;
+// The panel's own side padding (see styles.panel) and the gap between
+// tiles - both needed as numbers, since the tiles are measured in JS.
+const PANEL_PADDING = 16;
+const TILE_GAP = 8;
 // Matches FloatingIslandTabBar's own height (8px padding + 48px buttons) -
 // the open button is a standalone circle the same size as the island.
 const OPEN_BUTTON_SIZE = 64;
@@ -310,7 +327,13 @@ export default function TagsDrawer({
   const rail = useRail(capsuleHeight);
   const { width: windowWidth } = useWindowDimensions();
   const drawerWidth = Math.round(windowWidth * DRAWER_FRACTION);
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { colorFor, customDatabases } = useDatabaseTiles();
+  // Three tiles to a row, whatever the drawer is wide: the panel's own
+  // padding off each side, two gaps between the three.
+  const tileWidth = (drawerWidth - PANEL_PADDING * 2 - TILE_GAP * 2) / 3;
   const [filterMode, setFilterMode] = useState<TagFilterMode>('multi');
+  const [databasesCollapsed, setDatabasesCollapsed] = useState(false);
   const [groupsCollapsed, setGroupsCollapsed] = useState(false);
   const [foldersCollapsed, setFoldersCollapsed] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -324,6 +347,13 @@ export default function TagsDrawer({
   // version and crashed the app outright, so this stays a plain dim.)
   const openAmount = useSharedValue(0);
   const dimAmount = useSharedValue(0);
+
+  // A database opens from here now: the drawer slides shut first, so the
+  // screen it opens isn't pushed under a panel that is still standing.
+  function openDatabase(go: () => void) {
+    closeDrawer();
+    go();
+  }
 
   const tree = useMemo(() => buildTree(tags), [tags]);
   const topLevel = useMemo(
@@ -430,6 +460,75 @@ export default function TagsDrawer({
           </View>
 
           <ScrollView style={styles.scroll}>
+            {/* The database menu, moved in from its own screen: the same
+                tiles, the same colours, three to a row - and "Справи"
+                across all three, as it is there. */}
+            <SectionHeader
+              label="Бази"
+              collapsed={databasesCollapsed}
+              onPress={() => setDatabasesCollapsed((v) => !v)}
+            />
+            {!databasesCollapsed && (
+              <View style={styles.tileGrid}>
+                <Pressable
+                  style={[styles.tile, styles.tileWide]}
+                  onPress={() => openDatabase(() => navigation.navigate('Tasks'))}
+                >
+                  <Ionicons name={WIDE_TILE_ICON} size={20} color={colorFor(WIDE_TILE_KEY)} />
+                  <Text style={[styles.tileLabel, { color: colorFor(WIDE_TILE_KEY) }]} numberOfLines={1}>
+                    {WIDE_TILE_LABEL}
+                  </Text>
+                </Pressable>
+
+                {GRID_TILES.map((tile: Tile) => (
+                  <Pressable
+                    key={tile.key}
+                    style={[styles.tile, { width: tileWidth, height: tileWidth }]}
+                    onPress={() => openDatabase(() => openDatabaseTile(navigation, tile))}
+                  >
+                    <Ionicons name={tile.icon} size={20} color={colorFor(tile.key)} />
+                    <Text
+                      style={[styles.tileLabel, { color: colorFor(tile.key) }]}
+                      numberOfLines={2}
+                    >
+                      {tile.label}
+                    </Text>
+                  </Pressable>
+                ))}
+
+                {/* Everything above is built in, everything below is the
+                    user's own - the same rule the Databases screen draws,
+                    and full width for the same reason: inside a wrapping
+                    row it is also what forces the break. */}
+                {customDatabases.length > 0 && <View style={styles.tileRule} />}
+
+                {customDatabases.map((cdb) => {
+                  const color = cdb.color ?? colorForDocument(cdb.id).background;
+                  return (
+                    <Pressable
+                      key={cdb.id}
+                      style={[styles.tile, { width: tileWidth, height: tileWidth }]}
+                      onPress={() =>
+                        openDatabase(() =>
+                          navigation.navigate('CustomDatabase', { databaseId: cdb.id })
+                        )
+                      }
+                    >
+                      <Ionicons
+                        name={(cdb.icon as keyof typeof Ionicons.glyphMap) ?? 'grid-outline'}
+                        size={20}
+                        color={color}
+                      />
+                      <Text style={[styles.tileLabel, { color }]} numberOfLines={2}>
+                        {cdb.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+            <View style={styles.sectionRule} />
+
             {groupSection && (
               <>
                 <SectionHeader
@@ -661,6 +760,42 @@ const styles = StyleSheet.create({
     letterSpacing: 0.06,
     textTransform: 'uppercase',
     color: GLASS_TEXT_FAINT,
+  },
+  // The database grid: three tiles to a row, the wide one across all of
+  // them. Sized in JS (see tileWidth) rather than in percentages - a
+  // percentage row cannot also carry a gap without the last tile in each
+  // row dropping to the next one.
+  tileGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: TILE_GAP,
+  },
+  tile: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    padding: 6,
+    borderRadius: 14,
+    backgroundColor: GLASS_CARD,
+  },
+  tileWide: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  tileLabel: {
+    fontSize: 11,
+    fontFamily: FONT_SEMIBOLD,
+    textAlign: 'center',
+  },
+  tileRule: {
+    width: '100%',
+    height: 1,
+    backgroundColor: GLASS_LINE,
+    marginVertical: 2,
   },
   sectionRule: {
     height: 1,
