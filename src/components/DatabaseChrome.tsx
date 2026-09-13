@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } fro
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
+import { GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { DatabaseList } from '../hooks/useDatabaseList';
@@ -14,6 +15,7 @@ import SortMenuRows from './SortMenuRows';
 import TagsDrawer, { removeTagFromFilter } from './TagsDrawer';
 import BulkActionBar from './BulkActionBar';
 import { useRail } from '../hooks/useRail';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CAPSULE_DROP, CAPSULE_HEIGHT_3, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
@@ -56,7 +58,10 @@ export type DatabaseChromeProps<T extends { id: string }> = {
     onCopyObject?: () => void;
     onDelete: () => void;
   };
-  children: (listTopPad: number) => ReactNode;
+  // The list itself. It is handed the line the first card rests on, and
+  // the props that let the pull-down-for-search gesture watch it (spread
+  // them onto the ScrollView or FlatList).
+  children: (listTopPad: number, listProps: ReturnType<typeof usePullToSearch>['listProps']) => ReactNode;
   // Anything that must reach the whole window rather than the content
   // column: toasts, viewers, the sheets a database opens. Drawn outside
   // the column, the way the drawer is.
@@ -87,6 +92,8 @@ export default function DatabaseChrome<T extends { id: string }>({
   // The chrome floats over the cards, so its height decides where the
   // first one rests.
   const [chromeHeight, setChromeHeight] = useState(0);
+  // Pulled down from the top of the list, the search comes out.
+  const pull = usePullToSearch(() => list.setIsSearching(true));
   const chromeTop = insets.top + CHROME_TOP;
   const chromeBottom = chromeTop + chromeHeight + 8;
 
@@ -252,7 +259,11 @@ export default function DatabaseChrome<T extends { id: string }>({
         {/* Only what floats above the cards pushes them down; once a chip
             row or the search field has already taken that space, the
             cards start right under it. */}
-        {children(list.tagFilter || list.isSearching ? 0 : chromeBottom)}
+        <GestureDetector gesture={pull.gesture}>
+          <View style={styles.listWrap}>
+            {children(list.tagFilter || list.isSearching ? 0 : chromeBottom, pull.listProps)}
+          </View>
+        </GestureDetector>
       </ContentColumn>
 
       {overlay}
@@ -341,6 +352,11 @@ export const menuStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  // The pull gesture needs something to sit on that fills what is left of
+  // the screen under the chrome.
+  listWrap: {
     flex: 1,
   },
   railWrap: {

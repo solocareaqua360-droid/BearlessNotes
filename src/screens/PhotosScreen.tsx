@@ -689,7 +689,7 @@ export default function PhotosScreen() {
         </>
       }
     >
-      {(listTopPad) =>
+      {(listTopPad, listProps) =>
         isLoading ? (
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
@@ -708,6 +708,7 @@ export default function PhotosScreen() {
           </View>
         ) : (
           <ScrollView
+            {...listProps}
             contentContainerStyle={[
               styles.grid,
               { paddingTop: listTopPad },

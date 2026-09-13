@@ -668,7 +668,7 @@ export default function LinksScreen({ route, navigation }: Props) {
         </>
       }
     >
-      {(listTopPad) =>
+      {(listTopPad, listProps) =>
         isLoading ? (
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
@@ -683,6 +683,7 @@ export default function LinksScreen({ route, navigation }: Props) {
           </View>
         ) : viewMode === 'grid' ? (
           <ScrollView
+            {...listProps}
             contentContainerStyle={[
               styles.gridList,
               { paddingTop: listTopPad },
@@ -694,6 +695,7 @@ export default function LinksScreen({ route, navigation }: Props) {
           </ScrollView>
         ) : (
           <ScrollView
+            {...listProps}
             contentContainerStyle={[
               styles.list,
               { paddingTop: listTopPad },

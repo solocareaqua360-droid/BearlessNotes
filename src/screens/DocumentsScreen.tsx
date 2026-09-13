@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect, Path, Text as SvgText } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -39,6 +39,7 @@ import { hapticButtonDown, hapticButtonUp } from '../utils/haptics';
 import { RootStackParamList } from '../navigation';
 import { detachTagFromDeletedItem, ITEMS_COLLECTION_BY_KIND } from '../hooks/useTags';
 import { useDatabaseList } from '../hooks/useDatabaseList';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import DocumentEditorScreen from './DocumentEditorScreen';
 import SortMenuRows from '../components/SortMenuRows';
@@ -181,6 +182,9 @@ export default function DocumentsScreen() {
     needle,
   } = list;
   const searching = searchOpen && needle.length > 0;
+  // Pulled down from the top of the list, the search comes out - see
+  // usePullToSearch.
+  const pull = usePullToSearch(() => setSearchOpen(true));
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -760,6 +764,8 @@ export default function DocumentsScreen() {
           onClose={() => setSketchEditing(null)}
         />
 
+        <GestureDetector gesture={pull.gesture}>
+        <View style={styles.listWrap}>
         {searching ? (
           searchMatches.length === 0 ? (
             <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
@@ -767,6 +773,7 @@ export default function DocumentsScreen() {
             </View>
           ) : (
             <FlatList
+              {...pull.listProps}
               key={`search-${viewMode}`}
               data={searchMatches}
               keyExtractor={(item) => item.id}
@@ -850,6 +857,7 @@ export default function DocumentsScreen() {
           </View>
         ) : (
           <FlatList
+            {...pull.listProps}
             // FlatList throws if numColumns changes on an already-mounted
             // instance - key forces a clean remount when switching views.
             key={viewMode}
@@ -909,6 +917,8 @@ export default function DocumentsScreen() {
             }}
           />
         )}
+        </View>
+        </GestureDetector>
 
         {/* Through the portal, like the rest of the rail: the blur that
             fills it has to sit outside the view it blurs. */}
@@ -1340,6 +1350,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.85)',
+  },
+  // What the pull-down gesture sits on: everything under the floating
+  // chrome, so a drag anywhere in the list is seen.
+  listWrap: {
+    flex: 1,
   },
   list: {
     paddingVertical: 8,

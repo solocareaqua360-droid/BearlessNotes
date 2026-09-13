@@ -274,7 +274,7 @@ export default function StickersScreen() {
         </>
       }
     >
-      {(listTopPad) =>
+      {(listTopPad, listProps) =>
         isLoading ? (
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
@@ -292,7 +292,7 @@ export default function StickersScreen() {
             )}
           </View>
         ) : (
-          <ScrollView contentContainerStyle={[styles.grid, { paddingTop: listTopPad }]}>
+          <ScrollView {...listProps} contentContainerStyle={[styles.grid, { paddingTop: listTopPad }]}>
             {visibleStickers.map(renderSticker)}
           </ScrollView>
         )

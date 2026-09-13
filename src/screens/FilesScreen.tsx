@@ -608,7 +608,7 @@ export default function FilesScreen() {
         </>
       }
     >
-      {(listTopPad) =>
+      {(listTopPad, listProps) =>
         isLoading ? (
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
@@ -627,6 +627,7 @@ export default function FilesScreen() {
           </View>
         ) : viewMode === 'grid' ? (
           <ScrollView
+            {...listProps}
             contentContainerStyle={[
               styles.gridList,
               { paddingTop: listTopPad },
@@ -638,6 +639,7 @@ export default function FilesScreen() {
           </ScrollView>
         ) : (
           <ScrollView
+            {...listProps}
             contentContainerStyle={[
               styles.list,
               { paddingTop: listTopPad },
