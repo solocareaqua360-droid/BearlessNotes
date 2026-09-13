@@ -34,6 +34,20 @@ export type StockPhoto = {
   credit: string;
 };
 
+// Whatever the server itself said, when it said anything. A bare status
+// number sends the next person hunting; "page_size may not exceed 20 for
+// anonymous requests" - which is what a 401 from Openverse actually
+// meant - points straight at the line to change.
+async function describe(response: Response, who: string): Promise<string> {
+  try {
+    const body = (await response.json()) as { detail?: string };
+    if (body.detail) return `${who}: ${body.detail}`;
+  } catch {
+    // Not JSON, or already consumed - the status is all there is.
+  }
+  return `${who} відповів помилкою (${response.status})`;
+}
+
 export class StockPhotosNotConfigured extends Error {
   constructor() {
     super('Немає ключа Pexels');
@@ -55,7 +69,11 @@ type OpenverseResult = {
 async function searchOpenverse(query: string, page: number): Promise<StockPhoto[]> {
   const trimmed = query.trim();
   const params = [
-    `page_size=30`,
+    // Twenty is the ceiling for an anonymous request, and going over it
+    // is refused with a 401 - a status that says "unauthorised" for what
+    // is really "too many at once". Asking for thirty (copied from the
+    // Pexels call below) is what broke this the first time.
+    `page_size=20`,
     `page=${page}`,
     // Public domain and CC0 only: everything else would want crediting
     // somewhere, and a tile background is no place to put a credit.
@@ -66,7 +84,7 @@ async function searchOpenverse(query: string, page: number): Promise<StockPhoto[
   const response = await fetch(`https://api.openverse.org/v1/images/?${params.join('&')}`, {
     headers: { 'User-Agent': 'mindEva' },
   });
-  if (!response.ok) throw new Error(`Openverse відповів помилкою (${response.status})`);
+  if (!response.ok) throw new Error(await describe(response, 'Openverse'));
   const data = (await response.json()) as { results?: OpenverseResult[] };
   return (data.results ?? [])
     .filter((item) => !!item.url)
@@ -99,7 +117,7 @@ async function searchPexels(query: string, page: number): Promise<StockPhoto[]> 
     : `/v1/curated?per_page=30&page=${page}`;
   const response = await fetch(`https://api.pexels.com${path}`, { headers: { Authorization: key } });
   if (response.status === 401) throw new Error('Ключ Pexels не підійшов');
-  if (!response.ok) throw new Error(`Pexels відповів помилкою (${response.status})`);
+  if (!response.ok) throw new Error(await describe(response, 'Pexels'));
   const data = (await response.json()) as { photos?: PexelsResult[] };
   return (data.photos ?? []).map((photo) => ({
     id: `pexels-${photo.id}`,
