@@ -1,4 +1,9 @@
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { doc, onSnapshot } from '@react-native-firebase/firestore';
+import { setDoc } from '../utils/owned';
+import { db } from '../firebase';
+import { hapticButtonDown } from '../utils/haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
@@ -33,6 +38,22 @@ const ICON_SIZE = 24;
 export default function FloatingIslandTabBar({ state, navigation }: MaterialTopTabBarProps) {
   const blurTarget = useBlurTarget();
   const rail = useRail();
+  // Held down, the island shrinks to the row of dots a home screen uses
+  // to say which page you are on: the swipe between tabs is the way
+  // around now, and the buttons are only the shortcut. Held again, it
+  // comes back. Kept in settings, so it stays the way it was left.
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(
+    () =>
+      onSnapshot(doc(db, 'settings', 'navIsland'), (snapshot) => {
+        setCollapsed(!!snapshot.data()?.collapsed);
+      }),
+    []
+  );
+  function toggleCollapsed() {
+    hapticButtonDown();
+    setDoc(doc(db, 'settings', 'navIsland'), { collapsed: !collapsed }, { merge: true });
+  }
   // The island draws through the portal, which reaches over the whole app
   // - including screens pushed on top of the tabs. Without this it stayed
   // floating over an open note, where there is nothing to navigate to.
@@ -43,7 +64,34 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
   return (
     <GlassPortal>
       <View style={[styles.wrap, { bottom: rail.navBottom }]} pointerEvents="box-none">
-        <View style={styles.island}>
+        {collapsed ? (
+          <Pressable style={styles.dots} onLongPress={toggleCollapsed} delayLongPress={400}>
+            <BlurView
+              intensity={60}
+              tint="dark"
+              blurMethod="dimezisBlurView"
+              blurTarget={blurTarget ?? undefined}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+            {state.routes.map((route, index) => (
+              // A dot is still a way to get there: the indicator says
+              // where you are, and tapping one of them takes you.
+              <Pressable
+                key={route.key}
+                hitSlop={6}
+                onPress={() => {
+                  if (state.index !== index) navigation.navigate(route.name);
+                }}
+                onLongPress={toggleCollapsed}
+                delayLongPress={400}
+              >
+                <View style={[styles.dot, state.index === index && styles.dotActive]} />
+              </Pressable>
+            ))}
+          </Pressable>
+        ) : (
+        <Pressable style={styles.island} onLongPress={toggleCollapsed} delayLongPress={400}>
           <BlurView
             intensity={60}
             tint="dark"
@@ -72,7 +120,8 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
               </Pressable>
             );
           })}
-        </View>
+        </Pressable>
+        )}
       </View>
     </GlassPortal>
   );
@@ -97,6 +146,31 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     padding: NAV_PADDING,
     elevation: 6,
+  },
+  // The collapsed island: the page dots, in the same glass capsule.
+  dots: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: GLASS_ISLAND,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    elevation: 6,
+  },
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.45)',
+  },
+  dotActive: {
+    backgroundColor: '#fff',
+    width: 8,
+    height: 8,
   },
   button: {
     width: NAV_BUTTON,
