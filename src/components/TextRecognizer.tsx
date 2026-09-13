@@ -42,23 +42,36 @@ async function assetText(module: number): Promise<string> {
 // URLs it can load, so they are written into one directory and pointed at
 // by name - the WebView is loaded from that same directory, which is what
 // makes them same-origin for it.
-function pageFor(images: string[]): string {
+function pageFor(images: string[], dirUrl: string): string {
+  // Every path absolute. Tesseract loads its worker as a Blob, and a blob
+  // has no directory of its own - so a relative corePath or langPath
+  // inside it resolves against nothing and the whole thing fails silently,
+  // which is exactly what a minute of waiting for text looked like.
   return `<!doctype html><html><head><meta charset="utf-8"></head><body>
-<script src="./tesseract.js"></script>
+<script src="${dirUrl}tesseract.js"></script>
 <script>
   function post(m) { window.ReactNativeWebView.postMessage(JSON.stringify(m)); }
+  function fail(e, where) {
+    post({ ok: false, error: (where ? where + ': ' : '') + ((e && e.message) ? e.message : String(e)) });
+  }
+  // Anything the page itself throws, including a script that failed to
+  // load - silence is the one thing this must never do.
+  window.onerror = function (message) { fail(message, 'сторінка'); };
   var images = ${JSON.stringify(images)};
   (async function () {
     try {
+      if (typeof Tesseract === 'undefined') { fail('бібліотека не завантажилась', 'старт'); return; }
+      post({ stage: 'Готую розпізнавач' });
       var worker = await Tesseract.createWorker('ukr', 1, {
-        workerPath: './tesseract-worker.js',
-        corePath: './tesseract-core.js',
-        // The model sits next to this page, uncompressed.
-        langPath: '.',
+        workerPath: '${dirUrl}tesseract-worker.js',
+        corePath: '${dirUrl}tesseract-core.js',
+        // The folder the model sits in, uncompressed.
+        langPath: '${dirUrl}'.replace(/\/$/, ''),
         gzip: false,
         logger: function (m) {
           if (m.status === 'recognizing text') post({ progress: m.progress });
         },
+        errorHandler: function (e) { fail(e, 'розпізнавач'); },
       });
       var pages = [];
       for (var i = 0; i < images.length; i++) {
@@ -69,13 +82,13 @@ function pageFor(images: string[]): string {
       await worker.terminate();
       post({ ok: true, pages: pages });
     } catch (e) {
-      post({ ok: false, error: (e && e.message) ? e.message : String(e) });
+      fail(e, 'читання');
     }
   })();
 </script></body></html>`;
 }
 
-export type RecognizeProgress = { page: number; of: number; progress: number };
+export type RecognizeProgress = { page: number; of: number; progress: number; stage?: string };
 
 export default function TextRecognizer({
   request,
@@ -126,7 +139,7 @@ export default function TextRecognizer({
         );
         if (cancelled) return;
         const target = `${dir}page-${Date.now()}.html`;
-        await LegacyFileSystem.writeAsStringAsync(target, pageFor(images));
+        await LegacyFileSystem.writeAsStringAsync(target, pageFor(images, dir));
         if (!cancelled) setPageUri(target);
       } catch (e) {
         if (!cancelled) onError((e as Error).message);
@@ -137,6 +150,15 @@ export default function TextRecognizer({
     };
   }, [request]);
 
+  // Nothing came back in two minutes: something inside the page died
+  // without saying so, and a spinner that never ends is worse than a
+  // sentence explaining that.
+  useEffect(() => {
+    if (!pageUri) return;
+    const timer = setTimeout(() => onError('Розпізнавач не відповів'), 120000);
+    return () => clearTimeout(timer);
+  }, [pageUri]);
+
   function handleMessage(raw: string) {
     try {
       const message = JSON.parse(raw) as {
@@ -146,7 +168,12 @@ export default function TextRecognizer({
         page?: number;
         of?: number;
         progress?: number;
+        stage?: string;
       };
+      if (message.stage) {
+        onProgress({ ...progressRef.current, stage: message.stage });
+        return;
+      }
       if (message.page && message.of) {
         progressRef.current = { page: message.page, of: message.of, progress: 0 };
         onProgress(progressRef.current);

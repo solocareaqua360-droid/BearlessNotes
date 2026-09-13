@@ -4580,7 +4580,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         <View style={styles.ocrToast}>
           <ActivityIndicator color="#fff" />
           <Text style={styles.ocrToastLabel}>
-            Читаю текст
+            {recognizeProgress.stage ?? 'Читаю текст'}
             {recognizeProgress.of > 1 ? ` · ${recognizeProgress.page} з ${recognizeProgress.of}` : ''}
             {recognizeProgress.progress > 0 ? ` · ${Math.round(recognizeProgress.progress * 100)}%` : ''}
           </Text>
