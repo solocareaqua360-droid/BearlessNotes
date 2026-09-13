@@ -12,7 +12,7 @@ import {
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { ShareIntentProvider } from 'expo-share-intent';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ensureSignedIn } from './src/firebase';
@@ -85,9 +85,18 @@ function Tabs() {
     >
       <Tab.Screen name="Документи" component={DocumentsScreen} />
       <Tab.Screen name="Календар" component={CalendarScreen} />
-      {/* The board is a canvas dragged with the finger - a swipe there is
-          the user moving the board, never a request for the next tab. */}
-      <Tab.Screen name="Дошки" component={BoardsStack} options={{ swipeEnabled: false }} />
+      {/* An open board is a canvas dragged with the finger, so the swipe
+          steps aside there - but only there. Turning it off for the whole
+          tab meant that once a swipe landed on the boards, no swipe could
+          leave them again, which reads as the gesture hanging. The list of
+          boards is an ordinary list and swipes like every other screen. */}
+      <Tab.Screen
+        name="Дошки"
+        component={BoardsStack}
+        options={({ route }) => ({
+          swipeEnabled: getFocusedRouteNameFromRoute(route) !== 'Board',
+        })}
+      />
       <Tab.Screen name="Більше" component={DatabasesScreen} />
     </Tab.Navigator>
   );
