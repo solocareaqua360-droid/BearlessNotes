@@ -34,18 +34,15 @@ import {
 import { addDoc, setDoc } from '../utils/owned';
 import { GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { db } from '../firebase';
-import { DocumentItem, Group, SketchElement } from '../types';
-import { groupAppliesTo } from '../utils/groups';
+import { DocumentItem, SketchElement } from '../types';
 import { hapticButtonDown, hapticButtonUp } from '../utils/haptics';
 import { RootStackParamList } from '../navigation';
-import { useTags, detachTagFromDeletedItem, ITEMS_COLLECTION_BY_KIND } from '../hooks/useTags';
-import { useMultiSelect } from '../hooks/useMultiSelect';
+import { detachTagFromDeletedItem, ITEMS_COLLECTION_BY_KIND } from '../hooks/useTags';
+import { useDatabaseList } from '../hooks/useDatabaseList';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import DocumentEditorScreen from './DocumentEditorScreen';
-import { useSortPref } from '../hooks/useSortPref';
-import { sortItems } from '../utils/sortItems';
 import SortMenuRows from '../components/SortMenuRows';
-import TagsDrawer, { TagFilter, matchesTagFilter, removeTagFromFilter } from '../components/TagsDrawer';
+import TagsDrawer, { removeTagFromFilter } from '../components/TagsDrawer';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
@@ -80,8 +77,6 @@ import { useBlurTarget } from '../components/GlassTarget';
 // this redesign; replaces the old blue ACCENT wherever this screen used it.
 const ACCENT = '#BE7657';
 const documentsCollection = collection(db, 'documents');
-const groupsCollection = collection(db, 'groups');
-const documentsPrefsDoc = doc(db, 'settings', 'documentsPrefs');
 const stickersCollection = collection(db, 'stickers');
 const STICKER_YELLOW = '#FBE97A';
 const STICKER_DARK = '#4a3f05';
@@ -99,7 +94,6 @@ export const FREE_STICKER_LIMIT = 10;
 // be renamed away or deleted.
 const STICKERS_GROUP = '__stickers__';
 
-type ViewMode = 'list' | 'grid';
 
 type StripSticker = {
   id: string;
@@ -135,31 +129,60 @@ export default function DocumentsScreen() {
   const [openDoc, setOpenDoc] = useState<{ id: string; autoFocusTitle?: boolean } | null>(null);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeFilter, setActiveFilter] = useState<TagFilter | null>(null);
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [groupFilter, setGroupFilter] = useState<string | null>(null);
-  const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
+  // The machine every database screen shares - see useDatabaseList. This
+  // screen keeps its own chrome (the two panes, the glass menu, the
+  // stickers tab), but the records go through the same mill as everywhere
+  // else.
+  const list = useDatabaseList<DocumentItem>({
+    prefsKey: 'documentsPrefs',
+    groupKind: 'document',
+    tagKind: 'document',
+    items: documents,
+    tagIdsOf: (d) => d.tagIds ?? [],
+    groupIdOf: (d) => d.groupId,
+    titleOf: (d) => d.title || 'Без назви',
+    createdAtOf: (d) => d.createdAt,
+    updatedAtOf: (d) => d.updatedAt,
+    // A document matches on its body as well as its title, and the search
+    // reaches every one of them rather than only what the filters left.
+    matchesSearch: (d, needle) => documentMatchesQuery(d.title ?? '', d.blocks, needle),
+    searchIgnoresFilters: true,
+  });
   const {
+    tags,
+    attachTag,
+    detachTag,
+    createAndAttachTag,
+    renameTag,
     isSelectMode,
     selectedIds,
     toggleSelectMode,
     toggle: toggleSelected,
     clear: clearSelection,
-  } = useMultiSelect();
-  const { sortPref, selectSortField } = useSortPref('documentsPrefs');
+    sortPref,
+    selectSortField,
+    groups,
+    groupFilter,
+    setGroupFilter,
+    tagFilter: activeFilter,
+    setTagFilter: setActiveFilter,
+    isSearching: searchOpen,
+    setIsSearching: setSearchOpen,
+    searchQuery: searchText,
+    setSearchQuery: setSearchText,
+    groupsRowHidden,
+    toggleGroupsRow,
+    viewMode,
+    changeViewMode,
+    drawerTags,
+    displayed: displayedDocuments,
+    selected: selectedDocuments,
+    needle,
+  } = list;
+  const searching = searchOpen && needle.length > 0;
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
-  // The group tabs at the head of the screen are a convenience now that
-  // the groups themselves live in the drawer - held down, the "#" button
-  // puts the row away.
-  const [groupsRowHidden, setGroupsRowHidden] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  // Search happens here rather than on a screen of its own: it was pushing
-  // a whole stack screen that kept its own second copy of the documents
-  // collection just to filter the same list this one is already showing.
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchText, setSearchText] = useState('');
   const [freeStickers, setFreeStickers] = useState<StripSticker[]>([]);
   const [stickerComposerVisible, setStickerComposerVisible] = useState(false);
   const [editingTextSticker, setEditingTextSticker] = useState<{ id: string; text: string } | null>(null);
@@ -202,14 +225,6 @@ export default function DocumentsScreen() {
     windowHeight - rail.tagBottom - RAIL_WIDTH - RAIL_GAP - (chromeTop + CAPSULE_DROP)
   );
 
-
-  useEffect(() => {
-    return onSnapshot(documentsPrefsDoc, (snapshot) => {
-      const data = snapshot.data();
-      setViewMode((data?.viewMode as ViewMode | undefined) ?? 'list');
-      setGroupsRowHidden(!!data?.groupsRowHidden);
-    });
-  }, []);
 
   useEffect(() => {
     // Filtered client-side (same "avoid a composite index" tradeoff as
@@ -285,20 +300,6 @@ export default function DocumentsScreen() {
     });
   }, []);
 
-  useEffect(() => {
-    // Filtered client-side rather than with a `where('kind','==','document')`
-    // query, same tradeoff as Files/Photos/Links - combining an equality
-    // filter with `orderBy` on a different field needs a hand-set-up
-    // composite index.
-    return onSnapshot(query(groupsCollection, orderBy('name')), (snapshot) => {
-      setGroups(
-        snapshot.docs
-          .map((d) => ({ id: d.id, ...(d.data() as Omit<Group, 'id'>) }))
-          .filter((g) => groupAppliesTo(g, 'document'))
-      );
-    });
-  }, []);
-
   // What the drawer's numbers say. Totals over everything, not over what
   // the current filter leaves standing - a count that moved as you
   // filtered would tell you nothing about where to go next.
@@ -323,39 +324,14 @@ export default function DocumentsScreen() {
     return { byGroup, ungrouped };
   }, [documents]);
 
-  // Search reaches every document, not just the group in view - narrowing
-  // by two things at once is rarely what anyone means by searching.
-  const needle = searchText.trim();
-  const searching = searchOpen && needle.length > 0;
-  const searchMatches = searching
-    ? documents.filter((d) => documentMatchesQuery(d.title ?? '', d.blocks, needle))
-    : [];
+  // Searching replaces the list rather than narrowing it (see
+  // searchIgnoresFilters) - so while a search is running, what the shared
+  // list hands back IS the matches.
+  const searchMatches = searching ? displayedDocuments : [];
 
   // The stickers' tab isn't a filter over the documents - it replaces
   // them.
   const showingStickers = groupFilter === STICKERS_GROUP;
-  const groupFilteredDocuments =
-    groupFilter === null
-      ? documents
-      : groupFilter === UNASSIGNED_ID
-        ? documents.filter((d) => !d.groupId)
-        : documents.filter((d) => d.groupId === groupFilter);
-  const tagFilteredDocuments = groupFilteredDocuments.filter((item) =>
-    matchesTagFilter(item.tagIds ?? [], activeFilter)
-  );
-  const displayedDocuments = sortItems(
-    tagFilteredDocuments,
-    sortPref,
-    (item) => item.title || 'Без назви',
-    (item) => item.createdAt,
-    (item) => item.updatedAt
-  );
-  const selectedDocuments = documents.filter((d) => selectedIds.has(d.id));
-  // Only offer tags actually assigned to at least one document - not the
-  // whole app-wide tag list - same "used tags" pruning Files/Photos/Links
-  // already apply to their own drawers.
-  const usedTagIds = new Set(documents.flatMap((d) => d.tagIds ?? []));
-  const drawerTags = tags.filter((t) => usedTagIds.has(t.id));
 
   // A new document created while a tag filter is active starts pre-tagged
   // with whatever that filter selects - both an 'isolating' (AND) filter's
@@ -411,15 +387,6 @@ export default function DocumentsScreen() {
       );
     }
     openDocument(newDoc.id, true);
-  }
-
-  function toggleGroupsRow() {
-    setDoc(documentsPrefsDoc, { groupsRowHidden: !groupsRowHidden }, { merge: true });
-  }
-
-  async function changeViewMode(mode: ViewMode) {
-    setMenuOpen(false);
-    await setDoc(documentsPrefsDoc, { viewMode: mode }, { merge: true });
   }
 
   async function confirmDeleteDocument(id: string) {
@@ -601,12 +568,24 @@ export default function DocumentsScreen() {
                     rather than the panel growing past it. */}
                 <ScrollView contentContainerStyle={styles.menuScroll} showsVerticalScrollIndicator={false}>
                   <Text style={styles.menuSectionLabel}>Вигляд</Text>
-                  <Pressable style={styles.menuRow} onPress={() => changeViewMode('list')}>
+                  <Pressable
+                    style={styles.menuRow}
+                    onPress={() => {
+                      setMenuOpen(false);
+                      changeViewMode('list');
+                    }}
+                  >
                     <Ionicons name="reorder-four-outline" size={17} color={GLASS_TEXT} />
                     <Text style={styles.menuRowLabel}>Список</Text>
                     {viewMode === 'list' && <Ionicons name="checkmark-outline" size={18} color={ACCENT} />}
                   </Pressable>
-                  <Pressable style={styles.menuRow} onPress={() => changeViewMode('grid')}>
+                  <Pressable
+                    style={styles.menuRow}
+                    onPress={() => {
+                      setMenuOpen(false);
+                      changeViewMode('grid');
+                    }}
+                  >
                     <Ionicons name="grid-outline" size={17} color={GLASS_TEXT} />
                     <Text style={styles.menuRowLabel}>Сітка</Text>
                     {viewMode === 'grid' && <Ionicons name="checkmark-outline" size={18} color={ACCENT} />}

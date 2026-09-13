@@ -45,6 +45,13 @@ export type DatabaseListOptions<T> = {
   // What the in-screen search looks through, when it is more than the
   // title (a link also matches on its address, a file on its name).
   searchTextOf?: (item: T) => string;
+  // A database whose search is not a substring of one line - a document
+  // matches on its body text too, block by block.
+  matchesSearch?: (item: T, needle: string) => boolean;
+  // Whether searching narrows what the filters left standing, or reaches
+  // the whole database. Documents search everything on purpose: narrowing
+  // by two things at once is rarely what anyone means by searching.
+  searchIgnoresFilters?: boolean;
 };
 
 export function useDatabaseList<T extends { id: string }>(options: DatabaseListOptions<T>) {
@@ -58,6 +65,8 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
     createdAtOf,
     updatedAtOf,
     searchTextOf,
+    matchesSearch,
+    searchIgnoresFilters,
     tagAllowed,
   } = options;
   const prefsDoc = doc(db, 'settings', prefsKey);
@@ -124,8 +133,13 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
         : present.filter((item) => groupIdOf(item) === groupFilter);
   const tagged = inGroup.filter((item) => matchesTagFilter(tagIdsOf(item), tagFilter));
   const needle = searchQuery.trim().toLowerCase();
+  const searchIn = searchIgnoresFilters ? present : tagged;
   const found = needle
-    ? tagged.filter((item) => (searchTextOf ? searchTextOf(item) : titleOf(item)).toLowerCase().includes(needle))
+    ? searchIn.filter((item) =>
+        matchesSearch
+          ? matchesSearch(item, needle)
+          : (searchTextOf ? searchTextOf(item) : titleOf(item)).toLowerCase().includes(needle)
+      )
     : tagged;
   const displayed = sortItems(found, sortPref, titleOf, createdAtOf, updatedAtOf);
 
