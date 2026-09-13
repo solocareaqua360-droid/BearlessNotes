@@ -4,17 +4,19 @@
 // Tesseract reads everything it can see, and a photograph of a book is
 // not only text: the shadow in the gutter, the frayed edge of the paper,
 // the texture of the margin all come back as "words" with boxes, and they
-// come back IN READING ORDER - which means they land in the middle of
-// sentences rather than at the end where they could be ignored. That is
-// what "лам | (справи" was.
+// come back IN READING ORDER - so they land in the middle of sentences
+// rather than somewhere they could be ignored.
 //
-// Three things are done here, and nowhere else, so the selection screen
-// and the note always agree:
-//   - noise is dropped, mostly on the recogniser's own confidence;
-//   - a word broken across a line ("при-" / "пливною") is put back
-//     together;
-//   - lines are joined into prose, and only a real gap starts a new
-//     paragraph.
+// The first attempt at this threw away everything the recogniser was less
+// than half sure of, and that was the wrong instrument: a shadow makes
+// REAL words uncertain, and a speck in a clean margin can be read with
+// confidence. It cut the page off along the shadow - "Велике Місто"
+// vanished while being perfectly legible.
+//
+// So the signal is geometry instead. Printed text lives in a column, and
+// everything outside that column is the paper, not the book. Confidence
+// is left to do the one thing it is good at: dropping what the recogniser
+// itself considers barely a guess.
 
 export type RecognizedWord = {
   text: string;
@@ -49,82 +51,153 @@ const SINGLE_LETTER = new Set(['і', 'й', 'у', 'в', 'з', 'а', 'я', 'о', '
 
 // Marks that can stand by themselves in real text - the dash that opens a
 // line of dialogue above all. Everything else on its own (the bars and
-// slashes the page edge produces) is noise.
+// slashes a page edge produces) is noise.
+const DASHES = new Set(['-', '\u2013', '\u2014']);
 const STANDALONE = new Set(['—', '–', '-', '...', '…', '.', ',', '!', '?', ':', ';', '«', '»', '"']);
 
 function count(text: string, pattern: RegExp): number {
   return (text.match(pattern) ?? []).length;
 }
 
-function worthKeeping(word: ScoredWord): boolean {
+// Shapes that are not words in any language, and the recogniser's own
+// admission that it was guessing. Deliberately forgiving: a word in a
+// shadow is still a word.
+function shapeOk(word: ScoredWord): boolean {
   const text = word.text.trim();
   if (!text) return false;
-  // The recogniser's own judgement, and by far the most useful signal:
-  // real print on a lit page comes back in the eighties and nineties,
-  // while shadow read as letters rarely clears fifty.
-  if (word.confidence < 50) return false;
+  if (word.confidence < 30) return false;
   const letters = count(text, LETTER);
   const digits = count(text, DIGIT);
   if (letters === 0 && digits === 0) return STANDALONE.has(text);
   if (text.length === 1 && letters === 1) {
-    return SINGLE_LETTER.has(text.toLowerCase()) || word.confidence >= 88;
+    return SINGLE_LETTER.has(text.toLowerCase()) || word.confidence >= 80;
   }
   // Short and mostly not letters: "||", "| (", "з." and their kind.
   if (text.length <= 3 && letters + digits <= text.length - 2) return false;
   return true;
 }
 
+// A word solid enough to say where the text is: long enough not to be a
+// speck, and read well enough not to be a guess.
+function isAnchor(word: ScoredWord): boolean {
+  return count(word.text, LETTER) >= 4 && word.confidence >= 60;
+}
+
+function percentile(values: number[], share: number): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.round((sorted.length - 1) * share)))];
+}
+
+function median(values: number[]): number {
+  return values.length ? percentile(values, 0.5) : 0;
+}
+
+// Words in the order they were read, cut into lines. Their bands overlap
+// while they are on the same line, which survives the rise and fall of
+// text photographed on a curved page.
 function sameLine(a: RecognizedWord, b: RecognizedWord): boolean {
-  // Two words share a line when their bands overlap by more than half the
-  // shorter of the two - which survives the slight rise and fall of text
-  // photographed on a curved page.
   const overlap = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
   const shorter = Math.min(a.y1 - a.y0, b.y1 - b.y0);
   return shorter > 0 && overlap > shorter * 0.5;
 }
 
-function medianHeight(words: RecognizedWord[]): number {
-  const heights = words.map((word) => word.y1 - word.y0).sort((a, b) => a - b);
-  return heights.length ? heights[Math.floor(heights.length / 2)] : 0;
+function groupLines<T extends RecognizedWord>(words: T[]): T[][] {
+  const lines: T[][] = [];
+  words.forEach((word) => {
+    const line = lines[lines.length - 1];
+    if (line && sameLine(line[line.length - 1], word)) line.push(word);
+    else lines.push([word]);
+  });
+  return lines;
 }
 
 // Noise out, broken words put back together.
-export function tidyWords(words: ScoredWord[]): RecognizedWord[] {
-  const kept: RecognizedWord[] = words.filter(worthKeeping).map((word) => ({
-    text: word.text.trim(),
-    x0: word.x0,
-    y0: word.y0,
-    x1: word.x1,
-    y1: word.y1,
-  }));
-  kept.forEach((word, index) => {
-    const next = kept[index + 1];
+export function tidyWords(raw: ScoredWord[]): RecognizedWord[] {
+  const shaped = raw.filter(shapeOk);
+  const anchors = shaped.filter(isAnchor);
+  // Where the printed column is. Percentiles rather than the extremes, so
+  // one surviving speck cannot widen it to the whole photograph - and
+  // nothing at all if there is too little to be sure of.
+  const column =
+    anchors.length >= 6
+      ? {
+          // Very nearly the outermost anchors, trimming only a true
+          // outlier: in justified print the word that reaches the right
+          // margin is often a SHORT one - "міц-" at the end of a line -
+          // and measuring the column by the solid words alone drew it
+          // narrower than the text, cutting those off.
+          left: percentile(anchors.map((w) => w.x0), 0.02),
+          right: percentile(anchors.map((w) => w.x1), 0.98),
+        }
+      : null;
+  const slack = column ? Math.max(12, (column.right - column.left) * 0.03) : 0;
+
+  const kept: RecognizedWord[] = [];
+  groupLines(shaped).forEach((line) => {
+    // A line with nothing solid on it is not a line of the book - it is a
+    // crease, or the edge of the page caught in the frame.
+    if (!line.some(isAnchor)) return;
+    line.forEach((word) => {
+      if (column && (word.x0 > column.right + slack || word.x1 < column.left - slack)) return;
+      kept.push({ text: word.text.trim(), x0: word.x0, y0: word.y0, x1: word.x1, y1: word.y1 });
+    });
+  });
+
+  // A dash is one dash. The em dash that opens a line of dialogue comes
+  // back as a hyphen, or as two of them, often enough to be worth saying
+  // so here rather than leaving it in every scanned page.
+  const merged: RecognizedWord[] = [];
+  kept.forEach((word) => {
+    const previous = merged[merged.length - 1];
+    if (!DASHES.has(word.text)) {
+      merged.push(word);
+      return;
+    }
+    if (previous && DASHES.has(previous.text)) {
+      previous.x1 = word.x1;
+      return;
+    }
+    merged.push({ ...word, text: '—' });
+  });
+
+  merged.forEach((word, index) => {
+    const next = merged[index + 1];
     if (!next) return;
     if (/[-¬]$/.test(word.text) && !sameLine(word, next)) word.glue = true;
   });
-  return kept;
+  return merged;
 }
 
 // The words as prose. A line break inside a paragraph is a space, not a
 // new line: a book wraps mid-sentence, and keeping those breaks would
-// paste a column of ragged lines into the note.
+// paste a ragged column into the note.
 export function joinWords(words: RecognizedWord[]): string {
-  if (words.length === 0) return '';
-  const line = medianHeight(words);
+  const lines = groupLines(words);
+  if (lines.length === 0) return '';
+  const tops = lines.map((line) => Math.min(...line.map((word) => word.y0)));
+  // How far it is from one line to the next, and where the column starts.
+  const pitch = median(tops.slice(1).map((top, index) => top - tops[index]));
+  const lefts = lines.map((line) => line[0].x0);
+  const columnLeft = percentile(lefts, 0.15);
+  const columnWidth = Math.max(...lines.map((line) => line[line.length - 1].x1)) - columnLeft;
+
   let out = '';
-  words.forEach((word, index) => {
-    out += word.glue ? word.text.replace(/[-¬]$/, '') : word.text;
-    const next = words[index + 1];
+  lines.forEach((line, index) => {
+    line.forEach((word, position) => {
+      out += word.glue ? word.text.replace(/[-¬]$/, '') : word.text;
+      if (position < line.length - 1) out += ' ';
+    });
+    const next = lines[index + 1];
     if (!next) return;
-    if (word.glue) return;
-    if (sameLine(word, next)) {
-      out += ' ';
-      return;
-    }
-    // A gap noticeably bigger than a line of type is a paragraph; the
-    // ordinary gap between lines is not.
-    const gap = next.y0 - word.y1;
-    out += gap > line * 0.9 ? '\n\n' : ' ';
+    if (line[line.length - 1].glue) return;
+    // Two marks of a new paragraph, and either will do: a gap wider than
+    // the usual step between lines, or an indented first line - which is
+    // how a printed book says it, and the more reliable of the two on a
+    // page that is not quite flat.
+    const step = tops[index + 1] - tops[index];
+    const gapped = pitch > 0 && step > pitch * 1.6;
+    const indented = columnWidth > 0 && next[0].x0 - columnLeft > columnWidth * 0.015;
+    out += gapped || indented ? '\n\n' : ' ';
   });
   return out.trim();
 }
