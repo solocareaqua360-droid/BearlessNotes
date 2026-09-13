@@ -41,6 +41,60 @@ export type RecognizedPage = {
   image: string;
 };
 
+// Both the page and the worker are given this, because both of them fetch
+// something: the page fetches the photograph, the worker fetches the
+// language model. Android's WebView cannot fetch() a file:// URL at all -
+// not "returns an error", it refuses the scheme outright, which is what
+// arrived as a bare "TypeError: Failed to fetch" with nothing to point at.
+// XMLHttpRequest, in the same page, reads those files perfectly well
+// (that is what allowFileAccessFromFileURLs is for), so fetch is taught
+// to fall back to it and to hand back the small part of a Response that
+// Tesseract actually uses.
+//
+// The other half: a blob URL with a file name stuck on the end is trimmed
+// back to the blob. Tesseract builds the model's address itself, always
+// as folder + "/ukr.traineddata", so handing it the model already in
+// memory means handing it something that will have a name appended.
+//
+// Deliberately without a single backslash: this text is also written from
+// a template literal, and a regular expression here would arrive in the
+// page with its backslash eaten - the exact failure of the previous
+// round.
+const FETCH_SHIM = `
+(function () {
+  var native = self.fetch;
+  self.fetch = function (input, init) {
+    var url = typeof input === 'string' ? input : (input && input.url) || '';
+    if (url.indexOf('blob:') === 0 && url.indexOf('.traineddata') > 0) {
+      return native.call(self, url.slice(0, url.lastIndexOf('/')), init);
+    }
+    if (url.indexOf('file://') !== 0) return native.apply(self, arguments);
+    return new Promise(function (resolve, reject) {
+      try {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', url, true);
+        xhr.responseType = 'arraybuffer';
+        xhr.onload = function () {
+          if (xhr.response && xhr.response.byteLength) {
+            resolve({
+              ok: true,
+              status: 200,
+              arrayBuffer: function () { return Promise.resolve(xhr.response); },
+            });
+          } else {
+            reject(new TypeError('порожній файл: ' + url));
+          }
+        };
+        xhr.onerror = function () { reject(new TypeError('файл недоступний: ' + url)); };
+        xhr.send();
+      } catch (e) {
+        reject(new TypeError('файл заборонено: ' + url));
+      }
+    });
+  };
+})();
+`;
+
 async function assetUri(module: number): Promise<string> {
   const asset = Asset.fromModule(module);
   await asset.downloadAsync();
@@ -57,6 +111,9 @@ async function assetText(module: number): Promise<string> {
 // by name - the WebView is loaded from that same directory, which is what
 // makes them same-origin for it.
 function pageFor(images: string[], dirUrl: string, library: string): string {
+  // The folder without its trailing slash, computed here on the app side
+  // rather than in the page: see the note on the shim above.
+  const folder = dirUrl.replace(/\/$/, '');
   // The library is INLINE, not a <script src>. A file:// page asking the
   // WebView for another file:// script does not fail - it hangs, and the
   // parser waits at that tag forever, so the script after it never runs
@@ -75,6 +132,7 @@ function pageFor(images: string[], dirUrl: string, library: string): string {
   // Before anything else, so "never opened" can never look like "failed
   // quietly" again.
   post({ stage: 'Відкрито' });
+  ${FETCH_SHIM}
 </script>
 <script>${library}</script>
 <script>
@@ -82,17 +140,28 @@ function pageFor(images: string[], dirUrl: string, library: string): string {
   (async function () {
     try {
       if (typeof Tesseract === 'undefined') { fail('бібліотека не завантажилась', 'старт'); return; }
+      // The model is read here, once, and handed over as bytes already in
+      // memory. The recogniser's own loader would go looking for it over
+      // the network, and there is no network involved in any of this.
+      post({ stage: 'Читаю модель' });
+      var langPath = '${folder}';
+      try {
+        var answer = await fetch('${dirUrl}ukr.traineddata');
+        var bytes = await answer.arrayBuffer();
+        if (bytes && bytes.byteLength > 100000) langPath = URL.createObjectURL(new Blob([bytes]));
+      } catch (e) {
+        // Not fatal: the recogniser can still be pointed at the folder.
+        post({ stage: 'Модель з файлу' });
+      }
       post({ stage: 'Готую розпізнавач' });
       var worker = await Tesseract.createWorker('ukr', 1, {
         workerPath: '${dirUrl}tesseract-worker.js',
         corePath: '${dirUrl}tesseract-core.js',
-        // Without the trailing slash, computed on the app side: a regular
-        // expression written here would have its backslash eaten by this
-        // template literal, and "/\\/$/" arrives in the page as "//$/" -
-        // a comment, and a syntax error at the end of the line. That is
-        // what stopped the whole page.
-        langPath: '${dirUrl.replace(/\/$/, '')}',
+        langPath: langPath,
         gzip: false,
+        // Nothing to cache: the model ships with the app, and the
+        // browser's own storage is empty on every run anyway.
+        cacheMethod: 'none',
         logger: function (m) {
           if (m.status === 'recognizing text') post({ progress: m.progress });
         },
@@ -162,7 +231,10 @@ export default function TextRecognizer({
         ]);
         await Promise.all([
           LegacyFileSystem.writeAsStringAsync(`${dir}tesseract.js`, library),
-          LegacyFileSystem.writeAsStringAsync(`${dir}tesseract-worker.js`, worker),
+          // The worker runs in a world of its own - its own global scope,
+          // its own fetch - so it gets its own copy of the shim, ahead of
+          // the library it belongs to.
+          LegacyFileSystem.writeAsStringAsync(`${dir}tesseract-worker.js`, `${FETCH_SHIM}\n${worker}`),
           LegacyFileSystem.writeAsStringAsync(`${dir}tesseract-core.js`, core),
           LegacyFileSystem.copyAsync({ from: data, to: `${dir}ukr.traineddata` }).catch(() => {}),
         ]);
