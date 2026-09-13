@@ -27,12 +27,13 @@ import {
 import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { Block, TaggableKind } from '../types';
-import { LinkCategory, categoryFromSiteName } from '../utils/linkCategory';
+import { LINK_CATEGORY_INFO as CATEGORY_INFO, LinkCategory, categoryFromSiteName } from '../utils/linkCategory';
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
-import TagChips from '../components/TagChips';
+import { LinkGridCell, LinkRow } from '../components/ItemCards';
+import GroupSections from '../components/GroupSections';
 import TagPicker from '../components/TagPicker';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import GroupPickerSheet, { GroupKind } from '../components/GroupPickerSheet';
@@ -83,29 +84,6 @@ function categoryOf(link: LinkItem): LinkCategory {
   return categoryFromSiteName(link.siteName);
 }
 
-const CATEGORY_INFO: Record<
-  LinkCategory,
-  { title: string; icon: keyof typeof Ionicons.glyphMap; color: string; emptyHint: string }
-> = {
-  video: {
-    title: 'YouTube / TikTok',
-    icon: 'videocam-outline',
-    color: '#EF4444',
-    emptyHint: "Вставте посилання на YouTube або TikTok окремим абзацом у документі - картка з'явиться тут сама",
-  },
-  geo: {
-    title: 'Геоточки',
-    icon: 'location-outline',
-    color: '#16A34A',
-    emptyHint: "Вставте посилання на місце з Google Maps окремим абзацом у документі - воно з'явиться тут само",
-  },
-  other: {
-    title: 'Посилання',
-    icon: 'link-outline',
-    color: ACCENT,
-    emptyHint: "Вставте посилання окремим абзацом у будь-якому документі - картка з'явиться тут сама",
-  },
-};
 
 // Video/geo/"other" tags must not mix (see the TaggableKind comment in
 // types.ts) even though all three categories share the one `links` doc
@@ -448,108 +426,38 @@ export default function LinksScreen({ route, navigation }: Props) {
   }
 
   function renderLinkRow(item: LinkItem) {
-    const itemInfo = CATEGORY_INFO[categoryOf(item)];
-    const { background, text, textMuted } = colorForDocument(item.id);
     return (
-      <View key={item.id} style={[styles.row, { backgroundColor: background }]}>
-        <Pressable
-          style={styles.rowTap}
-          onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkUrl(item.url))}
-          onLongPress={() => setCardMenuLinkId(item.id)}
-        >
-          {item.imageUrl ? (
-            <Image source={{ uri: item.imageUrl }} style={styles.thumb} resizeMode="cover" />
-          ) : (
-            <View style={[styles.thumbIcon, { backgroundColor: `${itemInfo.color}1A` }]}>
-              <Ionicons name={itemInfo.icon} size={20} color={itemInfo.color} />
-            </View>
-          )}
-          <View style={styles.rowBody}>
-            <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
-              {item.title || hostnameOf(item.url)}
-            </Text>
-            <Text style={[styles.rowCaption, { color: textMuted }]} numberOfLines={1}>
-              {item.siteName ?? hostnameOf(item.url)}
-            </Text>
-            <View style={styles.rowMeta}>
-              <TagChips
-                tags={tags.filter((t) => item.tagIds.includes(t.id))}
-                onPress={() => setTagPickerForId(item.id)}
-                glass
-              />
-            </View>
-          </View>
-        </Pressable>
-        {isSelectMode ? (
-          <Pressable hitSlop={8} onPress={() => toggleSelected(item.id)} style={styles.rowActionButton}>
-            <Ionicons
-              name={selectedIds.has(item.id) ? 'checkmark-circle' : 'ellipse-outline'}
-              size={22}
-              color={selectedIds.has(item.id) ? text : textMuted}
-            />
-          </Pressable>
-        ) : (
-          <Pressable hitSlop={8} onPress={() => setCardMenuLinkId(item.id)} style={styles.rowActionButton}>
-            <Ionicons name="ellipsis-horizontal" size={16} color={textMuted} />
-          </Pressable>
-        )}
-      </View>
+      <LinkRow
+        key={item.id}
+        link={item}
+        tags={tags.filter((t) => item.tagIds.includes(t.id))}
+        onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkUrl(item.url))}
+        onLongPress={() => setCardMenuLinkId(item.id)}
+        onMenu={() => setCardMenuLinkId(item.id)}
+        onTagPress={() => setTagPickerForId(item.id)}
+        isSelectMode={isSelectMode}
+        isSelected={selectedIds.has(item.id)}
+        onToggleSelect={() => toggleSelected(item.id)}
+      />
     );
   }
 
-  // Compact grid variant - thumbnail on top instead of beside the text,
-  // select-checkbox as a corner overlay instead of a trailing icon, same
-  // shape as DocumentCard's own 'grid' layout.
   function renderLinkGridCell(item: LinkItem) {
-    const itemInfo = CATEGORY_INFO[categoryOf(item)];
-    const { background, text, textMuted } = colorForDocument(item.id);
     return (
-      <View key={item.id} style={[styles.gridCard, { backgroundColor: background }]}>
-        <Pressable
-          style={styles.gridTap}
-          onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkUrl(item.url))}
-          onLongPress={() => setCardMenuLinkId(item.id)}
-        >
-          {item.imageUrl ? (
-            <Image source={{ uri: item.imageUrl }} style={styles.gridThumb} resizeMode="cover" />
-          ) : (
-            <View style={[styles.gridThumb, styles.gridThumbIcon, { backgroundColor: `${itemInfo.color}1A` }]}>
-              <Ionicons name={itemInfo.icon} size={26} color={itemInfo.color} />
-            </View>
-          )}
-          <Text style={[styles.gridTitle, { color: text }]} numberOfLines={2}>
-            {item.title || hostnameOf(item.url)}
-          </Text>
-          <Text style={[styles.gridCaption, { color: textMuted }]} numberOfLines={1}>
-            {item.siteName ?? hostnameOf(item.url)}
-          </Text>
-          <TagChips
-            tags={tags.filter((t) => item.tagIds.includes(t.id))}
-            onPress={() => setTagPickerForId(item.id)}
-            glass
-          />
-        </Pressable>
-        {isSelectMode ? (
-          // pointerEvents="none" - a sibling View absolutely positioned in
-          // front of gridTap still intercepts touch even with no onPress of
-          // its own, which made tapping near the icon miss most taps (see
-          // DocumentCard's identical fix).
-          <View style={styles.gridSelectBox} pointerEvents="none">
-            <Ionicons
-              name={selectedIds.has(item.id) ? 'checkmark-circle' : 'ellipse-outline'}
-              size={20}
-              color={selectedIds.has(item.id) ? text : '#fff'}
-            />
-          </View>
-        ) : (
-          <Pressable hitSlop={8} onPress={() => setCardMenuLinkId(item.id)} style={styles.gridMenuButton}>
-            <Ionicons name="ellipsis-horizontal" size={14} color={textMuted} />
-          </Pressable>
-        )}
-      </View>
+      <LinkGridCell
+        key={item.id}
+        link={item}
+        tags={tags.filter((t) => item.tagIds.includes(t.id))}
+        onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkUrl(item.url))}
+        onLongPress={() => setCardMenuLinkId(item.id)}
+        onMenu={() => setCardMenuLinkId(item.id)}
+        onTagPress={() => setTagPickerForId(item.id)}
+        isSelectMode={isSelectMode}
+        isSelected={selectedIds.has(item.id)}
+        onToggleSelect={() => toggleSelected(item.id)}
+      />
     );
   }
-
 
   return (
     <DatabaseChrome
@@ -782,6 +690,7 @@ export default function LinksScreen({ route, navigation }: Props) {
             ]}
           >
             {filteredLinks.map(renderLinkGridCell)}
+            <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />
           </ScrollView>
         ) : (
           <ScrollView
@@ -792,6 +701,8 @@ export default function LinksScreen({ route, navigation }: Props) {
             ]}
           >
             {filteredLinks.map(renderLinkRow)}
+            {/* What else is in this group - see GroupSections. */}
+            <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />
           </ScrollView>
         )
       }
@@ -850,134 +761,8 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 12,
   },
-  gridCard: {
-    // Fixed proportion, not flex:1 - a flex card stretches to fill
-    // whatever's left in its row, which breaks when a row has only one
-    // card left (a filter down to an odd count) - see DocumentCard's own
-    // fix for the identical bug.
-    width: '48%',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(176,176,176,0.5)',
-    padding: 10,
-    gap: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-  },
-  gridTap: {
-    gap: 4,
-  },
-  gridThumb: {
-    width: '100%',
-    height: 96,
-    borderRadius: 10,
-    marginBottom: 4,
-  },
-  gridThumbIcon: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  gridTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-  },
-  gridCaption: {
-    fontSize: 11,
-    fontFamily: FONT_REGULAR,
-  },
-  gridSelectBox: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  gridMenuButton: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(255,255,255,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   listWithBulkBar: {
     paddingBottom: 90,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-    borderRadius: 14,
-    padding: 10,
-    // Thin border + drop shadow, same as DocumentCard - a light-colored
-    // card needs an edge to read against the gradient page behind it.
-    borderWidth: 1,
-    borderColor: 'rgba(176,176,176,0.5)',
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-  },
-  rowTap: {
-    flex: 1,
-    flexDirection: 'row',
-    gap: 12,
-  },
-  thumb: {
-    width: 56,
-    height: 56,
-    borderRadius: 10,
-    backgroundColor: '#E5E7EB',
-  },
-  thumbIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: 'rgba(59,130,246,0.10)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rowBody: {
-    flex: 1,
-    minWidth: 0,
-    gap: 4,
-  },
-  rowTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    fontFamily: FONT_SEMIBOLD,
-    color: '#111827',
-  },
-  rowCaption: {
-    fontSize: 12,
-    fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
-  },
-  rowMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 2,
-  },
-  rowActions: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 2,
-  },
-  rowActionButton: {
-    padding: 6,
   },
   cardMenuBackdrop: {
     flex: 1,

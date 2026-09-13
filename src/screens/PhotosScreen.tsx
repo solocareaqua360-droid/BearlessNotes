@@ -39,7 +39,8 @@ import ZoomableImageViewer, { ViewerAction } from '../components/ZoomableImageVi
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
-import TagChips from '../components/TagChips';
+import { PhotoCell } from '../components/ItemCards';
+import GroupSections from '../components/GroupSections';
 import TagPicker from '../components/TagPicker';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
@@ -99,65 +100,6 @@ async function downloadPhoto(uri: string): Promise<{ destUri: string; fileName: 
   const content = await LegacyFileSystem.readAsStringAsync(uri, { encoding: 'base64' });
   await LegacyFileSystem.writeAsStringAsync(destUri, content, { encoding: 'base64' });
   return { destUri, fileName: `${fileName}.jpg` };
-}
-
-function PhotoThumb({
-  uri,
-  driveFileId,
-  docCount,
-  tags,
-  onTagPress,
-  isSelectMode,
-  isSelected,
-}: {
-  uri: string;
-  driveFileId?: string;
-  docCount: number;
-  tags: Tag[];
-  onTagPress: () => void;
-  isSelectMode: boolean;
-  isSelected: boolean;
-}) {
-  // This device may never have had the actual bytes (a fresh install, a
-  // different device than the one the photo was taken/picked on) - quietly
-  // re-pulled from the Drive backup the first time it's rendered here, same
-  // as DocumentEditorScreen's own image blocks.
-  const cacheStatus = useCachedAttachment(uri, driveFileId);
-  return (
-    <View style={styles.cellImageWrap}>
-      {cacheStatus === 'ready' ? (
-        <Image source={{ uri }} style={styles.cellImage} resizeMode="cover" />
-      ) : (
-        <View style={[styles.cellImage, styles.cellImageStatus]}>
-          {cacheStatus === 'missing' ? (
-            <Ionicons name="cloud-offline-outline" size={22} color="#9CA3AF" />
-          ) : (
-            <ActivityIndicator color="#9CA3AF" />
-          )}
-        </View>
-      )}
-      {isSelectMode ? (
-        <View style={styles.cellCheckbox}>
-          <Ionicons
-            name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
-            size={22}
-            color={isSelected ? ACCENT : '#fff'}
-          />
-        </View>
-      ) : (
-        <>
-          {docCount > 1 && (
-            <View style={styles.cellBadge}>
-              <Text style={styles.cellBadgeLabel}>{docCount}</Text>
-            </View>
-          )}
-          <View style={styles.cellTagRow}>
-            <TagChips tags={tags} onPress={onTagPress} glass />
-          </View>
-        </>
-      )}
-    </View>
-  );
 }
 
 export default function PhotosScreen() {
@@ -773,22 +715,18 @@ export default function PhotosScreen() {
             ]}
           >
             {displayedPhotos.map((photo) => (
-              <Pressable
+              <PhotoCell
                 key={photo.id}
-                style={styles.cell}
+                photo={photo}
+                tags={tags.filter((t) => photo.tagIds.includes(t.id))}
                 onPress={() => (isSelectMode ? toggleSelected(photo.id) : setViewerPhotoId(photo.id))}
-              >
-                <PhotoThumb
-                  uri={photo.imageUri}
-                  driveFileId={photo.driveFileId}
-                  docCount={photo.documentIds.length}
-                  tags={tags.filter((t) => photo.tagIds.includes(t.id))}
-                  onTagPress={() => setTagPickerForId(photo.id)}
-                  isSelectMode={isSelectMode}
-                  isSelected={selectedIds.has(photo.id)}
-                />
-              </Pressable>
+                onTagPress={() => setTagPickerForId(photo.id)}
+                isSelectMode={isSelectMode}
+                isSelected={selectedIds.has(photo.id)}
+              />
             ))}
+            {/* What else is in this group - see GroupSections. */}
+            <GroupSections groupId={list.selectedGroupId} currentKind="photo" tags={tags} />
           </ScrollView>
         )
       }
@@ -872,62 +810,5 @@ const styles = StyleSheet.create({
   },
   gridWithBulkBar: {
     paddingBottom: 90,
-  },
-  cellCheckbox: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cell: {
-    width: '47%',
-    aspectRatio: 1,
-    borderRadius: 14,
-    overflow: 'hidden',
-    backgroundColor: '#F3F4F6',
-  },
-  cellImageWrap: {
-    flex: 1,
-  },
-  cellImage: {
-    width: '100%',
-    height: '100%',
-  },
-  cellImageStatus: {
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cellBadge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 5,
-  },
-  cellBadgeLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    color: '#fff',
-  },
-  cellTagRow: {
-    position: 'absolute',
-    left: 8,
-    right: 8,
-    bottom: 8,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
   },
 });

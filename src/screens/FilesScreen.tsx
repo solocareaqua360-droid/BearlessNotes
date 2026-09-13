@@ -34,7 +34,8 @@ import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
-import TagChips from '../components/TagChips';
+import { FileGridCell, FileRow } from '../components/ItemCards';
+import GroupSections from '../components/GroupSections';
 import TagPicker from '../components/TagPicker';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import GroupPickerSheet from '../components/GroupPickerSheet';
@@ -48,7 +49,7 @@ import SaveDestinationSheet from '../components/SaveDestinationSheet';
 import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { ensureLocalFile } from '../utils/googleDrive';
+import { openFileExternally } from '../utils/openFileExternally';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
@@ -83,17 +84,6 @@ type FileItem = {
 // Same tinting-by-extension used on the file block itself in
 // DocumentEditorScreen - kept as its own small copy here rather than shared,
 // since the two versions have nothing else in common.
-function fileIconFor(name: string): 'document-text-outline' | 'document-outline' {
-  return name.toLowerCase().endsWith('.pdf') ? 'document-text-outline' : 'document-outline';
-}
-
-function fileIconColorFor(name: string): string {
-  const ext = name.toLowerCase().split('.').pop();
-  if (ext === 'pdf') return '#DC2626';
-  if (ext === 'doc' || ext === 'docx') return '#2563EB';
-  if (ext === 'xls' || ext === 'xlsx') return '#16A34A';
-  return '#6B7280';
-}
 
 export default function FilesScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -243,17 +233,7 @@ export default function FilesScreen() {
   }
 
   async function openFile(file: FileItem) {
-    const available = await Sharing.isAvailableAsync();
-    if (!available) return;
-    // The URI is a path on whichever device added the file. Anywhere else
-    // it points at nothing, and handing it straight to the OS opens
-    // nothing - silently, which is worse than saying so.
-    const restored = await ensureLocalFile(file.fileUri, file.driveFileId).catch(() => false);
-    if (!restored) {
-      Alert.alert('Файл недоступний', 'Його немає на цьому пристрої, а копії на Google Диску теж немає.');
-      return;
-    }
-    await Sharing.shareAsync(file.fileUri, { mimeType: file.mimeType, dialogTitle: file.fileName });
+    await openFileExternally(file);
   }
 
   async function openDocumentIcon(file: FileItem) {
@@ -411,87 +391,38 @@ export default function FilesScreen() {
   }
 
   function renderFileRow(item: FileItem) {
-    const { background, text, textMuted } = colorForDocument(item.id);
     return (
-      <View key={item.id} style={[styles.row, { backgroundColor: background }]}>
-        <Pressable
-          style={styles.rowTap}
-          onPress={() => (isSelectMode ? toggleSelected(item.id) : openFile(item))}
-          onLongPress={() => setCardMenuFileId(item.id)}
-        >
-          <View style={[styles.thumbIcon, { backgroundColor: `${fileIconColorFor(item.fileName)}1A` }]}>
-            <Ionicons name={fileIconFor(item.fileName)} size={20} color={fileIconColorFor(item.fileName)} />
-          </View>
-          <View style={styles.rowBody}>
-            <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
-              {item.title || item.fileName}
-            </Text>
-            <View style={styles.rowMeta}>
-              <TagChips
-                tags={tags.filter((t) => item.tagIds.includes(t.id))}
-                onPress={() => setTagPickerForId(item.id)}
-                glass
-              />
-            </View>
-          </View>
-        </Pressable>
-        {isSelectMode ? (
-          <Pressable hitSlop={8} onPress={() => toggleSelected(item.id)} style={styles.rowActionButton}>
-            <Ionicons
-              name={selectedIds.has(item.id) ? 'checkmark-circle' : 'ellipse-outline'}
-              size={22}
-              color={selectedIds.has(item.id) ? text : textMuted}
-            />
-          </Pressable>
-        ) : (
-          <Pressable hitSlop={8} onPress={() => setCardMenuFileId(item.id)} style={styles.rowActionButton}>
-            <Ionicons name="ellipsis-horizontal" size={16} color={textMuted} />
-          </Pressable>
-        )}
-      </View>
+      <FileRow
+        key={item.id}
+        file={item}
+        tags={tags.filter((t) => item.tagIds.includes(t.id))}
+        onPress={() => (isSelectMode ? toggleSelected(item.id) : openFile(item))}
+        onLongPress={() => setCardMenuFileId(item.id)}
+        onMenu={() => setCardMenuFileId(item.id)}
+        onTagPress={() => setTagPickerForId(item.id)}
+        isSelectMode={isSelectMode}
+        isSelected={selectedIds.has(item.id)}
+        onToggleSelect={() => toggleSelected(item.id)}
+      />
     );
   }
 
-  // Compact grid variant - same shape as DocumentCard/LinksScreen's own
-  // grid layout.
   function renderFileGridCell(item: FileItem) {
-    const { background, text, textMuted } = colorForDocument(item.id);
     return (
-      <View key={item.id} style={[styles.gridCard, { backgroundColor: background }]}>
-        <Pressable
-          style={styles.gridTap}
-          onPress={() => (isSelectMode ? toggleSelected(item.id) : openFile(item))}
-          onLongPress={() => setCardMenuFileId(item.id)}
-        >
-          <View style={[styles.gridThumb, { backgroundColor: `${fileIconColorFor(item.fileName)}1A` }]}>
-            <Ionicons name={fileIconFor(item.fileName)} size={26} color={fileIconColorFor(item.fileName)} />
-          </View>
-          <Text style={[styles.gridTitle, { color: text }]} numberOfLines={2}>
-            {item.title || item.fileName}
-          </Text>
-          <TagChips
-            tags={tags.filter((t) => item.tagIds.includes(t.id))}
-            onPress={() => setTagPickerForId(item.id)}
-            glass
-          />
-        </Pressable>
-        {isSelectMode ? (
-          <View style={styles.gridSelectBox} pointerEvents="none">
-            <Ionicons
-              name={selectedIds.has(item.id) ? 'checkmark-circle' : 'ellipse-outline'}
-              size={20}
-              color={selectedIds.has(item.id) ? text : '#fff'}
-            />
-          </View>
-        ) : (
-          <Pressable hitSlop={8} onPress={() => setCardMenuFileId(item.id)} style={styles.gridMenuButton}>
-            <Ionicons name="ellipsis-horizontal" size={14} color={textMuted} />
-          </Pressable>
-        )}
-      </View>
+      <FileGridCell
+        key={item.id}
+        file={item}
+        tags={tags.filter((t) => item.tagIds.includes(t.id))}
+        onPress={() => (isSelectMode ? toggleSelected(item.id) : openFile(item))}
+        onLongPress={() => setCardMenuFileId(item.id)}
+        onMenu={() => setCardMenuFileId(item.id)}
+        onTagPress={() => setTagPickerForId(item.id)}
+        isSelectMode={isSelectMode}
+        isSelected={selectedIds.has(item.id)}
+        onToggleSelect={() => toggleSelected(item.id)}
+      />
     );
   }
-
 
   return (
     <DatabaseChrome
@@ -703,6 +634,7 @@ export default function FilesScreen() {
             ]}
           >
             {displayedFiles.map(renderFileGridCell)}
+            <GroupSections groupId={list.selectedGroupId} currentKind="file" tags={tags} />
           </ScrollView>
         ) : (
           <ScrollView
@@ -713,6 +645,8 @@ export default function FilesScreen() {
             ]}
           >
             {displayedFiles.map(renderFileRow)}
+            {/* What else is in this group - see GroupSections. */}
+            <GroupSections groupId={list.selectedGroupId} currentKind="file" tags={tags} />
           </ScrollView>
         )
       }
@@ -763,105 +697,6 @@ const styles = StyleSheet.create({
   },
   listWithBulkBar: {
     paddingBottom: 90,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-    borderRadius: 14,
-    padding: 10,
-    // Thin border + drop shadow, same as DocumentCard - a light-colored
-    // card needs an edge to read against the gradient page behind it.
-    borderWidth: 1,
-    borderColor: 'rgba(176,176,176,0.5)',
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-  },
-  rowTap: {
-    flex: 1,
-    flexDirection: 'row',
-    gap: 12,
-  },
-  thumbIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rowBody: {
-    flex: 1,
-    minWidth: 0,
-    gap: 4,
-    justifyContent: 'center',
-  },
-  rowTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    fontFamily: FONT_SEMIBOLD,
-  },
-  rowMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 2,
-  },
-  rowActionButton: {
-    padding: 6,
-  },
-  gridCard: {
-    width: '48%',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(176,176,176,0.5)',
-    padding: 10,
-    gap: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-  },
-  gridTap: {
-    gap: 4,
-  },
-  gridThumb: {
-    width: '100%',
-    height: 96,
-    borderRadius: 10,
-    marginBottom: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  gridTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-  },
-  gridSelectBox: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  gridMenuButton: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(255,255,255,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   cardMenuBackdrop: {
     flex: 1,

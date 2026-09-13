@@ -48,6 +48,7 @@ import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
 import DocumentCard from '../components/DocumentCard';
+import GroupSections from '../components/GroupSections';
 import {
   documentMatchesQuery,
   extractPreview,
@@ -861,6 +862,12 @@ export default function DocumentsScreen() {
             // checkbox) even though renderItem's own closure had the fresh
             // values.
             extraData={[isSelectMode, selectedIds]}
+            // What else is in this group - see GroupSections. Only under
+            // the real list: a search or the stickers tab is not a group's
+            // view of itself.
+            ListFooterComponent={
+              <GroupSections groupId={list.selectedGroupId} currentKind="document" tags={tags} />
+            }
             numColumns={viewMode === 'grid' ? 2 : 1}
             columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
             // The cards start below the floating tabs and scroll up under
