@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { collection, doc, onSnapshot } from '@react-native-firebase/firestore';
+import { collection, deleteField, doc, onSnapshot } from '@react-native-firebase/firestore';
 import { addDoc, setDoc } from '../utils/owned';
 import {
   GRID_TILES,
@@ -27,6 +27,8 @@ import {
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { LinearTransition } from 'react-native-reanimated';
 import { hapticButtonDown } from '../utils/haptics';
+import * as ImagePicker from 'expo-image-picker';
+import ImageCropper from '../components/ImageCropper';
 import { db } from '../firebase';
 import { RootStackParamList } from '../navigation';
 import { TAG_COLORS } from '../constants/tags';
@@ -52,6 +54,7 @@ const TILE_GAP = 10;
 const TILE_GAP_EDITING = 16;
 const tileSizesDoc = doc(db, 'settings', 'databaseTileSizes');
 const tileOrderDoc = doc(db, 'settings', 'databaseTileOrder');
+const tileBackgroundsDoc = doc(db, 'settings', 'databaseTileBackgrounds');
 
 type BoardItem =
   | { key: string; kind: 'builtin'; tile: Tile }
@@ -94,6 +97,12 @@ export default function DatabasesScreen() {
   // The order the board was in when the carry began - what every drop is
   // measured against, so the target cannot drift under the finger.
   const dragBaseOrder = useRef<string[] | null>(null);
+  // A picture behind a tile, cropped to that tile's own shape.
+  const [tileBackgrounds, setTileBackgrounds] = useState<Record<string, string>>({});
+  // The tile whose background is being chosen, and the picture waiting to
+  // be cropped for it.
+  const [backgroundFor, setBackgroundFor] = useState<{ key: string; aspect: number } | null>(null);
+  const [cropping, setCropping] = useState<string | null>(null);
 
   // While the board is being arranged, the tabs stop swiping. A grip
   // dragged sideways IS a horizontal drag, and the pager that carries the
@@ -106,6 +115,12 @@ export default function DatabasesScreen() {
   useEffect(() => {
     return onSnapshot(tileSizesDoc, (snapshot) => {
       setTileSizes((snapshot.data() as Record<string, string> | undefined) ?? {});
+    });
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(tileBackgroundsDoc, (snapshot) => {
+      setTileBackgrounds((snapshot.data() as Record<string, string> | undefined) ?? {});
     });
   }, []);
 
@@ -138,6 +153,31 @@ export default function DatabasesScreen() {
     const own = customDatabases.find((database) => database.id === key);
     if (own) setDoc(doc(db, 'customDatabases', key), { color }, { merge: true });
     else setDoc(tileColorsDoc, { [key]: color }, { merge: true });
+    setColorMenuKey(null);
+  }
+
+  // A tile's background: picked from the gallery, cropped to the shape
+  // that tile actually is, and kept as its own file - so the picture is
+  // the right shape once, rather than being re-fitted on every render.
+  async function pickBackground(key: string, size: TileSize) {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
+    if (result.canceled || !result.assets[0]) return;
+    const aspect =
+      (size.w * cellSize + (size.w - 1) * gap) / Math.max(1, size.h * cellSize + (size.h - 1) * gap);
+    setBackgroundFor({ key, aspect });
+    setCropping(result.assets[0].uri);
+  }
+
+  function saveBackground(uri: string) {
+    if (backgroundFor) setDoc(tileBackgroundsDoc, { [backgroundFor.key]: uri }, { merge: true });
+    setCropping(null);
+    setBackgroundFor(null);
+  }
+
+  function clearBackground(key: string) {
+    setDoc(tileBackgroundsDoc, { [key]: deleteField() }, { merge: true });
     setColorMenuKey(null);
   }
 
@@ -321,6 +361,7 @@ export default function DatabasesScreen() {
                   editing={editing}
                   cellSize={cellSize}
                   size={size}
+                  background={tileBackgrounds[item.key]}
                   onOpen={() => {
                     if (item.kind === 'builtin') openTile(item.tile);
                     else if (item.kind === 'custom')
@@ -396,7 +437,7 @@ export default function DatabasesScreen() {
         <Modal visible={colorMenuKey !== null} transparent animationType="fade" onRequestClose={() => setColorMenuKey(null)}>
           <Pressable style={styles.colorMenuBackdrop} onPress={() => setColorMenuKey(null)}>
             <Pressable style={styles.colorMenuCard} onPress={(e) => e.stopPropagation()}>
-              <Text style={styles.colorMenuTitle}>Колір плитки</Text>
+              <Text style={styles.colorMenuTitle}>Плитка</Text>
               <View style={styles.colorMenuRow}>
                 {TAG_COLORS.map((color) => (
                   <Pressable key={color} onPress={() => colorMenuKey && pickColor(colorMenuKey, color)}>
@@ -404,11 +445,40 @@ export default function DatabasesScreen() {
                   </Pressable>
                 ))}
               </View>
+              <Pressable
+                style={styles.sheetRow}
+                onPress={() => {
+                  const key = colorMenuKey;
+                  setColorMenuKey(null);
+                  if (key) pickBackground(key, sizeFor(key));
+                }}
+              >
+                <Ionicons name="image-outline" size={17} color={GLASS_TEXT} />
+                <Text style={styles.sheetRowLabel}>
+                  {colorMenuKey && tileBackgrounds[colorMenuKey] ? 'Змінити фон' : 'Фонове зображення'}
+                </Text>
+              </Pressable>
+              {colorMenuKey && tileBackgrounds[colorMenuKey] && (
+                <Pressable style={styles.sheetRow} onPress={() => clearBackground(colorMenuKey)}>
+                  <Ionicons name="trash-outline" size={17} color={GLASS_TEXT} />
+                  <Text style={styles.sheetRowLabel}>Прибрати фон</Text>
+                </Pressable>
+              )}
             </Pressable>
           </Pressable>
         </Modal>
       </ContentColumn>
 
+      <ImageCropper
+        visible={cropping !== null}
+        uri={cropping}
+        aspect={backgroundFor?.aspect ?? 1}
+        onCancel={() => {
+          setCropping(null);
+          setBackgroundFor(null);
+        }}
+        onDone={saveBackground}
+      />
     </View>
   );
 }
@@ -423,6 +493,7 @@ function BoardTile({
   width,
   height,
   color,
+  background,
   size,
   cellSize,
   editing,
@@ -442,6 +513,7 @@ function BoardTile({
   width: number;
   height: number;
   color: string;
+  background?: string;
   size: TileSize;
   cellSize: number;
   editing: boolean;
@@ -530,6 +602,17 @@ function BoardTile({
         carried && { left: carried.x, top: carried.y, zIndex: 20, opacity: 0.95, transform: [{ scale: 1.04 }] },
       ]}
     >
+      {/* Behind everything, already the tile's own shape (see
+          ImageCropper) - so it fills the tile exactly, with nothing to
+          re-fit on each render. A scrim keeps the label readable over a
+          bright picture. */}
+      {background && (
+        <>
+          <Image source={{ uri: background }} style={styles.tileImage} resizeMode="cover" />
+          <View style={styles.tileScrim} pointerEvents="none" />
+        </>
+      )}
+
       <GestureDetector gesture={carry}>
       <Pressable
         style={styles.tileTap}
@@ -635,6 +718,23 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
   },
+  tileImage: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+  },
+  tileScrim: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
   tileTap: {
     flex: 1,
     padding: 12,
@@ -703,6 +803,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
+  },
+  sheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+  },
+  sheetRowLabel: {
+    fontSize: 14,
+    fontFamily: FONT_MEDIUM,
+    color: GLASS_TEXT,
   },
   colorSwatch: {
     width: 36,
