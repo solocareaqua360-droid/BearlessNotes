@@ -83,7 +83,6 @@ import { BlockAction } from '../components/blockActions';
 import { clearCopiedObject, getCopiedObject, useCopiedObject } from '../utils/objectClipboard';
 import { backupFileToDrive, ensureLocalFile } from '../utils/googleDrive';
 import { ensureFileIsHere, openFileExternally } from '../utils/openFileExternally';
-import PageCleaner from '../components/PageCleaner';
 import TextRecognizer, {
   RecognizeProgress,
   RecognizeRequest,
@@ -2167,10 +2166,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const [viewerImageId, setViewerImageId] = useState<string | null>(null);
   // Reading the text off a page - see TextRecognizer. `after` is the block
   // the result is put under, so a scan and its text stay together.
-  // Pages on their way through the cleaner (see PageCleaner), and how
-  // far along it is.
-  const [cleaning, setCleaning] = useState<{ blockId: string; pages: string[] } | null>(null);
-  const [cleaningProgress, setCleaningProgress] = useState<{ page: number; of: number } | null>(null);
   const [recognizing, setRecognizing] = useState<{
     request: RecognizeRequest;
     after: string;
@@ -3847,7 +3842,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     });
   }
 
-  async function scanDocumentForBlock(id: string, clean = false) {
+  async function scanDocumentForBlock(id: string) {
     let result;
     try {
       result = await DocumentScanner.scanDocument({ responseType: ResponseType.ImageFilePath });
@@ -3856,12 +3851,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     }
     const pages = result.scannedImages;
     if (result.status !== ScanDocumentResponseStatus.Success || !pages?.length) return;
-    // "Чистий скан": the pages go through the cleaner first and come back
-    // here, to the same question, as new files.
-    if (clean) {
-      setCleaning({ blockId: id, pages });
-      return;
-    }
     chooseScanShape(id, pages);
   }
 
@@ -3932,9 +3921,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         return;
       case 'scan':
         scanDocumentForBlock(blockId);
-        return;
-      case 'scanClean':
-        scanDocumentForBlock(blockId, true);
         return;
       case 'sketch':
         addSketchBlock(blockId);
@@ -4588,24 +4574,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         onInsert={insertRecognizedText}
       />
 
-      <PageCleaner
-        request={cleaning ? { uris: cleaning.pages } : null}
-        onProgress={setCleaningProgress}
-        onDone={(uris) => {
-          const target = cleaning?.blockId;
-          setCleaning(null);
-          setCleaningProgress(null);
-          if (target) chooseScanShape(target, uris);
-        }}
-        onError={(message) => {
-          // The scan itself is not lost: it goes on as it came.
-          const scan = cleaning;
-          setCleaning(null);
-          setCleaningProgress(null);
-          notify('Не вдалося почистити', message);
-          if (scan) chooseScanShape(scan.blockId, scan.pages);
-        }}
-      />
       <TextRecognizer
         request={recognizing?.request ?? null}
         onProgress={setRecognizeProgress}
@@ -4618,15 +4586,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       />
       {/* It takes seconds, not an instant - so it says so, and says which
           page it is on. */}
-      {!recognizeProgress && cleaningProgress && (
-        <View style={styles.ocrToast}>
-          <ActivityIndicator color="#fff" />
-          <Text style={styles.ocrToastLabel}>
-            Чищу сторінку
-            {cleaningProgress.of > 1 ? ` · ${cleaningProgress.page} з ${cleaningProgress.of}` : ''}
-          </Text>
-        </View>
-      )}
       {recognizeProgress && (
         <View style={styles.ocrToast}>
           <ActivityIndicator color="#fff" />
