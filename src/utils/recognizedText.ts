@@ -53,6 +53,8 @@ const SINGLE_LETTER = new Set(['і', 'й', 'у', 'в', 'з', 'а', 'я', 'о', '
 // line of dialogue above all. Everything else on its own (the bars and
 // slashes a page edge produces) is noise.
 const DASHES = new Set(['-', '\u2013', '\u2014']);
+const ONLY_DASHES = /^[-\u2013\u2014]+$/;
+const LEADING_DASHES = /^[-\u2013\u2014]+/;
 const STANDALONE = new Set(['—', '–', '-', '...', '…', '.', ',', '!', '?', ':', ';', '«', '»', '"']);
 
 function count(text: string, pattern: RegExp): number {
@@ -65,10 +67,14 @@ function count(text: string, pattern: RegExp): number {
 function shapeOk(word: ScoredWord): boolean {
   const text = word.text.trim();
   if (!text) return false;
-  if (word.confidence < 30) return false;
+  // A dash is read with little confidence almost every time - it is a
+  // short stroke with nothing to compare against - and a line of
+  // dialogue without its dash reads wrong, so it gets a lower bar.
+  const dashOnly = ONLY_DASHES.test(text);
+  if (word.confidence < (dashOnly ? 5 : 30)) return false;
   const letters = count(text, LETTER);
   const digits = count(text, DIGIT);
-  if (letters === 0 && digits === 0) return STANDALONE.has(text);
+  if (letters === 0 && digits === 0) return dashOnly || STANDALONE.has(text);
   if (text.length === 1 && letters === 1) {
     return SINGLE_LETTER.has(text.toLowerCase()) || word.confidence >= 80;
   }
@@ -183,11 +189,21 @@ export function tidyWords(raw: ScoredWord[]): RecognizedWord[] {
   const merged: RecognizedWord[] = [];
   kept.forEach((word) => {
     const previous = merged[merged.length - 1];
-    if (!DASHES.has(word.text)) {
-      merged.push(word);
+    const afterDash = !!previous && previous.text === '—';
+    let text = word.text;
+    // "--Ти", "-Каутау": the dialogue dash read as part of its first
+    // word. It comes off, and stands as the one dash - or as nothing,
+    // when the dash before it was already read on its own.
+    const lead = text.match(LEADING_DASHES);
+    if (lead && text.length > lead[0].length && count(text, LETTER) > 0) {
+      const rest = text.slice(lead[0].length);
+      text = afterDash ? rest : '— ' + rest;
+    }
+    if (!ONLY_DASHES.test(text)) {
+      merged.push({ ...word, text });
       return;
     }
-    if (previous && DASHES.has(previous.text)) {
+    if (afterDash) {
       previous.x1 = word.x1;
       return;
     }
@@ -212,8 +228,12 @@ export function joinWords(words: RecognizedWord[]): string {
   // How far it is from one line to the next, and where the column starts.
   const pitch = median(tops.slice(1).map((top, index) => top - tops[index]));
   const lefts = lines.map((line) => line[0].x0);
+  const rights = lines.map((line) => line[line.length - 1].x1);
   const columnLeft = percentile(lefts, 0.15);
-  const columnWidth = Math.max(...lines.map((line) => line[line.length - 1].x1)) - columnLeft;
+  // Where full lines end. Percentile rather than the maximum so that a
+  // box straying into the margin does not become "the edge".
+  const columnRight = percentile(rights, 0.85);
+  const columnWidth = columnRight - columnLeft;
 
   let out = '';
   lines.forEach((line, index) => {
@@ -231,7 +251,15 @@ export function joinWords(words: RecognizedWord[]): string {
     const step = tops[index + 1] - tops[index];
     const gapped = pitch > 0 && step > pitch * 1.6;
     const indented = columnWidth > 0 && next[0].x0 - columnLeft > columnWidth * 0.015;
-    out += gapped || indented ? '\n\n' : ' ';
+    // And the third: this line stopped well short of the margin. In
+    // justified print only the last line of a paragraph does that, so
+    // whatever follows is a new one - even when its indent was lost to
+    // the curve of the page.
+    const ended = columnWidth > 0 && columnRight - rights[index] > columnWidth * 0.12;
+    // A new LINE, not a blank one: the book marks its paragraphs with
+    // an indent and nothing else, and a blank line after every reply
+    // spread a page of dialogue out to twice its length.
+    out += gapped || indented || ended ? '\n' : ' ';
   });
   return out.trim();
 }
