@@ -38,6 +38,7 @@ import DocumentEditorScreen from './src/screens/DocumentEditorScreen';
 import FloatingIslandTabBar from './src/components/FloatingIslandTabBar';
 import ShareIntentHandler from './src/components/ShareIntentHandler';
 import * as SplashScreen from 'expo-splash-screen';
+import { sweepIfDue } from './src/utils/attachmentCache';
 import { navigationRef } from './src/navigationRef';
 import { BoardsStackParamList, RootStackParamList } from './src/navigation';
 import { GlassTargetProvider } from './src/components/GlassTarget';
@@ -128,6 +129,10 @@ export default function App() {
   const ready = fontsLoaded && signedIn;
   useEffect(() => {
     if (ready) SplashScreen.hideAsync().catch(() => {});
+    // The bytes of files nobody has opened in three months go, quietly,
+    // once a day - their records stay, and they come back from Drive on
+    // the next open. See attachmentCache.
+    if (ready) sweepIfDue();
   }, [ready]);
 
   // ShareIntentProvider wraps BOTH branches below as one stable instance

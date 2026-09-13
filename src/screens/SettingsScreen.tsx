@@ -30,6 +30,7 @@ import ContentColumn from '../components/ContentColumn';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { claimExistingData } from '../utils/claimOwnership';
 import { backfillDriveCopies } from '../utils/backfillDrive';
+import { STALE_AFTER_DAYS, localAttachmentUsage } from '../utils/attachmentCache';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -71,6 +72,10 @@ export default function SettingsScreen() {
   const [email, setEmail] = useState<string | null>(() => (isDriveConnected() ? getConnectedEmail() : null));
   const [busy, setBusy] = useState(false);
   const [backfillProgress, setBackfillProgress] = useState<{ done: number; total: number } | null>(null);
+  const [local, setLocal] = useState<{ count: number; bytes: number; withoutDrive: number } | null>(null);
+  useEffect(() => {
+    localAttachmentUsage().then(setLocal).catch(() => {});
+  }, [backfillProgress]);
   const [stats, setStats] = useState<{ totalBytesStored: number; fileCount: number } | null>(null);
   const [quota, setQuota] = useState<DriveStorageQuota | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
@@ -320,6 +325,23 @@ export default function SettingsScreen() {
                   </Text>
                 </View>
               )}
+              {/* What the attachments take up here, and the rule that keeps
+                  it from growing forever: bytes nobody has opened in three
+                  months go, records stay, Drive brings them back. */}
+              {local && (
+                <View style={styles.trafficRow}>
+                  <Ionicons name="phone-portrait-outline" size={15} color="#6B7280" />
+                  <Text style={styles.trafficLabel}>
+                    На пристрої: {formatBytes(local.bytes)} ({local.count}{' '}
+                    {local.count === 1 ? 'файл' : 'файлів'}
+                    {local.withoutDrive > 0 ? `, ${local.withoutDrive} без копії на Диску` : ''})
+                  </Text>
+                </View>
+              )}
+              <Text style={styles.cardHint}>
+                Копії файлів, які не відкривали {STALE_AFTER_DAYS} днів, прибираються з пристрою самі - але лише тих,
+                що є на Диску. Записи лишаються; при наступному відкритті файл повертається.
+              </Text>
               {/* Everything saved before there was a Drive backup has its
                   bytes on ONE device only - a card with nothing behind it
                   anywhere else. This sends whatever this device still

@@ -2,6 +2,7 @@ import { Alert, Platform } from 'react-native';
 import * as Sharing from 'expo-sharing';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { ensureLocalFile } from './googleDrive';
+import { touchAttachment } from './attachmentCache';
 
 // Hand a stored file to whatever app on the phone opens that kind of file -
 // a .docx to Office, a PDF to the PDF reader. This app will never render a
@@ -39,6 +40,8 @@ function intentLauncher(): typeof import('expo-intent-launcher') | null {
 // by the quick look and the hand-off below, so both restore the same way.
 export async function ensureFileIsHere(file: { fileUri: string; driveFileId?: string }): Promise<boolean> {
   const restored = await ensureLocalFile(file.fileUri, file.driveFileId).catch(() => false);
+  // Opening it is the clearest "someone looked at this" there is.
+  if (restored) touchAttachment(file.fileUri);
   if (!restored) {
     Alert.alert('Файл недоступний', 'Його немає на цьому пристрої, а копії на Google Диску теж немає.');
   }

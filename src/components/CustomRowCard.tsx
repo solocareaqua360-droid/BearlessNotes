@@ -28,7 +28,7 @@ export function RelationThumb({
   radius?: number;
   fill?: boolean;
 }) {
-  const status = useCachedAttachment(uri, driveFileId);
+  const status = useCachedAttachment(uri, driveFileId, false);
   return (
     <View
       style={[

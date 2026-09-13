@@ -48,6 +48,7 @@ import CopyToNoteModal from '../components/CopyToNoteModal';
 import { detachTagFromDeletedItem } from '../hooks/useTags';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import { useDatabaseList } from '../hooks/useDatabaseList';
+import { touchAttachment } from '../utils/attachmentCache';
 import DatabaseChrome from '../components/DatabaseChrome';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { appendBlocksToToday, blockFromPhoto, copyObjectsToNote } from '../utils/copyToNote';
@@ -210,6 +211,10 @@ export default function PhotosScreen() {
   }, []);
 
   const viewerPhoto = viewerPhotoId ? photos.find((p) => p.id === viewerPhotoId) ?? null : null;
+  // Opening the viewer is looking at the photo - see attachmentCache.
+  useEffect(() => {
+    if (viewerPhoto) touchAttachment(viewerPhoto.imageUri);
+  }, [viewerPhoto]);
   const tagPickerPhoto = tagPickerForId ? photos.find((p) => p.id === tagPickerForId) ?? null : null;
 
   // The one selected row, put on the app's own clipboard as the block that

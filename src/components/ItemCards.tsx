@@ -210,7 +210,8 @@ export function PhotoCell({ photo, ...rest }: { photo: PhotoCardItem } & Common)
   // This device may never have had the actual bytes (a fresh install, a
   // different device than the one the photo was taken on) - quietly
   // re-pulled from the Drive backup the first time it is rendered.
-  const cacheStatus = useCachedAttachment(photo.imageUri, photo.driveFileId);
+  // A thumbnail in the grid is not someone looking at the photo.
+  const cacheStatus = useCachedAttachment(photo.imageUri, photo.driveFileId, false);
   const docCount = photo.documentIds.length;
   return (
     <Pressable style={styles.cell} onPress={rest.onPress} onLongPress={rest.onLongPress}>

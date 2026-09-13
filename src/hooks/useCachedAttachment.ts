@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
+import { touchAttachment } from '../utils/attachmentCache';
 import { downloadFileFromDrive } from '../utils/googleDrive';
 
 export type CacheStatus = 'checking' | 'ready' | 'restoring' | 'missing';
@@ -13,7 +14,14 @@ export type CacheStatus = 'checking' | 'ready' | 'restoring' | 'missing';
 // icon. Shared by DocumentEditorScreen's image/file blocks and the
 // Photos/Files screens' own thumbnails, so a device only has to re-download
 // each attachment once, the first time it's viewed anywhere.
-export function useCachedAttachment(uri: string | undefined, driveFileId: string | undefined): CacheStatus {
+// `countsAsUse`: whether showing this counts as someone looking at the
+// file (a note that carries it - yes; a thumbnail in a grid scrolled past
+// - no). It is what the stale-copy rule reads - see attachmentCache.
+export function useCachedAttachment(
+  uri: string | undefined,
+  driveFileId: string | undefined,
+  countsAsUse = true
+): CacheStatus {
   const [status, setStatus] = useState<CacheStatus>('checking');
 
   useEffect(() => {
@@ -28,6 +36,7 @@ export function useCachedAttachment(uri: string | undefined, driveFileId: string
       if (cancelled) return;
       if (info.exists) {
         setStatus('ready');
+        if (countsAsUse) touchAttachment(uri);
         return;
       }
       if (!driveFileId) {
@@ -37,6 +46,7 @@ export function useCachedAttachment(uri: string | undefined, driveFileId: string
       setStatus('restoring');
       const restored = await downloadFileFromDrive(driveFileId, uri);
       if (!cancelled) setStatus(restored ? 'ready' : 'missing');
+      if (restored && countsAsUse) touchAttachment(uri);
     })();
     return () => {
       cancelled = true;
