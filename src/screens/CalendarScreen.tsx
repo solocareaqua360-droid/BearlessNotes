@@ -11,7 +11,8 @@ import {
   View,
 } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -504,6 +505,47 @@ export default function CalendarScreen() {
     height: MONTH_NAV_HEIGHT * expandAmount.value,
     opacity: expandAmount.value,
   }));
+  // Dragged up and down, the calendar folds between its week strip and its
+  // month grid - the same value the button moves, moved by the finger.
+  //
+  // Strictly vertical, and it gives up the moment the movement reads as
+  // sideways: there are three gestures on this screen and each has to keep
+  // to its own direction - the week strip pages weeks horizontally, the
+  // pager carries the tabs, and this folds the calendar.
+  const expandAtDragStart = useSharedValue(0);
+  const foldGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        // Nothing to fold beside the note (the month is always open
+        // there), and nothing to fold in "only filled days" either - that
+        // strip is not a real week, so there is no month behind it.
+        .enabled(!isTwoPane && !onlyFilledDays)
+        .activeOffsetY([-15, 15])
+        .failOffsetX([-20, 20])
+        .onBegin(() => {
+          expandAtDragStart.value = expandAmount.value;
+        })
+        .onUpdate((e) => {
+          // The drag is measured against the height the calendar actually
+          // gains, so the grid follows the finger rather than a guess.
+          const travel = Math.max(1, monthAreaHeight - weekRowHeight);
+          const next = expandAtDragStart.value + e.translationY / travel;
+          expandAmount.value = Math.min(1, Math.max(0, next));
+        })
+        .onEnd((e) => {
+          // Where it lands: past halfway, or thrown hard enough in one
+          // direction that stopping at the nearest state would feel like
+          // the calendar ignored the throw.
+          const open = e.velocityY > 400 ? true : e.velocityY < -400 ? false : expandAmount.value > 0.5;
+          expandAmount.value = withTiming(open ? 1 : 0, {
+            duration: 220,
+            easing: Easing.out(Easing.cubic),
+          });
+          runOnJS(setIsMonthExpanded)(open);
+        }),
+    [isTwoPane, onlyFilledDays, monthAreaHeight, weekRowHeight, expandAmount, expandAtDragStart]
+  );
+
   const gridClipStyle = useAnimatedStyle(() => ({
     height: weekRowHeight + (monthAreaHeight - weekRowHeight) * expandAmount.value,
   }), [weekRowHeight, monthAreaHeight]);
@@ -739,6 +781,12 @@ export default function CalendarScreen() {
           style={isTwoPane ? styles.sidePane : null}
           onLayout={(e) => setCalendarPaneWidth(e.nativeEvent.layout.width)}
         >
+          {/* The fold gesture lives on the plate only - never on the
+              history list under it, where a drag is someone scrolling
+              their own past. Off entirely where the month cannot fold:
+              beside the note there is room for it always, and in
+              "only filled days" the strip is not a real week. */}
+          <GestureDetector gesture={foldGesture}>
           <Animated.View style={[styles.calendarPlate, isTwoPane && styles.calendarPlatePaned, calendarPlateStyle]}>
           <Animated.View style={[styles.calendarWrap, calendarWrapStyle]}>
             <Animated.View style={[styles.monthNavWrap, monthNavStyle]}>
@@ -886,6 +934,7 @@ export default function CalendarScreen() {
             </Animated.View>
           </Animated.View>
           </Animated.View>
+          </GestureDetector>
 
           {/* One flex-wrap row for both capsules - the month one always here
               (unless a compact strip is active, same as before), the history
