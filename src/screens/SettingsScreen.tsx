@@ -19,6 +19,7 @@ import {
 import ContentColumn from '../components/ContentColumn';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { claimExistingData } from '../utils/claimOwnership';
+import { backfillDriveCopies } from '../utils/backfillDrive';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -59,6 +60,7 @@ export default function SettingsScreen() {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [email, setEmail] = useState<string | null>(() => (isDriveConnected() ? getConnectedEmail() : null));
   const [busy, setBusy] = useState(false);
+  const [backfillProgress, setBackfillProgress] = useState<{ done: number; total: number } | null>(null);
   const [stats, setStats] = useState<{ totalBytesStored: number; fileCount: number } | null>(null);
   const [quota, setQuota] = useState<DriveStorageQuota | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
@@ -123,6 +125,28 @@ export default function SettingsScreen() {
   // The automatic backup is deliberately silent (a failed backup must never
   // block attaching a file), so this is the only place the actual reason a
   // backup isn't landing on Drive becomes visible.
+  // Only the device that still has the bytes can do this, and it says so
+  // plainly: anything it cannot find locally is counted and left exactly
+  // as it was, never deleted.
+  async function handleBackfill() {
+    setBusy(true);
+    setBackfillProgress({ done: 0, total: 0 });
+    try {
+      const result = await backfillDriveCopies((done, total) => setBackfillProgress({ done, total }));
+      Alert.alert(
+        'Перенесення завершено',
+        `Вивантажено: ${result.uploaded}\n` +
+          `Немає на цьому пристрої: ${result.missing}\n` +
+          (result.failed > 0 ? `Не вдалося: ${result.failed}` : '').trim()
+      );
+    } catch (error) {
+      Alert.alert('Не вдалося перенести', (error as Error).message);
+    } finally {
+      setBackfillProgress(null);
+      setBusy(false);
+    }
+  }
+
   async function handleCheckConnection() {
     setBusy(true);
     try {
@@ -282,6 +306,19 @@ export default function SettingsScreen() {
                   </Text>
                 </View>
               )}
+              {/* Everything saved before there was a Drive backup has its
+                  bytes on ONE device only - a card with nothing behind it
+                  anywhere else. This sends whatever this device still
+                  holds, so the other one can finally fetch it. */}
+              <Pressable style={styles.checkButton} onPress={handleBackfill} disabled={busy}>
+                {backfillProgress ? (
+                  <Text style={styles.checkLabel}>
+                    Переношу: {backfillProgress.done} з {backfillProgress.total}
+                  </Text>
+                ) : (
+                  <Text style={styles.checkLabel}>Перенести старі вкладення на Диск</Text>
+                )}
+              </Pressable>
               <Pressable style={styles.checkButton} onPress={handleCheckConnection} disabled={busy}>
                 {busy ? <ActivityIndicator color={ACCENT} /> : <Text style={styles.checkLabel}>Перевірити з'єднання</Text>}
               </Pressable>
