@@ -48,6 +48,7 @@ import { linkDocId } from '../utils/linkId';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { GLASS_TEXT } from '../constants/glass';
 
 const ACCENT = '#14B8A6';
 // The same half-strength tint the documents screen's add button takes -
@@ -477,7 +478,7 @@ export default function LinksScreen({ route, navigation }: Props) {
               changeViewMode('list');
             }}
           >
-            <Ionicons name="reorder-four-outline" size={17} color="#111827" />
+            <Ionicons name="reorder-four-outline" size={17} color={GLASS_TEXT} />
             <Text style={menuStyles.menuRowLabel}>Список</Text>
             {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
           </Pressable>
@@ -488,7 +489,7 @@ export default function LinksScreen({ route, navigation }: Props) {
               changeViewMode('grid');
             }}
           >
-            <Ionicons name="grid-outline" size={17} color="#111827" />
+            <Ionicons name="grid-outline" size={17} color={GLASS_TEXT} />
             <Text style={menuStyles.menuRowLabel}>Сітка</Text>
             {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
           </Pressable>

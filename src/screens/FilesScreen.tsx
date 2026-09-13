@@ -55,7 +55,7 @@ import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import FilePreviewWorker from '../components/FilePreviewWorker';
-import { GLASS_ISLAND } from '../constants/glass';
+import { GLASS_ISLAND, GLASS_TEXT } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 
@@ -479,7 +479,7 @@ export default function FilesScreen() {
               changeViewMode('list');
             }}
           >
-            <Ionicons name="reorder-four-outline" size={17} color="#111827" />
+            <Ionicons name="reorder-four-outline" size={17} color={GLASS_TEXT} />
             <Text style={menuStyles.menuRowLabel}>Список</Text>
             {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
           </Pressable>
@@ -490,7 +490,7 @@ export default function FilesScreen() {
               changeViewMode('grid');
             }}
           >
-            <Ionicons name="grid-outline" size={17} color="#111827" />
+            <Ionicons name="grid-outline" size={17} color={GLASS_TEXT} />
             <Text style={menuStyles.menuRowLabel}>Сітка</Text>
             {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
           </Pressable>

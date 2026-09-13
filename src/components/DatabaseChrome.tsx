@@ -9,6 +9,7 @@ import { BlurView } from 'expo-blur';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { DatabaseList } from '../hooks/useDatabaseList';
 import { GlassPortal } from './GlassPortal';
+import Menu from './surfaces/Menu';
 import { useBlurTarget } from './GlassTarget';
 import ContentColumn from './ContentColumn';
 import ProjectTabsRow from './ProjectTabsRow';
@@ -19,7 +20,7 @@ import { useRail } from '../hooks/useRail';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { GLASS_ISLAND } from '../constants/glass';
+import { GLASS_ISLAND, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import { CAPSULE_DROP, CAPSULE_HEIGHT_3, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
 // Everything a database screen puts AROUND its records: the gradient it
@@ -133,32 +134,34 @@ export default function DatabaseChrome<T extends { id: string }>({
 
   const column = (
     <>
-        {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
-        {menuOpen && (
-          <View style={styles.menuPanel}>
-            {menuRows?.(() => setMenuOpen(false))}
-            <SortMenuRows sortPref={list.sortPref} onSelectField={list.selectSortField} accentColor={accent} />
-            {bulk && (
-              <>
-                <View style={styles.menuRule} />
-                <Pressable
-                  style={styles.menuRow}
-                  onPress={() => {
-                    setMenuOpen(false);
-                    list.toggleSelectMode();
-                  }}
-                >
-                  <Ionicons
-                    name={list.isSelectMode ? 'close-outline' : 'checkmark-circle-outline'}
-                    size={17}
-                    color="#111827"
-                  />
-                  <Text style={styles.menuRowLabel}>{list.isSelectMode ? 'Скасувати вибір' : 'Вибрати'}</Text>
-                </Pressable>
-              </>
-            )}
-          </View>
-        )}
+        <Menu
+          visible={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          entries={[]}
+          style={{ position: 'absolute', top: 96, right: RAIL_CLEARANCE }}
+        >
+          {menuRows?.(() => setMenuOpen(false))}
+          <SortMenuRows sortPref={list.sortPref} onSelectField={list.selectSortField} accentColor={accent} />
+          {bulk && (
+            <>
+              <View style={menuStyles.menuRule} />
+              <Pressable
+                style={menuStyles.menuRow}
+                onPress={() => {
+                  setMenuOpen(false);
+                  list.toggleSelectMode();
+                }}
+              >
+                <Ionicons
+                  name={list.isSelectMode ? 'close-outline' : 'checkmark-circle-outline'}
+                  size={17}
+                  color={GLASS_TEXT}
+                />
+                <Text style={menuStyles.menuRowLabel}>{list.isSelectMode ? 'Скасувати вибір' : 'Вибрати'}</Text>
+              </Pressable>
+            </>
+          )}
+        </Menu>
 
         {/* The tabs float over the cards rather than standing above them,
             so a card slides under them and off the top of the screen. */}
@@ -414,7 +417,7 @@ export const menuStyles = StyleSheet.create({
   menuSectionLabel: {
     fontSize: 11,
     fontFamily: FONT_SEMIBOLD,
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
     textTransform: 'uppercase',
     letterSpacing: 0.06,
     paddingHorizontal: 8,
@@ -427,12 +430,18 @@ export const menuStyles = StyleSheet.create({
     gap: 10,
     paddingVertical: 10,
     paddingHorizontal: 8,
+    borderRadius: 12,
   },
   menuRowLabel: {
     flex: 1,
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
+  },
+  menuRule: {
+    height: 1,
+    backgroundColor: GLASS_LINE,
+    marginVertical: 6,
   },
 });
 
@@ -481,29 +490,6 @@ const styles = StyleSheet.create({
     width: 20,
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.3)',
-  },
-  menuBackdrop: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    zIndex: 5,
-  },
-  menuPanel: {
-    position: 'absolute',
-    top: 96,
-    right: RAIL_CLEARANCE,
-    width: 200,
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    padding: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
-    zIndex: 6,
   },
   menuRule: {
     height: 1,

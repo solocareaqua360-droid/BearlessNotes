@@ -26,6 +26,7 @@ import DatabaseChrome, { menuStyles } from '../components/DatabaseChrome';
 import { useDatabaseList } from '../hooks/useDatabaseList';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR } from '../utils/fonts';
 import { notify } from '../components/surfaces/Ask';
+import { GLASS_TEXT } from '../constants/glass';
 
 const STICKER_YELLOW = '#FBE97A';
 const STICKER_DARK = '#4a3f05';
@@ -226,7 +227,7 @@ export default function StickersScreen() {
             setViewingTrash((v) => !v);
           }}
         >
-          <Ionicons name={viewingTrash ? 'reader-outline' : 'trash-outline'} size={17} color="#111827" />
+          <Ionicons name={viewingTrash ? 'reader-outline' : 'trash-outline'} size={17} color={GLASS_TEXT} />
           <Text style={menuStyles.menuRowLabel}>{viewingTrash ? 'Стікери' : 'Смітник'}</Text>
         </Pressable>
       )}

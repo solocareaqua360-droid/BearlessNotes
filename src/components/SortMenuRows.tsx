@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SortField, SortPref } from '../utils/sortItems';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
+import { GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 
 const FIELD_ORDER: SortField[] = ['title', 'createdAt', 'updatedAt'];
 const FIELD_LABELS: Record<SortField, string> = {
@@ -36,7 +37,7 @@ export default function SortMenuRows({
         const active = sortPref.field === field;
         return (
           <Pressable key={field} style={styles.row} onPress={() => onSelectField(field)}>
-            <Ionicons name={FIELD_ICONS[field]} size={17} color={active ? accentColor : '#111827'} />
+            <Ionicons name={FIELD_ICONS[field]} size={17} color={active ? accentColor : GLASS_TEXT} />
             <Text style={[styles.rowLabel, active && { color: accentColor, fontFamily: FONT_BOLD }]}>
               {FIELD_LABELS[field]}
             </Text>
@@ -55,7 +56,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT_BOLD,
     letterSpacing: 0.04,
     textTransform: 'uppercase',
-    color: '#9CA3AF',
+    color: GLASS_TEXT_FAINT,
     paddingHorizontal: 8,
     paddingTop: 4,
     paddingBottom: 2,
@@ -71,6 +72,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
 });

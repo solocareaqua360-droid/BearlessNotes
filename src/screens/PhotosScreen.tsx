@@ -95,7 +95,6 @@ export default function PhotosScreen() {
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
-  const [addPhotoSheetVisible, setAddPhotoSheetVisible] = useState(false);
   const [justAddedPhoto, setJustAddedPhoto] = useState<JustAddedPhoto | null>(null);
   const [saveDestinationVisible, setSaveDestinationVisible] = useState(false);
   useEffect(() => {
@@ -231,6 +230,20 @@ export default function PhotosScreen() {
   // the fixed, non-deletable "Фото" group, same rule DocumentEditorScreen's
   // own camera block applies - only the source (gallery vs camera) decides
   // that, not whether a document happens to be open.
+  // The white sheet this replaces asked the same two things in nothing
+  // like the app's own colours.
+  function askWhereFrom() {
+    ask({
+      title: 'Нове фото',
+      actions: [
+        { id: 'gallery', label: 'Галерея', icon: 'images-outline' },
+        { id: 'camera', label: 'Камера', icon: 'camera-outline' },
+      ],
+    }).then((answer) => {
+      if (answer === 'gallery' || answer === 'camera') addPhotoDirectly(answer);
+    });
+  }
+
   async function addPhotoDirectly(source: 'gallery' | 'camera') {
     const permission =
       source === 'camera'
@@ -498,7 +511,7 @@ export default function PhotosScreen() {
       accentGlass={ACCENT_GLASS}
       onBack={() => navigation.goBack()}
       searchPlaceholder="Пошук фото за назвою"
-      onAdd={() => setAddPhotoSheetVisible(true)}
+      onAdd={() => askWhereFrom()}
       bulk={{
         onTag: () => setBulkTagPickerVisible(true),
         onGroup: () => setBulkGroupPickerVisible(true),
@@ -549,38 +562,6 @@ export default function PhotosScreen() {
           {/* Where a photo can come from when it is made here rather than
               inside a document - the one database whose "+" has a choice
               to offer. */}
-          <Modal
-            visible={addPhotoSheetVisible}
-            transparent
-            animationType="fade"
-            onRequestClose={() => setAddPhotoSheetVisible(false)}
-          >
-            <Pressable style={styles.addPhotoBackdrop} onPress={() => setAddPhotoSheetVisible(false)}>
-              <Pressable style={styles.addPhotoSheet} onPress={() => {}}>
-                <View style={styles.addPhotoHandle} />
-                <Pressable
-                  style={styles.addPhotoRow}
-                  onPress={() => {
-                    setAddPhotoSheetVisible(false);
-                    addPhotoDirectly('gallery');
-                  }}
-                >
-                  <Ionicons name="image-outline" size={18} color="#111827" />
-                  <Text style={styles.addPhotoRowLabel}>Галерея</Text>
-                </Pressable>
-                <Pressable
-                  style={styles.addPhotoRow}
-                  onPress={() => {
-                    setAddPhotoSheetVisible(false);
-                    addPhotoDirectly('camera');
-                  }}
-                >
-                  <Ionicons name="camera-outline" size={18} color="#111827" />
-                  <Text style={styles.addPhotoRowLabel}>Камера</Text>
-                </Pressable>
-              </Pressable>
-            </Pressable>
-          </Modal>
 
           <DocumentPickerModal
             visible={documentPicker !== null}
@@ -711,38 +692,6 @@ export default function PhotosScreen() {
 }
 
 const styles = StyleSheet.create({
-  addPhotoBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(17,24,39,0.45)',
-    justifyContent: 'flex-end',
-  },
-  addPhotoSheet: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 28,
-  },
-  addPhotoHandle: {
-    width: 36,
-    height: 4,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 12,
-  },
-  addPhotoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-  },
-  addPhotoRowLabel: {
-    fontSize: 15,
-    fontFamily: FONT_REGULAR,
-    color: '#111827',
-  },
     menuRule: {
     height: 1,
     backgroundColor: '#E5E7EB',
