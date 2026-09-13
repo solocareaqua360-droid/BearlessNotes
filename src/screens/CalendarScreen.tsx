@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { hapticButtonDown } from '../utils/haptics';
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
@@ -546,6 +547,26 @@ export default function CalendarScreen() {
     [isTwoPane, onlyFilledDays, monthAreaHeight, weekRowHeight, expandAmount, expandAtDragStart]
   );
 
+  // Held down, the calendar shows the day's history under it; held again,
+  // it puts it away. The same plate the fold gesture lives on - the two
+  // cannot be confused, since one needs the finger to travel and the
+  // other needs it to stay still.
+  const historyGesture = useMemo(
+    () =>
+      Gesture.LongPress()
+        .enabled(!isTwoPane)
+        .minDuration(400)
+        .onStart(() => {
+          runOnJS(hapticButtonDown)();
+          runOnJS(setHistoryExpanded)((v: boolean) => !v);
+        }),
+    [isTwoPane]
+  );
+  const plateGesture = useMemo(
+    () => Gesture.Simultaneous(foldGesture, historyGesture),
+    [foldGesture, historyGesture]
+  );
+
   const gridClipStyle = useAnimatedStyle(() => ({
     height: weekRowHeight + (monthAreaHeight - weekRowHeight) * expandAmount.value,
   }), [weekRowHeight, monthAreaHeight]);
@@ -786,7 +807,7 @@ export default function CalendarScreen() {
               their own past. Off entirely where the month cannot fold:
               beside the note there is room for it always, and in
               "only filled days" the strip is not a real week. */}
-          <GestureDetector gesture={foldGesture}>
+          <GestureDetector gesture={plateGesture}>
           <Animated.View style={[styles.calendarPlate, isTwoPane && styles.calendarPlatePaned, calendarPlateStyle]}>
           <Animated.View style={[styles.calendarWrap, calendarWrapStyle]}>
             <Animated.View style={[styles.monthNavWrap, monthNavStyle]}>
