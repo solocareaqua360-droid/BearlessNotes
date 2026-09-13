@@ -221,7 +221,15 @@ function pageFor(images: string[], dirUrl: string, library: string): string {
         var light = top * (1 - fy) + bottom * fy;
         if (light < 1) light = 1;
         var out = gray[ny * W + nx] * 255 / light;
+        // Then the levels pulled apart: anything nearly white IS white,
+        // and the darkest ink is black. What this removes is the grey
+        // speckle the document scanner's own filter sprinkles over clean
+        // paper - it survives the flattening as a faint grey, and this is
+        // where it goes. The middle stays a ramp, so the soft edges of
+        // the letters are kept.
+        out = (out - 60) * 255 / 145;
         if (out > 255) out = 255;
+        if (out < 0) out = 0;
         var at = (ny * W + nx) * 4;
         px[at] = out; px[at + 1] = out; px[at + 2] = out; px[at + 3] = 255;
       }
