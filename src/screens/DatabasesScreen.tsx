@@ -42,7 +42,8 @@ import RenamePrompt from '../components/RenamePrompt';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import ImportTableSheet from '../components/ImportTableSheet';
 import ContentColumn from '../components/ContentColumn';
-import { GLASS_BODY, GLASS_DANGER, GLASS_TEXT } from '../constants/glass';
+import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
+import { GLASS_BODY, GLASS_DANGER, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -98,6 +99,7 @@ export default function DatabasesScreen() {
   const databasesInsets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const { isTwoPane } = useResponsiveLayout();
   const { colorFor, customDatabases } = useDatabaseTiles();
   // What is inside each database, for the tiles to show - see
   // useDatabaseContents.
@@ -386,199 +388,111 @@ export default function DatabasesScreen() {
   const cellStep = cellSize + gap;
   const spanSize = (cells: number) => cells * cellSize + (cells - 1) * gap;
 
-  return (
-    <View style={styles.container}>
-      {/* Same fixed gradient as Documents/Calendar. 1px bled past every edge
-          (see the -1/+2 below) - windowWidth/Height can round to a hair
-          less than the actual screen, leaving a sliver of the default
-          white background visible at an edge otherwise. */}
-      <Svg
-        width={windowWidth + 2}
-        height={windowHeight + 2}
-        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
-        pointerEvents="none"
-      >
-        <Defs>
-          <LinearGradient id="databasesBg" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0.03" stopColor="#705648" />
-            <Stop offset="0.52" stopColor="#69736E" />
-            <Stop offset="1" stopColor="#000000" />
-          </LinearGradient>
-        </Defs>
-        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#databasesBg)" />
-      </Svg>
-      {/* The rail, as on every other screen: right edge, same width, same
-          glass, hanging from the same line. Through the portal for the
-          blur, so it withdraws when this screen isn't the one on show. */}
-      {databasesFocused && (
-        <GlassPortal>
-          <View
-            style={[styles.railWrap, { top: databasesInsets.top + CHROME_TOP + CAPSULE_DROP }]}
-            pointerEvents="box-none"
-          >
-            <View style={styles.headerButtons}>
-              <BlurView
-                intensity={60}
-                tint="dark"
-                blurMethod="dimezisBlurView"
-                blurTarget={databasesBlurTarget ?? undefined}
-                style={StyleSheet.absoluteFill}
-                pointerEvents="none"
-              />
-              <Pressable hitSlop={8} onPress={() => navigation.navigate('Search')}>
-                <Ionicons name="search-outline" size={24} color="#fff" />
-              </Pressable>
-              <View style={styles.headerButtonsDivider} />
-              <Pressable hitSlop={8} onPress={() => navigation.navigate('Settings')}>
-                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
-              </Pressable>
-            </View>
-          </View>
-        </GlassPortal>
-      )}
-
-      <ContentColumn>
-        {/* No title: the capsule says where this is, and the name cost
-            the board a screenful. The tiles run all the way up and scroll
-            off the top edge, the way the cards do everywhere else. */}
-        <ScrollView
-          contentContainerStyle={[
-            styles.content,
-            { paddingTop: databasesInsets.top + CHROME_TOP + 8 },
-          ]}
-        >
-          {/* The board. Tiles are placed, not flowed - see packTiles for
-              why a wrapping row cannot hold mixed sizes without leaving
-              holes. Each one animates to its new cell whenever the packing
-              changes, which is what makes a resize look like the board
-              closing up around it rather than everything jumping. */}
-          <View
-            style={[styles.board, { height: Math.max(0, rows * cellStep - gap) }]}
-            onLayout={(e) => setBoardWidth(e.nativeEvent.layout.width)}
-          >
-            {/* Everything above is built in; everything below is yours. */}
-            {showRule && ruleRow > 0 && (
-              <View style={[styles.boardRule, { top: ruleRow * cellStep - gap / 2 }]} />
-            )}
-
-            {cellSize > 0 &&
-              placed.map(({ item, x, y, size }) => (
-                <BoardTile
-                  key={item.key}
-                  item={item}
-                  left={x * cellStep}
-                  top={y * cellStep}
-                  width={spanSize(size.w)}
-                  height={spanSize(size.h)}
-                  color={
-                    item.kind === 'custom'
-                      ? item.database.color ?? colorForDocument(item.database.id).background
-                      : item.kind === 'pin'
-                        ? item.pin.color
-                        : colorFor(item.key)
-                  }
-                  editing={editing}
-                  cellSize={cellSize}
-                  size={size}
-                  background={tileBackgrounds[item.key]}
-                  count={item.kind === 'pin' ? item.pin.count : counts[item.key]}
-                  latest={latest[item.key]}
-                  thumbs={item.key === 'photos' ? photoThumbs : undefined}
-                  onOpen={() => {
-                    if (item.kind === 'builtin') openTile(item.tile);
-                    else if (item.kind === 'custom')
-                      navigation.navigate('CustomDatabase', { databaseId: item.database.id });
-                    else if (item.kind === 'pin') {
-                      // A group opens the documents with that group
-                      // chosen - and everything else in it follows under
-                      // the rule there (see GroupSections). A smart folder
-                      // opens its own list, which is already cross-database.
-                      if (item.pinKind === 'group')
-                        navigation.navigate('Tabs', {
-                          screen: 'Документи',
-                          params: { groupId: item.pin.id },
-                        });
-                      else navigation.navigate('TagItems', { tagId: item.pin.id });
-                    } else if (item.key === NEW_TILE_KEY) setCreatingDatabase(true);
-                    else if (item.key === PIN_TILE_KEY) setPinSheetVisible(true);
-                    else setImporting(true);
-                  }}
-                  onHold={() => {
-                    hapticButtonDown();
-                    setEditing(true);
-                  }}
-                  onColor={() => setColorMenuKey(item.key)}
-                  onResize={(next) => setDraftSize({ key: item.key, size: next })}
-                  onResizeEnd={(next) => {
-                    setDraftSize(null);
-                    setSize(item.key, next);
-                  }}
-                  carried={drag?.key === item.key ? { x: drag.x, y: drag.y } : null}
-                  onCarryStart={() => {
-                    hapticButtonDown();
-                    dragBaseOrder.current = orderedItems.map((i) => i.key);
-                    setDrag({ key: item.key, x: x * cellStep, y: y * cellStep });
-                    setDraftOrder(dragBaseOrder.current);
-                  }}
-                  onCarryMove={(dx, dy) => {
-                    const nextX = x * cellStep + dx;
-                    const nextY = y * cellStep + dy;
-                    setDrag({ key: item.key, x: nextX, y: nextY });
-                    setDraftOrder(orderWithDrop(item.key, nextX, nextY));
-                  }}
-                  onCarryEnd={() => {
-                    const next = draftOrder;
-                    dragBaseOrder.current = null;
-                    setDrag(null);
-                    setDraftOrder(null);
-                    if (next) setDoc(tileOrderDoc, { order: next }, { merge: true });
-                  }}
-                />
-              ))}
-          </View>
-        </ScrollView>
-
-        {/* The way out of arranging - and the only thing on screen that
-            says the board is in it. */}
-        {editing && (
-          <Pressable
-            style={[
-              styles.doneButton,
-              // Clear of the island lying across the foot of the screen -
-              // its own height plus the gap it keeps from the edge.
-              { bottom: databasesInsets.bottom + NAV_BOTTOM + RAIL_WIDTH + 16 },
+  const boardScroll = (
+          <ScrollView
+            contentContainerStyle={[
+              styles.content,
+              { paddingTop: databasesInsets.top + CHROME_TOP + 8 },
             ]}
-            onPress={() => setEditing(false)}
           >
-            <Ionicons name="checkmark" size={18} color="#171310" />
-            <Text style={styles.doneLabel}>Готово</Text>
-          </Pressable>
-        )}
+            {/* The board. Tiles are placed, not flowed - see packTiles for
+                why a wrapping row cannot hold mixed sizes without leaving
+                holes. Each one animates to its new cell whenever the packing
+                changes, which is what makes a resize look like the board
+                closing up around it rather than everything jumping. */}
+            <View
+              style={[styles.board, { height: Math.max(0, rows * cellStep - gap) }]}
+              onLayout={(e) => setBoardWidth(e.nativeEvent.layout.width)}
+            >
+              {/* Everything above is built in; everything below is yours. */}
+              {showRule && ruleRow > 0 && (
+                <View style={[styles.boardRule, { top: ruleRow * cellStep - gap / 2 }]} />
+              )}
 
-        <ImportTableSheet
-          visible={importing}
-          otherDatabases={customDatabases.map((d) => ({ id: d.id, name: d.name }))}
-          onClose={() => setImporting(false)}
-          onDone={(databaseId, rowCount) => {
-            setImporting(false);
-            notify('Імпортовано', `Додано записів: ${rowCount}`);
-            navigation.navigate('CustomDatabase', { databaseId });
-          }}
-        />
+              {cellSize > 0 &&
+                placed.map(({ item, x, y, size }) => (
+                  <BoardTile
+                    key={item.key}
+                    item={item}
+                    left={x * cellStep}
+                    top={y * cellStep}
+                    width={spanSize(size.w)}
+                    height={spanSize(size.h)}
+                    color={
+                      item.kind === 'custom'
+                        ? item.database.color ?? colorForDocument(item.database.id).background
+                        : item.kind === 'pin'
+                          ? item.pin.color
+                          : colorFor(item.key)
+                    }
+                    editing={editing}
+                    cellSize={cellSize}
+                    size={size}
+                    background={tileBackgrounds[item.key]}
+                    count={item.kind === 'pin' ? item.pin.count : counts[item.key]}
+                    latest={latest[item.key]}
+                    thumbs={item.key === 'photos' ? photoThumbs : undefined}
+                    onOpen={() => {
+                      if (item.kind === 'builtin') openTile(item.tile);
+                      else if (item.kind === 'custom')
+                        navigation.navigate('CustomDatabase', { databaseId: item.database.id });
+                      else if (item.kind === 'pin') {
+                        // A group opens the documents with that group
+                        // chosen - and everything else in it follows under
+                        // the rule there (see GroupSections). A smart folder
+                        // opens its own list, which is already cross-database.
+                        if (item.pinKind === 'group')
+                          navigation.navigate('Tabs', {
+                            screen: 'Документи',
+                            params: { groupId: item.pin.id },
+                          });
+                        else navigation.navigate('TagItems', { tagId: item.pin.id });
+                      } else if (item.key === NEW_TILE_KEY) setCreatingDatabase(true);
+                      else if (item.key === PIN_TILE_KEY) setPinSheetVisible(true);
+                      else setImporting(true);
+                    }}
+                    onHold={() => {
+                      hapticButtonDown();
+                      setEditing(true);
+                      // On a wide screen the settings have a pane waiting
+                      // for them, so the tile that was held goes straight
+                      // into it - one gesture, not hold-then-tap.
+                      if (isTwoPane) setColorMenuKey(item.key);
+                    }}
+                    onColor={() => setColorMenuKey(item.key)}
+                    onResize={(next) => setDraftSize({ key: item.key, size: next })}
+                    onResizeEnd={(next) => {
+                      setDraftSize(null);
+                      setSize(item.key, next);
+                    }}
+                    carried={drag?.key === item.key ? { x: drag.x, y: drag.y } : null}
+                    onCarryStart={() => {
+                      hapticButtonDown();
+                      dragBaseOrder.current = orderedItems.map((i) => i.key);
+                      setDrag({ key: item.key, x: x * cellStep, y: y * cellStep });
+                      setDraftOrder(dragBaseOrder.current);
+                    }}
+                    onCarryMove={(dx, dy) => {
+                      const nextX = x * cellStep + dx;
+                      const nextY = y * cellStep + dy;
+                      setDrag({ key: item.key, x: nextX, y: nextY });
+                      setDraftOrder(orderWithDrop(item.key, nextX, nextY));
+                    }}
+                    onCarryEnd={() => {
+                      const next = draftOrder;
+                      dragBaseOrder.current = null;
+                      setDrag(null);
+                      setDraftOrder(null);
+                      if (next) setDoc(tileOrderDoc, { order: next }, { merge: true });
+                    }}
+                  />
+                ))}
+            </View>
+          </ScrollView>
+  );
 
-        <RenamePrompt
-          visible={creatingDatabase}
-          title="Нова база"
-          initialValue=""
-          placeholder="Назва бази"
-          onCancel={() => setCreatingDatabase(false)}
-          onSave={createDatabase}
-        />
-
-        {/* Color picker - only the harmonious palette is offered. */}
-        <Modal visible={colorMenuKey !== null} transparent animationType="fade" onRequestClose={() => setColorMenuKey(null)}>
-          <Pressable style={styles.colorMenuBackdrop} onPress={() => setColorMenuKey(null)}>
-            <Pressable style={styles.colorMenuCard} onPress={(e) => e.stopPropagation()}>
+  const tileMenu = (
+    <>
               <Text style={styles.colorMenuTitle}>Плитка</Text>
               <View style={styles.colorMenuRow}>
                 {TAG_COLORS.map((color) => (
@@ -667,10 +581,140 @@ export default function DatabasesScreen() {
                 <Ionicons name="refresh-outline" size={17} color={GLASS_TEXT} />
                 <Text style={styles.sheetRowLabel}>Скинути дошку</Text>
               </Pressable>
+    </>
+  );
+
+  return (
+    <View style={styles.container}>
+      {/* Same fixed gradient as Documents/Calendar. 1px bled past every edge
+          (see the -1/+2 below) - windowWidth/Height can round to a hair
+          less than the actual screen, leaving a sliver of the default
+          white background visible at an edge otherwise. */}
+      <Svg
+        width={windowWidth + 2}
+        height={windowHeight + 2}
+        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
+        pointerEvents="none"
+      >
+        <Defs>
+          <LinearGradient id="databasesBg" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0.03" stopColor="#705648" />
+            <Stop offset="0.52" stopColor="#69736E" />
+            <Stop offset="1" stopColor="#000000" />
+          </LinearGradient>
+        </Defs>
+        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#databasesBg)" />
+      </Svg>
+      {/* The rail, as on every other screen: right edge, same width, same
+          glass, hanging from the same line. Through the portal for the
+          blur, so it withdraws when this screen isn't the one on show. */}
+      {databasesFocused && (
+        <GlassPortal>
+          <View
+            style={[styles.railWrap, { top: databasesInsets.top + CHROME_TOP + CAPSULE_DROP }]}
+            pointerEvents="box-none"
+          >
+            <View style={styles.headerButtons}>
+              <BlurView
+                intensity={60}
+                tint="dark"
+                blurMethod="dimezisBlurView"
+                blurTarget={databasesBlurTarget ?? undefined}
+                style={StyleSheet.absoluteFill}
+                pointerEvents="none"
+              />
+              <Pressable hitSlop={8} onPress={() => navigation.navigate('Search')}>
+                <Ionicons name="search-outline" size={24} color="#fff" />
+              </Pressable>
+              <View style={styles.headerButtonsDivider} />
+              <Pressable hitSlop={8} onPress={() => navigation.navigate('Settings')}>
+                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
+              </Pressable>
+            </View>
+          </View>
+        </GlassPortal>
+      )}
+
+      {/* On a wide screen the tile's menu is not a window over the board
+          - it is the other half of it. The board keeps the right side,
+          against the rail that belongs to it (the same reasoning as the
+          documents list), and the menu takes the left.
+          
+          Outside ContentColumn on purpose: that column caps content at a
+          readable 760, which is right for one column of tiles and wrong
+          for two panes, which should have the whole unfolded screen. */}
+      {isTwoPane ? (
+        <View style={styles.paneRow}>
+          <View style={styles.boardPane}>{boardScroll}</View>
+          <View style={styles.menuPane}>
+            {colorMenuKey ? (
+              <ScrollView contentContainerStyle={styles.menuPaneCard}>{tileMenu}</ScrollView>
+            ) : (
+              <View style={styles.menuPaneEmpty}>
+                <Ionicons name="apps-outline" size={26} color={GLASS_TEXT_FAINT} />
+                <Text style={styles.menuPaneHint}>Затисни плитку - її налаштування зʼявляться тут</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      ) : (
+        <ContentColumn>
+          {/* No title: the capsule says where this is, and the name cost
+              the board a screenful. The tiles run all the way up and
+              scroll off the top edge, the way the cards do everywhere
+              else. */}
+          {boardScroll}
+        </ContentColumn>
+      )}
+
+      {/* The way out of arranging - and the only thing on screen that
+          says the board is in it. */}
+      {editing && (
+        <Pressable
+          style={[
+            styles.doneButton,
+            // Clear of the island lying across the foot of the screen -
+            // its own height plus the gap it keeps from the edge.
+            { bottom: databasesInsets.bottom + NAV_BOTTOM + RAIL_WIDTH + 16 },
+          ]}
+          onPress={() => setEditing(false)}
+        >
+          <Ionicons name="checkmark" size={18} color="#171310" />
+          <Text style={styles.doneLabel}>Готово</Text>
+        </Pressable>
+      )}
+
+      <ImportTableSheet
+        visible={importing}
+        otherDatabases={customDatabases.map((d) => ({ id: d.id, name: d.name }))}
+        onClose={() => setImporting(false)}
+        onDone={(databaseId, rowCount) => {
+          setImporting(false);
+          notify('Імпортовано', `Додано записів: ${rowCount}`);
+          navigation.navigate('CustomDatabase', { databaseId });
+        }}
+      />
+
+      <RenamePrompt
+        visible={creatingDatabase}
+        title="Нова база"
+        initialValue=""
+        placeholder="Назва бази"
+        onCancel={() => setCreatingDatabase(false)}
+        onSave={createDatabase}
+      />
+
+      {/* On a phone it is still a window: there is no room for a
+          second column. */}
+      {!isTwoPane && (
+        <Modal visible={colorMenuKey !== null} transparent animationType="fade" onRequestClose={() => setColorMenuKey(null)}>
+          <Pressable style={styles.colorMenuBackdrop} onPress={() => setColorMenuKey(null)}>
+            <Pressable style={styles.colorMenuCard} onPress={(e) => e.stopPropagation()}>
+              {tileMenu}
             </Pressable>
           </Pressable>
         </Modal>
-      </ContentColumn>
+      )}
 
       {/* What else can go on the board: the groups (a theme of the
           period) and the smart folders (a saved filter). Both already
@@ -1164,6 +1208,37 @@ const styles = StyleSheet.create({
   },
   newTile: {
     borderStyle: 'dashed',
+  },
+  // Two halves of one screen, not a window over it. Reversed so the
+  // board keeps the right side, against the rail that belongs to it -
+  // the same arrangement the documents list uses.
+  paneRow: {
+    flex: 1,
+    flexDirection: 'row-reverse',
+  },
+  boardPane: {
+    flex: 1,
+  },
+  menuPane: {
+    flex: 1,
+    borderRightWidth: 1,
+    borderRightColor: GLASS_LINE,
+    padding: 16,
+    justifyContent: 'center',
+  },
+  menuPaneCard: {
+    gap: 10,
+  },
+  menuPaneEmpty: {
+    alignItems: 'center',
+    gap: 10,
+    opacity: 0.7,
+  },
+  menuPaneHint: {
+    fontSize: 14,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT_FAINT,
+    textAlign: 'center',
   },
   colorMenuBackdrop: {
     flex: 1,

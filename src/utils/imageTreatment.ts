@@ -27,6 +27,13 @@ function hexChannel(hex: string, offset: number): number {
 // sit on the app's own near-black rather than reading as a cutout.
 const SHADOW = { r: 15, g: 13, b: 12 };
 
+// How loudly the tile's colour is allowed to speak. At full strength a
+// duotone is a poster: it unifies the board, but every picture shouts
+// its tile's hue. Pulled back toward neutral it still reads as one
+// system - the brightness and the shape are untouched, only the colour
+// is quieter.
+const TINT = 0.4;
+
 export function duotoneScript(hex: string): string {
   const clean = hex.replace('#', '');
   const highlight = {
@@ -62,9 +69,15 @@ export function duotoneScript(hex: string): string {
     for (var i = 0; i < px.length; i += 4) {
       var luminance = (px[i] * 77 + px[i + 1] * 151 + px[i + 2] * 28) / 65536;
       var t = Math.pow(luminance, 0.85);
-      px[i] = sr + (hr - sr) * t;
-      px[i + 1] = sg + (hg - sg) * t;
-      px[i + 2] = sb + (hb - sb) * t;
+      var dr = sr + (hr - sr) * t;
+      var dg = sg + (hg - sg) * t;
+      var db = sb + (hb - sb) * t;
+      // Blended back toward its own brightness: the picture keeps every
+      // tone it had and loses most of the tint.
+      var neutral = (dr * 77 + dg * 151 + db * 28) / 256;
+      px[i] = neutral + (dr - neutral) * ${TINT};
+      px[i + 1] = neutral + (dg - neutral) * ${TINT};
+      px[i + 2] = neutral + (db - neutral) * ${TINT};
     }
     ctx.putImageData(image, 0, 0);
     return canvas;
