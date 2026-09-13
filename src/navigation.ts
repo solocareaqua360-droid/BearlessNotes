@@ -12,6 +12,9 @@ export type RootStackParamList = {
   // enough to satisfy "resume the last open board" with no extra code.
   Tabs:
     | undefined
+    // The documents tab, by name - what the documents tile in the drawer
+    // opens, since documents are a tab rather than a root-stack screen.
+    | { screen: 'Документи' }
     | { screen: 'Календар'; params: { jumpToDate: string } }
     | { screen: 'Дошки' }
     // Jumps straight into one board rather than wherever BoardsStack last

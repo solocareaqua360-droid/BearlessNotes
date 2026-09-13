@@ -9,9 +9,7 @@ import { addDoc, setDoc } from '../utils/owned';
 import {
   GRID_TILES,
   Tile,
-  WIDE_TILE_ICON,
-  WIDE_TILE_KEY,
-  WIDE_TILE_LABEL,
+  WIDE_TILES,
   openDatabaseTile,
   tileColorsDoc,
 } from '../constants/databaseTiles';
@@ -121,20 +119,23 @@ export default function DatabasesScreen() {
           <Text style={styles.header}>Бази даних</Text>
         </View>
         <ScrollView contentContainerStyle={styles.content}>
-          <Pressable style={styles.wideTile} onPress={() => navigation.navigate('Tasks')}>
-            <Ionicons name={WIDE_TILE_ICON} size={22} color={colorFor(WIDE_TILE_KEY)} />
-            <Text style={[styles.tileLabel, { color: colorFor(WIDE_TILE_KEY) }]}>{WIDE_TILE_LABEL}</Text>
-            <Pressable
-              hitSlop={8}
-              style={styles.tileMenuButton}
-              onPress={(e) => {
-                e.stopPropagation();
-                setColorMenuKey(WIDE_TILE_KEY);
-              }}
-            >
-              <Ionicons name="ellipsis-horizontal" size={16} color="rgba(255,255,255,0.7)" />
+          {/* Documents first, then Справи - both across the whole row. */}
+          {WIDE_TILES.map((tile) => (
+            <Pressable key={tile.key} style={styles.wideTile} onPress={() => openTile(tile)}>
+              <Ionicons name={tile.icon} size={22} color={colorFor(tile.key)} />
+              <Text style={[styles.tileLabel, { color: colorFor(tile.key) }]}>{tile.label}</Text>
+              <Pressable
+                hitSlop={8}
+                style={styles.tileMenuButton}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  setColorMenuKey(tile.key);
+                }}
+              >
+                <Ionicons name="ellipsis-horizontal" size={16} color="rgba(255,255,255,0.7)" />
+              </Pressable>
             </Pressable>
-          </Pressable>
+          ))}
 
           <View style={styles.grid}>
             {GRID_TILES.map((tile) => (

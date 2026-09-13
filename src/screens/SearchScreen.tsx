@@ -22,6 +22,16 @@ export default function SearchScreen() {
   const [needle, setNeedle] = useState('');
   const hits = useGlobalSearch(needle);
   const groups = groupHits(hits);
+  // Documents are the priority: a search for a common word turns up a
+  // dozen links and buries the three notes that were actually wanted. So
+  // documents stand on their own, and every other database waits behind
+  // one line until asked for - unless nothing was found in documents at
+  // all, in which case there is nothing to bury and the rest opens itself.
+  const documentGroups = groups.filter((g) => g.section.key === 'documents');
+  const otherGroups = groups.filter((g) => g.section.key !== 'documents');
+  const otherCount = otherGroups.reduce((sum, g) => sum + g.hits.length, 0);
+  const [showOthers, setShowOthers] = useState(false);
+  const othersOpen = showOthers || documentGroups.length === 0;
 
   function open(target: SearchTarget) {
     switch (target.kind) {
@@ -92,32 +102,51 @@ export default function SearchScreen() {
             <Text style={styles.empty}>Нічого не знайдено</Text>
           )}
 
-          {groups.map((group) => (
-            <View key={group.section.key} style={styles.group}>
-              <View style={styles.groupHeader}>
-                <Ionicons name={group.section.icon} size={15} color={group.section.color} />
-                <Text style={[styles.groupLabel, { color: group.section.color }]}>{group.section.label}</Text>
-                <Text style={styles.groupCount}>{group.hits.length}</Text>
-              </View>
-              {group.hits.map((hit: SearchHit) => (
-                <Pressable key={hit.key} style={styles.row} onPress={() => open(hit.target)}>
-                  <View style={[styles.rowIcon, { backgroundColor: `${group.section.color}22` }]}>
-                    <Ionicons name={group.section.icon} size={16} color={group.section.color} />
-                  </View>
-                  <View style={styles.rowText}>
-                    <Text style={styles.rowTitle} numberOfLines={1}>
-                      {hit.title || 'Без назви'}
-                    </Text>
-                    {hit.match && <Highlighted match={hit.match} />}
-                  </View>
-                </Pressable>
-              ))}
-            </View>
-          ))}
+          {renderGroups(documentGroups)}
+
+          {otherGroups.length > 0 && (
+            <Pressable style={styles.otherToggle} onPress={() => setShowOthers((v) => !v)}>
+              <Ionicons
+                name={othersOpen ? 'chevron-down' : 'chevron-forward'}
+                size={16}
+                color={GLASS_TEXT_MUTED}
+              />
+              <Text style={styles.otherToggleLabel}>
+                {othersOpen ? 'Інші бази' : `Ще ${otherCount} в інших базах`}
+              </Text>
+            </Pressable>
+          )}
+
+          {othersOpen && renderGroups(otherGroups)}
         </ScrollView>
       </ContentColumn>
     </View>
   );
+
+  function renderGroups(shown: ReturnType<typeof groupHits>) {
+    return shown.map((group) => (
+      <View key={group.section.key} style={styles.group}>
+        <View style={styles.groupHeader}>
+          <Ionicons name={group.section.icon} size={15} color={group.section.color} />
+          <Text style={[styles.groupLabel, { color: group.section.color }]}>{group.section.label}</Text>
+          <Text style={styles.groupCount}>{group.hits.length}</Text>
+        </View>
+        {group.hits.map((hit: SearchHit) => (
+          <Pressable key={hit.key} style={styles.row} onPress={() => open(hit.target)}>
+            <View style={[styles.rowIcon, { backgroundColor: `${group.section.color}22` }]}>
+              <Ionicons name={group.section.icon} size={16} color={group.section.color} />
+            </View>
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle} numberOfLines={1}>
+                {hit.title || 'Без назви'}
+              </Text>
+              {hit.match && <Highlighted match={hit.match} />}
+            </View>
+          </Pressable>
+        ))}
+      </View>
+    ));
+  }
 }
 
 // The matched fragment, lit up inside the line it was found in.
@@ -168,6 +197,20 @@ const styles = StyleSheet.create({
   },
   group: {
     marginBottom: 18,
+  },
+  // The one line every other database waits behind.
+  otherToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    marginBottom: 6,
+  },
+  otherToggleLabel: {
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT_MUTED,
   },
   groupHeader: {
     flexDirection: 'row',

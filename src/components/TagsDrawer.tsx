@@ -7,9 +7,7 @@ import { RootStackParamList } from '../navigation';
 import {
   GRID_TILES,
   Tile,
-  WIDE_TILE_ICON,
-  WIDE_TILE_KEY,
-  WIDE_TILE_LABEL,
+  WIDE_TILES,
   openDatabaseTile,
 } from '../constants/databaseTiles';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
@@ -480,15 +478,21 @@ export default function TagsDrawer({
             />
             {!databasesCollapsed && (
               <View style={styles.tileGrid}>
-                <Pressable
-                  style={[styles.tile, styles.tileWide]}
-                  onPress={() => openDatabase(() => navigation.navigate('Tasks'))}
-                >
-                  <Ionicons name={WIDE_TILE_ICON} size={20} color={colorFor(WIDE_TILE_KEY)} />
-                  <Text style={[styles.tileLabel, { color: colorFor(WIDE_TILE_KEY) }]} numberOfLines={1}>
-                    {WIDE_TILE_LABEL}
-                  </Text>
-                </Pressable>
+                {/* Documents first and across the whole row: it is the
+                    database the app is about, and every other one here is
+                    a slice of what lives inside it. */}
+                {WIDE_TILES.map((tile: Tile) => (
+                  <Pressable
+                    key={tile.key}
+                    style={[styles.tile, styles.tileWide]}
+                    onPress={() => openDatabase(() => openDatabaseTile(navigation, tile))}
+                  >
+                    <Ionicons name={tile.icon} size={20} color={colorFor(tile.key)} />
+                    <Text style={[styles.tileLabel, { color: colorFor(tile.key) }]} numberOfLines={1}>
+                      {tile.label}
+                    </Text>
+                  </Pressable>
+                ))}
 
                 {GRID_TILES.map((tile: Tile) => (
                   <Pressable
