@@ -11,8 +11,8 @@ import { useIsFocused } from '@react-navigation/native';
 import { GlassPortal } from './GlassPortal';
 import { useBlurTarget } from './GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
-import { NAV_BUTTON, NAV_GAP, NAV_PADDING, RAIL_RIGHT } from '../constants/rail';
-import { useRail } from '../hooks/useRail';
+import { NAV_BOTTOM, NAV_BUTTON, NAV_GAP, NAV_PADDING } from '../constants/rail';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Outline glyphs at 24, the same set and the same size as everything else
 // on this screen - what made these read as thinner and smaller before was
@@ -37,7 +37,7 @@ const ICON_SIZE = 24;
 // target wraps.
 export default function FloatingIslandTabBar({ state, navigation }: MaterialTopTabBarProps) {
   const blurTarget = useBlurTarget();
-  const rail = useRail();
+  const insets = useSafeAreaInsets();
   // Held down, the island shrinks to the row of dots a home screen uses
   // to say which page you are on: the swipe between tabs is the way
   // around now, and the buttons are only the shortcut. Held again, it
@@ -63,7 +63,7 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
 
   return (
     <GlassPortal>
-      <View style={[styles.wrap, { bottom: rail.navBottom }]} pointerEvents="box-none">
+      <View style={[styles.wrap, { bottom: NAV_BOTTOM + insets.bottom }]} pointerEvents="box-none">
         {collapsed ? (
           <Pressable style={styles.dots} onLongPress={toggleCollapsed} delayLongPress={400}>
             <BlurView
@@ -134,14 +134,18 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
 }
 
 const styles = StyleSheet.create({
+  // Back across the foot of the screen, centred, the way it was before it
+  // stood on the rail: the swipe between tabs is the main way around now,
+  // and the island is the shortcut - which belongs under the thumb rather
+  // than up the side.
   wrap: {
     position: 'absolute',
-    right: RAIL_RIGHT,
-    // `bottom` comes from useRail - the rail spaces its four pieces out
-    // between the group tabs at the head of the screen and the tag row at
-    // its foot.
+    left: 0,
+    right: 0,
+    alignItems: 'center',
   },
   island: {
+    flexDirection: 'row',
     gap: NAV_GAP,
     backgroundColor: GLASS_ISLAND,
     borderWidth: 1,
@@ -155,6 +159,7 @@ const styles = StyleSheet.create({
   },
   // The collapsed island: the page dots, in the same glass capsule.
   dots: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
