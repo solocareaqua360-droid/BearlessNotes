@@ -231,6 +231,13 @@ export default function DatabasesScreen() {
               </Pressable>
             ))}
 
+            {/* Everything above is built in; everything below it is yours -
+                the databases you made and the two tiles that make more.
+                Full width on purpose: inside a wrapping row that is also
+                what forces the break, so the line never ends up sharing a
+                row with a tile. */}
+            <View style={styles.sectionRule} />
+
             {customDatabases.map((cdb) => {
               const color = cdb.color ?? colorForDocument(cdb.id).background;
               return (
@@ -367,7 +374,14 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 12,
   },
-  grid: {
+  sectionRule: {
+    width: '100%',
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    marginTop: 4,
+    marginBottom: 16,
+  },
+    grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
