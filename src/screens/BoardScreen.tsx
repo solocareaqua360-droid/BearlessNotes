@@ -75,6 +75,7 @@ import { importGroupToBoard } from '../utils/importGroupToBoard';
 import { Group } from '../types';
 import DocumentEditorScreen from './DocumentEditorScreen';
 import { useRail } from '../hooks/useRail';
+import { useCanvasWheel } from '../hooks/useCanvasWheel';
 import { FONT_BOLD, FONT_EXTRABOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_ISLAND } from '../constants/glass';
 import { BlurView } from 'expo-blur';
@@ -1346,6 +1347,21 @@ export default function BoardScreen() {
     height: Math.abs(marqueeCurrentY.value - marqueeStartY.value),
   }));
 
+  // A trackpad and a mouse have no pinch; in a browser this is what
+  // gives the board its zoom (see useCanvasWheel). A no-op on the phone.
+  const canvasRef = useRef<View | null>(null);
+  useCanvasWheel(canvasRef, {
+    scale,
+    savedScale,
+    translateX,
+    translateY,
+    savedTranslateX,
+    savedTranslateY,
+    viewport,
+    minScale: MIN_SCALE,
+    maxScale: MAX_SCALE,
+  });
+
   const worldAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }, { translateY: translateY.value }, { scale: scale.value }],
   }));
@@ -1945,7 +1961,7 @@ export default function BoardScreen() {
         }
       >
         <GestureDetector gesture={canvasGesture}>
-          <View style={[StyleSheet.absoluteFill, styles.canvasSurface]}>
+          <View ref={canvasRef} style={[StyleSheet.absoluteFill, styles.canvasSurface]}>
             <Animated.View style={[styles.world, worldAnimatedStyle]}>
               {/* Underneath everything - a column is a backdrop its cards sit
                   on. box-none so only the header takes touches and the rest
