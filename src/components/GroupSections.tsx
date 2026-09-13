@@ -70,6 +70,7 @@ export default function GroupSections({
   currentKind,
   tags,
   sidePadding = 0,
+  onOpen,
 }: {
   // The group in view, or null when none is (everything below is skipped).
   groupId: string | null;
@@ -81,9 +82,19 @@ export default function GroupSections({
   // documents list has none of its own (its cards carry theirs), so it
   // passes 20; every other list already pads its own content.
   sidePadding?: number;
+  // Called just before anything is opened - what a sheet uses to get out
+  // of the way first, since it would otherwise stay standing over the
+  // screen it just sent the user to.
+  onOpen?: () => void;
 }) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const enabled = !!groupId;
+  // Every open goes through here, so the sheet above gets its chance to
+  // close before the screen underneath changes.
+  const open = (go: () => void) => {
+    onOpen?.();
+    go();
+  };
   const documents = useCollection('documents', enabled);
   const links = useCollection('links', enabled);
   const photos = useCollection('photos', enabled);
@@ -159,7 +170,7 @@ export default function GroupSections({
                       key={row.id}
                       photo={photo}
                       tags={tagsFor(row)}
-                      onPress={() => setViewerPhoto(photo.imageUri)}
+                      onPress={() => open(() => setViewerPhoto(photo.imageUri))}
                     />
                   );
                 })}
@@ -183,7 +194,7 @@ export default function GroupSections({
                         previewText={previewText}
                         checklistItems={checklistItems}
                         flush
-                        onPress={() => navigation.navigate('Editor', { documentId: row.id })}
+                        onPress={() => open(() => navigation.navigate('Editor', { documentId: row.id }))}
                       />
                     );
                   }
@@ -199,12 +210,12 @@ export default function GroupSections({
                         }}
                         tags={tagsFor(row)}
                         onPress={() =>
-                          openFileExternally({
+                          open(() => openFileExternally({
                             fileUri: row.fileUri as string,
                             fileName: row.fileName as string,
                             mimeType: row.mimeType as string | undefined,
                             driveFileId: row.driveFileId as string | undefined,
-                          })
+                          }))
                         }
                       />
                     );
@@ -221,7 +232,7 @@ export default function GroupSections({
                         tagIds: (row.tagIds as string[] | undefined) ?? [],
                       }}
                       tags={tagsFor(row)}
-                      onPress={() => Linking.openURL(row.url as string).catch(() => {})}
+                      onPress={() => open(() => Linking.openURL(row.url as string).catch(() => {}))}
                     />
                   );
                 })}
@@ -250,7 +261,9 @@ export default function GroupSections({
                   key={row.id}
                   style={[styles.recordRow, { backgroundColor: background }]}
                   onPress={() =>
-                    navigation.navigate('CustomDatabase', { databaseId: database.id, openRowId: row.id })
+                    open(() =>
+                      navigation.navigate('CustomDatabase', { databaseId: database.id, openRowId: row.id })
+                    )
                   }
                 >
                   <Ionicons

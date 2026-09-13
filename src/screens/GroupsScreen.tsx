@@ -27,6 +27,8 @@ import { groupKindFields, kindsOf, labelForKind } from '../utils/groups';
 import { rowTitleOf } from '../utils/customRowDisplay';
 import ContentColumn from '../components/ContentColumn';
 import { GroupItem, useGroupItems } from '../hooks/useGroupItems';
+import GroupSections from '../components/GroupSections';
+import { useTags } from '../hooks/useTags';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#69736E';
@@ -51,6 +53,9 @@ export default function GroupsScreen() {
     isLoading,
     titleForItem,
   } = useGroupItems();
+  // Only for the chips the cards carry - the drawer's own tag tree is a
+  // different thing entirely.
+  const { tags } = useTags();
   const [openGroupId, setOpenGroupId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [renamingGroup, setRenamingGroup] = useState<Group | null>(null);
@@ -255,32 +260,23 @@ export default function GroupsScreen() {
                     </Pressable>
                   </View>
 
+                  {/* What is in the group, drawn as the cards each
+                      database draws at home - see GroupSections. It was a
+                      column of grey rows with a generic icon each, which
+                      said the kind of thing and nothing about the thing
+                      itself. */}
                   <ScrollView style={styles.itemList} keyboardShouldPersistTaps="handled">
                     {openItems.length === 0 ? (
                       <Text style={styles.sheetEmpty}>У цій групі поки нічого немає.</Text>
                     ) : (
-                      openItems.map((item) => (
-                        <Pressable
-                          key={`${item.kind}:${item.id}`}
-                          style={styles.itemRow}
-                          onPress={() => {
-                            setOpenGroupId(null);
-                            openItem(item);
-                          }}
-                        >
-                          <View style={styles.itemIcon}>
-                            <Ionicons name={item.icon} size={16} color={ACCENT} />
-                          </View>
-                          <View style={styles.rowBody}>
-                            <Text style={styles.itemTitle} numberOfLines={1}>
-                              {titleForItem(item)}
-                            </Text>
-                            <Text style={styles.itemKind} numberOfLines={1}>
-                              {labelForKind(item.kind, customDatabaseNames)}
-                            </Text>
-                          </View>
-                        </Pressable>
-                      ))
+                      <GroupSections
+                        groupId={openGroupId}
+                        // Nothing is "the current database" here: this is
+                        // the group's own view, so every section belongs.
+                        currentKind=""
+                        tags={tags}
+                        onOpen={() => setOpenGroupId(null)}
+                      />
                     )}
                   </ScrollView>
                 </>
@@ -509,23 +505,10 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 10,
   },
-  itemIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   itemTitle: {
     fontSize: 15,
     fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
     flexShrink: 1,
-  },
-  itemKind: {
-    fontSize: 12,
-    fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
   },
 });
