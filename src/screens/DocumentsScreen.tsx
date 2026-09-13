@@ -332,7 +332,7 @@ export default function DocumentsScreen() {
   const searchMatches = searching ? displayedDocuments : [];
   // Pulled down from the top of the list, the search comes out - see
   // usePullToSearch.
-  const pull = usePullToSearch(() => setSearchOpen(true), chromeBottom);
+  const pull = usePullToSearch(() => setSearchOpen(true));
 
   // The stickers' tab isn't a filter over the documents - it replaces
   // them.

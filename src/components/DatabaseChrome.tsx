@@ -94,7 +94,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   const chromeTop = insets.top + CHROME_TOP;
   const chromeBottom = chromeTop + chromeHeight + 8;
   // Pulled down from the top of the list, the search comes out.
-  const pull = usePullToSearch(() => list.setIsSearching(true), chromeBottom);
+  const pull = usePullToSearch(() => list.setIsSearching(true));
 
   return (
     <View style={styles.container}>
