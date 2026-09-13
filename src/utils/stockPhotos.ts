@@ -1,4 +1,5 @@
 import { getPexelsKey } from './pexelsKey';
+import { toSearchTerm } from './queryToEnglish';
 
 // A free picture library to pull tile backgrounds from, the way Notion's
 // own cover picker reaches into Unsplash.
@@ -38,6 +39,18 @@ export type StockPhoto = {
 // number sends the next person hunting; "page_size may not exceed 20 for
 // anonymous requests" - which is what a 401 from Openverse actually
 // meant - points straight at the line to change.
+// A credit is a person's name, and now and then it arrives as a block of
+// HTML instead - Wikimedia's own markup, tags and all. Whatever is left
+// after the tags is the name.
+function cleanCredit(raw: string): string {
+  const text = raw
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&[a-z]+;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length > 40 ? `${text.slice(0, 40)}…` : text;
+}
+
 async function describe(response: Response, who: string): Promise<string> {
   try {
     const body = (await response.json()) as { detail?: string };
@@ -67,7 +80,7 @@ type OpenverseResult = {
 };
 
 async function searchOpenverse(query: string, page: number): Promise<StockPhoto[]> {
-  const trimmed = query.trim();
+  const trimmed = (await toSearchTerm(query)).trim();
   const params = [
     // Twenty is the ceiling for an anonymous request, and going over it
     // is refused with a 401 - a status that says "unauthorised" for what
@@ -79,7 +92,14 @@ async function searchOpenverse(query: string, page: number): Promise<StockPhoto[
     // somewhere, and a tile background is no place to put a credit.
     `license=cc0,pdm`,
     `size=large`,
-    trimmed ? `q=${encodeURIComponent(trimmed)}` : 'q=texture',
+    // Photographs only, and only in formats that can actually be drawn.
+    // Without these the search returns the whole indexed web: maps and
+    // coats of arms as SVG, which React Native cannot render at all and
+    // whose thumbnails Openverse itself fails to make (424). With them
+    // every result is a real photograph from StockSnap or Flickr.
+    `category=photograph`,
+    `extension=jpg,png`,
+    `q=${encodeURIComponent(trimmed || 'texture')}`,
   ];
   const response = await fetch(`https://api.openverse.org/v1/images/?${params.join('&')}`, {
     headers: { 'User-Agent': 'mindEva' },
@@ -94,7 +114,7 @@ async function searchOpenverse(query: string, page: number): Promise<StockPhoto[
       fullUrl: item.url,
       width: item.width ?? 0,
       height: item.height ?? 0,
-      credit: item.creator || item.title || 'Відкрита ліцензія',
+      credit: cleanCredit(item.creator || item.title || '') || 'Відкрита ліцензія',
     }));
 }
 
@@ -111,7 +131,7 @@ type PexelsResult = {
 async function searchPexels(query: string, page: number): Promise<StockPhoto[]> {
   const key = await getPexelsKey();
   if (!key) throw new StockPhotosNotConfigured();
-  const trimmed = query.trim();
+  const trimmed = (await toSearchTerm(query)).trim();
   const path = trimmed
     ? `/v1/search?query=${encodeURIComponent(trimmed)}&per_page=30&page=${page}&orientation=square`
     : `/v1/curated?per_page=30&page=${page}`;

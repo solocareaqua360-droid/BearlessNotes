@@ -55,6 +55,10 @@ export default function StockPhotoPicker({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  // Openverse makes its own thumbnails and sometimes fails to (424).
+  // The picture itself is always there, so that is what it falls back
+  // to rather than leaving an empty square.
+  const [brokenThumbs, setBrokenThumbs] = useState<Record<string, true>>({});
   const requestId = useRef(0);
 
   useEffect(() => {
@@ -170,7 +174,9 @@ export default function StockPhotoPicker({
               loading ? (
                 <ActivityIndicator color={GLASS_TEXT} style={styles.loading} />
               ) : (
-                <Text style={styles.emptyBody}>Нічого не знайшлося</Text>
+                <Text style={styles.emptyBody}>
+                  Нічого не знайшлося. Бібліотека шукає англійською - спробуй інше слово.
+                </Text>
               )
             }
             renderItem={({ item }) => (
@@ -179,7 +185,12 @@ export default function StockPhotoPicker({
                 disabled={downloadingId !== null}
                 onPress={() => pick(item)}
               >
-                <Image source={{ uri: item.thumbUrl }} style={styles.cellImage} resizeMode="cover" />
+                <Image
+                  source={{ uri: brokenThumbs[item.id] ? item.fullUrl : item.thumbUrl }}
+                  style={styles.cellImage}
+                  resizeMode="cover"
+                  onError={() => setBrokenThumbs((prev) => ({ ...prev, [item.id]: true }))}
+                />
                 {downloadingId === item.id && (
                   <View style={styles.cellOverlay}>
                     <ActivityIndicator color="#fff" />
