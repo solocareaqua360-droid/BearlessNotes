@@ -722,6 +722,11 @@ function FormattedText({ segments, defaultColor }: { segments: TextSegment[]; de
 // SortableBlockRow below, not in here.
 type BlockRowProps = {
   item: Block;
+  // The daily note in the calendar draws no drag handles: its sheet runs
+  // the full width and passes under the rail, so a column of handles
+  // would sit beneath the buttons. Dragging still works - the whole row
+  // is the drag target, the handle was only ever a sign that it is.
+  hideHandle?: boolean;
   isSelected: boolean;
   isSelectMode: boolean;
   // Only the one block being written in is a live TextInput - every other
@@ -960,6 +965,7 @@ function TableBlockContent({
 
 function BlockRow({
   item,
+  hideHandle,
   isSelected,
   isSelectMode,
   isActive,
@@ -1418,21 +1424,23 @@ function BlockRow({
       ]}
     >
       {content}
-      {/* On the right. The rail runs down that edge, so whatever holds
-          these blocks has to stop short of it - see the note plate's own
-          right margin. */}
-      <Pressable
-        hitSlop={8}
-        disabled={!isSelectMode}
-        onPress={() => onToggleSelected(item.id)}
-        style={styles.dragHandle}
-      >
-        <Ionicons
-          name={isSelectMode ? (isSelected ? 'checkmark-circle' : 'ellipse-outline') : 'reorder-two-outline'}
-          size={isSelectMode ? 26 : 20}
-          color={isSelected ? ACCENT : '#9CA3AF'}
-        />
-      </Pressable>
+      {/* On the right. Hidden where the sheet runs under the rail (the
+          calendar's daily note) - but never while selecting: there it is
+          the checkbox, and the only thing showing what is picked. */}
+      {(!hideHandle || isSelectMode) && (
+        <Pressable
+          hitSlop={8}
+          disabled={!isSelectMode}
+          onPress={() => onToggleSelected(item.id)}
+          style={styles.dragHandle}
+        >
+          <Ionicons
+            name={isSelectMode ? (isSelected ? 'checkmark-circle' : 'ellipse-outline') : 'reorder-two-outline'}
+            size={isSelectMode ? 26 : 20}
+            color={isSelected ? ACCENT : '#9CA3AF'}
+          />
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -1453,6 +1461,7 @@ function BlockRow({
 // instead of live-reordering + re-animating the whole list on every frame.
 type SortableBlockRowProps = {
   item: Block;
+  hideHandle?: boolean;
   isSelected: boolean;
   isSelectMode: boolean;
   isActive: boolean;
@@ -1510,6 +1519,7 @@ function SortableBlockRow({
   compressTowardOffset,
   listNumber,
   textVersion,
+  hideHandle,
   onLayout,
   onDragStart,
   onDragUpdate,
@@ -1588,6 +1598,7 @@ function SortableBlockRow({
         <Animated.View style={compressStyle}>
           <BlockRow
             item={item}
+            hideHandle={hideHandle}
             isSelected={isSelected}
             isSelectMode={isSelectMode}
             isActive={isActive}
@@ -1624,6 +1635,8 @@ function SortableBlockRow({
   );
 }
 type BlockListProps = {
+  // Passed straight through to every row - see BlockRow's own hideHandle.
+  hideHandle?: boolean;
   blocks: Block[];
   onReorder: (blocks: Block[]) => void;
   selectedIds: Set<string>;
@@ -1691,6 +1704,7 @@ function BlockList({
   onOpenCustomView,
   onInputRef,
   paperColor,
+  hideHandle,
 }: BlockListProps) {
   const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
   // The block actually long-pressed to start the drag - the rest of a
@@ -1876,6 +1890,7 @@ function BlockList({
         <SortableBlockRow
           key={item.id}
           item={item}
+          hideHandle={hideHandle}
           isSelected={selectedIds.has(item.id)}
           isSelectMode={isSelectMode}
           isActive={focusedBlockId === item.id}
@@ -4265,6 +4280,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         )}
 
         <BlockList
+          // The daily note's sheet runs under the rail, so its rows draw
+          // no handle column - see BlockRow's hideHandle.
+          hideHandle={embedded}
           blocks={blocks}
           onReorder={handleReorderBlocks}
           selectedIds={selectedIds}

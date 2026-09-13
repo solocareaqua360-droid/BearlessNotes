@@ -1486,9 +1486,12 @@ const styles = StyleSheet.create({
   noteArea: {
     flex: 1,
     marginLeft: 16,
-    // The same right edge the calendar plate keeps: the rail runs down
-    // that side, and the sheet's own block handles sit against it.
-    marginRight: RAIL_CLEARANCE,
+    // Back out to the same edge as everything else: the sheet runs the
+    // full width and passes UNDER the rail, the way the document cards
+    // do. It was stopping short of the rail only because the blocks'
+    // drag handles sat against that edge - and those are gone from the
+    // daily note now (see BlockRow's hideHandle).
+    marginRight: 16,
     borderRadius: 16,
     overflow: 'hidden',
   },
