@@ -16,6 +16,7 @@ import SortMenuRows from './SortMenuRows';
 import TagsDrawer, { removeTagFromFilter } from './TagsDrawer';
 import BulkActionBar from './BulkActionBar';
 import { useRail } from '../hooks/useRail';
+import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_ISLAND } from '../constants/glass';
@@ -67,6 +68,12 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   // column: toasts, viewers, the sheets a database opens. Drawn outside
   // the column, the way the drawer is.
   overlay?: ReactNode;
+  // On a screen wide enough for two columns, something that stands beside
+  // the list - the left half, the way an open document does on the
+  // documents screen. The list keeps the right half, against its rail.
+  // Ignored on a phone; the caller shows the same thing as an overlay
+  // there.
+  pane?: ReactNode;
 };
 
 export default function DatabaseChrome<T extends { id: string }>({
@@ -81,7 +88,14 @@ export default function DatabaseChrome<T extends { id: string }>({
   bulk,
   children,
   overlay,
+  pane,
 }: DatabaseChromeProps<T>) {
+  const { isTwoPane } = useResponsiveLayout();
+  const splitting = isTwoPane && !!pane;
+  // Where the list's own column starts, so the floating tabs begin at its
+  // edge rather than at the window's - they span the window, so that a
+  // long row can still be scrolled across the whole display.
+  const [listPaneX, setListPaneX] = useState(0);
   const blurTarget = useBlurTarget();
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
@@ -117,67 +131,8 @@ export default function DatabaseChrome<T extends { id: string }>({
     },
   });
 
-  return (
-    <View style={styles.container}>
-      {/* The same fixed gradient every screen stands on. 1px bled past
-          every edge - windowWidth/Height can round to a hair less than the
-          real screen, leaving a sliver of white at an edge otherwise. */}
-      <Svg
-        width={windowWidth + 2}
-        height={windowHeight + 2}
-        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
-        pointerEvents="none"
-      >
-        <Defs>
-          <LinearGradient id="databaseBg" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0.03" stopColor="#705648" />
-            <Stop offset="0.52" stopColor="#69736E" />
-            <Stop offset="1" stopColor="#000000" />
-          </LinearGradient>
-        </Defs>
-        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#databaseBg)" />
-      </Svg>
-
-      {/* Through the portal, which is where a blur is safe - inside the
-          screen it would be blurring a picture it is part of. */}
-      {isFocused && !searchingAlone && (
-        <GlassPortal>
-          <View
-            style={[styles.railWrap, { top: insets.top + CHROME_TOP + CAPSULE_DROP }]}
-            pointerEvents="box-none"
-          >
-            <View style={styles.headerButtons}>
-              <BlurView
-                intensity={60}
-                tint="dark"
-                blurMethod="dimezisBlurView"
-                blurTarget={blurTarget ?? undefined}
-                style={StyleSheet.absoluteFill}
-                pointerEvents="none"
-              />
-              <Pressable hitSlop={8} onPress={() => list.setIsSearching((prev) => !prev)}>
-                <Ionicons
-                  name={list.isSearching ? 'close-outline' : 'search-outline'}
-                  size={24}
-                  color="#fff"
-                />
-              </Pressable>
-              <View style={styles.headerButtonsDivider} />
-              <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
-              </Pressable>
-              <View style={styles.headerButtonsDivider} />
-              {/* The way out of this database, where the arrow in the
-                  header's corner used to be. */}
-              <Pressable hitSlop={8} onPress={onBack}>
-                <Ionicons name="arrow-back-outline" size={24} color="#fff" />
-              </Pressable>
-            </View>
-          </View>
-        </GlassPortal>
-      )}
-
-      <ContentColumn>
+  const column = (
+    <>
         {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
         {menuOpen && (
           <View style={styles.menuPanel}>
@@ -222,6 +177,7 @@ export default function DatabaseChrome<T extends { id: string }>({
                   unassignedLabel="Без групи"
                   dark
                   blurTarget={blurTarget}
+                  startPadding={splitting ? listPaneX + 20 : undefined}
                   endPadding={RAIL_CLEARANCE}
                 />
               )}
@@ -309,7 +265,79 @@ export default function DatabaseChrome<T extends { id: string }>({
             {children(list.tagFilter || list.isSearching ? 0 : chromeBottom, pull.listProps)}
           </GestureDetector>
         )}
-      </ContentColumn>
+    </>
+  );
+
+  return (
+    <View style={styles.container}>
+      {/* The same fixed gradient every screen stands on. 1px bled past
+          every edge - windowWidth/Height can round to a hair less than the
+          real screen, leaving a sliver of white at an edge otherwise. */}
+      <Svg
+        width={windowWidth + 2}
+        height={windowHeight + 2}
+        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
+        pointerEvents="none"
+      >
+        <Defs>
+          <LinearGradient id="databaseBg" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0.03" stopColor="#705648" />
+            <Stop offset="0.52" stopColor="#69736E" />
+            <Stop offset="1" stopColor="#000000" />
+          </LinearGradient>
+        </Defs>
+        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#databaseBg)" />
+      </Svg>
+
+      {/* Through the portal, which is where a blur is safe - inside the
+          screen it would be blurring a picture it is part of. */}
+      {isFocused && !searchingAlone && (
+        <GlassPortal>
+          <View
+            style={[styles.railWrap, { top: insets.top + CHROME_TOP + CAPSULE_DROP }]}
+            pointerEvents="box-none"
+          >
+            <View style={styles.headerButtons}>
+              <BlurView
+                intensity={60}
+                tint="dark"
+                blurMethod="dimezisBlurView"
+                blurTarget={blurTarget ?? undefined}
+                style={StyleSheet.absoluteFill}
+                pointerEvents="none"
+              />
+              <Pressable hitSlop={8} onPress={() => list.setIsSearching((prev) => !prev)}>
+                <Ionicons
+                  name={list.isSearching ? 'close-outline' : 'search-outline'}
+                  size={24}
+                  color="#fff"
+                />
+              </Pressable>
+              <View style={styles.headerButtonsDivider} />
+              <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
+                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
+              </Pressable>
+              <View style={styles.headerButtonsDivider} />
+              {/* The way out of this database, where the arrow in the
+                  header's corner used to be. */}
+              <Pressable hitSlop={8} onPress={onBack}>
+                <Ionicons name="arrow-back-outline" size={24} color="#fff" />
+              </Pressable>
+            </View>
+          </View>
+        </GlassPortal>
+      )}
+
+      {splitting ? (
+        <View style={styles.paneRow}>
+          <View style={styles.listPane} onLayout={(e) => setListPaneX(e.nativeEvent.layout.x)}>
+            {column}
+          </View>
+          <View style={styles.sidePane}>{pane}</View>
+        </View>
+      ) : (
+        <ContentColumn>{column}</ContentColumn>
+      )}
 
       {overlay}
 
@@ -401,6 +429,22 @@ const styles = StyleSheet.create({
   },
   emptySearch: {
     flex: 1,
+  },
+  // Two columns on a wide screen. Reversed, so the list keeps the right
+  // half against the rail that belongs to it while staying the first
+  // thing in the tree - it is the screen.
+  paneRow: {
+    flex: 1,
+    flexDirection: 'row-reverse',
+  },
+  listPane: {
+    flex: 1,
+  },
+  sidePane: {
+    flex: 1,
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(255,255,255,0.15)',
+    overflow: 'hidden',
   },
   railWrap: {
     position: 'absolute',

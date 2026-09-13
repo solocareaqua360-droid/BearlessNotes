@@ -50,6 +50,7 @@ import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { ensureFileIsHere, openFileExternally } from '../utils/openFileExternally';
+import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
@@ -88,6 +89,7 @@ type FileItem = {
 
 export default function FilesScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { isTwoPane } = useResponsiveLayout();
   const [files, setFiles] = useState<FileItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [renamingFile, setRenamingFile] = useState<FileItem | null>(null);
@@ -485,9 +487,12 @@ export default function FilesScreen() {
         onCopyObject: copySelectedToClipboard,
         onDelete: confirmDeleteSelected,
       }}
-      overlay={
-        <>
+      // Beside the list on a wide screen, over everything on a phone - the
+      // same quick look either way.
+      pane={
+        isTwoPane ? (
           <DocumentQuickLook
+            embedded
             file={quickLook}
             onClose={() => setQuickLook(null)}
             onOpenElsewhere={() => {
@@ -496,6 +501,21 @@ export default function FilesScreen() {
               if (file) openFileExternally(file);
             }}
           />
+        ) : undefined
+      }
+      overlay={
+        <>
+          {!isTwoPane && (
+            <DocumentQuickLook
+              file={quickLook}
+              onClose={() => setQuickLook(null)}
+              onOpenElsewhere={() => {
+                const file = quickLook?.file;
+                setQuickLook(null);
+                if (file) openFileExternally(file);
+              }}
+            />
+          )}
           {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
           {!toast && justAddedFile && (
             <UndoToast

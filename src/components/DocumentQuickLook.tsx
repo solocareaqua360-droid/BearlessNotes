@@ -125,12 +125,17 @@ export default function DocumentQuickLook({
   file,
   onClose,
   onOpenElsewhere,
+  embedded,
 }: {
   // null closes it.
   file: { uri: string; name: string; kind: QuickLookKind } | null;
   onClose: () => void;
   // The real program, one tap away.
   onOpenElsewhere: () => void;
+  // Drawn in place - the left half of a wide screen, beside the list -
+  // rather than as a sheet over everything. Same look, same bar; only
+  // where it stands differs.
+  embedded?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const [html, setHtml] = useState<string | null>(null);
@@ -174,10 +179,9 @@ export default function DocumentQuickLook({
     };
   }, [file]);
 
-  return (
-    <Modal visible={file !== null} animationType="slide" onRequestClose={onClose}>
+  const body = (
       <View style={styles.root}>
-        <View style={[styles.bar, { paddingTop: insets.top + 8 }]}>
+        <View style={[styles.bar, { paddingTop: (embedded ? 0 : insets.top) + 8 }]}>
           <Pressable hitSlop={10} onPress={onClose}>
             <Ionicons name="close-outline" size={26} color={GLASS_TEXT} />
           </Pressable>
@@ -216,6 +220,12 @@ export default function DocumentQuickLook({
           </View>
         )}
       </View>
+  );
+
+  if (embedded) return file ? body : null;
+  return (
+    <Modal visible={file !== null} animationType="slide" onRequestClose={onClose}>
+      {body}
     </Modal>
   );
 }
