@@ -82,6 +82,7 @@ import EditorToolbar, { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolba
 import { BlockAction } from '../components/blockActions';
 import { clearCopiedObject, getCopiedObject, useCopiedObject } from '../utils/objectClipboard';
 import { backupFileToDrive, ensureLocalFile } from '../utils/googleDrive';
+import { openFileExternally } from '../utils/openFileExternally';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
@@ -3886,19 +3887,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     });
   }
 
+  // Straight into the app built for that kind of file - a .docx into
+  // Office, a PDF into the reader - see openFileExternally, which is
+  // shared with the files database so a file opens the same way wherever
+  // it is tapped.
   async function openFileBlock(id: string) {
     const block = blocks.find((b) => b.id === id);
     if (!block?.fileUri) return;
-    const available = await Sharing.isAvailableAsync();
-    if (!available) return;
-    const restored = await ensureLocalFile(block.fileUri, block.driveFileId).catch(() => false);
-    if (!restored) {
-      Alert.alert('Файл недоступний', 'Його немає на цьому пристрої, а копії на Google Диску теж немає.');
-      return;
-    }
-    await Sharing.shareAsync(block.fileUri, {
+    await openFileExternally({
+      fileUri: block.fileUri,
+      fileName: block.fileName ?? 'Файл',
       mimeType: block.mimeType,
-      dialogTitle: block.fileName,
+      driveFileId: block.driveFileId,
     });
   }
 
