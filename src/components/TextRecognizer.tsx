@@ -56,24 +56,29 @@ async function assetText(module: number): Promise<string> {
 // URLs it can load, so they are written into one directory and pointed at
 // by name - the WebView is loaded from that same directory, which is what
 // makes them same-origin for it.
-function pageFor(images: string[], dirUrl: string): string {
-  // Every path absolute. Tesseract loads its worker as a Blob, and a blob
-  // has no directory of its own - so a relative corePath or langPath
-  // inside it resolves against nothing and the whole thing fails silently,
-  // which is exactly what a minute of waiting for text looked like.
+function pageFor(images: string[], dirUrl: string, library: string): string {
+  // The library is INLINE, not a <script src>. A file:// page asking the
+  // WebView for another file:// script does not fail - it hangs, and the
+  // parser waits at that tag forever, so the script after it never runs
+  // and not even "the page opened" is ever heard. Twice that looked like
+  // a recogniser that answers nothing.
+  //
+  // Every path handed to Tesseract is still absolute: it loads its worker
+  // as a Blob, and a blob has no directory of its own to resolve against.
   return `<!doctype html><html><head><meta charset="utf-8"></head><body>
-<script src="${dirUrl}tesseract.js"></script>
 <script>
   function post(m) { window.ReactNativeWebView.postMessage(JSON.stringify(m)); }
   function fail(e, where) {
     post({ ok: false, error: (where ? where + ': ' : '') + ((e && e.message) ? e.message : String(e)) });
   }
-  // Anything the page itself throws, including a script that failed to
-  // load - silence is the one thing this must never do.
   window.onerror = function (message) { fail(message, 'сторінка'); };
-  var images = ${JSON.stringify(images)};
-  // Before anything else: proof that the page opened and its script ran.
+  // Before anything else, so "never opened" can never look like "failed
+  // quietly" again.
   post({ stage: 'Відкрито' });
+</script>
+<script>${library}</script>
+<script>
+  var images = ${JSON.stringify(images)};
   (async function () {
     try {
       if (typeof Tesseract === 'undefined') { fail('бібліотека не завантажилась', 'старт'); return; }
@@ -81,7 +86,6 @@ function pageFor(images: string[], dirUrl: string): string {
       var worker = await Tesseract.createWorker('ukr', 1, {
         workerPath: '${dirUrl}tesseract-worker.js',
         corePath: '${dirUrl}tesseract-core.js',
-        // The folder the model sits in, uncompressed.
         langPath: '${dirUrl}'.replace(/\/$/, ''),
         gzip: false,
         logger: function (m) {
@@ -92,16 +96,12 @@ function pageFor(images: string[], dirUrl: string): string {
       var pages = [];
       for (var i = 0; i < images.length; i++) {
         post({ page: i + 1, of: images.length });
-        // By name, next to the page - see the note about inlining.
         var result = await worker.recognize('${dirUrl}' + images[i]);
         // Every word with the box it sits in, in reading order - what
         // lets a finger drag across the picture and pick a passage out
         // of it rather than taking the whole page or nothing.
         var words = (result.data.words || []).map(function (w) {
-          return {
-            text: w.text,
-            x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1,
-          };
+          return { text: w.text, x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 };
         });
         pages.push({
           text: result.data.text || '',
@@ -180,7 +180,7 @@ export default function TextRecognizer({
         }
         if (cancelled) return;
         const target = `${dir}page-${Date.now()}.html`;
-        await LegacyFileSystem.writeAsStringAsync(target, pageFor(images, dir));
+        await LegacyFileSystem.writeAsStringAsync(target, pageFor(images, dir, library));
         if (!cancelled) setPageUri(target);
       } catch (e) {
         if (!cancelled) onError((e as Error).message);
