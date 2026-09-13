@@ -45,7 +45,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
-import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
+import { CAPSULE_DROP, CHROME_TOP, NAV_BOTTOM, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 
 const NEW_TILE_KEY = '__new__';
 const IMPORT_TILE_KEY = '__import__';
@@ -421,7 +421,15 @@ export default function DatabasesScreen() {
         {/* The way out of arranging - and the only thing on screen that
             says the board is in it. */}
         {editing && (
-          <Pressable style={styles.doneButton} onPress={() => setEditing(false)}>
+          <Pressable
+            style={[
+              styles.doneButton,
+              // Clear of the island lying across the foot of the screen -
+              // its own height plus the gap it keeps from the edge.
+              { bottom: databasesInsets.bottom + NAV_BOTTOM + RAIL_WIDTH + 16 },
+            ]}
+            onPress={() => setEditing(false)}
+          >
             <Ionicons name="checkmark" size={18} color="#171310" />
             <Text style={styles.doneLabel}>Готово</Text>
           </Pressable>
@@ -790,7 +798,6 @@ const styles = StyleSheet.create({
   doneButton: {
     position: 'absolute',
     alignSelf: 'center',
-    bottom: 40,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
