@@ -12,9 +12,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import GlassLayer from './GlassLayer';
-import RenamePrompt from './RenamePrompt';
-import { getPexelsKey, setPexelsKey, subscribeToPexelsKey } from '../utils/pexelsKey';
-import { StockPhoto, StockPhotosNotConfigured, searchStockPhotos } from '../utils/stockPhotos';
+import { getPexelsKey, subscribeToPexelsKey } from '../utils/pexelsKey';
+import { StockPhoto, StockSource, searchStockPhotos } from '../utils/stockPhotos';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import {
   GLASS_BODY_BLURRED,
@@ -46,13 +45,16 @@ export default function StockPhotoPicker({
   // A local file, handed back exactly like a gallery pick would be.
   onPicked: (uri: string) => void;
 }) {
-  const [hasKey, setHasKey] = useState<boolean | null>(null);
-  const [enteringKey, setEnteringKey] = useState(false);
+  // Which library is being searched. Openverse needs no key at all, so
+  // the sheet opens working; Pexels appears as a second chip only for
+  // someone who has actually got a key.
+  const [source, setSource] = useState<StockSource>('open');
+  const [hasKey, setHasKey] = useState(false);
   const [query, setQuery] = useState('');
   const [photos, setPhotos] = useState<StockPhoto[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const requestId = useRef(0);
 
   useEffect(() => {
@@ -65,7 +67,7 @@ export default function StockPhotoPicker({
     const id = ++requestId.current;
     setLoading(true);
     setError(null);
-    searchStockPhotos(text)
+    searchStockPhotos(text, source)
       .then((result) => {
         if (id !== requestId.current) return;
         setPhotos(result);
@@ -73,7 +75,7 @@ export default function StockPhotoPicker({
       .catch((e) => {
         if (id !== requestId.current) return;
         setPhotos([]);
-        setError(e instanceof StockPhotosNotConfigured ? null : (e as Error).message);
+        setError((e as Error).message);
       })
       .finally(() => {
         if (id === requestId.current) setLoading(false);
@@ -83,12 +85,12 @@ export default function StockPhotoPicker({
   // Fetched once as soon as there is a key - Pexels' own curated feed, a
   // reasonable start before anyone has typed a word.
   useEffect(() => {
-    if (visible && hasKey) runSearch(query);
+    if (visible) runSearch(query);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, hasKey]);
+  }, [visible, source]);
 
   useEffect(() => {
-    if (!visible || !hasKey) return;
+    if (!visible) return;
     const timer = setTimeout(() => runSearch(query), 400);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -99,7 +101,7 @@ export default function StockPhotoPicker({
     try {
       const dir = `${LegacyFileSystem.cacheDirectory}stockphotos/`;
       await LegacyFileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => {});
-      const target = `${dir}pexels-${photo.id}.jpg`;
+      const target = `${dir}${photo.id}.jpg`;
       await LegacyFileSystem.downloadAsync(photo.fullUrl, target);
       onPicked(target);
     } catch (e) {
@@ -119,50 +121,49 @@ export default function StockPhotoPicker({
           </Pressable>
         </View>
 
+        <View style={styles.searchRow}>
+          <Ionicons name="search-outline" size={17} color={GLASS_TEXT_FAINT} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Наприклад: гори, кава, місто…"
+            placeholderTextColor={GLASS_TEXT_FAINT}
+            style={styles.searchInput}
+            returnKeyType="search"
+          />
+        </View>
+
+        {/* Only worth showing once there are two libraries to choose
+            between - otherwise it is a switch with one position. */}
         {hasKey && (
-          <View style={styles.searchRow}>
-            <Ionicons name="search-outline" size={17} color={GLASS_TEXT_FAINT} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Наприклад: гори, кава, місто…"
-              placeholderTextColor={GLASS_TEXT_FAINT}
-              style={styles.searchInput}
-              returnKeyType="search"
-            />
+          <View style={styles.sources}>
+            {(['open', 'pexels'] as StockSource[]).map((option) => (
+              <Pressable
+                key={option}
+                style={[styles.sourceChip, source === option && styles.sourceChipOn]}
+                onPress={() => setSource(option)}
+              >
+                <Text style={[styles.sourceLabel, source === option && styles.sourceLabelOn]}>
+                  {option === 'open' ? 'Відкриті' : 'Pexels'}
+                </Text>
+              </Pressable>
+            ))}
           </View>
         )}
 
-        {hasKey === null && (
-          <ActivityIndicator color={GLASS_TEXT} style={styles.loading} />
-        )}
-
-        {hasKey === false && (
-          <View style={styles.emptyState}>
-            <Ionicons name="key-outline" size={30} color={GLASS_TEXT_FAINT} />
-            <Text style={styles.emptyTitle}>Потрібен безкоштовний ключ Pexels</Text>
-            <Text style={styles.emptyBody}>
-              Зареєструйся на pexels.com/api (хвилина, безкоштовно, без підтвердження) і встав ключ тут.
-            </Text>
-            <Pressable style={styles.emptyButton} onPress={() => setEnteringKey(true)}>
-              <Text style={styles.emptyButtonLabel}>Встав ключ</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {hasKey && !!error && (
+        {!!error && (
           <View style={styles.emptyState}>
             <Ionicons name="cloud-offline-outline" size={30} color={GLASS_TEXT_FAINT} />
             <Text style={styles.emptyBody}>{error}</Text>
           </View>
         )}
 
-        {hasKey && !error && (
+        {!error && (
           <FlatList
             data={photos}
             key="grid2"
             numColumns={2}
-            keyExtractor={(item) => String(item.id)}
+            keyExtractor={(item) => item.id}
             contentContainerStyle={styles.grid}
             columnWrapperStyle={styles.gridRow}
             ListEmptyComponent={
@@ -185,7 +186,7 @@ export default function StockPhotoPicker({
                   </View>
                 )}
                 <Text style={styles.cellCredit} numberOfLines={1}>
-                  {item.photographer}
+                  {item.credit}
                 </Text>
               </Pressable>
             )}
@@ -193,17 +194,6 @@ export default function StockPhotoPicker({
         )}
       </View>
 
-      <RenamePrompt
-        visible={enteringKey}
-        title="Ключ Pexels"
-        initialValue=""
-        placeholder="Встав ключ із pexels.com/api"
-        onCancel={() => setEnteringKey(false)}
-        onSave={(value) => {
-          setEnteringKey(false);
-          if (value.trim()) setPexelsKey(value.trim());
-        }}
-      />
     </GlassLayer>
   );
 }
@@ -250,6 +240,30 @@ const styles = StyleSheet.create({
     fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
   },
+  sources: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingBottom: 12,
+  },
+  sourceChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: GLASS_LINE,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+  },
+  sourceChipOn: {
+    backgroundColor: '#F5C77E',
+    borderColor: '#F5C77E',
+  },
+  sourceLabel: {
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT_MUTED,
+  },
+  sourceLabelOn: {
+    color: '#171310',
+  },
   grid: {
     paddingBottom: 24,
     gap: 10,
@@ -294,29 +308,11 @@ const styles = StyleSheet.create({
     paddingTop: 40,
     paddingHorizontal: 12,
   },
-  emptyTitle: {
-    fontSize: 16,
-    fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
-    textAlign: 'center',
-  },
   emptyBody: {
     fontSize: 14,
     fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_MUTED,
     textAlign: 'center',
     lineHeight: 20,
-  },
-  emptyButton: {
-    marginTop: 4,
-    backgroundColor: '#F5C77E',
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 22,
-  },
-  emptyButtonLabel: {
-    fontSize: 15,
-    fontFamily: FONT_SEMIBOLD,
-    color: '#171310',
   },
 });

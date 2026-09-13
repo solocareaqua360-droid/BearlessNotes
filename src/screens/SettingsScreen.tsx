@@ -413,8 +413,8 @@ export default function SettingsScreen() {
             <>
               <Text style={styles.cardBody}>Ключ Pexels підключено</Text>
               <Text style={styles.cardHint}>
-                Ним користується пошук зображень для фону плиток бази даних - безкоштовна бібліотека фото, без
-                атрибуції.
+                Пошук фонів для плиток тепер має дві бібліотеки на вибір: відкриту (без ключа) і Pexels - фотографії
+                там дібрані вручну, тому виглядають рівніше.
               </Text>
               <Pressable style={styles.checkButton} onPress={() => setEnteringPexelsKey(true)} disabled={busy}>
                 <Text style={styles.checkLabel}>Змінити ключ</Text>
@@ -424,7 +424,7 @@ export default function SettingsScreen() {
                 onPress={async () => {
                   const yes = await confirm({
                     title: 'Прибрати ключ Pexels?',
-                    message: 'Пошук зображень для фону плиток перестане працювати, доки не встановиш новий.',
+                    message: 'Пошук лишиться - але тільки на відкритій бібліотеці, без дібраних фотографій Pexels.',
                     confirmLabel: 'Прибрати',
                   });
                   if (!yes) return;
@@ -438,11 +438,12 @@ export default function SettingsScreen() {
           ) : (
             <>
               <Text style={styles.cardHint}>
-                Безкоштовна бібліотека фото для фону плиток бази даних - як обкладинки сторінок у Notion. Зареєструйся
-                на pexels.com/api (хвилина, без підтвердження) і встав ключ тут.
+                Пошук фонів для плиток уже працює без жодного ключа - на відкритій бібліотеці (суспільне надбання).
+                Ключ Pexels не обовʼязковий: він додає другу бібліотеку, де фотографії дібрані вручну. Безкоштовно на
+                pexels.com/api.
               </Text>
               <Pressable style={styles.connectButton} onPress={() => setEnteringPexelsKey(true)} disabled={busy}>
-                <Text style={styles.connectLabel}>Встав ключ</Text>
+                <Text style={styles.connectLabel}>Додати ключ Pexels</Text>
               </Pressable>
             </>
           )}
