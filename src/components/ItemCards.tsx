@@ -112,10 +112,10 @@ export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
     <View style={[styles.row, { backgroundColor: background }]}>
       <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
         {link.imageUrl ? (
-          <Image source={{ uri: link.imageUrl }} style={styles.thumb} resizeMode="cover" />
+          <Image source={{ uri: link.imageUrl }} style={styles.rowThumbWide} resizeMode="cover" />
         ) : (
-          <View style={[styles.thumbIcon, { backgroundColor: `${info.color}1A` }]}>
-            <Ionicons name={info.icon} size={20} color={info.color} />
+          <View style={[styles.rowThumbWide, styles.thumbIconWindow, { backgroundColor: `${info.color}1A` }]}>
+            <Ionicons name={info.icon} size={22} color={info.color} />
           </View>
         )}
         <View style={styles.rowBody}>
@@ -187,8 +187,18 @@ export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
         {preview?.thumbUri ? (
           <Image source={{ uri: preview.thumbUri }} style={styles.rowThumbWide} resizeMode="cover" />
         ) : (
-          <View style={[styles.thumbIcon, { backgroundColor: `${fileIconColorFor(file.fileName)}1A` }]}>
-            <Ionicons name={fileIconFor(file.fileName)} size={20} color={fileIconColorFor(file.fileName)} />
+          // The same window, whatever the file is: a row of cards whose
+          // pictures are different shapes reads as a broken grid, and an
+          // icon centred in that window says "nothing to show" without
+          // moving anything.
+          <View
+            style={[
+              styles.rowThumbWide,
+              styles.thumbIconWindow,
+              { backgroundColor: `${fileIconColorFor(file.fileName)}1A` },
+            ]}
+          >
+            <Ionicons name={fileIconFor(file.fileName)} size={22} color={fileIconColorFor(file.fileName)} />
           </View>
         )}
         <View style={styles.rowBody}>
@@ -227,9 +237,9 @@ export function FileGridCell({ file, ...rest }: { file: FileCardItem } & Common)
           <Image source={{ uri: preview.thumbUri }} style={styles.gridThumb} resizeMode="cover" />
         ) : preview?.text ? (
           // No picture to make from a document, but its own first lines
-          // say more than an icon of a page does.
+          // say more than an icon of a page does - in the same window.
           <View style={[styles.gridThumb, styles.gridTextPreview]}>
-            <Text style={[styles.gridTextPreviewLabel, { color: textMuted }]} numberOfLines={5}>
+            <Text style={[styles.gridTextPreviewLabel, { color: textMuted }]} numberOfLines={4}>
               {preview.text}
             </Text>
           </View>
@@ -335,12 +345,17 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: '#E5E7EB',
   },
-  // A video thumbnail's proportion, at a size a row can carry.
+  // A video thumbnail's proportion, at a size a row can carry. Every file
+  // gets this window - with its page picture in it, or its icon.
   rowThumbWide: {
     width: 104,
     aspectRatio: 16 / 9,
     borderRadius: 8,
     backgroundColor: '#E5E7EB',
+  },
+  thumbIconWindow: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   thumbIcon: {
     width: 40,
