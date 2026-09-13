@@ -9,6 +9,34 @@ import * as LegacyFileSystem from 'expo-file-system/legacy';
 // is the half that is easy to get subtly different.
 const DOWNLOAD_DIR_STORAGE_KEY = 'bearlessNotes.downloadDirUri';
 
+// The chosen folder, as something a person can read. Android hands back a
+// document-tree URI, which is machine-readable and nothing else - the last
+// segment of it is the only part that means anything, and even that is
+// percent-encoded ("primary:Download/mindEva").
+export async function currentDownloadFolder(): Promise<{ uri: string; label: string } | null> {
+  const uri = await AsyncStorage.getItem(DOWNLOAD_DIR_STORAGE_KEY);
+  if (!uri) return null;
+  let label = uri;
+  try {
+    const tail = decodeURIComponent(uri.split('/').pop() ?? '');
+    label = tail.replace(/^primary:/, '') || uri;
+  } catch {
+    // A name that will not decode is still better shown raw than not at
+    // all.
+  }
+  return { uri, label };
+}
+
+// Ask for a folder now rather than at the next download - what the
+// settings row uses to change it. Returns the new one, or null if the
+// user backed out (and then the old one is left exactly as it was).
+export async function chooseDownloadFolder(): Promise<{ uri: string; label: string } | null> {
+  const permission = await LegacyFileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+  if (!permission.granted) return null;
+  await AsyncStorage.setItem(DOWNLOAD_DIR_STORAGE_KEY, permission.directoryUri);
+  return currentDownloadFolder();
+}
+
 export async function downloadToFolder(
   uri: string,
   fileName: string,

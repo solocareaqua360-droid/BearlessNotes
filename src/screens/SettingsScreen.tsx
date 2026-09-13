@@ -31,6 +31,7 @@ import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { claimExistingData } from '../utils/claimOwnership';
 import { backfillDriveCopies } from '../utils/backfillDrive';
 import { STALE_AFTER_DAYS, localAttachmentUsage } from '../utils/attachmentCache';
+import { chooseDownloadFolder, currentDownloadFolder } from '../utils/downloadToFolder';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -73,6 +74,10 @@ export default function SettingsScreen() {
   const [busy, setBusy] = useState(false);
   const [backfillProgress, setBackfillProgress] = useState<{ done: number; total: number } | null>(null);
   const [local, setLocal] = useState<{ count: number; bytes: number; withoutDrive: number } | null>(null);
+  const [downloadFolder, setDownloadFolder] = useState<{ uri: string; label: string } | null>(null);
+  useEffect(() => {
+    currentDownloadFolder().then(setDownloadFolder).catch(() => {});
+  }, []);
   useEffect(() => {
     localAttachmentUsage().then(setLocal).catch(() => {});
   }, [backfillProgress]);
@@ -346,6 +351,24 @@ export default function SettingsScreen() {
                   bytes on ONE device only - a card with nothing behind it
                   anywhere else. This sends whatever this device still
                   holds, so the other one can finally fetch it. */}
+              {/* One folder for everything the app saves out - photos and
+                  files alike. Asked for once, at the first download, and
+                  changed here. */}
+              <View style={styles.trafficRow}>
+                <Ionicons name="folder-outline" size={15} color="#6B7280" />
+                <Text style={styles.trafficLabel} numberOfLines={1}>
+                  Завантаження: {downloadFolder ? downloadFolder.label : 'спитаю при першому'}
+                </Text>
+                <Pressable
+                  hitSlop={8}
+                  onPress={async () => {
+                    const picked = await chooseDownloadFolder();
+                    if (picked) setDownloadFolder(picked);
+                  }}
+                >
+                  <Text style={styles.inlineAction}>Змінити</Text>
+                </Pressable>
+              </View>
               <Pressable style={styles.checkButton} onPress={handleBackfill} disabled={busy}>
                 {backfillProgress ? (
                   <Text style={styles.checkLabel}>
@@ -438,6 +461,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  inlineAction: {
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
+    color: ACCENT,
   },
   trafficLabel: {
     flex: 1,
