@@ -171,7 +171,10 @@ type Props = NativeStackScreenProps<RootStackParamList, 'CustomDatabase'>;
 // view alike) opens one shared form with an input per field, rather than
 // true inline per-cell editing - Table view is still a real at-a-glance
 // overview of every field across every row, it just isn't edited in place.
-export default function CustomDatabaseScreen({}: Props) {
+// `databaseId` as a prop, not only from the route: on a wide screen this
+// screen is rendered INSIDE the tile board's left pane, where the route
+// belongs to the board and knows nothing about which database was opened.
+export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Partial<Props> & { databaseId?: string }) {
   const railBlurTarget = useBlurTarget();
   const railFocused = useIsFocused();
   const railInsets = useSafeAreaInsets();
@@ -180,11 +183,13 @@ export default function CustomDatabaseScreen({}: Props) {
   const rail = useRail(CAPSULE_HEIGHT_3);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute();
-  const { databaseId, openRowId, openViewId } = route.params as {
-    databaseId: string;
+  const params = (route.params ?? {}) as {
+    databaseId?: string;
     openRowId?: string;
     openViewId?: string;
   };
+  const databaseId = databaseIdProp ?? params.databaseId ?? '';
+  const { openRowId, openViewId } = params;
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
   const customRowKind = `customRow:${databaseId}`;

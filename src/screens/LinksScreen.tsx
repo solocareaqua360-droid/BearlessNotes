@@ -11,7 +11,8 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useNavigation } from '@react-navigation/native';
 import {
   collection,
   deleteDoc,
@@ -114,8 +115,14 @@ function hostnameOf(url: string): string {
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Links'>;
 
-export default function LinksScreen({ route, navigation }: Props) {
-  const { category } = route.params;
+// Same as the custom database screen: `category` can arrive as a prop,
+// because in the tile board's left pane there is no route of its own.
+export default function LinksScreen({
+  route,
+  category: categoryProp,
+}: Partial<Props> & { category?: 'video' | 'geo' | 'other' }) {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const category = categoryProp ?? route?.params.category ?? 'other';
   const info = CATEGORY_INFO[category];
   // Geo/video/other share this one screen's code, but each is its own
   // "database" from the user's side - the preferences (view mode, sort,

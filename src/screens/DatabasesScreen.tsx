@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,6 +43,15 @@ import { ask, confirm, notify } from '../components/surfaces/Ask';
 import ImportTableSheet from '../components/ImportTableSheet';
 import ContentColumn from '../components/ContentColumn';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
+import { NavigationContext } from '@react-navigation/native';
+import { GlassPortalHost } from '../components/GlassPortal';
+import { GlassTargetProvider } from '../components/GlassTarget';
+import CustomDatabaseScreen from './CustomDatabaseScreen';
+import LinksScreen from './LinksScreen';
+import PhotosScreen from './PhotosScreen';
+import FilesScreen from './FilesScreen';
+import StickersScreen from './StickersScreen';
+import TasksScreen from './TasksScreen';
 import { GLASS_BODY, GLASS_DANGER, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
@@ -93,6 +102,22 @@ function defaultSizeFor(key: string): TileSize {
   return DEFAULT_TILE_SIZE;
 }
 
+// The tiles a wide screen can open beside the board rather than instead
+// of it. The rest - the tabs (documents, boards) and the placeholders -
+// are whole screens of their own, not a database, so they still navigate.
+type PaneTarget =
+  | { kind: 'custom'; databaseId: string }
+  | { kind: 'links'; category: 'video' | 'geo' | 'other' }
+  | { kind: 'route'; route: 'Photos' | 'Files' | 'Stickers' | 'Tasks' };
+
+function paneTargetFor(tile: Tile): PaneTarget | null {
+  if (tile.linkCategory) return { kind: 'links', category: tile.linkCategory };
+  if (tile.route === 'Photos' || tile.route === 'Files' || tile.route === 'Stickers' || tile.route === 'Tasks') {
+    return { kind: 'route', route: tile.route };
+  }
+  return null;
+}
+
 export default function DatabasesScreen() {
   const databasesBlurTarget = useBlurTarget();
   const databasesFocused = useIsFocused();
@@ -100,6 +125,9 @@ export default function DatabasesScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const { isTwoPane } = useResponsiveLayout();
+  // What the left pane is showing, on a wide screen: a database opened
+  // from a tile. On a phone the same tap navigates, as it always did.
+  const [openInPane, setOpenInPane] = useState<PaneTarget | null>(null);
   const { colorFor, customDatabases } = useDatabaseTiles();
   // What is inside each database, for the tiles to show - see
   // useDatabaseContents.
@@ -388,6 +416,16 @@ export default function DatabasesScreen() {
   const cellStep = cellSize + gap;
   const spanSize = (cells: number) => cells * cellSize + (cells - 1) * gap;
 
+  // The real navigation with one thing changed: going back closes the
+  // pane. Built with Object.create so every method the navigator put on
+  // the original is still reachable through the prototype - spreading it
+  // would copy the own properties and quietly drop the rest.
+  const paneNavigation = useMemo(() => {
+    const proxy = Object.create(navigation);
+    proxy.goBack = () => setOpenInPane(null);
+    return proxy;
+  }, [navigation]);
+
   const boardScroll = (
           <ScrollView
             contentContainerStyle={[
@@ -433,6 +471,19 @@ export default function DatabasesScreen() {
                     latest={latest[item.key]}
                     thumbs={item.key === 'photos' ? photoThumbs : undefined}
                     onOpen={() => {
+                      // On a wide screen a database opens BESIDE the board,
+                      // in the left pane, rather than replacing it.
+                      const pane =
+                        item.kind === 'builtin'
+                          ? paneTargetFor(item.tile)
+                          : item.kind === 'custom'
+                            ? ({ kind: 'custom', databaseId: item.database.id } as const)
+                            : null;
+                      if (isTwoPane && pane) {
+                        setColorMenuKey(null);
+                        setOpenInPane(pane);
+                        return;
+                      }
                       if (item.kind === 'builtin') openTile(item.tile);
                       else if (item.kind === 'custom')
                         navigation.navigate('CustomDatabase', { databaseId: item.database.id });
@@ -649,10 +700,38 @@ export default function DatabasesScreen() {
           <View style={styles.menuPane}>
             {colorMenuKey ? (
               <ScrollView contentContainerStyle={styles.menuPaneCard}>{tileMenu}</ScrollView>
+            ) : openInPane ? (
+              // Its own portal host and blur target, which is the whole
+              // trick: a screen's rail, its tabs and its sheets all draw
+              // through the NEAREST host, so inside this one they stay in
+              // this pane instead of spreading across the window. And its
+              // own navigation, whose goBack closes the pane rather than
+              // walking off the board.
+              <GlassPortalHost>
+                <GlassTargetProvider>
+                  <NavigationContext.Provider value={paneNavigation}>
+                    {openInPane.kind === 'custom' ? (
+                      <CustomDatabaseScreen databaseId={openInPane.databaseId} />
+                    ) : openInPane.kind === 'links' ? (
+                      <LinksScreen category={openInPane.category} />
+                    ) : openInPane.route === 'Photos' ? (
+                      <PhotosScreen />
+                    ) : openInPane.route === 'Files' ? (
+                      <FilesScreen />
+                    ) : openInPane.route === 'Stickers' ? (
+                      <StickersScreen />
+                    ) : (
+                      <TasksScreen />
+                    )}
+                  </NavigationContext.Provider>
+                </GlassTargetProvider>
+              </GlassPortalHost>
             ) : (
               <View style={styles.menuPaneEmpty}>
                 <Ionicons name="apps-outline" size={26} color={GLASS_TEXT_FAINT} />
-                <Text style={styles.menuPaneHint}>Затисни плитку - її налаштування зʼявляться тут</Text>
+                <Text style={styles.menuPaneHint}>
+                  Торкнись плитки, щоб відкрити базу тут. Затисни - щоб налаштувати плитку.
+                </Text>
               </View>
             )}
           </View>
