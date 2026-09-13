@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -30,6 +29,7 @@ import { GroupItem, useGroupItems } from '../hooks/useGroupItems';
 import GroupSections from '../components/GroupSections';
 import { useTags } from '../hooks/useTags';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { confirm, notify } from '../components/surfaces/Ask';
 
 const ACCENT = '#69736E';
 const DANGER = '#EF4444';
@@ -80,17 +80,15 @@ export default function GroupsScreen() {
   // stop being grouped, exactly as when a group is deleted from a database
   // screen's own picker.
   function confirmDelete(group: Group) {
-    Alert.alert('Видалити групу?', `"${group.name}" — самі елементи залишаться на місці.`, [
-      { text: 'Скасувати', style: 'cancel' },
-      {
-        text: 'Видалити',
-        style: 'destructive',
-        onPress: async () => {
-          setOpenGroupId(null);
-          await deleteDoc(doc(db, 'groups', group.id));
-        },
-      },
-    ]);
+    confirm({
+      title: 'Видалити групу?',
+      message: `"${group.name}" — самі елементи залишаться на місці.`,
+      confirmLabel: 'Видалити',
+    }).then(async (yes) => {
+      if (!yes) return;
+      setOpenGroupId(null);
+      await deleteDoc(doc(db, 'groups', group.id));
+    });
   }
 
   async function toggleKind(group: Group, kind: string) {
@@ -121,12 +119,9 @@ export default function GroupsScreen() {
     );
     setOpenGroupId(null);
     if (added > 0) hapticSuccess();
-    Alert.alert(
-      'Готово',
-      added === 0
+    notify('Готово', added === 0
         ? 'Ці елементи вже є на дошці.'
-        : `На дошку додано ${added} карток. Кожен тип — окремою колонкою.`
-    );
+        : `На дошку додано ${added} карток. Кожен тип — окремою колонкою.`);
   }
 
   function openItem(item: GroupItem) {

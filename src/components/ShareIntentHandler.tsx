@@ -1,5 +1,4 @@
 import { useRef, useState, useEffect } from 'react';
-import { Alert } from 'react-native';
 import { useShareIntentContext, ShareIntentFile } from 'expo-share-intent';
 import {
   arrayUnion,
@@ -24,6 +23,7 @@ import { appendBlocksToToday } from '../utils/copyToNote';
 import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
 import RenamePrompt from './RenamePrompt';
 import SaveDestinationSheet from './SaveDestinationSheet';
+import { notify } from './surfaces/Ask';
 
 // Identical to LinksScreen.tsx's/AddExistingItemModal.tsx's own copy of
 // this same small classifier - see those for why it isn't shared.
@@ -93,7 +93,7 @@ export default function ShareIntentHandler() {
     handleShareIntent()
       .catch((e) => {
         console.warn('[ShareIntentHandler] failed', e);
-        Alert.alert('Не вдалося додати', 'Спробуйте поділитися ще раз.');
+        notify('Не вдалося додати', 'Спробуйте поділитися ще раз.');
       })
       .finally(() => {
         processingRef.current = false;
@@ -199,7 +199,7 @@ export default function ShareIntentHandler() {
       const parts: string[] = [];
       if (photos) parts.push(`${photos} фото`);
       if (files) parts.push(`${files} ${files === 1 ? 'файл' : 'файлів'}`);
-      if (parts.length > 0) Alert.alert('Додано в mindEva', parts.join(', '));
+      if (parts.length > 0) notify('Додано в mindEva', parts.join(', '));
     }
     setRenameQueue(rest);
   }
@@ -290,7 +290,7 @@ export default function ShareIntentHandler() {
     if (!share) return;
     setPendingShare(null);
     createBoardAndAddItem('Без назви', importableItemForShare(share))
-      .then(() => Alert.alert('Додано в mindEva', 'Створено нову дошку.'))
+      .then(() => notify('Додано в mindEva', 'Створено нову дошку.'))
       .catch(reportShareFailure);
   }
 
@@ -299,13 +299,13 @@ export default function ShareIntentHandler() {
     if (!share) return;
     setPendingShare(null);
     addItemToBoard(boardId, importableItemForShare(share))
-      .then(() => Alert.alert('Додано в mindEva', 'Додано на дошку.'))
+      .then(() => notify('Додано в mindEva', 'Додано на дошку.'))
       .catch(reportShareFailure);
   }
 
   function reportShareFailure(e: unknown) {
     console.warn('[ShareIntentHandler] finalize failed', e);
-    Alert.alert('Не вдалося зберегти', 'Спробуйте ще раз.');
+    notify('Не вдалося зберегти', 'Спробуйте ще раз.');
   }
 
   // "Новий документ" button.
@@ -359,7 +359,7 @@ export default function ShareIntentHandler() {
       if (share.preview.imageUrl) linkDocData.imageUrl = share.preview.imageUrl;
       if (share.preview.siteName) linkDocData.siteName = share.preview.siteName;
       await setDoc(doc(db, 'links', linkId), linkDocData, { merge: true });
-      Alert.alert('Додано в mindEva', 'Посилання збережено в базі "Посилання".');
+      notify('Додано в mindEva', 'Посилання збережено в базі "Посилання".');
       return;
     }
     // Same cap DocumentsScreen's own sticker FAB enforces - falls back to
@@ -371,10 +371,7 @@ export default function ShareIntentHandler() {
       return !data.trashed && Object.keys(data.usedInDocuments ?? {}).length === 0;
     }).length;
     if (freeStickerCount >= FREE_STICKER_LIMIT) {
-      Alert.alert(
-        'Забагато вільних стікерів',
-        `Уже є ${FREE_STICKER_LIMIT} - цей текст додано як новий документ замість стікера.`
-      );
+      notify('Забагато вільних стікерів', `Уже є ${FREE_STICKER_LIMIT} - цей текст додано як новий документ замість стікера.`);
       await createNewDocumentFromShare(share);
       return;
     }
@@ -384,7 +381,7 @@ export default function ShareIntentHandler() {
       { type: 'paragraph', text: share.text, createdAt: now, updatedAt: now, usedInDocuments: {} },
       { merge: true }
     );
-    Alert.alert('Додано в mindEva', 'Текст збережено як стікер.');
+    notify('Додано в mindEva', 'Текст збережено як стікер.');
   }
 
   const current = renameQueue[0];

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 // gesture-handler's ScrollView, not the core RN one: on Android a drag that
 // starts on a TextInput never reaches an RN ScrollView's scroll recognition,
 // and this sheet is mostly inputs - it only scrolled when a finger happened
@@ -33,6 +33,7 @@ import {
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { ensureLocalFile } from '../utils/googleDrive';
+import { notify } from './surfaces/Ask';
 
 const ACCENT = '#3B82F6';
 
@@ -161,7 +162,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
       const parsed = await parseTableFile(uri);
       const nonEmpty = parsed.filter((s) => s.grid.length > 0);
       if (nonEmpty.length === 0) {
-        Alert.alert('Порожній файл', 'У цьому файлі не знайшлося жодного рядка.');
+        notify('Порожній файл', 'У цьому файлі не знайшлося жодного рядка.');
         return;
       }
       setSheets(nonEmpty);
@@ -170,7 +171,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
       setDatabaseName(displayName.replace(/\.[^.]+$/, ''));
     } catch (e) {
       console.warn('[ImportTableSheet] parse failed', e);
-      Alert.alert('Не вдалося прочитати файл', 'Підтримуються .xlsx, .xls і .csv.');
+      notify('Не вдалося прочитати файл', 'Підтримуються .xlsx, .xls і .csv.');
     } finally {
       setBusy(false);
     }
@@ -190,7 +191,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
     const available = await ensureLocalFile(file.fileUri, file.driveFileId).catch(() => false);
     setBusy(false);
     if (!available) {
-      Alert.alert('Файл недоступний', 'Його немає на цьому пристрої і не вдалося відновити з резервної копії.');
+      notify('Файл недоступний', 'Його немає на цьому пристрої і не вдалося відновити з резервної копії.');
       return;
     }
     await loadFile(file.fileUri, file.title || file.fileName);
@@ -306,7 +307,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
           })
           .filter((f): f is FieldDef => f !== null);
         if (fields.length === 0) {
-          Alert.alert('Нічого імпортувати', 'Хоча б одна колонка має стати полем бази.');
+          notify('Нічого імпортувати', 'Хоча б одна колонка має стати полем бази.');
           return;
         }
         databaseId = await createDatabaseForImport(databaseName.trim(), fields);
@@ -317,7 +318,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
       reset();
     } catch (e) {
       console.warn('[ImportTableSheet] import failed', e);
-      Alert.alert('Не вдалося імпортувати', 'Спробуйте ще раз.');
+      notify('Не вдалося імпортувати', 'Спробуйте ще раз.');
     } finally {
       setBusy(false);
     }

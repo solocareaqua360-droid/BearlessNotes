@@ -82,6 +82,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
+import { ask, confirm } from '../components/surfaces/Ask';
 
 const AUTOSAVE_DELAY_MS = 600;
 const MIN_SCALE = 0.4;
@@ -1437,11 +1438,15 @@ export default function BoardScreen() {
 
   function createImageCard() {
     setAddSheetVisible(false);
-    Alert.alert('Нове зображення', undefined, [
-      { text: 'Галерея', onPress: () => pickImage('gallery') },
-      { text: 'Камера', onPress: () => pickImage('camera') },
-      { text: 'Скасувати', style: 'cancel' },
-    ]);
+    ask({
+      title: 'Нове зображення',
+      actions: [
+        { id: 'gallery', label: 'Галерея', icon: 'images-outline' },
+        { id: 'camera', label: 'Камера', icon: 'camera-outline' },
+      ],
+    }).then((answer) => {
+      if (answer === 'gallery' || answer === 'camera') pickImage(answer);
+    });
   }
 
   async function pickImage(source: 'gallery' | 'camera') {
@@ -1766,30 +1771,27 @@ export default function BoardScreen() {
 
   function deleteSelectedCards() {
     const count = selectedCardIds.size;
-    Alert.alert(count === 1 ? 'Видалити картку?' : `Видалити картки (${count})?`, undefined, [
-      { text: 'Скасувати', style: 'cancel' },
-      {
-        text: 'Видалити',
-        style: 'destructive',
-        onPress: () => {
-          // Reflowed after the removal so a column closes the gap its
-          // deleted card left behind.
-          setCards((prev) =>
-            reflowColumns(
-              prev.filter((c) => !selectedCardIds.has(c.id)),
-              columns,
-              cardHeights
-            )
-          );
-          // A connection to a card that no longer exists would render as a
-          // line into empty space, so they go with it.
-          setConnections((prev) =>
-            prev.filter((c) => !selectedCardIds.has(c.fromCardId) && !selectedCardIds.has(c.toCardId))
-          );
-          setSelectedCardIds(new Set());
-        },
-      },
-    ]);
+    confirm({
+      title: count === 1 ? 'Видалити картку?' : `Видалити картки (${count})?`,
+      confirmLabel: 'Видалити',
+    }).then((yes) => {
+      if (!yes) return;
+      // Reflowed after the removal so a column closes the gap its
+      // deleted card left behind.
+      setCards((prev) =>
+        reflowColumns(
+          prev.filter((c) => !selectedCardIds.has(c.id)),
+          columns,
+          cardHeights
+        )
+      );
+      // A connection to a card that no longer exists would render as a
+      // line into empty space, so they go with it.
+      setConnections((prev) =>
+        prev.filter((c) => !selectedCardIds.has(c.fromCardId) && !selectedCardIds.has(c.toCardId))
+      );
+      setSelectedCardIds(new Set());
+    });
   }
 
   function disconnectSelectedCards() {

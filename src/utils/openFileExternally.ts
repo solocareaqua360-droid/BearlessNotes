@@ -1,8 +1,9 @@
-import { Alert, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import * as Sharing from 'expo-sharing';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { ensureLocalFile } from './googleDrive';
 import { touchAttachment } from './attachmentCache';
+import { notify } from '../components/surfaces/Ask';
 
 // Hand a stored file to whatever app on the phone opens that kind of file -
 // a .docx to Office, a PDF to the PDF reader. This app will never render a
@@ -43,7 +44,7 @@ export async function ensureFileIsHere(file: { fileUri: string; driveFileId?: st
   // Opening it is the clearest "someone looked at this" there is.
   if (restored) touchAttachment(file.fileUri);
   if (!restored) {
-    Alert.alert('Файл недоступний', 'Його немає на цьому пристрої, а копії на Google Диску теж немає.');
+    notify('Файл недоступний', 'Його немає на цьому пристрої, а копії на Google Диску теж немає.');
   }
   return restored;
 }
@@ -77,7 +78,7 @@ export async function openFileExternally(file: {
 
   const available = await Sharing.isAvailableAsync();
   if (!available) {
-    Alert.alert('Немає чим відкрити', 'На цьому пристрої не знайшлось застосунку для такого файлу.');
+    notify('Немає чим відкрити', 'На цьому пристрої не знайшлось застосунку для такого файлу.');
     return;
   }
   await Sharing.shareAsync(file.fileUri, { mimeType: file.mimeType, dialogTitle: file.fileName });

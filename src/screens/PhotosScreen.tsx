@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
   Pressable,
@@ -57,6 +56,7 @@ import SaveDestinationSheet from '../components/SaveDestinationSheet';
 import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
 import DownloadToast from '../components/DownloadToast';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { ask, confirm, notify } from '../components/surfaces/Ask';
 
 const ACCENT = '#EC4899';
 // The same half-strength tint the documents screen's add button takes -
@@ -343,24 +343,23 @@ export default function PhotosScreen() {
       requestDelete(photo, 'Фото видалено', () => deletePhoto(photo, false));
       return;
     }
-    Alert.alert('Видалити копію з Google Диску?', undefined, [
-      {
-        text: 'Залишити на Диску',
-        onPress: () => requestDelete(photo, 'Фото видалено', () => deletePhoto(photo, false)),
-      },
-      {
-        text: 'Видалити з Диску',
-        style: 'destructive',
-        onPress: () => requestDelete(photo, 'Фото видалено', () => deletePhoto(photo, true)),
-      },
-    ]);
+    ask({
+      title: 'Видалити копію з Google Диску?',
+      actions: [
+        { id: 'keep', label: 'Залишити на Диску', icon: 'cloud-done-outline' },
+        { id: 'drive', label: 'Видалити з Диску', tone: 'danger', icon: 'cloud-offline-outline' },
+      ],
+    }).then((answer) => {
+      if (answer === 'cancel') return;
+      requestDelete(photo, 'Фото видалено', () => deletePhoto(photo, answer === 'drive'));
+    });
   }
 
   async function deletePhoto(photo: PhotoItem, alsoDeleteFromDrive: boolean) {
     deleteDoc(doc(db, 'photos', photo.id));
     if (alsoDeleteFromDrive && photo.driveFileId) {
       deleteFileFromDrive(photo.driveFileId, photo.driveBytes).then((error) => {
-        if (error) Alert.alert('Копія на Диску залишилась', error);
+        if (error) notify('Копія на Диску залишилась', error);
       });
     }
     await Promise.all(
@@ -396,27 +395,19 @@ export default function PhotosScreen() {
       clearSelection();
       return;
     }
-    Alert.alert('Видалити копії з Google Диску?', undefined, [
-      {
-        text: 'Залишити на Диску',
-        onPress: () => {
-          requestDeleteMany(photosToDelete, `Видалено фото: ${photosToDelete.length}`, () => {
-            photosToDelete.forEach((p) => deletePhoto(p, false));
-          });
-          clearSelection();
-        },
-      },
-      {
-        text: 'Видалити з Диску',
-        style: 'destructive',
-        onPress: () => {
-          requestDeleteMany(photosToDelete, `Видалено фото: ${photosToDelete.length}`, () => {
-            photosToDelete.forEach((p) => deletePhoto(p, true));
-          });
-          clearSelection();
-        },
-      },
-    ]);
+    ask({
+      title: 'Видалити копії з Google Диску?',
+      actions: [
+        { id: 'keep', label: 'Залишити на Диску', icon: 'cloud-done-outline' },
+        { id: 'drive', label: 'Видалити з Диску', tone: 'danger', icon: 'cloud-offline-outline' },
+      ],
+    }).then((answer) => {
+      if (answer === 'cancel') return;
+      requestDeleteMany(photosToDelete, `Видалено фото: ${photosToDelete.length}`, () => {
+        photosToDelete.forEach((p) => deletePhoto(p, answer === 'drive'));
+      });
+      clearSelection();
+    });
   }
 
   async function bulkAttachTag(tag: Parameters<typeof attachTag>[0]) {

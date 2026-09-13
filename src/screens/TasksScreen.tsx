@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Keyboard,
   Modal,
   Pressable,
@@ -41,6 +40,7 @@ import { formatShortDate, parseDateKey } from '../utils/dateLocale';
 import { sortItems } from '../utils/sortItems';
 import ContentColumn from '../components/ContentColumn';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { confirm } from '../components/surfaces/Ask';
 
 const ACCENT = '#4E9A6B';
 const DANGER = '#EF4444';
@@ -439,20 +439,14 @@ export default function TasksScreen() {
   }
 
   function confirmDeleteProject(project: Project) {
-    Alert.alert(
-      'Видалити проект?',
-      `Справи з проектом "${project.name}" стануть без проекту.`,
-      [
-        { text: 'Скасувати', style: 'cancel' },
-        {
-        text: 'Видалити',
-        style: 'destructive',
-        onPress: () => {
-          deleteDoc(doc(db, 'projects', project.id));
-        },
-      },
-      ]
-    );
+    confirm({
+      title: 'Видалити проект?',
+      message: `Справи з проектом "${project.name}" стануть без проекту.`,
+      confirmLabel: 'Видалити',
+    }).then((yes) => {
+      if (!yes) return;
+      deleteDoc(doc(db, 'projects', project.id));
+    });
   }
 
   function toggleGroupExpanded(key: string) {
@@ -486,23 +480,17 @@ export default function TasksScreen() {
   function confirmBulkDeleteTasks() {
     const count = selectedIds.size;
     const isSingle = count === 1;
-    Alert.alert(
-      isSingle ? 'Видалити справу?' : `Видалити справи (${count})?`,
-      isSingle
+    confirm({
+      title: isSingle ? 'Видалити справу?' : `Видалити справи (${count})?`,
+      message: isSingle
         ? 'Чекбокс також зникне з документа, де його написано.'
         : 'Чекбокси також зникнуть з документів, де їх написано.',
-      [
-        { text: 'Скасувати', style: 'cancel' },
-        {
-          text: 'Видалити',
-          style: 'destructive',
-          onPress: () => {
-            tasks.filter((t) => selectedIds.has(t.id)).forEach((t) => deleteTask(t));
-            clearSelection();
-          },
-        },
-      ]
-    );
+      confirmLabel: 'Видалити',
+    }).then((yes) => {
+      if (!yes) return;
+      tasks.filter((t) => selectedIds.has(t.id)).forEach((t) => deleteTask(t));
+      clearSelection();
+    });
   }
 
   function renderTaskRow(item: Task) {

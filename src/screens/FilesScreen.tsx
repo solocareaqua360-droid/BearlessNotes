@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -58,6 +57,7 @@ import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../component
 import FilePreviewWorker from '../components/FilePreviewWorker';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
+import { ask, confirm, notify } from '../components/surfaces/Ask';
 
 const ACCENT = '#0EA5E9';
 // The same half-strength tint the documents screen's add button takes -
@@ -263,7 +263,7 @@ export default function FilesScreen() {
       );
       if (result) showDownloadToast(result.fileName, result.destUri, file.mimeType || '*/*');
     } catch (error) {
-      Alert.alert('Не вдалося завантажити', (error as Error).message);
+      notify('Не вдалося завантажити', (error as Error).message);
     }
   }
 
@@ -328,7 +328,7 @@ export default function FilesScreen() {
     deleteDoc(doc(db, 'files', file.id));
     if (alsoDeleteFromDrive && file.driveFileId) {
       deleteFileFromDrive(file.driveFileId, file.driveBytes).then((error) => {
-        if (error) Alert.alert('Копія на Диску залишилась', error);
+        if (error) notify('Копія на Диску залишилась', error);
       });
     }
     await Promise.all(
@@ -364,27 +364,21 @@ export default function FilesScreen() {
       clearSelection();
       return;
     }
-    Alert.alert('Видалити копії з Google Диску?', undefined, [
-      {
-        text: 'Залишити на Диску',
-        onPress: () => {
-          requestDeleteMany(filesToDelete, `Видалено файлів: ${filesToDelete.length}`, () => {
-            filesToDelete.forEach((f) => deleteFile(f, false));
-          });
-          clearSelection();
-        },
-      },
-      {
-        text: 'Видалити з Диску',
-        style: 'destructive',
-        onPress: () => {
-          requestDeleteMany(filesToDelete, `Видалено файлів: ${filesToDelete.length}`, () => {
-            filesToDelete.forEach((f) => deleteFile(f, true));
-          });
-          clearSelection();
-        },
-      },
-    ]);
+    // Two real answers, neither of them a confirmation - so it is asked,
+    // not confirmed.
+    ask({
+      title: 'Видалити копії з Google Диску?',
+      actions: [
+        { id: 'keep', label: 'Залишити на Диску', icon: 'cloud-done-outline' },
+        { id: 'drive', label: 'Видалити з Диску', tone: 'danger', icon: 'cloud-offline-outline' },
+      ],
+    }).then((answer) => {
+      if (answer === 'cancel') return;
+      requestDeleteMany(filesToDelete, `Видалено файлів: ${filesToDelete.length}`, () => {
+        filesToDelete.forEach((f) => deleteFile(f, answer === 'drive'));
+      });
+      clearSelection();
+    });
   }
 
   async function bulkAttachTag(tag: Parameters<typeof attachTag>[0]) {

@@ -65,7 +65,7 @@ import {
 } from '../utils/customRowDisplay';
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
-import { confirm } from '../components/surfaces/Ask';
+import { ask, confirm, notify } from '../components/surfaces/Ask';
 import FieldsEditorSheet, { FIELD_TYPE_ICON } from '../components/FieldsEditorSheet';
 import ImportTableSheet from '../components/ImportTableSheet';
 import PhotoCarousel from '../components/PhotoCarousel';
@@ -629,15 +629,16 @@ export default function CustomDatabaseScreen({}: Props) {
   }
 
   function openSavedViewMenu(view: CustomDatabaseView) {
-    Alert.alert(view.name, undefined, [
-      { text: 'Перейменувати', onPress: () => setViewPrompt({ mode: 'rename', view }) },
-      {
-        text: 'Видалити',
-        style: 'destructive',
-        onPress: () => deleteDoc(doc(db, 'customDatabaseViews', view.id)),
-      },
-      { text: 'Скасувати', style: 'cancel' },
-    ]);
+    ask({
+      title: view.name,
+      actions: [
+        { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+        { id: 'delete', label: 'Видалити', tone: 'danger', icon: 'trash-outline' },
+      ],
+    }).then((answer) => {
+      if (answer === 'rename') setViewPrompt({ mode: 'rename', view });
+      if (answer === 'delete') deleteDoc(doc(db, 'customDatabaseViews', view.id));
+    });
   }
 
   function openParamList(key: 'view' | 'sort' | 'filter' | 'views' | 'group') {
@@ -1972,7 +1973,7 @@ export default function CustomDatabaseScreen({}: Props) {
         onClose={() => setImporting(false)}
         onDone={(_id, rowCount) => {
           setImporting(false);
-          Alert.alert('Імпортовано', `Додано записів: ${rowCount}`);
+          notify('Імпортовано', `Додано записів: ${rowCount}`);
         }}
       />
 
@@ -2410,10 +2411,13 @@ export default function CustomDatabaseScreen({}: Props) {
               style={styles.cardMenuRow}
               onPress={() => {
                 if (rowMenuRow) {
-                  Alert.alert('Видалити запис?', undefined, [
-                    { text: 'Скасувати', style: 'cancel' },
-                    { text: 'Видалити', style: 'destructive', onPress: () => deleteRow(rowMenuRow) },
-                  ]);
+                  confirm({
+                    title: 'Видалити запис?',
+                    confirmLabel: 'Видалити',
+                  }).then((yes) => {
+                    if (!yes) return;
+                    deleteRow(rowMenuRow);
+                  });
                 }
                 setRowMenuId(null);
               }}

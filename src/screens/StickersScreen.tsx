@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
   Pressable,
@@ -26,6 +25,7 @@ import SketchEditor from '../components/SketchEditor';
 import DatabaseChrome, { menuStyles } from '../components/DatabaseChrome';
 import { useDatabaseList } from '../hooks/useDatabaseList';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR } from '../utils/fonts';
+import { notify } from '../components/surfaces/Ask';
 
 const STICKER_YELLOW = '#FBE97A';
 const STICKER_DARK = '#4a3f05';
@@ -94,10 +94,7 @@ export default function StickersScreen() {
 
   function openCreate() {
     if (freeCount >= FREE_STICKER_LIMIT) {
-      Alert.alert(
-        'Забагато вільних стікерів',
-        `Спершу розмісти якийсь із наявних ${FREE_STICKER_LIMIT} стікерів у документі чи календарі, щоб звільнити місце.`
-      );
+      notify('Забагато вільних стікерів', `Спершу розмісти якийсь із наявних ${FREE_STICKER_LIMIT} стікерів у документі чи календарі, щоб звільнити місце.`);
       return;
     }
     setEditingTextSticker(null);

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Sharing from 'expo-sharing';
 import { useNavigation } from '@react-navigation/native';
@@ -13,6 +13,7 @@ import ZoomableImageViewer from './ZoomableImageViewer';
 import VideoPlayerModal from './VideoPlayerModal';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { ensureLocalFile } from '../utils/googleDrive';
+import { notify } from './surfaces/Ask';
 
 const ICON_BY_KIND: Record<HistoryItemKind, keyof typeof Ionicons.glyphMap> = {
   file: 'document-outline',
@@ -110,7 +111,7 @@ export default function DayHistoryList({
           item.data?.driveFileId as string | undefined
         ).catch(() => false);
         if (!restored) {
-          Alert.alert('Файл недоступний', 'Його немає на цьому пристрої, а копії на Google Диску теж немає.');
+          notify('Файл недоступний', 'Його немає на цьому пристрої, а копії на Google Диску теж немає.');
           return;
         }
         await Sharing.shareAsync(fileUri, {
@@ -173,7 +174,7 @@ export default function DayHistoryList({
           title={item.title}
           caption={time}
           thumbUri={item.data?.imageUri as string | undefined}
-          onPress={() => openNaturally(item).catch((e) => Alert.alert('Не вдалося відкрити', String(e)))}
+          onPress={() => openNaturally(item).catch((e) => notify('Не вдалося відкрити', String(e)))}
         />
       );
     }
@@ -186,7 +187,7 @@ export default function DayHistoryList({
           caption={time}
           iconName={fileIconFor(fileName)}
           iconColor={fileIconColorFor(fileName)}
-          onPress={() => openNaturally(item).catch((e) => Alert.alert('Не вдалося відкрити', String(e)))}
+          onPress={() => openNaturally(item).catch((e) => notify('Не вдалося відкрити', String(e)))}
         />
       );
     }
@@ -199,7 +200,7 @@ export default function DayHistoryList({
         thumbUri={item.data?.imageUrl as string | undefined}
         iconName={ICON_BY_KIND[item.kind]}
         iconColor={LINK_COLOR_BY_KIND[item.kind as 'link-video' | 'link-geo' | 'link-other']}
-        onPress={() => openNaturally(item).catch((e) => Alert.alert('Не вдалося відкрити', String(e)))}
+        onPress={() => openNaturally(item).catch((e) => notify('Не вдалося відкрити', String(e)))}
       />
     );
   }
@@ -213,7 +214,7 @@ export default function DayHistoryList({
       <View style={[styles.card, { backgroundColor: background }]}>
         <Pressable
           style={styles.cardTap}
-          onPress={() => openNaturally(item).catch((e) => Alert.alert('Не вдалося відкрити', String(e)))}
+          onPress={() => openNaturally(item).catch((e) => notify('Не вдалося відкрити', String(e)))}
         >
           <Ionicons name={ICON_BY_KIND[item.kind]} size={16} color={textMuted} />
           <View style={styles.cardBody}>

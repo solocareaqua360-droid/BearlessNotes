@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   collection,
@@ -21,6 +21,7 @@ import {
 } from '../constants/glass';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
+import { confirm } from './surfaces/Ask';
 
 const ACCENT = '#3B82F6';
 const GROUP_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
@@ -91,10 +92,14 @@ export default function GroupPickerSheet({ visible, kind, groups, onPick, onClos
   }
 
   function confirmDeleteGroup(group: Group) {
-    Alert.alert('Видалити групу?', `Об'єкти з групою "${group.name}" стануть без групи.`, [
-      { text: 'Скасувати', style: 'cancel' },
-      { text: 'Видалити', style: 'destructive', onPress: () => deleteDoc(doc(db, 'groups', group.id)) },
-    ]);
+    confirm({
+      title: 'Видалити групу?',
+      message: `Об'єкти з групою "${group.name}" стануть без групи.`,
+      confirmLabel: 'Видалити',
+    }).then((yes) => {
+      if (!yes) return;
+      deleteDoc(doc(db, 'groups', group.id));
+    });
   }
 
   return (

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   PixelRatio,
   Pressable,
   ScrollView,
@@ -32,6 +31,7 @@ import { claimExistingData } from '../utils/claimOwnership';
 import { backfillDriveCopies } from '../utils/backfillDrive';
 import { STALE_AFTER_DAYS, localAttachmentUsage } from '../utils/attachmentCache';
 import { chooseDownloadFolder, currentDownloadFolder } from '../utils/downloadToFolder';
+import { confirm, notify } from '../components/surfaces/Ask';
 
 const ACCENT = '#3B82F6';
 const DANGER = '#EF4444';
@@ -113,18 +113,23 @@ export default function SettingsScreen() {
     try {
       const check = await Updates.checkForUpdateAsync();
       if (!check.isAvailable) {
-        Alert.alert('Оновлень немає', 'Встановлена версія - найновіша.');
+        notify('Оновлень немає', 'Встановлена версія - найновіша.');
         return;
       }
       await Updates.fetchUpdateAsync();
-      Alert.alert('Оновлення завантажено', 'Перезапустити застосунок зараз?', [
-        { text: 'Пізніше', style: 'cancel' },
-        { text: 'Перезапустити', onPress: () => Updates.reloadAsync() },
-      ]);
+      confirm({
+        title: 'Оновлення завантажено',
+        message: 'Перезапустити застосунок зараз?',
+        confirmLabel: 'Перезапустити',
+        tone: 'primary',
+      }).then((yes) => {
+        if (!yes) return;
+        Updates.reloadAsync();
+      });
     } catch (e) {
       // The usual one: a build running from Metro can't check for updates
       // at all, and says so in its own words.
-      Alert.alert('Не вдалося перевірити', e instanceof Error ? e.message : String(e));
+      notify('Не вдалося перевірити', e instanceof Error ? e.message : String(e));
     } finally {
       setUpdateBusy(false);
     }
@@ -153,14 +158,11 @@ export default function SettingsScreen() {
     setBackfillProgress({ done: 0, total: 0 });
     try {
       const result = await backfillDriveCopies((done, total) => setBackfillProgress({ done, total }));
-      Alert.alert(
-        'Перенесення завершено',
-        `Вивантажено: ${result.uploaded}\n` +
+      notify('Перенесення завершено', `Вивантажено: ${result.uploaded}\n` +
           `Немає на цьому пристрої: ${result.missing}\n` +
-          (result.failed > 0 ? `Не вдалося: ${result.failed}` : '').trim()
-      );
+          (result.failed > 0 ? `Не вдалося: ${result.failed}` : '').trim());
     } catch (error) {
-      Alert.alert('Не вдалося перенести', (error as Error).message);
+      notify('Не вдалося перенести', (error as Error).message);
     } finally {
       setBackfillProgress(null);
       setBusy(false);
@@ -171,29 +173,27 @@ export default function SettingsScreen() {
     setBusy(true);
     try {
       const result = await runDriveDiagnostics();
-      Alert.alert('Перевірка з\'єднання', result);
+      notify('Перевірка з\'єднання', result);
     } finally {
       setBusy(false);
     }
   }
 
   function handleDisconnect() {
-    Alert.alert('Відключити Google Drive?', 'Нові файли й фото більше не копіюватимуться на Диск.', [
-      { text: 'Скасувати', style: 'cancel' },
-      {
-        text: 'Відключити',
-        style: 'destructive',
-        onPress: async () => {
-          setBusy(true);
-          try {
-            await disconnectGoogleDrive();
-            setEmail(null);
-          } finally {
-            setBusy(false);
-          }
-        },
-      },
-    ]);
+    confirm({
+      title: 'Відключити Google Drive?',
+      message: 'Нові файли й фото більше не копіюватимуться на Диск.',
+      confirmLabel: 'Відключити',
+    }).then(async (yes) => {
+      if (!yes) return;
+      setBusy(true);
+      try {
+        await disconnectGoogleDrive();
+        setEmail(null);
+      } finally {
+        setBusy(false);
+      }
+    });
   }
 
   async function handleGoogleSignIn() {
@@ -203,10 +203,7 @@ export default function SettingsScreen() {
       const result = await signInWithGoogleAccount();
       setAccountEmail(result.email);
       if (result.hadToSwitch) {
-        Alert.alert(
-          'Увійшли в наявний акаунт',
-          'Цим акаунтом уже входили раніше, тож прив\'язати до нього дані цього пристрою не вийшло - вони лишились під попередньою анонімною особою.'
-        );
+        notify('Увійшли в наявний акаунт', 'Цим акаунтом уже входили раніше, тож прив\'язати до нього дані цього пристрою не вийшло - вони лишились під попередньою анонімною особою.');
       }
       // Stamping ownership is what makes owner-only rules possible later.
       // Safe to re-run: it only touches documents that have no owner yet.
@@ -217,7 +214,7 @@ export default function SettingsScreen() {
       setClaimStatus(claimed > 0 ? `Позначено записів: ${claimed}` : 'Усі дані вже позначені');
     } catch (error) {
       const message = (error as { message?: string }).message ?? 'Не вдалося увійти';
-      Alert.alert('Вхід не вдався', message);
+      notify('Вхід не вдався', message);
       setClaimStatus('');
     } finally {
       setAuthBusy(false);

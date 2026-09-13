@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   Keyboard,
@@ -76,6 +75,7 @@ import {
 } from '../constants/rail';
 import { useRail } from '../hooks/useRail';
 import { useBlurTarget } from '../components/GlassTarget';
+import { confirm, notify } from '../components/surfaces/Ask';
 
 // Палітра №3 (Теплий Теракотовий) - the create/edit action color across
 // this redesign; replaces the old blue ACCENT wherever this screen used it.
@@ -251,10 +251,7 @@ export default function DocumentsScreen() {
 
   function openStickerComposer() {
     if (freeStickers.length >= FREE_STICKER_LIMIT) {
-      Alert.alert(
-        'Забагато вільних стікерів',
-        `Спершу розмісти якийсь із наявних ${FREE_STICKER_LIMIT} стікерів у документі чи календарі, щоб звільнити місце.`
-      );
+      notify('Забагато вільних стікерів', `Спершу розмісти якийсь із наявних ${FREE_STICKER_LIMIT} стікерів у документі чи календарі, щоб звільнити місце.`);
       return;
     }
     setEditingTextSticker(null);
@@ -436,17 +433,14 @@ export default function DocumentsScreen() {
 
   function confirmDeleteSelected() {
     const toDelete = selectedDocuments;
-    Alert.alert(toDelete.length === 1 ? 'Видалити документ?' : `Видалити документи (${toDelete.length})?`, undefined, [
-      { text: 'Скасувати', style: 'cancel' },
-      {
-        text: 'Видалити',
-        style: 'destructive',
-        onPress: async () => {
-          await Promise.all(toDelete.map((d) => confirmDeleteDocument(d.id)));
-          clearSelection();
-        },
-      },
-    ]);
+    confirm({
+      title: toDelete.length === 1 ? 'Видалити документ?' : `Видалити документи (${toDelete.length})?`,
+      confirmLabel: 'Видалити',
+    }).then(async (yes) => {
+      if (!yes) return;
+      await Promise.all(toDelete.map((d) => confirmDeleteDocument(d.id)));
+      clearSelection();
+    });
   }
 
   async function bulkAttachTag(tag: Parameters<typeof attachTag>[0]) {

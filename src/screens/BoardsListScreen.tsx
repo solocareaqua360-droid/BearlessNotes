@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -30,6 +30,7 @@ import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
+import { confirm } from '../components/surfaces/Ask';
 
 const ACCENT = '#8B5CF6';
 // Where the content starts now that the screen has no header: the same
@@ -112,16 +113,14 @@ export default function BoardsListScreen() {
 
   function confirmDeleteBoard(board: BoardItem) {
     setCardMenuBoardId(null);
-    Alert.alert('Видалити дошку?', board.title || 'Без назви', [
-      { text: 'Скасувати', style: 'cancel' },
-      {
-        text: 'Видалити',
-        style: 'destructive',
-        onPress: () => {
-          deleteDoc(doc(db, 'boards', board.id));
-        },
-      },
-    ]);
+    confirm({
+      title: 'Видалити дошку?',
+      message: board.title || 'Без назви',
+      confirmLabel: 'Видалити',
+    }).then((yes) => {
+      if (!yes) return;
+      deleteDoc(doc(db, 'boards', board.id));
+    });
   }
 
   function renderBoardRow(item: BoardItem) {

@@ -89,7 +89,7 @@ import TextRecognizer, {
   RecognizedPage,
 } from '../components/TextRecognizer';
 import TextSelection from '../components/TextSelection';
-import { ask, notify } from '../components/surfaces/Ask';
+import { ask, confirm, notify } from '../components/surfaces/Ask';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
@@ -2055,26 +2055,24 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
 
   function confirmDeleteDocument() {
     setExportMenuOpen(false);
-    Alert.alert('Видалити документ?', 'Його не можна буде повернути.', [
-      { text: 'Скасувати', style: 'cancel' },
-      {
-        text: 'Видалити',
-        style: 'destructive',
-        onPress: async () => {
-          // Let the tags it carried forget it too, the way the documents
-          // list's own delete does.
-          await Promise.all(
-            (tagIds ?? []).map((tagId) => {
-              const tag = tags.find((t) => t.id === tagId);
-              return tag ? detachTagFromDeletedItem(tag, 'document', documentId) : Promise.resolve();
-            })
-          );
-          await deleteDoc(doc(db, 'documents', documentId));
-          if (closePane) closePane();
-          else navigation.goBack();
-        },
-      },
-    ]);
+    confirm({
+      title: 'Видалити документ?',
+      message: 'Його не можна буде повернути.',
+      confirmLabel: 'Видалити',
+    }).then(async (yes) => {
+      if (!yes) return;
+      // Let the tags it carried forget it too, the way the documents
+      // list's own delete does.
+      await Promise.all(
+        (tagIds ?? []).map((tagId) => {
+          const tag = tags.find((t) => t.id === tagId);
+          return tag ? detachTagFromDeletedItem(tag, 'document', documentId) : Promise.resolve();
+        })
+      );
+      await deleteDoc(doc(db, 'documents', documentId));
+      if (closePane) closePane();
+      else navigation.goBack();
+    });
   }
   const documentId =
     'embedded' in props ? props.documentId : 'pane' in props ? props.documentId : props.route.params.documentId;
@@ -3648,14 +3646,22 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // the app to show up.
   function openCoverImageOptions() {
     setExportMenuOpen(false);
-    Alert.alert(coverImageUri ? 'Змінити заставку' : 'Додати заставку', undefined, [
-      { text: 'Галерея', onPress: () => pickCoverImage('gallery') },
-      { text: 'Камера', onPress: () => pickCoverImage('camera') },
-      ...(coverImageUri
-        ? [{ text: 'Прибрати заставку', style: 'destructive' as const, onPress: () => setCoverImageUri(undefined) }]
-        : []),
-      { text: 'Скасувати', style: 'cancel' as const },
-    ]);
+    // Four answers when there is already a cover - which is exactly one
+    // more than Android's own dialog will show, and it drops the extra
+    // without a word. Here they are rows, so all of them fit.
+    ask({
+      title: coverImageUri ? 'Змінити заставку' : 'Додати заставку',
+      actions: [
+        { id: 'gallery', label: 'Галерея', icon: 'images-outline' },
+        { id: 'camera', label: 'Камера', icon: 'camera-outline' },
+        ...(coverImageUri
+          ? [{ id: 'remove', label: 'Прибрати заставку', tone: 'danger' as const, icon: 'trash-outline' as const }]
+          : []),
+      ],
+    }).then((answer) => {
+      if (answer === 'gallery' || answer === 'camera') pickCoverImage(answer);
+      if (answer === 'remove') setCoverImageUri(undefined);
+    });
   }
 
   async function pickCoverImage(source: 'gallery' | 'camera') {

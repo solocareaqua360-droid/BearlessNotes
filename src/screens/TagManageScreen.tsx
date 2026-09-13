@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -9,6 +9,7 @@ import { useTags } from '../hooks/useTags';
 import TagEditSheet from '../components/TagEditSheet';
 import ContentColumn from '../components/ContentColumn';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { confirm } from '../components/surfaces/Ask';
 
 const DANGER = '#EF4444';
 
@@ -34,14 +35,14 @@ export default function TagManageScreen() {
 
   function confirmDelete(tag: Tag) {
     const count = Object.keys(tag.usedIn).length;
-    Alert.alert(
-      `Видалити тег "${tag.path}"?`,
-      `Він буде знятий з ${count} ${count === 1 ? 'елемента' : 'елементів'}.`,
-      [
-        { text: 'Скасувати', style: 'cancel' },
-        { text: 'Видалити', style: 'destructive', onPress: () => deleteTagCompletely(tag) },
-      ]
-    );
+    confirm({
+      title: `Видалити тег "${tag.path}"?`,
+      message: `Він буде знятий з ${count} ${count === 1 ? 'елемента' : 'елементів'}.`,
+      confirmLabel: 'Видалити',
+    }).then((yes) => {
+      if (!yes) return;
+      deleteTagCompletely(tag);
+    });
   }
 
   return (
