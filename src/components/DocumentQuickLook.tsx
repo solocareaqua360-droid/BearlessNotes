@@ -8,18 +8,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_BODY, GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
 
-// A quick look at a Word or Excel file, without leaving the app and
+// A quick look at a Word, Excel or PDF file, without leaving the app and
 // without the network - the way a phone's own preview does it: the text
 // is there to read, the fancier layout may not survive, and the real
 // program is one tap away for anything more.
 //
 // The conversion runs INSIDE the WebView, not in the app's own JS: mammoth
-// (.docx -> HTML) and SheetJS (.xlsx -> tables) are browser libraries, and
-// the WebView is a browser. They ship with the app as two plain files (see
-// metro.config.js) and are read and injected here, so nothing is fetched
-// and this arrives over the air like any other change.
+// (.docx -> HTML), SheetJS (.xlsx -> tables) and pdf.js (pages -> canvas)
+// are browser libraries, and the WebView is a browser. They ship with the
+// app as plain files (see metro.config.js) and are read and injected here,
+// so nothing is fetched and this arrives over the air like any other
+// change.
+//
+// The page is written to a file and loaded from there rather than handed
+// over as a string: a scanned PDF is megabytes, and its bytes travel
+// inside the page as base64 - a string that size does not survive the
+// bridge to the WebView, a file does.
 
-export type QuickLookKind = 'docx' | 'xlsx';
+export type QuickLookKind = 'docx' | 'xlsx' | 'pdf';
 
 // What this can show. Anything else goes straight to the app that opens
 // it - see openFileExternally.
@@ -27,11 +33,17 @@ export function quickLookKindFor(fileName: string): QuickLookKind | null {
   const ext = fileName.toLowerCase().split('.').pop();
   if (ext === 'docx') return 'docx';
   if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') return 'xlsx';
+  if (ext === 'pdf') return 'pdf';
   return null;
 }
 
 const MAMMOTH = require('../../assets/quicklook/mammoth.jslib');
 const XLSX = require('../../assets/quicklook/xlsx.jslib');
+// pdf.js proper and its worker. The worker is included inline as well,
+// which is what lets pdf.js run it on the page's own thread ("fake
+// worker") - there is no URL to load a real one from in here.
+const PDFJS = require('../../assets/quicklook/pdf.jslib');
+const PDFJS_WORKER = require('../../assets/quicklook/pdf-worker.jslib');
 
 async function readAsset(module: number): Promise<string> {
   const asset = Asset.fromModule(module);
@@ -46,7 +58,33 @@ function pageFor(kind: QuickLookKind, base64: string, library: string): string {
       ? `mammoth.convertToHtml({ arrayBuffer: bytes.buffer })
            .then(function (r) { root.innerHTML = r.value || '<p class="muted">Порожній документ</p>'; })
            .catch(function (e) { fail(e); });`
-      : `try {
+      : kind === 'pdf'
+        ? `pdfjsLib.getDocument({ data: bytes }).promise.then(function (pdf) {
+             root.innerHTML = '';
+             var width = document.body.clientWidth - 36;
+             var ratio = window.devicePixelRatio || 1;
+             // One page after another, so the first is on screen while
+             // the rest are still being drawn.
+             var n = 1;
+             function next() {
+               if (n > pdf.numPages) return;
+               pdf.getPage(n).then(function (page) {
+                 var base = page.getViewport({ scale: 1 });
+                 var scale = width / base.width;
+                 var viewport = page.getViewport({ scale: scale * ratio });
+                 var canvas = document.createElement('canvas');
+                 canvas.width = viewport.width;
+                 canvas.height = viewport.height;
+                 canvas.style.width = width + 'px';
+                 canvas.style.height = (viewport.height / ratio) + 'px';
+                 canvas.className = 'page';
+                 root.appendChild(canvas);
+                 return page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+               }).then(function () { n += 1; next(); }).catch(function (e) { fail(e); });
+             }
+             next();
+           }).catch(function (e) { fail(e); });`
+        : `try {
            var wb = XLSX.read(bytes, { type: 'array' });
            var html = '';
            wb.SheetNames.forEach(function (name) {
@@ -65,6 +103,7 @@ function pageFor(kind: QuickLookKind, base64: string, library: string): string {
   table { border-collapse: collapse; font-size: 13px; margin: 8px 0 16px; max-width: 100%; }
   td, th { border: 1px solid #E5E7EB; padding: 4px 8px; vertical-align: top; white-space: nowrap; }
   .scroll { overflow-x: auto; }
+  .page { display: block; margin: 0 auto 12px; box-shadow: 0 1px 6px rgba(0,0,0,.18); border-radius: 2px; background: #fff; }
   .muted { color: #9CA3AF; }
   .error { color: #B91C1C; }
 </style></head><body>
@@ -107,16 +146,31 @@ export default function DocumentQuickLook({
     (async () => {
       try {
         const [library, base64] = await Promise.all([
-          readAsset(file.kind === 'docx' ? MAMMOTH : XLSX),
+          file.kind === 'docx'
+            ? readAsset(MAMMOTH)
+            : file.kind === 'xlsx'
+              ? readAsset(XLSX)
+              : Promise.all([readAsset(PDFJS), readAsset(PDFJS_WORKER)]).then((parts) => parts.join('\n')),
           LegacyFileSystem.readAsStringAsync(file.uri, { encoding: 'base64' }),
         ]);
-        if (!cancelled) setHtml(pageFor(file.kind, base64, library));
+        if (cancelled) return;
+        // To a file, not to the WebView as a string - see the note at the
+        // top. A fresh name each time so the WebView never shows a stale
+        // page from its cache.
+        const target = `${LegacyFileSystem.cacheDirectory}quicklook-${Date.now()}.html`;
+        await LegacyFileSystem.writeAsStringAsync(target, pageFor(file.kind, base64, library));
+        if (!cancelled) setHtml(target);
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
       }
     })();
     return () => {
       cancelled = true;
+      // The page written for the last file is not needed once it is gone.
+      setHtml((previous) => {
+        if (previous) LegacyFileSystem.deleteAsync(previous, { idempotent: true }).catch(() => {});
+        return null;
+      });
     };
   }, [file]);
 
@@ -144,12 +198,15 @@ export default function DocumentQuickLook({
         ) : html ? (
           <WebView
             originWhitelist={['*']}
-            source={{ html }}
+            source={{ uri: html }}
             style={styles.web}
             // Nothing here ever needs the network, and nothing may reach it.
+            // File access is on only so the page itself can be loaded from
+            // the cache directory it was written to.
             javaScriptEnabled
             domStorageEnabled={false}
-            allowFileAccess={false}
+            allowFileAccess
+            allowFileAccessFromFileURLs
             setSupportMultipleWindows={false}
           />
         ) : (
