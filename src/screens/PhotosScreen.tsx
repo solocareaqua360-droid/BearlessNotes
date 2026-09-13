@@ -73,7 +73,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND, GLASS_TEXT_MUTED } from '../constants/glass';
-import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
+import { CAPSULE_DROP, CAPSULE_HEIGHT_3, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
 const ACCENT = '#EC4899';
 // The same half-strength tint the documents screen's add button takes -
@@ -184,7 +184,9 @@ export default function PhotosScreen() {
   const railBlurTarget = useBlurTarget();
   const railFocused = useIsFocused();
   const railInsets = useSafeAreaInsets();
-  const rail = useRail();
+  // Three buttons in the capsule here, so the rail spaces what is under
+  // it against the taller one.
+  const rail = useRail(CAPSULE_HEIGHT_3);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [photos, setPhotos] = useState<PhotoItem[]>([]);

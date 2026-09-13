@@ -63,13 +63,17 @@ import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
-import { GLASS_ISLAND } from '../constants/glass';
-import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
+import { GLASS_ISLAND, GLASS_TEXT_MUTED } from '../constants/glass';
+import { CAPSULE_DROP, CAPSULE_HEIGHT_3, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
 const ACCENT = '#14B8A6';
 // The same half-strength tint the documents screen's add button takes -
 // the blur behind it is what separates it, so the colour only tints.
 const ACCENT_GLASS = 'rgba(20,184,166,0.55)';
+// What is left of the header now that the title is gone: the gap between
+// the safe area and the first row, so the groups (or the first card) start
+// on the capsule's own line rather than under the status bar.
+const TITLE_GAP = 8;
 const DANGER = '#EF4444';
 const linksCollection = collection(db, 'links');
 const groupsCollection = collection(db, 'groups');
@@ -172,7 +176,9 @@ export default function LinksScreen({ route, navigation }: Props) {
   const railBlurTarget = useBlurTarget();
   const railFocused = useIsFocused();
   const railInsets = useSafeAreaInsets();
-  const rail = useRail();
+  // Three buttons in the capsule here, so the rail spaces what is under
+  // it against the taller one.
+  const rail = useRail(CAPSULE_HEIGHT_3);
   const { category } = route.params;
   const info = CATEGORY_INFO[category];
   // Geo/video/other share this one screen's code, but each is its own
@@ -201,6 +207,11 @@ export default function LinksScreen({ route, navigation }: Props) {
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<TagFilter | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
+  // The group row at the head of the screen is a convenience now that the
+  // groups also live in the drawer - held down, the folder button puts it
+  // away. Same arrangement as the documents and photos screens, and kept
+  // per category like everything else in this screen's prefs doc.
+  const [groupsRowHidden, setGroupsRowHidden] = useState(false);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
@@ -249,6 +260,7 @@ export default function LinksScreen({ route, navigation }: Props) {
   useEffect(() => {
     return onSnapshot(linksPrefsDoc, (snapshot) => {
       setViewMode((snapshot.data()?.viewMode as ViewMode | undefined) ?? 'list');
+      setGroupsRowHidden(!!snapshot.data()?.groupsRowHidden);
     });
   }, [linksPrefsKey]);
 
@@ -473,6 +485,10 @@ export default function LinksScreen({ route, navigation }: Props) {
     clearSelection();
   }
 
+  function toggleGroupsRow() {
+    setDoc(linksPrefsDoc, { groupsRowHidden: !groupsRowHidden }, { merge: true });
+  }
+
   async function changeViewMode(mode: ViewMode) {
     setMenuOpen(false);
     await setDoc(linksPrefsDoc, { viewMode: mode }, { merge: true });
@@ -651,12 +667,19 @@ export default function LinksScreen({ route, navigation }: Props) {
                   style={StyleSheet.absoluteFill}
                   pointerEvents="none"
                 />
+              <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
+                <Ionicons name={isSearching ? 'close-outline' : 'search-outline'} size={24} color="#fff" />
+              </Pressable>
+              <View style={styles.headerButtonsDivider} />
               <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
                 <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
               </Pressable>
               <View style={styles.headerButtonsDivider} />
-              <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
-                <Ionicons name={isSearching ? 'close-outline' : 'search-outline'} size={24} color="#fff" />
+              {/* The way out of this database, where the arrow in the
+                  header's corner used to be - the capsule is where this
+                  screen's controls live now. */}
+              <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+                <Ionicons name="arrow-back-outline" size={24} color="#fff" />
               </Pressable>
             </View>
           </View>
@@ -664,16 +687,10 @@ export default function LinksScreen({ route, navigation }: Props) {
       )}
 
       <ContentColumn>
-        <View style={styles.headerRow}>
-          <View style={styles.headerLeft}>
-            <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-              <Ionicons name="chevron-back" size={24} color="#fff" />
-            </Pressable>
-            <Text style={styles.header} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.4}>
-              {info.title}
-            </Text>
-          </View>
-        </View>
+        {/* No title: the capsule says which database this is by what it
+            does, and the name only cost the cards a screenful of space.
+            What is left of the header is the line everything starts on. */}
+        <View style={{ height: railInsets.top + CHROME_TOP + TITLE_GAP }} />
 
         {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
         {menuOpen && (
@@ -708,7 +725,7 @@ export default function LinksScreen({ route, navigation }: Props) {
           </View>
         )}
 
-        {groups.length > 0 && (
+        {groups.length > 0 && !groupsRowHidden && (
           <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" dark />
         )}
 
@@ -905,6 +922,30 @@ export default function LinksScreen({ route, navigation }: Props) {
         activeFilter={tagFilter}
         onSelectFilter={setTagFilter}
         hideOpenButton={isSelectMode}
+        groupSection={{
+          // The same list the row shows, sentinels and all, counted over
+          // this category's links only - the row and the drawer must never
+          // disagree about what there is to pick.
+          items: [
+            { id: null, name: 'Всі', color: GLASS_TEXT_MUTED, count: categoryLinks.length },
+            ...groups.map((g) => ({
+              id: g.id,
+              name: g.name,
+              color: g.color,
+              count: categoryLinks.filter((l) => l.groupId === g.id).length,
+            })),
+            {
+              id: UNASSIGNED_ID,
+              name: 'Без групи',
+              color: GLASS_TEXT_MUTED,
+              count: categoryLinks.filter((l) => !l.groupId).length,
+            },
+          ],
+          selected: groupFilter,
+          onSelect: setGroupFilter,
+          rowVisible: !groupsRowHidden,
+          onToggleRow: toggleGroupsRow,
+        }}
       />
 
       <BulkActionBar
@@ -1010,35 +1051,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.35)',
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    paddingLeft: 20,
-    // Clear of the rail.
-    paddingRight: RAIL_CLEARANCE,
-    // Matches Documents/Databases' own header capsule vertical position.
-    paddingTop: 90,
-    paddingBottom: 8,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flexShrink: 1,
-  },
-  header: {
-    // At least 2x the previous 22, matching Documents/Databases - but
-    // unlike "Документи", this title varies ("YouTube / TikTok" especially
-    // is long), so it needs to be able to shrink and give up space to the
-    // header capsule instead of pushing it off-screen.
-    flexShrink: 1,
-    fontSize: 46,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    color: '#fff',
   },
   // One elongated glass capsule instead of three bare gray icons - matches
   // Documents/Calendar's own header capsule.

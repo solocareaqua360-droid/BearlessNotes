@@ -48,7 +48,13 @@ export const CHROME_TOP = 4;
 // + the 1px border top and bottom. Keep this in step with the capsule
 // itself: when it was left saying 184 for a capsule that had grown, the
 // round buttons ended up with no room to sit clear of it.
-const CAPSULE_HEIGHT = 123;
+export const CAPSULE_HEIGHT = 123;
+// The same sum for a capsule carrying a third button (one more icon, one
+// more divider, one more gap). A screen with three has to say so - the
+// round buttons under it are spaced against this number, and a screen
+// that kept quiet about its taller capsule got its folder button placed
+// where the capsule already was.
+export const CAPSULE_HEIGHT_3 = CAPSULE_HEIGHT + 24 + 1 + 18;
 
 // How far the capsule hangs below the top of the chrome band, and how far
 // the island drops into the tag row's own band. Both rows keep the rail's
@@ -64,10 +70,15 @@ const CAPSULE_HEIGHT = 123;
 export const CAPSULE_DROP = 59;
 const ISLAND_DROP = 10;
 
-export function useRailLayout(windowHeight: number, insetTop: number, insetBottom: number) {
+export function useRailLayout(
+  windowHeight: number,
+  insetTop: number,
+  insetBottom: number,
+  capsuleHeight: number = CAPSULE_HEIGHT
+) {
   const tagRowBottom = insetBottom + TAG_ROW_PAD;
   const foot = tagRowBottom + TAG_ROW_HEIGHT + RAIL_GAP - ISLAND_DROP;
-  const head = insetTop + CHROME_TOP + CAPSULE_DROP + CAPSULE_HEIGHT;
+  const head = insetTop + CHROME_TOP + CAPSULE_DROP + capsuleHeight;
   const free = windowHeight - head - foot;
   const gap = Math.max(RAIL_GAP, (free - (RAIL_WIDTH * 2 + NAV_HEIGHT)) / 4);
   const navBottom = foot + gap;
