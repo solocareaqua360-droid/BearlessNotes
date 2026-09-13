@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { collection } from '@react-native-firebase/firestore';
+import { collection, doc, onSnapshot } from '@react-native-firebase/firestore';
 import { addDoc, setDoc } from '../utils/owned';
 import {
   GRID_TILES,
@@ -14,6 +14,19 @@ import {
   tileColorsDoc,
 } from '../constants/databaseTiles';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
+import { CustomDatabase } from '../types';
+import {
+  DEFAULT_TILE_SIZE,
+  TILE_COLUMNS,
+  TileSize,
+  formatTileSize,
+  packTiles,
+  parseTileSize,
+  snapTileSize,
+} from '../utils/tileLayout';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { LinearTransition } from 'react-native-reanimated';
+import { hapticButtonDown } from '../utils/haptics';
 import { db } from '../firebase';
 import { RootStackParamList } from '../navigation';
 import { TAG_COLORS } from '../constants/tags';
@@ -31,6 +44,29 @@ import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
+const NEW_TILE_KEY = '__new__';
+const IMPORT_TILE_KEY = '__import__';
+const TILE_GAP = 10;
+// The gap the tiles hold while they are being arranged - they draw apart
+// to make room for the grips, and close back up when the board is done.
+const TILE_GAP_EDITING = 16;
+const tileSizesDoc = doc(db, 'settings', 'databaseTileSizes');
+
+type BoardItem =
+  | { key: string; kind: 'builtin'; tile: Tile }
+  | { key: string; kind: 'custom'; database: CustomDatabase }
+  | { key: string; kind: 'action' };
+
+// What a tile is before anyone resizes it: documents lead the board, the
+// tasks run across under them, every database is a square, and the two
+// tiles that make new ones are as small as a tile gets.
+function defaultSizeFor(key: string): TileSize {
+  if (key === 'documents') return { w: 4, h: 2 };
+  if (key === 'tasks') return { w: 4, h: 1 };
+  if (key === NEW_TILE_KEY || key === IMPORT_TILE_KEY) return { w: 1, h: 1 };
+  return DEFAULT_TILE_SIZE;
+}
+
 export default function DatabasesScreen() {
   const databasesBlurTarget = useBlurTarget();
   const databasesFocused = useIsFocused();
@@ -39,6 +75,20 @@ export default function DatabasesScreen() {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const { colorFor, customDatabases } = useDatabaseTiles();
   const [colorMenuKey, setColorMenuKey] = useState<string | null>(null);
+  const [tileSizes, setTileSizes] = useState<Record<string, string>>({});
+  // Held-down, the board goes into its arranging state: the tiles draw
+  // apart to make room for the grips, and nothing opens on a tap.
+  const [editing, setEditing] = useState(false);
+  const [boardWidth, setBoardWidth] = useState(0);
+  // The size being dragged right now, so the board can re-pack around it
+  // before the drag ends and it is written down.
+  const [draftSize, setDraftSize] = useState<{ key: string; size: TileSize } | null>(null);
+
+  useEffect(() => {
+    return onSnapshot(tileSizesDoc, (snapshot) => {
+      setTileSizes((snapshot.data() as Record<string, string> | undefined) ?? {});
+    });
+  }, []);
   const [creatingDatabase, setCreatingDatabase] = useState(false);
   const [importing, setImporting] = useState(false);
 
@@ -55,13 +105,62 @@ export default function DatabasesScreen() {
   }
 
   function pickColor(key: string, color: string) {
-    setDoc(tileColorsDoc, { [key]: color }, { merge: true });
+    // A database the user made carries its own colour, on its own record -
+    // it is that database's colour everywhere in the app, not just this
+    // tile's. The built-in ones have no record of their own, so theirs
+    // lives in the shared tile-colours document.
+    const own = customDatabases.find((database) => database.id === key);
+    if (own) setDoc(doc(db, 'customDatabases', key), { color }, { merge: true });
+    else setDoc(tileColorsDoc, { [key]: color }, { merge: true });
     setColorMenuKey(null);
   }
 
   function openTile(tile: Tile) {
     openDatabaseTile(navigation, tile);
   }
+
+  // ---- the tile board ------------------------------------------------
+  // Every database is a tile on a four-column grid, and each one remembers
+  // how big it is. Sizes live in their own settings document, keyed the
+  // same way the colours are.
+  function sizeFor(key: string): TileSize {
+    // While a grip is being dragged, the board packs around the size the
+    // finger is asking for - that is what makes the other tiles move out
+    // of the way under the hand rather than after it.
+    if (draftSize?.key === key) return draftSize.size;
+    return parseTileSize(tileSizes[key]) ?? defaultSizeFor(key);
+  }
+
+  function setSize(key: string, size: TileSize) {
+    setDoc(tileSizesDoc, { [key]: formatTileSize(size) }, { merge: true });
+  }
+
+  // Built in first, then the databases the user made, then the two tiles
+  // that make more - the same order the screen has always had.
+  const boardItems: BoardItem[] = [
+    ...WIDE_TILES.map((tile) => ({ key: tile.key, kind: 'builtin' as const, tile })),
+    ...GRID_TILES.map((tile) => ({ key: tile.key, kind: 'builtin' as const, tile })),
+    ...customDatabases.map((database) => ({ key: database.id, kind: 'custom' as const, database })),
+    { key: NEW_TILE_KEY, kind: 'action' as const },
+    { key: IMPORT_TILE_KEY, kind: 'action' as const },
+  ];
+  const firstOwnKey = customDatabases[0]?.id ?? NEW_TILE_KEY;
+  const { placed, rows } = packTiles(
+    boardItems,
+    (item) => sizeFor(item.key),
+    // Everything above the rule is built in; the user's own starts on a
+    // fresh row under it.
+    (item) => item.key === firstOwnKey
+  );
+  const ruleRow = placed.find((p) => p.item.key === firstOwnKey)?.y ?? 0;
+
+  // A cell is square, and the board is as wide as the column it sits in.
+  // While arranging, the gap grows: the tiles draw apart to make room for
+  // the grips, and close back up into a dense board when it is done.
+  const gap = editing ? TILE_GAP_EDITING : TILE_GAP;
+  const cellSize = boardWidth > 0 ? (boardWidth - gap * (TILE_COLUMNS - 1)) / TILE_COLUMNS : 0;
+  const cellStep = cellSize + gap;
+  const spanSize = (cells: number) => cells * cellSize + (cells - 1) * gap;
 
   return (
     <View style={styles.container}>
@@ -119,76 +218,67 @@ export default function DatabasesScreen() {
           <Text style={styles.header}>Бази даних</Text>
         </View>
         <ScrollView contentContainerStyle={styles.content}>
-          {/* Documents first, then Справи - both across the whole row. */}
-          {WIDE_TILES.map((tile) => (
-            <Pressable key={tile.key} style={styles.wideTile} onPress={() => openTile(tile)}>
-              <Ionicons name={tile.icon} size={22} color={colorFor(tile.key)} />
-              <Text style={[styles.tileLabel, { color: colorFor(tile.key) }]}>{tile.label}</Text>
-              <Pressable
-                hitSlop={8}
-                style={styles.tileMenuButton}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  setColorMenuKey(tile.key);
-                }}
-              >
-                <Ionicons name="ellipsis-horizontal" size={16} color="rgba(255,255,255,0.7)" />
-              </Pressable>
-            </Pressable>
-          ))}
+          {/* The board. Tiles are placed, not flowed - see packTiles for
+              why a wrapping row cannot hold mixed sizes without leaving
+              holes. Each one animates to its new cell whenever the packing
+              changes, which is what makes a resize look like the board
+              closing up around it rather than everything jumping. */}
+          <View
+            style={[styles.board, { height: Math.max(0, rows * cellStep - gap) }]}
+            onLayout={(e) => setBoardWidth(e.nativeEvent.layout.width)}
+          >
+            {/* Everything above is built in; everything below is yours. */}
+            {ruleRow > 0 && (
+              <View style={[styles.boardRule, { top: ruleRow * cellStep - gap / 2 }]} />
+            )}
 
-          <View style={styles.grid}>
-            {GRID_TILES.map((tile) => (
-              <Pressable key={tile.key} style={styles.tile} onPress={() => openTile(tile)}>
-                <Ionicons name={tile.icon} size={22} color={colorFor(tile.key)} />
-                <Text style={[styles.tileLabel, { color: colorFor(tile.key) }]}>{tile.label}</Text>
-                <Pressable
-                  hitSlop={8}
-                  style={styles.tileMenuButton}
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    setColorMenuKey(tile.key);
+            {cellSize > 0 &&
+              placed.map(({ item, x, y, size }) => (
+                <BoardTile
+                  key={item.key}
+                  item={item}
+                  left={x * cellStep}
+                  top={y * cellStep}
+                  width={spanSize(size.w)}
+                  height={spanSize(size.h)}
+                  color={
+                    item.kind === 'custom'
+                      ? item.database.color ?? colorForDocument(item.database.id).background
+                      : colorFor(item.key)
+                  }
+                  editing={editing}
+                  cellSize={cellSize}
+                  size={size}
+                  onOpen={() => {
+                    if (item.kind === 'builtin') openTile(item.tile);
+                    else if (item.kind === 'custom')
+                      navigation.navigate('CustomDatabase', { databaseId: item.database.id });
+                    else if (item.key === NEW_TILE_KEY) setCreatingDatabase(true);
+                    else setImporting(true);
                   }}
-                >
-                  <Ionicons name="ellipsis-horizontal" size={16} color="rgba(255,255,255,0.7)" />
-                </Pressable>
-              </Pressable>
-            ))}
-
-            {/* Everything above is built in; everything below it is yours -
-                the databases you made and the two tiles that make more.
-                Full width on purpose: inside a wrapping row that is also
-                what forces the break, so the line never ends up sharing a
-                row with a tile. */}
-            <View style={styles.sectionRule} />
-
-            {customDatabases.map((cdb) => {
-              const color = cdb.color ?? colorForDocument(cdb.id).background;
-              return (
-                <Pressable
-                  key={cdb.id}
-                  style={styles.tile}
-                  onPress={() => navigation.navigate('CustomDatabase', { databaseId: cdb.id })}
-                >
-                  <Ionicons name={(cdb.icon as keyof typeof Ionicons.glyphMap) ?? 'grid-outline'} size={22} color={color} />
-                  <Text style={[styles.tileLabel, { color }]} numberOfLines={1}>
-                    {cdb.name}
-                  </Text>
-                </Pressable>
-              );
-            })}
-
-            <Pressable style={[styles.tile, styles.newTile]} onPress={() => setCreatingDatabase(true)}>
-              <Ionicons name="add" size={22} color="rgba(255,255,255,0.6)" />
-              <Text style={styles.newTileLabel}>Нова база</Text>
-            </Pressable>
-
-            <Pressable style={[styles.tile, styles.newTile]} onPress={() => setImporting(true)}>
-              <Ionicons name="download-outline" size={22} color="rgba(255,255,255,0.6)" />
-              <Text style={styles.newTileLabel}>Імпорт таблиці</Text>
-            </Pressable>
+                  onHold={() => {
+                    hapticButtonDown();
+                    setEditing(true);
+                  }}
+                  onColor={() => setColorMenuKey(item.key)}
+                  onResize={(next) => setDraftSize({ key: item.key, size: next })}
+                  onResizeEnd={(next) => {
+                    setDraftSize(null);
+                    setSize(item.key, next);
+                  }}
+                />
+              ))}
           </View>
         </ScrollView>
+
+        {/* The way out of arranging - and the only thing on screen that
+            says the board is in it. */}
+        {editing && (
+          <Pressable style={styles.doneButton} onPress={() => setEditing(false)}>
+            <Ionicons name="checkmark" size={18} color="#171310" />
+            <Text style={styles.doneLabel}>Готово</Text>
+          </Pressable>
+        )}
 
         <ImportTableSheet
           visible={importing}
@@ -228,6 +318,109 @@ export default function DatabasesScreen() {
       </ContentColumn>
 
     </View>
+  );
+}
+
+// One tile. It knows nothing about the board it sits on: where it is and
+// how big it is are given to it, and the corner grip hands back the size
+// the finger is asking for, in whole cells.
+function BoardTile({
+  item,
+  left,
+  top,
+  width,
+  height,
+  color,
+  size,
+  cellSize,
+  editing,
+  onOpen,
+  onHold,
+  onColor,
+  onResize,
+  onResizeEnd,
+}: {
+  item: BoardItem;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  color: string;
+  size: TileSize;
+  cellSize: number;
+  editing: boolean;
+  onOpen: () => void;
+  onHold: () => void;
+  onColor: () => void;
+  onResize: (size: TileSize) => void;
+  onResizeEnd: (size: TileSize) => void;
+}) {
+  const label =
+    item.kind === 'builtin'
+      ? item.tile.label
+      : item.kind === 'custom'
+        ? item.database.name
+        : item.key === NEW_TILE_KEY
+          ? 'Нова база'
+          : 'Імпорт таблиці';
+  const icon: keyof typeof Ionicons.glyphMap =
+    item.kind === 'builtin'
+      ? item.tile.icon
+      : item.kind === 'custom'
+        ? (item.database.icon as keyof typeof Ionicons.glyphMap) ?? 'grid-outline'
+        : item.key === NEW_TILE_KEY
+          ? 'add'
+          : 'download-outline';
+  const isAction = item.kind === 'action';
+  // A one-cell tile has room for the icon and nothing else.
+  const tiny = size.w === 1 && size.h === 1;
+
+  // The grip: dragged, it turns the distance travelled into whole cells
+  // and snaps to the nearest size the board allows, live, so the board
+  // re-packs under the finger rather than after it.
+  const grip = Gesture.Pan()
+    .runOnJS(true)
+    .onUpdate((e) => {
+      const w = Math.max(1, Math.round((width + e.translationX) / Math.max(1, cellSize)));
+      const h = Math.max(1, Math.round((height + e.translationY) / Math.max(1, cellSize)));
+      onResize(snapTileSize(w, h));
+    })
+    .onEnd((e) => {
+      const w = Math.max(1, Math.round((width + e.translationX) / Math.max(1, cellSize)));
+      const h = Math.max(1, Math.round((height + e.translationY) / Math.max(1, cellSize)));
+      onResizeEnd(snapTileSize(w, h));
+    });
+
+  return (
+    <Animated.View
+      layout={LinearTransition.duration(220)}
+      style={[styles.tile, isAction && styles.newTile, { left, top, width, height }]}
+    >
+      <Pressable
+        style={styles.tileTap}
+        onPress={editing ? onColor : onOpen}
+        onLongPress={onHold}
+        delayLongPress={400}
+      >
+        <Ionicons name={icon} size={tiny ? 24 : 22} color={isAction ? 'rgba(255,255,255,0.6)' : color} />
+        {!tiny && (
+          <Text
+            style={[styles.tileLabel, { color: isAction ? 'rgba(255,255,255,0.6)' : color }]}
+            numberOfLines={2}
+          >
+            {label}
+          </Text>
+        )}
+      </Pressable>
+
+      {editing && (
+        <GestureDetector gesture={grip}>
+          <View style={styles.grip}>
+            <Ionicons name="resize-outline" size={14} color="rgba(255,255,255,0.75)" />
+          </View>
+        </GestureDetector>
+      )}
+    </Animated.View>
   );
 }
 
@@ -287,58 +480,67 @@ const styles = StyleSheet.create({
   // White capsule tiles felt right on a plain page; on the gradient the
   // same glass surfaces as the rest of this redesign hold together better
   // than a solid white card would.
-  wideTile: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: 'rgba(20,20,20,0.25)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-  },
-  sectionRule: {
+  board: {
     width: '100%',
+    position: 'relative',
+  },
+  boardRule: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.16)',
-    marginTop: 4,
-    marginBottom: 16,
-  },
-    grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
   },
   tile: {
-    width: '48%',
+    position: 'absolute',
     backgroundColor: 'rgba(20,20,20,0.25)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.25)',
     borderRadius: 16,
-    padding: 16,
-    gap: 10,
-    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  tileTap: {
+    flex: 1,
+    padding: 12,
+    gap: 8,
+    justifyContent: 'flex-end',
+  },
+  // Bottom-right, where a window is resized from.
+  grip: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderTopLeftRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  doneButton: {
+    position: 'absolute',
+    alignSelf: 'center',
+    bottom: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+  },
+  doneLabel: {
+    fontSize: 14,
+    fontFamily: FONT_MEDIUM,
+    color: '#171310',
   },
   tileLabel: {
     fontSize: 15,
     fontWeight: '500',
     fontFamily: FONT_MEDIUM,
   },
-  tileMenuButton: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    padding: 4,
-  },
   newTile: {
     borderStyle: 'dashed',
-  },
-  newTileLabel: {
-    fontSize: 15,
-    fontWeight: '500',
-    fontFamily: FONT_MEDIUM,
-    color: 'rgba(255,255,255,0.6)',
   },
   colorMenuBackdrop: {
     flex: 1,
