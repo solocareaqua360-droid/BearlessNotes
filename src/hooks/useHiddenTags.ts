@@ -3,7 +3,7 @@ import {
   arrayUnion,
   doc,
   onSnapshot,
-} from '@react-native-firebase/firestore';
+} from '../firestore';
 import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { TaggableKind } from '../types';

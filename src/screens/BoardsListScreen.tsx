@@ -12,7 +12,7 @@ import {
   orderBy,
   query,
   updateDoc,
-} from '@react-native-firebase/firestore';
+} from '../firestore';
 import { addDoc, setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { BoardsStackParamList } from '../navigation';

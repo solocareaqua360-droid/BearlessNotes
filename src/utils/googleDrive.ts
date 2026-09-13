@@ -5,7 +5,7 @@ import * as LegacyFileSystem from 'expo-file-system/legacy';
 import {
   doc,
   increment,
-} from '@react-native-firebase/firestore';
+} from '../firestore';
 import { setDoc } from './owned';
 import { db } from '../firebase';
 

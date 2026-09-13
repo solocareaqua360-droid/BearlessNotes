@@ -3,7 +3,7 @@ import {
   collection,
   doc,
   updateDoc,
-} from '@react-native-firebase/firestore';
+} from '../firestore';
 import { addDoc, setDoc } from './owned';
 import { db } from '../firebase';
 import { Block, SketchElement } from '../types';

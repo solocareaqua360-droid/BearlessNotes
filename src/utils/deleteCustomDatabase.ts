@@ -1,4 +1,4 @@
-import { collection, getDocs, doc, writeBatch } from '@react-native-firebase/firestore';
+import { collection, getDocs, doc, writeBatch } from '../firestore';
 import { db } from '../firebase';
 
 // A database the user made, and everything that only exists because of it:

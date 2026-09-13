@@ -6,7 +6,7 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import {
   doc,
   updateDoc,
-} from '@react-native-firebase/firestore';
+} from '../firestore';
 import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { SketchElement } from '../types';

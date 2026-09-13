@@ -1,4 +1,4 @@
-import { getFirestore } from '@react-native-firebase/firestore';
+import { getFirestore } from './firestore';
 import {
   GoogleAuthProvider,
   getAuth,

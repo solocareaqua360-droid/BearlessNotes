@@ -26,7 +26,7 @@ import {
   query,
   updateDoc,
   where,
-} from '@react-native-firebase/firestore';
+} from '../firestore';
 import { setDoc } from '../utils/owned';
 import { GLASS_BODY, GLASS_TEXT } from '../constants/glass';
 import { db } from '../firebase';

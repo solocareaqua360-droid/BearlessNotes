@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, doc, onSnapshot, orderBy, query } from '@react-native-firebase/firestore';
+import { collection, doc, onSnapshot, orderBy, query } from '../firestore';
 import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { Group, Tag, TaggableKind } from '../types';

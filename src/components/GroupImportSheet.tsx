@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, onSnapshot, orderBy, query } from '@react-native-firebase/firestore';
+import { collection, onSnapshot, orderBy, query } from '../firestore';
 import { db } from '../firebase';
 import { ImportableItem, MAX_CARDS_PER_COLUMN } from '../utils/importGroupToBoard';
 import { hapticSelectItem, hapticWarning } from '../utils/haptics';

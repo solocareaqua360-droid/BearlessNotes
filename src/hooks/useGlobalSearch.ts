@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, onSnapshot } from '@react-native-firebase/firestore';
+import { collection, onSnapshot } from '../firestore';
 import { db } from '../firebase';
 import { Block, CustomDatabase } from '../types';
 import { TextMatch, documentMatchesQuery, findBodyMatch, findTitleMatch } from '../utils/documentPreview';

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot, orderBy, query } from '@react-native-firebase/firestore';
+import { collection, onSnapshot, orderBy, query } from '../firestore';
 import { db } from '../firebase';
 import { CustomDatabase } from '../types';
 import { defaultColorFor, tileColorsDoc } from '../constants/databaseTiles';

@@ -7,7 +7,7 @@ import {
   collection,
   doc,
   getDoc,
-} from '@react-native-firebase/firestore';
+} from '../firestore';
 import { addDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { RootStackParamList } from '../navigation';

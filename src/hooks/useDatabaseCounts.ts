@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot } from '@react-native-firebase/firestore';
+import { collection, onSnapshot } from '../firestore';
 import { db } from '../firebase';
 import { categoryFromSiteName } from '../utils/linkCategory';
 

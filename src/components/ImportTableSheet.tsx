@@ -7,7 +7,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 
 import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { collection, onSnapshot, orderBy, query } from '@react-native-firebase/firestore';
+import { collection, onSnapshot, orderBy, query } from '../firestore';
 import { db } from '../firebase';
 import { FieldDef, FieldType } from '../types';
 import { canJoinTitle } from '../utils/customRowDisplay';

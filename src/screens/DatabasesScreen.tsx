@@ -4,7 +4,7 @@ import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { collection, deleteField, doc, onSnapshot } from '@react-native-firebase/firestore';
+import { collection, deleteField, doc, onSnapshot } from '../firestore';
 import { addDoc, setDoc } from '../utils/owned';
 import {
   GRID_TILES,

@@ -28,7 +28,7 @@ import {
   query,
   updateDoc,
   writeBatch,
-} from '@react-native-firebase/firestore';
+} from '../firestore';
 import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { Block, Tag } from '../types';

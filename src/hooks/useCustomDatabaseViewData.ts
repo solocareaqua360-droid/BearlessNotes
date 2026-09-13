@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, doc, onSnapshot, query } from '@react-native-firebase/firestore';
+import { collection, doc, onSnapshot, query } from '../firestore';
 import { db } from '../firebase';
 import { CustomDatabase, CustomDatabaseRow, CustomDatabaseView } from '../types';
 import { applyRowFilters, sortRows } from '../utils/customRowQuery';

@@ -31,7 +31,7 @@ import {
   query,
   updateDoc,
   writeBatch,
-} from '@react-native-firebase/firestore';
+} from '../firestore';
 import { addDoc, setDoc } from '../utils/owned';
 import { GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { db } from '../firebase';

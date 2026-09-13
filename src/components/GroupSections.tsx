@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { collection, onSnapshot } from '@react-native-firebase/firestore';
+import { collection, onSnapshot } from '../firestore';
 import { db } from '../firebase';
 import { Block, CustomDatabase, Tag } from '../types';
 import { RootStackParamList } from '../navigation';

@@ -1,7 +1,7 @@
 import {
   addDoc as firestoreAddDoc,
   setDoc as firestoreSetDoc,
-} from '@react-native-firebase/firestore';
+} from '../firestore';
 import { auth } from '../firebase';
 
 // Every document this app creates carries the uid of whoever created it.

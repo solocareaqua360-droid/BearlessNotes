@@ -7,7 +7,7 @@ import {
   getDocs,
   query,
   writeBatch,
-} from '@react-native-firebase/firestore';
+} from '../firestore';
 import { addDoc } from './owned';
 import { auth, db } from '../firebase';
 import { CustomDatabaseRow, FieldDef, FieldType } from '../types';

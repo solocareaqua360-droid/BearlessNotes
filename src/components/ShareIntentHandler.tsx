@@ -8,7 +8,7 @@ import {
   orderBy,
   query,
   updateDoc,
-} from '@react-native-firebase/firestore';
+} from '../firestore';
 import { addDoc, setDoc } from '../utils/owned';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { db } from '../firebase';

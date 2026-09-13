@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   doc,
   onSnapshot,
-} from '@react-native-firebase/firestore';
+} from '../firestore';
 import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { DEFAULT_SORT_PREF, SortField, SortPref, defaultDirFor } from '../utils/sortItems';

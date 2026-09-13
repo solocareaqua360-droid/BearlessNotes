@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { doc, onSnapshot } from '@react-native-firebase/firestore';
+import { doc, onSnapshot } from '../firestore';
 import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { hapticButtonDown } from '../utils/haptics';

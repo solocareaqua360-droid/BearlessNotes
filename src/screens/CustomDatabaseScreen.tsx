@@ -37,7 +37,7 @@ import {
   query,
   updateDoc,
   writeBatch,
-} from '@react-native-firebase/firestore';
+} from '../firestore';
 import { setDoc } from '../utils/owned';
 import {
   GLASS_BODY,

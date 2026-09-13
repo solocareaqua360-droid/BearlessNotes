@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, onSnapshot, orderBy, query } from '@react-native-firebase/firestore';
+import { collection, onSnapshot, orderBy, query } from '../firestore';
 import { db } from '../firebase';
 import { CustomDatabase, CustomDatabaseRow, Group } from '../types';
 import { labelForKind } from '../utils/groups';

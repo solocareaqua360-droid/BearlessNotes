@@ -37,7 +37,7 @@ import {
   getDocFromCache,
   onSnapshot,
   updateDoc,
-} from '@react-native-firebase/firestore';
+} from '../firestore';
 import { addDoc, setDoc } from '../utils/owned';
 import * as Clipboard from 'expo-clipboard';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';

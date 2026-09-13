@@ -66,7 +66,7 @@ import {
   orderBy,
   query,
   updateDoc,
-} from '@react-native-firebase/firestore';
+} from '../firestore';
 import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';

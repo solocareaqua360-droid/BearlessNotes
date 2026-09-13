@@ -3,7 +3,7 @@ import {
   doc,
   getDoc,
   updateDoc,
-} from '@react-native-firebase/firestore';
+} from '../firestore';
 import { addDoc } from './owned';
 import { db } from '../firebase';
 import { BoardCard, BoardColumn, Group } from '../types';

@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
-import { collection, getDocs } from '@react-native-firebase/firestore';
+import { collection, getDocs } from '../firestore';
 import { db } from '../firebase';
 
 // How long a file's bytes stay on this device once nobody has opened it.

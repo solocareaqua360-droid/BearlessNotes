@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 // app (that's what makes OTA updates work at all), so this adds nothing
 // native and ships over the air like any other change.
 import * as Updates from 'expo-updates';
-import { doc, onSnapshot } from '@react-native-firebase/firestore';
+import { doc, onSnapshot } from '../firestore';
 import { auth, db, signInWithGoogleAccount } from '../firebase';
 import {
   connectGoogleDrive,

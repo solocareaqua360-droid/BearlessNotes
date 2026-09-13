@@ -6,7 +6,7 @@ import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 // land between rows. Same fix, same reason, as FieldsEditorSheet.
 import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, onSnapshot, orderBy, query } from '@react-native-firebase/firestore';
+import { collection, onSnapshot, orderBy, query } from '../firestore';
 import { db } from '../firebase';
 import { Block, CustomDatabase, CustomDatabaseRow, CustomDatabaseView, SketchElement } from '../types';
 import {

@@ -1,5 +1,5 @@
 import * as LegacyFileSystem from 'expo-file-system/legacy';
-import { collection, doc, getDocs, updateDoc } from '@react-native-firebase/firestore';
+import { collection, doc, getDocs, updateDoc } from '../firestore';
 import { db } from '../firebase';
 import { backupFileToDrive } from './googleDrive';
 

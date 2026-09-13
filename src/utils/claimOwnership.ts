@@ -1,4 +1,4 @@
-import { collection, getDocs, writeBatch } from '@react-native-firebase/firestore';
+import { collection, getDocs, writeBatch } from '../firestore';
 import { db } from '../firebase';
 
 // Every collection this app writes. Listed rather than discovered: Firestore
