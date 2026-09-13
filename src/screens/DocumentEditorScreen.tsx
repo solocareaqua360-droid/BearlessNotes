@@ -3747,10 +3747,27 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // whose dimensions aren't known upfront (the scanner plugin only returns
   // a file path) - render once un-resized just to read them off, then reuse
   // the existing compressor with those.
+  // A scanned page is kept more generously than a photograph from the
+  // gallery, and on purpose: the detail IS the content. Stored at the
+  // snapshot settings (1600px, quality 0.7) a page of a book came back
+  // out of the note with its words broken in half when it was read - the
+  // same document that read perfectly straight off the scanner.
   async function compressScannedImage(uri: string): Promise<string> {
+    const SCAN_MAX_DIMENSION = 2400;
     try {
       const probe = await ImageManipulator.manipulate(uri).renderAsync();
-      return await compressPickedImage(uri, probe.width, probe.height);
+      const longest = Math.max(probe.width, probe.height);
+      let context = ImageManipulator.manipulate(uri);
+      if (longest > SCAN_MAX_DIMENSION) {
+        const scale = SCAN_MAX_DIMENSION / longest;
+        context = context.resize({
+          width: Math.round(probe.width * scale),
+          height: Math.round(probe.height * scale),
+        });
+      }
+      const rendered = await context.renderAsync();
+      const saved = await rendered.saveAsync({ compress: 0.85, format: SaveFormat.JPEG });
+      return saved.uri;
     } catch {
       return uri;
     }

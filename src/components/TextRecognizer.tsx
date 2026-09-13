@@ -24,6 +24,11 @@ const TESSERACT_WORKER = require('../../assets/ocr/tesseract-worker.jslib');
 const TESSERACT_CORE = require('../../assets/ocr/tesseract-core.jslib');
 const UKR_DATA = require('../../assets/ocr/ukr.traineddata.bin');
 
+// As large as is worth handing over: a page of a book at this size has
+// letters tall enough to be read reliably, and going further mostly
+// costs seconds. Nothing is ever enlarged TO it.
+const OCR_MAX_SIDE = 2600;
+
 export type RecognizeRequest = {
   // Local image files, in the order their text should be joined.
   uris: string[];
@@ -247,16 +252,37 @@ export default function TextRecognizer({
         // of them as base64 is a ten-megabyte document the WebView never
         // finished opening: no error, no text, just a minute of nothing.
         //
-        // Downscaled on the way in as well. On a real page 1600px across
-        // gave output identical to the full size, at a fraction of the
-        // work.
+        // Size is the whole game here, and the first version of this got
+        // it backwards: it resized every page to 1600px WIDE, which for
+        // a portrait page of a book meant throwing away half the detail -
+        // and, for a page that had already been stored and compressed,
+        // BLOWING IT BACK UP from about twelve hundred. That is why the
+        // same document read perfectly the first time (straight off the
+        // scanner) and came back in pieces the second (out of the note):
+        // they were not the same picture. "Місто" arriving as "Мі" and
+        // "сто" is what too few pixels looks like.
+        //
+        // So: never enlarge, and only shrink what is genuinely huge.
         const images: string[] = [];
         sizesRef.current = [];
         for (let i = 0; i < request.uris.length; i += 1) {
           const name = `scan-${Date.now()}-${i}.jpg`;
-          const context = ImageManipulator.manipulate(request.uris[i]).resize({ width: 1600 });
-          const rendered = await context.renderAsync();
-          const saved = await rendered.saveAsync({ compress: 0.85, format: SaveFormat.JPEG });
+          const source = request.uris[i];
+          let rendered = await ImageManipulator.manipulate(source).renderAsync();
+          const longest = Math.max(rendered.width, rendered.height);
+          if (longest > OCR_MAX_SIDE) {
+            const scale = OCR_MAX_SIDE / longest;
+            rendered = await ImageManipulator.manipulate(source)
+              .resize({
+                width: Math.round(rendered.width * scale),
+                height: Math.round(rendered.height * scale),
+              })
+              .renderAsync();
+          }
+          // Barely compressed: this file is read by a machine that is
+          // trying to tell a "с" from an "о", and JPEG artefacts are
+          // exactly what that looks like.
+          const saved = await rendered.saveAsync({ compress: 0.92, format: SaveFormat.JPEG });
           await LegacyFileSystem.copyAsync({ from: saved.uri, to: `${dir}${name}` });
           sizesRef.current.push({ width: saved.width, height: saved.height });
           images.push(name);
@@ -299,7 +325,16 @@ export default function TextRecognizer({
         return;
       }
       if (message.page && message.of) {
-        progressRef.current = { page: message.page, of: message.of, progress: 0 };
+        // The size is said out loud while it works. It is the one number
+        // that decides whether a page can be read at all, and guessing at
+        // it from the outside cost this feature two rounds.
+        const size = sizesRef.current[message.page - 1];
+        progressRef.current = {
+          page: message.page,
+          of: message.of,
+          progress: 0,
+          stage: size ? `Читаю ${size.width}×${size.height}` : undefined,
+        };
         onProgress(progressRef.current);
         return;
       }
