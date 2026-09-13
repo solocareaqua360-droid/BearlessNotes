@@ -18,7 +18,6 @@ import * as Sharing from 'expo-sharing';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   collection,
   deleteDoc,
@@ -48,6 +47,7 @@ import CopyToNoteModal from '../components/CopyToNoteModal';
 import { detachTagFromDeletedItem } from '../hooks/useTags';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import { useDatabaseList } from '../hooks/useDatabaseList';
+import { downloadToFolder } from '../utils/downloadToFolder';
 import { touchAttachment } from '../utils/attachmentCache';
 import DatabaseChrome from '../components/DatabaseChrome';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
@@ -62,7 +62,6 @@ const ACCENT = '#EC4899';
 // The same half-strength tint the documents screen's add button takes -
 // the blur behind it is what separates it, so the colour only tints.
 const ACCENT_GLASS = 'rgba(236,72,153,0.55)';
-const DOWNLOAD_DIR_STORAGE_KEY = 'bearlessNotes.downloadDirUri';
 
 type JustAddedPhoto = { id: string; imageUri: string; createdAt: number };
 
@@ -82,26 +81,6 @@ type PhotoItem = {
   updatedAt: number;
   createdAt?: number;
 };
-
-// Same "pick a folder once, remember it" download flow already built for
-// image/file blocks in DocumentEditorScreen - duplicated here (rather than
-// exported and shared) since it's a handful of lines and the two screens
-// otherwise have nothing else in common worth coupling them for.
-async function downloadPhoto(uri: string): Promise<{ destUri: string; fileName: string } | null> {
-  const stored = await AsyncStorage.getItem(DOWNLOAD_DIR_STORAGE_KEY);
-  let dirUri = stored;
-  if (!dirUri) {
-    const permission = await LegacyFileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-    if (!permission.granted) return null;
-    dirUri = permission.directoryUri;
-    await AsyncStorage.setItem(DOWNLOAD_DIR_STORAGE_KEY, dirUri);
-  }
-  const fileName = `photo-${Date.now()}`;
-  const destUri = await LegacyFileSystem.StorageAccessFramework.createFileAsync(dirUri, fileName, 'image/jpeg');
-  const content = await LegacyFileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-  await LegacyFileSystem.writeAsStringAsync(destUri, content, { encoding: 'base64' });
-  return { destUri, fileName: `${fileName}.jpg` };
-}
 
 export default function PhotosScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -163,7 +142,7 @@ export default function PhotosScreen() {
   const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
 
   async function handleDownloadPhoto(uri: string) {
-    const result = await downloadPhoto(uri);
+    const result = await downloadToFolder(uri, `photo-${Date.now()}.jpg`, 'image/jpeg');
     if (result) showDownloadToast(result.fileName, result.destUri, 'image/jpeg');
   }
 

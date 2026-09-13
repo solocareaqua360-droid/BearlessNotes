@@ -3,6 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tag } from '../types';
 import TagChips from './TagChips';
 import { colorForDocument } from '../utils/documentColor';
+import { formatUpdatedAt } from '../utils/documentPreview';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { LINK_CATEGORY_INFO, categoryFromSiteName } from '../utils/linkCategory';
 import { fileIconColorFor, fileIconFor } from '../utils/fileIcons';
@@ -35,6 +36,8 @@ export type LinkCardItem = {
   siteName?: string;
   imageUrl?: string;
   tagIds: string[];
+  createdAt?: number;
+  updatedAt?: number;
 };
 
 export type FileCardItem = {
@@ -42,6 +45,11 @@ export type FileCardItem = {
   fileName: string;
   title?: string;
   tagIds: string[];
+  // When it was added - shown on the card, because "which of these is the
+  // one from Monday" is the question a list of similar file names gets
+  // asked most.
+  createdAt?: number;
+  updatedAt?: number;
 };
 
 export type PhotoCardItem = {
@@ -113,6 +121,8 @@ export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
           </Text>
           <Text style={[styles.rowCaption, { color: textMuted }]} numberOfLines={1}>
             {link.siteName ?? hostnameOf(link.url)}
+            {!!(link.createdAt ?? link.updatedAt) &&
+              ` · ${formatUpdatedAt((link.createdAt ?? link.updatedAt) as number)}`}
           </Text>
           {rest.tags.length > 0 && (
             <View style={styles.rowMeta}>
@@ -170,6 +180,11 @@ export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
           <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
             {file.title || file.fileName}
           </Text>
+          {!!(file.createdAt ?? file.updatedAt) && (
+            <Text style={[styles.rowCaption, { color: textMuted }]}>
+              {formatUpdatedAt((file.createdAt ?? file.updatedAt) as number)}
+            </Text>
+          )}
           {rest.tags.length > 0 && (
             <View style={styles.rowMeta}>
               <TagChips tags={rest.tags} onPress={rest.onTagPress ?? (() => {})} glass />
@@ -193,6 +208,11 @@ export function FileGridCell({ file, ...rest }: { file: FileCardItem } & Common)
         <Text style={[styles.gridTitle, { color: text }]} numberOfLines={2}>
           {file.title || file.fileName}
         </Text>
+        {!!(file.createdAt ?? file.updatedAt) && (
+          <Text style={[styles.gridCaption, { color: textMuted }]}>
+            {formatUpdatedAt((file.createdAt ?? file.updatedAt) as number)}
+          </Text>
+        )}
         {rest.tags.length > 0 && (
           <View style={styles.rowMeta}>
             <TagChips tags={rest.tags} onPress={rest.onTagPress ?? (() => {})} glass />

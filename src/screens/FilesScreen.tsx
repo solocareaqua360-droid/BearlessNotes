@@ -51,6 +51,9 @@ import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { ensureFileIsHere, openFileExternally } from '../utils/openFileExternally';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
+import { downloadToFolder } from '../utils/downloadToFolder';
+import { useDownloadToast } from '../hooks/useDownloadToast';
+import DownloadToast from '../components/DownloadToast';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
@@ -90,6 +93,7 @@ type FileItem = {
 export default function FilesScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { isTwoPane } = useResponsiveLayout();
+  const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
   const [files, setFiles] = useState<FileItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [renamingFile, setRenamingFile] = useState<FileItem | null>(null);
@@ -246,6 +250,22 @@ export default function FilesScreen() {
   // A Word or Excel file is looked at right here; anything else goes to
   // the app that opens it. Either way the bytes are fetched back from
   // Drive first when this device does not have them.
+  // A copy out of the app, into the folder the user picked once. The bytes
+  // are fetched back from Drive first if this device does not have them.
+  async function handleDownloadFile(file: FileItem) {
+    if (!(await ensureFileIsHere(file))) return;
+    try {
+      const result = await downloadToFolder(
+        file.fileUri,
+        file.title || file.fileName,
+        file.mimeType || 'application/octet-stream'
+      );
+      if (result) showDownloadToast(result.fileName, result.destUri, file.mimeType || '*/*');
+    } catch (error) {
+      Alert.alert('Не вдалося завантажити', (error as Error).message);
+    }
+  }
+
   async function openFile(file: FileItem) {
     const kind = quickLookKindFor(file.fileName);
     if (kind) {
@@ -416,6 +436,7 @@ export default function FilesScreen() {
       <FileRow
         key={item.id}
         file={item}
+        // The card says when it arrived - see FileCardItem.createdAt.
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
         onPress={() => (isSelectMode ? toggleSelected(item.id) : openFile(item))}
         onLongPress={() => setCardMenuFileId(item.id)}
@@ -516,6 +537,17 @@ export default function FilesScreen() {
               }}
             />
           )}
+          {/* Where it landed, and a way to open the folder it landed in. */}
+          {downloadToast && (
+            <DownloadToast
+              fileName={downloadToast.fileName}
+              onShowInFolder={() => {
+                dismissDownloadToast();
+                Sharing.shareAsync(downloadToast.uri, { mimeType: downloadToast.mimeType }).catch(() => {});
+              }}
+              onIgnore={dismissDownloadToast}
+            />
+          )}
           {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
           {!toast && justAddedFile && (
             <UndoToast
@@ -546,7 +578,21 @@ export default function FilesScreen() {
                   <Ionicons name="pencil-outline" size={18} color="#111827" />
                   <Text style={styles.cardMenuRowLabel}>Редагувати назву</Text>
                 </Pressable>
-                {cardMenuFile && cardMenuFile.documentIds.length > 0 && (
+                {/* Saved where the phone keeps everything else, into the
+                  folder picked once - the app's own copy is not somewhere
+                  a person can reach. */}
+              <Pressable
+                style={styles.cardMenuRow}
+                onPress={() => {
+                  const file = cardMenuFile;
+                  setCardMenuFileId(null);
+                  if (file) handleDownloadFile(file);
+                }}
+              >
+                <Ionicons name="download-outline" size={18} color="#111827" />
+                <Text style={styles.cardMenuRowLabel}>Завантажити</Text>
+              </Pressable>
+              {cardMenuFile && cardMenuFile.documentIds.length > 0 && (
                   <Pressable
                     style={styles.cardMenuRow}
                     onPress={() => {
