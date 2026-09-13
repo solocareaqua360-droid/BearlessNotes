@@ -11,11 +11,12 @@ export const TILE_COLUMNS = 4;
 
 export type TileSize = { w: number; h: number };
 
-// The five the user picked. Anything stored that is not one of these (an
+// The sizes the user picked. Anything stored that is not one of these (an
 // older value, a hand-edited document) falls back to the small square.
 export const TILE_SIZES: TileSize[] = [
   { w: 1, h: 1 },
   { w: 1, h: 2 },
+  { w: 2, h: 1 },
   { w: 2, h: 2 },
   { w: 4, h: 1 },
   { w: 4, h: 2 },
