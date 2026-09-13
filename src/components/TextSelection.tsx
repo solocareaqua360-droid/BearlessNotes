@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RecognizedPage } from './TextRecognizer';
+import { joinWords } from '../utils/recognizedText';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_BODY, GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { hapticButtonDown } from '../utils/haptics';
@@ -50,10 +51,9 @@ export default function TextSelection({
     if (!page) return '';
     const from = Math.min(range.from, range.to);
     const to = Math.max(range.from, range.to);
-    return page.words
-      .slice(from, to + 1)
-      .map((word) => word.text)
-      .join(' ');
+    // Joined the same way the whole page is: broken words put back
+    // together, lines run on, only a real gap starts a paragraph.
+    return joinWords(page.words.slice(from, to + 1));
   }, [range, pages]);
 
   const wholeText = useMemo(

@@ -4084,7 +4084,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     setRecognizeProgress(null);
     const anything = pages.some((page) => page.words.length > 0);
     if (!after || !anything) {
-      Alert.alert('Нічого не знайшлось', 'На цьому знімку не вдалося прочитати текст.');
+      notify('Нічого не знайшлось', 'На цьому знімку не вдалося прочитати текст.');
       return;
     }
     setSelecting({ pages, after });

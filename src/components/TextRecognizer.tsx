@@ -4,6 +4,7 @@ import { WebView } from 'react-native-webview';
 import { Asset } from 'expo-asset';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import { RecognizedPage, ScoredWord, joinWords, tidyWords } from '../utils/recognizedText';
 
 // Reading the text off a photographed page, on the device, offline.
 //
@@ -28,18 +29,9 @@ export type RecognizeRequest = {
   uris: string[];
 };
 
-// One word and the box it occupies, in the recognised image's own pixels.
-export type RecognizedWord = { text: string; x0: number; y0: number; x1: number; y1: number };
-
-// A page as it came back: its whole text, and the words it is made of,
-// against the picture they were read from.
-export type RecognizedPage = {
-  text: string;
-  words: RecognizedWord[];
-  width: number;
-  height: number;
-  image: string;
-};
+// The shape of what comes back, and the cleaning that turns it into
+// prose, both live in one place - see utils/recognizedText.
+export type { RecognizedWord, RecognizedPage } from '../utils/recognizedText';
 
 // Both the page and the worker are given this, because both of them fetch
 // something: the page fetches the photograph, the worker fetches the
@@ -175,7 +167,14 @@ function pageFor(images: string[], dirUrl: string, library: string): string {
         // lets a finger drag across the picture and pick a passage out
         // of it rather than taking the whole page or nothing.
         var words = (result.data.words || []).map(function (w) {
-          return { text: w.text, x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 };
+          return {
+            text: w.text,
+            // How sure it is, 0-100. A photographed page returns real
+            // print in the eighties and its own shadow in the forties,
+            // and without this they are indistinguishable.
+            confidence: w.confidence,
+            x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1,
+          };
         });
         pages.push({
           text: result.data.text || '',
@@ -288,7 +287,7 @@ export default function TextRecognizer({
     try {
       const message = JSON.parse(raw) as {
         ok?: boolean;
-        pages?: RecognizedPage[];
+        pages?: (Omit<RecognizedPage, 'words'> & { words: ScoredWord[] })[];
         error?: string;
         page?: number;
         of?: number;
@@ -313,12 +312,17 @@ export default function TextRecognizer({
         onDone(
           message.pages.map((page, index) => {
             const size = sizesRef.current[index];
-            // The word boxes are the last resort: the page is at least
-            // as big as the furthest word on it.
-            const extentX = page.words.reduce((most, word) => Math.max(most, word.x1), 0);
-            const extentY = page.words.reduce((most, word) => Math.max(most, word.y1), 0);
+            // The noise goes here, once, so the selection screen and the
+            // note can never disagree about what was on the page.
+            const words = tidyWords((page.words ?? []) as ScoredWord[]);
+            // The word boxes are the last resort for the size: the page
+            // is at least as big as the furthest word on it.
+            const extentX = words.reduce((most, word) => Math.max(most, word.x1), 0);
+            const extentY = words.reduce((most, word) => Math.max(most, word.y1), 0);
             return {
               ...page,
+              words,
+              text: joinWords(words),
               width: page.width || size?.width || extentX,
               height: page.height || size?.height || extentY,
             };
