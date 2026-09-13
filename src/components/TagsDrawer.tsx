@@ -330,8 +330,11 @@ export default function TagsDrawer({
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { colorFor, customDatabases } = useDatabaseTiles();
   // Three tiles to a row, whatever the drawer is wide: the panel's own
-  // padding off each side, two gaps between the three.
-  const tileWidth = (drawerWidth - PANEL_PADDING * 2 - TILE_GAP * 2) / 3;
+  // padding off each side, two gaps between the three. Rounded DOWN, and
+  // that matters - an exact third leaves the row a hair too wide once
+  // each tile is rounded to a real pixel, and the third tile drops to the
+  // next line. A pixel of slack costs nothing and keeps them together.
+  const tileWidth = Math.floor((drawerWidth - PANEL_PADDING * 2 - TILE_GAP * 2) / 3);
   const [filterMode, setFilterMode] = useState<TagFilterMode>('multi');
   const [databasesCollapsed, setDatabasesCollapsed] = useState(false);
   const [groupsCollapsed, setGroupsCollapsed] = useState(false);
