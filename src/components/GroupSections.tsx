@@ -69,6 +69,7 @@ export default function GroupSections({
   groupId,
   currentKind,
   tags,
+  sidePadding = 0,
 }: {
   // The group in view, or null when none is (everything below is skipped).
   groupId: string | null;
@@ -76,6 +77,10 @@ export default function GroupSections({
   // section is left out.
   currentKind: string;
   tags: Tag[];
+  // The side margin the calling list does NOT already provide. The
+  // documents list has none of its own (its cards carry theirs), so it
+  // passes 20; every other list already pads its own content.
+  sidePadding?: number;
 }) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const enabled = !!groupId;
@@ -132,7 +137,7 @@ export default function GroupSections({
   }
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, { paddingHorizontal: sidePadding }]}>
       {sections.map((kind) => {
         const face = FACE[kind];
         const rows = byKind[kind];
@@ -177,6 +182,7 @@ export default function GroupSections({
                         imageUris={imageUris}
                         previewText={previewText}
                         checklistItems={checklistItems}
+                        flush
                         onPress={() => navigation.navigate('Editor', { documentId: row.id })}
                       />
                     );

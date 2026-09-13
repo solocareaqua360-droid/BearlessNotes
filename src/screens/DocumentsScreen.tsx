@@ -866,7 +866,14 @@ export default function DocumentsScreen() {
             // the real list: a search or the stickers tab is not a group's
             // view of itself.
             ListFooterComponent={
-              <GroupSections groupId={list.selectedGroupId} currentKind="document" tags={tags} />
+              <GroupSections
+                groupId={list.selectedGroupId}
+                currentKind="document"
+                tags={tags}
+                // This list pads nothing: its own cards carry their side
+                // margin, so the sections have to bring the same one.
+                sidePadding={20}
+              />
             }
             numColumns={viewMode === 'grid' ? 2 : 1}
             columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}

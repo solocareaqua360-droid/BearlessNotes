@@ -198,6 +198,12 @@ type Props = {
   // instead of a trailing icon (a grid card has no natural trailing edge
   // the way a full-width row does).
   layout?: 'list' | 'grid';
+  // A list row carries its own side margin, because the documents list it
+  // was built for has none of its own. Anywhere the container already
+  // provides that margin (a group's section under another database's
+  // list), `flush` drops it so the card lines up with everything beside
+  // it instead of sitting 20pt further in.
+  flush?: boolean;
 };
 
 // The card shared by Documents and Search: a thumbnail (the document's
@@ -225,6 +231,7 @@ export default function DocumentCard({
   isSelected,
   onToggleSelect,
   layout = 'list',
+  flush,
 }: Props) {
   const { background, text, textMuted } = colorForDocument(id);
   const isGrid = layout === 'grid';
@@ -321,7 +328,7 @@ export default function DocumentCard({
   }
 
   return (
-    <View style={[styles.row, { backgroundColor: background }]}>
+    <View style={[styles.row, flush && styles.rowFlush, { backgroundColor: background }]}>
       <Image source={GRAIN} resizeMode="cover" style={styles.grain} />
       <Pressable style={styles.tap} onPress={isSelectMode ? onToggleSelect : onPress}>
         {thumbNode}
@@ -351,6 +358,9 @@ const styles = StyleSheet.create({
     // first attempt came out at a third of a percent and looked like
     // nothing at all, and the second like television static.
     opacity: 0.85,
+  },
+  rowFlush: {
+    marginHorizontal: 0,
   },
   row: {
     flexDirection: 'row',
