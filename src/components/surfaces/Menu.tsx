@@ -1,8 +1,9 @@
 import { ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useBlurTarget } from '../GlassTarget';
+import { GlassPortal } from '../GlassPortal';
 import { FONT_BOLD, FONT_REGULAR } from '../../utils/fonts';
 import { GLASS_DANGER, GLASS_ISLAND, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT } from '../../constants/glass';
 
@@ -16,7 +17,17 @@ import { GLASS_DANGER, GLASS_ISLAND, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT } 
 //
 // This is the documents one, made shared. It draws the panel and the
 // backdrop that closes it; WHERE it sits is the caller's business, since
-// a menu belongs beside whatever opened it.
+// a menu belongs beside whatever opened it - so `style` must place it
+// ABSOLUTELY, in the screen's own coordinates.
+//
+// Absolutely, because it is drawn through the portal, and that is not a
+// detail: on Android the blur is told which view to blur, and that view
+// is every screen. A BlurView left where it was declared therefore sits
+// INSIDE the picture it is blurring and tries to draw itself - which
+// does not look wrong, it takes the whole app down. The first version of
+// this crashed the calendar the moment the menu opened, exactly that
+// way. The portal lifts it out, above the target, where the documents
+// menu has always been.
 
 export type MenuEntry =
   | { kind: 'section'; label: string }
@@ -56,11 +67,14 @@ export default function Menu({
   children?: ReactNode;
 }) {
   const blurTarget = useBlurTarget();
+  // Read at render, never captured at module scope - a stale window size
+  // is what broke the calendar's week strip twice before.
+  const { height: windowHeight } = useWindowDimensions();
   if (!visible) return null;
   return (
-    <>
+    <GlassPortal>
       <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={[styles.panel, { width }, maxHeight ? { maxHeight } : null, style]}>
+      <View style={[styles.panel, { width }, { maxHeight: maxHeight ?? windowHeight * 0.6 }, style]}>
         <BlurView
           intensity={60}
           tint="dark"
@@ -107,7 +121,7 @@ export default function Menu({
           {children}
         </ScrollView>
       </View>
-    </>
+    </GlassPortal>
   );
 }
 
