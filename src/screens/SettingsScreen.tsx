@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, PixelRatio, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  PixelRatio,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 // Safe to import here: the native module is already in every build of this
 // app (that's what makes OTA updates work at all), so this adds nothing
@@ -207,6 +217,10 @@ export default function SettingsScreen() {
   return (
     <View style={styles.container}>
       <ContentColumn>
+        {/* Scrolls: on a narrow screen the three cards are taller than the
+            window, and without this the last of them - and every button on
+            it - simply could not be reached. */}
+        <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.headerRow}>
           <Text style={styles.header}>Налаштування</Text>
         </View>
@@ -337,6 +351,7 @@ export default function SettingsScreen() {
             </>
           )}
         </View>
+        </ScrollView>
       </ContentColumn>
 
     </View>
@@ -347,6 +362,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  content: {
+    paddingBottom: 48,
   },
   headerRow: {
     paddingHorizontal: 20,
