@@ -3,8 +3,10 @@ import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } fro
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
+import { GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { DatabaseList } from '../hooks/useDatabaseList';
 import { GlassPortal } from './GlassPortal';
 import { useBlurTarget } from './GlassTarget';
@@ -14,7 +16,7 @@ import SortMenuRows from './SortMenuRows';
 import TagsDrawer, { removeTagFromFilter } from './TagsDrawer';
 import BulkActionBar from './BulkActionBar';
 import { useRail } from '../hooks/useRail';
-import { usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
+import { pullHaptic, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CAPSULE_DROP, CAPSULE_HEIGHT_3, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
@@ -94,7 +96,10 @@ export default function DatabaseChrome<T extends { id: string }>({
   const chromeTop = insets.top + CHROME_TOP;
   const chromeBottom = chromeTop + chromeHeight + 8;
   // Pulled down from the top of the list, the search comes out.
-  const pull = usePullToSearch(() => list.setIsSearching(true));
+  const pull = usePullToSearch(() => {
+    pullHaptic();
+    list.setIsSearching(true);
+  });
   // ...and closes itself when the keyboard goes away empty, or when a
   // swipe carries the screen off.
   useSearchDismissal({
@@ -253,7 +258,13 @@ export default function DatabaseChrome<T extends { id: string }>({
         )}
 
         {list.isSearching && (
-          <View style={[styles.searchRow, !list.tagFilter && { marginTop: chromeBottom }]}>
+          // Fades down into place rather than appearing between two
+          // frames - the pull that opens it is a slow movement, and the
+          // field arriving instantly at the end of it read as a jolt.
+          <Animated.View
+            entering={FadeInDown.duration(220)}
+            style={[styles.searchRow, !list.tagFilter && { marginTop: chromeBottom }]}
+          >
             <Ionicons name="search" size={14} color="#9CA3AF" />
             <TextInput
               autoFocus
@@ -263,13 +274,18 @@ export default function DatabaseChrome<T extends { id: string }>({
               placeholderTextColor="#9CA3AF"
               style={styles.searchInput}
             />
-          </View>
+          </Animated.View>
         )}
 
         {/* Only what floats above the cards pushes them down; once a chip
             row or the search field has already taken that space, the
             cards start right under it. */}
-        {children(list.tagFilter || list.isSearching ? 0 : chromeBottom, pull.listProps)}
+        {/* The list is declared as a gesture of its own here (see
+            usePullToSearch), so the pull can be measured alongside it
+            without taking anything away from it. */}
+        <GestureDetector gesture={pull.gesture}>
+          {children(list.tagFilter || list.isSearching ? 0 : chromeBottom, pull.listProps)}
+        </GestureDetector>
       </ContentColumn>
 
       {overlay}

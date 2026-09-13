@@ -15,7 +15,8 @@ import {
 } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect, Path, Text as SvgText } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -39,7 +40,7 @@ import { hapticButtonDown, hapticButtonUp } from '../utils/haptics';
 import { RootStackParamList } from '../navigation';
 import { detachTagFromDeletedItem, ITEMS_COLLECTION_BY_KIND } from '../hooks/useTags';
 import { useDatabaseList } from '../hooks/useDatabaseList';
-import { usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
+import { pullHaptic, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import DocumentEditorScreen from './DocumentEditorScreen';
 import SortMenuRows from '../components/SortMenuRows';
@@ -332,7 +333,10 @@ export default function DocumentsScreen() {
   const searchMatches = searching ? displayedDocuments : [];
   // Pulled down from the top of the list, the search comes out - see
   // usePullToSearch.
-  const pull = usePullToSearch(() => setSearchOpen(true));
+  const pull = usePullToSearch(() => {
+    pullHaptic();
+    setSearchOpen(true);
+  });
   useSearchDismissal({
     isSearching: searchOpen,
     query: searchText,
@@ -665,7 +669,9 @@ export default function DocumentsScreen() {
           onLayout={(e) => setChromeHeight(e.nativeEvent.layout.height)}
         >
           {searchOpen && (
-            <View style={styles.searchRow}>
+            // Fades down into place: the pull that opens it is a slow
+            // movement, and the field arriving instantly read as a jolt.
+            <Animated.View entering={FadeInDown.duration(220)} style={styles.searchRow}>
               <BlurView
                 intensity={60}
                 tint="dark"
@@ -688,7 +694,7 @@ export default function DocumentsScreen() {
                   <Ionicons name="close-outline" size={19} color={GLASS_TEXT_MUTED} />
                 </Pressable>
               )}
-            </View>
+            </Animated.View>
           )}
           {groups.length > 0 && !groupsRowHidden && (
             // No TabsTunnel here any more: it drew a capsule blending
@@ -779,6 +785,7 @@ export default function DocumentsScreen() {
               <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
             </View>
           ) : (
+            <GestureDetector gesture={pull.gesture}>
             <FlatList
               {...pull.listProps}
               key={`search-${viewMode}`}
@@ -815,6 +822,7 @@ export default function DocumentsScreen() {
                 );
               }}
             />
+            </GestureDetector>
           )
         ) : showingStickers ? (
           freeStickers.length === 0 ? (
@@ -863,6 +871,7 @@ export default function DocumentsScreen() {
             )}
           </View>
         ) : (
+          <GestureDetector gesture={pull.gesture}>
           <FlatList
             {...pull.listProps}
             // FlatList throws if numColumns changes on an already-mounted
@@ -923,6 +932,7 @@ export default function DocumentsScreen() {
               );
             }}
           />
+          </GestureDetector>
         )}
 
         {/* Through the portal, like the rest of the rail: the blur that
