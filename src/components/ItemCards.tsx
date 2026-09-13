@@ -177,43 +177,20 @@ export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
   // of a document. Worked out once, elsewhere (see FilePreviewWorker).
   const preview = useFilePreview(file);
 
-  // A file with a picture of its first page is shown the way a video is:
-  // the picture across the whole card, the name under it. A thumbnail the
-  // size of an icon wastes the one thing that says which document this is.
-  if (preview?.thumbUri) {
-    return (
-      <View style={[styles.wideCard, { backgroundColor: background }]}>
-        <Pressable onPress={rest.onPress} onLongPress={rest.onLongPress}>
-          <Image source={{ uri: preview.thumbUri }} style={styles.wideThumb} resizeMode="cover" />
-          <View style={styles.wideBody}>
-            <View style={styles.rowBody}>
-              <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
-                {file.title || file.fileName}
-              </Text>
-              {!!(file.createdAt ?? file.updatedAt) && (
-                <Text style={[styles.rowCaption, { color: textMuted }]}>
-                  {formatUpdatedAt((file.createdAt ?? file.updatedAt) as number)}
-                </Text>
-              )}
-              {rest.tags.length > 0 && (
-                <View style={styles.rowMeta}>
-                  <TagChips tags={rest.tags} onPress={rest.onTagPress ?? (() => {})} glass />
-                </View>
-              )}
-            </View>
-            <Trailing {...rest} text={text} textMuted={textMuted} />
-          </View>
-        </Pressable>
-      </View>
-    );
-  }
-
   return (
     <View style={[styles.row, { backgroundColor: background }]}>
       <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
-        <View style={[styles.thumbIcon, { backgroundColor: `${fileIconColorFor(file.fileName)}1A` }]}>
-          <Ionicons name={fileIconFor(file.fileName)} size={20} color={fileIconColorFor(file.fileName)} />
-        </View>
+        {/* The page picture at a video thumbnail's size - wide enough to
+            recognise the document by its shape, small enough to leave the
+            name room. Blown up to the full width it was still not
+            readable, so the space was spent on nothing. */}
+        {preview?.thumbUri ? (
+          <Image source={{ uri: preview.thumbUri }} style={styles.rowThumbWide} resizeMode="cover" />
+        ) : (
+          <View style={[styles.thumbIcon, { backgroundColor: `${fileIconColorFor(file.fileName)}1A` }]}>
+            <Ionicons name={fileIconFor(file.fileName)} size={20} color={fileIconColorFor(file.fileName)} />
+          </View>
+        )}
         <View style={styles.rowBody}>
           <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
             {file.title || file.fileName}
@@ -331,32 +308,6 @@ export function PhotoCell({ photo, ...rest }: { photo: PhotoCardItem } & Common)
 }
 
 const styles = StyleSheet.create({
-  // The video-card shape: the picture across the top, the name under it.
-  wideCard: {
-    borderRadius: 14,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(176,176,176,0.5)',
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-  },
-  wideThumb: {
-    width: '100%',
-    // The proportion a page of A4 is NOT - this is a card, and a tall
-    // banner would push everything else off the screen. The top of the
-    // first page is where a document says what it is anyway.
-    aspectRatio: 16 / 9,
-    backgroundColor: '#E5E7EB',
-  },
-  wideBody: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-    padding: 10,
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -382,6 +333,13 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 10,
+    backgroundColor: '#E5E7EB',
+  },
+  // A video thumbnail's proportion, at a size a row can carry.
+  rowThumbWide: {
+    width: 104,
+    aspectRatio: 16 / 9,
+    borderRadius: 8,
     backgroundColor: '#E5E7EB',
   },
   thumbIcon: {
