@@ -8,11 +8,8 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
-  useWindowDimensions,
   View,
 } from 'react-native';
-import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -36,8 +33,7 @@ import {
 } from '@react-native-firebase/firestore';
 import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
-import { Block, Group, Tag } from '../types';
-import { groupAppliesTo } from '../utils/groups';
+import { Block, Tag } from '../types';
 import { RootStackParamList } from '../navigation';
 import ZoomableImageViewer, { ViewerAction } from '../components/ZoomableImageViewer';
 import RenamePrompt from '../components/RenamePrompt';
@@ -45,41 +41,25 @@ import DocumentPickerModal, { PickableDocument } from '../components/DocumentPic
 import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
-import BulkActionBar from '../components/BulkActionBar';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
-import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
-import TagsDrawer, { TagFilter, matchesTagFilter, removeTagFromFilter } from '../components/TagsDrawer';
 import CopyToNoteModal from '../components/CopyToNoteModal';
-import { usePendingDelete } from '../hooks/usePendingDelete';
-import { useMultiSelect } from '../hooks/useMultiSelect';
-import { useSortPref } from '../hooks/useSortPref';
-import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
+import { detachTagFromDeletedItem } from '../hooks/useTags';
 import { useDownloadToast } from '../hooks/useDownloadToast';
+import { useDatabaseList } from '../hooks/useDatabaseList';
+import DatabaseChrome from '../components/DatabaseChrome';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { appendBlocksToToday, blockFromPhoto, copyObjectsToNote } from '../utils/copyToNote';
 import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
 import SaveDestinationSheet from '../components/SaveDestinationSheet';
 import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
-import { sortItems } from '../utils/sortItems';
 import DownloadToast from '../components/DownloadToast';
-import SortMenuRows from '../components/SortMenuRows';
-import ContentColumn from '../components/ContentColumn';
-import { useRail } from '../hooks/useRail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { BlurView } from 'expo-blur';
-import { useIsFocused } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { GlassPortal } from '../components/GlassPortal';
-import { useBlurTarget } from '../components/GlassTarget';
-import { GLASS_ISLAND, GLASS_TEXT_MUTED } from '../constants/glass';
-import { CAPSULE_DROP, CAPSULE_HEIGHT_3, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
 const ACCENT = '#EC4899';
 // The same half-strength tint the documents screen's add button takes -
 // the blur behind it is what separates it, so the colour only tints.
 const ACCENT_GLASS = 'rgba(236,72,153,0.55)';
-const groupsCollection = collection(db, 'groups');
 const DOWNLOAD_DIR_STORAGE_KEY = 'bearlessNotes.downloadDirUri';
 
 type JustAddedPhoto = { id: string; imageUri: string; createdAt: number };
@@ -181,14 +161,7 @@ function PhotoThumb({
 }
 
 export default function PhotosScreen() {
-  const railBlurTarget = useBlurTarget();
-  const railFocused = useIsFocused();
-  const railInsets = useSafeAreaInsets();
-  // Three buttons in the capsule here, so the rail spaces what is under
-  // it against the taller one.
-  const rail = useRail(CAPSULE_HEIGHT_3);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [viewerPhotoId, setViewerPhotoId] = useState<string | null>(null);
@@ -197,14 +170,10 @@ export default function PhotosScreen() {
     null
   );
   const [tagPickerForId, setTagPickerForId] = useState<string | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [groupFilter, setGroupFilter] = useState<string | null>(null);
-  const [tagFilter, setTagFilter] = useState<TagFilter | null>(null);
-  const [groups, setGroups] = useState<Group[]>([]);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
+  const [addPhotoSheetVisible, setAddPhotoSheetVisible] = useState(false);
   const [justAddedPhoto, setJustAddedPhoto] = useState<JustAddedPhoto | null>(null);
   const [saveDestinationVisible, setSaveDestinationVisible] = useState(false);
   useEffect(() => {
@@ -212,32 +181,42 @@ export default function PhotosScreen() {
     const timeoutId = setTimeout(() => setJustAddedPhoto(null), 4000);
     return () => clearTimeout(timeoutId);
   }, [justAddedPhoto, saveDestinationVisible]);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [addPhotoSheetVisible, setAddPhotoSheetVisible] = useState(false);
-  const { sortPref, selectSortField } = useSortPref('photosPrefs');
-  // The group row at the head of the screen is a convenience now that the
-  // groups also live in the drawer - held down, the folder button puts it
-  // away. Same arrangement as the documents screen.
-  const [groupsRowHidden, setGroupsRowHidden] = useState(false);
-  // The chrome floats over the grid, so its height decides where the
-  // first card rests.
-  const [chromeHeight, setChromeHeight] = useState(0);
-  const chromeTop = railInsets.top + CHROME_TOP;
-  const chromeBottom = chromeTop + chromeHeight + 8;
-  useEffect(
-    () =>
-      onSnapshot(doc(db, 'settings', 'photosPrefs'), (snapshot) => {
-        setGroupsRowHidden(!!snapshot.data()?.groupsRowHidden);
-      }),
-    []
-  );
-  function toggleGroupsRow() {
-    setDoc(doc(db, 'settings', 'photosPrefs'), { groupsRowHidden: !groupsRowHidden }, { merge: true });
-  }
-  const { filterPending, requestDelete, requestDeleteMany, undo, toast } = usePendingDelete<PhotoItem>();
-  const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
-  const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, clear: clearSelection } =
-    useMultiSelect();
+
+  // Groups, tags, the filters, the search, the sort, the selection and the
+  // delete that can be taken back - all of it is the same on every
+  // database, and lives in one place now (useDatabaseList). What is left
+  // in this file is only what photos themselves do.
+  const list = useDatabaseList<PhotoItem>({
+    prefsKey: 'photosPrefs',
+    groupKind: 'photo',
+    tagKind: 'photo',
+    items: photos,
+    tagIdsOf: (p) => p.tagIds,
+    groupIdOf: (p) => p.groupId,
+    titleOf: (p) => p.title || 'Без назви',
+    createdAtOf: (p) => p.createdAt,
+    updatedAtOf: (p) => p.updatedAt,
+    searchTextOf: (p) => p.title ?? '',
+  });
+  const {
+    displayed: displayedPhotos,
+    groups,
+    tags,
+    attachTag,
+    detachTag,
+    createAndAttachTag,
+    renameTag,
+    isSelectMode,
+    selectedIds,
+    toggle: toggleSelected,
+    clear: clearSelection,
+    requestDelete,
+    requestDeleteMany,
+    undo,
+    toast,
+    selected: selectedPhotos,
+    needle,
+  } = list;
   const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
 
   async function handleDownloadPhoto(uri: string) {
@@ -276,21 +255,6 @@ export default function PhotosScreen() {
     });
   }, []);
 
-  useEffect(() => {
-    // Filtered client-side rather than with a `where('kind','==','photo')`
-    // query - combining an equality filter with `orderBy` on a different
-    // field needs a composite index set up by hand in the Firebase
-    // console, which this app avoids everywhere else too (see
-    // TasksScreen's own comment on the same tradeoff).
-    return onSnapshot(query(groupsCollection, orderBy('name')), (snapshot) => {
-      setGroups(
-        snapshot.docs
-          .map((d) => ({ id: d.id, ...(d.data() as Omit<Group, 'id'>) }))
-          .filter((g) => groupAppliesTo(g, 'photo'))
-      );
-    });
-  }, []);
-
   // The fixed "Фото" group every camera capture lands in (see
   // syncPhotosForDocument in DocumentEditorScreen) has to exist as a real
   // group document for it to show up as a tab/option at all - {merge:true}
@@ -303,32 +267,8 @@ export default function PhotosScreen() {
     );
   }, []);
 
-  const pendingFilteredPhotos = filterPending(photos);
-  const groupFilteredPhotos =
-    groupFilter === null
-      ? pendingFilteredPhotos
-      : groupFilter === UNASSIGNED_ID
-        ? pendingFilteredPhotos.filter((p) => !p.groupId)
-        : pendingFilteredPhotos.filter((p) => p.groupId === groupFilter);
-  const tagFilteredPhotos = groupFilteredPhotos.filter((p) => matchesTagFilter(p.tagIds, tagFilter));
-  // Only offer tags actually assigned to at least one photo - not the whole
-  // app-wide tag list - so this drawer stays a short, relevant menu.
-  const usedTagIds = new Set(photos.flatMap((p) => p.tagIds));
-  const drawerTags = tags.filter((t) => usedTagIds.has(t.id));
-  const needle = searchQuery.trim().toLowerCase();
-  const searchedPhotos = needle
-    ? tagFilteredPhotos.filter((p) => (p.title ?? '').toLowerCase().includes(needle))
-    : tagFilteredPhotos;
-  const displayedPhotos = sortItems(
-    searchedPhotos,
-    sortPref,
-    (p) => p.title || 'Без назви',
-    (p) => p.createdAt,
-    (p) => p.updatedAt
-  );
   const viewerPhoto = viewerPhotoId ? photos.find((p) => p.id === viewerPhotoId) ?? null : null;
   const tagPickerPhoto = tagPickerForId ? photos.find((p) => p.id === tagPickerForId) ?? null : null;
-  const selectedPhotos = photos.filter((p) => selectedIds.has(p.id));
 
   // The one selected row, put on the app's own clipboard as the block that
   // REFERENCES it - pasted into a document it stays this same record
@@ -635,152 +575,180 @@ export default function PhotosScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Svg
-        width={windowWidth + 2}
-        height={windowHeight + 2}
-        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
-        pointerEvents="none"
-      >
-        <Defs>
-          <LinearGradient id="photosBg" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0.03" stopColor="#705648" />
-            <Stop offset="0.52" stopColor="#69736E" />
-            <Stop offset="1" stopColor="#000000" />
-          </LinearGradient>
-        </Defs>
-        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#photosBg)" />
-      </Svg>
-      {/* The rail, as on every other screen: right edge, same width, same
-          glass, hanging from the same line. Through the portal, which is
-          where a blur is safe - inside the screen it would be blurring a
-          picture it is part of. */}
-      {railFocused && (
-        <GlassPortal>
-          <View
-            style={[styles.railWrap, { top: railInsets.top + CHROME_TOP + CAPSULE_DROP }]}
-            pointerEvents="box-none"
-          >
-            <View style={styles.headerButtons}>
-                <BlurView
-                  intensity={60}
-                  tint="dark"
-                  blurMethod="dimezisBlurView"
-                  blurTarget={railBlurTarget ?? undefined}
-                  style={StyleSheet.absoluteFill}
-                  pointerEvents="none"
-                />
-              {/* The way back, where the arrow in the header's corner used
-                  to be - the capsule is where this screen's controls
-                  live now. */}
-              <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-                <Ionicons name="arrow-back-outline" size={24} color="#fff" />
-              </Pressable>
-              <View style={styles.headerButtonsDivider} />
-              <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
-              </Pressable>
-              <View style={styles.headerButtonsDivider} />
-              <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
-                <Ionicons name={isSearching ? 'close-outline' : 'search-outline'} size={24} color="#fff" />
-              </Pressable>
-            </View>
-          </View>
-        </GlassPortal>
-      )}
-
-      <ContentColumn>
-
-        {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
-        {menuOpen && (
-          <View style={styles.menuPanel}>
-            <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
-            <View style={styles.menuRule} />
-            <Pressable
-              style={styles.menuRow}
-              onPress={() => {
-                setMenuOpen(false);
-                toggleSelectMode();
-              }}
-            >
-              <Ionicons
-                name={isSelectMode ? 'close-outline' : 'checkmark-circle-outline'}
-                size={17}
-                color="#111827"
-              />
-              <Text style={styles.menuRowLabel}>{isSelectMode ? 'Скасувати вибір' : 'Вибрати'}</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {/* The tabs float over the grid rather than standing above it, so a
-            card slides under them and off the top of the screen. Through
-            the portal, like every other piece of glass here. */}
-        {railFocused && (
-          <GlassPortal>
-            <View
-              style={[styles.topChrome, { top: chromeTop }]}
-              pointerEvents="box-none"
-              onLayout={(e) => setChromeHeight(e.nativeEvent.layout.height)}
-            >
-              {groups.length > 0 && !groupsRowHidden && (
-                <ProjectTabsRow
-                  items={groups}
-                  selected={groupFilter}
-                  onSelect={setGroupFilter}
-                  unassignedLabel="Без групи"
-                  dark
-                  blurTarget={railBlurTarget}
-                  endPadding={RAIL_CLEARANCE}
-                />
-              )}
-            </View>
-          </GlassPortal>
-        )}
-
-        {tagFilter && (
-          <View style={styles.filterRow}>
-            {tagFilter.type === 'untagged' ? (
-              <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
-                <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
-                <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без тегів</Text>
-                <Pressable hitSlop={8} onPress={() => setTagFilter(null)}>
-                  <Ionicons name="close" size={14} color="#6B7280" />
-                </Pressable>
-              </View>
-            ) : (
-              tagFilter.tagIds.map((tagId) => {
-                const tag = tags.find((t) => t.id === tagId);
-                if (!tag) return null;
-                return (
-                  <View key={tagId} style={[styles.filterChip, { borderColor: tag.color }]}>
-                    <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tag.color} />
-                    <Text style={[styles.filterChipLabel, { color: tag.color }]}>{tag.path}</Text>
-                    <Pressable hitSlop={8} onPress={() => setTagFilter(removeTagFromFilter(tagFilter, tagId))}>
-                      <Ionicons name="close" size={14} color={tag.color} />
-                    </Pressable>
-                  </View>
-                );
-              })
-            )}
-          </View>
-        )}
-
-        {isSearching && (
-          <View style={styles.searchRow}>
-            <Ionicons name="search" size={14} color="#9CA3AF" />
-            <TextInput
-              autoFocus
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Пошук фото за назвою"
-              placeholderTextColor="#9CA3AF"
-              style={styles.searchInput}
+    <DatabaseChrome
+      list={list}
+      accent={ACCENT}
+      accentGlass={ACCENT_GLASS}
+      onBack={() => navigation.goBack()}
+      searchPlaceholder="Пошук фото за назвою"
+      onAdd={() => setAddPhotoSheetVisible(true)}
+      bulk={{
+        onTag: () => setBulkTagPickerVisible(true),
+        onGroup: () => setBulkGroupPickerVisible(true),
+        onCopy: () => setBulkCopyModalVisible(true),
+        onCopyObject: copySelectedToClipboard,
+        onDelete: confirmDeleteSelected,
+      }}
+      overlay={
+        <>
+          {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
+          {!toast && justAddedPhoto && (
+            <UndoToast
+              message="Додано у Фото"
+              actionLabel="Перемістити"
+              onUndo={() => setSaveDestinationVisible(true)}
             />
-          </View>
-        )}
+          )}
+          {downloadToast && (
+            <DownloadToast
+              fileName={downloadToast.fileName}
+              onShowInFolder={() => showDownloadedFileInFolder(downloadToast.uri, downloadToast.mimeType)}
+              onIgnore={dismissDownloadToast}
+            />
+          )}
 
-        {isLoading ? (
+          {viewerPhoto && (
+            <Modal visible transparent animationType="fade" onRequestClose={() => setViewerPhotoId(null)}>
+              <GestureHandlerRootView style={{ flex: 1 }}>
+                <ZoomableImageViewer
+                  uri={viewerPhoto.imageUri}
+                  onClose={() => setViewerPhotoId(null)}
+                  actions={viewerActionsFor(viewerPhoto)}
+                />
+              </GestureHandlerRootView>
+            </Modal>
+          )}
+
+          <RenamePrompt
+            visible={renamingPhoto !== null}
+            title="Назва фото"
+            initialValue={renamingPhoto?.title ?? ''}
+            onCancel={() => setRenamingPhoto(null)}
+            onSave={(title) => {
+              if (renamingPhoto) renamePhoto(renamingPhoto, title);
+            }}
+          />
+
+          {/* Where a photo can come from when it is made here rather than
+              inside a document - the one database whose "+" has a choice
+              to offer. */}
+          <Modal
+            visible={addPhotoSheetVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setAddPhotoSheetVisible(false)}
+          >
+            <Pressable style={styles.addPhotoBackdrop} onPress={() => setAddPhotoSheetVisible(false)}>
+              <Pressable style={styles.addPhotoSheet} onPress={() => {}}>
+                <View style={styles.addPhotoHandle} />
+                <Pressable
+                  style={styles.addPhotoRow}
+                  onPress={() => {
+                    setAddPhotoSheetVisible(false);
+                    addPhotoDirectly('gallery');
+                  }}
+                >
+                  <Ionicons name="image-outline" size={18} color="#111827" />
+                  <Text style={styles.addPhotoRowLabel}>Галерея</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.addPhotoRow}
+                  onPress={() => {
+                    setAddPhotoSheetVisible(false);
+                    addPhotoDirectly('camera');
+                  }}
+                >
+                  <Ionicons name="camera-outline" size={18} color="#111827" />
+                  <Text style={styles.addPhotoRowLabel}>Камера</Text>
+                </Pressable>
+              </Pressable>
+            </Pressable>
+          </Modal>
+
+          <DocumentPickerModal
+            visible={documentPicker !== null}
+            subtitle={documentPicker?.photo.title}
+            documents={documentPicker?.documents ?? []}
+            onPick={pickDocument}
+            onClose={() => setDocumentPicker(null)}
+          />
+
+          <TagPicker
+            visible={tagPickerPhoto !== null}
+            kind="photo"
+            tags={tags}
+            selectedTagIds={tagPickerPhoto?.tagIds ?? []}
+            onAttach={(tag) => tagPickerPhoto && attachTag(tag, 'photo', tagPickerPhoto.id, 'photos')}
+            onDetach={(tag) => tagPickerPhoto && detachTag(tag, 'photo', tagPickerPhoto.id, 'photos')}
+            onCreateAndAttach={(path, icon, color) =>
+              tagPickerPhoto && createAndAttachTag(path, icon, color, 'photo', tagPickerPhoto.id, 'photos')
+            }
+            onRenameTag={renameTag}
+            onClose={() => setTagPickerForId(null)}
+          />
+
+          <TagPicker
+            visible={bulkTagPickerVisible}
+            kind="photo"
+            tags={tags}
+            selectedTagIds={[]}
+            onAttach={bulkAttachTag}
+            onDetach={() => {}}
+            onCreateAndAttach={bulkCreateAndAttachTag}
+            onRenameTag={renameTag}
+            onClose={() => setBulkTagPickerVisible(false)}
+          />
+
+          <GroupPickerSheet
+            visible={bulkGroupPickerVisible}
+            kind="photo"
+            groups={groups}
+            onPick={bulkAssignGroup}
+            onClose={() => setBulkGroupPickerVisible(false)}
+          />
+
+          <CopyToNoteModal
+            visible={bulkCopyModalVisible}
+            onPickExisting={bulkCopyToExisting}
+            onPickNew={bulkCopyToNew}
+            onClose={() => setBulkCopyModalVisible(false)}
+          />
+
+          <SaveDestinationSheet
+            visible={saveDestinationVisible}
+            title="Куди додати фото?"
+            defaultLabel="Лишити в базі"
+            onPickDefault={() => relocateJustAddedPhoto(async () => {})}
+            onPickToday={() =>
+              relocateJustAddedPhoto((item) =>
+                appendBlocksToToday([photoToBlock(item)], [{ collectionName: 'photos', id: item.id }])
+              )
+            }
+            onPickNew={() =>
+              relocateJustAddedPhoto((item) =>
+                copyObjectsToNote(null, [photoToBlock(item)], [{ collectionName: 'photos', id: item.id }]).then(
+                  (newId) => navigation.navigate('Editor', { documentId: newId })
+                )
+              )
+            }
+            onPickExisting={(documentId) =>
+              relocateJustAddedPhoto((item) =>
+                copyObjectsToNote(documentId, [photoToBlock(item)], [{ collectionName: 'photos', id: item.id }])
+              )
+            }
+            onPickNewBoard={() =>
+              relocateJustAddedPhoto((item) => createBoardAndAddItem('Без назви', photoToImportableItem(item)))
+            }
+            onPickExistingBoard={(boardId) =>
+              relocateJustAddedPhoto((item) => addItemToBoard(boardId, photoToImportableItem(item)))
+            }
+            onClose={() => setSaveDestinationVisible(false)}
+          />
+        </>
+      }
+    >
+      {(listTopPad) =>
+        isLoading ? (
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
           </View>
@@ -800,7 +768,7 @@ export default function PhotosScreen() {
           <ScrollView
             contentContainerStyle={[
               styles.grid,
-              { paddingTop: chromeBottom },
+              { paddingTop: listTopPad },
               isSelectMode && styles.gridWithBulkBar,
             ]}
           >
@@ -822,242 +790,13 @@ export default function PhotosScreen() {
               </Pressable>
             ))}
           </ScrollView>
-        )}
-
-        {viewerPhoto && (
-          <Modal visible transparent animationType="fade" onRequestClose={() => setViewerPhotoId(null)}>
-            <GestureHandlerRootView style={{ flex: 1 }}>
-              <ZoomableImageViewer
-                uri={viewerPhoto.imageUri}
-                onClose={() => setViewerPhotoId(null)}
-                actions={viewerActionsFor(viewerPhoto)}
-              />
-            </GestureHandlerRootView>
-          </Modal>
-        )}
-
-        <RenamePrompt
-          visible={renamingPhoto !== null}
-          title="Назва фото"
-          initialValue={renamingPhoto?.title ?? ''}
-          onCancel={() => setRenamingPhoto(null)}
-          onSave={(title) => {
-            if (renamingPhoto) renamePhoto(renamingPhoto, title);
-          }}
-        />
-
-        <Modal
-          visible={addPhotoSheetVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setAddPhotoSheetVisible(false)}
-        >
-          <Pressable style={styles.addPhotoBackdrop} onPress={() => setAddPhotoSheetVisible(false)}>
-            <Pressable style={styles.addPhotoSheet} onPress={() => {}}>
-              <View style={styles.addPhotoHandle} />
-              <Pressable
-                style={styles.addPhotoRow}
-                onPress={() => {
-                  setAddPhotoSheetVisible(false);
-                  addPhotoDirectly('gallery');
-                }}
-              >
-                <Ionicons name="image-outline" size={18} color="#111827" />
-                <Text style={styles.addPhotoRowLabel}>Галерея</Text>
-              </Pressable>
-              <Pressable
-                style={styles.addPhotoRow}
-                onPress={() => {
-                  setAddPhotoSheetVisible(false);
-                  addPhotoDirectly('camera');
-                }}
-              >
-                <Ionicons name="camera-outline" size={18} color="#111827" />
-                <Text style={styles.addPhotoRowLabel}>Камера</Text>
-              </Pressable>
-            </Pressable>
-          </Pressable>
-        </Modal>
-
-        <DocumentPickerModal
-          visible={documentPicker !== null}
-          subtitle={documentPicker?.photo.title}
-          documents={documentPicker?.documents ?? []}
-          onPick={pickDocument}
-          onClose={() => setDocumentPicker(null)}
-        />
-
-
-        <TagPicker
-          visible={bulkTagPickerVisible}
-          kind="photo"
-          tags={tags}
-          selectedTagIds={[]}
-          onAttach={bulkAttachTag}
-          onDetach={() => {}}
-          onCreateAndAttach={bulkCreateAndAttachTag}
-          onRenameTag={renameTag}
-          onClose={() => setBulkTagPickerVisible(false)}
-        />
-
-
-      </ContentColumn>
-
-
-        <TagPicker
-          visible={tagPickerPhoto !== null}
-          kind="photo"
-          tags={tags}
-          selectedTagIds={tagPickerPhoto?.tagIds ?? []}
-          onAttach={(tag) => tagPickerPhoto && attachTag(tag, 'photo', tagPickerPhoto.id, 'photos')}
-          onDetach={(tag) => tagPickerPhoto && detachTag(tag, 'photo', tagPickerPhoto.id, 'photos')}
-          onCreateAndAttach={(path, icon, color) =>
-            tagPickerPhoto && createAndAttachTag(path, icon, color, 'photo', tagPickerPhoto.id, 'photos')
-          }
-          onRenameTag={renameTag}
-          onClose={() => setTagPickerForId(null)}
-        />
-
-        <GroupPickerSheet
-          visible={bulkGroupPickerVisible}
-          kind="photo"
-          groups={groups}
-          onPick={bulkAssignGroup}
-          onClose={() => setBulkGroupPickerVisible(false)}
-        />
-
-        <CopyToNoteModal
-          visible={bulkCopyModalVisible}
-          onPickExisting={bulkCopyToExisting}
-          onPickNew={bulkCopyToNew}
-          onClose={() => setBulkCopyModalVisible(false)}
-        />
-
-      <TagsDrawer
-        tags={drawerTags}
-        activeFilter={tagFilter}
-        onSelectFilter={setTagFilter}
-        hideOpenButton={isSelectMode}
-        capsuleHeight={CAPSULE_HEIGHT_3}
-        groupSection={{
-          items: [
-            { id: null, name: 'Всі', color: GLASS_TEXT_MUTED, count: photos.length },
-            ...groups.map((g) => ({
-              id: g.id,
-              name: g.name,
-              color: g.color,
-              count: photos.filter((x) => x.groupId === g.id).length,
-            })),
-            {
-              id: UNASSIGNED_ID,
-              name: 'Без групи',
-              color: GLASS_TEXT_MUTED,
-              count: photos.filter((x) => !x.groupId).length,
-            },
-          ],
-          selected: groupFilter,
-          onSelect: setGroupFilter,
-          rowVisible: !groupsRowHidden,
-          onToggleRow: toggleGroupsRow,
-        }}
-      />
-
-      <BulkActionBar
-        count={selectedIds.size}
-        onTag={() => setBulkTagPickerVisible(true)}
-        onGroup={() => setBulkGroupPickerVisible(true)}
-        onCopy={() => setBulkCopyModalVisible(true)}
-        onCopyObject={copySelectedToClipboard}
-        onDelete={confirmDeleteSelected}
-      />
-
-      {/* Through the portal, where its blur is safe - inside the screen
-          it would be blurring a picture it is itself part of. */}
-      {railFocused && !isSelectMode && (
-        <GlassPortal>
-          <Pressable style={[styles.fab, { bottom: rail.addBottom }]} onPress={() => setAddPhotoSheetVisible(true)}>
-            <BlurView
-              intensity={60}
-              tint="dark"
-              blurMethod="dimezisBlurView"
-              blurTarget={railBlurTarget ?? undefined}
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
-            <Ionicons name="add-outline" size={28} color="#fff" />
-          </Pressable>
-        </GlassPortal>
-      )}
-
-      {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
-      {!toast && justAddedPhoto && (
-        <UndoToast message="Додано у Фото" actionLabel="Перемістити" onUndo={() => setSaveDestinationVisible(true)} />
-      )}
-      {downloadToast && (
-        <DownloadToast
-          fileName={downloadToast.fileName}
-          onShowInFolder={() => showDownloadedFileInFolder(downloadToast.uri, downloadToast.mimeType)}
-          onIgnore={dismissDownloadToast}
-        />
-      )}
-
-      <SaveDestinationSheet
-        visible={saveDestinationVisible}
-        title="Куди додати фото?"
-        defaultLabel="Лишити в базі"
-        onPickDefault={() => relocateJustAddedPhoto(async () => {})}
-        onPickToday={() =>
-          relocateJustAddedPhoto((item) =>
-            appendBlocksToToday([photoToBlock(item)], [{ collectionName: 'photos', id: item.id }])
-          )
-        }
-        onPickNew={() =>
-          relocateJustAddedPhoto((item) =>
-            copyObjectsToNote(null, [photoToBlock(item)], [{ collectionName: 'photos', id: item.id }]).then((newId) =>
-              navigation.navigate('Editor', { documentId: newId })
-            )
-          )
-        }
-        onPickExisting={(documentId) =>
-          relocateJustAddedPhoto((item) =>
-            copyObjectsToNote(documentId, [photoToBlock(item)], [{ collectionName: 'photos', id: item.id }])
-          )
-        }
-        onPickNewBoard={() =>
-          relocateJustAddedPhoto((item) => createBoardAndAddItem('Без назви', photoToImportableItem(item)))
-        }
-        onPickExistingBoard={(boardId) =>
-          relocateJustAddedPhoto((item) => addItemToBoard(boardId, photoToImportableItem(item)))
-        }
-        onClose={() => setSaveDestinationVisible(false)}
-      />
-    </View>
+        )
+      }
+    </DatabaseChrome>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  // Same floating "+" DocumentsScreen uses, not a header icon.
-  fab: {
-    position: 'absolute',
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: ACCENT_GLASS,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 4,
-    shadowColor: ACCENT,
-    shadowOpacity: 0.5,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 6,
-  },
   addPhotoBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(17,24,39,0.45)',
@@ -1090,138 +829,10 @@ const styles = StyleSheet.create({
     fontFamily: FONT_REGULAR,
     color: '#111827',
   },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 90,
-    paddingBottom: 8,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flexShrink: 1,
-  },
-  header: {
-    fontSize: 46,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    color: '#fff',
-  },
-  railWrap: {
-    position: 'absolute',
-    right: RAIL_RIGHT,
-    alignItems: 'center',
-  },
-  // Stood on its end, like every other screen's.
-  headerButtons: {
-    alignItems: 'center',
-    gap: 18,
-    paddingVertical: 18,
-    paddingHorizontal: 19,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-  },
-  // Turned with the capsule.
-  headerButtonsDivider: {
-    width: 20,
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-  },
-  menuBackdrop: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    zIndex: 5,
-  },
-  // The band the group tabs float in, over the grid.
-  topChrome: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    zIndex: 6,
-  },
     menuRule: {
     height: 1,
     backgroundColor: '#E5E7EB',
     marginVertical: 6,
-  },
-  menuRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-  },
-  menuRowLabel: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: FONT_REGULAR,
-    color: '#111827',
-  },
-  menuPanel: {
-    position: 'absolute',
-    top: 96,
-    right: RAIL_CLEARANCE,
-    width: 200,
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    padding: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
-    zIndex: 6,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    paddingHorizontal: 20,
-    paddingBottom: 8,
-  },
-  // White capsule, border + text in the tag's own color - same as
-  // DocumentsScreen's filterChip.
-  filterChip: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#fff',
-    borderWidth: 1.5,
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  filterChipLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    fontFamily: FONT_SEMIBOLD,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginHorizontal: 20,
-    marginBottom: 8,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: FONT_REGULAR,
-    color: '#111827',
   },
   emptyState: {
     flex: 1,
