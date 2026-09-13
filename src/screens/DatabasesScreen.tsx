@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
@@ -386,21 +386,28 @@ function BoardTile({
   // The grip: dragged, it turns the distance travelled into whole cells
   // and snaps to the nearest size the board allows, live, so the board
   // re-packs under the finger rather than after it.
+  // The size the tile had when the finger went down. It has to be
+  // remembered, not read: the tile resizes live under the drag, so
+  // measuring from its CURRENT width adds the growth to the finger's own
+  // travel and the size runs away - one cell wider becomes two, and three
+  // across could never be landed on at all.
+  const dragBase = useRef({ width, height });
+  const sizeFromDrag = (dx: number, dy: number) => {
+    const cells = Math.max(1, cellSize);
+    const w = Math.max(1, Math.round((dragBase.current.width + dx) / cells));
+    const h = Math.max(1, Math.round((dragBase.current.height + dy) / cells));
+    return snapTileSize(w, h);
+  };
   const grip = Gesture.Pan()
     .runOnJS(true)
     // Claims the drag on the first pixel in any direction: this is a
     // corner grip, the only thing it can mean is a resize.
     .minDistance(0)
-    .onUpdate((e) => {
-      const w = Math.max(1, Math.round((width + e.translationX) / Math.max(1, cellSize)));
-      const h = Math.max(1, Math.round((height + e.translationY) / Math.max(1, cellSize)));
-      onResize(snapTileSize(w, h));
+    .onBegin(() => {
+      dragBase.current = { width, height };
     })
-    .onEnd((e) => {
-      const w = Math.max(1, Math.round((width + e.translationX) / Math.max(1, cellSize)));
-      const h = Math.max(1, Math.round((height + e.translationY) / Math.max(1, cellSize)));
-      onResizeEnd(snapTileSize(w, h));
-    });
+    .onUpdate((e) => onResize(sizeFromDrag(e.translationX, e.translationY)))
+    .onEnd((e) => onResizeEnd(sizeFromDrag(e.translationX, e.translationY)));
 
   return (
     <Animated.View
