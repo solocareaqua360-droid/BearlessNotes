@@ -95,6 +95,10 @@ export default function DatabaseChrome<T extends { id: string }>({
   const [chromeHeight, setChromeHeight] = useState(0);
   const chromeTop = insets.top + CHROME_TOP;
   const chromeBottom = chromeTop + chromeHeight + 8;
+  // Searching takes the screen: the field is the only thing left on it,
+  // and the records come back as they are typed for. Everything returns
+  // when the keyboard goes away (see useSearchDismissal).
+  const searchingAlone = list.isSearching;
   // Pulled down from the top of the list, the search comes out.
   const pull = usePullToSearch(() => {
     pullHaptic();
@@ -135,7 +139,7 @@ export default function DatabaseChrome<T extends { id: string }>({
 
       {/* Through the portal, which is where a blur is safe - inside the
           screen it would be blurring a picture it is part of. */}
-      {isFocused && (
+      {isFocused && !searchingAlone && (
         <GlassPortal>
           <View
             style={[styles.railWrap, { top: insets.top + CHROME_TOP + CAPSULE_DROP }]}
@@ -209,7 +213,7 @@ export default function DatabaseChrome<T extends { id: string }>({
               pointerEvents="box-none"
               onLayout={(e) => setChromeHeight(e.nativeEvent.layout.height)}
             >
-              {list.groups.length > 0 && !list.groupsRowHidden && (
+              {!searchingAlone && list.groups.length > 0 && !list.groupsRowHidden && (
                 <ProjectTabsRow
                   items={list.groups}
                   selected={list.groupFilter}
@@ -224,7 +228,7 @@ export default function DatabaseChrome<T extends { id: string }>({
           </GlassPortal>
         )}
 
-        {list.tagFilter && (
+        {list.tagFilter && !searchingAlone && (
           <View style={[styles.filterRow, { marginTop: chromeBottom }]}>
             {list.tagFilter.type === 'untagged' ? (
               <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
@@ -283,14 +287,20 @@ export default function DatabaseChrome<T extends { id: string }>({
         {/* The list is declared as a gesture of its own here (see
             usePullToSearch), so the pull can be measured alongside it
             without taking anything away from it. */}
-        <GestureDetector gesture={pull.gesture}>
-          {children(list.tagFilter || list.isSearching ? 0 : chromeBottom, pull.listProps)}
-        </GestureDetector>
+        {/* Nothing under the field until something is typed for - an
+            empty search is a question, not a list. */}
+        {searchingAlone && list.needle.length === 0 ? (
+          <View style={styles.emptySearch} />
+        ) : (
+          <GestureDetector gesture={pull.gesture}>
+            {children(list.tagFilter || list.isSearching ? 0 : chromeBottom, pull.listProps)}
+          </GestureDetector>
+        )}
       </ContentColumn>
 
       {overlay}
 
-      {isFocused && !list.isSelectMode && onAdd && (
+      {isFocused && !list.isSelectMode && !searchingAlone && onAdd && (
         <GlassPortal>
           <Pressable
             style={[
@@ -317,7 +327,7 @@ export default function DatabaseChrome<T extends { id: string }>({
         tags={list.drawerTags}
         activeFilter={list.tagFilter}
         onSelectFilter={list.setTagFilter}
-        hideOpenButton={list.isSelectMode}
+        hideOpenButton={list.isSelectMode || searchingAlone}
         capsuleHeight={CAPSULE_HEIGHT_3}
         groupSection={{
           items: list.groupSectionItems,
@@ -374,6 +384,9 @@ export const menuStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  emptySearch: {
     flex: 1,
   },
   railWrap: {

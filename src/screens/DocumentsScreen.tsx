@@ -558,7 +558,7 @@ export default function DocumentsScreen() {
             the blur has to sit OUTSIDE the view it blurs, and the screens
             are what the blur target wraps. That also puts it in window
             coordinates rather than the pane's. */}
-        {isFocused && !(isTwoPane && !!openDoc && paneFullscreen) && (
+        {isFocused && !searchOpen && !(isTwoPane && !!openDoc && paneFullscreen) && (
         <GlassPortal>
         <View
           style={[
@@ -696,7 +696,7 @@ export default function DocumentsScreen() {
               )}
             </Animated.View>
           )}
-          {groups.length > 0 && !groupsRowHidden && (
+          {!searchOpen && groups.length > 0 && !groupsRowHidden && (
             // No TabsTunnel here any more: it drew a capsule blending
             // scrolled-off pills into whatever sat beside them in the row
             // - the control capsule, before it moved to the rail. Alone in
@@ -716,7 +716,7 @@ export default function DocumentsScreen() {
               />
             </View>
           )}
-          {activeFilter && (
+          {!searchOpen && activeFilter && (
             <View style={[styles.filterRow, { paddingLeft: paneRect.x + 20 }]}>
               {activeFilter.type === 'untagged' ? (
                 <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
@@ -779,7 +779,12 @@ export default function DocumentsScreen() {
           onClose={() => setSketchEditing(null)}
         />
 
-        {searching ? (
+        {/* An empty search is a question, not a list: the screen stays
+            bare until something is typed for, and everything comes back
+            when the keyboard goes (see useSearchDismissal). */}
+        {searchOpen && needle.length === 0 ? (
+          <View style={styles.emptySearch} />
+        ) : searching ? (
           searchMatches.length === 0 ? (
             <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
               <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
@@ -937,7 +942,7 @@ export default function DocumentsScreen() {
 
         {/* Through the portal, like the rest of the rail: the blur that
             fills it has to sit outside the view it blurs. */}
-        {isFocused && !isSelectMode && !(isTwoPane && !!openDoc && paneFullscreen) && (
+        {isFocused && !isSelectMode && !searchOpen && !(isTwoPane && !!openDoc && paneFullscreen) && (
         <GlassPortal>
           <Pressable
             style={[styles.fab, { bottom: rail.addBottom }, fabPressed && styles.fabSticker]}
@@ -1010,7 +1015,7 @@ export default function DocumentsScreen() {
         tags={drawerTags}
         activeFilter={activeFilter}
         onSelectFilter={setActiveFilter}
-        hideOpenButton={isSelectMode}
+        hideOpenButton={isSelectMode || searchOpen}
         counts={drawerCounts}
         groupSection={{
           // The same list the tabs show, sentinels and all, so the two
@@ -1365,6 +1370,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.85)',
+  },
+  emptySearch: {
+    flex: 1,
   },
   list: {
     paddingVertical: 8,
