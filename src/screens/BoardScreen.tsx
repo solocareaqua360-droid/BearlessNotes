@@ -290,12 +290,15 @@ function reflowColumns(
   const slots = new Map<string, { x: number; y: number }>();
   for (const column of columns) {
     const members = columnMembers(cards, column.id);
-    // Until every card in the column has reported its height, leave the
-    // column alone: the positions it was saved with are already correct,
-    // and laying it out against the fallback constant would visibly yank
-    // every card the moment the board opened, only to correct itself a
-    // frame later once the real measurements arrived.
-    if (members.some((card) => !heights.has(card.id))) continue;
+    // Only a column NOTHING in which has been measured yet is left alone -
+    // that is the board opening, where the saved positions are already
+    // right and laying out against the fallback constant would visibly
+    // yank every card for one frame. Once anything in the column has a
+    // real height, a card that has not reported yet is placed against the
+    // approximate one instead of stopping the whole column: a card just
+    // dropped in would otherwise sit exactly where it fell, which is the
+    // one moment it must not.
+    if (members.length > 0 && members.every((card) => !heights.has(card.id))) continue;
     let y = column.y + COLUMN_HEADER_HEIGHT;
     for (const card of members) {
       slots.set(card.id, { x: column.x + COLUMN_PADDING, y });
@@ -454,6 +457,7 @@ function DraggableColumn({
   memberCount,
   height,
   isDragging,
+  isCatching,
   canvasScale,
   canvasPanGesture,
   columnOffsetX,
@@ -467,6 +471,9 @@ function DraggableColumn({
   memberCount: number;
   height: number;
   isDragging: boolean;
+  // A card is being carried over this column right now: it lights up to
+  // say it will catch, rather than the drop being a surprise.
+  isCatching: boolean;
   canvasScale: SharedValue<number>;
   canvasPanGesture: ReturnType<typeof Gesture.Pan>;
   columnOffsetX: SharedValue<number>;
@@ -528,7 +535,10 @@ function DraggableColumn({
     // box-none so only the header takes touches - the rest of the lane
     // stays transparent to the canvas's own pan, and the cards sitting on
     // top of it keep their own drags.
-    <Animated.View style={[styles.column, { height }, animatedStyle]} pointerEvents="box-none">
+    <Animated.View
+      style={[styles.column, isCatching && styles.columnCatching, { height }, animatedStyle]}
+      pointerEvents="box-none"
+    >
       <GestureDetector gesture={headerGesture}>
         <View style={styles.columnHeader}>
           <View style={styles.columnTitleWrap}>
@@ -578,6 +588,9 @@ type DraggableCardProps = {
   onMeasure: (id: string, height: number) => void;
   onDragStart: (id: string) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
+  // Where this card is, mid-drag, every few points of travel - what tells
+  // the board which column would catch it right now.
+  onHover: (id: string, x: number, y: number) => void;
   onGroupDragEnd: (dx: number, dy: number) => void;
   onTap: (card: BoardCard) => void;
   onLongPress: (card: BoardCard) => void;
@@ -625,6 +638,7 @@ function DraggableCard({
   onMeasure,
   onDragStart,
   onDragEnd,
+  onHover,
   onGroupDragEnd,
   onTap,
   onLongPress,
@@ -665,6 +679,8 @@ function DraggableCard({
   // tap-to-edit interaction differs (see the selection bar's "Редагувати"
   // button in BoardScreen, reached via long-press) now that there's no
   // in-card button whose own gesture needed to win against this one.
+  const hoverReportedX = useSharedValue(0);
+  const hoverReportedY = useSharedValue(0);
   const panGesture = Gesture.Pan()
     .enabled(dragEnabled)
     .blocksExternalGesture(canvasPanGesture)
@@ -681,6 +697,17 @@ function DraggableCard({
       } else {
         posX.value += e.changeX / canvasScale.value;
         posY.value += e.changeY / canvasScale.value;
+        // Told to JS only every few points of travel: it is the answer to
+        // "which column would catch this", and asking that on every frame
+        // of a drag costs far more than it is worth.
+        if (
+          Math.abs(posX.value - hoverReportedX.value) > 8 ||
+          Math.abs(posY.value - hoverReportedY.value) > 8
+        ) {
+          hoverReportedX.value = posX.value;
+          hoverReportedY.value = posY.value;
+          runOnJS(onHover)(card.id, posX.value, posY.value);
+        }
       }
     })
     .onEnd(() => {
@@ -882,6 +909,9 @@ export default function BoardScreen() {
   const [editingText, setEditingText] = useState('');
   const [renamingTitle, setRenamingTitle] = useState(false);
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
+  // The column a carried card is currently over - lit while it is, so the
+  // magnet is seen and felt before the finger lifts.
+  const [hoverColumnId, setHoverColumnId] = useState<string | null>(null);
   const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
   // 'move' - single-finger drag pans the canvas (the original Stage 1
   // behaviour). 'select' - single-finger drag instead draws a marquee
@@ -1602,7 +1632,25 @@ export default function BoardScreen() {
     });
   }
 
+  // Where the card being carried would land right now. Reported from the
+  // drag itself (throttled - see DraggableCard's onHover), so the column
+  // lights up and answers with a tick the moment it catches, instead of
+  // the answer only arriving once the finger lifts.
+  function reportCardHover(id: string, x: number, y: number) {
+    const card = cards.find((c) => c.id === id);
+    if (!card) return;
+    const others = cards.filter((c) => c.id !== id);
+    const centreY = y + heightOf(card, cardHeights) / 2;
+    const target = columnAtPoint(columns, others, cardHeights, x + widthInColumn(card) / 2, centreY);
+    const nextId = target?.id ?? null;
+    if (nextId !== hoverColumnId) {
+      setHoverColumnId(nextId);
+      if (nextId) hapticDrop();
+    }
+  }
+
   function commitCardDrag(id: string, x: number, y: number) {
+    setHoverColumnId(null);
     setCards((prev) => {
       const dropped = prev.map((c) => (c.id === id ? { ...c, x, y } : c));
       const card = dropped.find((c) => c.id === id);
@@ -1634,6 +1682,7 @@ export default function BoardScreen() {
   // once has no obvious right answer, and reflow would yank them apart
   // mid-gesture.
   function commitGroupDrag(dx: number, dy: number) {
+    setHoverColumnId(null);
     setCards((prev) => prev.map((c) => (selectedCardIds.has(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
     setDraggedCardId(null);
   }
@@ -1914,6 +1963,7 @@ export default function BoardScreen() {
                     canvasPanGesture={canvasBlockingGesture}
                     columnOffsetX={columnOffsetX}
                     columnOffsetY={columnOffsetY}
+                    isCatching={column.id === hoverColumnId}
                     onDragStart={setDraggingColumnId}
                     onDragEnd={commitColumnDrag}
                     onRename={setRenamingColumn}
@@ -1984,6 +2034,7 @@ export default function BoardScreen() {
                     groupOffsetX={groupOffsetX}
                     groupOffsetY={groupOffsetY}
                     followsColumnDrag={!!card.columnId && card.columnId === draggingColumnId}
+                    onHover={reportCardHover}
                     columnOffsetX={columnOffsetX}
                     columnOffsetY={columnOffsetY}
                     dragEnabled={canvasTool !== 'connect'}
@@ -2605,6 +2656,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(17,24,39,0.05)',
     borderWidth: 1,
     borderColor: 'rgba(17,24,39,0.12)',
+  },
+  // Lit while a card is held over it.
+  columnCatching: {
+    borderColor: SELECTION_COLOR,
+    borderWidth: 2,
+    backgroundColor: 'rgba(139,92,246,0.10)',
   },
   columnHeader: {
     height: COLUMN_HEADER_HEIGHT,
