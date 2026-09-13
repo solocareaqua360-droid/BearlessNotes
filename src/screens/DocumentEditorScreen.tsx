@@ -89,6 +89,7 @@ import TextRecognizer, {
   RecognizedPage,
 } from '../components/TextRecognizer';
 import TextSelection from '../components/TextSelection';
+import { ask, notify } from '../components/surfaces/Ask';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
@@ -2171,7 +2172,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   } | null>(null);
   const [recognizeProgress, setRecognizeProgress] = useState<RecognizeProgress | null>(null);
   // The pages just scanned, waiting to be told what to become.
-  const [scanResult, setScanResult] = useState<{ blockId: string; pages: string[] } | null>(null);
   // The recognised pages, waiting for the user to pick what they want
   // off them.
   const [selecting, setSelecting] = useState<{ pages: RecognizedPage[]; after: string } | null>(null);
@@ -3834,10 +3834,32 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     }
     const pages = result.scannedImages;
     if (result.status !== ScanDocumentResponseStatus.Success || !pages?.length) return;
-    // A sheet of our own rather than the system dialog: Android's takes
-    // three buttons and silently drops the rest, which is exactly how the
-    // fourth answer went missing.
-    setScanResult({ blockId: id, pages });
+    // «Питання»: its answers are rows, so a third and a fourth one fit.
+    // Android's own dialog takes three buttons and silently drops the
+    // rest, which is exactly how the fourth answer went missing once.
+    //
+    // Text is an answer, not a mode of the other two: the pages are kept
+    // as pictures either way and the reading goes under them, so there is
+    // always something to check it against.
+    const choice = await ask({
+      title: `Відскановано сторінок: ${pages.length}`,
+      actions: [
+        { id: 'photo', label: 'Як фото', icon: 'image-outline' },
+        { id: 'pdf', label: 'Як PDF', icon: 'document-text-outline' },
+        {
+          id: 'text',
+          label: 'Фото + текст',
+          hint: 'Розпізнати написане і додати під знімками',
+          icon: 'text-outline',
+        },
+      ],
+    });
+    if (choice === 'photo') insertScannedImages(id, pages);
+    if (choice === 'pdf') insertScannedPdf(id, pages);
+    if (choice === 'text') {
+      const lastId = await insertScannedImages(id, pages);
+      if (lastId) startRecognizing(pages, lastId);
+    }
   }
 
   // A new sketch block starts empty and opens straight into the editor -
@@ -4525,64 +4547,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         </Modal>
       )}
 
-      {/* What the scan becomes. Text is a third answer, not a mode of the
-          other two: the pages are kept as pictures either way and the
-          reading goes under them, so there is always something to check
-          it against. */}
-      <Modal
-        visible={scanResult !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setScanResult(null)}
-      >
-        <Pressable style={styles.scanSheetBackdrop} onPress={() => setScanResult(null)}>
-          <Pressable style={styles.scanSheet} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.scanSheetHandle} />
-            <Text style={styles.scanSheetTitle}>
-              Відскановано сторінок: {scanResult?.pages.length ?? 0}
-            </Text>
-            <Pressable
-              style={styles.scanSheetRow}
-              onPress={() => {
-                const scan = scanResult;
-                setScanResult(null);
-                if (scan) insertScannedImages(scan.blockId, scan.pages);
-              }}
-            >
-              <Ionicons name="image-outline" size={18} color="#111827" />
-              <Text style={styles.scanSheetRowLabel}>Як фото</Text>
-            </Pressable>
-            <Pressable
-              style={styles.scanSheetRow}
-              onPress={() => {
-                const scan = scanResult;
-                setScanResult(null);
-                if (scan) insertScannedPdf(scan.blockId, scan.pages);
-              }}
-            >
-              <Ionicons name="document-text-outline" size={18} color="#111827" />
-              <Text style={styles.scanSheetRowLabel}>Як PDF</Text>
-            </Pressable>
-            <Pressable
-              style={styles.scanSheetRow}
-              onPress={async () => {
-                const scan = scanResult;
-                setScanResult(null);
-                if (!scan) return;
-                const lastId = await insertScannedImages(scan.blockId, scan.pages);
-                if (lastId) startRecognizing(scan.pages, lastId);
-              }}
-            >
-              <Ionicons name="text-outline" size={18} color="#111827" />
-              <View style={styles.scanSheetRowBody}>
-                <Text style={styles.scanSheetRowLabel}>Фото + текст</Text>
-                <Text style={styles.scanSheetRowHint}>Розпізнати написане і додати під знімками</Text>
-              </View>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
       <TextSelection
         pages={selecting?.pages ?? null}
         onClose={() => setSelecting(null)}
@@ -4596,7 +4560,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         onError={(message) => {
           setRecognizing(null);
           setRecognizeProgress(null);
-          Alert.alert('Не вдалося розпізнати', message);
+          notify('Не вдалося розпізнати', message);
         }}
       />
       {/* It takes seconds, not an instant - so it says so, and says which
@@ -4959,53 +4923,6 @@ const styles = StyleSheet.create({
   },
   // Says the recogniser is working, and how far it has got - it takes
   // seconds, and silence would read as nothing happening.
-  scanSheetBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(17,24,39,0.45)',
-    justifyContent: 'flex-end',
-  },
-  scanSheet: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 28,
-  },
-  scanSheetHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#E5E7EB',
-    alignSelf: 'center',
-    marginBottom: 14,
-  },
-  scanSheetTitle: {
-    fontSize: 16,
-    fontFamily: FONT_BOLD,
-    color: '#111827',
-    marginBottom: 8,
-  },
-  scanSheetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 14,
-  },
-  scanSheetRowBody: {
-    flex: 1,
-    gap: 2,
-  },
-  scanSheetRowLabel: {
-    fontSize: 15,
-    fontFamily: FONT_SEMIBOLD,
-    color: '#111827',
-  },
-  scanSheetRowHint: {
-    fontSize: 12,
-    fontFamily: FONT_REGULAR,
-    color: '#6B7280',
-  },
   ocrToast: {
     position: 'absolute',
     left: 20,

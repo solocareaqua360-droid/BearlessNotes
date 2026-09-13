@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -37,6 +37,7 @@ import { TAG_COLORS } from '../constants/tags';
 import { FONT_REGULAR, FONT_MEDIUM } from '../utils/fonts';
 import { colorForDocument } from '../utils/documentColor';
 import RenamePrompt from '../components/RenamePrompt';
+import { confirm, notify } from '../components/surfaces/Ask';
 import ImportTableSheet from '../components/ImportTableSheet';
 import ContentColumn from '../components/ContentColumn';
 import { GLASS_BODY, GLASS_DANGER, GLASS_TEXT } from '../constants/glass';
@@ -229,37 +230,29 @@ export default function DatabasesScreen() {
   }
 
   function resetBoard() {
-    Alert.alert('Скинути дошку?', 'Розміри й порядок плиток повернуться до стандартних. Кольори й фони лишаться.', [
-      { text: 'Скасувати', style: 'cancel' },
-      {
-        text: 'Скинути',
-        style: 'destructive',
-        onPress: () => {
-          setDoc(tileSizesDoc, {}, { merge: false });
-          setDoc(tileOrderDoc, { order: deleteField() }, { merge: true });
-        },
-      },
-    ]);
+    confirm({
+      title: 'Скинути дошку?',
+      message: 'Розміри й порядок плиток повернуться до стандартних. Кольори й фони лишаться.',
+      confirmLabel: 'Скинути',
+    }).then((yes) => {
+      if (!yes) return;
+      setDoc(tileSizesDoc, {}, { merge: false });
+      setDoc(tileOrderDoc, { order: deleteField() }, { merge: true });
+    });
   }
 
   function confirmDeleteDatabase(database: CustomDatabase) {
     setColorMenuKey(null);
-    Alert.alert(
-      `Видалити «${database.name}»?`,
-      'База, всі її записи та збережені вигляди зникнуть. Це не можна відмінити.',
-      [
-        { text: 'Скасувати', style: 'cancel' },
-        {
-          text: 'Видалити',
-          style: 'destructive',
-          onPress: () => {
-            deleteCustomDatabase(database.id).catch((error) =>
-              Alert.alert('Не вдалося видалити', (error as Error).message)
-            );
-          },
-        },
-      ]
-    );
+    confirm({
+      title: `Видалити «${database.name}»?`,
+      message: 'База, всі її записи та збережені вигляди зникнуть. Це не можна відмінити.',
+      confirmLabel: 'Видалити',
+    }).then((yes) => {
+      if (!yes) return;
+      deleteCustomDatabase(database.id).catch((error) =>
+        notify('Не вдалося видалити', (error as Error).message)
+      );
+    });
   }
 
   function openTile(tile: Tile) {
@@ -543,7 +536,7 @@ export default function DatabasesScreen() {
           onClose={() => setImporting(false)}
           onDone={(databaseId, rowCount) => {
             setImporting(false);
-            Alert.alert('Імпортовано', `Додано записів: ${rowCount}`);
+            notify('Імпортовано', `Додано записів: ${rowCount}`);
             navigation.navigate('CustomDatabase', { databaseId });
           }}
         />

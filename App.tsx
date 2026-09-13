@@ -43,6 +43,7 @@ import { navigationRef } from './src/navigationRef';
 import { BoardsStackParamList, RootStackParamList } from './src/navigation';
 import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
+import { AskHost } from './src/components/surfaces/Ask';
 
 // Material top tabs, not bottom tabs, for one reason: they are the
 // navigator that can be swiped. Documents and the calendar are the two
@@ -167,6 +168,9 @@ export default function App() {
           <GlassPortalHost>
             <StatusBar style="auto" />
             <ShareIntentHandler />
+            {/* «Питання» - every confirmation in the app, drawn once
+                here so that asking is a function call anywhere else. */}
+            <AskHost />
             <GlassTargetProvider>
             <Stack.Navigator screenOptions={{ headerShown: false }}>
               {/* animation: 'none' only on the root screen - the navigator
