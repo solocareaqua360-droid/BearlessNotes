@@ -76,6 +76,8 @@ import { Group } from '../types';
 import DocumentEditorScreen from './DocumentEditorScreen';
 import { useRail } from '../hooks/useRail';
 import { useCanvasWheel } from '../hooks/useCanvasWheel';
+import { useContextMenu } from '../hooks/useContextMenu';
+import Menu from '../components/surfaces/Menu';
 import { FONT_BOLD, FONT_EXTRABOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_ISLAND } from '../constants/glass';
 import { BlurView } from 'expo-blur';
@@ -1224,6 +1226,11 @@ export default function BoardScreen() {
     setSelectedCardIds(new Set(matched.map((c) => c.id)));
   }
 
+  // Held in a ref so the context-menu callback above can reach it
+  // without this function having to move up the file.
+  const cardAtRef = useRef<(x: number, y: number) => BoardCard | undefined>(() => undefined);
+  cardAtRef.current = cardAt;
+
   function cardAt(worldX: number, worldY: number): BoardCard | undefined {
     // Last match wins - cards later in the array paint on top of earlier
     // ones, so where they overlap the visually topmost is the one meant.
@@ -1350,6 +1357,9 @@ export default function BoardScreen() {
   // A trackpad and a mouse have no pinch; in a browser this is what
   // gives the board its zoom (see useCanvasWheel). A no-op on the phone.
   const canvasRef = useRef<View | null>(null);
+  // Where the right button was pressed, and on which card. A laptop's
+  // answer to holding a card down - see useContextMenu.
+  const [cardMenu, setCardMenu] = useState<{ x: number; y: number; card: BoardCard } | null>(null);
   useCanvasWheel(canvasRef, {
     scale,
     savedScale,
@@ -1361,6 +1371,26 @@ export default function BoardScreen() {
     minScale: MIN_SCALE,
     maxScale: MAX_SCALE,
   });
+
+  // The same screen->world conversion the marquee and the connector use.
+  // Selecting the card first means every action below is the SAME code
+  // the selection bar runs - the menu is a second way in, not a second
+  // implementation.
+  const openCardMenu = useCallback(
+    (x: number, y: number) => {
+      const worldX = (x - viewport.width / 2 - translateX.value) / scale.value + WORLD_CENTER;
+      const worldY = (y - viewport.height / 2 - translateY.value) / scale.value + WORLD_CENTER;
+      const card = cardAtRef.current(worldX, worldY);
+      if (!card) {
+        setCardMenu(null);
+        return;
+      }
+      setSelectedCardIds(new Set([card.id]));
+      setCardMenu({ x, y, card });
+    },
+    [viewport.width, viewport.height, translateX, translateY, scale]
+  );
+  useContextMenu(canvasRef, openCardMenu);
 
   const worldAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }, { translateY: translateY.value }, { scale: scale.value }],
@@ -2193,6 +2223,48 @@ export default function BoardScreen() {
             <Ionicons name="add" size={26} color="#fff" />
           </Pressable>
         )}
+
+        {/* «Меню», where the right button was pressed. Every row calls
+            exactly what the selection bar calls - the card is selected
+            first, so there is one implementation of each action, not
+            two. */}
+        <Menu
+          visible={!!cardMenu}
+          onClose={() => setCardMenu(null)}
+          style={{ position: 'absolute', left: cardMenu?.x ?? 0, top: cardMenu?.y ?? 0 }}
+          entries={
+            cardMenu
+              ? [
+                  {
+                    label: 'Копіювати',
+                    icon: 'copy-outline',
+                    onPress: () => copyCardText(cardMenu.card),
+                  },
+                  ...((cardMenu.card.type ?? 'paragraph') === 'document'
+                    ? [
+                        {
+                          label: 'Текст',
+                          icon: 'reader-outline' as const,
+                          onPress: () => openCardText(cardMenu.card),
+                        },
+                        {
+                          label: 'Редагувати',
+                          icon: 'create-outline' as const,
+                          onPress: () => editDocumentCard(cardMenu.card),
+                        },
+                      ]
+                    : []),
+                  { kind: 'rule' as const },
+                  {
+                    label: 'Видалити',
+                    icon: 'trash-outline',
+                    tone: 'danger',
+                    onPress: deleteSelectedCards,
+                  },
+                ]
+              : []
+          }
+        />
 
         <Modal
           visible={groupPickerVisible}
