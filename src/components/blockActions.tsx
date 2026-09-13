@@ -9,6 +9,7 @@ export type BlockAction =
   | 'camera'
   | 'file'
   | 'scan'
+  | 'scanClean'
   | 'sketch'
   | 'table'
   | 'existing';
@@ -40,6 +41,11 @@ export const BLOCK_ACTIONS: BlockActionEntry[] = [
   { key: 'camera', family: 'ionicons', icon: 'camera-outline', label: 'Камера' },
   { key: 'file', family: 'ionicons', icon: 'document-outline', label: 'Файл' },
   { key: 'scan', family: 'ionicons', icon: 'scan-outline', label: 'Сканувати' },
+  // The same scanner, with the page cleaned before it is kept: the
+  // scanner's own filter leaves grey speckle on clean paper, which is
+  // fine for a page that is going to be read and wrong for one that is
+  // going to be looked at. Two buttons, by the user's request.
+  { key: 'scanClean', family: 'ionicons', icon: 'sparkles-outline', label: 'Чистий скан' },
   { key: 'sketch', family: 'ionicons', icon: 'brush-outline', label: 'Малюнок' },
   { key: 'table', family: 'ionicons', icon: 'grid-outline', label: 'Таблиця' },
   { key: 'existing', family: 'ionicons', icon: 'search-outline', label: 'З бази даних' },
