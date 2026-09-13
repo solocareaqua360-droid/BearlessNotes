@@ -65,6 +65,7 @@ import {
 } from '../utils/customRowDisplay';
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
+import { confirm } from '../components/surfaces/Ask';
 import FieldsEditorSheet, { FIELD_TYPE_ICON } from '../components/FieldsEditorSheet';
 import ImportTableSheet from '../components/ImportTableSheet';
 import PhotoCarousel from '../components/PhotoCarousel';
@@ -229,7 +230,6 @@ export default function CustomDatabaseScreen({}: Props) {
   const [renamingDatabase, setRenamingDatabase] = useState(false);
   const [editingFields, setEditingFields] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [deletingDatabase, setDeletingDatabase] = useState(false);
   const [rowEditor, setRowEditor] = useState<RowEditorState | null>(null);
   // Opening a row now lands on a READ page - a structured reference for
   // this one record - and editing is a deliberate step from there, rather
@@ -660,8 +660,16 @@ export default function CustomDatabaseScreen({}: Props) {
     await updateDoc(doc(db, 'customDatabases', databaseId), { fields, updatedAt: Date.now() });
   }
 
-  async function deleteDatabaseConfirmed() {
-    setDeletingDatabase(false);
+  // Asked through «Питання» now, rather than through a confirmation
+  // window this screen drew itself - one of several shapes of "are you
+  // sure" the app used to have.
+  async function askToDeleteDatabase() {
+    const yes = await confirm({
+      title: `Видалити базу «${database?.name ?? ''}»?`,
+      message: `Усі записи (${rows.length}) буде видалено назавжди.`,
+      confirmLabel: 'Видалити',
+    });
+    if (!yes) return;
     // Shared with the tile board, which can delete a database too - see
     // deleteCustomDatabase for what goes with it.
     await deleteCustomDatabase(databaseId);
@@ -1392,7 +1400,7 @@ export default function CustomDatabaseScreen({}: Props) {
             style={styles.menuRow}
             onPress={() => {
               setMenuOpen(false);
-              setDeletingDatabase(true);
+              askToDeleteDatabase();
             }}
           >
             <Ionicons name="trash-outline" size={17} color={DANGER} />
@@ -1980,22 +1988,6 @@ export default function CustomDatabaseScreen({}: Props) {
         onClose={() => setEditingFields(false)}
       />
 
-      <Modal visible={deletingDatabase} transparent animationType="fade" onRequestClose={() => setDeletingDatabase(false)}>
-        <View style={styles.glassConfirmBackdrop}>
-          <View style={styles.glassConfirmCard}>
-            <Text style={styles.glassConfirmTitle}>Видалити базу "{database.name}"?</Text>
-            <Text style={styles.glassConfirmBody}>Усі записи ({rows.length}) буде видалено назавжди.</Text>
-            <View style={styles.glassConfirmButtons}>
-              <Pressable style={styles.glassConfirmButton} onPress={() => setDeletingDatabase(false)}>
-                <Text style={styles.glassConfirmButtonLabel}>Скасувати</Text>
-              </Pressable>
-              <Pressable style={[styles.glassConfirmButton, styles.glassConfirmButtonDanger]} onPress={deleteDatabaseConfirmed}>
-                <Text style={styles.glassConfirmButtonLabel}>Видалити</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* The record as a page: a structured reference to read, with editing
           a deliberate step away rather than the only mode.
@@ -3668,54 +3660,6 @@ const styles = StyleSheet.create({
   },
   saveLabel: {
     fontSize: 15,
-    fontWeight: '600',
-    fontFamily: FONT_SEMIBOLD,
-    color: '#fff',
-  },
-  glassConfirmBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-  },
-  glassConfirmCard: {
-    width: '100%',
-    maxWidth: 340,
-    backgroundColor: 'rgba(30,30,34,0.9)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
-    borderRadius: 16,
-    padding: 20,
-  },
-  glassConfirmTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    color: '#fff',
-    marginBottom: 8,
-  },
-  glassConfirmBody: {
-    fontSize: 13,
-    fontFamily: FONT_REGULAR,
-    color: 'rgba(255,255,255,0.75)',
-    marginBottom: 16,
-  },
-  glassConfirmButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 12,
-  },
-  glassConfirmButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-  },
-  glassConfirmButtonDanger: {
-    backgroundColor: DANGER,
-  },
-  glassConfirmButtonLabel: {
-    fontSize: 14,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
     color: '#fff',
