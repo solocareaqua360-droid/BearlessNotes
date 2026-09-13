@@ -52,17 +52,24 @@ export function useCanvasWheel(ref: RefObject<View | null>, handles: CanvasWheel
       }
 
       const from = scale.value;
-      // Exponential, so every notch changes the view by the same
+      // Exponential, so every step changes the view by the same
       // PROPORTION - a linear step crawls when zoomed out and lurches
       // when zoomed in.
       //
-      // The constant is the whole feel of it, and it has to serve two
-      // very different senders. A mouse wheel arrives in notches of
-      // about 120, a trackpad pinch in ones and twos, sixty times a
-      // second. At 0.0015 a notch is a fifth bigger and a pinch is
-      // smooth; at 0.01, where this started, a single notch tripled the
-      // board and slammed into the far end of the range.
-      const next = Math.min(maxScale, Math.max(minScale, from * Math.exp(-event.deltaY * 0.0015)));
+      // TWO constants, because the two senders are not alike and one
+      // number cannot serve both. A mouse wheel arrives in notches of
+      // about 120, rarely; a trackpad pinch arrives in ones and twos,
+      // sixty times a second. Tuned as one, either the wheel tripled the
+      // board on a single notch or the pinch crawled - both of which
+      // this has now been.
+      //
+      // So the size of the step says which it is. Nothing else can: a
+      // pinch and a wheel are the same event, with the same flag on it.
+      const pinch = Math.abs(event.deltaY) < 50;
+      const next = Math.min(
+        maxScale,
+        Math.max(minScale, from * Math.exp(-event.deltaY * (pinch ? 0.012 : 0.0015)))
+      );
       if (next === from) return;
 
       // The world is a square centred in the viewport and scaled about
