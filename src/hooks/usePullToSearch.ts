@@ -6,39 +6,53 @@ import { runOnJS } from 'react-native-reanimated';
 // Pull the list down from its top and the search field comes out - the
 // gesture every phone home screen has.
 //
-// Android gives no bounce to read: a list at the top simply stops, and
-// contentOffset never goes negative the way it does on iOS. So the pull is
-// watched by a pan of its own, declared SIMULTANEOUS with the list's own
-// scrolling rather than competing with it. That matters: the two never
-// fight, and if the gesture fails to recognise anything at all, the worst
-// that happens is the search does not open - the list still scrolls.
+// Android gives nothing to read from the list itself: at the top it simply
+// stops, and the scroll offset never goes negative the way it does on iOS.
+// So the pull is WATCHED rather than handled: the pan below is declared
+// with manual activation and is never activated, so it only ever sees the
+// touches while the list keeps them. The first version asked to run
+// "simultaneously" with the list instead - which needs a ref the library
+// recognises as a handler, and a plain FlatList's is not one, so the pan
+// competed for the touch and won, and the documents stopped scrolling.
+// A gesture that never activates cannot take anything away.
 export function usePullToSearch(onPull: () => void) {
   // Whether the list is at its top, kept from its own scroll events, and
-  // whether it was at the top when THIS drag began - a drag that starts
-  // halfway down the list is scrolling, not a pull.
+  // where this drag began - a drag that starts halfway down is scrolling.
   const atTop = useRef(true);
-  const startedAtTop = useRef(false);
-  const listRef = useRef(null);
+  const startY = useRef(0);
+  const startX = useRef(0);
+  const armed = useRef(false);
 
   const gesture = useMemo(
     () =>
       Gesture.Pan()
-        .simultaneousWithExternalGesture(listRef)
-        .onBegin(() => {
-          startedAtTop.current = atTop.current;
+        .manualActivation(true)
+        .onTouchesDown((e) => {
+          const touch = e.allTouches[0];
+          startY.current = touch?.absoluteY ?? 0;
+          startX.current = touch?.absoluteX ?? 0;
+          armed.current = atTop.current;
         })
-        .onEnd((e) => {
+        .onTouchesMove((e) => {
+          if (!armed.current) return;
+          const touch = e.allTouches[0];
+          if (!touch) return;
+          const dy = touch.absoluteY - startY.current;
+          const dx = Math.abs(touch.absoluteX - startX.current);
           // Down, far enough to be meant, and not a sideways swipe between
           // tabs that happened to drift.
-          if (startedAtTop.current && e.translationY > 90 && Math.abs(e.translationX) < 60) {
+          if (dy > 90 && dx < 60) {
+            armed.current = false;
             runOnJS(onPull)();
           }
+        })
+        .onTouchesUp(() => {
+          armed.current = false;
         }),
     [onPull]
   );
 
   const listProps = {
-    ref: listRef,
     scrollEventThrottle: 16,
     onScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => {
       atTop.current = e.nativeEvent.contentOffset.y <= 2;
