@@ -1,18 +1,17 @@
-import { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { useContext, useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
+import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-
-const ACCENT = '#3B82F6';
+import {
+  GLASS_BODY_BLURRED,
+  GLASS_EDGE,
+  GLASS_INPUT,
+  GLASS_LINE,
+  GLASS_TEXT,
+  GLASS_TEXT_FAINT,
+  GLASS_TEXT_MUTED,
+} from '../constants/glass';
 
 type Props = {
   visible: boolean;
@@ -23,18 +22,27 @@ type Props = {
   // caller that has to go away and do something (fetch a link preview,
   // say) before it knows what to ask next. Lets one dialog stay mounted
   // across those steps instead of closing and reopening, which on Android
-  // reads as a flicker between two modals.
+  // reads as a flicker between two windows.
   busy?: boolean;
   onCancel: () => void;
   onSave: (value: string) => void;
 };
 
-// Shared "always available" rename dialog - used by Links/Photos/Files
-// screens (and DocumentEditorScreen's mandatory-name-on-conversion prompt
-// has its own copy of this same shape, since that one guards a different,
-// non-cancellable flow at the moment a link is first created).
+// «Питання», with something to type into: the shared naming dialog, used
+// by nearly every screen in the app.
+//
+// It was a white card in a Modal of its own, which cost it three things.
+// A Modal is a separate Android window, so the blur had nothing behind it
+// to work on and the screen showed through sharp; that same window sits
+// outside the activity's resize handling, so the keyboard overlapped the
+// buttons and needed a KeyboardAvoidingView to be dragged back into view;
+// and a TextInput inside a Modal nested in another Modal loses focus on
+// Android the moment the keyboard opens - the bug that took three
+// attempts in the sketch editor. As a layer inside the screen, all three
+// stop existing.
 export default function RenamePrompt({ visible, title, initialValue, placeholder, busy, onCancel, onSave }: Props) {
   const [value, setValue] = useState(initialValue);
+  const insets = useContext(SafeAreaInsetsContext);
 
   // `title` is in here as well as `initialValue` because a caller that
   // keeps this dialog open across two questions changes the heading to ask
@@ -45,122 +53,125 @@ export default function RenamePrompt({ visible, title, initialValue, placeholder
   }, [visible, initialValue, title]);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      {/* A transparent Modal renders in its own Android window, outside the
-          activity's own resize handling - the keyboard just overlaps it
-          instead of pushing it up, which is what buried the buttons under
-          it. KeyboardAvoidingView is the fix Android still needs here even
-          though the rest of the app relies on windowSoftInputMode for
-          every non-Modal screen. */}
-      <KeyboardAvoidingView
-        style={styles.backdrop}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <View style={styles.card}>
-          <Text style={styles.title}>{title}</Text>
-          <TextInput
-            autoFocus
-            editable={!busy}
-            value={value}
-            onChangeText={setValue}
-            placeholder={placeholder ?? 'Назва'}
-            style={[styles.input, busy && styles.inputBusy]}
-          />
-          {busy ? (
-            <View style={styles.busyRow}>
-              <ActivityIndicator color={ACCENT} />
-            </View>
-          ) : (
-            <View style={styles.buttons}>
-              <Pressable style={styles.cancelButton} onPress={onCancel}>
-                <Text style={styles.cancelLabel}>Скасувати</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.saveButton, !value.trim() && styles.saveButtonDisabled]}
-                disabled={!value.trim()}
-                onPress={() => onSave(value.trim())}
-              >
-                <Text style={styles.saveLabel}>Зберегти</Text>
-              </Pressable>
-            </View>
-          )}
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    <GlassLayer visible={visible} onClose={onCancel} intensity={60}>
+      {/* Bottom of the screen rather than the middle: the keyboard is
+          about to take the lower half, and the activity resizing under it
+          carries the card up with it. */}
+      <View style={[styles.card, { marginBottom: (insets?.bottom ?? 0) + 16 }]}>
+        <Text style={styles.title}>{title}</Text>
+        <TextInput
+          autoFocus
+          editable={!busy}
+          value={value}
+          onChangeText={setValue}
+          placeholder={placeholder ?? 'Назва'}
+          placeholderTextColor={GLASS_TEXT_FAINT}
+          style={[styles.input, busy && styles.inputBusy]}
+          onSubmitEditing={() => value.trim() && !busy && onSave(value.trim())}
+          returnKeyType="done"
+        />
+        {busy ? (
+          <View style={styles.busyRow}>
+            <ActivityIndicator color={GLASS_TEXT} />
+          </View>
+        ) : (
+          <View style={styles.buttons}>
+            <Pressable
+              style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
+              onPress={onCancel}
+            >
+              <Text style={styles.cancelLabel}>Скасувати</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.saveButton,
+                !value.trim() && styles.saveButtonDisabled,
+                pressed && styles.pressed,
+              ]}
+              disabled={!value.trim()}
+              onPress={() => onSave(value.trim())}
+            >
+              <Text style={styles.saveLabel}>Зберегти</Text>
+            </Pressable>
+          </View>
+        )}
+      </View>
+    </GlassLayer>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
   card: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: '#fff',
-    borderRadius: 16,
+    marginHorizontal: 16,
+    borderRadius: 28,
+    // Lighter than an unblurred sheet: at the opaque strength the blur
+    // underneath stops showing through at all.
+    backgroundColor: GLASS_BODY_BLURRED,
+    borderWidth: 1,
+    borderColor: GLASS_EDGE,
     padding: 20,
     gap: 12,
   },
   title: {
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: 19,
     fontFamily: FONT_BOLD,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   input: {
+    backgroundColor: GLASS_INPUT,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
+    borderColor: GLASS_LINE,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   inputBusy: {
-    color: '#9CA3AF',
+    color: GLASS_TEXT_MUTED,
   },
   // Same height the buttons row occupies, so swapping to the spinner
   // doesn't make the dialog jump.
   busyRow: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
+    paddingVertical: 13,
     marginTop: 4,
   },
   buttons: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: 12,
+    alignItems: 'center',
+    gap: 8,
     marginTop: 4,
   },
+  pressed: {
+    opacity: 0.6,
+  },
   cancelButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-  },
-  cancelLabel: {
-    fontSize: 15,
-    fontFamily: FONT_REGULAR,
-    color: '#6B7280',
-  },
-  saveButton: {
-    backgroundColor: ACCENT,
-    borderRadius: 10,
-    paddingVertical: 10,
+    minHeight: 46,
+    justifyContent: 'center',
     paddingHorizontal: 18,
   },
+  cancelLabel: {
+    fontSize: 16,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT_MUTED,
+  },
+  saveButton: {
+    backgroundColor: '#F5C77E',
+    borderRadius: 18,
+    minHeight: 46,
+    justifyContent: 'center',
+    paddingHorizontal: 22,
+  },
   saveButtonDisabled: {
-    backgroundColor: '#BFDBFE',
+    opacity: 0.4,
   },
   saveLabel: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 16,
     fontFamily: FONT_SEMIBOLD,
-    color: '#fff',
+    color: '#171310',
   },
 });

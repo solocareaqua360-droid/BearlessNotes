@@ -172,11 +172,14 @@ export default function App() {
               the screens: that is what a sheet blurs. */}
           <GlassPortalHost>
             <StatusBar style="auto" />
-            <ShareIntentHandler />
-            {/* «Питання» - every confirmation in the app, drawn once
-                here so that asking is a function call anywhere else. */}
-            <AskHost />
             <GlassTargetProvider>
+            {/* «Питання» - every confirmation in the app, drawn once here
+                so that asking is a function call anywhere else. INSIDE the
+                blur target: what it blurs is the screens, and from outside
+                them expo-blur quietly falls back to a flat dim. */}
+            <AskHost />
+            {/* Inside the target too: it raises the naming dialog. */}
+            <ShareIntentHandler />
             <Stack.Navigator screenOptions={{ headerShown: false }}>
               {/* animation: 'none' only on the root screen - the navigator
                   mounts after the splash view above hands over, and its

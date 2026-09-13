@@ -1,11 +1,11 @@
 import { useContext, useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
+import GlassLayer from '../GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../../utils/fonts';
 import {
-  GLASS_BACKDROP,
-  GLASS_BODY,
+  GLASS_BODY_BLURRED,
   GLASS_CARD,
   GLASS_DANGER,
   GLASS_EDGE,
@@ -124,85 +124,82 @@ export function AskHost() {
   const cancelLabel = current.cancelLabel === undefined ? 'Скасувати' : current.cancelLabel;
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={() => answer('cancel')}>
-      <View style={styles.backdrop}>
-        {/* The dim is the way out, the same as tapping Скасувати. */}
-        <Pressable style={StyleSheet.absoluteFill} onPress={() => answer('cancel')} />
-        <View style={[styles.card, { marginBottom: insets?.bottom ?? 0 }]}>
-          <Text style={styles.title}>{current.title}</Text>
-          {!!current.message && <Text style={styles.message}>{current.message}</Text>}
+    // A layer, not a window. The blur on Android only reaches what is
+    // inside its own window, and a Modal is a window of its own - which
+    // is why every sheet here stopped being one. The dim, the tap that
+    // closes and the hardware back button all come with the layer.
+    <GlassLayer visible onClose={() => answer('cancel')} intensity={60}>
+      <View style={[styles.card, { marginBottom: (insets?.bottom ?? 0) + 16 }]}>
+        <Text style={styles.title}>{current.title}</Text>
+        {!!current.message && <Text style={styles.message}>{current.message}</Text>}
 
-          <View style={styles.actions}>
-            {current.actions.map((action) => {
-              const danger = action.tone === 'danger';
-              const primary = action.tone === 'primary';
-              return (
-                <Pressable
-                  key={action.id}
-                  style={({ pressed }) => [
-                    styles.action,
-                    primary && styles.actionPrimary,
-                    pressed && styles.actionPressed,
-                  ]}
-                  onPress={() => {
-                    hapticButtonDown();
-                    answer(action.id);
-                  }}
-                >
-                  {!!action.icon && (
-                    <Ionicons
-                      name={action.icon}
-                      size={20}
-                      color={primary ? '#171310' : danger ? GLASS_DANGER : GLASS_TEXT}
-                    />
-                  )}
-                  <View style={styles.actionText}>
-                    <Text
-                      style={[
-                        styles.actionLabel,
-                        danger && styles.actionLabelDanger,
-                        primary && styles.actionLabelPrimary,
-                      ]}
-                    >
-                      {action.label}
+        <View style={styles.actions}>
+          {current.actions.map((action) => {
+            const danger = action.tone === 'danger';
+            const primary = action.tone === 'primary';
+            return (
+              <Pressable
+                key={action.id}
+                style={({ pressed }) => [
+                  styles.action,
+                  primary && styles.actionPrimary,
+                  pressed && styles.actionPressed,
+                ]}
+                onPress={() => {
+                  hapticButtonDown();
+                  answer(action.id);
+                }}
+              >
+                {!!action.icon && (
+                  <Ionicons
+                    name={action.icon}
+                    size={20}
+                    color={primary ? '#171310' : danger ? GLASS_DANGER : GLASS_TEXT}
+                  />
+                )}
+                <View style={styles.actionText}>
+                  <Text
+                    style={[
+                      styles.actionLabel,
+                      danger && styles.actionLabelDanger,
+                      primary && styles.actionLabelPrimary,
+                    ]}
+                  >
+                    {action.label}
+                  </Text>
+                  {!!action.hint && (
+                    <Text style={[styles.actionHint, primary && styles.actionHintPrimary]}>
+                      {action.hint}
                     </Text>
-                    {!!action.hint && (
-                      <Text style={[styles.actionHint, primary && styles.actionHintPrimary]}>
-                        {action.hint}
-                      </Text>
-                    )}
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          {cancelLabel !== null && (
-            <Pressable
-              style={({ pressed }) => [styles.cancel, pressed && styles.actionPressed]}
-              onPress={() => answer('cancel')}
-            >
-              <Text style={styles.cancelLabel}>{cancelLabel}</Text>
-            </Pressable>
-          )}
+                  )}
+                </View>
+              </Pressable>
+            );
+          })}
         </View>
+
+        {cancelLabel !== null && (
+          <Pressable
+            style={({ pressed }) => [styles.cancel, pressed && styles.actionPressed]}
+            onPress={() => answer('cancel')}
+          >
+            <Text style={styles.cancelLabel}>{cancelLabel}</Text>
+          </Pressable>
+        )}
       </View>
-    </Modal>
+    </GlassLayer>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: GLASS_BACKDROP,
-    justifyContent: 'flex-end',
-    padding: 16,
-  },
   // Sitting at the bottom, within reach of a thumb, rather than floating
   // in the middle of a six-inch screen where nothing can be reached.
   card: {
+    marginHorizontal: 16,
     borderRadius: 28,
-    backgroundColor: GLASS_BODY,
+    // Lighter than an unblurred sheet: at the opaque strength the blur
+    // underneath stops showing through at all.
+    backgroundColor: GLASS_BODY_BLURRED,
     borderWidth: 1,
     borderColor: GLASS_EDGE,
     paddingTop: 22,
