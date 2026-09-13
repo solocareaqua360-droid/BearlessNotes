@@ -105,7 +105,10 @@ export default function TextSelection({
         <ScrollView contentContainerStyle={styles.pages}>
           {positioned.map((page) => {
             const scale = page.width > 0 ? pageWidth / page.width : 1;
-            const height = page.height * scale;
+            // A page whose size is unknown is still shown: a photograph
+            // standing in a frame of the usual proportions beats a
+            // screen with nothing on it at all.
+            const height = page.height > 0 ? page.height * scale : pageWidth * 1.4;
             const isThisPage = range?.page === page.pageIndex;
             const from = isThisPage ? Math.min(range!.from, range!.to) : -1;
             const to = isThisPage ? Math.max(range!.from, range!.to) : -2;

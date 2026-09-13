@@ -209,6 +209,11 @@ export default function TextRecognizer({
 }) {
   const [pageUri, setPageUri] = useState<string | null>(null);
   const progressRef = useRef<RecognizeProgress>({ page: 1, of: 1, progress: 0 });
+  // The size of every picture as it was actually handed over. The
+  // recogniser does not report it - it returns word boxes in the
+  // image's own pixels and says nothing about the image itself - and
+  // without it the page has no shape to draw the words against.
+  const sizesRef = useRef<{ width: number; height: number }[]>([]);
 
   useEffect(() => {
     if (!request) {
@@ -247,12 +252,14 @@ export default function TextRecognizer({
         // gave output identical to the full size, at a fraction of the
         // work.
         const images: string[] = [];
+        sizesRef.current = [];
         for (let i = 0; i < request.uris.length; i += 1) {
           const name = `scan-${Date.now()}-${i}.jpg`;
           const context = ImageManipulator.manipulate(request.uris[i]).resize({ width: 1600 });
           const rendered = await context.renderAsync();
           const saved = await rendered.saveAsync({ compress: 0.85, format: SaveFormat.JPEG });
           await LegacyFileSystem.copyAsync({ from: saved.uri, to: `${dir}${name}` });
+          sizesRef.current.push({ width: saved.width, height: saved.height });
           images.push(name);
         }
         if (cancelled) return;
@@ -303,7 +310,20 @@ export default function TextRecognizer({
         return;
       }
       if (message.ok && message.pages) {
-        onDone(message.pages);
+        onDone(
+          message.pages.map((page, index) => {
+            const size = sizesRef.current[index];
+            // The word boxes are the last resort: the page is at least
+            // as big as the furthest word on it.
+            const extentX = page.words.reduce((most, word) => Math.max(most, word.x1), 0);
+            const extentY = page.words.reduce((most, word) => Math.max(most, word.y1), 0);
+            return {
+              ...page,
+              width: page.width || size?.width || extentX,
+              height: page.height || size?.height || extentY,
+            };
+          })
+        );
         return;
       }
       if (message.ok === false) onError(message.error ?? 'Не вдалося розпізнати');
