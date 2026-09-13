@@ -38,9 +38,9 @@ const GRID_CONTENT_PADDING = 10; // gridContent's own padding, top and bottom
 // and undercount how many preview lines actually fit.
 const GRID_CONTENT_GAP = 4;
 const GRID_TITLE_MAX_LINES = 2;
-const GRID_TITLE_LINE_HEIGHT = 17;
-const GRID_DATE_LINE_HEIGHT = 13;
-const GRID_PREVIEW_LINE_HEIGHT = 15; // matches previewCompact.lineHeight below
+const GRID_TITLE_LINE_HEIGHT = 20;
+const GRID_DATE_LINE_HEIGHT = 14;
+const GRID_PREVIEW_LINE_HEIGHT = 17; // matches previewCompact.lineHeight below
 
 // gridContent (title + preview + date) always has to fit into whatever
 // height is LEFT after the reserved space passed in - GRID_CARD_HEIGHT
@@ -415,13 +415,13 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   title: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
   },
   preview: {
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 15,
+    lineHeight: 21,
     fontFamily: FONT_REGULAR,
   },
   highlight: {
@@ -429,7 +429,7 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   date: {
-    fontSize: 12,
+    fontSize: 13,
     marginTop: 2,
     fontFamily: FONT_REGULAR,
   },
@@ -443,12 +443,12 @@ const styles = StyleSheet.create({
   },
   checklistText: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: FONT_REGULAR,
   },
   checklistTextCompact: {
     flex: 1,
-    fontSize: 10.5,
+    fontSize: 12,
     fontFamily: FONT_REGULAR,
   },
   checklistTextDone: {
@@ -520,11 +520,11 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   titleCompact: {
-    fontSize: 13,
+    fontSize: 15,
     // Explicit, matching GRID_TITLE_LINE_HEIGHT above - EXPANDED_TEXT_LINES
     // is computed against this exact number, not whatever this font's own
     // default metric happens to be.
-    lineHeight: 17,
+    lineHeight: 20,
     // Matches GRID_CONTENT_GAP - the one fixed gap in this layout (see its
     // own comment).
     marginBottom: 4,
@@ -532,19 +532,19 @@ const styles = StyleSheet.create({
     fontFamily: FONT_BOLD,
   },
   previewCompact: {
-    fontSize: 11,
-    lineHeight: 15,
+    fontSize: 13,
+    lineHeight: 17,
     fontFamily: FONT_REGULAR,
   },
   dateCompact: {
-    fontSize: 10,
+    fontSize: 11,
     // Explicit, matching GRID_DATE_LINE_HEIGHT above - see titleCompact's
     // identical reasoning. marginTop here is always overridden by
     // dateCompactPinned's own 'auto' (this style is only ever used in the
     // grid layout, combined with that one) - kept rather than removed
     // since it's harmless and this is what a non-pinned instance would
     // fall back to.
-    lineHeight: 13,
+    lineHeight: 14,
     marginTop: 2,
     fontFamily: FONT_REGULAR,
   },
