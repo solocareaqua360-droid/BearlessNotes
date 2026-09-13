@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../../utils/fonts';
 import {
   GLASS_BACKDROP,
@@ -91,7 +91,13 @@ export function notify(title: string, message?: string): Promise<string> {
 // anywhere in the app, which is the whole point: a question should not
 // need a piece of state on the screen that happens to be asking.
 export function AskHost() {
-  const insets = useSafeAreaInsets();
+  // The CONTEXT, not the hook. This is mounted at the very root, above
+  // the navigator that supplies the insets to every screen, and the
+  // hook THROWS when nothing above it provides them - which took the
+  // whole app down on its first frame. The context is null instead,
+  // and a question can perfectly well sit a fixed distance from the
+  // bottom edge.
+  const insets = useContext(SafeAreaInsetsContext);
   const [current, setCurrent] = useState<Pending | null>(null);
 
   useEffect(() => {
@@ -122,7 +128,7 @@ export function AskHost() {
       <View style={styles.backdrop}>
         {/* The dim is the way out, the same as tapping Скасувати. */}
         <Pressable style={StyleSheet.absoluteFill} onPress={() => answer('cancel')} />
-        <View style={[styles.card, { marginBottom: insets.bottom }]}>
+        <View style={[styles.card, { marginBottom: insets?.bottom ?? 0 }]}>
           <Text style={styles.title}>{current.title}</Text>
           {!!current.message && <Text style={styles.message}>{current.message}</Text>}
 

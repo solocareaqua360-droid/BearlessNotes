@@ -10,6 +10,7 @@ import {
   Nunito_800ExtraBold,
 } from '@expo-google-fonts/nunito';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { ShareIntentProvider } from 'expo-share-intent';
 import { NavigationContainer, getFocusedRouteNameFromRoute } from '@react-navigation/native';
@@ -153,6 +154,10 @@ export default function App() {
         <View style={{ flex: 1, backgroundColor: '#0F1839' }} />
       ) : (
         <GestureHandlerRootView style={{ flex: 1 }}>
+        {/* At the root, so the pieces mounted here - the question
+            window below - can read the insets too. Every screen gets
+            its own from the navigator; nothing above it did. */}
+        <SafeAreaProvider>
           {/* Feeds the document editor per-frame keyboard progress (see
               DocumentEditorScreen's useKeyboardHandler), so the block being
               edited can ride up in the same motion as the keyboard instead of
@@ -200,6 +205,7 @@ export default function App() {
           </GlassPortalHost>
           </NavigationContainer>
           </KeyboardProvider>
+        </SafeAreaProvider>
         </GestureHandlerRootView>
       )}
     </ShareIntentProvider>
