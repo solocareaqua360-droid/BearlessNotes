@@ -556,9 +556,14 @@ export default function CalendarScreen() {
       Gesture.LongPress()
         .enabled(!isTwoPane)
         .minDuration(400)
+        // Plainly on the JS thread. It was handing React's setter an
+        // updater FUNCTION through runOnJS, and a function cannot cross
+        // to the UI thread and back - so the toggle only ever went one
+        // way and a second hold did nothing.
+        .runOnJS(true)
         .onStart(() => {
-          runOnJS(hapticButtonDown)();
-          runOnJS(setHistoryExpanded)((v: boolean) => !v);
+          hapticButtonDown();
+          setHistoryExpanded((v) => !v);
         }),
     [isTwoPane]
   );
