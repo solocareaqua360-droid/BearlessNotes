@@ -51,6 +51,7 @@ const TILE_GAP = 10;
 // to make room for the grips, and close back up when the board is done.
 const TILE_GAP_EDITING = 16;
 const tileSizesDoc = doc(db, 'settings', 'databaseTileSizes');
+const tileOrderDoc = doc(db, 'settings', 'databaseTileOrder');
 
 type BoardItem =
   | { key: string; kind: 'builtin'; tile: Tile }
@@ -83,6 +84,13 @@ export default function DatabasesScreen() {
   // The size being dragged right now, so the board can re-pack around it
   // before the drag ends and it is written down.
   const [draftSize, setDraftSize] = useState<{ key: string; size: TileSize } | null>(null);
+  // The order the user has arranged the board into, once they have. Until
+  // then there is none, and the board keeps the order it was written in.
+  const [order, setOrder] = useState<string[] | null>(null);
+  // The tile being carried right now: where it is under the finger, and
+  // the order the board is packing itself into while it is held there.
+  const [drag, setDrag] = useState<{ key: string; x: number; y: number } | null>(null);
+  const [draftOrder, setDraftOrder] = useState<string[] | null>(null);
 
   // While the board is being arranged, the tabs stop swiping. A grip
   // dragged sideways IS a horizontal drag, and the pager that carries the
@@ -95,6 +103,13 @@ export default function DatabasesScreen() {
   useEffect(() => {
     return onSnapshot(tileSizesDoc, (snapshot) => {
       setTileSizes((snapshot.data() as Record<string, string> | undefined) ?? {});
+    });
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(tileOrderDoc, (snapshot) => {
+      const stored = snapshot.data()?.order;
+      setOrder(Array.isArray(stored) ? (stored as string[]) : null);
     });
   }, []);
   const [creatingDatabase, setCreatingDatabase] = useState(false);
@@ -152,15 +167,48 @@ export default function DatabasesScreen() {
     { key: NEW_TILE_KEY, kind: 'action' as const },
     { key: IMPORT_TILE_KEY, kind: 'action' as const },
   ];
+  // The arranged order wins where there is one; anything it does not
+  // mention (a database made since) keeps its natural place at the end.
+  const activeOrder = draftOrder ?? order;
+  const orderedItems = activeOrder
+    ? [
+        ...activeOrder
+          .map((key) => boardItems.find((item) => item.key === key))
+          .filter((item): item is BoardItem => !!item),
+        ...boardItems.filter((item) => !activeOrder.includes(item.key)),
+      ]
+    : boardItems;
+
+  // The rule only means anything while the board is in the order it was
+  // written in: once the tiles have been arranged, "everything above is
+  // built in" is no longer true, and a line drawn there would be a lie.
+  const showRule = !activeOrder;
   const firstOwnKey = customDatabases[0]?.id ?? NEW_TILE_KEY;
   const { placed, rows } = packTiles(
-    boardItems,
+    orderedItems,
     (item) => sizeFor(item.key),
-    // Everything above the rule is built in; the user's own starts on a
-    // fresh row under it.
-    (item) => item.key === firstOwnKey
+    (item) => showRule && item.key === firstOwnKey
   );
-  const ruleRow = placed.find((p) => p.item.key === firstOwnKey)?.y ?? 0;
+  const ruleRow = showRule ? placed.find((p) => p.item.key === firstOwnKey)?.y ?? 0 : 0;
+
+  // Where a carried tile would land: the cell under the finger decides
+  // which tile it goes in front of.
+  function orderWithDrop(key: string, x: number, y: number): string[] {
+    const keys = orderedItems.map((item) => item.key);
+    const without = keys.filter((k) => k !== key);
+    if (cellStep <= 0) return keys;
+    const col = Math.max(0, Math.min(TILE_COLUMNS - 1, Math.round(x / cellStep)));
+    const row = Math.max(0, Math.round(y / cellStep));
+    // The first tile whose cells start at or after that point, in reading
+    // order - the carried tile takes its place and pushes it along.
+    const target = placed.find(
+      (p) => p.item.key !== key && (p.y > row || (p.y + p.size.h > row && p.x + p.size.w > col))
+    );
+    const index = target ? without.indexOf(target.item.key) : without.length;
+    const next = [...without];
+    next.splice(index < 0 ? without.length : index, 0, key);
+    return next;
+  }
 
   // A cell is square, and the board is as wide as the column it sits in.
   // While arranging, the gap grows: the tiles draw apart to make room for
@@ -236,7 +284,7 @@ export default function DatabasesScreen() {
             onLayout={(e) => setBoardWidth(e.nativeEvent.layout.width)}
           >
             {/* Everything above is built in; everything below is yours. */}
-            {ruleRow > 0 && (
+            {showRule && ruleRow > 0 && (
               <View style={[styles.boardRule, { top: ruleRow * cellStep - gap / 2 }]} />
             )}
 
@@ -273,6 +321,24 @@ export default function DatabasesScreen() {
                   onResizeEnd={(next) => {
                     setDraftSize(null);
                     setSize(item.key, next);
+                  }}
+                  carried={drag?.key === item.key ? { x: drag.x, y: drag.y } : null}
+                  onCarryStart={() => {
+                    hapticButtonDown();
+                    setDrag({ key: item.key, x: x * cellStep, y: y * cellStep });
+                    setDraftOrder(orderedItems.map((i) => i.key));
+                  }}
+                  onCarryMove={(dx, dy) => {
+                    const nextX = x * cellStep + dx;
+                    const nextY = y * cellStep + dy;
+                    setDrag({ key: item.key, x: nextX, y: nextY });
+                    setDraftOrder(orderWithDrop(item.key, nextX, nextY));
+                  }}
+                  onCarryEnd={() => {
+                    const next = draftOrder;
+                    setDrag(null);
+                    setDraftOrder(null);
+                    if (next) setDoc(tileOrderDoc, { order: next }, { merge: true });
                   }}
                 />
               ))}
@@ -347,6 +413,10 @@ function BoardTile({
   onColor,
   onResize,
   onResizeEnd,
+  carried,
+  onCarryStart,
+  onCarryMove,
+  onCarryEnd,
 }: {
   item: BoardItem;
   left: number;
@@ -362,6 +432,12 @@ function BoardTile({
   onColor: () => void;
   onResize: (size: TileSize) => void;
   onResizeEnd: (size: TileSize) => void;
+  // Set while this tile is the one being carried: where it sits under the
+  // finger, in the board's own coordinates.
+  carried: { x: number; y: number } | null;
+  onCarryStart: () => void;
+  onCarryMove: (dx: number, dy: number) => void;
+  onCarryEnd: () => void;
 }) {
   const label =
     item.kind === 'builtin'
@@ -409,11 +485,34 @@ function BoardTile({
     .onUpdate((e) => onResize(sizeFromDrag(e.translationX, e.translationY)))
     .onEnd((e) => onResizeEnd(sizeFromDrag(e.translationX, e.translationY)));
 
+  // Carrying a tile: held down on the board that is already being
+  // arranged, it lifts off and follows the finger while the others pack
+  // themselves around where it would land. A long press to start, so the
+  // board can still be scrolled with a plain drag.
+  const carry = Gesture.Pan()
+    .runOnJS(true)
+    .activateAfterLongPress(220)
+    .enabled(editing)
+    .onStart(() => onCarryStart())
+    .onUpdate((e) => onCarryMove(e.translationX, e.translationY))
+    // Only onFinalize, not onEnd as well: a cancelled carry (a call
+    // coming in, the finger leaving the screen) has to put the tile down
+    // too, and calling both would save the same order twice.
+    .onFinalize(() => onCarryEnd());
+
   return (
     <Animated.View
-      layout={LinearTransition.duration(220)}
-      style={[styles.tile, isAction && styles.newTile, { left, top, width, height }]}
+      // A carried tile is not animated into place - it is under a finger,
+      // and a layout animation would chase it a beat behind.
+      layout={carried ? undefined : LinearTransition.duration(220)}
+      style={[
+        styles.tile,
+        isAction && styles.newTile,
+        { left, top, width, height },
+        carried && { left: carried.x, top: carried.y, zIndex: 20, opacity: 0.95, transform: [{ scale: 1.04 }] },
+      ]}
     >
+      <GestureDetector gesture={carry}>
       <Pressable
         style={styles.tileTap}
         onPress={editing ? onColor : onOpen}
@@ -430,6 +529,7 @@ function BoardTile({
           </Text>
         )}
       </Pressable>
+      </GestureDetector>
 
       {editing && (
         <GestureDetector gesture={grip}>
