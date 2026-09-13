@@ -719,46 +719,6 @@ export default function CalendarScreen() {
               <SaveRing saving={noteSaveStatus === 'saving'} />
             </View>
 
-            {/* The month and the day's history were pills lying under the
-                calendar; they are round buttons on the rail now, the way
-                the documents screen's own two are. Each is only there when
-                it has something to open. */}
-            {!onlyFilledDays && !isTwoPane && (
-              <Pressable
-                style={[styles.railButton, isMonthExpanded && styles.railButtonActive]}
-                onPress={() => setIsMonthExpanded((prev) => !prev)}
-              >
-                <BlurView
-                  intensity={60}
-                  tint="dark"
-                  blurMethod="dimezisBlurView"
-                  blurTarget={calendarBlurTarget ?? undefined}
-                  style={StyleSheet.absoluteFill}
-                  pointerEvents="none"
-                />
-                <Ionicons
-                  name="calendar-outline"
-                  size={24}
-                  color={isMonthExpanded ? '#171310' : '#fff'}
-                />
-              </Pressable>
-            )}
-            {!isTwoPane && (historyByDate.get(selectedKey)?.length ?? 0) > 0 && (
-              <Pressable
-                style={[styles.railButton, historyExpanded && styles.railButtonActive]}
-                onPress={() => setHistoryExpanded((v) => !v)}
-              >
-                <BlurView
-                  intensity={60}
-                  tint="dark"
-                  blurMethod="dimezisBlurView"
-                  blurTarget={calendarBlurTarget ?? undefined}
-                  style={StyleSheet.absoluteFill}
-                  pointerEvents="none"
-                />
-                <Ionicons name="time-outline" size={24} color={historyExpanded ? '#171310' : '#fff'} />
-              </Pressable>
-            )}
           </View>
         </GlassPortal>
       )}
@@ -771,6 +731,26 @@ export default function CalendarScreen() {
             { top: calendarInsets.top + CHROME_TOP + CAPSULE_DROP, right: RAIL_CLEARANCE },
           ]}
         >
+          {/* The month and the day's history were round buttons on the
+              rail; they are rows here now - both are switches, and a
+              switch reads better as a line with a tick than as one more
+              circle beside the capsule. Held down, the calendar still
+              does the same two things without opening this at all. */}
+          {!onlyFilledDays && !isTwoPane && (
+            <Pressable style={styles.menuRow} onPress={() => setIsMonthExpanded((prev) => !prev)}>
+              <Ionicons name="calendar-outline" size={17} color={GLASS_TEXT} />
+              <Text style={styles.menuRowLabel}>Місяць</Text>
+              {isMonthExpanded && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+            </Pressable>
+          )}
+          {!isTwoPane && (historyByDate.get(selectedKey)?.length ?? 0) > 0 && (
+            <Pressable style={styles.menuRow} onPress={() => setHistoryExpanded((v) => !v)}>
+              <Ionicons name="time-outline" size={17} color={GLASS_TEXT} />
+              <Text style={styles.menuRowLabel}>Історія дня</Text>
+              {historyExpanded && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+            </Pressable>
+          )}
+          <View style={styles.menuRule} />
           <Pressable style={styles.menuRow} onPress={() => toggleCompactFilter('filled')}>
             <Ionicons name="filter-outline" size={17} color={GLASS_TEXT} />
             <Text style={styles.menuRowLabel}>Лише заповнені дні</Text>
@@ -1181,24 +1161,6 @@ const styles = StyleSheet.create({
     right: RAIL_RIGHT,
     alignItems: 'center',
     gap: 12,
-  },
-  // Round, the width of the rail - the same shape the documents screen's
-  // own two buttons take.
-  railButton: {
-    width: RAIL_WIDTH,
-    height: RAIL_WIDTH,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-  },
-  // Open reads the way an active tab does: solid white, dark glyph.
-  railButtonActive: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderColor: 'transparent',
   },
   // Search (→ DiaryScreen) + "..." (the only-filled-days menu) in one
   // capsule, stood on its end.
