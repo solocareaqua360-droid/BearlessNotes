@@ -8,11 +8,8 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
-  useWindowDimensions,
   View,
 } from 'react-native';
-import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
@@ -29,8 +26,7 @@ import {
 } from '@react-native-firebase/firestore';
 import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
-import { Block, Group, TaggableKind } from '../types';
-import { groupAppliesTo } from '../utils/groups';
+import { Block, TaggableKind } from '../types';
 import { LinkCategory, categoryFromSiteName } from '../utils/linkCategory';
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
@@ -38,48 +34,27 @@ import DocumentPickerModal, { PickableDocument } from '../components/DocumentPic
 import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
-import BulkActionBar from '../components/BulkActionBar';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import GroupPickerSheet, { GroupKind } from '../components/GroupPickerSheet';
-import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
-import TagsDrawer, { TagFilter, matchesTagFilter, removeTagFromFilter } from '../components/TagsDrawer';
 import CopyToNoteModal from '../components/CopyToNoteModal';
-import { usePendingDelete } from '../hooks/usePendingDelete';
-import { useMultiSelect } from '../hooks/useMultiSelect';
-import { useSortPref } from '../hooks/useSortPref';
-import { useTags, detachTagFromDeletedItem, isTagAllowedForKind } from '../hooks/useTags';
+import { useDatabaseList } from '../hooks/useDatabaseList';
+import DatabaseChrome from '../components/DatabaseChrome';
+import { detachTagFromDeletedItem, isTagAllowedForKind } from '../hooks/useTags';
 import { appendBlocksToToday, blockFromLink, copyObjectsToNote } from '../utils/copyToNote';
 import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
 import SaveDestinationSheet from '../components/SaveDestinationSheet';
 import { linkDocId } from '../utils/linkId';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
-import { sortItems } from '../utils/sortItems';
 import { colorForDocument } from '../utils/documentColor';
-import SortMenuRows from '../components/SortMenuRows';
-import ContentColumn from '../components/ContentColumn';
-import { useRail } from '../hooks/useRail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { BlurView } from 'expo-blur';
-import { useIsFocused } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { GlassPortal } from '../components/GlassPortal';
-import { useBlurTarget } from '../components/GlassTarget';
-import { GLASS_ISLAND, GLASS_TEXT_MUTED } from '../constants/glass';
-import { CAPSULE_DROP, CAPSULE_HEIGHT_3, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
 const ACCENT = '#14B8A6';
 // The same half-strength tint the documents screen's add button takes -
 // the blur behind it is what separates it, so the colour only tints.
 const ACCENT_GLASS = 'rgba(20,184,166,0.55)';
-// What is left of the header now that the title is gone: the gap between
-// the safe area and the first row, so the groups (or the first card) start
-// on the capsule's own line rather than under the status bar.
-const TITLE_GAP = 8;
 const DANGER = '#EF4444';
 const linksCollection = collection(db, 'links');
-const groupsCollection = collection(db, 'groups');
 
-type ViewMode = 'list' | 'grid';
 
 type JustAddedLink = { id: string; url: string; title: string; imageUrl?: string; siteName?: string; createdAt: number };
 
@@ -161,23 +136,14 @@ function hostnameOf(url: string): string {
 type Props = NativeStackScreenProps<RootStackParamList, 'Links'>;
 
 export default function LinksScreen({ route, navigation }: Props) {
-  const railBlurTarget = useBlurTarget();
-  const railFocused = useIsFocused();
-  const railInsets = useSafeAreaInsets();
-  // Three buttons in the capsule here, so the rail spaces what is under
-  // it against the taller one.
-  const rail = useRail(CAPSULE_HEIGHT_3);
   const { category } = route.params;
   const info = CATEGORY_INFO[category];
   // Geo/video/other share this one screen's code, but each is its own
-  // "database" from the user's side - view mode (and sort, via useSortPref
-  // below) has to be kept per category, not one shared doc, or switching to
-  // grid in "Геоточки" would silently flip "YouTube / TikTok" too.
+  // "database" from the user's side - the preferences (view mode, sort,
+  // the hidden group row) have to be kept per category, not in one shared
+  // doc, or switching to grid in "Геоточки" would silently flip
+  // "YouTube / TikTok" too.
   const linksPrefsKey = `linksPrefs_${category}`;
-  const linksPrefsDoc = doc(db, 'settings', linksPrefsKey);
-  // Same fixed gradient as Documents/Calendar/Databases - see DocumentsScreen's
-  // own comment on why react-native-svg over expo-linear-gradient.
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const tagKind = TAG_KIND_BY_CATEGORY[category];
   const groupKind = GROUP_KIND_BY_CATEGORY[category];
   const [links, setLinks] = useState<LinkItem[]>([]);
@@ -190,21 +156,9 @@ export default function LinksScreen({ route, navigation }: Props) {
   // Per-card "..." menu (rename / documents) - one shared piece of state
   // rather than per-row, since only ever one card's menu is open at a time.
   const [cardMenuLinkId, setCardMenuLinkId] = useState<string | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [groupFilter, setGroupFilter] = useState<string | null>(null);
-  const [tagFilter, setTagFilter] = useState<TagFilter | null>(null);
-  const [groups, setGroups] = useState<Group[]>([]);
-  // The group row at the head of the screen is a convenience now that the
-  // groups also live in the drawer - held down, the folder button puts it
-  // away. Same arrangement as the documents and photos screens, and kept
-  // per category like everything else in this screen's prefs doc.
-  const [groupsRowHidden, setGroupsRowHidden] = useState(false);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [addLinkUrlPromptVisible, setAddLinkUrlPromptVisible] = useState(false);
   const [isAddingLink, setIsAddingLink] = useState(false);
   const [addLinkTitlePrompt, setAddLinkTitlePrompt] = useState<{ url: string; preview: LinkPreview } | null>(null);
@@ -215,11 +169,46 @@ export default function LinksScreen({ route, navigation }: Props) {
     const timeoutId = setTimeout(() => setJustAddedLink(null), 4000);
     return () => clearTimeout(timeoutId);
   }, [justAddedLink, saveDestinationVisible]);
-  const { sortPref, selectSortField } = useSortPref(linksPrefsKey);
-  const { filterPending, requestDeleteMany, undo, toast } = usePendingDelete<LinkItem>();
-  const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
-  const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, clear: clearSelection } =
-    useMultiSelect();
+
+  // Only this category's links go into the shared machine - the other two
+  // categories live in the same collection and are a different database
+  // from the user's side.
+  const categoryLinks = links.filter((link) => categoryOf(link) === category);
+  const list = useDatabaseList<LinkItem>({
+    prefsKey: linksPrefsKey,
+    groupKind,
+    tagKind,
+    items: categoryLinks,
+    tagIdsOf: (l) => l.tagIds,
+    groupIdOf: (l) => l.groupId,
+    titleOf: (l) => l.title || hostnameOf(l.url),
+    createdAtOf: (l) => l.createdAt,
+    updatedAtOf: (l) => l.updatedAt,
+    // Video/geo/other tags don't mix (see the TaggableKind comment in
+    // types.ts) - the drawer must only ever offer tags belonging to
+    // whichever of the three link screens this is.
+    tagAllowed: (t) => isTagAllowedForKind(t, tagKind),
+  });
+  const {
+    displayed: filteredLinks,
+    groups,
+    tags,
+    attachTag,
+    detachTag,
+    createAndAttachTag,
+    renameTag,
+    isSelectMode,
+    selectedIds,
+    toggle: toggleSelected,
+    clear: clearSelection,
+    requestDeleteMany,
+    undo,
+    toast,
+    selected: selectedLinks,
+    needle,
+    viewMode,
+    changeViewMode,
+  } = list;
 
   useEffect(() => {
     const linksQuery = query(linksCollection, orderBy('updatedAt', 'desc'));
@@ -245,56 +234,8 @@ export default function LinksScreen({ route, navigation }: Props) {
     });
   }, []);
 
-  useEffect(() => {
-    return onSnapshot(linksPrefsDoc, (snapshot) => {
-      setViewMode((snapshot.data()?.viewMode as ViewMode | undefined) ?? 'list');
-      setGroupsRowHidden(!!snapshot.data()?.groupsRowHidden);
-    });
-  }, [linksPrefsKey]);
-
-  useEffect(() => {
-    // Filtered client-side rather than with a `where('kind','==',groupKind)`
-    // query - combining an equality filter with `orderBy` on a different
-    // field needs a composite index set up by hand in the Firebase
-    // console, which this app avoids everywhere else too (see
-    // TasksScreen's own comment on the same tradeoff).
-    return onSnapshot(query(groupsCollection, orderBy('name')), (snapshot) => {
-      setGroups(
-        snapshot.docs
-          .map((d) => ({ id: d.id, ...(d.data() as Omit<Group, 'id'>) }))
-          .filter((g) => groupAppliesTo(g, groupKind))
-      );
-    });
-  }, [groupKind]);
-
-  const categoryLinks = filterPending(links.filter((link) => categoryOf(link) === category));
-  const groupFilteredLinks =
-    groupFilter === null
-      ? categoryLinks
-      : groupFilter === UNASSIGNED_ID
-        ? categoryLinks.filter((l) => !l.groupId)
-        : categoryLinks.filter((l) => l.groupId === groupFilter);
-  const tagFilteredLinks = groupFilteredLinks.filter((l) => matchesTagFilter(l.tagIds, tagFilter));
-  const needle = searchQuery.trim().toLowerCase();
-  const searchedLinks = needle
-    ? tagFilteredLinks.filter((link) => (link.title || hostnameOf(link.url)).toLowerCase().includes(needle))
-    : tagFilteredLinks;
-  const filteredLinks = sortItems(
-    searchedLinks,
-    sortPref,
-    (link) => link.title || hostnameOf(link.url),
-    (link) => link.createdAt,
-    (link) => link.updatedAt
-  );
-  // Video/geo/other tags don't mix (see the TaggableKind comment in
-  // types.ts) - the drawer here must only ever offer tags relevant to
-  // whichever of the three link screens this is, and only ones actually
-  // assigned to a link in this category.
-  const usedTagIds = new Set(categoryLinks.flatMap((l) => l.tagIds));
-  const drawerTags = tags.filter((t) => isTagAllowedForKind(t, tagKind) && usedTagIds.has(t.id));
   const tagPickerLink = tagPickerForId ? links.find((l) => l.id === tagPickerForId) ?? null : null;
   const cardMenuLink = cardMenuLinkId ? links.find((l) => l.id === cardMenuLinkId) ?? null : null;
-  const selectedLinks = categoryLinks.filter((l) => selectedIds.has(l.id));
 
   // The one selected row, put on the app's own clipboard as the block that
   // REFERENCES it - pasted into a document it stays this same record
@@ -473,15 +414,6 @@ export default function LinksScreen({ route, navigation }: Props) {
     clearSelection();
   }
 
-  function toggleGroupsRow() {
-    setDoc(linksPrefsDoc, { groupsRowHidden: !groupsRowHidden }, { merge: true });
-  }
-
-  async function changeViewMode(mode: ViewMode) {
-    setMenuOpen(false);
-    await setDoc(linksPrefsDoc, { viewMode: mode }, { merge: true });
-  }
-
   async function bulkAssignGroup(groupId: string | null) {
     setBulkGroupPickerVisible(false);
     const batch = writeBatch(db);
@@ -620,146 +552,216 @@ export default function LinksScreen({ route, navigation }: Props) {
 
 
   return (
-    <View style={styles.container}>
-      <Svg
-        width={windowWidth + 2}
-        height={windowHeight + 2}
-        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
-        pointerEvents="none"
-      >
-        <Defs>
-          <LinearGradient id="linksBg" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0.03" stopColor="#705648" />
-            <Stop offset="0.52" stopColor="#69736E" />
-            <Stop offset="1" stopColor="#000000" />
-          </LinearGradient>
-        </Defs>
-        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#linksBg)" />
-      </Svg>
-      {/* The rail, as on every other screen: right edge, same width, same
-          glass, hanging from the same line. Through the portal, which is
-          where a blur is safe - inside the screen it would be blurring a
-          picture it is part of. */}
-      {railFocused && (
-        <GlassPortal>
-          <View
-            style={[styles.railWrap, { top: railInsets.top + CHROME_TOP + CAPSULE_DROP }]}
-            pointerEvents="box-none"
+    <DatabaseChrome
+      list={list}
+      accent={ACCENT}
+      accentGlass={ACCENT_GLASS}
+      onBack={() => navigation.goBack()}
+      searchPlaceholder="Пошук за назвою"
+      onAdd={() => setAddLinkUrlPromptVisible(true)}
+      menuRows={(close) => (
+        <>
+          <Text style={styles.menuSectionLabel}>Вигляд</Text>
+          <Pressable
+            style={styles.menuRow}
+            onPress={() => {
+              close();
+              changeViewMode('list');
+            }}
           >
-            <View style={styles.headerButtons}>
-                <BlurView
-                  intensity={60}
-                  tint="dark"
-                  blurMethod="dimezisBlurView"
-                  blurTarget={railBlurTarget ?? undefined}
-                  style={StyleSheet.absoluteFill}
-                  pointerEvents="none"
-                />
-              <Pressable hitSlop={8} onPress={() => setIsSearching((prev) => !prev)}>
-                <Ionicons name={isSearching ? 'close-outline' : 'search-outline'} size={24} color="#fff" />
-              </Pressable>
-              <View style={styles.headerButtonsDivider} />
-              <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
-              </Pressable>
-              <View style={styles.headerButtonsDivider} />
-              {/* The way out of this database, where the arrow in the
-                  header's corner used to be - the capsule is where this
-                  screen's controls live now. */}
-              <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-                <Ionicons name="arrow-back-outline" size={24} color="#fff" />
-              </Pressable>
-            </View>
-          </View>
-        </GlassPortal>
+            <Ionicons name="reorder-four-outline" size={17} color="#111827" />
+            <Text style={styles.menuRowLabel}>Список</Text>
+            {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+          </Pressable>
+          <Pressable
+            style={styles.menuRow}
+            onPress={() => {
+              close();
+              changeViewMode('grid');
+            }}
+          >
+            <Ionicons name="grid-outline" size={17} color="#111827" />
+            <Text style={styles.menuRowLabel}>Сітка</Text>
+            {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+          </Pressable>
+        </>
       )}
-
-      <ContentColumn>
-        {/* No title: the capsule says which database this is by what it
-            does, and the name only cost the cards a screenful of space.
-            What is left of the header is the line everything starts on. */}
-        <View style={{ height: railInsets.top + CHROME_TOP + TITLE_GAP }} />
-
-        {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
-        {menuOpen && (
-          <View style={styles.menuPanel}>
-            <Text style={styles.menuSectionLabel}>Вигляд</Text>
-            <Pressable style={styles.menuRow} onPress={() => changeViewMode('list')}>
-              <Ionicons name="reorder-four-outline" size={17} color="#111827" />
-              <Text style={styles.menuRowLabel}>Список</Text>
-              {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-            </Pressable>
-            <Pressable style={styles.menuRow} onPress={() => changeViewMode('grid')}>
-              <Ionicons name="grid-outline" size={17} color="#111827" />
-              <Text style={styles.menuRowLabel}>Сітка</Text>
-              {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-            </Pressable>
-            <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
-            <View style={styles.menuRule} />
-            <Pressable
-              style={styles.menuRow}
-              onPress={() => {
-                setMenuOpen(false);
-                toggleSelectMode();
-              }}
-            >
-              <Ionicons
-                name={isSelectMode ? 'close-outline' : 'checkmark-circle-outline'}
-                size={17}
-                color="#111827"
-              />
-              <Text style={styles.menuRowLabel}>{isSelectMode ? 'Скасувати вибір' : 'Вибрати'}</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {groups.length > 0 && !groupsRowHidden && (
-          <ProjectTabsRow items={groups} selected={groupFilter} onSelect={setGroupFilter} unassignedLabel="Без групи" dark />
-        )}
-
-        {tagFilter && (
-          <View style={styles.filterRow}>
-            {tagFilter.type === 'untagged' ? (
-              <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
-                <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
-                <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без тегів</Text>
-                <Pressable hitSlop={8} onPress={() => setTagFilter(null)}>
-                  <Ionicons name="close" size={14} color="#6B7280" />
-                </Pressable>
-              </View>
-            ) : (
-              tagFilter.tagIds.map((tagId) => {
-                const tag = tags.find((t) => t.id === tagId);
-                if (!tag) return null;
-                return (
-                  <View key={tagId} style={[styles.filterChip, { borderColor: tag.color }]}>
-                    <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tag.color} />
-                    <Text style={[styles.filterChipLabel, { color: tag.color }]}>{tag.path}</Text>
-                    <Pressable hitSlop={8} onPress={() => setTagFilter(removeTagFromFilter(tagFilter, tagId))}>
-                      <Ionicons name="close" size={14} color={tag.color} />
-                    </Pressable>
-                  </View>
-                );
-              })
-            )}
-          </View>
-        )}
-
-        {isSearching && (
-          <View style={styles.searchRow}>
-            <Ionicons name="search" size={14} color="#9CA3AF" />
-            <TextInput
-              autoFocus
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Пошук за назвою"
-              placeholderTextColor="#9CA3AF"
-              style={styles.searchInput}
+      bulk={{
+        onTag: () => setBulkTagPickerVisible(true),
+        onGroup: () => setBulkGroupPickerVisible(true),
+        onCopy: () => setBulkCopyModalVisible(true),
+        onCopyObject: copySelectedToClipboard,
+        onDelete: confirmDeleteSelected,
+      }}
+      overlay={
+        <>
+          {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
+          {!toast && justAddedLink && (
+            <UndoToast
+              message={`Додано у ${CATEGORY_INFO[category].title}`}
+              actionLabel="Перемістити"
+              onUndo={() => setSaveDestinationVisible(true)}
             />
-          </View>
-        )}
+          )}
 
-        {isLoading ? (
+          {isAddingLink && (
+            <View style={styles.addLinkLoading}>
+              <ActivityIndicator color="#fff" />
+            </View>
+          )}
+
+          {/* The per-card "..." - rename, and the documents this link sits
+              in when it sits in any. */}
+          <Modal
+            visible={cardMenuLink !== null}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setCardMenuLinkId(null)}
+          >
+            <Pressable style={styles.cardMenuBackdrop} onPress={() => setCardMenuLinkId(null)}>
+              <Pressable style={styles.cardMenuSheet} onPress={() => {}}>
+                <View style={styles.cardMenuHandle} />
+                <Pressable
+                  style={styles.cardMenuRow}
+                  onPress={() => {
+                    if (cardMenuLink) setRenamingLink(cardMenuLink);
+                    setCardMenuLinkId(null);
+                  }}
+                >
+                  <Ionicons name="pencil-outline" size={18} color="#111827" />
+                  <Text style={styles.cardMenuRowLabel}>Редагувати назву</Text>
+                </Pressable>
+                {cardMenuLink && cardMenuLink.documentIds.length > 0 && (
+                  <Pressable
+                    style={styles.cardMenuRow}
+                    onPress={() => {
+                      if (cardMenuLink) openDocumentIcon(cardMenuLink);
+                      setCardMenuLinkId(null);
+                    }}
+                  >
+                    <Ionicons name="document-text-outline" size={18} color="#111827" />
+                    <Text style={styles.cardMenuRowLabel}>
+                      Документи{cardMenuLink.documentIds.length > 1 ? ` (${cardMenuLink.documentIds.length})` : ''}
+                    </Text>
+                  </Pressable>
+                )}
+              </Pressable>
+            </Pressable>
+          </Modal>
+
+          <RenamePrompt
+            visible={renamingLink !== null}
+            title="Назва посилання"
+            initialValue={renamingLink?.title ?? ''}
+            onCancel={() => setRenamingLink(null)}
+            onSave={(title) => {
+              if (renamingLink) renameLink(renamingLink, title);
+            }}
+          />
+
+          <RenamePrompt
+            visible={addLinkUrlPromptVisible}
+            title="Нове посилання"
+            placeholder="https://…"
+            initialValue=""
+            onCancel={() => setAddLinkUrlPromptVisible(false)}
+            onSave={submitNewLinkUrl}
+          />
+
+          <RenamePrompt
+            visible={addLinkTitlePrompt !== null}
+            title="Назва посилання"
+            initialValue=""
+            onCancel={() => setAddLinkTitlePrompt(null)}
+            onSave={confirmAddLinkTitle}
+          />
+
+          <DocumentPickerModal
+            visible={documentPicker !== null}
+            subtitle={
+              documentPicker?.link.title || (documentPicker ? hostnameOf(documentPicker.link.url) : undefined)
+            }
+            documents={documentPicker?.documents ?? []}
+            onPick={pickDocument}
+            onClose={() => setDocumentPicker(null)}
+          />
+
+          <TagPicker
+            visible={tagPickerLink !== null}
+            kind={tagKind}
+            tags={tags}
+            selectedTagIds={tagPickerLink?.tagIds ?? []}
+            onAttach={(tag) => tagPickerLink && attachTag(tag, tagKind, tagPickerLink.id, 'links')}
+            onDetach={(tag) => tagPickerLink && detachTag(tag, tagKind, tagPickerLink.id, 'links')}
+            onCreateAndAttach={(path, icon, color) =>
+              tagPickerLink && createAndAttachTag(path, icon, color, tagKind, tagPickerLink.id, 'links')
+            }
+            onRenameTag={renameTag}
+            onClose={() => setTagPickerForId(null)}
+          />
+
+          <TagPicker
+            visible={bulkTagPickerVisible}
+            kind={tagKind}
+            tags={tags}
+            selectedTagIds={[]}
+            onAttach={bulkAttachTag}
+            onDetach={() => {}}
+            onCreateAndAttach={bulkCreateAndAttachTag}
+            onRenameTag={renameTag}
+            onClose={() => setBulkTagPickerVisible(false)}
+          />
+
+          <GroupPickerSheet
+            visible={bulkGroupPickerVisible}
+            kind={groupKind}
+            groups={groups}
+            onPick={bulkAssignGroup}
+            onClose={() => setBulkGroupPickerVisible(false)}
+          />
+
+          <CopyToNoteModal
+            visible={bulkCopyModalVisible}
+            onPickExisting={bulkCopyToExisting}
+            onPickNew={bulkCopyToNew}
+            onClose={() => setBulkCopyModalVisible(false)}
+          />
+
+          <SaveDestinationSheet
+            visible={saveDestinationVisible}
+            title="Куди додати посилання?"
+            defaultLabel="Лишити в базі"
+            onPickDefault={() => relocateJustAddedLink(async () => {})}
+            onPickToday={() =>
+              relocateJustAddedLink((item) =>
+                appendBlocksToToday([linkToBlock(item)], [{ collectionName: 'links', id: item.id }])
+              )
+            }
+            onPickNew={() =>
+              relocateJustAddedLink((item) =>
+                copyObjectsToNote(null, [linkToBlock(item)], [{ collectionName: 'links', id: item.id }]).then(
+                  (newId) => navigation.navigate('Editor', { documentId: newId })
+                )
+              )
+            }
+            onPickExisting={(documentId) =>
+              relocateJustAddedLink((item) =>
+                copyObjectsToNote(documentId, [linkToBlock(item)], [{ collectionName: 'links', id: item.id }])
+              )
+            }
+            onPickNewBoard={() =>
+              relocateJustAddedLink((item) => createBoardAndAddItem('Без назви', linkToImportableItem(item)))
+            }
+            onPickExistingBoard={(boardId) =>
+              relocateJustAddedLink((item) => addItemToBoard(boardId, linkToImportableItem(item)))
+            }
+            onClose={() => setSaveDestinationVisible(false)}
+          />
+        </>
+      }
+    >
+      {(listTopPad) =>
+        isLoading ? (
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
           </View>
@@ -772,265 +774,32 @@ export default function LinksScreen({ route, navigation }: Props) {
             {!needle && <Text style={styles.emptyHint}>{info.emptyHint}</Text>}
           </View>
         ) : viewMode === 'grid' ? (
-          <ScrollView contentContainerStyle={[styles.gridList, isSelectMode && styles.listWithBulkBar]}>
+          <ScrollView
+            contentContainerStyle={[
+              styles.gridList,
+              { paddingTop: listTopPad },
+              isSelectMode && styles.listWithBulkBar,
+            ]}
+          >
             {filteredLinks.map(renderLinkGridCell)}
           </ScrollView>
         ) : (
-          <ScrollView contentContainerStyle={[styles.list, isSelectMode && styles.listWithBulkBar]}>
+          <ScrollView
+            contentContainerStyle={[
+              styles.list,
+              { paddingTop: listTopPad },
+              isSelectMode && styles.listWithBulkBar,
+            ]}
+          >
             {filteredLinks.map(renderLinkRow)}
           </ScrollView>
-        )}
-
-        <Modal
-          visible={cardMenuLink !== null}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setCardMenuLinkId(null)}
-        >
-          <Pressable style={styles.cardMenuBackdrop} onPress={() => setCardMenuLinkId(null)}>
-            <Pressable style={styles.cardMenuSheet} onPress={() => {}}>
-              <View style={styles.cardMenuHandle} />
-              <Pressable
-                style={styles.cardMenuRow}
-                onPress={() => {
-                  if (cardMenuLink) setRenamingLink(cardMenuLink);
-                  setCardMenuLinkId(null);
-                }}
-              >
-                <Ionicons name="pencil-outline" size={18} color="#111827" />
-                <Text style={styles.cardMenuRowLabel}>Редагувати назву</Text>
-              </Pressable>
-              {cardMenuLink && cardMenuLink.documentIds.length > 0 && (
-                <Pressable
-                  style={styles.cardMenuRow}
-                  onPress={() => {
-                    if (cardMenuLink) openDocumentIcon(cardMenuLink);
-                    setCardMenuLinkId(null);
-                  }}
-                >
-                  <Ionicons name="document-text-outline" size={18} color="#111827" />
-                  <Text style={styles.cardMenuRowLabel}>
-                    Документи{cardMenuLink.documentIds.length > 1 ? ` (${cardMenuLink.documentIds.length})` : ''}
-                  </Text>
-                </Pressable>
-              )}
-            </Pressable>
-          </Pressable>
-        </Modal>
-
-        <RenamePrompt
-          visible={renamingLink !== null}
-          title="Назва посилання"
-          initialValue={renamingLink?.title ?? ''}
-          onCancel={() => setRenamingLink(null)}
-          onSave={(title) => {
-            if (renamingLink) renameLink(renamingLink, title);
-          }}
-        />
-
-        <RenamePrompt
-          visible={addLinkUrlPromptVisible}
-          title="Нове посилання"
-          placeholder="https://…"
-          initialValue=""
-          onCancel={() => setAddLinkUrlPromptVisible(false)}
-          onSave={submitNewLinkUrl}
-        />
-
-        <RenamePrompt
-          visible={addLinkTitlePrompt !== null}
-          title="Назва посилання"
-          initialValue=""
-          onCancel={() => setAddLinkTitlePrompt(null)}
-          onSave={confirmAddLinkTitle}
-        />
-
-        {isAddingLink && (
-          <View style={styles.addLinkLoading}>
-            <ActivityIndicator color="#fff" />
-          </View>
-        )}
-
-        <DocumentPickerModal
-          visible={documentPicker !== null}
-          subtitle={documentPicker?.link.title || (documentPicker ? hostnameOf(documentPicker.link.url) : undefined)}
-          documents={documentPicker?.documents ?? []}
-          onPick={pickDocument}
-          onClose={() => setDocumentPicker(null)}
-        />
-
-
-        <TagPicker
-          visible={bulkTagPickerVisible}
-          kind={tagKind}
-          tags={tags}
-          selectedTagIds={[]}
-          onAttach={bulkAttachTag}
-          onDetach={() => {}}
-          onCreateAndAttach={bulkCreateAndAttachTag}
-          onRenameTag={renameTag}
-          onClose={() => setBulkTagPickerVisible(false)}
-        />
-
-
-      </ContentColumn>
-
-
-        <TagPicker
-          visible={tagPickerLink !== null}
-          kind={tagKind}
-          tags={tags}
-          selectedTagIds={tagPickerLink?.tagIds ?? []}
-          onAttach={(tag) => tagPickerLink && attachTag(tag, tagKind, tagPickerLink.id, 'links')}
-          onDetach={(tag) => tagPickerLink && detachTag(tag, tagKind, tagPickerLink.id, 'links')}
-          onCreateAndAttach={(path, icon, color) =>
-            tagPickerLink && createAndAttachTag(path, icon, color, tagKind, tagPickerLink.id, 'links')
-          }
-          onRenameTag={renameTag}
-          onClose={() => setTagPickerForId(null)}
-        />
-
-        <GroupPickerSheet
-          visible={bulkGroupPickerVisible}
-          kind={groupKind}
-          groups={groups}
-          onPick={bulkAssignGroup}
-          onClose={() => setBulkGroupPickerVisible(false)}
-        />
-
-        <CopyToNoteModal
-          visible={bulkCopyModalVisible}
-          onPickExisting={bulkCopyToExisting}
-          onPickNew={bulkCopyToNew}
-          onClose={() => setBulkCopyModalVisible(false)}
-        />
-
-      <TagsDrawer
-        tags={drawerTags}
-        activeFilter={tagFilter}
-        onSelectFilter={setTagFilter}
-        hideOpenButton={isSelectMode}
-        capsuleHeight={CAPSULE_HEIGHT_3}
-        groupSection={{
-          // The same list the row shows, sentinels and all, counted over
-          // this category's links only - the row and the drawer must never
-          // disagree about what there is to pick.
-          items: [
-            { id: null, name: 'Всі', color: GLASS_TEXT_MUTED, count: categoryLinks.length },
-            ...groups.map((g) => ({
-              id: g.id,
-              name: g.name,
-              color: g.color,
-              count: categoryLinks.filter((l) => l.groupId === g.id).length,
-            })),
-            {
-              id: UNASSIGNED_ID,
-              name: 'Без групи',
-              color: GLASS_TEXT_MUTED,
-              count: categoryLinks.filter((l) => !l.groupId).length,
-            },
-          ],
-          selected: groupFilter,
-          onSelect: setGroupFilter,
-          rowVisible: !groupsRowHidden,
-          onToggleRow: toggleGroupsRow,
-        }}
-      />
-
-      <BulkActionBar
-        count={selectedIds.size}
-        onTag={() => setBulkTagPickerVisible(true)}
-        onGroup={() => setBulkGroupPickerVisible(true)}
-        onCopy={() => setBulkCopyModalVisible(true)}
-        onCopyObject={copySelectedToClipboard}
-        onDelete={confirmDeleteSelected}
-      />
-
-      {/* Through the portal, where its blur is safe - inside the screen
-          it would be blurring a picture it is itself part of. */}
-      {railFocused && !isSelectMode && (
-        <GlassPortal>
-          <Pressable style={[styles.fab, { bottom: rail.addBottom }]} onPress={() => setAddLinkUrlPromptVisible(true)}>
-            <BlurView
-              intensity={60}
-              tint="dark"
-              blurMethod="dimezisBlurView"
-              blurTarget={railBlurTarget ?? undefined}
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
-            <Ionicons name="add-outline" size={28} color="#fff" />
-          </Pressable>
-        </GlassPortal>
-      )}
-
-      {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
-      {!toast && justAddedLink && (
-        <UndoToast
-          message={`Додано у ${CATEGORY_INFO[category].title}`}
-          actionLabel="Перемістити"
-          onUndo={() => setSaveDestinationVisible(true)}
-        />
-      )}
-
-      <SaveDestinationSheet
-        visible={saveDestinationVisible}
-        title="Куди додати посилання?"
-        defaultLabel="Лишити в базі"
-        onPickDefault={() => relocateJustAddedLink(async () => {})}
-        onPickToday={() =>
-          relocateJustAddedLink((item) =>
-            appendBlocksToToday([linkToBlock(item)], [{ collectionName: 'links', id: item.id }])
-          )
-        }
-        onPickNew={() =>
-          relocateJustAddedLink((item) =>
-            copyObjectsToNote(null, [linkToBlock(item)], [{ collectionName: 'links', id: item.id }]).then((newId) =>
-              navigation.navigate('Editor', { documentId: newId })
-            )
-          )
-        }
-        onPickExisting={(documentId) =>
-          relocateJustAddedLink((item) =>
-            copyObjectsToNote(documentId, [linkToBlock(item)], [{ collectionName: 'links', id: item.id }])
-          )
-        }
-        onPickNewBoard={() =>
-          relocateJustAddedLink((item) => createBoardAndAddItem('Без назви', linkToImportableItem(item)))
-        }
-        onPickExistingBoard={(boardId) =>
-          relocateJustAddedLink((item) => addItemToBoard(boardId, linkToImportableItem(item)))
-        }
-        onClose={() => setSaveDestinationVisible(false)}
-      />
-    </View>
+        )
+      }
+    </DatabaseChrome>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  // Same floating "+" DocumentsScreen uses, not a header icon - matches how
-  // creating a document itself works.
-  fab: {
-    position: 'absolute',
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: ACCENT_GLASS,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 4,
-    shadowColor: ACCENT,
-    shadowOpacity: 0.5,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 6,
-  },
   addLinkLoading: {
     position: 'absolute',
     top: 0,
@@ -1040,54 +809,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.35)',
-  },
-  // One elongated glass capsule instead of three bare gray icons - matches
-  // Documents/Calendar's own header capsule.
-  railWrap: {
-    position: 'absolute',
-    right: RAIL_RIGHT,
-    alignItems: 'center',
-  },
-  // Stood on its end, like every other screen's.
-  headerButtons: {
-    alignItems: 'center',
-    gap: 18,
-    paddingVertical: 18,
-    paddingHorizontal: 19,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-  },
-  // Turned with the capsule.
-  headerButtonsDivider: {
-    width: 20,
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-  },
-  menuBackdrop: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    zIndex: 5,
-  },
-  menuPanel: {
-    position: 'absolute',
-    top: 96,
-    right: RAIL_CLEARANCE,
-    width: 200,
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    padding: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
-    zIndex: 6,
   },
   menuSectionLabel: {
     fontSize: 11,
@@ -1100,11 +821,6 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 2,
   },
-  menuRule: {
-    height: 1,
-    backgroundColor: '#E5E7EB',
-    marginVertical: 6,
-  },
     menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1113,48 +829,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   menuRowLabel: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: FONT_REGULAR,
-    color: '#111827',
-  },
-  filterRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    paddingHorizontal: 20,
-    paddingBottom: 8,
-  },
-  // White capsule, border + text in the tag's own color - same as
-  // DocumentsScreen's filterChip.
-  filterChip: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#fff',
-    borderWidth: 1.5,
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  filterChipLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    fontFamily: FONT_SEMIBOLD,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginHorizontal: 20,
-    marginBottom: 8,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  searchInput: {
     flex: 1,
     fontSize: 14,
     fontFamily: FONT_REGULAR,

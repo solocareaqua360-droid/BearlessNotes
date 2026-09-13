@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { collection, doc, onSnapshot, orderBy, query } from '@react-native-firebase/firestore';
 import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
-import { Group, TaggableKind } from '../types';
+import { Group, Tag, TaggableKind } from '../types';
 import { groupAppliesTo } from '../utils/groups';
 import { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import { TagFilter, matchesTagFilter } from '../components/TagsDrawer';
@@ -38,6 +38,10 @@ export type DatabaseListOptions<T> = {
   titleOf: (item: T) => string;
   createdAtOf: (item: T) => number | undefined;
   updatedAtOf: (item: T) => number;
+  // Which tags this database is even allowed to offer, when its kind is
+  // narrower than "assigned to something here" - the three link screens
+  // share one collection but must never show each other's tags.
+  tagAllowed?: (tag: Tag) => boolean;
   // What the in-screen search looks through, when it is more than the
   // title (a link also matches on its address, a file on its name).
   searchTextOf?: (item: T) => string;
@@ -54,6 +58,7 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
     createdAtOf,
     updatedAtOf,
     searchTextOf,
+    tagAllowed,
   } = options;
   const prefsDoc = doc(db, 'settings', prefsKey);
 
@@ -127,7 +132,7 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
   // Only tags actually assigned to something in this database - not the
   // whole app-wide list - so the drawer stays a short, relevant menu.
   const usedTagIds = new Set(items.flatMap(tagIdsOf));
-  const drawerTags = tagApi.tags.filter((t) => usedTagIds.has(t.id));
+  const drawerTags = tagApi.tags.filter((t) => usedTagIds.has(t.id) && (tagAllowed ? tagAllowed(t) : true));
 
   // The group section the drawer draws, counted over this database only:
   // the same list the row above the cards shows, sentinels and all, so the
