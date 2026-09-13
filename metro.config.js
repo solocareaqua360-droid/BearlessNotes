@@ -8,5 +8,9 @@ const config = getDefaultConfig(__dirname);
 // ship as plain files the app reads and injects, so they need an extension
 // Metro treats as an asset rather than as source to compile.
 config.resolver.assetExts.push('jslib');
+// The Ukrainian language model for the text recogniser, shipped rather
+// than downloaded: 3.8MB once, against needing the network the first time
+// anyone points the camera at a page.
+config.resolver.assetExts.push('bin');
 
 module.exports = config;

@@ -83,6 +83,7 @@ import { BlockAction } from '../components/blockActions';
 import { clearCopiedObject, getCopiedObject, useCopiedObject } from '../utils/objectClipboard';
 import { backupFileToDrive, ensureLocalFile } from '../utils/googleDrive';
 import { ensureFileIsHere, openFileExternally } from '../utils/openFileExternally';
+import TextRecognizer, { RecognizeProgress, RecognizeRequest } from '../components/TextRecognizer';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
@@ -2157,6 +2158,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // buttons to apply to.
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
   const [viewerImageId, setViewerImageId] = useState<string | null>(null);
+  // Reading the text off a page - see TextRecognizer. `after` is the block
+  // the result is put under, so a scan and its text stay together.
+  const [recognizing, setRecognizing] = useState<{
+    request: RecognizeRequest;
+    after: string;
+  } | null>(null);
+  const [recognizeProgress, setRecognizeProgress] = useState<RecognizeProgress | null>(null);
+
+  function startRecognizing(uris: string[], after: string) {
+    setRecognizeProgress({ page: 1, of: uris.length, progress: 0 });
+    setRecognizing({ request: { uris }, after });
+  }
   const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
   const [imageRenameId, setImageRenameId] = useState<string | null>(null);
   const [sketchEditorBlockId, setSketchEditorBlockId] = useState<string | null>(null);
@@ -3733,12 +3746,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     }
   }
 
-  async function insertScannedImages(id: string, uris: string[]) {
+  // Returns the last page's own block id, so a caller that also wants the
+  // text knows where to put it.
+  async function insertScannedImages(id: string, uris: string[]): Promise<string | null> {
     const compressed: string[] = [];
     for (const uri of uris) {
       compressed.push(await compressScannedImage(uri));
     }
     snapshotBeforeChange();
+    let lastBlockId: string | null = null;
     setBlocks((prev) => {
       const index = prev.findIndex((b) => b.id === id);
       if (index === -1) return prev;
@@ -3746,6 +3762,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         ...buildBlock(i === 0 ? id : generateId(), 'image', ''),
         imageUri: uri,
       }));
+      lastBlockId = imageBlocks[imageBlocks.length - 1]?.id ?? null;
       const next = [...prev];
       next.splice(index, 1, ...imageBlocks);
       const lastIndex = index + imageBlocks.length - 1;
@@ -3758,6 +3775,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       }
       return next;
     });
+    return lastBlockId;
   }
 
   // Assembles scanned pages into one PDF via expo-print (HTML -> PDF, no
@@ -3806,10 +3824,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     }
     const pages = result.scannedImages;
     if (result.status !== ScanDocumentResponseStatus.Success || !pages?.length) return;
+    // Text is a third answer, not a mode of the other two: the pages are
+    // kept as pictures either way, and the reading is put under them - so
+    // there is always something to check the text against.
     Alert.alert(`Відскановано сторінок: ${pages.length}`, 'Як зберегти?', [
       { text: 'Скасувати', style: 'cancel' },
       { text: 'Як фото', onPress: () => insertScannedImages(id, pages) },
       { text: 'Як PDF', onPress: () => insertScannedPdf(id, pages) },
+      {
+        text: 'Фото + текст',
+        onPress: async () => {
+          const lastId = await insertScannedImages(id, pages);
+          // Every page in one go, joined in the order they were scanned.
+          if (lastId) startRecognizing(pages, lastId);
+        },
+      },
     ]);
   }
 
@@ -4014,6 +4043,35 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   const viewerBlock = viewerImageId ? blocks.find((b) => b.id === viewerImageId) : null;
+
+  // The page's text, under the page itself. Tesseract reads the number
+  // sign as "Мо"/"Ме"/"Хо" almost every time - that one is worth fixing
+  // here rather than leaving in every scanned document.
+  function tidyRecognized(text: string): string {
+    return text
+      .replace(/\b[МХ][ое]\s?(?=\d)/g, '№ ')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  function insertRecognizedText(pages: string[]) {
+    const after = recognizing?.after;
+    setRecognizing(null);
+    setRecognizeProgress(null);
+    const text = tidyRecognized(pages.join('\n\n'));
+    if (!after || !text) {
+      if (!text) Alert.alert('Нічого не знайшлось', 'На цьому знімку не вдалося прочитати текст.');
+      return;
+    }
+    setBlocks((prev) => {
+      const index = prev.findIndex((b) => b.id === after);
+      if (index < 0) return prev;
+      const next = [...prev];
+      next.splice(index + 1, 0, { id: generateId(), text });
+      return next;
+    });
+  }
   const imageRenameBlock = imageRenameId ? blocks.find((b) => b.id === imageRenameId) : null;
 
   if (!isLoaded) {
@@ -4419,6 +4477,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   },
                 },
                 {
+                  // Never automatic: most photographs are not pages, and
+                  // spending ten seconds of the phone on every one of
+                  // them would be rude. Asked for, on the picture that
+                  // has text in it.
+                  key: 'ocr',
+                  icon: 'text-outline',
+                  label: 'Текст',
+                  onPress: () => {
+                    const uri = viewerBlock.imageUri!;
+                    const afterId = viewerBlock.id;
+                    setViewerImageId(null);
+                    startRecognizing([uri], afterId);
+                  },
+                },
+                {
                   key: 'share',
                   icon: 'share-social-outline',
                   label: 'Поділитись',
@@ -4441,6 +4514,29 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             />
           </GestureHandlerRootView>
         </Modal>
+      )}
+
+      <TextRecognizer
+        request={recognizing?.request ?? null}
+        onProgress={setRecognizeProgress}
+        onDone={insertRecognizedText}
+        onError={(message) => {
+          setRecognizing(null);
+          setRecognizeProgress(null);
+          Alert.alert('Не вдалося розпізнати', message);
+        }}
+      />
+      {/* It takes seconds, not an instant - so it says so, and says which
+          page it is on. */}
+      {recognizeProgress && (
+        <View style={styles.ocrToast}>
+          <ActivityIndicator color="#fff" />
+          <Text style={styles.ocrToastLabel}>
+            Читаю текст
+            {recognizeProgress.of > 1 ? ` · ${recognizeProgress.page} з ${recognizeProgress.of}` : ''}
+            {recognizeProgress.progress > 0 ? ` · ${Math.round(recognizeProgress.progress * 100)}%` : ''}
+          </Text>
+        </View>
       )}
 
       <VideoPlayerModal url={playingVideoUrl} onClose={() => setPlayingVideoUrl(null)} />
@@ -4787,6 +4883,26 @@ const styles = StyleSheet.create({
   },
   dragHandle: {
     padding: 6,
+  },
+  // Says the recogniser is working, and how far it has got - it takes
+  // seconds, and silence would read as nothing happening.
+  ocrToast: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    backgroundColor: 'rgba(24,21,19,0.96)',
+  },
+  ocrToastLabel: {
+    fontSize: 14,
+    fontFamily: FONT_SEMIBOLD,
+    color: '#fff',
   },
   // Metrically identical to blockDisplayText (same lineHeight, no Android
   // font padding) so a block keeps its exact height when it switches
