@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Keyboard, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
@@ -107,4 +107,20 @@ export function useSearchDismissal({
 
 export function pullHaptic() {
   hapticButtonDown();
+}
+
+// Whether the keyboard is up. The screen clears itself only while it is:
+// with the keyboard down the search field is a field like any other, and
+// the buttons around it have to be reachable again.
+export function useKeyboardVisible(): boolean {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const shown = Keyboard.addListener('keyboardDidShow', () => setVisible(true));
+    const hidden = Keyboard.addListener('keyboardDidHide', () => setVisible(false));
+    return () => {
+      shown.remove();
+      hidden.remove();
+    };
+  }, []);
+  return visible;
 }

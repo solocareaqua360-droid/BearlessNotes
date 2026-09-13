@@ -1,5 +1,5 @@
 import { ReactNode, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Keyboard, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
@@ -16,7 +16,7 @@ import SortMenuRows from './SortMenuRows';
 import TagsDrawer, { removeTagFromFilter } from './TagsDrawer';
 import BulkActionBar from './BulkActionBar';
 import { useRail } from '../hooks/useRail';
-import { pullHaptic, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
+import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CAPSULE_DROP, CAPSULE_HEIGHT_3, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
@@ -95,10 +95,11 @@ export default function DatabaseChrome<T extends { id: string }>({
   const [chromeHeight, setChromeHeight] = useState(0);
   const chromeTop = insets.top + CHROME_TOP;
   const chromeBottom = chromeTop + chromeHeight + 8;
-  // Searching takes the screen: the field is the only thing left on it,
-  // and the records come back as they are typed for. Everything returns
-  // when the keyboard goes away (see useSearchDismissal).
-  const searchingAlone = list.isSearching;
+  // Searching takes the screen - but only while it is actually being
+  // typed. With the keyboard down the field is a field like any other,
+  // and the buttons around it come back.
+  const keyboardUp = useKeyboardVisible();
+  const searchingAlone = list.isSearching && keyboardUp;
   // Pulled down from the top of the list, the search comes out.
   const pull = usePullToSearch(() => {
     pullHaptic();
@@ -278,6 +279,18 @@ export default function DatabaseChrome<T extends { id: string }>({
               placeholderTextColor="#9CA3AF"
               style={styles.searchInput}
             />
+            {/* The way out of searching, on the field itself - while the
+                keyboard is up it is the only control on the screen. */}
+            <Pressable
+              hitSlop={10}
+              onPress={() => {
+                Keyboard.dismiss();
+                list.setSearchQuery('');
+                list.setIsSearching(false);
+              }}
+            >
+              <Ionicons name="close-outline" size={19} color="#9CA3AF" />
+            </Pressable>
           </Animated.View>
         )}
 
@@ -289,7 +302,7 @@ export default function DatabaseChrome<T extends { id: string }>({
             without taking anything away from it. */}
         {/* Nothing under the field until something is typed for - an
             empty search is a question, not a list. */}
-        {searchingAlone && list.needle.length === 0 ? (
+        {list.isSearching && list.needle.length === 0 ? (
           <View style={styles.emptySearch} />
         ) : (
           <GestureDetector gesture={pull.gesture}>

@@ -4,6 +4,7 @@ import {
   Alert,
   FlatList,
   Image,
+  Keyboard,
   Modal,
   Pressable,
   ScrollView,
@@ -40,7 +41,7 @@ import { hapticButtonDown, hapticButtonUp } from '../utils/haptics';
 import { RootStackParamList } from '../navigation';
 import { detachTagFromDeletedItem, ITEMS_COLLECTION_BY_KIND } from '../hooks/useTags';
 import { useDatabaseList } from '../hooks/useDatabaseList';
-import { pullHaptic, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
+import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import DocumentEditorScreen from './DocumentEditorScreen';
 import SortMenuRows from '../components/SortMenuRows';
@@ -183,6 +184,11 @@ export default function DocumentsScreen() {
     needle,
   } = list;
   const searching = searchOpen && needle.length > 0;
+  // The screen clears itself only while the search is actually being
+  // typed; with the keyboard down the buttons come back and the field is
+  // one control among them again.
+  const keyboardUp = useKeyboardVisible();
+  const searchingAlone = searchOpen && keyboardUp;
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -558,7 +564,7 @@ export default function DocumentsScreen() {
             the blur has to sit OUTSIDE the view it blurs, and the screens
             are what the blur target wraps. That also puts it in window
             coordinates rather than the pane's. */}
-        {isFocused && !searchOpen && !(isTwoPane && !!openDoc && paneFullscreen) && (
+        {isFocused && !searchingAlone && !(isTwoPane && !!openDoc && paneFullscreen) && (
         <GlassPortal>
         <View
           style={[
@@ -689,14 +695,23 @@ export default function DocumentsScreen() {
                 placeholderTextColor={GLASS_TEXT_FAINT}
                 style={styles.searchInput}
               />
-              {searchText.length > 0 && (
-                <Pressable hitSlop={8} onPress={() => setSearchText('')}>
-                  <Ionicons name="close-outline" size={19} color={GLASS_TEXT_MUTED} />
-                </Pressable>
-              )}
+              {/* Closes the search outright rather than only emptying it:
+                  with the keyboard up this is the one control on the
+                  screen, and emptying a field the user is done with only
+                  leaves them somewhere they have to leave again. */}
+              <Pressable
+                hitSlop={8}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setSearchText('');
+                  setSearchOpen(false);
+                }}
+              >
+                <Ionicons name="close-outline" size={19} color={GLASS_TEXT_MUTED} />
+              </Pressable>
             </Animated.View>
           )}
-          {!searchOpen && groups.length > 0 && !groupsRowHidden && (
+          {!searchingAlone && groups.length > 0 && !groupsRowHidden && (
             // No TabsTunnel here any more: it drew a capsule blending
             // scrolled-off pills into whatever sat beside them in the row
             // - the control capsule, before it moved to the rail. Alone in
@@ -716,7 +731,7 @@ export default function DocumentsScreen() {
               />
             </View>
           )}
-          {!searchOpen && activeFilter && (
+          {!searchingAlone && activeFilter && (
             <View style={[styles.filterRow, { paddingLeft: paneRect.x + 20 }]}>
               {activeFilter.type === 'untagged' ? (
                 <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
@@ -942,7 +957,7 @@ export default function DocumentsScreen() {
 
         {/* Through the portal, like the rest of the rail: the blur that
             fills it has to sit outside the view it blurs. */}
-        {isFocused && !isSelectMode && !searchOpen && !(isTwoPane && !!openDoc && paneFullscreen) && (
+        {isFocused && !isSelectMode && !searchingAlone && !(isTwoPane && !!openDoc && paneFullscreen) && (
         <GlassPortal>
           <Pressable
             style={[styles.fab, { bottom: rail.addBottom }, fabPressed && styles.fabSticker]}
@@ -1015,7 +1030,7 @@ export default function DocumentsScreen() {
         tags={drawerTags}
         activeFilter={activeFilter}
         onSelectFilter={setActiveFilter}
-        hideOpenButton={isSelectMode || searchOpen}
+        hideOpenButton={isSelectMode || searchingAlone}
         counts={drawerCounts}
         groupSection={{
           // The same list the tabs show, sentinels and all, so the two
