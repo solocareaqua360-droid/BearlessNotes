@@ -8,7 +8,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -24,8 +23,8 @@ import StickerComposer from '../components/StickerComposer';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import SketchEditor from '../components/SketchEditor';
-import ContentColumn from '../components/ContentColumn';
-import { useRail } from '../hooks/useRail';
+import DatabaseChrome, { menuStyles } from '../components/DatabaseChrome';
+import { useDatabaseList } from '../hooks/useDatabaseList';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR } from '../utils/fonts';
 
 const STICKER_YELLOW = '#FBE97A';
@@ -50,9 +49,7 @@ type StickerItem = {
 };
 
 export default function StickersScreen() {
-  const rail = useRail();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [stickers, setStickers] = useState<StickerItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [viewingTrash, setViewingTrash] = useState(false);
@@ -75,8 +72,25 @@ export default function StickersScreen() {
 
   const activeStickers = stickers.filter((s) => !s.trashed);
   const trashedStickers = stickers.filter((s) => s.trashed);
-  const visibleStickers = viewingTrash ? trashedStickers : activeStickers;
   const freeCount = activeStickers.filter((s) => Object.keys(s.usedInDocuments ?? {}).length === 0).length;
+
+  // The shared machine, for the part of it a sticker actually has: the
+  // search and the sort. Stickers carry no tags and no groups - they are
+  // scraps of paper, not filed records - so the drawer and the bulk
+  // actions are left out rather than shown empty.
+  const list = useDatabaseList<StickerItem>({
+    prefsKey: 'stickersPrefs',
+    groupKind: 'sticker',
+    tagKind: 'sticker',
+    items: viewingTrash ? trashedStickers : activeStickers,
+    tagIdsOf: () => [],
+    groupIdOf: () => undefined,
+    titleOf: (s) => s.text || 'Стікер',
+    createdAtOf: (s) => s.createdAt,
+    updatedAtOf: (s) => s.updatedAt,
+    searchTextOf: (s) => s.text ?? '',
+  });
+  const { displayed: visibleStickers, needle } = list;
 
   function openCreate() {
     if (freeCount >= FREE_STICKER_LIMIT) {
@@ -198,44 +212,70 @@ export default function StickersScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Svg
-        width={windowWidth + 2}
-        height={windowHeight + 2}
-        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
-        pointerEvents="none"
-      >
-        <Defs>
-          <LinearGradient id="stickersBg" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0.03" stopColor="#705648" />
-            <Stop offset="0.52" stopColor="#69736E" />
-            <Stop offset="1" stopColor="#000000" />
-          </LinearGradient>
-        </Defs>
-        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#stickersBg)" />
-      </Svg>
-      <ContentColumn>
-        <View style={styles.headerRow}>
-          <View style={styles.headerLeft}>
-            <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-              <Ionicons name="chevron-back" size={24} color="#fff" />
-            </Pressable>
-            <Text style={styles.header}>{viewingTrash ? 'Смітник' : 'Стікери'}</Text>
-          </View>
-          <Pressable
-            hitSlop={8}
-            style={[styles.trashToggle, viewingTrash && styles.trashToggleActive]}
-            onPress={() => setViewingTrash((v) => !v)}
-          >
-            <Ionicons
-              name={viewingTrash ? 'close' : 'trash-outline'}
-              size={18}
-              color={viewingTrash ? STICKER_DARK : 'rgba(255,255,255,0.85)'}
-            />
-          </Pressable>
-        </View>
+    <DatabaseChrome
+      list={list}
+      accent={STICKER_YELLOW}
+      accentGlass="rgba(251,233,122,0.55)"
+      onBack={() => navigation.goBack()}
+      searchPlaceholder="Пошук по тексту стікера"
+      hideDrawer
+      // Nothing to add while looking at what was thrown away.
+      onAdd={viewingTrash ? undefined : openCreate}
+      menuRows={(close) => (
+        <Pressable
+          style={menuStyles.menuRow}
+          onPress={() => {
+            close();
+            setViewingTrash((v) => !v);
+          }}
+        >
+          <Ionicons name={viewingTrash ? 'reader-outline' : 'trash-outline'} size={17} color="#111827" />
+          <Text style={menuStyles.menuRowLabel}>{viewingTrash ? 'Стікери' : 'Смітник'}</Text>
+        </Pressable>
+      )}
+      overlay={
+        <>
+          <StickerComposer
+            visible={composerVisible}
+            editingTextSticker={editingTextSticker}
+            onClose={() => {
+              setComposerVisible(false);
+              setEditingTextSticker(null);
+            }}
+          />
 
-        {isLoading ? (
+          {viewerImageUri && (
+            // See DocumentsScreen's own copy of this fix - Modal, not a
+            // plain absolute overlay, or the real status bar shows through
+            // as a solid black strip above the viewer.
+            <Modal visible transparent animationType="fade" onRequestClose={() => setViewerImageUri(null)}>
+              <GestureHandlerRootView style={{ flex: 1 }}>
+                <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />
+              </GestureHandlerRootView>
+            </Modal>
+          )}
+
+          <SketchEditor
+            visible={sketchEditing !== null}
+            initialElements={sketchEditing?.sketchElements ?? []}
+            onSave={saveSketchEdit}
+            onClose={() => setSketchEditing(null)}
+          />
+
+          <DocumentPickerModal
+            visible={documentPicker !== null}
+            documents={documentPicker?.documents ?? []}
+            onPick={(documentId) => {
+              setDocumentPicker(null);
+              navigation.navigate('Editor', { documentId });
+            }}
+            onClose={() => setDocumentPicker(null)}
+          />
+        </>
+      }
+    >
+      {(listTopPad) =>
+        isLoading ? (
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
           </View>
@@ -244,103 +284,24 @@ export default function StickersScreen() {
             <View style={styles.emptyIcon}>
               <Ionicons name={viewingTrash ? 'trash-outline' : 'reader-outline'} size={32} color={STICKER_DARK} />
             </View>
-            <Text style={styles.emptyLabel}>{viewingTrash ? 'Смітник порожній' : 'Ще немає стікерів'}</Text>
-            {!viewingTrash && (
+            <Text style={styles.emptyLabel}>
+              {needle ? 'Нічого не знайдено' : viewingTrash ? 'Смітник порожній' : 'Ще немає стікерів'}
+            </Text>
+            {!viewingTrash && !needle && (
               <Text style={styles.emptyHint}>Короткий текст, одне фото або малюнок - як паперовий стікер</Text>
             )}
           </View>
         ) : (
-          <ScrollView contentContainerStyle={styles.grid}>{visibleStickers.map(renderSticker)}</ScrollView>
-        )}
-
-        {!viewingTrash && (
-          <Pressable style={[styles.fab, { bottom: rail.addBottom }]} onPress={openCreate}>
-            <Ionicons name="add" size={26} color={STICKER_DARK} />
-          </Pressable>
-        )}
-
-        <StickerComposer
-          visible={composerVisible}
-          editingTextSticker={editingTextSticker}
-          onClose={() => {
-            setComposerVisible(false);
-            setEditingTextSticker(null);
-          }}
-        />
-
-        {viewerImageUri && (
-          // See DocumentsScreen's own copy of this fix - Modal, not a plain
-          // absolute overlay, or the real status bar shows through as a
-          // solid black strip above the viewer.
-          <Modal visible transparent animationType="fade" onRequestClose={() => setViewerImageUri(null)}>
-            <GestureHandlerRootView style={{ flex: 1 }}>
-              <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />
-            </GestureHandlerRootView>
-          </Modal>
-        )}
-
-        <SketchEditor
-          visible={sketchEditing !== null}
-          initialElements={sketchEditing?.sketchElements ?? []}
-          onSave={saveSketchEdit}
-          onClose={() => setSketchEditing(null)}
-        />
-
-        <DocumentPickerModal
-          visible={documentPicker !== null}
-          documents={documentPicker?.documents ?? []}
-          onPick={(documentId) => {
-            setDocumentPicker(null);
-            navigation.navigate('Editor', { documentId });
-          }}
-          onClose={() => setDocumentPicker(null)}
-        />
-      </ContentColumn>
-
-    </View>
+          <ScrollView contentContainerStyle={[styles.grid, { paddingTop: listTopPad }]}>
+            {visibleStickers.map(renderSticker)}
+          </ScrollView>
+        )
+      }
+    </DatabaseChrome>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 90,
-    paddingBottom: 12,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  header: {
-    fontSize: 46,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    color: '#fff',
-  },
-  // Same frosted-glass round button as other dark-header icon toggles in
-  // this redesign; the active (viewing-trash) state inverts to a solid
-  // pill, matching ProjectTabsRow's own active-tab treatment.
-  trashToggle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(20,20,20,0.35)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-  },
-  trashToggleActive: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderColor: 'transparent',
-  },
   emptyState: {
     flex: 1,
     alignItems: 'center',
@@ -424,20 +385,5 @@ const styles = StyleSheet.create({
     fontFamily: FONT_REGULAR,
     color: STICKER_DARK,
     opacity: 0.75,
-  },
-  fab: {
-    position: 'absolute',
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 18,
-    backgroundColor: STICKER_YELLOW,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 6,
-    elevation: 6,
   },
 });

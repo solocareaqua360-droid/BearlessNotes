@@ -40,7 +40,7 @@ import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import CopyToNoteModal from '../components/CopyToNoteModal';
 import { useDatabaseList } from '../hooks/useDatabaseList';
-import DatabaseChrome from '../components/DatabaseChrome';
+import DatabaseChrome, { menuStyles } from '../components/DatabaseChrome';
 import { detachTagFromDeletedItem } from '../hooks/useTags';
 import { appendBlocksToToday, blockFromFile, copyObjectsToNote } from '../utils/copyToNote';
 import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
@@ -503,27 +503,27 @@ export default function FilesScreen() {
       onAdd={addFileDirectly}
       menuRows={(close) => (
         <>
-          <Text style={styles.menuSectionLabel}>Вигляд</Text>
+          <Text style={menuStyles.menuSectionLabel}>Вигляд</Text>
           <Pressable
-            style={styles.menuRow}
+            style={menuStyles.menuRow}
             onPress={() => {
               close();
               changeViewMode('list');
             }}
           >
             <Ionicons name="reorder-four-outline" size={17} color="#111827" />
-            <Text style={styles.menuRowLabel}>Список</Text>
+            <Text style={menuStyles.menuRowLabel}>Список</Text>
             {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
           </Pressable>
           <Pressable
-            style={styles.menuRow}
+            style={menuStyles.menuRow}
             onPress={() => {
               close();
               changeViewMode('grid');
             }}
           >
             <Ionicons name="grid-outline" size={17} color="#111827" />
-            <Text style={styles.menuRowLabel}>Сітка</Text>
+            <Text style={menuStyles.menuRowLabel}>Сітка</Text>
             {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
           </Pressable>
         </>
@@ -721,30 +721,6 @@ export default function FilesScreen() {
 }
 
 const styles = StyleSheet.create({
-  menuSectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    letterSpacing: 0.04,
-    textTransform: 'uppercase',
-    color: '#9CA3AF',
-    paddingHorizontal: 8,
-    paddingTop: 4,
-    paddingBottom: 2,
-  },
-    menuRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-  },
-  menuRowLabel: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: FONT_REGULAR,
-    color: '#111827',
-  },
   emptyState: {
     flex: 1,
     alignItems: 'center',

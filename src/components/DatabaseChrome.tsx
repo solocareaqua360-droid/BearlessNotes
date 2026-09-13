@@ -43,6 +43,12 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   // photos, files and links only ever arrive from inside a document, and
   // a "+" that cannot do anything is worse than no "+".
   onAdd?: () => void;
+  // A database with neither tags nor groups has nothing to browse in the
+  // drawer, and a folder button that opens an empty panel is worse than
+  // none (stickers).
+  hideDrawer?: boolean;
+  // Selecting exists to act on what was selected, so the "Вибрати" row
+  // appears only where there are bulk actions to reach.
   bulk?: {
     onTag: () => void;
     onGroup: () => void;
@@ -65,6 +71,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   searchPlaceholder,
   menuRows,
   onAdd,
+  hideDrawer,
   bulk,
   children,
   overlay,
@@ -149,21 +156,25 @@ export default function DatabaseChrome<T extends { id: string }>({
           <View style={styles.menuPanel}>
             {menuRows?.(() => setMenuOpen(false))}
             <SortMenuRows sortPref={list.sortPref} onSelectField={list.selectSortField} accentColor={accent} />
-            <View style={styles.menuRule} />
-            <Pressable
-              style={styles.menuRow}
-              onPress={() => {
-                setMenuOpen(false);
-                list.toggleSelectMode();
-              }}
-            >
-              <Ionicons
-                name={list.isSelectMode ? 'close-outline' : 'checkmark-circle-outline'}
-                size={17}
-                color="#111827"
-              />
-              <Text style={styles.menuRowLabel}>{list.isSelectMode ? 'Скасувати вибір' : 'Вибрати'}</Text>
-            </Pressable>
+            {bulk && (
+              <>
+                <View style={styles.menuRule} />
+                <Pressable
+                  style={styles.menuRow}
+                  onPress={() => {
+                    setMenuOpen(false);
+                    list.toggleSelectMode();
+                  }}
+                >
+                  <Ionicons
+                    name={list.isSelectMode ? 'close-outline' : 'checkmark-circle-outline'}
+                    size={17}
+                    color="#111827"
+                  />
+                  <Text style={styles.menuRowLabel}>{list.isSelectMode ? 'Скасувати вибір' : 'Вибрати'}</Text>
+                </Pressable>
+              </>
+            )}
           </View>
         )}
 
@@ -268,6 +279,7 @@ export default function DatabaseChrome<T extends { id: string }>({
         </GlassPortal>
       )}
 
+      {!hideDrawer && (
       <TagsDrawer
         tags={list.drawerTags}
         activeFilter={list.tagFilter}
@@ -282,6 +294,7 @@ export default function DatabaseChrome<T extends { id: string }>({
           onToggleRow: list.toggleGroupsRow,
         }}
       />
+      )}
 
       {bulk && (
         <BulkActionBar
@@ -296,6 +309,35 @@ export default function DatabaseChrome<T extends { id: string }>({
     </View>
   );
 }
+
+// The rows a database adds to the "..." menu are drawn in the menu's own
+// styles, so a screen's extra rows can never sit a little differently
+// from the ones the chrome puts there itself.
+export const menuStyles = StyleSheet.create({
+  menuSectionLabel: {
+    fontSize: 11,
+    fontFamily: FONT_SEMIBOLD,
+    color: '#9CA3AF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.06,
+    paddingHorizontal: 8,
+    paddingTop: 4,
+    paddingBottom: 2,
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+  },
+  menuRowLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: FONT_REGULAR,
+    color: '#111827',
+  },
+});
 
 const styles = StyleSheet.create({
   container: {
