@@ -86,7 +86,12 @@ function pageFor(images: string[], dirUrl: string, library: string): string {
       var worker = await Tesseract.createWorker('ukr', 1, {
         workerPath: '${dirUrl}tesseract-worker.js',
         corePath: '${dirUrl}tesseract-core.js',
-        langPath: '${dirUrl}'.replace(/\/$/, ''),
+        // Without the trailing slash, computed on the app side: a regular
+        // expression written here would have its backslash eaten by this
+        // template literal, and "/\\/$/" arrives in the page as "//$/" -
+        // a comment, and a syntax error at the end of the line. That is
+        // what stopped the whole page.
+        langPath: '${dirUrl.replace(/\/$/, '')}',
         gzip: false,
         logger: function (m) {
           if (m.status === 'recognizing text') post({ progress: m.progress });
