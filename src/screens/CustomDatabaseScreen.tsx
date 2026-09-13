@@ -47,6 +47,7 @@ import {
   GLASS_TEXT_MUTED,
 } from '../constants/glass';
 import { db } from '../firebase';
+import { deleteCustomDatabase } from '../utils/deleteCustomDatabase';
 import { CustomDatabase, CustomDatabaseRow, CustomDatabaseView, FieldDef, Group } from '../types';
 import { groupAppliesTo } from '../utils/groups';
 import { hapticSuccess } from '../utils/haptics';
@@ -668,13 +669,9 @@ export default function CustomDatabaseScreen({}: Props) {
 
   async function deleteDatabaseConfirmed() {
     setDeletingDatabase(false);
-    const batch = writeBatch(db);
-    rows.forEach((r) => batch.delete(doc(db, 'customDatabaseRows', r.id)));
-    // A saved view describes THIS database and nothing else, so it goes
-    // with it - otherwise it lingers as a name pointing at nothing.
-    savedViews.forEach((v) => batch.delete(doc(db, 'customDatabaseViews', v.id)));
-    batch.delete(doc(db, 'customDatabases', databaseId));
-    await batch.commit();
+    // Shared with the tile board, which can delete a database too - see
+    // deleteCustomDatabase for what goes with it.
+    await deleteCustomDatabase(databaseId);
     navigation.goBack();
   }
 

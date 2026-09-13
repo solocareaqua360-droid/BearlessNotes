@@ -12,12 +12,25 @@ import { categoryFromSiteName } from '../utils/linkCategory';
 // like everything else. These collections are already in the cache from
 // the screens that list them, so a second listener costs almost nothing.
 
+export type PinnableItem = {
+  id: string;
+  name: string;
+  color: string;
+  icon: string;
+  count: number;
+};
+
 export type DatabaseContents = {
   counts: Record<string, number>;
   // The newest record's own title, per database.
   latest: Record<string, string>;
   // The newest few images, for the photo tile to show instead of an icon.
   photoThumbs: string[];
+  // What can be pinned to the board beside the databases: a group (the
+  // theme of a period, counted across every database it touches) and a
+  // smart folder (counted by what it is actually on).
+  pinnableGroups: PinnableItem[];
+  pinnableTags: PinnableItem[];
 };
 
 type Row = Record<string, unknown> & { id: string };
@@ -97,11 +110,30 @@ export function useDatabaseContents(): DatabaseContents {
     board: newest(boards, (b) => b.title as string | undefined),
   };
 
+  // A group crosses databases, so its count does too.
+  const inGroup = (id: string) =>
+    [...notes, ...tasks, ...links, ...photos, ...files, ...customRows].filter((r) => r.groupId === id)
+      .length;
+  const pinnableGroups: PinnableItem[] = groups.map((g) => ({
+    id: g.id,
+    name: (g.name as string) ?? '',
+    color: (g.color as string) ?? '#9CA3AF',
+    icon: 'albums-outline',
+    count: inGroup(g.id),
+  }));
+  const pinnableTags: PinnableItem[] = tags.map((t) => ({
+    id: t.id,
+    name: (t.path as string) ?? '',
+    color: (t.color as string) ?? '#9CA3AF',
+    icon: (t.icon as string) ?? 'pricetag-outline',
+    count: Object.keys((t.usedIn as Record<string, unknown>) ?? {}).length,
+  }));
+
   const photoThumbs = [...photos]
     .sort((a, b) => Number(b.updatedAt ?? 0) - Number(a.updatedAt ?? 0))
     .slice(0, 4)
     .map((p) => p.imageUri as string)
     .filter(Boolean);
 
-  return { counts, latest, photoThumbs };
+  return { counts, latest, photoThumbs, pinnableGroups, pinnableTags };
 }

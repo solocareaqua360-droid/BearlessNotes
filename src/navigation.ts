@@ -12,9 +12,12 @@ export type RootStackParamList = {
   // enough to satisfy "resume the last open board" with no extra code.
   Tabs:
     | undefined
-    // The documents tab, by name - what the documents tile in the drawer
+    // The documents tab, by name - what the documents tile on the board
     // opens, since documents are a tab rather than a root-stack screen.
-    | { screen: 'Документи' }
+    // groupId: a group pinned to the board opens the documents already
+    // filtered to it, and everything else in that group follows under the
+    // rule there (see GroupSections).
+    | { screen: 'Документи'; params?: { groupId?: string } }
     | { screen: 'Календар'; params: { jumpToDate: string } }
     | { screen: 'Дошки' }
     // Jumps straight into one board rather than wherever BoardsStack last

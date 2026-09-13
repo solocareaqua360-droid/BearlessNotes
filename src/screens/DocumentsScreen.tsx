@@ -18,7 +18,7 @@ import Svg, { Defs, LinearGradient, Stop, Rect, Path, Text as SvgText } from 're
 import { Ionicons } from '@expo/vector-icons';
 import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { useIsFocused, useNavigation } from '@react-navigation/native';
+import { RouteProp, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
@@ -337,6 +337,15 @@ export default function DocumentsScreen() {
   // searchIgnoresFilters) - so while a search is running, what the shared
   // list hands back IS the matches.
   const searchMatches = searching ? displayedDocuments : [];
+
+  // A group pinned to the tile board opens this screen already filtered to
+  // it (see DatabasesScreen's pinned tiles). Applied once per arrival, and
+  // then left alone - it is a starting point, not a lock.
+  const route = useRoute<RouteProp<{ Документи: { groupId?: string } }, 'Документи'>>();
+  const arrivedWithGroup = route.params?.groupId;
+  useEffect(() => {
+    if (arrivedWithGroup) setGroupFilter(arrivedWithGroup);
+  }, [arrivedWithGroup, setGroupFilter]);
   // Pulled down from the top of the list, the search comes out - see
   // usePullToSearch.
   const pull = usePullToSearch(() => {

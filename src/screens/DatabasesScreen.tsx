@@ -14,7 +14,8 @@ import {
   tileColorsDoc,
 } from '../constants/databaseTiles';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
-import { useDatabaseContents } from '../hooks/useDatabaseCounts';
+import { PinnableItem, useDatabaseContents } from '../hooks/useDatabaseCounts';
+import { deleteCustomDatabase } from '../utils/deleteCustomDatabase';
 import { CustomDatabase } from '../types';
 import {
   DEFAULT_TILE_SIZE,
@@ -38,7 +39,7 @@ import { colorForDocument } from '../utils/documentColor';
 import RenamePrompt from '../components/RenamePrompt';
 import ImportTableSheet from '../components/ImportTableSheet';
 import ContentColumn from '../components/ContentColumn';
-import { GLASS_BODY, GLASS_TEXT } from '../constants/glass';
+import { GLASS_BODY, GLASS_DANGER, GLASS_TEXT } from '../constants/glass';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -48,18 +49,32 @@ import { GLASS_ISLAND } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, NAV_BOTTOM, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 
 const NEW_TILE_KEY = '__new__';
+const PIN_TILE_KEY = '__pin__';
+// A pinned group or smart folder is a tile like any other, keyed by what
+// it points at - so its size, colour, picture and place on the board are
+// remembered by the same documents as a database's.
+const groupKey = (id: string) => `group:${id}`;
+const tagKey = (id: string) => `tag:${id}`;
 const IMPORT_TILE_KEY = '__import__';
 const TILE_GAP = 10;
 // The gap the tiles hold while they are being arranged - they draw apart
 // to make room for the grips, and close back up when the board is done.
 const TILE_GAP_EDITING = 16;
+// The two colours this screen's own sheets speak in: the app's accent for
+// "this one is on", and the danger red for the one row that destroys
+// something.
+const ACCENT = '#14B8A6';
+const DANGER = GLASS_DANGER;
 const tileSizesDoc = doc(db, 'settings', 'databaseTileSizes');
 const tileOrderDoc = doc(db, 'settings', 'databaseTileOrder');
 const tileBackgroundsDoc = doc(db, 'settings', 'databaseTileBackgrounds');
+const tilePinsDoc = doc(db, 'settings', 'databaseTilePins');
 
 type BoardItem =
   | { key: string; kind: 'builtin'; tile: Tile }
   | { key: string; kind: 'custom'; database: CustomDatabase }
+  // A group or a smart folder the user has put on the board.
+  | { key: string; kind: 'pin'; pin: PinnableItem; pinKind: 'group' | 'tag' }
   | { key: string; kind: 'action' };
 
 // What a tile is before anyone resizes it: documents lead the board, the
@@ -70,7 +85,7 @@ function defaultSizeFor(key: string): TileSize {
   if (key === 'tasks') return { w: 4, h: 1 };
   // Two cells across, not one: these two are buttons, and a button that
   // has room only for its icon says nothing about what it will do.
-  if (key === NEW_TILE_KEY || key === IMPORT_TILE_KEY) return { w: 2, h: 1 };
+  if (key === NEW_TILE_KEY || key === IMPORT_TILE_KEY || key === PIN_TILE_KEY) return { w: 2, h: 1 };
   return DEFAULT_TILE_SIZE;
 }
 
@@ -83,7 +98,7 @@ export default function DatabasesScreen() {
   const { colorFor, customDatabases } = useDatabaseTiles();
   // What is inside each database, for the tiles to show - see
   // useDatabaseContents.
-  const { counts, latest, photoThumbs } = useDatabaseContents();
+  const { counts, latest, photoThumbs, pinnableGroups, pinnableTags } = useDatabaseContents();
   const [colorMenuKey, setColorMenuKey] = useState<string | null>(null);
   const [tileSizes, setTileSizes] = useState<Record<string, string>>({});
   // Held-down, the board goes into its arranging state: the tiles draw
@@ -109,6 +124,10 @@ export default function DatabasesScreen() {
   // be cropped for it.
   const [backgroundFor, setBackgroundFor] = useState<{ key: string; aspect: number } | null>(null);
   const [cropping, setCropping] = useState<string | null>(null);
+  // Which groups and smart folders are on the board, and the sheet that
+  // chooses them.
+  const [pinnedKeys, setPinnedKeys] = useState<string[]>([]);
+  const [pinSheetVisible, setPinSheetVisible] = useState(false);
 
   // While the board is being arranged, the tabs stop swiping. A grip
   // dragged sideways IS a horizontal drag, and the pager that carries the
@@ -121,6 +140,13 @@ export default function DatabasesScreen() {
   useEffect(() => {
     return onSnapshot(tileSizesDoc, (snapshot) => {
       setTileSizes((snapshot.data() as Record<string, string> | undefined) ?? {});
+    });
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(tilePinsDoc, (snapshot) => {
+      const stored = snapshot.data()?.keys;
+      setPinnedKeys(Array.isArray(stored) ? (stored as string[]) : []);
     });
   }, []);
 
@@ -187,6 +213,55 @@ export default function DatabasesScreen() {
     setColorMenuKey(null);
   }
 
+  function togglePin(key: string) {
+    const next = pinnedKeys.includes(key)
+      ? pinnedKeys.filter((k) => k !== key)
+      : [...pinnedKeys, key];
+    setDoc(tilePinsDoc, { keys: next }, { merge: true });
+  }
+
+  // Back to the size this tile has when nobody has touched it. Written as
+  // a deletion rather than the default value, so a later change of mind
+  // about defaults reaches it.
+  function resetSize(key: string) {
+    setDoc(tileSizesDoc, { [key]: deleteField() }, { merge: true });
+    setColorMenuKey(null);
+  }
+
+  function resetBoard() {
+    Alert.alert('Скинути дошку?', 'Розміри й порядок плиток повернуться до стандартних. Кольори й фони лишаться.', [
+      { text: 'Скасувати', style: 'cancel' },
+      {
+        text: 'Скинути',
+        style: 'destructive',
+        onPress: () => {
+          setDoc(tileSizesDoc, {}, { merge: false });
+          setDoc(tileOrderDoc, { order: deleteField() }, { merge: true });
+        },
+      },
+    ]);
+  }
+
+  function confirmDeleteDatabase(database: CustomDatabase) {
+    setColorMenuKey(null);
+    Alert.alert(
+      `Видалити «${database.name}»?`,
+      'База, всі її записи та збережені вигляди зникнуть. Це не можна відмінити.',
+      [
+        { text: 'Скасувати', style: 'cancel' },
+        {
+          text: 'Видалити',
+          style: 'destructive',
+          onPress: () => {
+            deleteCustomDatabase(database.id).catch((error) =>
+              Alert.alert('Не вдалося видалити', (error as Error).message)
+            );
+          },
+        },
+      ]
+    );
+  }
+
   function openTile(tile: Tile) {
     openDatabaseTile(navigation, tile);
   }
@@ -209,12 +284,25 @@ export default function DatabasesScreen() {
 
   // Built in first, then the databases the user made, then the two tiles
   // that make more - the same order the screen has always had.
+  const pinnedTiles: BoardItem[] = pinnedKeys
+    .map((key): BoardItem | null => {
+      if (key.startsWith('group:')) {
+        const pin = pinnableGroups.find((g) => groupKey(g.id) === key);
+        return pin ? { key, kind: 'pin', pin, pinKind: 'group' } : null;
+      }
+      const pin = pinnableTags.find((t) => tagKey(t.id) === key);
+      return pin ? { key, kind: 'pin', pin, pinKind: 'tag' } : null;
+    })
+    .filter((item): item is BoardItem => !!item);
+
   const boardItems: BoardItem[] = [
     ...WIDE_TILES.map((tile) => ({ key: tile.key, kind: 'builtin' as const, tile })),
     ...GRID_TILES.map((tile) => ({ key: tile.key, kind: 'builtin' as const, tile })),
     ...customDatabases.map((database) => ({ key: database.id, kind: 'custom' as const, database })),
+    ...pinnedTiles,
     { key: NEW_TILE_KEY, kind: 'action' as const },
     { key: IMPORT_TILE_KEY, kind: 'action' as const },
+    { key: PIN_TILE_KEY, kind: 'action' as const },
   ];
   // The arranged order wins where there is one; anything it does not
   // mention (a database made since) keeps its natural place at the end.
@@ -367,20 +455,34 @@ export default function DatabasesScreen() {
                   color={
                     item.kind === 'custom'
                       ? item.database.color ?? colorForDocument(item.database.id).background
-                      : colorFor(item.key)
+                      : item.kind === 'pin'
+                        ? item.pin.color
+                        : colorFor(item.key)
                   }
                   editing={editing}
                   cellSize={cellSize}
                   size={size}
                   background={tileBackgrounds[item.key]}
-                  count={counts[item.key]}
+                  count={item.kind === 'pin' ? item.pin.count : counts[item.key]}
                   latest={latest[item.key]}
                   thumbs={item.key === 'photos' ? photoThumbs : undefined}
                   onOpen={() => {
                     if (item.kind === 'builtin') openTile(item.tile);
                     else if (item.kind === 'custom')
                       navigation.navigate('CustomDatabase', { databaseId: item.database.id });
-                    else if (item.key === NEW_TILE_KEY) setCreatingDatabase(true);
+                    else if (item.kind === 'pin') {
+                      // A group opens the documents with that group
+                      // chosen - and everything else in it follows under
+                      // the rule there (see GroupSections). A smart folder
+                      // opens its own list, which is already cross-database.
+                      if (item.pinKind === 'group')
+                        navigation.navigate('Tabs', {
+                          screen: 'Документи',
+                          params: { groupId: item.pin.id },
+                        });
+                      else navigation.navigate('TagItems', { tagId: item.pin.id });
+                    } else if (item.key === NEW_TILE_KEY) setCreatingDatabase(true);
+                    else if (item.key === PIN_TILE_KEY) setPinSheetVisible(true);
                     else setImporting(true);
                   }}
                   onHold={() => {
@@ -482,14 +584,114 @@ export default function DatabasesScreen() {
               </Pressable>
               {colorMenuKey && tileBackgrounds[colorMenuKey] && (
                 <Pressable style={styles.sheetRow} onPress={() => clearBackground(colorMenuKey)}>
-                  <Ionicons name="trash-outline" size={17} color={GLASS_TEXT} />
+                  <Ionicons name="image-outline" size={17} color={GLASS_TEXT} />
                   <Text style={styles.sheetRowLabel}>Прибрати фон</Text>
                 </Pressable>
               )}
+              {colorMenuKey && (
+                <Pressable style={styles.sheetRow} onPress={() => resetSize(colorMenuKey)}>
+                  <Ionicons name="resize-outline" size={17} color={GLASS_TEXT} />
+                  <Text style={styles.sheetRowLabel}>Стандартний розмір</Text>
+                </Pressable>
+              )}
+              {/* A pinned group or folder is taken off the board here -
+                  nothing about the group itself is touched. */}
+              {colorMenuKey && pinnedKeys.includes(colorMenuKey) && (
+                <Pressable
+                  style={styles.sheetRow}
+                  onPress={() => {
+                    togglePin(colorMenuKey);
+                    setColorMenuKey(null);
+                  }}
+                >
+                  <Ionicons name="remove-circle-outline" size={17} color={GLASS_TEXT} />
+                  <Text style={styles.sheetRowLabel}>Відкріпити з дошки</Text>
+                </Pressable>
+              )}
+              {/* Only a database the user made can be deleted, and only
+                  from here - the built-in ones are the app itself. */}
+              {colorMenuKey && customDatabases.some((d) => d.id === colorMenuKey) && (
+                <Pressable
+                  style={styles.sheetRow}
+                  onPress={() => {
+                    const database = customDatabases.find((d) => d.id === colorMenuKey);
+                    if (database) confirmDeleteDatabase(database);
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={17} color={DANGER} />
+                  <Text style={[styles.sheetRowLabel, { color: DANGER }]}>Видалити базу</Text>
+                </Pressable>
+              )}
+              <View style={styles.sheetRule} />
+              <Pressable
+                style={styles.sheetRow}
+                onPress={() => {
+                  setColorMenuKey(null);
+                  resetBoard();
+                }}
+              >
+                <Ionicons name="refresh-outline" size={17} color={GLASS_TEXT} />
+                <Text style={styles.sheetRowLabel}>Скинути дошку</Text>
+              </Pressable>
             </Pressable>
           </Pressable>
         </Modal>
       </ContentColumn>
+
+      {/* What else can go on the board: the groups (a theme of the
+          period) and the smart folders (a saved filter). Both already
+          know their own colour and how many they hold. */}
+      <Modal
+        visible={pinSheetVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPinSheetVisible(false)}
+      >
+        <Pressable style={styles.colorMenuBackdrop} onPress={() => setPinSheetVisible(false)}>
+          <Pressable style={styles.pinCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.colorMenuTitle}>Закріпити на дошці</Text>
+            <ScrollView style={styles.pinList}>
+              <Text style={styles.pinSection}>Групи</Text>
+              {pinnableGroups.length === 0 && <Text style={styles.pinEmpty}>Груп поки немає</Text>}
+              {pinnableGroups.map((group) => {
+                const key = groupKey(group.id);
+                const on = pinnedKeys.includes(key);
+                return (
+                  <Pressable key={key} style={styles.sheetRow} onPress={() => togglePin(key)}>
+                    <Ionicons name="albums-outline" size={17} color={group.color} />
+                    <Text style={styles.sheetRowLabel} numberOfLines={1}>
+                      {group.name}
+                    </Text>
+                    <Text style={styles.pinCount}>{group.count}</Text>
+                    {on && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+                  </Pressable>
+                );
+              })}
+
+              <Text style={styles.pinSection}>Смартпапки</Text>
+              {pinnableTags.length === 0 && <Text style={styles.pinEmpty}>Смартпапок поки немає</Text>}
+              {pinnableTags.map((tag) => {
+                const key = tagKey(tag.id);
+                const on = pinnedKeys.includes(key);
+                return (
+                  <Pressable key={key} style={styles.sheetRow} onPress={() => togglePin(key)}>
+                    <Ionicons
+                      name={tag.icon as keyof typeof Ionicons.glyphMap}
+                      size={17}
+                      color={tag.color}
+                    />
+                    <Text style={styles.sheetRowLabel} numberOfLines={1}>
+                      {tag.name}
+                    </Text>
+                    <Text style={styles.pinCount}>{tag.count}</Text>
+                    {on && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <ImageCropper
         visible={cropping !== null}
@@ -564,17 +766,25 @@ function BoardTile({
       ? item.tile.label
       : item.kind === 'custom'
         ? item.database.name
-        : item.key === NEW_TILE_KEY
-          ? 'Нова база'
-          : 'Імпорт таблиці';
+        : item.kind === 'pin'
+          ? item.pin.name
+          : item.key === NEW_TILE_KEY
+            ? 'Нова база'
+            : item.key === PIN_TILE_KEY
+              ? 'Закріпити'
+              : 'Імпорт таблиці';
   const icon: keyof typeof Ionicons.glyphMap =
     item.kind === 'builtin'
       ? item.tile.icon
       : item.kind === 'custom'
         ? (item.database.icon as keyof typeof Ionicons.glyphMap) ?? 'grid-outline'
-        : item.key === NEW_TILE_KEY
-          ? 'add'
-          : 'download-outline';
+        : item.kind === 'pin'
+          ? (item.pin.icon as keyof typeof Ionicons.glyphMap)
+          : item.key === NEW_TILE_KEY
+            ? 'add'
+            : item.key === PIN_TILE_KEY
+              ? 'bookmark-outline'
+              : 'download-outline';
   const isAction = item.kind === 'action';
   // A one-cell tile has room for the icon and nothing else.
   const tiny = size.w === 1 && size.h === 1;
@@ -693,8 +903,10 @@ function BoardTile({
 
       {editing && (
         <GestureDetector gesture={grip}>
-          <View style={styles.grip}>
-            <Ionicons name="resize-outline" size={14} color="rgba(255,255,255,0.75)" />
+          {/* Sized to the tile: at one cell the standing grip covered a
+              quarter of it. */}
+          <View style={[styles.grip, tiny && styles.gripSmall]}>
+            <Ionicons name="resize-outline" size={tiny ? 11 : 14} color="rgba(255,255,255,0.75)" />
           </View>
         </GestureDetector>
       )}
@@ -794,6 +1006,47 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderTopLeftRadius: 12,
     backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  gripSmall: {
+    width: 22,
+    height: 22,
+    borderTopLeftRadius: 8,
+  },
+  pinCard: {
+    backgroundColor: GLASS_BODY,
+    borderRadius: 18,
+    padding: 16,
+    width: '100%',
+    maxWidth: 420,
+    maxHeight: '70%',
+  },
+  pinList: {
+    marginTop: 8,
+  },
+  pinSection: {
+    fontSize: 11,
+    fontFamily: FONT_MEDIUM,
+    color: 'rgba(255,255,255,0.5)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.06,
+    marginTop: 12,
+    marginBottom: 2,
+  },
+  pinEmpty: {
+    fontSize: 13,
+    fontFamily: FONT_REGULAR,
+    color: 'rgba(255,255,255,0.4)',
+    paddingVertical: 8,
+  },
+  pinCount: {
+    fontSize: 12,
+    fontFamily: FONT_REGULAR,
+    color: 'rgba(255,255,255,0.5)',
+  },
+  sheetRule: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginVertical: 6,
   },
   doneButton: {
     position: 'absolute',
