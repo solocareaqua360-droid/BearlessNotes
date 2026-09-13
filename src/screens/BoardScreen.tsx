@@ -1385,7 +1385,9 @@ export default function BoardScreen() {
         setCardMenu(null);
         return;
       }
-      setSelectedCardIds(new Set([card.id]));
+      // Deliberately NOT selected: selecting it would raise the
+      // selection bar at the foot of the screen, and two menus for one
+      // right-click is exactly what this was meant to replace.
       setCardMenu({ x, y, card });
     },
     [viewport.width, viewport.height, translateX, translateY, scale]
@@ -1813,8 +1815,14 @@ export default function BoardScreen() {
     setSelectedCardIds(new Set([card.id]));
   }
 
-  function deleteSelectedCards() {
-    const count = selectedCardIds.size;
+  // Told which cards to remove rather than reading the selection: the
+  // bar hands it the selection, the right-click menu hands it the one
+  // card it was opened on - which is what lets that menu act WITHOUT
+  // selecting anything first, and so without raising the selection bar
+  // as a second menu beside itself.
+  function deleteCards(ids: Set<string>) {
+    const count = ids.size;
+    if (count === 0) return;
     confirm({
       title: count === 1 ? 'Видалити картку?' : `Видалити картки (${count})?`,
       confirmLabel: 'Видалити',
@@ -1822,20 +1830,20 @@ export default function BoardScreen() {
       if (!yes) return;
       // Reflowed after the removal so a column closes the gap its
       // deleted card left behind.
-      setCards((prev) =>
-        reflowColumns(
-          prev.filter((c) => !selectedCardIds.has(c.id)),
-          columns,
-          cardHeights
-        )
-      );
+      setCards((prev) => reflowColumns(prev.filter((c) => !ids.has(c.id)), columns, cardHeights));
       // A connection to a card that no longer exists would render as a
       // line into empty space, so they go with it.
-      setConnections((prev) =>
-        prev.filter((c) => !selectedCardIds.has(c.fromCardId) && !selectedCardIds.has(c.toCardId))
-      );
-      setSelectedCardIds(new Set());
+      setConnections((prev) => prev.filter((c) => !ids.has(c.fromCardId) && !ids.has(c.toCardId)));
+      setSelectedCardIds((prev) => {
+        const left = new Set(prev);
+        ids.forEach((id) => left.delete(id));
+        return left;
+      });
     });
+  }
+
+  function deleteSelectedCards() {
+    deleteCards(selectedCardIds);
   }
 
   function disconnectSelectedCards() {
@@ -2259,7 +2267,7 @@ export default function BoardScreen() {
                     label: 'Видалити',
                     icon: 'trash-outline',
                     tone: 'danger',
-                    onPress: deleteSelectedCards,
+                    onPress: () => deleteCards(new Set([cardMenu.card.id])),
                   },
                 ]
               : []
