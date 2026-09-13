@@ -922,6 +922,7 @@ export default function LinksScreen({ route, navigation }: Props) {
         activeFilter={tagFilter}
         onSelectFilter={setTagFilter}
         hideOpenButton={isSelectMode}
+        capsuleHeight={CAPSULE_HEIGHT_3}
         groupSection={{
           // The same list the row shows, sentinels and all, counted over
           // this category's links only - the row and the drawer must never

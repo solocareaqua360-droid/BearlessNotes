@@ -938,6 +938,7 @@ export default function PhotosScreen() {
         activeFilter={tagFilter}
         onSelectFilter={setTagFilter}
         hideOpenButton={isSelectMode}
+        capsuleHeight={CAPSULE_HEIGHT_3}
         groupSection={{
           items: [
             { id: null, name: 'Всі', color: GLASS_TEXT_MUTED, count: photos.length },

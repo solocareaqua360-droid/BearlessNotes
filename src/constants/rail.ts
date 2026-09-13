@@ -49,12 +49,13 @@ export const CHROME_TOP = 4;
 // itself: when it was left saying 184 for a capsule that had grown, the
 // round buttons ended up with no room to sit clear of it.
 export const CAPSULE_HEIGHT = 123;
-// The same sum for a capsule carrying a third button (one more icon, one
-// more divider, one more gap). A screen with three has to say so - the
-// round buttons under it are spaced against this number, and a screen
-// that kept quiet about its taller capsule got its folder button placed
-// where the capsule already was.
-export const CAPSULE_HEIGHT_3 = CAPSULE_HEIGHT + 24 + 1 + 18;
+// The same sum for a capsule carrying a third button: one more icon, one
+// more divider - and TWO more gaps, since the divider it brings with it
+// has a gap on each side. That last pair is what was missed first time
+// round, and 18 short was still enough to leave the folder button sitting
+// on top of the capsule. A screen with three buttons has to say so - both
+// to useRail and to TagsDrawer, which is what places that button.
+export const CAPSULE_HEIGHT_3 = CAPSULE_HEIGHT + 24 + 1 + 18 * 2;
 
 // How far the capsule hangs below the top of the chrome band, and how far
 // the island drops into the tag row's own band. Both rows keep the rail's

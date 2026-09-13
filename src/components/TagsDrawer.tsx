@@ -248,6 +248,11 @@ type Props = {
   // it has to get out of the way while their own bulk-select bar is on
   // screen (same bottom-left corner, would otherwise overlap it).
   hideOpenButton?: boolean;
+  // The height of the calling screen's capsule, when it isn't the usual
+  // two-button one. The folder button is spaced against what is above it,
+  // and this component places it - so a screen with a taller capsule has
+  // to say so here as well, or the button lands where the capsule is.
+  capsuleHeight?: number;
   // Groups, when the calling screen has them: a section of its own at the
   // head of the drawer, over a rule, above the smart folders. A screen
   // that passes nothing here simply has no such section, and the long
@@ -281,6 +286,7 @@ export default function TagsDrawer({
   activeFilter,
   onSelectFilter,
   hideOpenButton,
+  capsuleHeight,
   counts,
   groupSection,
 }: Props) {
@@ -301,7 +307,7 @@ export default function TagsDrawer({
   // Modal actually unmounts, instead of yanking the drawer away instantly.
   const [isRendered, setIsRendered] = useState(false);
   const blurTarget = useBlurTarget();
-  const rail = useRail();
+  const rail = useRail(capsuleHeight);
   const { width: windowWidth } = useWindowDimensions();
   const drawerWidth = Math.round(windowWidth * DRAWER_FRACTION);
   const [filterMode, setFilterMode] = useState<TagFilterMode>('multi');
