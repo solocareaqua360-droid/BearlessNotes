@@ -25,7 +25,10 @@ export type PreviewJob = {
   kind: 'docx' | 'xlsx' | 'pdf';
 };
 
-const STORAGE_KEY = 'filePreviews.v1';
+// Bumped when what a preview CONTAINS changes - v1 had no picture for
+// a Word or Excel file, and there is no telling that apart from
+// "not made yet" without this.
+const STORAGE_KEY = 'filePreviews.v2';
 
 let cache: Record<string, FilePreview> | null = null;
 let loading: Promise<void> | null = null;
