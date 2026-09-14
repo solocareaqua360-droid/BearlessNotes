@@ -11,7 +11,7 @@ import { clearDriveToken, getDriveToken } from './utils/driveToken.web';
 import {
   initializeFirestore,
   persistentLocalCache,
-  persistentSingleTabManager,
+  persistentMultipleTabManager,
 } from 'firebase/firestore';
 
 // The browser's Firebase, beside the phone's (see firebase.ts). Metro
@@ -35,10 +35,23 @@ const app = initializeApp({
 
 // Offline first here too, which is this app's whole promise. The native
 // SDK caches to disk without being asked; the browser one has to be told,
-// and told WHICH kind - a single-tab manager because two tabs sharing one
-// cache is a synchronisation problem nobody here has asked for yet.
+// and told WHICH kind.
+//
+// A MULTI-tab manager, and the single-tab one it replaces is why the board
+// list sat on a spinner for ever.
+//
+// A single-tab cache is not a cache that degrades when a second tab opens:
+// the second tab cannot take the lease, its listeners never fire, and
+// nothing says so. Just a spinner. And a second tab is not an exotic
+// situation - it is what happens every time this page is opened again
+// before the old one is closed, which during an afternoon of testing is
+// most of the time.
+//
+// The note the old comment made - that two tabs sharing one cache is a
+// synchronisation problem - is answered by this manager rather than
+// avoided by it: it elects a primary tab and keeps the others in step.
 export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({}) }),
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
 });
 
 export const auth = getAuth(app);

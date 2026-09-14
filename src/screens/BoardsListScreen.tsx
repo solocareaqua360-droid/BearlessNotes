@@ -49,6 +49,7 @@ export default function BoardsListScreen() {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [boards, setBoards] = useState<BoardItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   // Rows or tiles. The mini-map in a row is 48px - enough to tell two
   // boards apart, not enough to see what's on one - so the tile view
   // exists to give it room.
@@ -66,7 +67,9 @@ export default function BoardsListScreen() {
   const [renamingBoard, setRenamingBoard] = useState<BoardItem | null>(null);
 
   useEffect(() => {
-    return onSnapshot(ownedQuery('boards'), (snapshot) => {
+    return onSnapshot(
+      ownedQuery('boards'),
+      (snapshot) => {
       setBoards(
         snapshot.docs
           .map((docSnapshot) => {
@@ -88,8 +91,17 @@ export default function BoardsListScreen() {
           })
           .sort((a, b) => b.updatedAt - a.updatedAt)
       );
-      setIsLoading(false);
-    });
+        setIsLoading(false);
+      },
+      // A listener that fails must say so. Without this handler the error
+      // went nowhere and the screen kept its spinner for ever, which is
+      // indistinguishable from a slow network and tells no one anything -
+      // exactly how the single-tab cache problem presented itself.
+      (error) => {
+        setLoadError(error.message);
+        setIsLoading(false);
+      }
+    );
   }, []);
 
 
@@ -268,6 +280,14 @@ export default function BoardsListScreen() {
         {isLoading ? (
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
+          </View>
+        ) : loadError ? (
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIcon}>
+              <Ionicons name="alert-circle-outline" size={32} color={ACCENT} />
+            </View>
+            <Text style={styles.emptyLabel}>Не вдалося прочитати дошки</Text>
+            <Text style={styles.emptyHint}>{loadError}</Text>
           </View>
         ) : boards.length === 0 ? (
           <View style={styles.emptyState}>
