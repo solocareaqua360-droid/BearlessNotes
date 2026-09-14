@@ -2292,6 +2292,124 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   );
   const [linkTitlePromptValue, setLinkTitlePromptValue] = useState('');
 
+  // The document as the server has it, as far as this screen knows: set
+  // from what was loaded, from every version that arrives while the note
+  // is open, and from every write of our own. It is the answer to two
+  // questions this screen used to get wrong.
+  //
+  // "Is there anything to save?" - a note used to be written back the
+  // moment it was OPENED, without a single edit, because the autosave
+  // ran off "the blocks changed" and loading is a change. Opened from a
+  // stale cache on one device, that write put the stale copy over the
+  // other device's work. Now nothing is written unless it differs from
+  // what the server holds.
+  //
+  // "Which of my blocks are mine?" - when another device's version
+  // arrives, a block that differs from this snapshot is one edited here
+  // since the last write, and stays; the rest take what arrived.
+  type ServerShape = {
+    title: string;
+    blocks: Block[];
+    coverImageUri: string | undefined;
+    paperColorEnabled: boolean;
+    groupId: string | null;
+    canvasLinks: Record<string, CanvasLink>;
+  };
+  const serverRef = useRef<ServerShape | null>(null);
+  const serverBlockRef = useRef<Map<string, string>>(new Map());
+  function rememberServer(shape: ServerShape) {
+    serverRef.current = shape;
+    serverBlockRef.current = new Map(shape.blocks.map((b) => [b.id, JSON.stringify(b)]));
+  }
+  function shapeFrom(data: Record<string, unknown> | undefined, blocksNow: Block[]): ServerShape {
+    return {
+      title: (data?.title as string) ?? '',
+      blocks: blocksNow,
+      coverImageUri: (data?.coverImageUri as string | undefined) || undefined,
+      paperColorEnabled: !!data?.paperColorEnabled,
+      groupId: (data?.groupId as string | undefined) ?? null,
+      canvasLinks: (data?.canvasLinks as Record<string, CanvasLink> | undefined) ?? {},
+    };
+  }
+  function sameAsServer(shape: ServerShape): boolean {
+    const server = serverRef.current;
+    if (!server) return false;
+    return (
+      server.title === shape.title &&
+      server.coverImageUri === shape.coverImageUri &&
+      server.paperColorEnabled === shape.paperColorEnabled &&
+      server.groupId === shape.groupId &&
+      JSON.stringify(server.canvasLinks) === JSON.stringify(shape.canvasLinks) &&
+      server.blocks.length === shape.blocks.length &&
+      shape.blocks.every((b, i) => {
+        const was = server.blocks[i];
+        return was.id === b.id && serverBlockRef.current.get(b.id) === JSON.stringify(b);
+      })
+    );
+  }
+
+  // Another device's version, merged in rather than imposed - the
+  // board's rule, for the board's reason. Per block: one that differs
+  // here from what the server last held is an edit made here and not
+  // yet written, and stays; so does the block with the caret in it,
+  // whatever its state; a block deleted here stays deleted; everything
+  // else, and the order, takes what arrived. Blocks made here and not
+  // yet written are kept, each after the block it followed.
+  function mergeRemote(remote: ServerShape) {
+    const server = serverRef.current;
+    const focusedId = focusedBlockIdRef.current;
+    setBlocks((local) => {
+      const localById = new Map(local.map((b) => [b.id, b]));
+      const serverIds = new Set(server?.blocks.map((b) => b.id) ?? []);
+      const isDirty = (b: Block) => serverBlockRef.current.get(b.id) !== JSON.stringify(b);
+      const deletedHere = (id: string) => serverIds.has(id) && !localById.has(id);
+      const merged: Block[] = [];
+      for (const r of remote.blocks) {
+        if (deletedHere(r.id)) continue;
+        const mine = localById.get(r.id);
+        merged.push(mine && (mine.id === focusedId || isDirty(mine)) ? mine : r);
+      }
+      // New here, unknown to the server: keep each where it was, after
+      // its predecessor if that predecessor is still around.
+      const mergedIds = new Set(merged.map((b) => b.id));
+      local.forEach((b, index) => {
+        if (mergedIds.has(b.id) || serverIds.has(b.id)) return;
+        const prev = index > 0 ? local[index - 1].id : null;
+        const at = prev ? merged.findIndex((m) => m.id === prev) : -1;
+        merged.splice(at === -1 ? merged.length : at + 1, 0, b);
+        mergedIds.add(b.id);
+      });
+      return merged;
+    });
+    if (server && server.title === title) setTitle(remote.title);
+    if (server && server.coverImageUri === coverImageUri) setCoverImageUri(remote.coverImageUri);
+    if (server && server.paperColorEnabled === paperColorEnabled) setPaperColorEnabled(remote.paperColorEnabled);
+    if (server && server.groupId === groupId) setGroupId(remote.groupId);
+    // Arrows are a keyed map, so both sides' additions survive: what
+    // changed here since the last write stays, the rest takes the
+    // server's.
+    setCanvasLinks((local) => {
+      const was = server?.canvasLinks ?? {};
+      const next: Record<string, CanvasLink> = { ...remote.canvasLinks };
+      for (const [id, link] of Object.entries(local)) {
+        if (JSON.stringify(was[id]) !== JSON.stringify(link)) next[id] = link;
+      }
+      for (const id of Object.keys(was)) {
+        if (!(id in local)) delete next[id];
+      }
+      return next;
+    });
+    rememberServer(remote);
+  }
+
+  // The listener below is registered once and lives for as long as the
+  // note is open; mergeRemote is remade every render with that render's
+  // title, cover and so on. Reached through a ref, so the listener always
+  // calls the current one and never compares against values from the
+  // render it was registered in.
+  const mergeRemoteRef = useRef(mergeRemote);
+  mergeRemoteRef.current = mergeRemote;
+
   useEffect(() => {
     (async () => {
       // Opening a note almost always follows just having seen it in a list
@@ -2320,6 +2438,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       setCanvasLinks(data?.canvasLinks ?? {});
       const loadedBlocks: Block[] = data?.blocks ?? [];
       setBlocks(loadedBlocks.length > 0 ? loadedBlocks : [newBlock()]);
+      rememberServer(shapeFrom(data, loadedBlocks));
       // Seed the "what does this document currently mirror" trackers from
       // the blocks as loaded, not an empty set - otherwise a link/task
       // removed before the very first debounced sync ever runs (e.g.
@@ -2342,6 +2461,30 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       setIsLoaded(true);
     })();
   }, [documentId]);
+
+  // While the note is open, it hears the server. An open editor used to
+  // read once and never again, so a change made on the other device was
+  // invisible here - and the next autosave here wrote over it. Only
+  // versions from the server count: a snapshot carrying this device's
+  // own pending write is an echo, and one from the cache is what we
+  // already loaded.
+  useEffect(() => {
+    if (!isLoaded) return;
+    return onSnapshot(doc(db, 'documents', documentId), (snapshot) => {
+      if (snapshot.metadata.hasPendingWrites || snapshot.metadata.fromCache) return;
+      const data = snapshot.data();
+      if (!data) return;
+      const remote = shapeFrom(data, (data.blocks as Block[]) ?? []);
+      // The same version we already hold - our own write, arrived back
+      // from the server - changes nothing.
+      if (serverRef.current && sameAsServer({ ...remote, blocks: remote.blocks })) {
+        rememberServer(remote);
+        return;
+      }
+      mergeRemoteRef.current(remote);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, documentId]);
 
   // Checkbox blocks with text are database objects by default - no explicit
   // "convert to object" step, per PROJECT_BRIEF.md's object model. Every
@@ -2667,6 +2810,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
 
   useEffect(() => {
     if (!isLoaded) return;
+    // Nothing to write when nothing differs from what the server holds -
+    // which is the case the moment a note has been opened, and the case
+    // when another device's version has just been merged in. See
+    // serverRef.
+    const shape: ServerShape = { title, blocks, coverImageUri: coverImageUri || undefined, paperColorEnabled, groupId, canvasLinks };
+    if (sameAsServer(shape)) return;
     setSaveStatus('saving');
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
@@ -2703,7 +2852,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           ...extraFields,
         },
         { merge: true }
-      ).then(() => setSaveStatus('saved'));
+      ).then(() => {
+        rememberServer({ title, blocks, coverImageUri: coverImageUri || undefined, paperColorEnabled, groupId, canvasLinks });
+        setSaveStatus('saved');
+      });
       syncTasksForDocument(blocks);
       syncLinksForDocument(blocks);
       syncPhotosForDocument(blocks);
