@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import GlassLayer from '../GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../../utils/fonts';
@@ -136,7 +136,16 @@ export function AskHost() {
         <Text style={styles.title}>{current.title}</Text>
         {!!current.message && <Text style={styles.message}>{current.message}</Text>}
 
-        <View style={styles.actions}>
+        {/* Scrolls once there are more answers than fit. The rows were a
+            plain column, which is right for the four or five a question
+            usually has - but a question whose answers are the user's own
+            databases has as many as they have made, and the last ones
+            were simply off the bottom of the screen. */}
+        <ScrollView
+          style={styles.actionsScroll}
+          contentContainerStyle={styles.actions}
+          keyboardShouldPersistTaps="handled"
+        >
           {current.actions.map((action) => {
             const danger = action.tone === 'danger';
             const primary = action.tone === 'primary';
@@ -179,7 +188,7 @@ export function AskHost() {
               </Pressable>
             );
           })}
-        </View>
+        </ScrollView>
 
         {cancelLabel !== null && (
           <Pressable
@@ -199,6 +208,7 @@ const styles = StyleSheet.create({
   frame: SHEET_FRAME,
   card: {
     ...SHEET_WINDOW,
+    maxHeight: '80%',
     // Lighter than an unblurred sheet: at the opaque strength the blur
     // underneath stops showing through at all.
     backgroundColor: GLASS_BODY_BLURRED,
@@ -222,6 +232,9 @@ const styles = StyleSheet.create({
     color: GLASS_TEXT_MUTED,
     paddingHorizontal: 10,
     paddingTop: 2,
+  },
+  actionsScroll: {
+    flexGrow: 0,
   },
   actions: {
     gap: 6,

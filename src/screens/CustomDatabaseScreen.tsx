@@ -54,7 +54,15 @@ import { TAG_COLORS } from '../constants/tags';
 import GlassLayer from '../components/GlassLayer';
 import { db } from '../firebase';
 import { deleteCustomDatabase } from '../utils/deleteCustomDatabase';
-import { CustomDatabase, CustomDatabaseRow, CustomDatabaseView, FieldDef, FieldType, Group } from '../types';
+import {
+  CustomDatabase,
+  CustomDatabaseRow,
+  CustomDatabaseView,
+  FieldDef,
+  FieldType,
+  Group,
+  RelationTarget,
+} from '../types';
 import { groupAppliesTo } from '../utils/groups';
 import { hapticSuccess } from '../utils/haptics';
 import CustomRowCard, { CustomRowGridCard, RelationThumb } from '../components/CustomRowCard';
@@ -247,6 +255,13 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   // the name is asked next, and the two together make the field. Null
   // while nothing is being added. See addFieldFromForm.
   const [fieldPromptType, setFieldPromptType] = useState<FieldType | null>(null);
+  // What a 'relation' field being added from the form points at, and
+  // whether it holds one or several - asked before the name, kept here
+  // until createField writes the field.
+  const [fieldPromptRelation, setFieldPromptRelation] = useState<{
+    target: RelationTarget;
+    multiple: boolean;
+  } | null>(null);
   // Opening a row now lands on a READ page - a structured reference for
   // this one record - and editing is a deliberate step from there, rather
   // than every tap dropping straight into a form.
@@ -686,9 +701,8 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   // schema to be designed first and filled afterwards.
   //
   // The fields editor stays, and stays the place for what this cannot
-  // ask in two taps: a select's options, which relation a field points
-  // at, which one is the cover. This adds the field and its type; the
-  // rest is a detour only taken when it is wanted.
+  // ask in two taps: a select's options, which one is the cover. This
+  // adds the field, its type, and - for a relation - what it points at.
   async function addFieldFromForm() {
     const type = (await ask({
       title: 'Яке поле додати?',
@@ -697,16 +711,52 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
       ),
     })) as FieldType | null;
     if (!type) return;
+
+    // A relation has to be told what it relates TO. Without this it fell
+    // back to "Фото" - which is why every link made from the form was a
+    // picture, whatever it was meant to be.
+    if (type === 'relation') {
+      const targetId = await ask({
+        title: 'З чим повʼязати?',
+        actions: [
+          { id: 'photos', label: 'Зображення', icon: 'image-outline' },
+          ...otherDatabases.map((odb) => ({
+            id: `db:${odb.id}`,
+            label: odb.name,
+            icon: 'albums-outline' as const,
+          })),
+        ],
+      });
+      if (targetId === 'cancel') return;
+      const target: RelationTarget =
+        targetId === 'photos'
+          ? { kind: 'photos' }
+          : { kind: 'customDb', databaseId: targetId.slice(3) };
+
+      const howMany = await ask({
+        title: 'Скільки можна вибрати?',
+        actions: [
+          { id: 'one', label: 'Один', hint: 'Одне значення на запис', icon: 'radio-button-on-outline' },
+          { id: 'many', label: 'Декілька', hint: 'Список значень', icon: 'layers-outline' },
+        ],
+      });
+      if (howMany === 'cancel') return;
+      setFieldPromptRelation({ target, multiple: howMany === 'many' });
+    }
     setFieldPromptType(type);
   }
 
   async function createField(type: FieldType, name: string) {
     setFieldPromptType(null);
+    setFieldPromptRelation(null);
     if (!database) return;
     const field: FieldDef = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       name: name.trim() || FIELD_TYPE_LABEL[type],
       type,
+      ...(type === 'relation' && fieldPromptRelation
+        ? { relationTarget: fieldPromptRelation.target, multiple: fieldPromptRelation.multiple }
+        : {}),
     };
     // Appended, not inserted: the first field is the record's title
     // everywhere in the app (see rowTitleOf), and a new field must never
@@ -1989,7 +2039,10 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
         title={fieldPromptType ? `Нове поле · ${FIELD_TYPE_LABEL[fieldPromptType]}` : 'Нове поле'}
         initialValue=""
         placeholder="Назва поля"
-        onCancel={() => setFieldPromptType(null)}
+        onCancel={() => {
+          setFieldPromptType(null);
+          setFieldPromptRelation(null);
+        }}
         onSave={(name) => {
           if (fieldPromptType) createField(fieldPromptType, name);
         }}
