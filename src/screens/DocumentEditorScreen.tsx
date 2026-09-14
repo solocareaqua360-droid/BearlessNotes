@@ -70,7 +70,7 @@ import {
 import { ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
-import { Block, BlockType, Group, SketchElement, Tag, TableRow } from '../types';
+import { Block, CanvasLink, BlockType, Group, SketchElement, Tag, TableRow } from '../types';
 import { groupAppliesTo } from '../utils/groups';
 import { RootStackParamList } from '../navigation';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
@@ -2078,6 +2078,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // the typing is what "back" means at that moment.
   const canvasApiRef = useRef<DocumentCanvasHandle | null>(null);
   const [canvasEditing, setCanvasEditing] = useState(false);
+  // The arrows between cards on the canvas - a keyed map, see
+  // DocumentItem.canvasLinks. Saved with the document, like everything
+  // else on this screen.
+  const [canvasLinks, setCanvasLinks] = useState<Record<string, CanvasLink>>({});
   const [tagIds, setTagIds] = useState<string[]>([]);
   // Cover image and "paper color" (below) - see the "..." menu. Both are
   // local-only settings (no cloud backup for the cover, same as any other
@@ -2296,6 +2300,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       setPaperColorEnabled(!!data?.paperColorEnabled);
       setGroupId(data?.groupId ?? null);
       setSourceBoardId(data?.boardId ?? null);
+      setCanvasLinks(data?.canvasLinks ?? {});
       const loadedBlocks: Block[] = data?.blocks ?? [];
       setBlocks(loadedBlocks.length > 0 ? loadedBlocks : [newBlock()]);
       // Seed the "what does this document currently mirror" trackers from
@@ -2676,6 +2681,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // old uri sitting there under merge:true.
           coverImageUri: coverImageUri || deleteField(),
           groupId: groupId ?? deleteField(),
+          canvasLinks,
           ...createdAtField,
           ...extraFields,
         },
@@ -2693,7 +2699,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, blocks, coverImageUri, paperColorEnabled, groupId, isLoaded]);
+  }, [title, blocks, coverImageUri, paperColorEnabled, groupId, canvasLinks, isLoaded]);
 
   // Whoever set focusIdRef wants that block to be the live input next. A
   // block only has a TextInput while it's the active one, so this first
@@ -4390,6 +4396,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         <DocumentCanvas
           ref={canvasApiRef}
           onEditingChange={setCanvasEditing}
+          links={canvasLinks}
+          // The same pair asked for twice is the link being taken away
+          // again - one gesture makes and unmakes, so nothing extra has to
+          // be learnt for the second.
+          onToggleLink={(from, to) => {
+            setCanvasLinks((prev) => {
+              const existing = Object.entries(prev).find(
+                ([, l]) => (l.from === from && l.to === to) || (l.from === to && l.to === from)
+              );
+              const next = { ...prev };
+              if (existing) delete next[existing[0]];
+              else next[`${Date.now()}-${Math.random().toString(36).slice(2)}`] = { from, to };
+              return next;
+            });
+          }}
           // The live records, same as the page: a photo renamed elsewhere
           // is renamed on the canvas too.
           blocks={liveBlocks}

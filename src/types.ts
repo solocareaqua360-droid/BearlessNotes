@@ -391,6 +391,17 @@ export interface DocumentItem {
   // priority over any image block as the document's card thumbnail (see
   // extractPreview's own coverImageUri parameter).
   coverImageUri?: string;
+  // Arrows between blocks on the note's canvas («Полотно»). A keyed map,
+  // never an array: a merge of a map into an array field REPLACES the
+  // array (which is how a board lost four cards), and a map merges one
+  // link at a time. Lives on the document rather than on a block because
+  // a link belongs to two blocks equally and either can be deleted first.
+  canvasLinks?: Record<string, CanvasLink>;
+}
+
+export interface CanvasLink {
+  from: string;
+  to: string;
 }
 
 // A user-created database (CustomDatabaseScreen), Notion-style: the user

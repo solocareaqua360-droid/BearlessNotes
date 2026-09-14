@@ -25,7 +25,8 @@ import { CaretLine, displayIndexForTouch } from '../utils/caretFromTextLayout';
 import { canPlaceCaretByTouch, measureNode } from '../utils/measureNode';
 import { useCanvasWheel } from '../hooks/useCanvasWheel';
 import { setSelection } from '../utils/setSelection';
-import { Block } from '../types';
+import Svg, { Path } from 'react-native-svg';
+import { Block, CanvasLink } from '../types';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 // The canvas is part of the note, and the note is paper - white, with
@@ -40,6 +41,10 @@ const PAPER_EDGE_EDITING = '#8AB4FF';
 const PAPER_TEXT = '#111827';
 const PAPER_TEXT_MUTED = '#6B7280';
 const PAPER_TEXT_FAINT = '#9CA3AF';
+// The board's own violet, for the same thing: an arrow between two
+// cards, and the card an arrow is about to be drawn from.
+const LINK_COLOR = '#8B5CF6';
+const LINK_PADDING = 24;
 
 // «Полотно» - the same document, laid out freely instead of down a page.
 //
@@ -88,6 +93,30 @@ const DRAG_SELECTS = Platform.OS === 'web';
 
 export type CanvasPlacement = { id: string; x: number; y: number };
 
+// The board's arrow maths, carried over rather than shared yet - see the
+// note at the top about extracting the surface. A link leaves the side of
+// a card that faces the other card, at half its measured height, and
+// bends out sideways so it arrives horizontally however far apart the
+// two are vertically.
+function linkEndpoints(
+  from: { x: number; y: number; height: number },
+  to: { x: number; y: number; height: number }
+) {
+  const fromIsLeft = from.x + CARD_WIDTH / 2 <= to.x + CARD_WIDTH / 2;
+  return {
+    x1: fromIsLeft ? from.x + CARD_WIDTH : from.x,
+    y1: from.y + from.height / 2,
+    x2: fromIsLeft ? to.x : to.x + CARD_WIDTH,
+    y2: to.y + to.height / 2,
+  };
+}
+
+function curvePath(x1: number, y1: number, x2: number, y2: number): string {
+  const bend = Math.max(30, Math.abs(x2 - x1) / 2);
+  const direction = x2 >= x1 ? 1 : -1;
+  return `M ${x1} ${y1} C ${x1 + bend * direction} ${y1} ${x2 - bend * direction} ${y2} ${x2} ${y2}`;
+}
+
 // Where every block sits: its own position once it has been moved, and
 // otherwise a place in a plain column, in the document's own order. The
 // fallback is computed, never written - a document nobody has arranged
@@ -135,6 +164,8 @@ function DocumentCanvasInner({
   onChangeText,
   onOpenBlock,
   onEditingChange,
+  links,
+  onToggleLink,
 }: {
   blocks: Block[];
   // Called once, when a card is let go - not on every frame of the drag.
@@ -147,6 +178,9 @@ function DocumentCanvasInner({
   // So the screen can offer its own way out while a card is being typed
   // into - see DocumentCanvasHandle.
   onEditingChange?: (editing: boolean) => void;
+  // The arrows, and the one gesture that makes and unmakes them.
+  links: Record<string, CanvasLink>;
+  onToggleLink: (from: string, to: string) => void;
 }, ref: React.Ref<DocumentCanvasHandle>) {
   const { width } = useWindowDimensions();
   // The trackpad, on a laptop: two fingers move the canvas, a pinch zooms
@@ -167,6 +201,10 @@ function DocumentCanvasInner({
   const placements = useMemo(() => layOutBlocks(blocks, cardHeights), [blocks, cardHeights]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // The card a hold has made the start of an arrow. The next tap on
+  // another card finishes it; a tap beside the cards, or on the same
+  // card, lets it go.
+  const [linkSourceId, setLinkSourceId] = useState<string | null>(null);
   // Written by whichever selected card is under the finger, read by every
   // other selected card - which is what makes a whole selection visibly
   // move together. The board does it the same way.
@@ -188,7 +226,13 @@ function DocumentCanvasInner({
   function stopEditing() {
     setEditingId(null);
     setEditingCaret(null);
+    setLinkSourceId(null);
     Keyboard.dismiss();
+  }
+
+  function handleLinkTap(id: string) {
+    if (linkSourceId !== null && linkSourceId !== id) onToggleLink(linkSourceId, id);
+    setLinkSourceId(null);
   }
 
   useImperativeHandle(ref, () => ({ stopEditing }));
@@ -387,7 +431,7 @@ function DocumentCanvasInner({
                 move the caret ended the editing instead, and the caret
                 never left the start. Behind the cards, a tap on a card
                 simply never reaches it. */}
-            {editingId !== null && (
+            {(editingId !== null || linkSourceId !== null) && (
               // A tap beside the cards puts the text down. In a browser
               // this has to be a view BEHIND the cards rather than a
               // gesture over the surface, because a gesture up there also
@@ -396,6 +440,39 @@ function DocumentCanvasInner({
               // one that already exists.
               <Pressable style={styles.stopEditingCatcher} onPress={stopEditing} />
             )}
+            {/* Behind the cards. Drawn from the positions the cards were
+                let go at, so an arrow catches up with a card when the
+                drag ends rather than following the finger - the board
+                trails a live line for that, and this will too once the
+                surface is shared; for now the arrow is right whenever
+                nothing is moving. */}
+            {Object.entries(links).map(([id, link]) => {
+              const fromIndex = blocks.findIndex((b) => b.id === link.from);
+              const toIndex = blocks.findIndex((b) => b.id === link.to);
+              // Either end deleted on the page: the arrow simply is not
+              // drawn. Nothing to clean up - it is pruned with the block.
+              if (fromIndex === -1 || toIndex === -1) return null;
+              const from = placements[fromIndex];
+              const to = placements[toIndex];
+              const { x1, y1, x2, y2 } = linkEndpoints(
+                { ...from, height: cardHeights[link.from] ?? approximateHeight(blocks[fromIndex]) },
+                { ...to, height: cardHeights[link.to] ?? approximateHeight(blocks[toIndex]) }
+              );
+              const left = Math.min(x1, x2) - LINK_PADDING;
+              const top = Math.min(y1, y2) - LINK_PADDING;
+              const w = Math.abs(x2 - x1) + LINK_PADDING * 2;
+              const h = Math.abs(y2 - y1) + LINK_PADDING * 2;
+              return (
+                <Svg key={id} style={[styles.link, { left, top }]} width={w} height={h} pointerEvents="none">
+                  <Path
+                    d={curvePath(x1 - left, y1 - top, x2 - left, y2 - top)}
+                    stroke={LINK_COLOR}
+                    strokeWidth={2}
+                    fill="none"
+                  />
+                </Svg>
+              );
+            })}
             <Animated.View style={[styles.marquee, marqueeStyle]} pointerEvents="none" />
             {blocks.map((block, index) => (
               <CanvasCard
@@ -409,6 +486,10 @@ function DocumentCanvasInner({
                 editing={editingId === block.id}
                 caretIndex={editingId === block.id ? editingCaret : null}
                 onDone={stopEditing}
+                linkSource={linkSourceId === block.id}
+                linking={linkSourceId !== null}
+                onHold={setLinkSourceId}
+                onLinkTap={handleLinkTap}
                 selected={selectedIds.has(block.id)}
                 groupOffsetX={groupOffsetX}
                 groupOffsetY={groupOffsetY}
@@ -454,6 +535,10 @@ function CanvasCard({
   canvasMarqueeGesture,
   canvasTapGesture,
   editing,
+  linkSource,
+  linking,
+  onHold,
+  onLinkTap,
   selected,
   groupOffsetX,
   groupOffsetY,
@@ -473,6 +558,13 @@ function CanvasCard({
   canvasMarqueeGesture: ReturnType<typeof Gesture.Pan>;
   canvasTapGesture: ReturnType<typeof Gesture.Tap>;
   editing: boolean;
+  // This card is where an arrow is about to start from.
+  linkSource: boolean;
+  // SOME card is: a tap on this one then finishes the arrow instead of
+  // doing what a tap normally does.
+  linking: boolean;
+  onHold: (id: string) => void;
+  onLinkTap: (id: string) => void;
   selected: boolean;
   groupOffsetX: ReturnType<typeof useSharedValue<number>>;
   groupOffsetY: ReturnType<typeof useSharedValue<number>>;
@@ -511,6 +603,10 @@ function CanvasCard({
     // A picture or a file has controls of its own, and they are on the
     // page - so that is where a tap on one goes. Text is typed where it
     // stands.
+    if (linking) {
+      onLinkTap(block.id);
+      return;
+    }
     if (!isText) {
       onOpen(block.id);
       return;
@@ -588,7 +684,18 @@ function CanvasCard({
       runOnJS(handleTap)(posX.value, posY.value, e.absoluteX, e.absoluteY);
     });
 
-  const gesture = Gesture.Race(dragGesture, tapGesture);
+  // A hold starts an arrow. The one gesture the card had left, and the
+  // same on both devices; it does not touch the drag, the tap, the box
+  // or the typing, which took long enough to untangle.
+  const holdGesture = Gesture.LongPress()
+    .enabled(!editing)
+    .minDuration(450)
+    .blocksExternalGesture(canvasPanGesture, canvasMarqueeGesture, canvasTapGesture)
+    .onStart(() => {
+      runOnJS(onHold)(block.id);
+    });
+
+  const gesture = Gesture.Race(dragGesture, tapGesture, holdGesture);
 
   const cardStyle = useAnimatedStyle(() => ({
     transform: [
@@ -600,7 +707,13 @@ function CanvasCard({
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View
-        style={[styles.card, selected && styles.cardSelected, editing && styles.cardEditing, cardStyle]}
+        style={[
+          styles.card,
+          selected && styles.cardSelected,
+          editing && styles.cardEditing,
+          linkSource && styles.cardLinkSource,
+          cardStyle,
+        ]}
         onLayout={(e) => onHeight(block.id, e.nativeEvent.layout.height)}
       >
         {editing ? (
@@ -769,6 +882,15 @@ const styles = StyleSheet.create({
     borderColor: PAPER_EDGE_EDITING,
     backgroundColor: 'rgba(138,180,255,0.12)',
     borderRadius: 4,
+  },
+  link: {
+    position: 'absolute',
+  },
+  // The card an arrow is about to be drawn from: the arrow's own colour
+  // on its edge, so it is plain which end has been chosen.
+  cardLinkSource: {
+    borderColor: LINK_COLOR,
+    borderWidth: 2,
   },
   cardSelected: {
     borderColor: PAPER_EDGE_EDITING,
