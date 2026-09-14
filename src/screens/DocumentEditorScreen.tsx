@@ -2880,7 +2880,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // old uri sitting there under merge:true.
           coverImageUri: coverImageUri || deleteField(),
           groupId: groupId ?? deleteField(),
-          canvasLinks,
+          // A map written under merge:true MERGES its keys - a link
+          // removed here simply stayed on the server, and the other
+          // device kept drawing it. Every key the server holds that this
+          // copy no longer has is written as a deletion.
+          canvasLinks: {
+            ...canvasLinks,
+            ...Object.fromEntries(
+              Object.keys(serverRef.current?.canvasLinks ?? {})
+                .filter((id) => !(id in canvasLinks))
+                .map((id) => [id, deleteField()])
+            ),
+          },
           ...createdAtField,
           ...extraFields,
         },

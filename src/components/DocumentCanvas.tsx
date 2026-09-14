@@ -949,6 +949,13 @@ function CanvasCard({
   // was showing a moment ago was still there, hidden. Same helper the
   // page's own blocks use; on a phone it does nothing.
   const inputRef = useRef<TextInput | null>(null);
+  // Whether the tapped-character caret has been applied to the current
+  // editing session; cleared whenever editing ends so the next tap
+  // places it again.
+  const caretPlacedRef = useRef(false);
+  useEffect(() => {
+    if (!editing) caretPlacedRef.current = false;
+  }, [editing]);
   // The card's own text as the browser drew it - what gets asked which
   // character a click hit.
   const textNodeRef = useRef<Text>(null);
@@ -1126,7 +1133,13 @@ function CanvasCard({
               // On mount too: the field is created already holding the
               // whole block's text.
               autoGrowInput(node);
-              if (node && caretIndex !== null) {
+              // The caret goes to the tapped character ONCE, when the
+              // field appears. This callback runs on every render - on
+              // every letter typed - and placing the caret here each
+              // time sent it back to the tap point after each keystroke,
+              // so the text "started strictly where I first tapped".
+              if (node && caretIndex !== null && !caretPlacedRef.current) {
+                caretPlacedRef.current = true;
                 // Twice: now, and again once the browser has given the
                 // field focus - a selection set before the focus lands is
                 // thrown away by the focus itself.
