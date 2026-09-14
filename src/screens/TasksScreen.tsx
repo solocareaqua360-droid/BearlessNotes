@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import {
   ActivityIndicator,
   Keyboard,
@@ -1172,14 +1173,12 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   modalBackdrop: {
-    flex: 1,
     backgroundColor: 'rgba(17,24,39,0.45)',
-    justifyContent: 'flex-end',
+    ...SHEET_BACKDROP,
   },
   modalSheet: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 28,

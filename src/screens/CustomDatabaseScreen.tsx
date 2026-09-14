@@ -45,6 +45,8 @@ import {
   GLASS_TEXT,
   GLASS_TEXT_FAINT,
   GLASS_TEXT_MUTED,
+  SHEET_BACKDROP,
+  SHEET_WINDOW,
 } from '../constants/glass';
 import { db } from '../firebase';
 import { deleteCustomDatabase } from '../utils/deleteCustomDatabase';
@@ -3477,14 +3479,12 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
   },
   backdrop: {
-    flex: 1,
     backgroundColor: 'rgba(17,24,39,0.45)',
-    justifyContent: 'flex-end',
+    ...SHEET_BACKDROP,
   },
   sheet: {
     backgroundColor: GLASS_BODY,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 28,
@@ -3492,8 +3492,7 @@ const styles = StyleSheet.create({
   },
   editorSheet: {
     backgroundColor: GLASS_BODY,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 28,
@@ -3689,14 +3688,12 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   cardMenuBackdrop: {
-    flex: 1,
     backgroundColor: 'rgba(17,24,39,0.45)',
-    justifyContent: 'flex-end',
+    ...SHEET_BACKDROP,
   },
   cardMenuSheet: {
     backgroundColor: GLASS_BODY,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 28,

@@ -24,6 +24,8 @@ import {
   GLASS_TEXT,
   GLASS_TEXT_FAINT,
   GLASS_TEXT_MUTED,
+  SHEET_FRAME,
+  SHEET_WINDOW,
 } from '../constants/glass';
 
 // A free picture library beside the gallery button, the way Notion reaches
@@ -117,6 +119,7 @@ export default function StockPhotoPicker({
 
   return (
     <GlassLayer visible={visible} onClose={onClose} intensity={60}>
+      <View style={styles.frame} pointerEvents="box-none">
       <View style={styles.sheet}>
         <View style={styles.header}>
           <Text style={styles.title}>Пошук зображень</Text>
@@ -204,20 +207,17 @@ export default function StockPhotoPicker({
           />
         )}
       </View>
-
+      </View>
     </GlassLayer>
   );
 }
 
 const styles = StyleSheet.create({
+  frame: SHEET_FRAME,
   sheet: {
+    ...SHEET_WINDOW,
     height: '82%',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
     backgroundColor: GLASS_BODY_BLURRED,
-    borderWidth: 1,
-    borderColor: GLASS_EDGE,
-    borderBottomWidth: 0,
     paddingTop: 16,
     paddingHorizontal: 16,
     overflow: 'hidden',

@@ -28,6 +28,8 @@ import {
   GLASS_TEXT,
   GLASS_TEXT_FAINT,
   GLASS_TEXT_MUTED,
+  SHEET_BACKDROP,
+  SHEET_WINDOW,
 } from '../constants/glass';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -590,14 +592,12 @@ export default function FieldsEditorSheet({
 
 const styles = StyleSheet.create({
   backdrop: {
-    flex: 1,
-        justifyContent: 'flex-end',
+        ...SHEET_BACKDROP,
   },
   sheet: {
     backgroundColor: GLASS_BODY_BLURRED,
     overflow: 'hidden',
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
+    ...SHEET_WINDOW,
     borderTopWidth: 1,
     borderLeftWidth: 1,
     borderRightWidth: 1,

@@ -72,7 +72,9 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    justifyContent: 'flex-end',
+    // The window sits in the middle of the screen (see SHEET_BACKDROP in
+    // constants/glass) - the layer centres what it is given.
+    justifyContent: 'center',
     zIndex: 50,
   },
   dim: {

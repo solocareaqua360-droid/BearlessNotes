@@ -84,7 +84,7 @@ import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { useContextMenu } from '../hooks/useContextMenu';
 import Menu from '../components/surfaces/Menu';
 import { FONT_BOLD, FONT_EXTRABOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { GLASS_ISLAND } from '../constants/glass';
+import { GLASS_ISLAND, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { GlassPortal } from '../components/GlassPortal';
@@ -3152,14 +3152,12 @@ const styles = StyleSheet.create({
   // for the one confirmation that sits over the canvas itself rather than
   // this app's usual native Alert.
   sheetBackdrop: {
-    flex: 1,
     backgroundColor: 'rgba(17,24,39,0.45)',
-    justifyContent: 'flex-end',
+    ...SHEET_BACKDROP,
   },
   sheet: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 28,

@@ -1,7 +1,6 @@
-import { useContext, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import GlassLayer from '../GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../../utils/fonts';
 import {
@@ -12,6 +11,8 @@ import {
   GLASS_LINE,
   GLASS_TEXT,
   GLASS_TEXT_MUTED,
+  SHEET_FRAME,
+  SHEET_WINDOW,
 } from '../../constants/glass';
 import { hapticButtonDown } from '../../utils/haptics';
 
@@ -91,13 +92,6 @@ export function notify(title: string, message?: string): Promise<string> {
 // anywhere in the app, which is the whole point: a question should not
 // need a piece of state on the screen that happens to be asking.
 export function AskHost() {
-  // The CONTEXT, not the hook. This is mounted at the very root, above
-  // the navigator that supplies the insets to every screen, and the
-  // hook THROWS when nothing above it provides them - which took the
-  // whole app down on its first frame. The context is null instead,
-  // and a question can perfectly well sit a fixed distance from the
-  // bottom edge.
-  const insets = useContext(SafeAreaInsetsContext);
   const [current, setCurrent] = useState<Pending | null>(null);
 
   useEffect(() => {
@@ -129,7 +123,8 @@ export function AskHost() {
     // is why every sheet here stopped being one. The dim, the tap that
     // closes and the hardware back button all come with the layer.
     <GlassLayer visible onClose={() => answer('cancel')} intensity={60}>
-      <View style={[styles.card, { marginBottom: (insets?.bottom ?? 0) + 16 }]}>
+      <View style={styles.frame} pointerEvents="box-none">
+      <View style={styles.card}>
         <Text style={styles.title}>{current.title}</Text>
         {!!current.message && <Text style={styles.message}>{current.message}</Text>}
 
@@ -187,16 +182,15 @@ export function AskHost() {
           </Pressable>
         )}
       </View>
+      </View>
     </GlassLayer>
   );
 }
 
 const styles = StyleSheet.create({
-  // Sitting at the bottom, within reach of a thumb, rather than floating
-  // in the middle of a six-inch screen where nothing can be reached.
+  frame: SHEET_FRAME,
   card: {
-    marginHorizontal: 16,
-    borderRadius: 28,
+    ...SHEET_WINDOW,
     // Lighter than an unblurred sheet: at the opaque strength the blur
     // underneath stops showing through at all.
     backgroundColor: GLASS_BODY_BLURRED,

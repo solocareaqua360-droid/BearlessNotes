@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc } from '../firestore';
-import { GLASS_BODY, GLASS_CARD, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
+import { GLASS_BODY, GLASS_CARD, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import { db } from '../firebase';
 import { CustomDatabase, CustomDatabaseRow, Group } from '../types';
 import { RootStackParamList } from '../navigation';
@@ -430,14 +430,12 @@ const styles = StyleSheet.create({
     fontFamily: FONT_SEMIBOLD,
   },
   backdrop: {
-    flex: 1,
     backgroundColor: 'rgba(17,24,39,0.45)',
-    justifyContent: 'flex-end',
+    ...SHEET_BACKDROP,
   },
   sheet: {
     backgroundColor: GLASS_BODY,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 28,

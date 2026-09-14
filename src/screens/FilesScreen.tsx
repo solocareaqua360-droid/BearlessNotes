@@ -52,7 +52,7 @@ import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import FilePreviewWorker from '../components/FilePreviewWorker';
-import { GLASS_ISLAND, GLASS_TEXT } from '../constants/glass';
+import { GLASS_ISLAND, GLASS_TEXT, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 
@@ -791,14 +791,12 @@ const styles = StyleSheet.create({
     paddingBottom: 90,
   },
   cardMenuBackdrop: {
-    flex: 1,
     backgroundColor: 'rgba(17,24,39,0.45)',
-    justifyContent: 'flex-end',
+    ...SHEET_BACKDROP,
   },
   cardMenuSheet: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 28,

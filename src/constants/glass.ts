@@ -33,3 +33,31 @@ export const GLASS_DANGER = '#FB7185';
 // The dim behind a sheet. Lighter than it was for white sheets: the sheet
 // itself is dark now, and two dark layers buried the screen under them.
 export const GLASS_BACKDROP = 'rgba(17,24,39,0.45)';
+
+// «Аркуш» sits in the middle of the screen now, not on its bottom edge.
+// The user's own description of the shape: the screen shrunk towards its
+// centre - rounded on all four corners, the same margin all round, the
+// dim showing on every side. A sheet pinned to the bottom read as part of
+// the screen; this reads as a window over it. Two halves, because a
+// sheet's dimmed backdrop and the sheet itself are always separate views:
+// SHEET_BACKDROP centres, SHEET_WINDOW shapes. The maxWidth is for the
+// browser, where "the whole width minus 16" is a metre of form.
+export const SHEET_BACKDROP = {
+  flex: 1,
+  justifyContent: 'center',
+  alignItems: 'center',
+  paddingHorizontal: 16,
+} as const;
+export const SHEET_WINDOW = {
+  width: '100%',
+  maxWidth: 560,
+  borderRadius: 28,
+  borderWidth: 1,
+  borderColor: GLASS_EDGE,
+} as const;
+// For a window that is a direct child of GlassLayer (no backdrop view of
+// its own): the layer centres it, this gives it the same side margin.
+export const SHEET_FRAME = {
+  alignItems: 'center',
+  paddingHorizontal: 16,
+} as const;

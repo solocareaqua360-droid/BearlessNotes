@@ -1,6 +1,5 @@
-import { useContext, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import {
@@ -11,6 +10,8 @@ import {
   GLASS_TEXT,
   GLASS_TEXT_FAINT,
   GLASS_TEXT_MUTED,
+  SHEET_FRAME,
+  SHEET_WINDOW,
 } from '../constants/glass';
 
 type Props = {
@@ -47,7 +48,6 @@ type Props = {
 // Modal closes. Close the Modal first.
 export default function RenamePrompt({ visible, title, initialValue, placeholder, busy, onCancel, onSave }: Props) {
   const [value, setValue] = useState(initialValue);
-  const insets = useContext(SafeAreaInsetsContext);
 
   // Lifted clear of the keyboard by hand, the way TagPicker,
   // GroupPickerSheet and FieldsEditorSheet all already do it.
@@ -77,9 +77,11 @@ export default function RenamePrompt({ visible, title, initialValue, placeholder
 
   return (
     <GlassLayer visible={visible} onClose={onCancel} intensity={60}>
-      {/* Bottom of the screen rather than the middle: the keyboard takes
-          the lower half, and the card sits on top of it. */}
-      <View style={[styles.card, { marginBottom: (insets?.bottom ?? 0) + 16 + keyboardHeight }]}>
+      {/* Centred in what the keyboard leaves: the bottom margin is the
+          keyboard's height, so the card sits in the middle of the free
+          part of the screen rather than under the keys. */}
+      <View style={styles.frame} pointerEvents="box-none">
+      <View style={[styles.card, { marginBottom: keyboardHeight }]}>
         <Text style={styles.title}>{title}</Text>
         <TextInput
           autoFocus
@@ -118,14 +120,15 @@ export default function RenamePrompt({ visible, title, initialValue, placeholder
           </View>
         )}
       </View>
+      </View>
     </GlassLayer>
   );
 }
 
 const styles = StyleSheet.create({
+  frame: SHEET_FRAME,
   card: {
-    marginHorizontal: 16,
-    borderRadius: 28,
+    ...SHEET_WINDOW,
     // Lighter than an unblurred sheet: at the opaque strength the blur
     // underneath stops showing through at all.
     backgroundColor: GLASS_BODY_BLURRED,

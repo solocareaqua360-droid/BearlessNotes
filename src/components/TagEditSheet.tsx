@@ -15,6 +15,8 @@ import {
   GLASS_TEXT,
   GLASS_TEXT_FAINT,
   GLASS_TEXT_MUTED,
+  SHEET_BACKDROP,
+  SHEET_WINDOW,
 } from '../constants/glass';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -138,13 +140,11 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
 
 const styles = StyleSheet.create({
   backdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
+    ...SHEET_BACKDROP,
   },
   sheet: {
     backgroundColor: GLASS_BODY_BLURRED,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 28,

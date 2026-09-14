@@ -48,7 +48,7 @@ import { linkDocId } from '../utils/linkId';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { GLASS_TEXT } from '../constants/glass';
+import { GLASS_TEXT, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 
 const ACCENT = '#14B8A6';
 // The same half-strength tint the documents screen's add button takes -
@@ -779,14 +779,12 @@ const styles = StyleSheet.create({
     paddingBottom: 90,
   },
   cardMenuBackdrop: {
-    flex: 1,
     backgroundColor: 'rgba(17,24,39,0.45)',
-    justifyContent: 'flex-end',
+    ...SHEET_BACKDROP,
   },
   cardMenuSheet: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 28,
