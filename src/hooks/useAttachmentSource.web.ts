@@ -45,7 +45,13 @@ async function fetchFromDrive(driveFileId: string): Promise<string | null> {
 
 export function useAttachmentSource(
   uri: string | undefined,
-  driveFileId: string | undefined
+  driveFileId: string | undefined,
+  // Accepted and ignored. On the phone this says whether showing the file
+  // counts as someone looking at it, which is what the stale-copy sweep
+  // reads (see attachmentCache). There is no local copy to sweep here, so
+  // there is nothing for it to mean - but the callers are shared, so the
+  // parameter has to exist.
+  _countsAsUse = true
 ): { status: CacheStatus; source: string | undefined } {
   const [state, setState] = useState<{ status: CacheStatus; source?: string }>({
     status: 'checking',

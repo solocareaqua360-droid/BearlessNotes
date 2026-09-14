@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tag } from '../types';
 import { RowDisplay } from '../utils/customRowDisplay';
 import { colorForDocument } from '../utils/documentColor';
-import { useCachedAttachment } from '../hooks/useCachedAttachment';
+import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { FIELD_TYPE_ICON } from './FieldsEditorSheet';
 import TagChips from './TagChips';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -28,7 +28,11 @@ export function RelationThumb({
   radius?: number;
   fill?: boolean;
 }) {
-  const status = useCachedAttachment(uri, driveFileId, false);
+  // Through useAttachmentSource, because a cover needs an ADDRESS and not
+  // just a verdict - the stored path is a file on the phone, which a
+  // browser may not open, so the web half fetches the Drive copy instead.
+  // Same reasoning as the editor's image blocks.
+  const { status, source } = useAttachmentSource(uri, driveFileId, false);
   return (
     <View
       style={[
@@ -37,7 +41,7 @@ export function RelationThumb({
       ]}
     >
       {status === 'ready' ? (
-        <Image source={{ uri }} style={styles.thumbImage} resizeMode="cover" />
+        <Image source={{ uri: source ?? uri }} style={styles.thumbImage} resizeMode="cover" />
       ) : (
         <View style={[styles.thumbImage, styles.thumbStatus]}>
           {status === 'missing' ? (
