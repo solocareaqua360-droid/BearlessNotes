@@ -43,3 +43,29 @@ export function measureNode(node: Measurable | null): Promise<NodeBox | null> {
 // text field: clicking it puts the caret where it was clicked, natively,
 // which is exactly what this reimplements.
 export const canPlaceCaretByTouch = true;
+
+// The same node, in WINDOW coordinates - the space a gesture-handler
+// event's absoluteX/absoluteY are in.
+//
+// `measure` answers relative to the app's root view, which on Android
+// starts below the status bar; a gesture's absolute position counts from
+// the top of the window, status bar included. Subtracting one from the
+// other therefore put every tap on the canvas a status bar's height too
+// low - the caret landed on the right character of the WRONG line, which
+// read as "the caret obeys a tap at the start of a line and not at the
+// end". Where the touch came from a gesture, measure in the window.
+type MeasurableInWindow = { measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void };
+
+export function measureNodeInWindow(node: MeasurableInWindow | null): Promise<NodeBox | null> {
+  return new Promise((resolve) => {
+    if (!node || typeof node.measureInWindow !== 'function') {
+      resolve(null);
+      return;
+    }
+    try {
+      node.measureInWindow((x, y, width, height) => resolve({ x, y, width, height }));
+    } catch {
+      resolve(null);
+    }
+  });
+}

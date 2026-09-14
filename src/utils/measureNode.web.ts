@@ -18,3 +18,10 @@ export function measureNode(node: unknown): Promise<NodeBox | null> {
 // No. The browser places the caret itself when the field is clicked, and
 // the line data this would need (onTextLayout) is not reported here.
 export const canPlaceCaretByTouch = false;
+
+// See measureNode.ts. A browser answers the caret question another way
+// (caretAtPoint.web), so this is never reached there; it exists so the
+// import resolves.
+export function measureNodeInWindow(_node: unknown): Promise<NodeBox | null> {
+  return Promise.resolve(null);
+}

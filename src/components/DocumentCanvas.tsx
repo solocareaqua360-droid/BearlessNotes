@@ -24,10 +24,9 @@ import AttachmentImage from './AttachmentImage';
 import { autoGrowInput } from '../utils/autoGrowInput';
 import { caretIndexFromDom } from '../utils/caretAtPoint';
 import { CaretLine, displayIndexForTouch } from '../utils/caretFromTextLayout';
-import { canPlaceCaretByTouch, measureNode } from '../utils/measureNode';
+import { canPlaceCaretByTouch, measureNodeInWindow } from '../utils/measureNode';
 import { useCanvasWheel } from '../hooks/useCanvasWheel';
 import { setSelection } from '../utils/setSelection';
-import { notify } from './surfaces/Ask';
 import Svg, { Path } from 'react-native-svg';
 import { Block, CanvasLink } from '../types';
 import { orderByCanvasLinks, sequenceLinkIds } from '../utils/canvasOrder';
@@ -76,6 +75,17 @@ const LINK_DOT = 22;
 // pan counts), so the two feel like one gesture language.
 const MIN_SCALE = 0.4;
 const MAX_SCALE = 3;
+// How far the surface extends past the viewport on every side. The
+// surface used to be the size of the viewport, scaled about its centre -
+// so zoomed out to half, its "body" was the middle quarter of the screen,
+// and Android does not deliver a touch to a child lying outside its
+// parent's body (see the overlay touch-bounds note in the project
+// memory). A card brought to the top-left corner for typing sat outside
+// that quarter, and the field in it could not be tapped at all; a card
+// anywhere near the edge was a lottery. The board has the same world for
+// the same reason. Every surface coordinate is offset by this when it is
+// turned into a style, and by nothing anywhere else.
+const WORLD_HALF = 3000;
 const CARD_WIDTH = 240;
 const LANE_GAP = 20;
 // Where a card being typed into is put: near the top, clear of the
@@ -548,8 +558,8 @@ function DocumentCanvasInner({
 
   const marqueeStyle = useAnimatedStyle(() => ({
     opacity: marqueeVisible.value ? 1 : 0,
-    left: Math.min(marqueeStartX.value, marqueeEndX.value),
-    top: Math.min(marqueeStartY.value, marqueeEndY.value),
+    left: WORLD_HALF + Math.min(marqueeStartX.value, marqueeEndX.value),
+    top: WORLD_HALF + Math.min(marqueeStartY.value, marqueeEndY.value),
     width: Math.abs(marqueeEndX.value - marqueeStartX.value),
     height: Math.abs(marqueeEndY.value - marqueeStartY.value),
   }));
@@ -663,7 +673,7 @@ function DocumentCanvasInner({
               const h = Math.abs(y2 - y1) + LINK_PADDING * 2;
               return (
                 <View key={id} style={StyleSheet.absoluteFill} pointerEvents="box-none">
-                  <Svg style={[styles.link, { left, top }]} width={w} height={h} pointerEvents="none">
+                  <Svg style={[styles.link, { left: WORLD_HALF + left, top: WORLD_HALF + top }]} width={w} height={h} pointerEvents="none">
                     <Path
                       d={curvePath(x1 - left, y1 - top, x2 - left, y2 - top)}
                       stroke={colour}
@@ -683,7 +693,10 @@ function DocumentCanvasInner({
                       hitSlop={10}
                       style={[
                         styles.linkCross,
-                        { left: (x1 + x2) / 2 - LINK_DOT / 2, top: (y1 + y2) / 2 - LINK_DOT / 2 },
+                        {
+                          left: WORLD_HALF + (x1 + x2) / 2 - LINK_DOT / 2,
+                          top: WORLD_HALF + (y1 + y2) / 2 - LINK_DOT / 2,
+                        },
                       ]}
                       onPress={() => {
                         setArmedLinkId(null);
@@ -816,8 +829,8 @@ function LiveLine({ from, to, colour }: { from: LiveEnd; to: LiveEnd; colour: st
     return {
       width: length,
       transform: [
-        { translateX: (x1 + x2) / 2 - length / 2 },
-        { translateY: (y1 + y2) / 2 - 1 },
+        { translateX: WORLD_HALF + (x1 + x2) / 2 - length / 2 },
+        { translateY: WORLD_HALF + (y1 + y2) / 2 - 1 },
         { rotateZ: `${Math.atan2(dy, dx)}rad` },
       ],
     };
@@ -848,8 +861,8 @@ function DraftLine({
       opacity: visible.value ? 1 : 0,
       width: length,
       transform: [
-        { translateX: (startX.value + endX.value) / 2 - length / 2 },
-        { translateY: (startY.value + endY.value) / 2 - 1 },
+        { translateX: WORLD_HALF + (startX.value + endX.value) / 2 - length / 2 },
+        { translateY: WORLD_HALF + (startY.value + endY.value) / 2 - 1 },
         { rotateZ: `${Math.atan2(dy, dx)}rad` },
       ],
     };
@@ -995,7 +1008,10 @@ function CanvasCard({
     // the touch fell on, then the character along it. Without it the
     // field opened with the caret at the end of the text, wherever the
     // finger had actually been.
-    const box = canPlaceCaretByTouch ? await measureNode(textNodeRef.current) : null;
+    // In WINDOW space, because that is where the gesture's absoluteX/Y
+    // are - see measureNodeInWindow for the status-bar's height of
+    // difference this makes on Android.
+    const box = canPlaceCaretByTouch ? await measureNodeInWindow(textNodeRef.current) : null;
     if (!box) {
       onEdit(block.id, x, y, null);
       return;
@@ -1006,17 +1022,6 @@ function CanvasCard({
     // at the start of a line and barely moved for one at its end.
     const zoom = canvasScale.value || 1;
     const index = displayIndexForTouch(linesRef.current, block.text ?? '', (pageX - box.x) / zoom, (pageY - box.y) / zoom);
-    // TEMPORARY diagnostic (2026-09-15): the caret obeys a tap at the
-    // start of a line on Android and barely moves for one at the end, and
-    // nothing here can be watched from the outside - so the numbers are
-    // shown on the phone itself. Remove once the cause is known.
-    if (Platform.OS !== 'web') {
-      const lines = linesRef.current.map((l) => `${Math.round(l.x)}+${Math.round(l.width)}×${Math.round(l.height)}"${l.text.slice(0, 6)}"`).join('\n');
-      notify(
-        'Діагностика дотику',
-        `tap ${Math.round(pageX)},${Math.round(pageY)}  box ${Math.round(box.x)},${Math.round(box.y)} ${Math.round(box.width)}×${Math.round(box.height)}  zoom ${zoom.toFixed(2)}\nlocal ${Math.round((pageX - box.x) / zoom)},${Math.round((pageY - box.y) / zoom)} → index ${index} / ${(block.text ?? '').length}\n${lines}`
-      );
-    }
     onEdit(block.id, x, y, index);
   }
 
@@ -1107,8 +1112,8 @@ function CanvasCard({
 
   const cardStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateX: posX.value + (selected ? groupOffsetX.value : 0) },
-      { translateY: posY.value + (selected ? groupOffsetY.value : 0) },
+      { translateX: WORLD_HALF + posX.value + (selected ? groupOffsetX.value : 0) },
+      { translateY: WORLD_HALF + posY.value + (selected ? groupOffsetY.value : 0) },
     ],
   }));
 
@@ -1288,17 +1293,17 @@ const styles = StyleSheet.create({
   // The surface itself has no size: the cards are absolutely positioned on
   // it and it is the transform that moves them all together.
   surface: {
-    flex: 1,
+    position: 'absolute',
+    left: -WORLD_HALF,
+    top: -WORLD_HALF,
+    right: -WORLD_HALF,
+    bottom: -WORLD_HALF,
   },
   // Big enough to catch a tap anywhere around the cards, in surface
   // coordinates - the canvas can be panned and zoomed far from its
   // origin, and this has to still be under wherever it ends up.
   stopEditingCatcher: {
-    position: 'absolute',
-    left: -4000,
-    top: -4000,
-    right: -4000,
-    bottom: -4000,
+    ...StyleSheet.absoluteFillObject,
   },
   // Opaque, and with a hairline edge: on white paper an edge is the only
   // thing that says where one card ends and the next begins.
