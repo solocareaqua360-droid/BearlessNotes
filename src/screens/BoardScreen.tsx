@@ -961,6 +961,12 @@ export default function BoardScreen() {
   // change re-renders: a column whose single card grew has nothing to
   // reposition, but its OWN height still has to catch up.
   const [cardHeights, setCardHeights] = useState<Map<string, number>>(new Map());
+  // The same heights, reachable from a callback that must not be rebuilt
+  // every time one of them is measured - the listener depends on it, and
+  // resubscribing on every measurement would be a lot of churn for
+  // nothing.
+  const cardHeightsRef = useRef(cardHeights);
+  cardHeightsRef.current = cardHeights;
   const [renamingColumn, setRenamingColumn] = useState<BoardColumn | null>(null);
   const [draggingColumnId, setDraggingColumnId] = useState<string | null>(null);
   // Both steps of adding a link live in ONE piece of state so they can
@@ -1765,14 +1771,27 @@ export default function BoardScreen() {
   // Same rule as the document's own listener: take what arrives, but only
   // while nothing local is in flight - no pending save, no card or column
   // under the finger - and never when it matches what's already here.
-  const applyRemote = useCallback((incomingCards: BoardCard[], incomingColumns: BoardColumn[]) => {
-    // What arrived is now what the document holds, so the next difference
-    // is measured against it - otherwise the very next save would write
-    // the other device's own changes back at it as if they were ours.
-    savedRef.current = { ...savedRef.current, cards: incomingCards, columns: incomingColumns };
-    setCards((current) => (contentEqual(current, incomingCards) ? current : incomingCards));
-    setColumns((current) => (contentEqual(current, incomingColumns) ? current : incomingColumns));
-  }, []);
+  const applyRemote = useCallback(
+    (incomingCards: BoardCard[], incomingColumns: BoardColumn[]) => {
+      // What arrived is now what the document holds, so the next
+      // difference is measured against it - otherwise the very next save
+      // would write the other device's own changes back at it as if they
+      // were ours. Kept exactly as it arrived, unstacked.
+      savedRef.current = { ...savedRef.current, cards: incomingCards, columns: incomingColumns };
+      // Then stacked for THIS screen before it is shown. The positions in
+      // the document are deliberately not kept up to date for cards in a
+      // column - the index is what travels, because the drawn position
+      // depends on heights this device measured for itself. So a change
+      // from elsewhere has to be laid out again on arrival, or the cards
+      // stay wherever the numbers last happened to say: a column with a
+      // hole in it where a card used to be, and the ones below it hanging
+      // past its bottom edge.
+      const stacked = reflowColumns(incomingCards, incomingColumns, cardHeightsRef.current);
+      setCards((current) => (contentEqual(current, stacked) ? current : stacked));
+      setColumns((current) => (contentEqual(current, incomingColumns) ? current : incomingColumns));
+    },
+    []
+  );
 
   useEffect(() => {
     if (!isLoaded) return;
