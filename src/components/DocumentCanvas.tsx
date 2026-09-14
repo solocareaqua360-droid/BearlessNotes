@@ -999,11 +999,16 @@ function CanvasCard({
       onEdit(block.id, x, y, null);
       return;
     }
+    // The box is measured on SCREEN, where the canvas may be zoomed; the
+    // lines were laid out at the card's own size. Without dividing by
+    // the zoom the error grew along the line - the caret obeyed a tap
+    // at the start of a line and barely moved for one at its end.
+    const zoom = canvasScale.value || 1;
     onEdit(
       block.id,
       x,
       y,
-      displayIndexForTouch(linesRef.current, block.text ?? '', pageX - box.x, pageY - box.y)
+      displayIndexForTouch(linesRef.current, block.text ?? '', (pageX - box.x) / zoom, (pageY - box.y) / zoom)
     );
   }
 
