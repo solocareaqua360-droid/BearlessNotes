@@ -64,20 +64,14 @@ const EDIT_LEFT = 16;
 // embedded database) is opened on the page, where its own controls are.
 const TEXT_TYPES = ['paragraph', 'bulleted', 'numbered', 'checkbox'];
 
-// Typing INSIDE a card is a browser thing for now, and that is a finding
-// rather than a preference.
-//
-// A caret has to land where it was aimed. In a browser the document can
-// be asked directly which character a click hit (caretAtPoint.web), and
-// a mouse aims precisely. On a phone there is no such question to ask -
-// the page editor works the index out from measure() plus onTextLayout,
-// machinery a card does not have - so a tap into a card put the caret at
-// the end of the text whatever it was aiming at. A tap on the phone
-// therefore does what it did in the first version: it opens the block on
-// the PAGE, where typing has always worked properly. See the parity
-// ledger; this comes back the day the canvas can answer the same
-// question the page can.
-const CAN_EDIT_IN_CARD = Platform.OS === 'web';
+// Typing in a card works on both. What differs is what has to be done
+// about the TAP, and only a browser needs any of it: there a gesture
+// over the whole surface also sees the clicks meant for the text, and a
+// drag across text is how a word gets selected. On a phone the field
+// takes its own touches and neither problem exists - so neither fix is
+// applied there, because both of them cost something (a canvas that does
+// not pan, a view under the cards) and a phone gains nothing in return.
+const NEEDS_TAP_GUARDS = Platform.OS === 'web';
 
 export type CanvasPlacement = { id: string; x: number; y: number };
 
@@ -175,12 +169,13 @@ export default function DocumentCanvas({
     });
 
   const panGesture = Gesture.Pan()
-    // Not while something is being typed into. In a browser, dragging
-    // across text is how a word gets selected, and a surface that also
-    // takes that drag slides the whole canvas out from under the cursor
-    // instead. The card is already parked in a known place while it is
-    // being typed into, so there is nothing to pan to.
-    .enabled(editingId === null)
+    // In a browser, not while something is being typed into: dragging
+    // across text is how a word gets selected there, and a surface that
+    // also takes that drag slides the whole canvas out from under the
+    // cursor instead. The card is parked in a known place while it is
+    // edited anyway. A phone keeps its pan - a finger dragging the canvas
+    // never begins inside the field.
+    .enabled(editingId === null || !NEEDS_TAP_GUARDS)
     // The board's own number: a hold and a drag start the same way, and a
     // surface that takes the very first pixel moves before the press can
     // count as anything else.
@@ -217,7 +212,7 @@ export default function DocumentCanvas({
                 move the caret ended the editing instead, and the caret
                 never left the start. Behind the cards, a tap on a card
                 simply never reaches it. */}
-            {editingId !== null && (
+            {editingId !== null && NEEDS_TAP_GUARDS && (
               <Pressable style={styles.stopEditingCatcher} onPress={stopEditing} />
             )}
             {blocks.map((block, index) => (
@@ -291,7 +286,7 @@ function CanvasCard({
     // A picture or a file has controls of its own, and they are on the
     // page - so that is where a tap on one goes. Text is typed where it
     // stands.
-    if (isText && CAN_EDIT_IN_CARD) onEdit(block.id, x, y);
+    if (isText) onEdit(block.id, x, y);
     else onOpen(block.id);
   }
 
