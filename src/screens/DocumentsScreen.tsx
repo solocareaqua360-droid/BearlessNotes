@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -48,7 +48,7 @@ import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } f
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import DocumentEditorScreen from './DocumentEditorScreen';
 import SortMenuRows from '../components/SortMenuRows';
-import TagsDrawer, { removeTagFromFilter } from '../components/TagsDrawer';
+import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from '../components/TagsDrawer';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
@@ -195,6 +195,10 @@ export default function DocumentsScreen() {
     needle,
   } = list;
   const searching = searchOpen && needle.length > 0;
+  // The drawer opens on a swipe to the right across the list - see
+  // useDrawerSwipe; the folder button is gone.
+  const drawerRef = useRef<TagsDrawerHandle>(null);
+  const drawerSwipe = useDrawerSwipe(useCallback(() => drawerRef.current?.open(), []));
 
   // «Провідник» - the folders in the list itself, one level at a time.
   //
@@ -1146,6 +1150,8 @@ export default function DocumentsScreen() {
               <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
             </View>
           ) : (
+            <GestureDetector gesture={drawerSwipe}>
+            <View style={{ flex: 1 }}>
             <GestureDetector gesture={pull.gesture}>
             <FlatList
               {...pull.listProps}
@@ -1190,6 +1196,8 @@ export default function DocumentsScreen() {
                 );
               }}
             />
+            </GestureDetector>
+            </View>
             </GestureDetector>
           )
         ) : showingStickers ? (
@@ -1239,7 +1247,9 @@ export default function DocumentsScreen() {
             )}
           </View>
         ) : (
-          <GestureDetector gesture={pull.gesture}>
+          <GestureDetector gesture={drawerSwipe}>
+            <View style={{ flex: 1 }}>
+            <GestureDetector gesture={pull.gesture}>
           <FlatList
             {...pull.listProps}
             // FlatList throws if numColumns changes on an already-mounted
@@ -1437,6 +1447,8 @@ export default function DocumentsScreen() {
             }}
           />
           </GestureDetector>
+            </View>
+            </GestureDetector>
         )}
 
         {/* Through the portal, like the rest of the rail: the blur that
@@ -1514,6 +1526,7 @@ export default function DocumentsScreen() {
       </View>
 
       <TagsDrawer
+        ref={drawerRef}
         tags={explorerMode ? explorerTags : drawerTags}
         activeFilter={activeFilter}
         onSelectFilter={(filter) => {

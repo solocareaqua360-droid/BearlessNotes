@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
@@ -7,7 +7,8 @@ import { RootStackParamList } from '../navigation';
 import { auth } from '../firebase';
 import { onAuthStateChanged } from '@react-native-firebase/auth';
 import { hapticButtonDown } from '../utils/haptics';
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { Gesture } from 'react-native-gesture-handler';
 import { Tag } from '../types';
 import type { ListMode } from '../hooks/useDatabaseList';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -38,6 +39,33 @@ const OPEN_BUTTON_SIZE = 64;
 
 // 'multi' shows anything with at least one of the selected tags (OR);
 // 'isolating' shows only items carrying every selected tag (AND).
+// The drawer is opened by a swipe now - to the right, from anywhere on
+// the screen's list but its very edge - and the folder button is gone:
+// the user's words, there are too many buttons already, and swipes have
+// taken. The screen wraps its list in a detector with this gesture and
+// asks the drawer to open through its handle.
+//
+// Rightward only, and only after real travel, so a scroll (vertical -
+// fails on Y) and the tab swipe to the next screen (leftward - fails on
+// negative X) are never taken. The left edge is left alone: that is the
+// system's own "back".
+export type TagsDrawerHandle = { open: () => void };
+
+export function useDrawerSwipe(open: () => void) {
+  return useMemo(
+    () =>
+      Gesture.Pan()
+        .hitSlop({ left: -32 })
+        .activeOffsetX(28)
+        .failOffsetX(-12)
+        .failOffsetY([-18, 18])
+        .onEnd((e) => {
+          if (e.translationX > 60 || e.velocityX > 500) runOnJS(open)();
+        }),
+    [open]
+  );
+}
+
 export type TagFilterMode = 'multi' | 'isolating';
 
 export type TagFilter = { type: 'tags'; tagIds: string[]; mode: TagFilterMode } | { type: 'untagged' };
@@ -306,18 +334,17 @@ type Props = {
 // whatever `tags` list it's given (Files/Photos/Links pass only their own
 // "used" tags, which is what prunes empty branches for them - see
 // buildTree above).
-export default function TagsDrawer({
+function TagsDrawerInner({
   tags,
   activeFilter,
   onSelectFilter,
-  hideOpenButton,
-  capsuleHeight,
+  capsuleHeight: _capsuleHeight,
   counts,
   mode,
   stickers,
   trash,
   groupSection,
-}: Props) {
+}: Props, ref: React.Ref<TagsDrawerHandle>) {
   const showGroups = !mode || mode.value === 'groups';
   const showTree = !mode || mode.value !== 'groups';
   const showFilterMode = !mode || mode.value === 'list';
@@ -382,6 +409,8 @@ export default function TagsDrawer({
     openAmount.value = withTiming(drawerWidth, { duration: 260, easing: Easing.out(Easing.cubic) });
     dimAmount.value = withTiming(1, { duration: 520, easing: Easing.out(Easing.quad) });
   }
+
+  useImperativeHandle(ref, () => ({ open: openDrawer }));
 
   function closeDrawer() {
     setIsOpen(false);
@@ -639,38 +668,7 @@ export default function TagsDrawer({
       </GlassPortal>
       )}
 
-      {isFocused && !isOpen && !hideOpenButton && (
-        // Through the portal like the rest of the rail - the blur that
-        // fills it cannot live inside the view it blurs.
-        <GlassPortal>
-          <Pressable
-            style={[styles.openButton, { bottom: rail.tagBottom }]}
-            onPress={openDrawer}
-            // Held down, it shows and hides the group tabs at the head of
-            // the screen instead of opening the drawer - they live here
-            // now, and the row up there is a convenience you can put away.
-            onLongPress={
-              groupSection?.onToggleRow
-                ? () => {
-                    hapticButtonDown();
-                    groupSection.onToggleRow?.();
-                  }
-                : undefined
-            }
-            delayLongPress={400}
-          >
-            <BlurView
-              intensity={60}
-              tint="dark"
-              blurMethod="dimezisBlurView"
-              blurTarget={blurTarget ?? undefined}
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
-            <Ionicons name="folder-outline" size={28} color={GLASS_TEXT} />
-          </Pressable>
-        </GlassPortal>
-      )}
+
     </>
   );
 }
@@ -1003,3 +1001,8 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
 });
+
+// forwardRef, so the screen can open the drawer from its swipe - see
+// useDrawerSwipe.
+const TagsDrawer = forwardRef(TagsDrawerInner);
+export default TagsDrawer;

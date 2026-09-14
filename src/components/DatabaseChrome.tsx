@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useCallback, useRef, useState } from 'react';
 import { Keyboard, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,7 +14,7 @@ import { useBlurTarget } from './GlassTarget';
 import ContentColumn from './ContentColumn';
 import ProjectTabsRow from './ProjectTabsRow';
 import SortMenuRows from './SortMenuRows';
-import TagsDrawer, { removeTagFromFilter } from './TagsDrawer';
+import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from './TagsDrawer';
 import BulkActionBar from './BulkActionBar';
 import { useRail } from '../hooks/useRail';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
@@ -91,6 +91,8 @@ export default function DatabaseChrome<T extends { id: string }>({
   overlay,
   pane,
 }: DatabaseChromeProps<T>) {
+  const drawerRef = useRef<TagsDrawerHandle>(null);
+  const drawerSwipe = useDrawerSwipe(useCallback(() => drawerRef.current?.open(), []));
   const { isTwoPane } = useResponsiveLayout();
   const splitting = isTwoPane && !!pane;
   // Where the list's own column starts, so the floating tabs begin at its
@@ -264,8 +266,14 @@ export default function DatabaseChrome<T extends { id: string }>({
         {list.isSearching && list.needle.length === 0 ? (
           <View style={styles.emptySearch} />
         ) : (
+          // A swipe to the right, anywhere on the list, opens the drawer -
+          // see useDrawerSwipe.
+          <GestureDetector gesture={drawerSwipe}>
+          <View style={{ flex: 1 }}>
           <GestureDetector gesture={pull.gesture}>
             {children(list.tagFilter || list.isSearching ? 0 : chromeBottom, pull.listProps)}
+          </GestureDetector>
+          </View>
           </GestureDetector>
         )}
     </>
@@ -381,6 +389,7 @@ export default function DatabaseChrome<T extends { id: string }>({
 
       {!hideDrawer && (
       <TagsDrawer
+        ref={drawerRef}
         tags={list.drawerTags}
         activeFilter={list.tagFilter}
         onSelectFilter={list.setTagFilter}
