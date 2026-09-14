@@ -22,6 +22,7 @@ import { autoGrowInput } from '../utils/autoGrowInput';
 import { caretIndexFromDom } from '../utils/caretAtPoint';
 import { CaretLine, displayIndexForTouch } from '../utils/caretFromTextLayout';
 import { canPlaceCaretByTouch, measureNode } from '../utils/measureNode';
+import { useCanvasWheel } from '../hooks/useCanvasWheel';
 import { setSelection } from '../utils/setSelection';
 import { Block } from '../types';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -128,6 +129,13 @@ export default function DocumentCanvas({
   onOpenBlock: (id: string) => void;
 }) {
   const { width } = useWindowDimensions();
+  // The trackpad, on a laptop: two fingers move the canvas, a pinch zooms
+  // it around the pointer, shift+scroll goes sideways. The board's own
+  // hook, unchanged - a hand that has learnt the board already knows this
+  // canvas, and without it a trackpad pinch zooms the whole PAGE instead.
+  // A no-op on the phone, where two fingers already say it.
+  const canvasRef = useRef<View | null>(null);
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(width > CARD_WIDTH * 2 ? 40 : 16);
@@ -201,6 +209,18 @@ export default function DocumentCanvas({
 
   const canvasGesture = Gesture.Simultaneous(panGesture, pinchGesture);
 
+  useCanvasWheel(canvasRef, {
+    scale,
+    savedScale,
+    translateX,
+    translateY,
+    savedTranslateX,
+    savedTranslateY,
+    viewport,
+    minScale: MIN_SCALE,
+    maxScale: MAX_SCALE,
+  });
+
   const surfaceStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: translateX.value },
@@ -210,7 +230,14 @@ export default function DocumentCanvas({
   }));
 
   return (
-    <View style={styles.viewport}>
+    <View
+      ref={canvasRef}
+      style={styles.viewport}
+      onLayout={(e) => {
+        const { width: w, height: h } = e.nativeEvent.layout;
+        setViewport((prev) => (prev.width === w && prev.height === h ? prev : { width: w, height: h }));
+      }}
+    >
       <GestureDetector gesture={canvasGesture}>
         <Animated.View style={styles.fill}>
           <Animated.View style={[styles.surface, surfaceStyle]}>
