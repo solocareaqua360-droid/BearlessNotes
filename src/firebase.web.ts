@@ -68,6 +68,14 @@ export type GoogleSignInResult = { uid: string; email: string | null; hadToSwitc
 // in the middle of, and this page is a board someone may be arranging.
 export async function signInWithGoogleAccount(): Promise<GoogleSignInResult> {
   const provider = new GoogleAuthProvider();
+  // Ask WHICH account, every time. Without this Google takes the one the
+  // browser is already signed into and never shows a chooser - and on a
+  // machine signed into a second Google account, that is silently the
+  // wrong person. The app then works perfectly and shows an empty board
+  // list, because every read is narrowed to the owner and this owner owns
+  // nothing. There is no error to see anywhere: the only symptom is that
+  // the data is missing.
+  provider.setCustomParameters({ prompt: 'select_account' });
   const credential = await signInWithPopup(auth, provider);
   return { uid: credential.user.uid, email: credential.user.email, hadToSwitch: false };
 }

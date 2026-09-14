@@ -12,7 +12,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { auth, ensureSignedIn, signInWithGoogleAccount } from './src/firebase';
+import { auth, ensureSignedIn, signInWithGoogleAccount, signOutEverywhere } from './src/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import BoardsListScreen from './src/screens/BoardsListScreen';
 import BoardScreen from './src/screens/BoardScreen';
@@ -20,7 +20,7 @@ import { AskHost } from './src/components/surfaces/Ask';
 import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
 import { BoardsStackParamList } from './src/navigation';
-import { getDriveToken, hasDriveToken, subscribeToDriveToken } from './src/utils/driveToken.web';
+import { clearDriveToken, getDriveToken, hasDriveToken, subscribeToDriveToken } from './src/utils/driveToken.web';
 
 // The browser build: the board, and nothing else.
 //
@@ -94,6 +94,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: 'Nunito_400Regular',
     color: 'rgba(255,255,255,0.62)',
+  },
+  linkButton: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  linkLabel: {
+    fontSize: 13,
+    fontFamily: 'Nunito_600SemiBold',
+    color: '#F5C77E',
   },
   driveButton: {
     backgroundColor: '#F5C77E',
@@ -191,17 +200,36 @@ export default function App() {
             cannot read those - they come from Drive instead, which needs
             asking once. Only a real click may open that window, so this
             is a button and not something done on load. */}
-        {!drive && (
-          <View style={styles.driveBar}>
-            <Text style={styles.driveText}>Картинки лежать на Google Диску</Text>
-            <Pressable
-              style={styles.driveButton}
-              onPress={() => getDriveToken(true).then(() => setDrive(hasDriveToken()))}
-            >
-              <Text style={styles.driveButtonLabel}>Підключити Диск</Text>
-            </Pressable>
-          </View>
-        )}
+        {/* Whose data this is, said out loud. It has to be: every read is
+            narrowed to the owner now, so signing in as the wrong Google
+            account - easy to do on a machine with two of them, since the
+            popup used to pick one without asking - looks like an app with
+            no boards in it rather than a mistake. An empty screen must
+            never be the only way to find that out. */}
+        <View style={styles.driveBar}>
+          <Text style={styles.driveText}>{user.email ?? 'Акаунт Google'}</Text>
+          <Pressable
+            style={styles.linkButton}
+            onPress={async () => {
+              clearDriveToken();
+              await signOutEverywhere();
+              await signInWithGoogleAccount().catch(() => {});
+            }}
+          >
+            <Text style={styles.linkLabel}>Змінити акаунт</Text>
+          </Pressable>
+          {!drive && (
+            <>
+              <Text style={styles.driveText}>Картинки лежать на Google Диску</Text>
+              <Pressable
+                style={styles.driveButton}
+                onPress={() => getDriveToken(true).then(() => setDrive(hasDriveToken()))}
+              >
+                <Text style={styles.driveButtonLabel}>Підключити Диск</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
         <NavigationContainer>
           <GlassPortalHost>
             <GlassTargetProvider>

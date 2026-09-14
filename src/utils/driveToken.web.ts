@@ -32,6 +32,16 @@ export function hasDriveToken(): boolean {
   return !!token && Date.now() < expiresAt;
 }
 
+// A token belongs to the account that granted it. Change accounts and
+// keeping it would mean the boards say one person and the pictures come
+// from another - so switching signs this out too, and the next "Підключити
+// Диск" asks again as whoever is signed in now.
+export function clearDriveToken(): void {
+  token = null;
+  expiresAt = 0;
+  listeners.forEach((l) => l());
+}
+
 function loadGis(): Promise<void> {
   return new Promise((resolve, reject) => {
     const existing = document.querySelector(`script[src="${GIS_SRC}"]`);
@@ -86,6 +96,10 @@ export async function getDriveToken(interactive: boolean): Promise<string | null
     // simply never calls back, and waiting for ever would freeze whatever
     // asked.
     if (!interactive) setTimeout(() => finish(null), 3000);
-    client.requestAccessToken(interactive ? {} : { prompt: 'none' });
+    // 'select_account' rather than the default, for the same reason the
+    // Firebase popup now asks: on a machine signed into two Google
+    // accounts, the default quietly picks one, and picking the wrong one
+    // here shows an empty Drive rather than an error.
+    client.requestAccessToken(interactive ? { prompt: 'select_account' } : { prompt: 'none' });
   });
 }
