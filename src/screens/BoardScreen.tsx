@@ -982,6 +982,12 @@ export default function BoardScreen() {
   const connectVisible = useSharedValue(false);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The updatedAt of the last write this device made, and the newest
+  // thing that arrived while hands were busy. Between them they replace
+  // the old rule "drop whatever arrives while saving", which lost the
+  // update for good - see the listener below.
+  const lastWriteAtRef = useRef(0);
+  const pendingRemoteRef = useRef<{ cards: BoardCard[]; columns: BoardColumn[] } | null>(null);
   // The card a connect-drag started on. A ref, not state, because the
   // gesture's own worklet closure is captured at creation time - by the
   // time onEnd fires, a state value set during the same gesture would
@@ -1031,9 +1037,14 @@ export default function BoardScreen() {
       // tell "a local change is waiting to be written" from "nothing
       // pending, so whatever arrives is news".
       saveTimeoutRef.current = null;
+      // Written down before the write goes out: what comes back on the
+      // listener a moment later is this same stamp, and that is how an
+      // echo of our own write is told from another device's news.
+      const updatedAt = Date.now();
+      lastWriteAtRef.current = updatedAt;
       setDoc(
         doc(db, 'boards', boardId),
-        { title, cards, connections, columns, updatedAt: Date.now() },
+        { title, cards, connections, columns, updatedAt },
         { merge: true }
       );
     }, AUTOSAVE_DELAY_MS);
@@ -1603,20 +1614,51 @@ export default function BoardScreen() {
   // Same rule as the document's own listener: take what arrives, but only
   // while nothing local is in flight - no pending save, no card or column
   // under the finger - and never when it matches what's already here.
+  const applyRemote = useCallback((incomingCards: BoardCard[], incomingColumns: BoardColumn[]) => {
+    setCards((current) => (contentEqual(current, incomingCards) ? current : incomingCards));
+    setColumns((current) => (contentEqual(current, incomingColumns) ? current : incomingColumns));
+  }, []);
+
   useEffect(() => {
     if (!isLoaded) return;
     return onSnapshot(doc(db, 'boards', boardId), (snapshot) => {
-      const data = snapshot.data() as { cards?: BoardCard[]; columns?: BoardColumn[] } | undefined;
+      const data = snapshot.data() as
+        | { cards?: BoardCard[]; columns?: BoardColumn[]; updatedAt?: number }
+        | undefined;
       if (!data) return;
-      if (saveTimeoutRef.current) return;
-      if (draggedCardId || draggingColumnId) return;
+      // Our own write, still on its way to the server: Firestore shows it
+      // locally first, and that reflection is not news from anywhere.
+      if (snapshot.metadata.hasPendingWrites) return;
+      // And our own write coming back settled. Compared for EQUALITY, not
+      // for "older than" - the stamp is made by whichever device wrote
+      // it, and two clocks are never quite the same. Ignoring everything
+      // stamped earlier than our last write would silently ignore the
+      // other device for as long as its clock ran behind.
+      if ((data.updatedAt ?? 0) === lastWriteAtRef.current) return;
       const incomingCards = data.cards ?? [];
       const incomingColumns = data.columns ?? [];
-      setCards((current) => (contentEqual(current, incomingCards) ? current : incomingCards));
-      setColumns((current) => (contentEqual(current, incomingColumns) ? current : incomingColumns));
+      // A card under the finger must not be yanked out from under it, so
+      // this WAITS rather than dropping. Dropping is what the old rule
+      // did, and Firestore sends each change exactly once - so an update
+      // refused here was gone until the screen was opened again, which is
+      // exactly how it behaved: nothing, then everything on reload.
+      if (draggedCardId || draggingColumnId) {
+        pendingRemoteRef.current = { cards: incomingCards, columns: incomingColumns };
+        return;
+      }
+      applyRemote(incomingCards, incomingColumns);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoaded, boardId, draggedCardId, draggingColumnId]);
+  }, [isLoaded, boardId, draggedCardId, draggingColumnId, applyRemote]);
+
+  // The moment the hands are free, whatever waited arrives.
+  useEffect(() => {
+    if (draggedCardId || draggingColumnId) return;
+    const pending = pendingRemoteRef.current;
+    if (!pending) return;
+    pendingRemoteRef.current = null;
+    applyRemote(pending.cards, pending.columns);
+  }, [draggedCardId, draggingColumnId, applyRemote]);
 
   // One column read as flowing text in the right-hand half - see
   // BoardColumnDocument. Editing there edits the cards themselves, so
