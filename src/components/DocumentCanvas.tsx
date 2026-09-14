@@ -1,16 +1,18 @@
-import { useMemo } from 'react';
-import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Keyboard, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withTiming,
 } from 'react-native-reanimated';
 import AttachmentImage from './AttachmentImage';
 import { Block } from '../types';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import {
+  GLASS_ACCENT,
   GLASS_BODY_BLURRED,
   GLASS_EDGE,
   GLASS_LINE,
@@ -38,6 +40,15 @@ const MIN_SCALE = 0.4;
 const MAX_SCALE = 3;
 const CARD_WIDTH = 240;
 const LANE_GAP = 20;
+// Where a card being typed into is put: near the top, clear of the
+// keyboard whatever its height, and clear of the rail on the right.
+const EDIT_TOP = 88;
+const EDIT_LEFT = 16;
+
+// The blocks whose content IS their text, and which can therefore be
+// typed into on the canvas. Everything else (a picture, a file, an
+// embedded database) is opened on the page, where its own controls are.
+const TEXT_TYPES = ['paragraph', 'bulleted', 'numbered', 'checkbox'];
 
 export type CanvasPlacement = { id: string; x: number; y: number };
 
@@ -66,11 +77,16 @@ function approximateHeight(block: Block): number {
 export default function DocumentCanvas({
   blocks,
   onMoveBlock,
+  onChangeText,
   onOpenBlock,
 }: {
   blocks: Block[];
   // Called once, when a card is let go - not on every frame of the drag.
   onMoveBlock: (id: string, x: number, y: number) => void;
+  // The editor's own handler, untouched: one place decides what typing
+  // into a block means (list continuation, undo snapshots, mirrors), and
+  // the canvas is just another keyboard pointed at it.
+  onChangeText: (id: string, text: string) => void;
   onOpenBlock: (id: string) => void;
 }) {
   const { width } = useWindowDimensions();
@@ -82,6 +98,25 @@ export default function DocumentCanvas({
   const savedTranslateY = useSharedValue(translateY.value);
 
   const placements = useMemo(() => layOutBlocks(blocks), [blocks]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  function stopEditing() {
+    setEditingId(null);
+    Keyboard.dismiss();
+  }
+
+  // A card about to be typed into is brought to a known place rather than
+  // left wherever the canvas happened to be - the keyboard takes the lower
+  // half of the screen, and a card that was already down there would be
+  // typed into blind. Deterministic on purpose: the same corner every
+  // time, so the eye knows where to go back to.
+  function revealForEditing(x: number, y: number) {
+    const target = scale.value;
+    translateX.value = withTiming(EDIT_LEFT - x * target, { duration: 180 });
+    translateY.value = withTiming(EDIT_TOP - y * target, { duration: 180 });
+    savedTranslateX.value = EDIT_LEFT - x * target;
+    savedTranslateY.value = EDIT_TOP - y * target;
+  }
 
   const pinchGesture = Gesture.Pinch()
     .onUpdate((e) => {
@@ -105,7 +140,16 @@ export default function DocumentCanvas({
       savedTranslateY.value = translateY.value;
     });
 
-  const canvasGesture = Gesture.Simultaneous(pinchGesture, panGesture);
+  // A tap on bare canvas puts the text down, the way clicking beside a
+  // thing ends editing everywhere else.
+  const surfaceTapGesture = Gesture.Tap().onEnd(() => {
+    runOnJS(stopEditing)();
+  });
+
+  const canvasGesture = Gesture.Simultaneous(
+    Gesture.Race(surfaceTapGesture, panGesture),
+    pinchGesture
+  );
 
   const surfaceStyle = useAnimatedStyle(() => ({
     transform: [
@@ -127,7 +171,13 @@ export default function DocumentCanvas({
                 placement={placements[index]}
                 canvasScale={scale}
                 canvasPanGesture={panGesture}
+                editing={editingId === block.id}
                 onMove={onMoveBlock}
+                onChangeText={onChangeText}
+                onEdit={(id, x, y) => {
+                  setEditingId(id);
+                  revealForEditing(x, y);
+                }}
                 onOpen={onOpenBlock}
               />
             ))}
@@ -149,20 +199,39 @@ function CanvasCard({
   placement,
   canvasScale,
   canvasPanGesture,
+  editing,
   onMove,
+  onChangeText,
+  onEdit,
   onOpen,
 }: {
   block: Block;
   placement: CanvasPlacement;
   canvasScale: ReturnType<typeof useSharedValue<number>>;
   canvasPanGesture: ReturnType<typeof Gesture.Pan>;
+  editing: boolean;
   onMove: (id: string, x: number, y: number) => void;
+  onChangeText: (id: string, text: string) => void;
+  onEdit: (id: string, x: number, y: number) => void;
   onOpen: (id: string) => void;
 }) {
   const posX = useSharedValue(placement.x);
   const posY = useSharedValue(placement.y);
+  const isText = TEXT_TYPES.includes(block.type ?? 'paragraph');
+
+  function handleTap(x: number, y: number) {
+    // A picture or a file has controls of its own, and they are on the
+    // page - so that is where a tap on one goes. Text is typed where it
+    // stands.
+    if (isText) onEdit(block.id, x, y);
+    else onOpen(block.id);
+  }
 
   const dragGesture = Gesture.Pan()
+    // While the card is being typed into it must not move under the
+    // finger: the touches belong to the text - placing a caret, choosing
+    // a word. Tap the canvas to put the text down, then drag.
+    .enabled(!editing)
     // Without this the surface underneath also recognises a sliver of the
     // same touch, which lands as a jump when the finger lifts. The board
     // hit exactly this.
@@ -177,9 +246,11 @@ function CanvasCard({
       runOnJS(onMove)(block.id, posX.value, posY.value);
     });
 
-  const tapGesture = Gesture.Tap().onEnd(() => {
-    runOnJS(onOpen)(block.id);
-  });
+  const tapGesture = Gesture.Tap()
+    .enabled(!editing)
+    .onEnd(() => {
+      runOnJS(handleTap)(posX.value, posY.value);
+    });
 
   const gesture = Gesture.Race(dragGesture, tapGesture);
 
@@ -189,8 +260,20 @@ function CanvasCard({
 
   return (
     <GestureDetector gesture={gesture}>
-      <Animated.View style={[styles.card, cardStyle]}>
-        <CardBody block={block} />
+      <Animated.View style={[styles.card, editing && styles.cardEditing, cardStyle]}>
+        {editing ? (
+          <TextInput
+            autoFocus
+            multiline
+            value={block.text}
+            onChangeText={(text) => onChangeText(block.id, text)}
+            placeholder="Текст"
+            placeholderTextColor={GLASS_TEXT_FAINT}
+            style={styles.cardInput}
+          />
+        ) : (
+          <CardBody block={block} />
+        )}
       </Animated.View>
     </GestureDetector>
   );
@@ -298,6 +381,19 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 12,
     overflow: 'hidden',
+  },
+  // The card being typed into: the app's own blue on its edge, so it is
+  // plain which one the keyboard belongs to.
+  cardEditing: {
+    borderColor: GLASS_ACCENT,
+  },
+  cardInput: {
+    fontSize: 14,
+    lineHeight: 19,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT,
+    padding: 0,
+    minHeight: 40,
   },
   cardImage: {
     width: '100%',

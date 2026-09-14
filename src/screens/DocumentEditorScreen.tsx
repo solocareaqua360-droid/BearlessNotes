@@ -4416,6 +4416,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // is renamed on the canvas too.
           blocks={liveBlocks}
           onMoveBlock={(id, x, y) => updateBlockFields(id, { canvas: { x, y } })}
+          // The page's own handler: one place decides what typing into a
+          // block means - a list that continues itself, an undo snapshot
+          // per pause, the mirror records. The canvas is another keyboard
+          // pointed at the same document, not a second editor.
+          onChangeText={handleBlockChange}
           // Writing stays on the page. A tap says which block, the page
           // opens with it active - the canvas is for arranging, not typing.
           onOpenBlock={(id) => {
