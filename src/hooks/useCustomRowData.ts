@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { doc, onSnapshot } from '../firestore';
 import { db } from '../firebase';
+import { categoryFromSiteName } from '../utils/linkCategory';
 import { ownedQuery } from '../utils/owned';
 import { CustomDatabase, CustomDatabaseRow } from '../types';
 import { EMPTY_ROW_DISPLAY_CONTEXT, RowDisplayContext } from '../utils/customRowDisplay';
@@ -44,12 +45,14 @@ export function rowFrom(id: string, data: Record<string, unknown>): CustomDataba
 export function useRowDisplayContext(database: CustomDatabase | null): RowDisplayContext {
   const [photos, setPhotos] = useState<RowDisplayContext['photos']>([]);
   const [files, setFiles] = useState<RowDisplayContext['files']>([]);
+  const [links, setLinks] = useState<RowDisplayContext['links']>([]);
   const [relatedDatabases, setRelatedDatabases] = useState<Record<string, CustomDatabase>>({});
   const [relatedRows, setRelatedRows] = useState<Record<string, CustomDatabaseRow[]>>({});
 
   const relationFields = (database?.fields ?? []).filter((f) => f.type === 'relation');
   const needsPhotos = relationFields.some((f) => (f.relationTarget?.kind ?? 'photos') === 'photos');
   const needsFiles = relationFields.some((f) => f.relationTarget?.kind === 'files');
+  const needsLinks = relationFields.some((f) => f.relationTarget?.kind === 'links');
   const referencedDbIds = Array.from(
     new Set(
       relationFields
@@ -91,6 +94,29 @@ export function useRowDisplayContext(database: CustomDatabase | null): RowDispla
     });
   }, [needsFiles]);
 
+  // All three link databases at once: they are one collection, and the
+  // category each belongs to is a property of the row, not of the query.
+  useEffect(() => {
+    if (!needsLinks) {
+      setLinks([]);
+      return;
+    }
+    return onSnapshot(ownedQuery('links'), (snapshot) => {
+      setLinks(
+        snapshot.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            url: data.url,
+            title: data.title,
+            imageUrl: data.imageUrl,
+            category: categoryFromSiteName(data.siteName),
+          };
+        })
+      );
+    });
+  }, [needsLinks]);
+
   useEffect(() => {
     if (referencedDbIds.length === 0) return;
     const unsubs = referencedDbIds.map((id) =>
@@ -121,9 +147,9 @@ export function useRowDisplayContext(database: CustomDatabase | null): RowDispla
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [referencedDbIdsKey]);
 
-  return photos.length === 0 && files.length === 0 && referencedDbIds.length === 0
+  return photos.length === 0 && files.length === 0 && links.length === 0 && referencedDbIds.length === 0
     ? EMPTY_ROW_DISPLAY_CONTEXT
-    : { photos, files, relatedDatabases, relatedRows };
+    : { photos, files, links, relatedDatabases, relatedRows };
 }
 
 // Everything ONE custom-database row needs to render itself outside its own

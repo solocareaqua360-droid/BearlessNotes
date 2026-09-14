@@ -32,6 +32,7 @@ import {
   SHEET_WINDOW,
 } from '../constants/glass';
 import GlassLayer from './GlassLayer';
+import { LINK_CATEGORY_INFO, LinkCategory } from '../utils/linkCategory';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#3B82F6';
@@ -88,6 +89,7 @@ function relationTargetLabel(
 ): string {
   if (!target || target.kind === 'photos') return 'Фото';
   if (target.kind === 'files') return 'Файли';
+  if (target.kind === 'links') return LINK_CATEGORY_INFO[target.category].title;
   return otherDatabases.find((d) => d.id === target.databaseId)?.name ?? 'База';
 }
 
@@ -519,6 +521,26 @@ export default function FieldsEditorSheet({
                             <Ionicons name="checkmark" size={18} color={ACCENT_ON_GLASS} />
                           )}
                         </Pressable>
+                        {(['video', 'geo', 'other'] as LinkCategory[]).map((category) => (
+                          <Pressable
+                            key={category}
+                            style={styles.typeMenuRow}
+                            onPress={() => setRelationTarget(field.id, { kind: 'links', category })}
+                          >
+                            <Ionicons
+                              name={LINK_CATEGORY_INFO[category].icon}
+                              size={17}
+                              color={TEXT_MUTED}
+                            />
+                            <Text style={styles.typeMenuLabel} numberOfLines={1}>
+                              {LINK_CATEGORY_INFO[category].title}
+                            </Text>
+                            {field.relationTarget?.kind === 'links' &&
+                              field.relationTarget.category === category && (
+                                <Ionicons name="checkmark" size={18} color={ACCENT_ON_GLASS} />
+                              )}
+                          </Pressable>
+                        ))}
                         {otherDatabases.map((odb) => (
                           <Pressable
                             key={odb.id}

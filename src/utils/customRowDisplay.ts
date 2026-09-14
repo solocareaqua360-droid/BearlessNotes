@@ -1,4 +1,5 @@
 import { CustomDatabase, CustomDatabaseRow, FieldDef } from '../types';
+import { LinkCategory } from './linkCategory';
 
 // Everything a custom-database row needs in order to be rendered anywhere
 // outside its own screen: the Photos a 'relation' field can point at, plus
@@ -13,6 +14,9 @@ export type RowDisplayContext = {
   // The built-in Files database, for a relation pointing at it. No image
   // to show, so a resolved file is a label only.
   files: { id: string; title?: string; fileName?: string }[];
+  // The three link databases in their one collection - the category is
+  // computed from siteName by whoever fills this, same as everywhere else.
+  links: { id: string; url: string; title?: string; imageUrl?: string; category: LinkCategory }[];
   relatedDatabases: Record<string, CustomDatabase>;
   relatedRows: Record<string, CustomDatabaseRow[]>;
 };
@@ -22,6 +26,7 @@ export type ResolvedRelation = { label: string; thumbUri?: string; driveFileId?:
 export const EMPTY_ROW_DISPLAY_CONTEXT: RowDisplayContext = {
   photos: [],
   files: [],
+  links: [],
   relatedDatabases: {},
   relatedRows: {},
 };
@@ -96,6 +101,13 @@ export function resolveRelationValue(
     const photo = ctx.photos.find((p) => p.id === targetId);
     if (!photo) return { label: 'Фото' };
     return { label: photo.title || 'Фото', thumbUri: photo.imageUri, driveFileId: photo.driveFileId };
+  }
+  if (target.kind === 'links') {
+    const link = ctx.links.find((l) => l.id === targetId);
+    if (!link) return { label: 'Посилання' };
+    // A link's preview picture is a real thumbnail - and an expiring one
+    // for TikTok, which the live-record overlay refreshes in place.
+    return { label: link.title || link.url, thumbUri: link.imageUrl };
   }
   if (target.kind === 'files') {
     const file = ctx.files.find((f) => f.id === targetId);

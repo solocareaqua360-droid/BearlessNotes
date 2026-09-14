@@ -1,3 +1,4 @@
+import { LinkCategory } from './utils/linkCategory';
 export type BlockType =
   | 'paragraph'
   | 'bulleted'
@@ -434,6 +435,11 @@ export type RelationTarget =
   // live in Файли - so the link points at them where they are rather than
   // making a second copy inside the database.
   | { kind: 'files' }
+  // One of the three link databases. They are one `links` collection split
+  // by the site a link came from (see utils/linkCategory), so the category
+  // has to travel with the target - a field pointing at "Геоточки" must not
+  // offer YouTube covers.
+  | { kind: 'links'; category: LinkCategory }
   | { kind: 'customDb'; databaseId: string };
 
 export interface FieldDef {

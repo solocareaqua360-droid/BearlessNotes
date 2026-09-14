@@ -50,6 +50,8 @@ import {
 } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { TAG_COLORS } from '../constants/tags';
+import { LINK_CATEGORY_INFO, LinkCategory, categoryFromSiteName } from '../utils/linkCategory';
+import { refreshLinkPreviewIfExpired } from '../utils/linkPreviewRefresh';
 import GlassLayer from '../components/GlassLayer';
 import { db } from '../firebase';
 import { deleteCustomDatabase } from '../utils/deleteCustomDatabase';
@@ -302,6 +304,11 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   // The same for Файли: names only, subscribed unconditionally beside
   // photos - a record that is a contract or a vehicle usually has papers.
   const [filesList, setFilesList] = useState<{ id: string; title?: string; fileName?: string }[]>([]);
+  // The three link databases share one collection; each row carries the
+  // category it belongs to, worked out from its siteName.
+  const [linksList, setLinksList] = useState<
+    { id: string; url: string; title?: string; imageUrl?: string; category: LinkCategory }[]
+  >([]);
   const [otherDatabases, setOtherDatabases] = useState<{ id: string; name: string }[]>([]);
   const [relatedDatabases, setRelatedDatabases] = useState<Record<string, CustomDatabase>>({});
   const [relatedRows, setRelatedRows] = useState<Record<string, CustomDatabaseRow[]>>({});
@@ -400,6 +407,26 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
         snapshot.docs.map((d) => {
           const data = d.data();
           return { id: d.id, title: data.title, fileName: data.fileName };
+        })
+      );
+    });
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(ownedQuery('links'), (snapshot) => {
+      setLinksList(
+        snapshot.docs.map((d) => {
+          const data = d.data();
+          // An expired TikTok cover is fetched again and written back;
+          // this same listener then delivers the live one.
+          refreshLinkPreviewIfExpired({ id: d.id, url: data.url, imageUrl: data.imageUrl });
+          return {
+            id: d.id,
+            url: data.url,
+            title: data.title,
+            imageUrl: data.imageUrl,
+            category: categoryFromSiteName(data.siteName),
+          };
         })
       );
     });
@@ -559,6 +586,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   const displayContext: RowDisplayContext = {
     photos: photosList,
     files: filesList,
+    links: linksList,
     relatedDatabases,
     relatedRows,
   };
@@ -739,6 +767,11 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
         actions: [
           { id: 'photos', label: 'Зображення', icon: 'image-outline' },
           { id: 'files', label: 'Файли', icon: 'document-outline' },
+          ...(['video', 'geo', 'other'] as LinkCategory[]).map((category) => ({
+            id: `link:${category}`,
+            label: LINK_CATEGORY_INFO[category].title,
+            icon: LINK_CATEGORY_INFO[category].icon,
+          })),
           ...otherDatabases.map((odb) => ({
             id: `db:${odb.id}`,
             label: odb.name,
@@ -752,7 +785,9 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           ? { kind: 'photos' }
           : targetId === 'files'
             ? { kind: 'files' }
-            : { kind: 'customDb', databaseId: targetId.slice(3) };
+            : targetId.startsWith('link:')
+              ? { kind: 'links', category: targetId.slice(5) as LinkCategory }
+              : { kind: 'customDb', databaseId: targetId.slice(3) };
 
       const howMany = await ask({
         title: 'Скільки можна вибрати?',
@@ -2388,6 +2423,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           value={undefined}
           photos={photosList}
           files={filesList}
+          links={linksList}
           relatedDatabase={relatedDatabases[backlinkPickerField.backlinkSource.databaseId] ?? null}
           relatedRows={relatedRows[backlinkPickerField.backlinkSource.databaseId] ?? []}
           keyboardHeight={keyboardHeight}
@@ -2405,6 +2441,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           value={draftValues[relationPickerField.id]}
           photos={photosList}
           files={filesList}
+          links={linksList}
           relatedDatabase={
             relationPickerField.relationTarget?.kind === 'customDb'
               ? (relatedDatabases[relationPickerField.relationTarget.databaseId] ?? null)
@@ -2450,6 +2487,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           value={rows.find((r) => r.id === cellPicker.rowId)?.values[cellPicker.field.id]}
           photos={photosList}
           files={filesList}
+          links={linksList}
           relatedDatabase={
             cellPicker.field.relationTarget?.kind === 'customDb'
               ? (relatedDatabases[cellPicker.field.relationTarget.databaseId] ?? null)
@@ -2739,6 +2777,7 @@ function RelationPickerSheet({
   value,
   photos,
   files,
+  links,
   relatedDatabase,
   relatedRows,
   onCreateRow,
@@ -2751,6 +2790,7 @@ function RelationPickerSheet({
   value: string | number | string[] | undefined;
   photos: { id: string; imageUri: string; title?: string; driveFileId?: string }[];
   files: { id: string; title?: string; fileName?: string }[];
+  links: { id: string; url: string; title?: string; imageUrl?: string; category: LinkCategory }[];
   relatedDatabase: CustomDatabase | null;
   relatedRows: CustomDatabaseRow[];
   // Creates a row in the TARGET database carrying just this title, and
@@ -2772,6 +2812,8 @@ function RelationPickerSheet({
   const currentId = isMulti ? undefined : typeof value === 'string' ? value : undefined;
   const isPhotos = (field.relationTarget?.kind ?? 'photos') === 'photos';
   const isFiles = field.relationTarget?.kind === 'files';
+  const linkCategory =
+    field.relationTarget?.kind === 'links' ? field.relationTarget.category : null;
   const needle = search.trim().toLowerCase();
 
   // In multi mode a tap toggles membership and the sheet stays open, so
@@ -2798,6 +2840,66 @@ function RelationPickerSheet({
       <Text style={[styles.optionPickerLabel, { color: DANGER }]}>Прибрати</Text>
     </Pressable>
   ) : null;
+
+  if (linkCategory) {
+    // Only this category's links: the three databases are one collection,
+    // and a field pointing at "Геоточки" has no business offering a
+    // YouTube cover.
+    const nameOfLink = (l: { title?: string; url: string }) => l.title || l.url;
+    const categoryLinks = links.filter((l) => l.category === linkCategory);
+    const filteredLinks = needle
+      ? categoryLinks.filter((l) => nameOfLink(l).toLowerCase().includes(needle))
+      : categoryLinks;
+    return (
+      <GlassLayer visible onClose={onClose}>
+        <Pressable style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
+          <Pressable style={styles.sheet} onPress={() => {}}>
+            <View style={styles.handle} />
+            <Text style={styles.title}>{field.name}</Text>
+            <TextInput
+              style={styles.relationSearchInput}
+              value={search}
+              onChangeText={setSearch}
+              placeholder={`Пошук: ${LINK_CATEGORY_INFO[linkCategory].title}`}
+              placeholderTextColor={GLASS_TEXT_FAINT}
+            />
+            {clearRow}
+            <ScrollView style={styles.relationPickerScroll} keyboardShouldPersistTaps="handled">
+              {filteredLinks.map((link) => (
+                <Pressable key={link.id} style={styles.optionPickerRow} onPress={() => choose(link.id)}>
+                  {link.imageUrl ? (
+                    <RelationThumb uri={link.imageUrl} size={32} radius={8} />
+                  ) : (
+                    <Ionicons
+                      name={LINK_CATEGORY_INFO[linkCategory].icon}
+                      size={18}
+                      color={LINK_CATEGORY_INFO[linkCategory].color}
+                    />
+                  )}
+                  <Text style={styles.optionPickerLabel} numberOfLines={1}>
+                    {nameOfLink(link)}
+                  </Text>
+                  {selectedIds.includes(link.id) && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+                </Pressable>
+              ))}
+              {filteredLinks.length === 0 && (
+                <Text style={styles.optionPickerEmpty}>
+                  {categoryLinks.length === 0
+                    ? LINK_CATEGORY_INFO[linkCategory].emptyHint
+                    : 'Нічого не знайдено.'}
+                </Text>
+              )}
+            </ScrollView>
+            {isMulti && (
+              <Pressable style={styles.relationDoneButton} onPress={onClose}>
+                <Text style={styles.relationDoneLabel}>Готово · {selectedIds.length}</Text>
+              </Pressable>
+            )}
+          </Pressable>
+        </Pressable>
+      </GlassLayer>
+    );
+  }
 
   if (isFiles) {
     // Names only, and no "create": a file is a file on the device, there

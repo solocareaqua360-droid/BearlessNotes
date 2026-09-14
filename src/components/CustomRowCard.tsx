@@ -28,11 +28,17 @@ export function RelationThumb({
   radius?: number;
   fill?: boolean;
 }) {
-  // Through useAttachmentSource, because a cover needs an ADDRESS and not
-  // just a verdict - the stored path is a file on the phone, which a
-  // browser may not open, so the web half fetches the Drive copy instead.
-  // Same reasoning as the editor's image blocks.
-  const { status, source } = useAttachmentSource(uri, driveFileId, false);
+  // A link's preview picture is already an address on the internet -
+  // there is no local copy to look for and no Drive copy to fetch, and
+  // asking the cache about it answers "missing" and draws a cloud with a
+  // line through it over a perfectly good thumbnail.
+  const isRemote = /^https?:/i.test(uri);
+  // Otherwise through useAttachmentSource, because a cover needs an
+  // ADDRESS and not just a verdict - the stored path is a file on the
+  // phone, which a browser may not open, so the web half fetches the Drive
+  // copy instead. Same reasoning as the editor's image blocks.
+  const { status, source } = useAttachmentSource(isRemote ? undefined : uri, driveFileId, false);
+  const shown = isRemote ? 'ready' : status;
   return (
     <View
       style={[
@@ -40,11 +46,11 @@ export function RelationThumb({
         fill ? styles.thumbFill : { width: size, height: size, borderRadius: radius },
       ]}
     >
-      {status === 'ready' ? (
+      {shown === 'ready' ? (
         <Image source={{ uri: source ?? uri }} style={styles.thumbImage} resizeMode="cover" />
       ) : (
         <View style={[styles.thumbImage, styles.thumbStatus]}>
-          {status === 'missing' ? (
+          {shown === 'missing' ? (
             <Ionicons name="cloud-offline-outline" size={Math.round((size ?? 48) * 0.45)} color="#9CA3AF" />
           ) : (
             <ActivityIndicator color="#9CA3AF" size="small" />
