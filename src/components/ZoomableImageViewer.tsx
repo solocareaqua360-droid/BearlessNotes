@@ -91,7 +91,28 @@ export default function ZoomableImageViewer({ uri, onClose, actions }: Props) {
       {!!actions?.length && (
         <View style={styles.actionBar}>
           {actions.map((action) => (
-            <Pressable key={action.key} style={styles.actionButton} onPress={action.onPress}>
+            <Pressable
+              key={action.key}
+              style={styles.actionButton}
+              // The viewer closes ITSELF before the action runs, and that
+              // is the whole rule, kept here rather than in every caller.
+              //
+              // This is a Modal - its own native window on Android - and
+              // almost everything an action opens is not: the app's
+              // question windows, RenamePrompt, the tag picker, the "saved
+              // to..." toast are all layers drawn inside the screen. Opened
+              // from here they land UNDERNEATH and surface only when the
+              // picture is dismissed, which reads as a window arriving on
+              // the wrong tap.
+              //
+              // Two screens build their own action lists for this viewer,
+              // so the rule was remembered in one and forgotten in the
+              // other - which is exactly why it cannot live in the lists.
+              onPress={() => {
+                onClose();
+                action.onPress();
+              }}
+            >
               <View>
                 <Ionicons name={action.icon} size={20} color={action.color ?? '#fff'} />
                 {!!action.badge && action.badge > 1 && (

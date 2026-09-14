@@ -6,6 +6,7 @@ import { colorForDocument } from '../utils/documentColor';
 import { formatUpdatedAt } from '../utils/documentPreview';
 import { useFilePreview } from '../hooks/useFilePreview';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
+import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { LINK_CATEGORY_INFO, categoryFromSiteName } from '../utils/linkCategory';
 import { fileIconColorFor, fileIconFor } from '../utils/fileIcons';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -61,6 +62,11 @@ export type PhotoCardItem = {
   driveFileId?: string;
   documentIds: string[];
   tagIds: string[];
+  // Only the row view shows these - a grid cell is the picture and
+  // nothing else, which is the point of a grid.
+  title?: string;
+  createdAt?: number;
+  updatedAt?: number;
 };
 
 export function hostnameOf(url: string): string {
@@ -267,6 +273,65 @@ export function FileGridCell({ file, ...rest }: { file: FileCardItem } & Common)
       <View style={styles.gridTrailing}>
         <Trailing {...rest} text={text} textMuted={textMuted} />
       </View>
+    </View>
+  );
+}
+
+// A photo as a row, beside the grid it has always had.
+//
+// The grid answers "which one" by sight and says nothing else; this
+// answers the questions a grid cannot - what it is CALLED, when it was
+// added, which tags it carries - and it is the only view in which a
+// photo's name is visible at all outside its own rename dialog.
+//
+// Built on the same row as files and links rather than a shape of its
+// own: same thumbnail window, same title/caption stack, same trailing
+// control. A photo is not a different kind of thing to a file here.
+export function PhotoRow({ photo, ...rest }: { photo: PhotoCardItem } & Common) {
+  const { background, text, textMuted } = colorForDocument(photo.id);
+  // Through useAttachmentSource, not useCachedAttachment: it answers with
+  // an address rather than only a verdict, which is what a browser needs
+  // and what the phone gets for free. A thumbnail in a list is not
+  // someone looking at the photo, hence the false.
+  const { status, source } = useAttachmentSource(photo.imageUri, photo.driveFileId, false);
+  const docCount = photo.documentIds.length;
+
+  return (
+    <View style={[styles.row, { backgroundColor: background }]}>
+      <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
+        {status === 'ready' ? (
+          <Image source={{ uri: source ?? photo.imageUri }} style={styles.rowThumbWide} resizeMode="cover" />
+        ) : (
+          <View style={[styles.rowThumbWide, styles.thumbIconWindow, { backgroundColor: 'rgba(236,72,153,0.10)' }]}>
+            {status === 'missing' ? (
+              <Ionicons name="cloud-offline-outline" size={22} color="#9CA3AF" />
+            ) : (
+              <ActivityIndicator color="#9CA3AF" />
+            )}
+          </View>
+        )}
+        <View style={styles.rowBody}>
+          <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
+            {photo.title || 'Без назви'}
+          </Text>
+          {!!(photo.createdAt ?? photo.updatedAt) && (
+            <Text style={[styles.rowCaption, { color: textMuted }]}>
+              {formatUpdatedAt((photo.createdAt ?? photo.updatedAt) as number)}
+            </Text>
+          )}
+          {docCount > 0 && (
+            <Text style={[styles.rowCaption, { color: textMuted }]}>
+              {docCount === 1 ? 'В одній нотатці' : `У нотатках: ${docCount}`}
+            </Text>
+          )}
+          {rest.tags.length > 0 && (
+            <View style={styles.rowMeta}>
+              <TagChips tags={rest.tags} onPress={rest.onTagPress ?? (() => {})} glass />
+            </View>
+          )}
+        </View>
+      </Pressable>
+      <Trailing {...rest} text={text} textMuted={textMuted} />
     </View>
   );
 }

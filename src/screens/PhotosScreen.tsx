@@ -34,7 +34,7 @@ import ZoomableImageViewer, { ViewerAction } from '../components/ZoomableImageVi
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
-import { PhotoCell } from '../components/ItemCards';
+import { PhotoCell, PhotoRow } from '../components/ItemCards';
 import GroupSections from '../components/GroupSections';
 import TagPicker from '../components/TagPicker';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
@@ -45,7 +45,7 @@ import { useDownloadToast } from '../hooks/useDownloadToast';
 import { useDatabaseList } from '../hooks/useDatabaseList';
 import { downloadToFolder } from '../utils/downloadToFolder';
 import { touchAttachment } from '../utils/attachmentCache';
-import DatabaseChrome from '../components/DatabaseChrome';
+import DatabaseChrome, { menuStyles } from '../components/DatabaseChrome';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { appendBlocksToToday, blockFromPhoto, copyObjectsToNote } from '../utils/copyToNote';
 import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
@@ -53,6 +53,7 @@ import SaveDestinationSheet from '../components/SaveDestinationSheet';
 import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
 import DownloadToast from '../components/DownloadToast';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { GLASS_TEXT } from '../constants/glass';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 
 const ACCENT = '#EC4899';
@@ -134,6 +135,8 @@ export default function PhotosScreen() {
     toast,
     selected: selectedPhotos,
     needle,
+    viewMode,
+    changeViewMode,
   } = list;
   const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
 
@@ -510,6 +513,37 @@ export default function PhotosScreen() {
       onBack={() => navigation.goBack()}
       searchPlaceholder="Пошук фото за назвою"
       onAdd={() => askWhereFrom()}
+      // The same two rows Files and Links already have. Photos had only
+      // the grid, which shows the picture and nothing else - so a photo's
+      // name, its date and how many notes use it were invisible here,
+      // and the name was invisible everywhere.
+      menuRows={(close) => (
+        <>
+          <Text style={menuStyles.menuSectionLabel}>Вигляд</Text>
+          <Pressable
+            style={menuStyles.menuRow}
+            onPress={() => {
+              close();
+              changeViewMode('list');
+            }}
+          >
+            <Ionicons name="reorder-four-outline" size={17} color={GLASS_TEXT} />
+            <Text style={menuStyles.menuRowLabel}>Список</Text>
+            {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+          </Pressable>
+          <Pressable
+            style={menuStyles.menuRow}
+            onPress={() => {
+              close();
+              changeViewMode('grid');
+            }}
+          >
+            <Ionicons name="grid-outline" size={17} color={GLASS_TEXT} />
+            <Text style={menuStyles.menuRowLabel}>Сітка</Text>
+            {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+          </Pressable>
+        </>
+      )}
       bulk={{
         onTag: () => setBulkTagPickerVisible(true),
         onGroup: () => setBulkGroupPickerVisible(true),
@@ -664,22 +698,26 @@ export default function PhotosScreen() {
           <ScrollView
             {...listProps}
             contentContainerStyle={[
-              styles.grid,
+              // The grid wraps cells across the row; the list stacks them
+              // down it. Same scroll view, two container styles - the one
+              // thing that cannot be shared between the two views.
+              viewMode === 'list' ? styles.list : styles.grid,
               { paddingTop: listTopPad },
               isSelectMode && styles.gridWithBulkBar,
             ]}
           >
-            {displayedPhotos.map((photo) => (
-              <PhotoCell
-                key={photo.id}
-                photo={photo}
-                tags={tags.filter((t) => photo.tagIds.includes(t.id))}
-                onPress={() => (isSelectMode ? toggleSelected(photo.id) : setViewerPhotoId(photo.id))}
-                onTagPress={() => setTagPickerForId(photo.id)}
-                isSelectMode={isSelectMode}
-                isSelected={selectedIds.has(photo.id)}
-              />
-            ))}
+            {displayedPhotos.map((photo) => {
+              const shared = {
+                key: photo.id,
+                photo,
+                tags: tags.filter((t) => photo.tagIds.includes(t.id)),
+                onPress: () => (isSelectMode ? toggleSelected(photo.id) : setViewerPhotoId(photo.id)),
+                onTagPress: () => setTagPickerForId(photo.id),
+                isSelectMode,
+                isSelected: selectedIds.has(photo.id),
+              };
+              return viewMode === 'list' ? <PhotoRow {...shared} /> : <PhotoCell {...shared} />;
+            })}
             {/* What else is in this group - see GroupSections. */}
             <GroupSections groupId={list.selectedGroupId} currentKind="photo" tags={tags} />
           </ScrollView>
@@ -730,6 +768,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 8,
     gap: 12,
+  },
+  // The same measurements Files and Links use for their own row lists, so
+  // the three databases read as one app rather than three.
+  list: {
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    gap: 10,
   },
   gridWithBulkBar: {
     paddingBottom: 90,
