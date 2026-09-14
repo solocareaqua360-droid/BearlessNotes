@@ -48,7 +48,7 @@ import {
 } from '../constants/glass';
 import { db } from '../firebase';
 import { deleteCustomDatabase } from '../utils/deleteCustomDatabase';
-import { CustomDatabase, CustomDatabaseRow, CustomDatabaseView, FieldDef, Group } from '../types';
+import { CustomDatabase, CustomDatabaseRow, CustomDatabaseView, FieldDef, FieldType, Group } from '../types';
 import { groupAppliesTo } from '../utils/groups';
 import { hapticSuccess } from '../utils/haptics';
 import CustomRowCard, { CustomRowGridCard, RelationThumb } from '../components/CustomRowCard';
@@ -66,7 +66,7 @@ import {
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
-import FieldsEditorSheet, { FIELD_TYPE_ICON } from '../components/FieldsEditorSheet';
+import FieldsEditorSheet, { FIELD_TYPE_ICON, FIELD_TYPE_LABEL } from '../components/FieldsEditorSheet';
 import ImportTableSheet from '../components/ImportTableSheet';
 import PhotoCarousel from '../components/PhotoCarousel';
 import UndoToast from '../components/UndoToast';
@@ -237,6 +237,10 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   const [editingFields, setEditingFields] = useState(false);
   const [importing, setImporting] = useState(false);
   const [rowEditor, setRowEditor] = useState<RowEditorState | null>(null);
+  // The type chosen for a field being added from inside the record form -
+  // the name is asked next, and the two together make the field. Null
+  // while nothing is being added. See addFieldFromForm.
+  const [fieldPromptType, setFieldPromptType] = useState<FieldType | null>(null);
   // Opening a row now lands on a READ page - a structured reference for
   // this one record - and editing is a deliberate step from there, rather
   // than every tap dropping straight into a form.
@@ -665,6 +669,46 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   async function saveFields(fields: FieldDef[]) {
     setEditingFields(false);
     await updateDoc(doc(db, 'customDatabases', databaseId), { fields, updatedAt: Date.now() });
+  }
+
+  // A field, made from inside the record form.
+  //
+  // This is the shape the whole screen is built around: the "+" opens a
+  // small form, and the fields a record needs are added THERE, while the
+  // first record is being written. Filling one card is how the database
+  // gets its columns - which is what a database is here, rather than a
+  // schema to be designed first and filled afterwards.
+  //
+  // The fields editor stays, and stays the place for what this cannot
+  // ask in two taps: a select's options, which relation a field points
+  // at, which one is the cover. This adds the field and its type; the
+  // rest is a detour only taken when it is wanted.
+  async function addFieldFromForm() {
+    const type = (await ask({
+      title: 'Яке поле додати?',
+      actions: (['text', 'number', 'date', 'select', 'multiSelect', 'relation'] as FieldType[]).map(
+        (id) => ({ id, label: FIELD_TYPE_LABEL[id], icon: FIELD_TYPE_ICON[id] })
+      ),
+    })) as FieldType | null;
+    if (!type) return;
+    setFieldPromptType(type);
+  }
+
+  async function createField(type: FieldType, name: string) {
+    setFieldPromptType(null);
+    if (!database) return;
+    const field: FieldDef = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: name.trim() || FIELD_TYPE_LABEL[type],
+      type,
+    };
+    // Appended, not inserted: the first field is the record's title
+    // everywhere in the app (see rowTitleOf), and a new field must never
+    // quietly become it.
+    await updateDoc(doc(db, 'customDatabases', databaseId), {
+      fields: [...database.fields, field],
+      updatedAt: Date.now(),
+    });
   }
 
   // Asked through «Питання» now, rather than through a confirmation
@@ -1910,6 +1954,19 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
         </GlassPortal>
       )}
 
+      {/* The second half of adding a field from the form: the type is
+          picked, this asks what it is called. */}
+      <RenamePrompt
+        visible={fieldPromptType !== null}
+        title={fieldPromptType ? `Нове поле · ${FIELD_TYPE_LABEL[fieldPromptType]}` : 'Нове поле'}
+        initialValue=""
+        placeholder="Назва поля"
+        onCancel={() => setFieldPromptType(null)}
+        onSave={(name) => {
+          if (fieldPromptType) createField(fieldPromptType, name);
+        }}
+      />
+
       <RenamePrompt
         visible={renamingDatabase}
         title="Назва бази"
@@ -2121,7 +2178,14 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
               styles.editorSheet,
               {
                 marginBottom: keyboardHeight,
-                maxHeight: Math.min(windowHeight * 0.85, windowHeight - keyboardHeight - 48),
+                // Small, and deliberately so. It was 85% of the screen,
+                // which on a phone is the screen - a page in all but
+                // name. The point of this form is that it is a form: it
+                // opens over the list, takes what a record needs, and
+                // gets out of the way. A database with many fields
+                // scrolls inside it rather than growing to swallow the
+                // screen.
+                maxHeight: Math.min(windowHeight * 0.55, windowHeight - keyboardHeight - 48),
               },
             ]}
           >
@@ -2147,6 +2211,14 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
                   </View>
                 )
               )}
+              {/* The database grows from here. A field this record needs
+                  and does not have is added in place, without leaving the
+                  form - see addFieldFromForm for why that is the point
+                  rather than a shortcut. */}
+              <Pressable style={styles.addFieldRow} onPress={addFieldFromForm}>
+                <Ionicons name="add" size={16} color={GLASS_TEXT_MUTED} />
+                <Text style={styles.addFieldLabel}>Поле</Text>
+              </Pressable>
               <View style={styles.editorField}>
                 <Text style={styles.editorFieldLabel}>Теги</Text>
                 <Pressable style={styles.fieldPressable} onPress={() => setTagPickerVisible(true)}>
@@ -3425,7 +3497,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 28,
-    maxHeight: '85%',
+    maxHeight: '55%',
   },
   handle: {
     width: 36,
@@ -3441,6 +3513,19 @@ const styles = StyleSheet.create({
     fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
     marginBottom: 8,
+  },
+  addFieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+    paddingRight: 8,
+  },
+  addFieldLabel: {
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT_MUTED,
   },
   editorScroll: {
     // Shrinks to whatever the sheet's own (keyboard-aware) maxHeight
