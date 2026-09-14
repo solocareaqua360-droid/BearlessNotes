@@ -56,12 +56,23 @@ export type CanvasPlacement = { id: string; x: number; y: number };
 // otherwise a place in a plain column, in the document's own order. The
 // fallback is computed, never written - a document nobody has arranged
 // looks arranged anyway, and still carries nothing extra.
-export function layOutBlocks(blocks: Block[]): CanvasPlacement[] {
+//
+// `heights` are the cards' MEASURED heights, reported by each card as it
+// lays itself out. Guessing them from the text length put every card in
+// the column a little too close to the one above, and the long ones
+// overlapped outright - a card's real height depends on the font, the
+// width and where the words happen to break, which only layout knows.
+// The guess stays as the value for a card that has not reported yet, for
+// the single frame before it does.
+export function layOutBlocks(
+  blocks: Block[],
+  heights: Record<string, number> = {}
+): CanvasPlacement[] {
   let nextY = 0;
   return blocks.map((block) => {
     if (block.canvas) return { id: block.id, x: block.canvas.x, y: block.canvas.y };
     const y = nextY;
-    nextY += approximateHeight(block) + LANE_GAP;
+    nextY += (heights[block.id] ?? approximateHeight(block)) + LANE_GAP;
     return { id: block.id, x: 0, y };
   });
 }
@@ -97,8 +108,16 @@ export default function DocumentCanvas({
   const savedTranslateX = useSharedValue(translateX.value);
   const savedTranslateY = useSharedValue(translateY.value);
 
-  const placements = useMemo(() => layOutBlocks(blocks), [blocks]);
+  const [cardHeights, setCardHeights] = useState<Record<string, number>>({});
+  const placements = useMemo(() => layOutBlocks(blocks, cardHeights), [blocks, cardHeights]);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Rounded to the point: a height that wobbles by a fraction between
+  // frames would re-lay the whole column out for nothing.
+  function reportHeight(id: string, height: number) {
+    const rounded = Math.round(height);
+    setCardHeights((prev) => (prev[id] === rounded ? prev : { ...prev, [id]: rounded }));
+  }
 
   function stopEditing() {
     setEditingId(null);
@@ -172,6 +191,7 @@ export default function DocumentCanvas({
                 canvasScale={scale}
                 canvasPanGesture={panGesture}
                 editing={editingId === block.id}
+                onHeight={reportHeight}
                 onMove={onMoveBlock}
                 onChangeText={onChangeText}
                 onEdit={(id, x, y) => {
@@ -200,6 +220,7 @@ function CanvasCard({
   canvasScale,
   canvasPanGesture,
   editing,
+  onHeight,
   onMove,
   onChangeText,
   onEdit,
@@ -210,6 +231,7 @@ function CanvasCard({
   canvasScale: ReturnType<typeof useSharedValue<number>>;
   canvasPanGesture: ReturnType<typeof Gesture.Pan>;
   editing: boolean;
+  onHeight: (id: string, height: number) => void;
   onMove: (id: string, x: number, y: number) => void;
   onChangeText: (id: string, text: string) => void;
   onEdit: (id: string, x: number, y: number) => void;
@@ -260,7 +282,10 @@ function CanvasCard({
 
   return (
     <GestureDetector gesture={gesture}>
-      <Animated.View style={[styles.card, editing && styles.cardEditing, cardStyle]}>
+      <Animated.View
+        style={[styles.card, editing && styles.cardEditing, cardStyle]}
+        onLayout={(e) => onHeight(block.id, e.nativeEvent.layout.height)}
+      >
         {editing ? (
           <TextInput
             autoFocus
@@ -388,6 +413,13 @@ const styles = StyleSheet.create({
     borderColor: GLASS_ACCENT,
   },
   cardInput: {
+    // A browser gives a textarea its own default width (the `cols`
+    // attribute), which is narrower than the card it sits in - the input
+    // has to be told to fill its parent, exactly as the editor's own
+    // inputs had to be.
+    width: '100%',
+    alignSelf: 'stretch',
+    textAlignVertical: 'top',
     fontSize: 14,
     lineHeight: 19,
     fontFamily: FONT_REGULAR,
