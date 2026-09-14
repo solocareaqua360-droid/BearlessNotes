@@ -1952,9 +1952,11 @@ const styles = StyleSheet.create({
   },
   // «Провідник»: the folder rows above the cards, in the list's own
   // side margin, and the crumb with the way up.
+  // The list's own container already keeps the rail's clearance; the
+  // folder rows take only the cards' side margin, or they end up twice
+  // as far from the rail as the cards below them.
   explorerHead: {
-    paddingLeft: 20,
-    paddingRight: RAIL_CLEARANCE,
+    paddingHorizontal: 20,
     gap: 8,
     marginBottom: 8,
   },
