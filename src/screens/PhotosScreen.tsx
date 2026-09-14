@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { RAIL_CLEARANCE } from '../constants/rail';
 import {
   ActivityIndicator,
   Image,
@@ -774,7 +775,10 @@ const styles = StyleSheet.create({
   // the three databases read as one app rather than three.
   list: {
     paddingVertical: 8,
-    paddingHorizontal: 20,
+    paddingLeft: 20,
+    // The rail stands at the right edge; the rows stop short of it rather
+    // than running under it - the same clearance the calendar keeps.
+    paddingRight: RAIL_CLEARANCE,
     gap: 10,
   },
   gridWithBulkBar: {

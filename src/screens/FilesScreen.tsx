@@ -777,7 +777,10 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingVertical: 8,
-    paddingHorizontal: 20,
+    paddingLeft: 20,
+    // The rail stands at the right edge; the rows stop short of it rather
+    // than running under it - the same clearance the calendar keeps.
+    paddingRight: RAIL_CLEARANCE,
     gap: 10,
   },
   gridList: {

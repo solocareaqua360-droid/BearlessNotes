@@ -28,7 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
-import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 import { ask, confirm } from '../components/surfaces/Ask';
 
 const ACCENT = '#8B5CF6';
@@ -407,7 +407,10 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingTop: RAIL_TOP_PAD,
-    paddingHorizontal: 20,
+    paddingLeft: 20,
+    // The rail stands at the right edge; the rows stop short of it rather
+    // than running under it - the same clearance the calendar keeps.
+    paddingRight: RAIL_CLEARANCE,
     gap: 10,
     // Clears FloatingIslandTabBar the same way DocumentsScreen's list does -
     // without it the last board sits permanently under the island.

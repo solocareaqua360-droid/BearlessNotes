@@ -3347,7 +3347,10 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingVertical: 8,
-    paddingHorizontal: 20,
+    paddingLeft: 20,
+    // The rail stands at the right edge; the rows stop short of it rather
+    // than running under it - the same clearance the calendar keeps.
+    paddingRight: RAIL_CLEARANCE,
     gap: 10,
     // Clears the floating "+" (bottom: 100, 56 tall) so the last row can be
     // scrolled out from under it.

@@ -1953,7 +1953,8 @@ const styles = StyleSheet.create({
   // «Провідник»: the folder rows above the cards, in the list's own
   // side margin, and the crumb with the way up.
   explorerHead: {
-    paddingHorizontal: 20,
+    paddingLeft: 20,
+    paddingRight: RAIL_CLEARANCE,
     gap: 8,
     marginBottom: 8,
   },
@@ -2048,6 +2049,10 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingVertical: 8,
+    // The rail stands at the right edge; the cards stop short of it rather
+    // than running under it. The cards carry 20 of side margin of their
+    // own, so this is what is left of the clearance.
+    paddingRight: RAIL_CLEARANCE - 20,
     // paddingBottom comes from listBottomPad - it depends on the window
     // size and the tag/add buttons' own spread, not a fixed number.
   },

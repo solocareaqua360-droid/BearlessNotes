@@ -124,7 +124,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_DANGER, GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
-import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import SaveRing from '../components/SaveRing';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -4722,6 +4722,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         style={styles.scrollArea}
         contentContainerStyle={[
           embedded && styles.scrollAreaEmbedded,
+          // The rail stands at the right edge; the text stops short of it
+          // rather than running under it - as a mail's text does under its
+          // capsule. The blocks carry 20 of side padding of their own.
+          !embedded && railLeft === undefined && { paddingRight: RAIL_CLEARANCE - 20 },
           // Embedded, with the keyboard down, the floating island sits over
           // the bottom of this list - the last block (and "Додати блок")
           // has to be able to scroll clear of it.
