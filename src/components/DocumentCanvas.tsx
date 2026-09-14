@@ -260,7 +260,6 @@ function DocumentCanvasInner({
 
   return (
     <View
-      ref={canvasRef}
       style={styles.viewport}
       onLayout={(e) => {
         const { width: w, height: h } = e.nativeEvent.layout;
@@ -269,6 +268,12 @@ function DocumentCanvasInner({
     >
       <GestureDetector gesture={canvasGesture}>
         <Animated.View style={styles.fill}>
+          {/* The wheel listener goes on a plain View INSIDE the gesture
+              detector, which is where the board has it. Outside it, the
+              events the trackpad sends never reached this - so the canvas
+              could only be moved by pressing and dragging it, and that
+              drag is wanted for choosing cards, not for moving the view. */}
+          <View ref={canvasRef} style={StyleSheet.absoluteFill} collapsable={false}>
           <Animated.View style={[styles.surface, surfaceStyle]}>
             {/* A tap on bare canvas puts the text down, the way clicking
                 beside a thing ends editing everywhere else. It is a view
@@ -309,6 +314,7 @@ function DocumentCanvasInner({
               />
             ))}
           </Animated.View>
+          </View>
         </Animated.View>
       </GestureDetector>
       {blocks.length === 0 && (
