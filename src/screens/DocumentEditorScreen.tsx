@@ -79,7 +79,7 @@ import RenamePrompt from '../components/RenamePrompt';
 import DocumentTagsBlock from '../components/DocumentTagsBlock';
 import SketchEditor from '../components/SketchEditor';
 import EditorToolbar, { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolbar';
-import { BlockAction } from '../components/blockActions';
+import { BLOCK_ACTIONS, BlockAction } from '../components/blockActions';
 import { clearCopiedObject, getCopiedObject, useCopiedObject } from '../utils/objectClipboard';
 import { backupFileToDrive, ensureLocalFile } from '../utils/googleDrive';
 import { ensureFileIsHere, openFileExternally } from '../utils/openFileExternally';
@@ -3047,7 +3047,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // list's bottom padding and the scroll maths above both need to know
   // whether the bar is currently taking up room. Gated on the keyboard
   // too: with it down the bar would just sit inert on the bottom edge.
-  const isToolbarVisible = keyboardHeight > 0 && focusedBlockId !== null;
+  // On a phone the bar rides on the keyboard, so it shows with it. A
+  // browser raises no keyboard, and the bar never showed at all - which
+  // left the laptop with no way to add a picture, a file or a record to
+  // a note. There it shows whenever a block is being written in, pinned
+  // to the bottom edge (keyboardSV is 0, so that is where it lands).
+  const isToolbarVisible = focusedBlockId !== null && (keyboardHeight > 0 || Platform.OS === 'web');
   toolbarHeightRef.current = isToolbarVisible ? EDITOR_TOOLBAR_HEIGHT : 0;
 
   // Keyboard-synced scroll. The post-keyboard pass below
@@ -3403,10 +3408,45 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     });
   }
 
+  // "/" in an empty block opens the menu of things a block can become or
+  // hold - the way every notes app on a laptop does it, and what the user
+  // asked for: on a laptop the toolbar is a long way from the caret, and
+  // "/" is right under the fingers. The same list the toolbar's "+" has,
+  // and the same handler behind it; only the way in is new. Picking
+  // clears the "/" first, so the block does not keep a stray slash in
+  // front of a picture; walking away leaves the "/" as typed.
+  async function openSlashMenu(id: string) {
+    const offered = BLOCK_ACTIONS.filter((entry) => Platform.OS !== 'web' || entry.key !== 'scan');
+    const picked = (await ask({
+      title: 'Що вставити?',
+      actions: offered.map((entry) => ({
+        id: entry.key,
+        label: entry.label,
+        // «Питання» draws Ionicons; the two list glyphs come from another
+        // family and take the nearest Ionicons stand-ins here.
+        icon:
+          entry.family === 'ionicons'
+            ? entry.icon
+            : entry.key === 'numbered'
+              ? 'list-circle-outline'
+              : 'list-outline',
+      })),
+    })) as BlockAction | 'cancel';
+    if (picked === 'cancel') return;
+    setBlocks((prev) => prev.map((b) => (b.id === id && b.text === '/' ? { ...b, text: '' } : b)));
+    handleBlockAction(picked, id);
+  }
+
   function handleBlockChange(id: string, text: string) {
     snapshotForTyping();
     keepCaretVisibleWhileTyping();
-    const currentType = blocks.find((b) => b.id === id)?.type ?? 'paragraph';
+    const current = blocks.find((b) => b.id === id);
+    const currentType = current?.type ?? 'paragraph';
+    // A slash typed into an EMPTY block, and only then - a "/" in the
+    // middle of a sentence is a slash.
+    if (text === '/' && (current?.text ?? '') === '' && !['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'link', 'divider'].includes(currentType)) {
+      openSlashMenu(id);
+    }
 
     // List items (bulleted/numbered/checkbox) continue the list on a
     // single Enter instead of needing a second one - typing a whole
