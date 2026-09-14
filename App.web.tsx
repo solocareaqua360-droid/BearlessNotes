@@ -11,33 +11,29 @@ import {
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { auth, ensureSignedIn, signInWithGoogleAccount, signOutEverywhere } from './src/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import BoardsListScreen from './src/screens/BoardsListScreen';
-import BoardScreen from './src/screens/BoardScreen';
+import RootNavigator from './src/AppNavigator';
+import { navigationRef } from './src/navigationRef';
 import { AskHost } from './src/components/surfaces/Ask';
 import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
 import CrashBoundary from './src/components/CrashBoundary';
-import { BoardsStackParamList } from './src/navigation';
 import { driveTokenError, getDriveToken, hasDriveToken, subscribeToDriveToken } from './src/utils/driveToken.web';
 
-// The browser build: the board, and nothing else.
+// The browser build: the whole app.
 //
-// Not a smaller copy of the app - a different, deliberate slice of it.
-// The board is the thing worth using on two screens at once, and it is
-// also the one big screen that needs no native module of its own. Every
-// other screen brings one: the editor a scanner and a text recogniser,
-// the file list a quick look, settings a Google sign-in module. Leaving
-// them out is not a limitation to apologise for here, it is what makes
-// this build exist at all.
+// It began as the board and nothing else, on the reasoning that every
+// other screen brought a native module with it - the editor a scanner
+// and a text recogniser, the file list a quick look, settings a Google
+// sign-in module. That reasoning held until each of those got a `.web`
+// sibling, at which point the only thing keeping the screens out was a
+// navigator here that had never heard of them.
 //
-// Same code as the phone, though - the same BoardScreen file, reading
-// the same database through the same seam (see src/firestore.ts). What
-// differs is chosen file by file, in .web siblings, not branched inside
-// the screens.
-const Stack = createNativeStackNavigator<BoardsStackParamList>();
+// So this mounts the same tree the phone does (src/AppNavigator), and
+// what the browser leaves out is decided file by file, in .web siblings,
+// never route by route here. What this file owns is the browser's own
+// wrapping: the sign-in gate, the account bar, the crash boundary.
 
 const styles = StyleSheet.create({
   centre: {
@@ -133,9 +129,10 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [drive, setDrive] = useState(hasDriveToken());
 
-  // Asked for silently on the way in: once this account has granted the
-  // scope, the token comes back with nothing appearing on screen, and the
-  // pictures are simply there.
+  // Not a request - a look in the browser's storage for a token from
+  // within the hour. Nothing is asked of Google here, because nothing
+  // can be without a click (see driveToken.web); if one is there, the
+  // pictures are simply there too.
   useEffect(() => {
     if (user) getDriveToken(false, user.email).then(() => setDrive(hasDriveToken()));
     return subscribeToDriveToken(() => setDrive(hasDriveToken()));
@@ -214,11 +211,15 @@ export default function App() {
           >
             <Text style={styles.linkLabel}>Змінити акаунт</Text>
           </Pressable>
-          {/* Signing in grants Drive in the same window now, so this
-              should never appear. It stays for the one case where it
-              still can: a sign-in that fell back to the Firebase popup,
-              which proves who you are and grants nothing. Better a
-              button than pictures that quietly never load. */}
+          {/* The one click Drive costs in a browser, and it is a real
+              cost rather than a leftover: Google's token client opens a
+              popup, a browser allows a popup only from a click, and the
+              token it gives lasts an hour. So this appears on a fresh
+              browser, and again once an hour - and with the consent
+              already given, the window it opens closes in the same
+              moment. See driveToken.web for why there is no quieter way
+              without a server, and the storage decision that was parked
+              rather than made. */}
           {!drive && (
             <>
               <Text style={styles.driveText}>
@@ -242,14 +243,15 @@ export default function App() {
             or the editor must still leave a way to change account or sign
             out, and the bar is that way. */}
         <CrashBoundary>
-        <NavigationContainer>
+        <NavigationContainer ref={navigationRef}>
           <GlassPortalHost>
             <GlassTargetProvider>
               <AskHost />
-              <Stack.Navigator screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="BoardsList" component={BoardsListScreen} />
-                <Stack.Screen name="Board" component={BoardScreen} />
-              </Stack.Navigator>
+              {/* The whole app, not the board alone - the same tree the
+                  phone mounts, from src/AppNavigator. What the browser
+                  leaves out is chosen file by file (.web siblings), not
+                  route by route here. */}
+              <RootNavigator />
             </GlassTargetProvider>
           </GlassPortalHost>
         </NavigationContainer>
