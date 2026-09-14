@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import {
+  Keyboard,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -54,6 +63,21 @@ const EDIT_LEFT = 16;
 // typed into on the canvas. Everything else (a picture, a file, an
 // embedded database) is opened on the page, where its own controls are.
 const TEXT_TYPES = ['paragraph', 'bulleted', 'numbered', 'checkbox'];
+
+// Typing INSIDE a card is a browser thing for now, and that is a finding
+// rather than a preference.
+//
+// A caret has to land where it was aimed. In a browser the document can
+// be asked directly which character a click hit (caretAtPoint.web), and
+// a mouse aims precisely. On a phone there is no such question to ask -
+// the page editor works the index out from measure() plus onTextLayout,
+// machinery a card does not have - so a tap into a card put the caret at
+// the end of the text whatever it was aiming at. A tap on the phone
+// therefore does what it did in the first version: it opens the block on
+// the PAGE, where typing has always worked properly. See the parity
+// ledger; this comes back the day the canvas can answer the same
+// question the page can.
+const CAN_EDIT_IN_CARD = Platform.OS === 'web';
 
 export type CanvasPlacement = { id: string; x: number; y: number };
 
@@ -267,7 +291,7 @@ function CanvasCard({
     // A picture or a file has controls of its own, and they are on the
     // page - so that is where a tap on one goes. Text is typed where it
     // stands.
-    if (isText) onEdit(block.id, x, y);
+    if (isText && CAN_EDIT_IN_CARD) onEdit(block.id, x, y);
     else onOpen(block.id);
   }
 
