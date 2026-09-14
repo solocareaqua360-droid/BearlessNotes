@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import GlassLayer from '../GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../../utils/fonts';
@@ -15,6 +15,7 @@ import {
   SHEET_WINDOW,
 } from '../../constants/glass';
 import { hapticButtonDown } from '../../utils/haptics';
+import { useKeyboardHeight } from '../../hooks/useKeyboardHeight';
 
 // «Питання» - the first of the named surfaces.
 //
@@ -93,6 +94,13 @@ export function notify(title: string, message?: string): Promise<string> {
 // need a piece of state on the screen that happens to be asking.
 export function AskHost() {
   const [current, setCurrent] = useState<Pending | null>(null);
+  // A question has nothing to type into, so the keyboard the asking screen
+  // left up goes down - and while it is going, the window is centred in
+  // what the keyboard still covers, not under it.
+  const keyboardHeight = useKeyboardHeight();
+  useEffect(() => {
+    if (current) Keyboard.dismiss();
+  }, [current]);
 
   useEffect(() => {
     // Questions can collide - a bulk delete that reports its failure, for
@@ -123,7 +131,7 @@ export function AskHost() {
     // is why every sheet here stopped being one. The dim, the tap that
     // closes and the hardware back button all come with the layer.
     <GlassLayer visible onClose={() => answer('cancel')} intensity={60}>
-      <View style={styles.frame} pointerEvents="box-none">
+      <View style={[styles.frame, { paddingBottom: keyboardHeight }]} pointerEvents="box-none">
       <View style={styles.card}>
         <Text style={styles.title}>{current.title}</Text>
         {!!current.message && <Text style={styles.message}>{current.message}</Text>}
