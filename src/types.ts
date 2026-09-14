@@ -89,6 +89,13 @@ export interface Block {
   // the block renderer to keep the sticker's yellow background even once
   // it's embedded in a document.
   isSticker?: boolean;
+  // Where this block sits when the document is looked at as a CANVAS
+  // ("Полотно" - see DocumentCanvas). Absent means "never moved": the
+  // canvas lays such a block out down a column in reading order and only
+  // writes a position once the block is actually dragged, so a document
+  // nobody has arranged on the canvas carries nothing extra, and its page
+  // order stays the one true order.
+  canvas?: { x: number; y: number };
   checked?: boolean; // 'checkbox' blocks only
   imageUri?: string; // 'image' blocks only
   // 'image' blocks only - set once at creation, never touched again.

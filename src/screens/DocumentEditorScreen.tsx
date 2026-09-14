@@ -103,6 +103,7 @@ import { applyLiveRecord, recordIdFor, useLiveRecords } from '../hooks/useLiveRe
 import { attachmentInfoText } from '../utils/attachmentInfo';
 import { downloadToFolder } from '../utils/downloadToFolder';
 import AttachmentImage from '../components/AttachmentImage';
+import DocumentCanvas from '../components/DocumentCanvas';
 import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
@@ -2112,6 +2113,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     'pane' in props ? !!props.autoFocusTitle : !embedded && !('pane' in props) && !!props.route.params.autoFocusTitle;
   const [title, setTitle] = useState('');
   const [blocks, setBlocks] = useState<Block[]>([]);
+  // «Полотно» - the same document as a surface rather than a page. A view,
+  // not a second copy: what moves on it is the block itself (see
+  // DocumentCanvas and Block.canvas). Never for the embedded daily note,
+  // which is a sheet inside another screen with no room for a canvas.
+  const [canvasMode, setCanvasMode] = useState(false);
   const [tagIds, setTagIds] = useState<string[]>([]);
   // Cover image and "paper color" (below) - see the "..." menu. Both are
   // local-only settings (no cloud backup for the cover, same as any other
@@ -4280,6 +4286,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                 </>
               )}
               <View style={[styles.headerRightDivider, railHorizontal && styles.headerRightDividerRow]} />
+              {/* Page or canvas. An icon alone: the rail has no room for a
+                  word, and the icon shown is the one you would be going
+                  TO, the way a play/pause button works. */}
+              <Pressable hitSlop={8} onPress={() => setCanvasMode((v) => !v)}>
+                <Ionicons
+                  name={canvasMode ? 'document-text-outline' : 'shapes-outline'}
+                  size={24}
+                  color="#fff"
+                />
+              </Pressable>
+              <View style={[styles.headerRightDivider, railHorizontal && styles.headerRightDividerRow]} />
               <Pressable hitSlop={8} onPress={() => setExportMenuOpen((v) => !v)}>
                 <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
               </Pressable>
@@ -4393,6 +4410,22 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           the pinned toolbar (both here and in the full-screen header
           above), not here either. */}
 
+      {canvasMode && !embedded && (
+        <DocumentCanvas
+          // The live records, same as the page: a photo renamed elsewhere
+          // is renamed on the canvas too.
+          blocks={liveBlocks}
+          onMoveBlock={(id, x, y) => updateBlockFields(id, { canvas: { x, y } })}
+          // Writing stays on the page. A tap says which block, the page
+          // opens with it active - the canvas is for arranging, not typing.
+          onOpenBlock={(id) => {
+            setCanvasMode(false);
+            handleActivateBlock(id);
+          }}
+        />
+      )}
+
+      {!(canvasMode && !embedded) && (
       <ScrollView
         ref={scrollViewRef}
         style={styles.scrollArea}
@@ -4561,6 +4594,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         )}
         <Animated.View style={bottomSpacerStyle} />
       </ScrollView>
+      )}
 
       {selectedIds.size > 0 && (
         // Same floating dark-glass capsule as BulkActionBar (Files/Photos/
