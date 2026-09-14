@@ -6,6 +6,7 @@ import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 // land between rows. Same fix, same reason, as FieldsEditorSheet.
 import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
+import AttachmentImage from './AttachmentImage';
 import { onSnapshot } from '../firestore';
 import { ownedQuery } from '../utils/owned';
 import { Block, CustomDatabase, CustomDatabaseRow, CustomDatabaseView, SketchElement } from '../types';
@@ -369,7 +370,7 @@ export default function AddExistingItemModal({
               ) : (
                 filteredPhotos.map((p) => (
                   <Pressable key={p.id} style={styles.row} onPress={() => onPick(blockFromPhoto(p))}>
-                    <Image source={{ uri: p.imageUri }} style={styles.thumb} resizeMode="cover" />
+                    <AttachmentImage uri={p.imageUri} driveFileId={p.driveFileId} style={styles.thumb} />
                     <Text style={styles.rowText} numberOfLines={1}>
                       {p.title || 'Без назви'}
                     </Text>
@@ -440,7 +441,7 @@ export default function AddExistingItemModal({
                 filteredStickers.map((s) => (
                   <Pressable key={s.id} style={styles.row} onPress={() => onPick(blockFromSticker(s))}>
                     {s.type === 'image' && s.imageUri ? (
-                      <Image source={{ uri: s.imageUri }} style={[styles.thumb, { backgroundColor: STICKER_YELLOW }]} resizeMode="cover" />
+                      <AttachmentImage uri={s.imageUri} driveFileId={s.driveFileId} style={[styles.thumb, { backgroundColor: STICKER_YELLOW }]} />
                     ) : (
                       <View style={[styles.docIcon, { backgroundColor: STICKER_YELLOW }]}>
                         <Ionicons

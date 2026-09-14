@@ -64,6 +64,11 @@ export function extractPreview(
   maxTextLength: number = PREVIEW_LENGTH
 ): {
   imageUri: string | null;
+  // Where the bytes behind imageUri / imageUris are, for where the paths
+  // themselves cannot be read - see AttachmentImage. Parallel to
+  // imageUris by index.
+  imageDriveFileId?: string;
+  imageDriveFileIds: (string | undefined)[];
   imageUris: string[];
   previewText: string;
   checklistItems: PreviewChecklistItem[];
@@ -79,9 +84,17 @@ export function extractPreview(
     .filter((t) => t.length > 0)
     .join(' ')
     .slice(0, maxTextLength);
+  // The picture the card leads with, and where its bytes are. A cover is
+  // stored as a path alone, but it is always one of the document's own
+  // pictures, so the block carrying the same path knows the Drive copy.
+  const leadUri = coverImageUri ?? imageBlocks[0]?.imageUri ?? null;
+  const leadBlock = leadUri ? imageBlocks.find((b) => b.imageUri === leadUri) : undefined;
+  const stripBlocks = imageBlocks.slice(0, PREVIEW_IMAGE_LIMIT);
   return {
-    imageUri: coverImageUri ?? imageBlocks[0]?.imageUri ?? null,
-    imageUris: imageBlocks.slice(0, PREVIEW_IMAGE_LIMIT).map((b) => b.imageUri as string),
+    imageUri: leadUri,
+    imageDriveFileId: leadBlock?.driveFileId,
+    imageUris: stripBlocks.map((b) => b.imageUri as string),
+    imageDriveFileIds: stripBlocks.map((b) => b.driveFileId),
     previewText,
     checklistItems,
   };

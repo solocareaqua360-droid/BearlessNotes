@@ -85,7 +85,7 @@ export default function DiaryScreen() {
             // the raw field, not the date shown) doesn't apply here - every
             // match is shown as a body/embedded-name snippet instead.
             const bodyMatch = needle ? findBodyMatch(item.blocks, needle) : null;
-            const { imageUri, previewText } = extractPreview(item.blocks);
+            const { imageUri, imageDriveFileId, previewText } = extractPreview(item.blocks);
             return (
               <DocumentCard
                 key={item.id}
@@ -93,6 +93,7 @@ export default function DiaryScreen() {
                 title={dateLabel}
                 updatedAt={item.updatedAt}
                 imageUri={imageUri}
+                imageDriveFileId={imageDriveFileId}
                 previewText={previewText}
                 bodyMatch={bodyMatch}
                 onPress={() => openSheet(item.calendarDate)}

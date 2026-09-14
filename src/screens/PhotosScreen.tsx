@@ -574,6 +574,7 @@ export default function PhotosScreen() {
               <GestureHandlerRootView style={{ flex: 1 }}>
                 <ZoomableImageViewer
                   uri={viewerPhoto.imageUri}
+                  driveFileId={viewerPhoto.driveFileId}
                   onClose={() => setViewerPhotoId(null)}
                   actions={viewerActionsFor(viewerPhoto)}
                 />

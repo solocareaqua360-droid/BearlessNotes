@@ -1,5 +1,6 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AttachmentImage from './AttachmentImage';
 import { PreviewChecklistItem, TextMatch, formatUpdatedAt } from '../utils/documentPreview';
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_REGULAR, FONT_BOLD } from '../utils/fonts';
@@ -96,6 +97,7 @@ function HighlightedLine({
 function PreviewBody({
   checklistItems,
   imageUris,
+  imageDriveFileIds = [],
   previewText,
   bodyMatch,
   textColor,
@@ -105,6 +107,7 @@ function PreviewBody({
 }: {
   checklistItems: PreviewChecklistItem[];
   imageUris: string[];
+  imageDriveFileIds?: (string | undefined)[];
   previewText: string;
   bodyMatch?: TextMatch | null;
   textColor: string;
@@ -148,7 +151,7 @@ function PreviewBody({
     return (
       <View style={styles.photoStrip}>
         {imageUris.slice(0, compact ? 3 : 4).map((uri, index) => (
-          <Image key={index} source={{ uri }} style={styles.photoStripItem} resizeMode="cover" />
+          <AttachmentImage key={index} uri={uri} driveFileId={imageDriveFileIds[index]} style={styles.photoStripItem} />
         ))}
       </View>
     );
@@ -176,6 +179,12 @@ type Props = {
   title: string;
   updatedAt: number;
   imageUri: string | null;
+  // The Drive copies behind imageUri and imageUris, for where the paths
+  // cannot be read - see AttachmentImage. Parallel to imageUris on
+  // purpose: the strip is drawn by index and that is the cheapest shape
+  // that keeps it so.
+  imageDriveFileId?: string;
+  imageDriveFileIds?: (string | undefined)[];
   previewText: string;
   // "Live content" preview - a checklist-heavy document shows its actual
   // rows (checked ones struck through), a photo-heavy one shows a strip of
@@ -221,8 +230,10 @@ export default function DocumentCard({
   title,
   updatedAt,
   imageUri,
+  imageDriveFileId,
   previewText,
   imageUris = [],
+  imageDriveFileIds = [],
   checklistItems = [],
   titleMatch,
   bodyMatch,
@@ -255,7 +266,7 @@ export default function DocumentCard({
   );
 
   const thumbNode = imageUri ? (
-    <Image source={{ uri: imageUri }} style={isGrid ? styles.thumbGrid : styles.thumb} resizeMode="cover" />
+    <AttachmentImage uri={imageUri} driveFileId={imageDriveFileId} style={isGrid ? styles.thumbGrid : styles.thumb} />
   ) : noImage ? null : ( // list layout only past this point - a grid card with no image is null, not a placeholder
     <View style={[styles.thumb, styles.thumbPlaceholder]}>
       <Ionicons name="document-text-outline" size={22} color="#D1D5DB" />
@@ -266,6 +277,7 @@ export default function DocumentCard({
     <PreviewBody
       checklistItems={checklistItems}
       imageUris={imageUris}
+      imageDriveFileIds={imageDriveFileIds}
       previewText={previewText}
       bodyMatch={bodyMatch}
       textColor={text}

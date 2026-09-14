@@ -1,4 +1,5 @@
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import AttachmentImage from './AttachmentImage';
 import { BoardCard, BoardColumn } from '../types';
 import { APPROX_CARD_HEIGHT, COLUMN_MIN_HEIGHT, COLUMN_WIDTH } from '../utils/boardLayout';
 import { FONT_REGULAR } from '../utils/fonts';
@@ -65,7 +66,12 @@ export default function BoardMiniMap({
         const type = card.type ?? 'paragraph';
         if (type === 'image' && card.imageUri) {
           return (
-            <Image key={card.id} source={{ uri: card.imageUri }} style={[styles.card, frame]} resizeMode="cover" />
+            <AttachmentImage
+              key={card.id}
+              uri={card.imageUri}
+              driveFileId={card.driveFileId}
+              style={[styles.card, frame]}
+            />
           );
         }
         const isSticky = type === 'paragraph' && !!card.color;

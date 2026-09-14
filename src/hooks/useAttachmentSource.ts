@@ -13,5 +13,12 @@ export function useAttachmentSource(
   countsAsUse = true
 ): { status: CacheStatus; source: string | undefined } {
   const status = useCachedAttachment(uri, driveFileId, countsAsUse);
-  return { status, source: status === 'ready' ? uri : undefined };
+  // The path is the answer while it is being checked, too - not only
+  // once the check has passed. Every picture on the phone was drawn from
+  // its path directly, on the first frame, for the whole life of this
+  // app; a source withheld until getInfoAsync returns would put a
+  // spinner in front of each one for that tick, which is a flicker the
+  // phone never had. Withheld only while the copy is genuinely not there:
+  // being pulled back from Drive, or gone.
+  return { status, source: status === 'ready' || status === 'checking' ? uri : undefined };
 }

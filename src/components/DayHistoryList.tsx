@@ -90,7 +90,8 @@ export default function DayHistoryList({
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [expandedSelf, setExpandedSelf] = useState(false);
   const expanded = expandedProp ?? expandedSelf;
-  const [viewerImageUri, setViewerImageUri] = useState<string | null>(null);
+  // The uri and its Drive copy together - see AttachmentImage.
+  const [viewerImageUri, setViewerImageUri] = useState<{ uri: string; driveFileId?: string } | null>(null);
   const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
 
   if (items.length === 0 && !fill) return null;
@@ -122,7 +123,7 @@ export default function DayHistoryList({
       }
       case 'photo': {
         const imageUri = item.data?.imageUri as string | undefined;
-        if (imageUri) setViewerImageUri(imageUri);
+        if (imageUri) setViewerImageUri({ uri: imageUri, driveFileId: item.data?.driveFileId as string | undefined });
         return;
       }
       case 'link-video': {
@@ -174,6 +175,7 @@ export default function DayHistoryList({
           title={item.title}
           caption={time}
           thumbUri={item.data?.imageUri as string | undefined}
+          thumbDriveFileId={item.data?.driveFileId as string | undefined}
           onPress={() => openNaturally(item).catch((e) => notify('Не вдалося відкрити', String(e)))}
         />
       );
@@ -253,7 +255,7 @@ export default function DayHistoryList({
             ))}
           </ScrollView>
         )}
-        {viewerImageUri && <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />}
+        {viewerImageUri && <ZoomableImageViewer uri={viewerImageUri.uri} driveFileId={viewerImageUri.driveFileId} onClose={() => setViewerImageUri(null)} />}
         {playingVideoUrl && <VideoPlayerModal url={playingVideoUrl} onClose={() => setPlayingVideoUrl(null)} />}
       </View>
     );
@@ -294,7 +296,7 @@ export default function DayHistoryList({
         </View>
       )}
 
-      {viewerImageUri && <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />}
+      {viewerImageUri && <ZoomableImageViewer uri={viewerImageUri.uri} driveFileId={viewerImageUri.driveFileId} onClose={() => setViewerImageUri(null)} />}
       {playingVideoUrl && <VideoPlayerModal url={playingVideoUrl} onClose={() => setPlayingVideoUrl(null)} />}
     </>
   );

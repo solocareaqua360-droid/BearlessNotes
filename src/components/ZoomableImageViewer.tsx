@@ -1,5 +1,6 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AttachmentImage from './AttachmentImage';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
@@ -18,6 +19,10 @@ export type ViewerAction = {
 
 type Props = {
   uri: string;
+  // The Drive copy, for a browser: the uri is a path on the phone and the
+  // page cannot open it, so without this the viewer opened onto nothing.
+  // See AttachmentImage.
+  driveFileId?: string;
   onClose: () => void;
   // Optional bottom action row (rename/go-to-document/share/download/delete)
   // - shared between the in-document viewer (DocumentEditorScreen, no
@@ -33,7 +38,7 @@ type Props = {
 // on the same gesture-handler/reanimated stack used elsewhere in the app
 // rather than adding a dedicated image-viewer dependency for this one
 // feature.
-export default function ZoomableImageViewer({ uri, onClose, actions }: Props) {
+export default function ZoomableImageViewer({ uri, driveFileId, onClose, actions }: Props) {
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(0);
@@ -85,7 +90,7 @@ export default function ZoomableImageViewer({ uri, onClose, actions }: Props) {
       </Pressable>
       <GestureDetector gesture={gesture}>
         <Animated.View style={[styles.imageWrap, animatedStyle]}>
-          <Image source={{ uri }} style={styles.image} resizeMode="contain" />
+          <AttachmentImage uri={uri} driveFileId={driveFileId} style={styles.image} resizeMode="contain" countsAsUse />
         </Animated.View>
       </GestureDetector>
       {!!actions?.length && (

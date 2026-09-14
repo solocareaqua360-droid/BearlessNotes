@@ -5,8 +5,8 @@ import TagChips from './TagChips';
 import { colorForDocument } from '../utils/documentColor';
 import { formatUpdatedAt } from '../utils/documentPreview';
 import { useFilePreview } from '../hooks/useFilePreview';
-import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
+import AttachmentImage from './AttachmentImage';
 import { LINK_CATEGORY_INFO, categoryFromSiteName } from '../utils/linkCategory';
 import { fileIconColorFor, fileIconFor } from '../utils/fileIcons';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -341,21 +341,12 @@ export function PhotoCell({ photo, ...rest }: { photo: PhotoCardItem } & Common)
   // different device than the one the photo was taken on) - quietly
   // re-pulled from the Drive backup the first time it is rendered.
   // A thumbnail in the grid is not someone looking at the photo.
-  const cacheStatus = useCachedAttachment(photo.imageUri, photo.driveFileId, false);
   const docCount = photo.documentIds.length;
   return (
     <Pressable style={styles.cell} onPress={rest.onPress} onLongPress={rest.onLongPress}>
-      {cacheStatus === 'ready' ? (
-        <Image source={{ uri: photo.imageUri }} style={styles.cellImage} resizeMode="cover" />
-      ) : (
-        <View style={[styles.cellImage, styles.cellImageStatus]}>
-          {cacheStatus === 'missing' ? (
-            <Ionicons name="cloud-offline-outline" size={22} color="#9CA3AF" />
-          ) : (
-            <ActivityIndicator color="#9CA3AF" />
-          )}
-        </View>
-      )}
+      {/* The grid was the last place in the Photos database still
+          drawing the phone's path directly - see AttachmentImage. */}
+      <AttachmentImage uri={photo.imageUri} driveFileId={photo.driveFileId} style={styles.cellImage} />
       {rest.isSelectMode ? (
         <View style={styles.cellCheckbox}>
           <Ionicons

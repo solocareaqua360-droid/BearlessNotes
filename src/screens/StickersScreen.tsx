@@ -12,6 +12,7 @@ import {
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Svg, { Defs, LinearGradient, Stop, Rect, Path, Text as SvgText } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
+import AttachmentImage from '../components/AttachmentImage';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { collection, doc, getDoc, onSnapshot, updateDoc } from '../firestore';
@@ -57,7 +58,9 @@ export default function StickersScreen() {
   const [viewingTrash, setViewingTrash] = useState(false);
   const [composerVisible, setComposerVisible] = useState(false);
   const [editingTextSticker, setEditingTextSticker] = useState<{ id: string; text: string } | null>(null);
-  const [viewerImageUri, setViewerImageUri] = useState<string | null>(null);
+  // The uri and its Drive copy together: a browser cannot open the path
+  // and needs the id to fetch the picture - see AttachmentImage.
+  const [viewerImageUri, setViewerImageUri] = useState<{ uri: string; driveFileId?: string } | null>(null);
   const [sketchEditing, setSketchEditing] = useState<StickerItem | null>(null);
   const [documentPicker, setDocumentPicker] = useState<{ documents: PickableDocument[] } | null>(null);
 
@@ -119,7 +122,7 @@ export default function StickersScreen() {
       setEditingTextSticker({ id: sticker.id, text: sticker.text ?? '' });
       setComposerVisible(true);
     } else if (sticker.type === 'image' && sticker.imageUri) {
-      setViewerImageUri(sticker.imageUri);
+      setViewerImageUri({ uri: sticker.imageUri, driveFileId: sticker.driveFileId });
     } else if (sticker.type === 'sketch') {
       setSketchEditing(sticker);
     }
@@ -158,7 +161,7 @@ export default function StickersScreen() {
       <View key={item.id} style={styles.card}>
         <Pressable style={styles.cardTap} onPress={() => openSticker(item)}>
           {item.type === 'image' && item.imageUri ? (
-            <Image source={{ uri: item.imageUri }} style={styles.cardImage} resizeMode="cover" />
+            <AttachmentImage uri={item.imageUri} driveFileId={item.driveFileId} style={styles.cardImage} />
           ) : item.type === 'sketch' && (item.sketchElements?.length ?? 0) > 0 ? (
             <Svg width="100%" height="100%" viewBox={`0 0 ${item.sketchWidth || 1} ${item.sketchHeight || 1}`}>
               {(item.sketchElements ?? []).map((el, i) =>
@@ -252,7 +255,7 @@ export default function StickersScreen() {
             // as a solid black strip above the viewer.
             <Modal visible transparent animationType="fade" onRequestClose={() => setViewerImageUri(null)}>
               <GestureHandlerRootView style={{ flex: 1 }}>
-                <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />
+                <ZoomableImageViewer uri={viewerImageUri.uri} driveFileId={viewerImageUri.driveFileId} onClose={() => setViewerImageUri(null)} />
               </GestureHandlerRootView>
             </Modal>
           )}

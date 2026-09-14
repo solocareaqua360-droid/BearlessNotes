@@ -1,5 +1,6 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AttachmentImage from './AttachmentImage';
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
@@ -15,6 +16,10 @@ type Props = {
   // own row cards already use, just factored out so a photo history entry
   // (which had no card shape of its own before this) can share it too.
   thumbUri?: string;
+  // The Drive copy of that picture, for where the path is not readable -
+  // a browser, or another phone. A link's preview is a web address and
+  // needs none. See AttachmentImage.
+  thumbDriveFileId?: string;
   iconName?: keyof typeof Ionicons.glyphMap;
   iconColor?: string;
   onPress: () => void;
@@ -24,12 +29,12 @@ type Props = {
 // pulled out on its own so it isn't reimplemented a third time for photos
 // and a fourth time for the calendar's history list - both need exactly
 // this card, and neither had a shared place to get it from before.
-export default function MediaRowCard({ id, title, caption, thumbUri, iconName, iconColor, onPress }: Props) {
+export default function MediaRowCard({ id, title, caption, thumbUri, thumbDriveFileId, iconName, iconColor, onPress }: Props) {
   const { background, text, textMuted } = colorForDocument(id);
   return (
     <Pressable style={[styles.row, { backgroundColor: background }]} onPress={onPress}>
       {thumbUri ? (
-        <Image source={{ uri: thumbUri }} style={styles.thumb} resizeMode="cover" />
+        <AttachmentImage uri={thumbUri} driveFileId={thumbDriveFileId} style={styles.thumb} />
       ) : (
         <View style={[styles.thumbIcon, { backgroundColor: `${iconColor ?? '#6B7280'}1A` }]}>
           <Ionicons name={iconName ?? 'document-outline'} size={20} color={iconColor ?? '#6B7280'} />

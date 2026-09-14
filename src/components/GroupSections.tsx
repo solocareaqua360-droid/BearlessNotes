@@ -101,7 +101,8 @@ export default function GroupSections({
   const files = useCollection('files', enabled);
   const customRows = useCollection('customDatabaseRows', enabled);
   const customDatabases = useCollection('customDatabases', enabled);
-  const [viewerPhoto, setViewerPhoto] = useState<string | null>(null);
+  // The uri and its Drive copy together - see AttachmentImage.
+  const [viewerPhoto, setViewerPhoto] = useState<{ uri: string; driveFileId?: string } | null>(null);
 
   if (!groupId) return null;
 
@@ -170,7 +171,7 @@ export default function GroupSections({
                       key={row.id}
                       photo={photo}
                       tags={tagsFor(row)}
-                      onPress={() => open(() => setViewerPhoto(photo.imageUri))}
+                      onPress={() => open(() => setViewerPhoto({ uri: photo.imageUri, driveFileId: photo.driveFileId }))}
                     />
                   );
                 })}
@@ -179,7 +180,7 @@ export default function GroupSections({
               <View style={styles.column}>
                 {rows.map((row) => {
                   if (kind === 'document') {
-                    const { imageUri, imageUris, previewText, checklistItems } = extractPreview(
+                    const { imageUri, imageDriveFileId, imageUris, imageDriveFileIds, previewText, checklistItems } = extractPreview(
                       row.blocks as Block[] | undefined,
                       row.coverImageUri as string | undefined
                     );
@@ -190,7 +191,9 @@ export default function GroupSections({
                         title={row.title as string}
                         updatedAt={(row.updatedAt as number) ?? 0}
                         imageUri={imageUri}
+                        imageDriveFileId={imageDriveFileId}
                         imageUris={imageUris}
+                        imageDriveFileIds={imageDriveFileIds}
                         previewText={previewText}
                         checklistItems={checklistItems}
                         flush
@@ -284,7 +287,7 @@ export default function GroupSections({
       {viewerPhoto && (
         <Modal visible transparent animationType="fade" onRequestClose={() => setViewerPhoto(null)}>
           <GestureHandlerRootView style={{ flex: 1 }}>
-            <ZoomableImageViewer uri={viewerPhoto} onClose={() => setViewerPhoto(null)} />
+            <ZoomableImageViewer uri={viewerPhoto.uri} driveFileId={viewerPhoto.driveFileId} onClose={() => setViewerPhoto(null)} />
           </GestureHandlerRootView>
         </Modal>
       )}

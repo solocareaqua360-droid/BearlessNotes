@@ -101,6 +101,7 @@ import { autoGrowInput } from '../utils/autoGrowInput';
 import { caretIndexFromDom } from '../utils/caretAtPoint';
 import { applyLiveRecord, recordIdFor, useLiveRecords } from '../hooks/useLiveRecords';
 import { attachmentInfoText } from '../utils/attachmentInfo';
+import AttachmentImage from '../components/AttachmentImage';
 import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
@@ -4457,7 +4458,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       >
         {!embedded && coverImageUri && (
           <Pressable onPress={openCoverImageOptions}>
-            <Image source={{ uri: coverImageUri }} style={styles.coverImage} resizeMode="cover" />
+            {/* A cover stores only its path, not a Drive id of its own. It
+                is always one of the document's own pictures, though, so
+                the block that carries the same path knows where the copy
+                is - and a cover with no such block simply shows its
+                state, as any picture here does. See AttachmentImage. */}
+            <AttachmentImage
+              uri={coverImageUri}
+              driveFileId={blocks.find((b) => b.imageUri === coverImageUri)?.driveFileId}
+              style={styles.coverImage}
+              countsAsUse
+            />
           </Pressable>
         )}
 
@@ -4626,6 +4637,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           <GestureHandlerRootView style={{ flex: 1 }}>
             <ZoomableImageViewer
               uri={viewerBlock.imageUri}
+              driveFileId={viewerBlock.driveFileId}
               onClose={() => setViewerImageId(null)}
               actions={[
                 {

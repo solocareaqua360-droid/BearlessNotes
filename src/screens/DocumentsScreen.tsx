@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect, Path, Text as SvgText } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
+import AttachmentImage from '../components/AttachmentImage';
 import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { RouteProp, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
@@ -103,6 +104,9 @@ type StripSticker = {
   type: 'paragraph' | 'image' | 'sketch';
   text?: string;
   imageUri?: string;
+  // Where the picture's bytes are when the path above is not here - a
+  // browser, or another phone. See AttachmentImage.
+  driveFileId?: string;
   sketchElements?: SketchElement[];
   sketchWidth?: number;
   sketchHeight?: number;
@@ -194,7 +198,8 @@ export default function DocumentsScreen() {
   const [freeStickers, setFreeStickers] = useState<StripSticker[]>([]);
   const [stickerComposerVisible, setStickerComposerVisible] = useState(false);
   const [editingTextSticker, setEditingTextSticker] = useState<{ id: string; text: string } | null>(null);
-  const [viewerImageUri, setViewerImageUri] = useState<string | null>(null);
+  // The uri and its Drive copy together - see AttachmentImage.
+  const [viewerImageUri, setViewerImageUri] = useState<{ uri: string; driveFileId?: string } | null>(null);
   const [sketchEditing, setSketchEditing] = useState<StripSticker | null>(null);
   // Visual feedback while the FAB's long-press-to-create-a-sticker gesture
   // is armed - see the FAB's onLongPress/onPressOut below.
@@ -268,7 +273,7 @@ export default function DocumentsScreen() {
       setEditingTextSticker({ id: sticker.id, text: sticker.text ?? '' });
       setStickerComposerVisible(true);
     } else if (sticker.type === 'image' && sticker.imageUri) {
-      setViewerImageUri(sticker.imageUri);
+      setViewerImageUri({ uri: sticker.imageUri, driveFileId: sticker.driveFileId });
     } else if (sticker.type === 'sketch') {
       setSketchEditing(sticker);
     }
@@ -479,7 +484,7 @@ export default function DocumentsScreen() {
     return (
       <>
         {s.type === 'image' && s.imageUri ? (
-          <Image source={{ uri: s.imageUri }} style={styles.stickerCardImage} resizeMode="cover" />
+          <AttachmentImage uri={s.imageUri} driveFileId={s.driveFileId} style={styles.stickerCardImage} />
         ) : s.type === 'sketch' && (s.sketchElements?.length ?? 0) > 0 ? (
           // Same viewBox-reuses-the-capture-canvas-size approach as
           // DocumentEditorScreen's own sketch block preview - the
@@ -787,7 +792,7 @@ export default function DocumentsScreen() {
           // window - the app-level one in App.tsx doesn't reach in here.
           <Modal visible transparent animationType="fade" onRequestClose={() => setViewerImageUri(null)}>
             <GestureHandlerRootView style={{ flex: 1 }}>
-              <ZoomableImageViewer uri={viewerImageUri} onClose={() => setViewerImageUri(null)} />
+              <ZoomableImageViewer uri={viewerImageUri.uri} driveFileId={viewerImageUri.driveFileId} onClose={() => setViewerImageUri(null)} />
             </GestureHandlerRootView>
           </Modal>
         )}
@@ -825,7 +830,7 @@ export default function DocumentsScreen() {
                 // does the card show the snippet around it instead.
                 const titleMatch = findTitleMatch(item.title ?? '', needle);
                 const bodyMatch = titleMatch ? null : findBodyMatch(item.blocks, needle);
-                const { imageUri, imageUris, previewText, checklistItems } = extractPreview(
+                const { imageUri, imageDriveFileId, imageUris, imageDriveFileIds, previewText, checklistItems } = extractPreview(
                   item.blocks,
                   item.coverImageUri,
                   viewMode === 'grid' ? EXPANDED_PREVIEW_LENGTH : undefined
@@ -836,7 +841,9 @@ export default function DocumentsScreen() {
                     title={item.title}
                     updatedAt={item.updatedAt}
                     imageUri={imageUri}
+                    imageDriveFileId={imageDriveFileId}
                     imageUris={imageUris}
+                    imageDriveFileIds={imageDriveFileIds}
                     previewText={previewText}
                     checklistItems={checklistItems}
                     titleMatch={titleMatch}
@@ -934,7 +941,7 @@ export default function DocumentsScreen() {
               // document has no image (see DocumentCard's own noImage
               // handling) - list rows are unaffected, so they keep the
               // short default length.
-              const { imageUri, imageUris, previewText, checklistItems } = extractPreview(
+              const { imageUri, imageDriveFileId, imageUris, imageDriveFileIds, previewText, checklistItems } = extractPreview(
                 item.blocks,
                 item.coverImageUri,
                 viewMode === 'grid' ? EXPANDED_PREVIEW_LENGTH : undefined
@@ -945,7 +952,9 @@ export default function DocumentsScreen() {
                   title={item.title}
                   updatedAt={item.updatedAt}
                   imageUri={imageUri}
+                  imageDriveFileId={imageDriveFileId}
                   imageUris={imageUris}
+                  imageDriveFileIds={imageDriveFileIds}
                   previewText={previewText}
                   checklistItems={checklistItems}
                   onPress={() => openDocument(item.id)}
