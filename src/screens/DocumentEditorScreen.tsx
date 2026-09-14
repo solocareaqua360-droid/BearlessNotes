@@ -104,7 +104,7 @@ import { applyLiveRecord, recordIdFor, useLiveRecords } from '../hooks/useLiveRe
 import { attachmentInfoText } from '../utils/attachmentInfo';
 import { downloadToFolder } from '../utils/downloadToFolder';
 import AttachmentImage from '../components/AttachmentImage';
-import DocumentCanvas from '../components/DocumentCanvas';
+import DocumentCanvas, { DocumentCanvasHandle } from '../components/DocumentCanvas';
 import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
@@ -2072,6 +2072,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // DocumentCanvas and Block.canvas). Never for the embedded daily note,
   // which is a sheet inside another screen with no room for a canvas.
   const [canvasMode, setCanvasMode] = useState(false);
+  // Whether a card on the canvas currently has the caret in it, and the
+  // way to ask the canvas to let go of it. The rail's back arrow used to
+  // walk out of the document while the caret was still blinking; ending
+  // the typing is what "back" means at that moment.
+  const canvasApiRef = useRef<DocumentCanvasHandle | null>(null);
+  const [canvasEditing, setCanvasEditing] = useState(false);
   const [tagIds, setTagIds] = useState<string[]>([]);
   // Cover image and "paper color" (below) - see the "..." menu. Both are
   // local-only settings (no cloud backup for the cover, same as any other
@@ -4221,8 +4227,24 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               {/* The way out first, full screen in the middle, the menu
                   last - reading order on a capsule lying down, and the
                   one you reach for most at the end nearest the text. */}
-              <Pressable hitSlop={8} onPress={() => (closePane ? closePane() : navigation.goBack())}>
-                <Ionicons name="arrow-back-outline" size={24} color="#fff" />
+              <Pressable
+                hitSlop={8}
+                onPress={() => {
+                  // One step at a time: put the text down first, leave
+                  // the document on the next press.
+                  if (canvasEditing) {
+                    canvasApiRef.current?.stopEditing();
+                    return;
+                  }
+                  if (closePane) closePane();
+                  else navigation.goBack();
+                }}
+              >
+                <Ionicons
+                  name={canvasEditing ? 'checkmark-outline' : 'arrow-back-outline'}
+                  size={24}
+                  color="#fff"
+                />
               </Pressable>
               {/* Only where there are two panes to collapse into one. */}
               {!!onToggleFullscreen && (
@@ -4366,6 +4388,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
 
       {canvasMode && !embedded && (
         <DocumentCanvas
+          ref={canvasApiRef}
+          onEditingChange={setCanvasEditing}
           // The live records, same as the page: a photo renamed elsewhere
           // is renamed on the canvas too.
           blocks={liveBlocks}

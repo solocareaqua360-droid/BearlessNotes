@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
+  BackHandler,
   Keyboard,
   Platform,
   Pressable,
@@ -113,11 +114,18 @@ function approximateHeight(block: Block): number {
   return Math.min(180, 56 + Math.floor((block.text?.length ?? 0) / 28) * 20);
 }
 
-export default function DocumentCanvas({
+// What the screen around the canvas can ask of it. One method, and it
+// exists because the way OUT of typing has to be reachable from the rail
+// as well: the back arrow there used to leave the whole document while
+// the caret was still blinking in a card.
+export type DocumentCanvasHandle = { stopEditing: () => void };
+
+function DocumentCanvasInner({
   blocks,
   onMoveBlock,
   onChangeText,
   onOpenBlock,
+  onEditingChange,
 }: {
   blocks: Block[];
   // Called once, when a card is let go - not on every frame of the drag.
@@ -127,7 +135,10 @@ export default function DocumentCanvas({
   // the canvas is just another keyboard pointed at it.
   onChangeText: (id: string, text: string) => void;
   onOpenBlock: (id: string) => void;
-}) {
+  // So the screen can offer its own way out while a card is being typed
+  // into - see DocumentCanvasHandle.
+  onEditingChange?: (editing: boolean) => void;
+}, ref: React.Ref<DocumentCanvasHandle>) {
   const { width } = useWindowDimensions();
   // The trackpad, on a laptop: two fingers move the canvas, a pinch zooms
   // it around the pointer, shift+scroll goes sideways. The board's own
@@ -164,6 +175,24 @@ export default function DocumentCanvas({
     setEditingCaret(null);
     Keyboard.dismiss();
   }
+
+  useImperativeHandle(ref, () => ({ stopEditing }));
+
+  useEffect(() => {
+    onEditingChange?.(editingId !== null);
+  }, [editingId, onEditingChange]);
+
+  // Back ends the typing before it ends anything else. Without this the
+  // system's own back gesture walked out of the document with the caret
+  // still in a card, which is not what "back" meant at that moment.
+  useEffect(() => {
+    if (editingId === null) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      stopEditing();
+      return true;
+    });
+    return () => sub.remove();
+  }, [editingId]);
 
   // A card about to be typed into is brought to a known place rather than
   // left wherever the canvas happened to be - the keyboard takes the lower
@@ -249,7 +278,13 @@ export default function DocumentCanvas({
                 move the caret ended the editing instead, and the caret
                 never left the start. Behind the cards, a tap on a card
                 simply never reaches it. */}
-            {editingId !== null && NEEDS_TAP_GUARDS && (
+            {editingId !== null && (
+              // A tap beside the cards puts the text down. In a browser
+              // this has to be a view BEHIND the cards rather than a
+              // gesture over the surface, because a gesture up there also
+              // sees the clicks meant for the text; on a phone the field
+              // keeps its own touches, so either works and this is the
+              // one that already exists.
               <Pressable style={styles.stopEditingCatcher} onPress={stopEditing} />
             )}
             {blocks.map((block, index) => (
@@ -261,6 +296,7 @@ export default function DocumentCanvas({
                 canvasPanGesture={panGesture}
                 editing={editingId === block.id}
                 caretIndex={editingId === block.id ? editingCaret : null}
+                onDone={stopEditing}
                 onHeight={reportHeight}
                 onMove={onMoveBlock}
                 onChangeText={onChangeText}
@@ -292,6 +328,7 @@ function CanvasCard({
   canvasPanGesture,
   editing,
   caretIndex,
+  onDone,
   onHeight,
   onMove,
   onChangeText,
@@ -308,6 +345,7 @@ function CanvasCard({
   onMove: (id: string, x: number, y: number) => void;
   onChangeText: (id: string, text: string) => void;
   onEdit: (id: string, x: number, y: number, caretIndex: number | null) => void;
+  onDone: () => void;
   onOpen: (id: string) => void;
 }) {
   const posX = useSharedValue(placement.x);
@@ -404,6 +442,16 @@ function CanvasCard({
         onLayout={(e) => onHeight(block.id, e.nativeEvent.layout.height)}
       >
         {editing ? (
+          <>
+          {/* The way out, on the card itself. Tapping beside the cards
+              works too, but on a phone the keyboard covers most of what
+              is beside them - so the one control that is certainly not
+              under the keyboard is the card's own corner. An icon: there
+              is no room for a word here, and a tick is what "done"
+              looks like everywhere. */}
+          <Pressable hitSlop={10} style={styles.cardDone} onPress={onDone}>
+            <Ionicons name="checkmark" size={18} color={PAPER_TEXT_MUTED} />
+          </Pressable>
           <TextInput
             ref={(node) => {
               inputRef.current = node;
@@ -426,6 +474,7 @@ function CanvasCard({
             placeholderTextColor={PAPER_TEXT_FAINT}
             style={styles.cardInput}
           />
+          </>
         ) : (
           <CardBody
             block={block}
@@ -577,6 +626,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   cardInput: {
+    paddingRight: 22,
     // A browser gives a textarea its own default width (the `cols`
     // attribute), which is narrower than the card it sits in - the input
     // has to be told to fill its parent, exactly as the editor's own
@@ -594,6 +644,16 @@ const styles = StyleSheet.create({
     color: PAPER_TEXT,
     padding: 0,
     minHeight: 40,
+  },
+  // The corner tick. Padded into the card's own padding rather than
+  // pushing the text aside - it only exists while that card is being
+  // typed into.
+  cardDone: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    zIndex: 2,
+    padding: 4,
   },
   cardImage: {
     width: '100%',
@@ -641,3 +701,8 @@ const styles = StyleSheet.create({
     color: PAPER_TEXT_FAINT,
   },
 });
+
+// forwardRef, only so the screen can reach stopEditing - see
+// DocumentCanvasHandle.
+const DocumentCanvas = forwardRef(DocumentCanvasInner);
+export default DocumentCanvas;
