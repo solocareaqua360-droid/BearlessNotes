@@ -27,8 +27,43 @@ const GIS_SRC = 'https://accounts.google.com/gsi/client';
 
 type TokenClient = { requestAccessToken: (options?: { prompt?: string }) => void };
 
-let token: string | null = null;
-let expiresAt = 0;
+// Kept in the browser's storage for as long as Google says it is good -
+// an hour - so a reload inside that hour asks for nothing. It was held in
+// memory only, which meant every reload started from zero and had to
+// open a window it was not allowed to open (see getDriveToken); the
+// "Підключити Диск" bar came back each time and looked like a bug in
+// something else.
+//
+// Not sensitive in the way a secret is: it is the same short-lived token
+// a page already holds in memory, kept a little longer, and it dies on
+// its own.
+const STORAGE_KEY = 'mindeva.driveToken';
+
+function readStored(): { token: string; expiresAt: number } | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { token?: string; expiresAt?: number };
+    if (!parsed.token || !parsed.expiresAt || Date.now() >= parsed.expiresAt) return null;
+    return { token: parsed.token, expiresAt: parsed.expiresAt };
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(value: { token: string; expiresAt: number } | null): void {
+  try {
+    if (value) localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
+    else localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Storage refused (a private window, say) - the token still works for
+    // this page's lifetime, exactly as before.
+  }
+}
+
+const stored = readStored();
+let token: string | null = stored?.token ?? null;
+let expiresAt = stored?.expiresAt ?? 0;
 // Why the last attempt failed, kept so the bar can say it. Google's
 // answers here are short and useful ("access_denied", "popup_closed",
 // and the silent attempt's own quiet nothing) and every one of them was
@@ -58,6 +93,7 @@ export function driveTokenError(): string | null {
 export function clearDriveToken(): void {
   token = null;
   expiresAt = 0;
+  writeStored(null);
   listeners.forEach((l) => l());
 }
 
@@ -77,13 +113,25 @@ function loadGis(): Promise<void> {
   });
 }
 
-// `interactive` decides whether Google may show a window. Silent first,
-// every time: once the account has granted this scope, the token comes
-// back without anything appearing on screen. Only the first time - and
-// only from a real click, because a browser blocks a popup that no one
-// asked for - does it need the window.
+// `interactive` decides whether this may open a window - and that is the
+// whole difference, because there is no third way.
+//
+// This used to try a "silent" request first: prompt 'none', in the hope
+// that an account that had already granted the scope would answer with
+// nothing on screen. It never could. Google's token client ALWAYS opens
+// a popup, even to close it again at once, and a browser only allows a
+// popup in answer to a click. Called on page load, from an effect, from
+// an image that needed its bytes, the popup was blocked every time - and
+// the error saying so was thrown away, so it looked like the grant had
+// gone missing.
+//
+// So the non-interactive path opens nothing and asks nothing: it answers
+// with the token already held (in memory, or in storage from within the
+// hour) or with null. A window is opened only by the interactive path,
+// which is only ever called from a click.
 export async function getDriveToken(interactive: boolean, hint?: string | null): Promise<string | null> {
   if (hasDriveToken()) return token;
+  if (!interactive) return null;
   await loadGis();
   const google = (window as unknown as { google?: { accounts: { oauth2: { initTokenClient: (c: unknown) => TokenClient } } } })
     .google;
@@ -114,6 +162,7 @@ export async function getDriveToken(interactive: boolean, hint?: string | null):
           // A minute short of the real expiry, so a request never goes
           // out with a token that dies on the way.
           expiresAt = Date.now() + (response.expires_in ?? 3600) * 1000 - 60_000;
+          writeStored({ token, expiresAt });
           listeners.forEach((l) => l());
         }
         finish(token);
@@ -123,22 +172,12 @@ export async function getDriveToken(interactive: boolean, hint?: string | null):
         finish(null);
       },
     });
-    // Nothing came back at all - a silent attempt with no grant yet
-    // simply never calls back, and waiting for ever would freeze whatever
-    // asked.
-    if (!interactive)
-      setTimeout(() => {
-        // A silent attempt with no grant behind it never calls back at
-        // all - no callback, no error, nothing. That silence IS the
-        // answer, and saying so is the difference between "not connected"
-        // and "asked and was refused".
-        if (!token) lastError = lastError ?? 'Тихий запит лишився без відповіді - згоди ще немає';
-        finish(null);
-      }, 3000);
-    // 'select_account' rather than the default, for the same reason the
-    // Firebase popup now asks: on a machine signed into two Google
-    // accounts, the default quietly picks one, and picking the wrong one
-    // here shows an empty Drive rather than an error.
-    client.requestAccessToken(interactive ? { prompt: 'select_account' } : { prompt: 'none' });
+    // With a hint the chooser has nothing to choose, so the window is only
+    // the consent - and on a later visit, with the consent already given,
+    // it opens and closes in the same moment. Without a hint (the "Змінити
+    // акаунт" path) it asks which account, deliberately: on a machine
+    // signed into two Google accounts, the default quietly picks one, and
+    // picking the wrong one shows an empty Drive rather than an error.
+    client.requestAccessToken(hint ? {} : { prompt: 'select_account' });
   });
 }
