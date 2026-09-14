@@ -276,19 +276,22 @@ would have been an npm script goes in `scripts/` as a shell file, which
 is not hashed. The same rule is why a new dependency means a new APK:
 see the `@expo/metro-runtime` note above.
 
-**Build the web version with `scripts/build-web.sh`, never a bare `expo
-export`.** The script exists only to force `--clear`, and that flag is
-not optional here. `eas update --environment preview` bundles using the
-EAS environment, which has none of the `EXPO_PUBLIC_*` variables that
-`.env` holds locally — and those are inlined at transform time and
-CACHED by Metro. So any `expo export` run after an `eas update`, without
-`--clear`, reuses modules in which the Firebase config is the empty
-string. The page then loads, mounts nothing, and says
-`auth/invalid-api-key` in the console — which reads like a wrong key and
-is actually a stale cache. The same trap, from the native side, is
-written up in `src/utils/googleClient.ts`; this is its second face.
+**Build the web version with `scripts/build-web.sh`, which exports to
+`web-build/` — never a bare `expo export`, and never into `dist/`.**
+`eas update` runs an export of its own and writes it to `dist/`, using
+the EAS environment, which holds none of the `EXPO_PUBLIC_*` variables
+`.env` holds locally. A web build left in `dist/` is therefore silently
+replaced by the next `eas update` with one whose Firebase config is the
+empty string; the page loads to nothing and says `auth/invalid-api-key`,
+which reads like a wrong key and is actually a different build. Compare
+timestamps to confirm: the files will be newer than the web build.
+Separate directories make the collision impossible. The script also
+forces `--clear`, because those variables are inlined at transform time
+and cached by Metro, so an export following an `eas update` can reuse
+modules built with the empty ones. The same trap, from the native side,
+is written up in `src/utils/googleClient.ts`.
 
-Serve the export with `scratchpad/serve.py <port> dist` rather than
+Serve the export with `scratchpad/serve.py <port> web-build` rather than
 `python3 -m http.server`: it adds `Cache-Control: no-store`. A fresh
 export gives the bundle a new hashed name but leaves `index.html` named
 the same, so a browser holding a cached `index.html` keeps asking for a
