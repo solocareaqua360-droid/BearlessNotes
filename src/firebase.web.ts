@@ -3,7 +3,6 @@ import {
   GoogleAuthProvider,
   getAuth,
   onAuthStateChanged,
-  signInWithCredential,
   signInWithPopup,
   signOut,
 } from 'firebase/auth';
@@ -81,42 +80,28 @@ export type GoogleSignInResult = { uid: string; email: string | null; hadToSwitc
 
 // A popup rather than a redirect: a redirect loses whatever the page was
 // in the middle of, and this page is a board someone may be arranging.
-// ONE window, doing both jobs - which is how the phone has always worked
-// and how this should have worked from the start. Signing in and
-// connecting Drive were two separate buttons here, on one account, for a
-// reason no user should ever have to care about: Firebase's own popup
-// issues tokens for the FIREBASE project, and `drive.file` only ever
-// shows the files the project that created them asks for. Right account,
-// wrong project, empty Drive.
+// Two windows, and the reason is structural rather than unfinished.
 //
-// So the order is turned around. Google Identity Services asks once, as
-// the DRIVE project's client and for `email profile` alongside the Drive
-// scope, and the token that comes back does both: it opens Drive, and
-// Firebase accepts it as proof of who this is - that client id is
-// safelisted in Authentication → Google → "Safelist client IDs from
-// external projects", which is the same arrangement that lets the phone
-// sign in with it.
+// This tried to be one. Google Identity Services asked as the DRIVE
+// project's client for `email profile` alongside the Drive scope, and
+// Firebase was to accept that token as proof of identity, the way it
+// accepts the phone's. It does not: a safelisted external client is
+// trusted for verifying ID TOKENS, which is what the phone hands over -
+// it cannot drive the web popup. Putting that client into "Web SDK
+// configuration" instead was refused outright by the Firebase console,
+// three times, because that field takes a client from the Firebase
+// project's own Cloud project and ours lives in another one.
 //
-// The popup stays as a fallback, and deliberately. This path has more
-// moving parts than the one it replaces; if any of them is not in place,
-// the answer must be a working sign-in, not a dead button.
+// The alternatives are worse than the seam. Moving Drive into the
+// Firebase project makes every file already backed up invisible -
+// `drive.file` shows a project only what that project created. Asking
+// for full Drive access instead is a restricted scope, which means a paid
+// security assessment before anyone but us can use it.
+//
+// So: sign in, then grant. The account is chosen ONCE and carried into
+// the second window as a hint, so it has nothing to ask but permission,
+// and after that it is silent for ever.
 export async function signInWithGoogleAccount(): Promise<GoogleSignInResult> {
-  const accessToken = await getDriveToken(true).catch(() => null);
-  if (accessToken) {
-    try {
-      const result = await signInWithCredential(
-        auth,
-        GoogleAuthProvider.credential(null, accessToken)
-      );
-      return { uid: result.user.uid, email: result.user.email, hadToSwitch: false };
-    } catch {
-      // Whatever this token is, Firebase will not take it. It may still
-      // be a perfectly good Drive token, but it now belongs to an account
-      // that is about to be replaced by whoever the popup returns.
-      clearDriveToken();
-    }
-  }
-
   const provider = new GoogleAuthProvider();
   // Ask WHICH account. Without this Google takes the one the browser is
   // already signed into and never shows a chooser - and on a machine
@@ -127,6 +112,29 @@ export async function signInWithGoogleAccount(): Promise<GoogleSignInResult> {
   // the data is missing.
   provider.setCustomParameters({ prompt: 'select_account' });
   const credential = await signInWithPopup(auth, provider);
+
+  // Drive, immediately, as the account that just signed in.
+  //
+  // It cannot be the same window, and that is settled rather than
+  // pending: Firebase's popup can only use the OAuth client of ITS own
+  // Cloud project, and `drive.file` only ever shows a project the files
+  // that project created. Ours were created by the phone's client, which
+  // lives in a different project. Firebase refuses that client in its Web
+  // SDK configuration - the field for clients from elsewhere is the
+  // safelist above it, and a safelisted client verifies ID tokens; it
+  // does not drive the popup.
+  //
+  // So this is two steps and will stay two. What it no longer is, is two
+  // SIGN-INS: the account is chosen once, and `hint` carries it into the
+  // second window, which then has nothing to ask but permission. After
+  // that it is silent for ever - every later visit restores the token
+  // with nothing on screen.
+  //
+  // Not awaited for the result, and failure is not an error here: a
+  // browser may refuse to open a second window without a fresh click, and
+  // the "Підключити Диск" bar exists for exactly that.
+  getDriveToken(true, credential.user.email).catch(() => null);
+
   return { uid: credential.user.uid, email: credential.user.email, hadToSwitch: false };
 }
 
