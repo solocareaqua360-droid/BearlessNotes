@@ -266,6 +266,21 @@ export default function SettingsScreen() {
               ? 'Ці нотатки належать цьому акаунту. Увійди ним і на інших пристроях, щоб вони бачили те саме.'
               : 'Поки входу немає, кожен пристрій - сам по собі. Вхід через Google робить їх одним цілим і дає доступ до файлів на Диску.'}
           </Text>
+          {/* The one account, said once. The Drive card below used to name
+              it a second time, which read as two accounts to sign into -
+              and there has only ever been one session here. */}
+          {!!accountEmail && (
+            <View style={styles.trafficRow}>
+              <Ionicons
+                name={email ? 'cloud-done-outline' : 'cloud-offline-outline'}
+                size={15}
+                color="#6B7280"
+              />
+              <Text style={styles.trafficLabel}>
+                {email ? 'Google Диск підключено цим же входом' : 'Диск не підключений'}
+              </Text>
+            </View>
+          )}
           {claimStatus !== '' && <Text style={styles.cardHint}>{claimStatus}</Text>}
           <Pressable style={styles.checkButton} onPress={handleGoogleSignIn} disabled={authBusy}>
             {authBusy ? (
@@ -312,9 +327,9 @@ export default function SettingsScreen() {
           </View>
           {email ? (
             <>
-              <Text style={styles.cardBody}>
-                Підключено: <Text style={styles.emailText}>{email}</Text>
-              </Text>
+              {/* No account named here any more - it is the one above, and
+                  saying it twice is what made this look like a second
+                  thing to sign into. This card is about the files. */}
               <Text style={styles.cardHint}>
                 Нові файли й фото автоматично копіюються в папку "Bearless Notes" на Диску.
               </Text>
@@ -403,10 +418,11 @@ export default function SettingsScreen() {
           ) : (
             <>
               <Text style={styles.cardHint}>
-                Підключи Google-акаунт, щоб нові файли й фото автоматично копіювались на твій Google Диск.
+                Диск підключається тим самим входом, що й акаунт вище - окремо входити не треба. Кнопка нижче потрібна
+                лише тоді, коли дозвіл на файли чомусь не видали.
               </Text>
               <Pressable style={styles.connectButton} onPress={handleConnect} disabled={busy}>
-                {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.connectLabel}>Підключити</Text>}
+                {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.connectLabel}>Дозволити доступ до файлів</Text>}
               </Pressable>
             </>
           )}
@@ -521,10 +537,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: FONT_REGULAR,
     color: '#111827',
-  },
-  emailText: {
-    fontWeight: '600',
-    fontFamily: FONT_SEMIBOLD,
   },
   cardHint: {
     fontSize: 13,
