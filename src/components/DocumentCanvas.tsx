@@ -1303,7 +1303,7 @@ const styles = StyleSheet.create({
   // coordinates - the canvas can be panned and zoomed far from its
   // origin, and this has to still be under wherever it ends up.
   stopEditingCatcher: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   // Opaque, and with a hairline edge: on white paper an edge is the only
   // thing that says where one card ends and the next begins.
