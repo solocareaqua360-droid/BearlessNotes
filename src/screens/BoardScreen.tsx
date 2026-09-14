@@ -248,7 +248,12 @@ function heightOf(card: BoardCard, heights: Map<string, number>): number {
 // A column's cards, top to bottom in their current vertical order - which
 // is what makes dropping a card above another genuinely reorder them.
 function columnMembers(cards: BoardCard[], columnId: string): BoardCard[] {
-  return cards.filter((c) => c.columnId === columnId).sort((a, b) => a.y - b.y);
+  // By index where there is one, and by drawn position where there is
+  // not - a board written before cards carried an index still opens in
+  // the order it was left in, and gains one the first time it is touched.
+  return cards
+    .filter((c) => c.columnId === columnId)
+    .sort((a, b) => (a.order != null && b.order != null ? a.order - b.order : a.y - b.y));
 }
 
 function columnHeight(members: BoardCard[], heights: Map<string, number>): number {
@@ -309,7 +314,7 @@ function reflowColumns(
   heights: Map<string, number>
 ): BoardCard[] {
   const columnIds = new Set(columns.map((c) => c.id));
-  const slots = new Map<string, { x: number; y: number }>();
+  const slots = new Map<string, { x: number; y: number; order: number }>();
   for (const column of columns) {
     const members = columnMembers(cards, column.id);
     // Only a column NOTHING in which has been measured yet is left alone -
@@ -322,16 +327,16 @@ function reflowColumns(
     // one moment it must not.
     if (members.length > 0 && members.every((card) => !heights.has(card.id))) continue;
     let y = column.y + COLUMN_HEADER_HEIGHT;
-    for (const card of members) {
-      slots.set(card.id, { x: column.x + COLUMN_PADDING, y });
+    members.forEach((card, index) => {
+      slots.set(card.id, { x: column.x + COLUMN_PADDING, y, order: index });
       y += heightOf(card, heights) + COLUMN_CARD_GAP;
-    }
+    });
   }
   let changed = false;
   const next = cards.map((card) => {
     const slot = slots.get(card.id);
     if (slot) {
-      if (card.x === slot.x && card.y === slot.y) return card;
+      if (card.x === slot.x && card.y === slot.y && card.order === slot.order) return card;
       changed = true;
       return { ...card, ...slot };
     }
@@ -1110,9 +1115,25 @@ export default function BoardScreen() {
       const saved = savedRef.current;
       const whole = shapeRef.current === 'array';
       const patch: Record<string, unknown> = { title, updatedAt };
+      // A card in a column is DRAWN where the measured heights of the
+      // cards above it put it, and those differ between a phone and a
+      // laptop because text wraps differently. So that position is NOT
+      // written: it is kept at whatever was written last, and the card's
+      // index carries the real meaning.
+      //
+      // Without this the two devices never settle. Each recomputes the
+      // stack for its own screen, writes the numbers, receives the
+      // other's, recomputes again - which is what made the columns
+      // flicker and the cards land on top of each other.
+      const savedById = new Map(saved.cards.map((card) => [card.id, card]));
+      const cardsToSave = cards.map((card) => {
+        if (!card.columnId) return card;
+        const previous = savedById.get(card.id);
+        return previous ? { ...card, x: previous.x, y: previous.y } : card;
+      });
       // Whole once for a board still in the old shape, the difference
       // ever after.
-      const cardPatch = whole ? keyedAll(cards) : keyedDiff(saved.cards, cards);
+      const cardPatch = whole ? keyedAll(cardsToSave) : keyedDiff(saved.cards, cardsToSave);
       const columnPatch = whole ? keyedAll(columns) : keyedDiff(saved.columns, columns);
       const connectionPatch = whole ? keyedAll(connections) : keyedDiff(saved.connections, connections);
       if (cardPatch) patch.cards = cardPatch;
@@ -1123,7 +1144,7 @@ export default function BoardScreen() {
       // write on disk and replays it in order, so it WILL arrive - and
       // until it does, the next difference must be measured against it
       // rather than against what the server has yet to hear.
-      savedRef.current = { cards, columns, connections };
+      savedRef.current = { cards: cardsToSave, columns, connections };
       setDoc(doc(db, 'boards', boardId), patch, { merge: true });
     };
     saveTimeoutRef.current = setTimeout(attemptSave, AUTOSAVE_DELAY_MS);

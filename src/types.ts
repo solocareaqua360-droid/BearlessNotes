@@ -283,6 +283,13 @@ export interface BoardCard extends Omit<Block, 'type'> {
   type?: BlockType | 'document';
   x: number;
   y: number;
+  // Where this card sits in its column, counted from the top. The place
+  // it is DRAWN at is worked out from the measured heights of the cards
+  // above it - and those differ between a phone and a laptop, because
+  // text wraps differently. Storing the drawn position made the two
+  // devices disagree forever, each recomputing the other's numbers and
+  // writing them back. An index is the same everywhere.
+  order?: number;
   width: number;
   // 'paragraph' (sticky-note) cards only - no other Block usage in the app
   // has a per-block color, so this lives here rather than on Block itself.
