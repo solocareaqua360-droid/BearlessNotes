@@ -427,7 +427,14 @@ export interface FieldOption {
 // target's id as a plain string (CustomDatabaseRow.values already allows a
 // string there, same shape 'select' already uses for its one chosen
 // FieldOption.id - no new value shape needed).
-export type RelationTarget = { kind: 'photos' } | { kind: 'customDb'; databaseId: string };
+export type RelationTarget =
+  | { kind: 'photos' }
+  // The built-in Files database. A record that is a contract, a car or a
+  // machine usually has papers attached to it, and those papers already
+  // live in Файли - so the link points at them where they are rather than
+  // making a second copy inside the database.
+  | { kind: 'files' }
+  | { kind: 'customDb'; databaseId: string };
 
 export interface FieldDef {
   id: string;

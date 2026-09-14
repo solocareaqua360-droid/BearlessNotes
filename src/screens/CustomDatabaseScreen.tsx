@@ -299,6 +299,9 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   const [photosList, setPhotosList] = useState<
     { id: string; imageUri: string; title?: string; driveFileId?: string }[]
   >([]);
+  // The same for Файли: names only, subscribed unconditionally beside
+  // photos - a record that is a contract or a vehicle usually has papers.
+  const [filesList, setFilesList] = useState<{ id: string; title?: string; fileName?: string }[]>([]);
   const [otherDatabases, setOtherDatabases] = useState<{ id: string; name: string }[]>([]);
   const [relatedDatabases, setRelatedDatabases] = useState<Record<string, CustomDatabase>>({});
   const [relatedRows, setRelatedRows] = useState<Record<string, CustomDatabaseRow[]>>({});
@@ -386,6 +389,17 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
         snapshot.docs.map((d) => {
           const data = d.data();
           return { id: d.id, imageUri: data.imageUri, title: data.title, driveFileId: data.driveFileId };
+        })
+      );
+    });
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(ownedQuery('files'), (snapshot) => {
+      setFilesList(
+        snapshot.docs.map((d) => {
+          const data = d.data();
+          return { id: d.id, title: data.title, fileName: data.fileName };
         })
       );
     });
@@ -542,7 +556,12 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   // The three live caches a row's values resolve against - shared with the
   // same row rendered inside a document (see useCustomRowData), so the
   // resolution rules live in one place instead of once per screen.
-  const displayContext: RowDisplayContext = { photos: photosList, relatedDatabases, relatedRows };
+  const displayContext: RowDisplayContext = {
+    photos: photosList,
+    files: filesList,
+    relatedDatabases,
+    relatedRows,
+  };
 
   function resolveRelation(field: FieldDef, targetId: string | undefined) {
     return resolveRelationValue(field, targetId, displayContext);
@@ -719,6 +738,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
         title: 'З чим повʼязати?',
         actions: [
           { id: 'photos', label: 'Зображення', icon: 'image-outline' },
+          { id: 'files', label: 'Файли', icon: 'document-outline' },
           ...otherDatabases.map((odb) => ({
             id: `db:${odb.id}`,
             label: odb.name,
@@ -730,7 +750,9 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
       const target: RelationTarget =
         targetId === 'photos'
           ? { kind: 'photos' }
-          : { kind: 'customDb', databaseId: targetId.slice(3) };
+          : targetId === 'files'
+            ? { kind: 'files' }
+            : { kind: 'customDb', databaseId: targetId.slice(3) };
 
       const howMany = await ask({
         title: 'Скільки можна вибрати?',
@@ -2365,6 +2387,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           }}
           value={undefined}
           photos={photosList}
+          files={filesList}
           relatedDatabase={relatedDatabases[backlinkPickerField.backlinkSource.databaseId] ?? null}
           relatedRows={relatedRows[backlinkPickerField.backlinkSource.databaseId] ?? []}
           keyboardHeight={keyboardHeight}
@@ -2381,6 +2404,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           field={relationPickerField}
           value={draftValues[relationPickerField.id]}
           photos={photosList}
+          files={filesList}
           relatedDatabase={
             relationPickerField.relationTarget?.kind === 'customDb'
               ? (relatedDatabases[relationPickerField.relationTarget.databaseId] ?? null)
@@ -2425,6 +2449,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           field={cellPicker.field}
           value={rows.find((r) => r.id === cellPicker.rowId)?.values[cellPicker.field.id]}
           photos={photosList}
+          files={filesList}
           relatedDatabase={
             cellPicker.field.relationTarget?.kind === 'customDb'
               ? (relatedDatabases[cellPicker.field.relationTarget.databaseId] ?? null)
@@ -2705,13 +2730,15 @@ function OptionPickerSheet({
 
 // One picker serving a 'relation' field's value, wherever it's edited from
 // (the row form's draft, or a tapped table cell - same split OptionPickerSheet
-// already makes). Target "Фото" shows a searchable thumbnail grid; target
-// another custom database shows a searchable list of its rows by title
-// (its own fields[0], same convention as this screen's own titleOf).
+// already makes). Target "Фото" shows a searchable thumbnail grid, "Файли" a
+// searchable list of names; target another custom database shows a
+// searchable list of its rows by title (its own fields[0], same convention
+// as this screen's own titleOf).
 function RelationPickerSheet({
   field,
   value,
   photos,
+  files,
   relatedDatabase,
   relatedRows,
   onCreateRow,
@@ -2723,6 +2750,7 @@ function RelationPickerSheet({
   field: FieldDef;
   value: string | number | string[] | undefined;
   photos: { id: string; imageUri: string; title?: string; driveFileId?: string }[];
+  files: { id: string; title?: string; fileName?: string }[];
   relatedDatabase: CustomDatabase | null;
   relatedRows: CustomDatabaseRow[];
   // Creates a row in the TARGET database carrying just this title, and
@@ -2743,6 +2771,7 @@ function RelationPickerSheet({
   const selectedIds = Array.isArray(value) ? value : typeof value === 'string' && value ? [value] : [];
   const currentId = isMulti ? undefined : typeof value === 'string' ? value : undefined;
   const isPhotos = (field.relationTarget?.kind ?? 'photos') === 'photos';
+  const isFiles = field.relationTarget?.kind === 'files';
   const needle = search.trim().toLowerCase();
 
   // In multi mode a tap toggles membership and the sheet stays open, so
@@ -2769,6 +2798,55 @@ function RelationPickerSheet({
       <Text style={[styles.optionPickerLabel, { color: DANGER }]}>Прибрати</Text>
     </Pressable>
   ) : null;
+
+  if (isFiles) {
+    // Names only, and no "create": a file is a file on the device, there
+    // is nothing here that could make one - unlike a row in another
+    // database, which this sheet can and does create.
+    const nameOf = (f: { title?: string; fileName?: string }) => f.title || f.fileName || 'Файл';
+    const filteredFiles = needle
+      ? files.filter((f) => nameOf(f).toLowerCase().includes(needle))
+      : files;
+    return (
+      <GlassLayer visible onClose={onClose}>
+        <Pressable style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
+          <Pressable style={styles.sheet} onPress={() => {}}>
+            <View style={styles.handle} />
+            <Text style={styles.title}>{field.name}</Text>
+            <TextInput
+              style={styles.relationSearchInput}
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Пошук файлу"
+              placeholderTextColor={GLASS_TEXT_FAINT}
+            />
+            {clearRow}
+            <ScrollView style={styles.relationPickerScroll} keyboardShouldPersistTaps="handled">
+              {filteredFiles.map((file) => (
+                <Pressable key={file.id} style={styles.optionPickerRow} onPress={() => choose(file.id)}>
+                  <Ionicons name="document-outline" size={18} color={GLASS_TEXT_MUTED} />
+                  <Text style={styles.optionPickerLabel} numberOfLines={1}>
+                    {nameOf(file)}
+                  </Text>
+                  {selectedIds.includes(file.id) && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+                </Pressable>
+              ))}
+              {filteredFiles.length === 0 && (
+                <Text style={styles.optionPickerEmpty}>
+                  {files.length === 0 ? 'У базі "Файли" поки нічого немає.' : 'Нічого не знайдено.'}
+                </Text>
+              )}
+            </ScrollView>
+            {isMulti && (
+              <Pressable style={styles.relationDoneButton} onPress={onClose}>
+                <Text style={styles.relationDoneLabel}>Готово · {selectedIds.length}</Text>
+              </Pressable>
+            )}
+          </Pressable>
+        </Pressable>
+      </GlassLayer>
+    );
+  }
 
   if (isPhotos) {
     const filtered = needle ? photos.filter((p) => (p.title ?? '').toLowerCase().includes(needle)) : photos;

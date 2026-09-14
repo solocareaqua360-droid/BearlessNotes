@@ -10,6 +10,9 @@ import { CustomDatabase, CustomDatabaseRow, FieldDef } from '../types';
 // like too.
 export type RowDisplayContext = {
   photos: { id: string; imageUri: string; title?: string; driveFileId?: string }[];
+  // The built-in Files database, for a relation pointing at it. No image
+  // to show, so a resolved file is a label only.
+  files: { id: string; title?: string; fileName?: string }[];
   relatedDatabases: Record<string, CustomDatabase>;
   relatedRows: Record<string, CustomDatabaseRow[]>;
 };
@@ -18,6 +21,7 @@ export type ResolvedRelation = { label: string; thumbUri?: string; driveFileId?:
 
 export const EMPTY_ROW_DISPLAY_CONTEXT: RowDisplayContext = {
   photos: [],
+  files: [],
   relatedDatabases: {},
   relatedRows: {},
 };
@@ -92,6 +96,11 @@ export function resolveRelationValue(
     const photo = ctx.photos.find((p) => p.id === targetId);
     if (!photo) return { label: 'Фото' };
     return { label: photo.title || 'Фото', thumbUri: photo.imageUri, driveFileId: photo.driveFileId };
+  }
+  if (target.kind === 'files') {
+    const file = ctx.files.find((f) => f.id === targetId);
+    if (!file) return { label: 'Файл' };
+    return { label: file.title || file.fileName || 'Файл' };
   }
   const targetDb = ctx.relatedDatabases[target.databaseId];
   const targetRow = ctx.relatedRows[target.databaseId]?.find((r) => r.id === targetId);

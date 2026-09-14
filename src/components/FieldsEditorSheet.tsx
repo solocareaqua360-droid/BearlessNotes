@@ -87,6 +87,7 @@ function relationTargetLabel(
   otherDatabases: { id: string; name: string }[]
 ): string {
   if (!target || target.kind === 'photos') return 'Фото';
+  if (target.kind === 'files') return 'Файли';
   return otherDatabases.find((d) => d.id === target.databaseId)?.name ?? 'База';
 }
 
@@ -505,6 +506,16 @@ export default function FieldsEditorSheet({
                           <Ionicons name="image-outline" size={17} color={TEXT_MUTED} />
                           <Text style={styles.typeMenuLabel}>Фото</Text>
                           {(field.relationTarget?.kind ?? 'photos') === 'photos' && (
+                            <Ionicons name="checkmark" size={18} color={ACCENT_ON_GLASS} />
+                          )}
+                        </Pressable>
+                        <Pressable
+                          style={styles.typeMenuRow}
+                          onPress={() => setRelationTarget(field.id, { kind: 'files' })}
+                        >
+                          <Ionicons name="document-outline" size={17} color={TEXT_MUTED} />
+                          <Text style={styles.typeMenuLabel}>Файли</Text>
+                          {field.relationTarget?.kind === 'files' && (
                             <Ionicons name="checkmark" size={18} color={ACCENT_ON_GLASS} />
                           )}
                         </Pressable>

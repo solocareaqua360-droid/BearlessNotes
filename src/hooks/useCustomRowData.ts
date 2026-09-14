@@ -43,11 +43,13 @@ export function rowFrom(id: string, data: Record<string, unknown>): CustomDataba
 // nothing beyond the database/row(s) subscriptions its caller already has.
 export function useRowDisplayContext(database: CustomDatabase | null): RowDisplayContext {
   const [photos, setPhotos] = useState<RowDisplayContext['photos']>([]);
+  const [files, setFiles] = useState<RowDisplayContext['files']>([]);
   const [relatedDatabases, setRelatedDatabases] = useState<Record<string, CustomDatabase>>({});
   const [relatedRows, setRelatedRows] = useState<Record<string, CustomDatabaseRow[]>>({});
 
   const relationFields = (database?.fields ?? []).filter((f) => f.type === 'relation');
   const needsPhotos = relationFields.some((f) => (f.relationTarget?.kind ?? 'photos') === 'photos');
+  const needsFiles = relationFields.some((f) => f.relationTarget?.kind === 'files');
   const referencedDbIds = Array.from(
     new Set(
       relationFields
@@ -71,6 +73,23 @@ export function useRowDisplayContext(database: CustomDatabase | null): RowDispla
       );
     });
   }, [needsPhotos]);
+
+  // Only the name of each file - the bytes stay where they are; a
+  // relation shows a label, never the file itself.
+  useEffect(() => {
+    if (!needsFiles) {
+      setFiles([]);
+      return;
+    }
+    return onSnapshot(ownedQuery('files'), (snapshot) => {
+      setFiles(
+        snapshot.docs.map((d) => {
+          const data = d.data();
+          return { id: d.id, title: data.title, fileName: data.fileName };
+        })
+      );
+    });
+  }, [needsFiles]);
 
   useEffect(() => {
     if (referencedDbIds.length === 0) return;
@@ -102,9 +121,9 @@ export function useRowDisplayContext(database: CustomDatabase | null): RowDispla
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [referencedDbIdsKey]);
 
-  return photos.length === 0 && referencedDbIds.length === 0
+  return photos.length === 0 && files.length === 0 && referencedDbIds.length === 0
     ? EMPTY_ROW_DISPLAY_CONTEXT
-    : { photos, relatedDatabases, relatedRows };
+    : { photos, files, relatedDatabases, relatedRows };
 }
 
 // Everything ONE custom-database row needs to render itself outside its own
