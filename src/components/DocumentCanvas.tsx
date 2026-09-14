@@ -27,6 +27,7 @@ import { CaretLine, displayIndexForTouch } from '../utils/caretFromTextLayout';
 import { canPlaceCaretByTouch, measureNode } from '../utils/measureNode';
 import { useCanvasWheel } from '../hooks/useCanvasWheel';
 import { setSelection } from '../utils/setSelection';
+import { notify } from './surfaces/Ask';
 import Svg, { Path } from 'react-native-svg';
 import { Block, CanvasLink } from '../types';
 import { orderByCanvasLinks, sequenceLinkIds } from '../utils/canvasOrder';
@@ -1004,12 +1005,19 @@ function CanvasCard({
     // the zoom the error grew along the line - the caret obeyed a tap
     // at the start of a line and barely moved for one at its end.
     const zoom = canvasScale.value || 1;
-    onEdit(
-      block.id,
-      x,
-      y,
-      displayIndexForTouch(linesRef.current, block.text ?? '', (pageX - box.x) / zoom, (pageY - box.y) / zoom)
-    );
+    const index = displayIndexForTouch(linesRef.current, block.text ?? '', (pageX - box.x) / zoom, (pageY - box.y) / zoom);
+    // TEMPORARY diagnostic (2026-09-15): the caret obeys a tap at the
+    // start of a line on Android and barely moves for one at the end, and
+    // nothing here can be watched from the outside - so the numbers are
+    // shown on the phone itself. Remove once the cause is known.
+    if (Platform.OS !== 'web') {
+      const lines = linesRef.current.map((l) => `${Math.round(l.x)}+${Math.round(l.width)}×${Math.round(l.height)}"${l.text.slice(0, 6)}"`).join('\n');
+      notify(
+        'Діагностика дотику',
+        `tap ${Math.round(pageX)},${Math.round(pageY)}  box ${Math.round(box.x)},${Math.round(box.y)} ${Math.round(box.width)}×${Math.round(box.height)}  zoom ${zoom.toFixed(2)}\nlocal ${Math.round((pageX - box.x) / zoom)},${Math.round((pageY - box.y) / zoom)} → index ${index} / ${(block.text ?? '').length}\n${lines}`
+      );
+    }
+    onEdit(block.id, x, y, index);
   }
 
   const dragGesture = Gesture.Pan()
