@@ -1,6 +1,6 @@
 # Bearless Notes
 
-Notes app built cross-platform-first (Android now, web later) with React
+Notes app built cross-platform-first (Android and the browser) with React
 Native (Expo) and Firebase. Full product context lives in
 `PROJECT_BRIEF.md`; work through `DEVELOPMENT_PLAN.md` stage by stage
 (check off boxes as each stage's own verification step actually passes —
@@ -25,6 +25,19 @@ any other app in this account (e.g. `bookmarvideo`). Keep it that way:
   pinned to its own working directory — never share one session between them.
 
 ## Current state
+
+**The browser build is the whole app (2026-09-14).** `App.web.tsx`
+mounts the same navigator tree as the phone (`src/AppNavigator`); what
+the browser leaves out is decided file by file in `.web` siblings,
+never route by route. Build with `scripts/build-web.sh`, serve with
+`scratchpad/serve.py 8899 web-build`, sign in as the same Google
+account as the phone (the only one that owns anything - reads are
+owner-scoped). Pictures come from the user's Google Drive and need one
+"Підключити Диск" click per hour in a browser; that is structural (see
+the memory `project_google_auth_and_web`), and the decision whether to
+move files to Firebase Storage instead is parked until the app has had
+real use. `firestore.rules.owner-only` is written, reviewed, and still
+NOT deployed - one paste in Firebase Console once the user says so.
 
 Stages 0–4 (`DEVELOPMENT_PLAN.md`) are fully done and confirmed on a real
 Android device via Expo Go — undo/redo, inline text formatting, the "/"
