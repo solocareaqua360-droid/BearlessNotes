@@ -49,7 +49,19 @@ export default function TagManageScreen() {
     <View style={styles.container}>
       <ContentColumn>
         <View style={styles.headerRow}>
-          <Text style={styles.header}>Теги</Text>
+          {/* The chevron travels with the title rather than beside the
+              "..." - this row spreads its children to the edges, and a
+              third child would have sat in the middle of it.
+
+              A way out, which this screen did not have - see
+              SettingsScreen's same chevron for why that only showed up in
+              the browser. */}
+          <View style={styles.headerLeft}>
+            <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+              <Ionicons name="chevron-back" size={24} color="#111827" />
+            </Pressable>
+            <Text style={styles.header}>Теги</Text>
+          </View>
           <Pressable
             hitSlop={8}
             onPress={() => navigation.navigate('Placeholder', { icon: 'ellipsis-horizontal-outline', label: 'Скоро' })}
@@ -118,6 +130,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   headerRow: {
     flexDirection: 'row',

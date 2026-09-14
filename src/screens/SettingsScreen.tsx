@@ -9,7 +9,10 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 // Safe to import here: the native module is already in every build of this
 // app (that's what makes OTA updates work at all), so this adds nothing
 // native and ships over the air like any other change.
@@ -27,6 +30,8 @@ import {
   runDriveDiagnostics,
 } from '../utils/googleDrive';
 import ContentColumn from '../components/ContentColumn';
+import { RootStackParamList } from '../navigation';
+import { GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { claimExistingData } from '../utils/claimOwnership';
 import { backfillDriveCopies } from '../utils/backfillDrive';
@@ -36,7 +41,10 @@ import { getPexelsKey, setPexelsKey } from '../utils/pexelsKey';
 import { confirm, notify } from '../components/surfaces/Ask';
 import RenamePrompt from '../components/RenamePrompt';
 
-const ACCENT = '#3B82F6';
+// The app's own warm action colour (the one RenamePrompt's save button
+// and the browser's sign-in use), not the system blue this screen was
+// left with.
+const ACCENT = '#F5C77E';
 const DANGER = '#EF4444';
 const driveStatsDoc = doc(db, 'settings', 'driveStats');
 
@@ -59,6 +67,7 @@ function formatUpdateTime(date: Date | null): string {
 }
 
 export default function SettingsScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [accountEmail, setAccountEmail] = useState<string | null>(auth.currentUser?.email ?? null);
   const [authBusy, setAuthBusy] = useState(false);
   const [claimStatus, setClaimStatus] = useState('');
@@ -241,12 +250,39 @@ export default function SettingsScreen() {
 
   return (
     <View style={styles.container}>
+      {/* The same gradient GroupsScreen is painted on - this screen is not
+          a database and has no colour of its own, so it borrows the one
+          the app's plain screens already share rather than inventing a
+          third. */}
+      <Svg
+        width={windowWidth + 2}
+        height={windowHeight + 2}
+        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
+        pointerEvents="none"
+      >
+        <Defs>
+          <LinearGradient id="settingsBg" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0.03" stopColor="#705648" />
+            <Stop offset="0.52" stopColor="#69736E" />
+            <Stop offset="1" stopColor="#000000" />
+          </LinearGradient>
+        </Defs>
+        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#settingsBg)" />
+      </Svg>
       <ContentColumn>
         {/* Scrolls: on a narrow screen the three cards are taller than the
             window, and without this the last of them - and every button on
             it - simply could not be reached. */}
         <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.headerRow}>
+          {/* This screen had no way out at all. On the phone the hardware
+              back button hid that; in a browser there is no such button,
+              no swipe-back gesture either, and the page was a dead end.
+              Every other pushed screen carries this chevron - this one and
+              TagManageScreen were the two that did not. */}
+          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={24} color="#fff" />
+          </Pressable>
           <Text style={styles.header}>Налаштування</Text>
         </View>
 
@@ -491,32 +527,42 @@ export default function SettingsScreen() {
   );
 }
 
+// The same visual language the rest of the app already speaks - see
+// GroupsScreen, which this is copied from rather than reinvented: a
+// gradient the screen is painted on, a big white title with the back
+// chevron beside it, and cards that are dark glass with a hairline
+// edge. Settings was the last screen still wearing the default white
+// card and system blue, which is why it read as a different app.
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   content: {
     paddingBottom: 48,
   },
   headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     paddingHorizontal: 20,
-    paddingTop: 56,
+    paddingTop: 90,
     paddingBottom: 12,
   },
   header: {
-    fontSize: 22,
+    fontSize: 40,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: '#111827',
+    color: '#fff',
   },
   updateCard: {
     marginBottom: 14,
   },
   card: {
     marginHorizontal: 20,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: 'rgba(20,20,20,0.35)',
     borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
     padding: 16,
     gap: 10,
   },
@@ -529,17 +575,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   cardBody: {
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   cardHint: {
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: '#6B7280',
+    color: GLASS_TEXT_MUTED,
   },
   trafficRow: {
     flexDirection: 'row',
@@ -555,7 +601,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: '#6B7280',
+    color: GLASS_TEXT_MUTED,
   },
   connectButton: {
     backgroundColor: ACCENT,
@@ -565,21 +611,21 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   connectLabel: {
-    color: '#fff',
+    color: '#171310',
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
     fontSize: 15,
   },
   checkButton: {
     borderWidth: 1,
-    borderColor: ACCENT,
+    borderColor: 'rgba(255,255,255,0.28)',
     borderRadius: 10,
     paddingVertical: 10,
     alignItems: 'center',
     marginTop: 4,
   },
   checkLabel: {
-    color: ACCENT,
+    color: GLASS_TEXT,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
     fontSize: 15,
