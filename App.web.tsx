@@ -98,7 +98,14 @@ export default function App() {
 
   useEffect(() => {
     ensureSignedIn();
-    return onAuthStateChanged(auth, (next) => setUser(next ? { email: next.email } : null));
+    // An ANONYMOUS session does not count as signed in here, and that is
+    // the whole point: the browser had one already - kept in the page's
+    // own storage from before this screen existed - and it is exactly the
+    // identity the owner-only rules must not accept. Having one is the
+    // hole, not a way through it.
+    return onAuthStateChanged(auth, (next) =>
+      setUser(next && !next.isAnonymous ? { email: next.email } : null)
+    );
   }, []);
 
   if (!fontsLoaded || user === undefined) {
