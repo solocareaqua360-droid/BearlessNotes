@@ -99,6 +99,7 @@ import { canPlaceCaretByTouch, measureNode } from '../utils/measureNode';
 import { setSelection } from '../utils/setSelection';
 import { autoGrowInput } from '../utils/autoGrowInput';
 import { caretIndexFromDom } from '../utils/caretAtPoint';
+import { displayIndexForTouch } from '../utils/caretFromTextLayout';
 import { applyLiveRecord, recordIdFor, useLiveRecords } from '../hooks/useLiveRecords';
 import { attachmentInfoText } from '../utils/attachmentInfo';
 import { downloadToFolder } from '../utils/downloadToFolder';
@@ -345,53 +346,6 @@ function rawIndexForDisplayIndex(segments: TextSegment[], rawText: string, displ
 // by a character or so in practice - close enough that a second tap in the
 // now-live input (which Android places exactly) is rarely needed.
 type TextLayoutLine = { text: string; x: number; y: number; width: number; height: number };
-
-function glyphWeight(ch: string): number {
-  if (/[ .,:;'!|iIlјjtfr()\-іїІ]/.test(ch)) return 0.55;
-  if (/[mwMWшщжмюфШЩЖМЮФ@%]/.test(ch)) return 1.45;
-  if (ch === ch.toUpperCase() && ch !== ch.toLowerCase()) return 1.2;
-  return 1;
-}
-
-function displayIndexForTouch(lines: TextLayoutLine[], displayText: string, x: number, y: number): number {
-  if (lines.length === 0) return displayText.length;
-  let line = lines[lines.length - 1];
-  for (const l of lines) {
-    if (y < l.y + l.height) {
-      line = l;
-      break;
-    }
-  }
-  // Where this line's text starts in the whole string: searched rather
-  // than summed, since a wrapped line's reported text may or may not
-  // carry the space it broke on.
-  let lineStart = 0;
-  let cursor = 0;
-  for (const l of lines) {
-    const at = displayText.indexOf(l.text, cursor);
-    const start = at === -1 ? cursor : at;
-    if (l === line) {
-      lineStart = start;
-      break;
-    }
-    cursor = start + l.text.length;
-  }
-  const chars = Array.from(line.text);
-  const total = chars.reduce((sum, ch) => sum + glyphWeight(ch), 0);
-  const target = total > 0 && line.width > 0 ? ((x - line.x) / line.width) * total : 0;
-  let acc = 0;
-  let index = 0;
-  for (; index < chars.length; index++) {
-    const w = glyphWeight(chars[index]);
-    if (acc + w / 2 >= target) break;
-    acc += w;
-  }
-  // Don't land after the break character of a wrapped line - that's the
-  // start of the next line visually.
-  const trimmed = line.text.replace(/\s+$/, '');
-  index = Math.min(index, Array.from(trimmed).length);
-  return Math.min(displayText.length, lineStart + chars.slice(0, index).join('').length);
-}
 
 function segmentToHtml(seg: TextSegment): string {
   let html = escapeHtml(seg.text);

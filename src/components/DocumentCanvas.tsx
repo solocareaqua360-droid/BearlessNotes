@@ -19,6 +19,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import AttachmentImage from './AttachmentImage';
 import { autoGrowInput } from '../utils/autoGrowInput';
+import { caretIndexFromDom } from '../utils/caretAtPoint';
+import { CaretLine, displayIndexForTouch } from '../utils/caretFromTextLayout';
+import { canPlaceCaretByTouch, measureNode } from '../utils/measureNode';
+import { setSelection } from '../utils/setSelection';
 import { Block } from '../types';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
@@ -134,6 +138,11 @@ export default function DocumentCanvas({
   const [cardHeights, setCardHeights] = useState<Record<string, number>>({});
   const placements = useMemo(() => layOutBlocks(blocks, cardHeights), [blocks, cardHeights]);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Which character the click that started the editing landed on. The
+  // field does not exist yet at that moment - the card is showing plain
+  // text - so the answer is taken from the text that IS there and handed
+  // to the field when it mounts.
+  const [editingCaret, setEditingCaret] = useState<number | null>(null);
 
   // Rounded to the point: a height that wobbles by a fraction between
   // frames would re-lay the whole column out for nothing.
@@ -144,6 +153,7 @@ export default function DocumentCanvas({
 
   function stopEditing() {
     setEditingId(null);
+    setEditingCaret(null);
     Keyboard.dismiss();
   }
 
@@ -223,11 +233,13 @@ export default function DocumentCanvas({
                 canvasScale={scale}
                 canvasPanGesture={panGesture}
                 editing={editingId === block.id}
+                caretIndex={editingId === block.id ? editingCaret : null}
                 onHeight={reportHeight}
                 onMove={onMoveBlock}
                 onChangeText={onChangeText}
-                onEdit={(id, x, y) => {
+                onEdit={(id, x, y, caretIndex) => {
                   setEditingId(id);
+                  setEditingCaret(caretIndex);
                   revealForEditing(x, y);
                 }}
                 onOpen={onOpenBlock}
@@ -252,6 +264,7 @@ function CanvasCard({
   canvasScale,
   canvasPanGesture,
   editing,
+  caretIndex,
   onHeight,
   onMove,
   onChangeText,
@@ -263,10 +276,11 @@ function CanvasCard({
   canvasScale: ReturnType<typeof useSharedValue<number>>;
   canvasPanGesture: ReturnType<typeof Gesture.Pan>;
   editing: boolean;
+  caretIndex: number | null;
   onHeight: (id: string, height: number) => void;
   onMove: (id: string, x: number, y: number) => void;
   onChangeText: (id: string, text: string) => void;
-  onEdit: (id: string, x: number, y: number) => void;
+  onEdit: (id: string, x: number, y: number, caretIndex: number | null) => void;
   onOpen: (id: string) => void;
 }) {
   const posX = useSharedValue(placement.x);
@@ -278,16 +292,51 @@ function CanvasCard({
   // was showing a moment ago was still there, hidden. Same helper the
   // page's own blocks use; on a phone it does nothing.
   const inputRef = useRef<TextInput | null>(null);
+  // The card's own text as the browser drew it - what gets asked which
+  // character a click hit.
+  const textNodeRef = useRef<Text>(null);
+  // Where each line of that text was laid out. A phone has no way to ask
+  // which character a touch hit, so the answer is reconstructed from
+  // these - see caretFromTextLayout, the same maths the page's blocks
+  // have always used.
+  const linesRef = useRef<CaretLine[]>([]);
   useEffect(() => {
     autoGrowInput(inputRef.current);
   }, [block.text, editing]);
 
-  function handleTap(x: number, y: number) {
+  async function handleTap(x: number, y: number, pageX: number, pageY: number) {
     // A picture or a file has controls of its own, and they are on the
     // page - so that is where a tap on one goes. Text is typed where it
     // stands.
-    if (isText) onEdit(block.id, x, y);
-    else onOpen(block.id);
+    if (!isText) {
+      onOpen(block.id);
+      return;
+    }
+    // ONE click, straight to the character it hit. A browser can be asked
+    // this outright; without asking, the field opened with the caret at
+    // the start and it took a second click to put it where the first one
+    // had already pointed. Null on a phone - there is no document to ask
+    // - and the field then does what it always did.
+    const fromDom = caretIndexFromDom(textNodeRef.current, pageX, pageY);
+    if (fromDom !== null) {
+      onEdit(block.id, x, y, fromDom);
+      return;
+    }
+    // The phone: the same reconstruction the page's blocks use - the line
+    // the touch fell on, then the character along it. Without it the
+    // field opened with the caret at the end of the text, wherever the
+    // finger had actually been.
+    const box = canPlaceCaretByTouch ? await measureNode(textNodeRef.current) : null;
+    if (!box) {
+      onEdit(block.id, x, y, null);
+      return;
+    }
+    onEdit(
+      block.id,
+      x,
+      y,
+      displayIndexForTouch(linesRef.current, block.text ?? '', pageX - box.x, pageY - box.y)
+    );
   }
 
   const dragGesture = Gesture.Pan()
@@ -311,8 +360,8 @@ function CanvasCard({
 
   const tapGesture = Gesture.Tap()
     .enabled(!editing)
-    .onEnd(() => {
-      runOnJS(handleTap)(posX.value, posY.value);
+    .onEnd((e) => {
+      runOnJS(handleTap)(posX.value, posY.value, e.absoluteX, e.absoluteY);
     });
 
   const gesture = Gesture.Race(dragGesture, tapGesture);
@@ -334,6 +383,13 @@ function CanvasCard({
               // On mount too: the field is created already holding the
               // whole block's text.
               autoGrowInput(node);
+              if (node && caretIndex !== null) {
+                // Twice: now, and again once the browser has given the
+                // field focus - a selection set before the focus lands is
+                // thrown away by the focus itself.
+                setSelection(node, caretIndex, caretIndex);
+                setTimeout(() => setSelection(node, caretIndex, caretIndex), 0);
+              }
             }}
             autoFocus
             multiline
@@ -344,7 +400,13 @@ function CanvasCard({
             style={styles.cardInput}
           />
         ) : (
-          <CardBody block={block} />
+          <CardBody
+            block={block}
+            textNode={textNodeRef}
+            onTextLayout={(e) => {
+              linesRef.current = e.nativeEvent.lines;
+            }}
+          />
         )}
       </Animated.View>
     </GestureDetector>
@@ -354,7 +416,15 @@ function CanvasCard({
 // What a block looks like on the canvas: enough to recognise it, never
 // enough to edit it. Editing is the page's job, and a tap is the way
 // there.
-function CardBody({ block }: { block: Block }) {
+function CardBody({
+  block,
+  textNode,
+  onTextLayout,
+}: {
+  block: Block;
+  textNode?: React.Ref<Text>;
+  onTextLayout?: (e: { nativeEvent: { lines: CaretLine[] } }) => void;
+}) {
   const type = block.type ?? 'paragraph';
 
   if (type === 'image' || type === 'sketch') {
@@ -413,7 +483,7 @@ function CardBody({ block }: { block: Block }) {
     );
   }
   return (
-    <Text style={styles.cardText} numberOfLines={6}>
+    <Text ref={textNode} onTextLayout={onTextLayout} style={styles.cardText} numberOfLines={6}>
       {block.text || ' '}
     </Text>
   );
