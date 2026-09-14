@@ -7,12 +7,11 @@ import {
   deleteField,
   doc,
   onSnapshot,
-  orderBy,
-  query,
   updateDoc,
   writeBatch,
 } from '../firestore';
 import { auth, db } from '../firebase';
+import { ownedQuery } from '../utils/owned';
 import { Tag, TaggableKind } from '../types';
 
 const tagsCollection = collection(db, 'tags');
@@ -83,10 +82,11 @@ export function useTags() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const tagsQuery = query(tagsCollection, orderBy('path', 'asc'));
-    return onSnapshot(tagsQuery, (snapshot) => {
+    return onSnapshot(ownedQuery('tags'), (snapshot) => {
       setTags(
-        snapshot.docs.map((docSnapshot) => {
+        [...snapshot.docs]
+          .sort((a, b) => String(a.data().path ?? '').localeCompare(String(b.data().path ?? '')))
+          .map((docSnapshot) => {
           const data = docSnapshot.data();
           return {
             id: docSnapshot.id,

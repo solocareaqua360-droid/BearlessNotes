@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, onSnapshot, orderBy, query } from '../firestore';
-import { db } from '../firebase';
+import { onSnapshot } from '../firestore';
+import { ownedQuery } from '../utils/owned';
 import { ImportableItem, MAX_CARDS_PER_COLUMN } from '../utils/importGroupToBoard';
 import { hapticSelectItem, hapticWarning } from '../utils/haptics';
 import {
@@ -61,8 +61,14 @@ export default function GroupImportSheet({
 
   useEffect(() => {
     if (!visible) return;
-    return onSnapshot(query(collection(db, 'boards'), orderBy('updatedAt', 'desc')), (snapshot) => {
-      setBoards(snapshot.docs.map((d) => ({ id: d.id, title: (d.data().title as string) || 'Без назви' })));
+    return onSnapshot(ownedQuery('boards'), (snapshot) => {
+      setBoards(
+        // Copied before sorting: `docs` is the snapshot's own array, and
+        // sort rearranges in place.
+        [...snapshot.docs]
+          .sort((a, b) => ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0))
+          .map((d) => ({ id: d.id, title: (d.data().title as string) || 'Без назви' }))
+      );
     });
   }, [visible]);
 

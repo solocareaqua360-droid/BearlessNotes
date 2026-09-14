@@ -5,10 +5,9 @@ import {
   collection,
   doc,
   getDocs,
-  query,
   writeBatch,
 } from '../firestore';
-import { addDoc } from './owned';
+import { addDoc, ownedQuery } from './owned';
 import { auth, db } from '../firebase';
 import { CustomDatabaseRow, FieldDef, FieldType } from '../types';
 
@@ -130,7 +129,7 @@ class RelationResolver {
 }
 
 async function loadRows(databaseId: string): Promise<CustomDatabaseRow[]> {
-  const snapshot = await getDocs(query(collection(db, 'customDatabaseRows')));
+  const snapshot = await getDocs(ownedQuery('customDatabaseRows'));
   return snapshot.docs
     .map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabaseRow, 'id'>) }))
     .filter((r) => r.databaseId === databaseId);
@@ -179,7 +178,7 @@ export async function runTableImport(opts: {
   // per column.
   const resolvers = new Map<string, RelationResolver>();
   if (relationTargets.size > 0) {
-    const databasesSnapshot = await getDocs(query(collection(db, 'customDatabases')));
+    const databasesSnapshot = await getDocs(ownedQuery('customDatabases'));
     for (const targetId of relationTargets) {
       const targetFields = (databasesSnapshot.docs.find((d) => d.id === targetId)?.data() as
         | { fields?: FieldDef[] }

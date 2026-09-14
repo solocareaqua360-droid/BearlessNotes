@@ -7,8 +7,8 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 
 import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { collection, onSnapshot, orderBy, query } from '../firestore';
-import { db } from '../firebase';
+import { onSnapshot } from '../firestore';
+import { ownedQuery } from '../utils/owned';
 import { FieldDef, FieldType } from '../types';
 import { canJoinTitle } from '../utils/customRowDisplay';
 import {
@@ -87,9 +87,11 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
 
   useEffect(() => {
     if (!visible) return;
-    return onSnapshot(query(collection(db, 'files'), orderBy('updatedAt', 'desc')), (snapshot) => {
+    return onSnapshot(ownedQuery('files'), (snapshot) => {
       setStoredFiles(
-        snapshot.docs
+        // Copied before sorting - see GroupImportSheet.
+        [...snapshot.docs]
+          .sort((a, b) => ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0))
           .map((d) => {
             const data = d.data();
             return {

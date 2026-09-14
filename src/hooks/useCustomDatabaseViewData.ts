@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { collection, doc, onSnapshot, query } from '../firestore';
+import { doc, onSnapshot } from '../firestore';
 import { db } from '../firebase';
+import { ownedQuery } from '../utils/owned';
 import { CustomDatabase, CustomDatabaseRow, CustomDatabaseView } from '../types';
 import { applyRowFilters, sortRows } from '../utils/customRowQuery';
 import { RowDisplayContext } from '../utils/customRowDisplay';
@@ -73,7 +74,7 @@ export function useCustomDatabaseViewData(
     }
     // Filtered client-side by databaseId, same "avoid a composite index"
     // convention CustomDatabaseScreen's own rows query follows.
-    return onSnapshot(query(collection(db, 'customDatabaseRows')), (snapshot) => {
+    return onSnapshot(ownedQuery('customDatabaseRows'), (snapshot) => {
       setRawRows(
         snapshot.docs
           .map((d) => rowFrom(d.id, d.data()))

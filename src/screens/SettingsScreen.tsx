@@ -216,7 +216,10 @@ export default function SettingsScreen() {
         notify('Увійшли в наявний акаунт', 'Цим акаунтом уже входили раніше, тож прив\'язати до нього дані цього пристрою не вийшло - вони лишились під попередньою анонімною особою.');
       }
       // Stamping ownership is what makes owner-only rules possible later.
-      // Safe to re-run: it only touches documents that have no owner yet.
+      // Safe to re-run, and it now takes over documents left under some
+      // other uid as well - an anonymous browser session had quietly
+      // become the owner of three of them, «Дошка 1» included. See
+      // claimExistingData for why that happens and why it must not stand.
       setClaimStatus('Позначаю дані...');
       const claimed = await claimExistingData(result.uid, (p) =>
         setClaimStatus(`${p.collection}: ${p.claimed}/${p.total}`)

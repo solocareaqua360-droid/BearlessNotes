@@ -5,11 +5,9 @@ import {
   collection,
   doc,
   getDocs,
-  orderBy,
-  query,
   updateDoc,
 } from '../firestore';
-import { addDoc, setDoc } from '../utils/owned';
+import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { db } from '../firebase';
 import { Block, BlockType } from '../types';
@@ -365,7 +363,7 @@ export default function ShareIntentHandler() {
     // Same cap DocumentsScreen's own sticker FAB enforces - falls back to
     // a new document instead of just refusing outright, since there's no
     // composer open here for the user to try something else from.
-    const freeStickersSnapshot = await getDocs(query(collection(db, 'stickers'), orderBy('updatedAt', 'desc')));
+    const freeStickersSnapshot = await getDocs(ownedQuery('stickers'));
     const freeStickerCount = freeStickersSnapshot.docs.filter((d) => {
       const data = d.data() as { trashed?: boolean; usedInDocuments?: Record<string, boolean> };
       return !data.trashed && Object.keys(data.usedInDocuments ?? {}).length === 0;

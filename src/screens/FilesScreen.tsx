@@ -15,18 +15,15 @@ import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import {
-  collection,
   deleteDoc,
   deleteField,
   doc,
   getDoc,
   onSnapshot,
-  orderBy,
-  query,
   updateDoc,
   writeBatch,
 } from '../firestore';
-import { setDoc } from '../utils/owned';
+import { ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { Block } from '../types';
 import { RootStackParamList } from '../navigation';
@@ -162,26 +159,27 @@ export default function FilesScreen() {
   } = list;
 
   useEffect(() => {
-    const filesQuery = query(collection(db, 'files'), orderBy('updatedAt', 'desc'));
-    return onSnapshot(filesQuery, (snapshot) => {
+    return onSnapshot(ownedQuery('files'), (snapshot) => {
       setFiles(
-        snapshot.docs.map((docSnapshot) => {
-          const data = docSnapshot.data();
-          return {
-            id: docSnapshot.id,
-            fileUri: data.fileUri,
-            fileName: data.fileName,
-            mimeType: data.mimeType,
-            title: data.title,
-            documentIds: Object.keys(data.usedInDocuments ?? {}),
-            tagIds: data.tagIds ?? [],
-            groupId: data.groupId,
-            driveFileId: data.driveFileId,
-            driveBytes: data.driveBytes,
-            updatedAt: data.updatedAt ?? 0,
-            createdAt: data.createdAt,
-          };
-        })
+        snapshot.docs
+          .map((docSnapshot) => {
+            const data = docSnapshot.data();
+            return {
+              id: docSnapshot.id,
+              fileUri: data.fileUri,
+              fileName: data.fileName,
+              mimeType: data.mimeType,
+              title: data.title,
+              documentIds: Object.keys(data.usedInDocuments ?? {}),
+              tagIds: data.tagIds ?? [],
+              groupId: data.groupId,
+              driveFileId: data.driveFileId,
+              driveBytes: data.driveBytes,
+              updatedAt: data.updatedAt ?? 0,
+              createdAt: data.createdAt,
+            };
+          })
+          .sort((a, b) => b.updatedAt - a.updatedAt)
       );
       setIsLoading(false);
     });

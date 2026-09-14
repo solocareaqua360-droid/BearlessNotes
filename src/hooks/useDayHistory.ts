@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { collection, onSnapshot, query, where } from '../firestore';
-import { db } from '../firebase';
+import { onSnapshot } from '../firestore';
+import { ownedQuery } from '../utils/owned';
 import { CustomDatabase } from '../types';
 import { rowTitleOf } from '../utils/customRowDisplay';
 import { dateKey } from '../utils/dateLocale';
@@ -59,10 +59,16 @@ function useCreatedAtItems(
 ): HistoryItem[] {
   const [items, setItems] = useState<HistoryItem[]>([]);
   useEffect(() => {
-    const q = query(collection(db, collectionName), where('createdAt', '>=', startMs), where('createdAt', '<=', endMs));
-    return onSnapshot(q, (snapshot) => {
+    // The date range is applied here rather than in the query. It used to be
+    // two `where` clauses, but ownedQuery adds an equality filter to every
+    // read now, and an equality filter plus a range on another field is the
+    // one thing Firestore will not do without a composite index - the same
+    // tradeoff this file already makes for customDatabases below.
+    return onSnapshot(ownedQuery(collectionName), (snapshot) => {
       const next: HistoryItem[] = [];
       snapshot.docs.forEach((d) => {
+        const createdAt = d.data().createdAt as number | undefined;
+        if (typeof createdAt !== 'number' || createdAt < startMs || createdAt > endMs) return;
         const mapped = mapItem(d.id, d.data());
         if (!mapped) return;
         if (Array.isArray(mapped)) next.push(...mapped);
@@ -105,7 +111,7 @@ export function useDayHistory(
   // it's the same "avoid a composite index" tradeoff used everywhere else.
   const [customDatabases, setCustomDatabases] = useState<Record<string, CustomDatabase>>({});
   useEffect(() => {
-    return onSnapshot(collection(db, 'customDatabases'), (snapshot) => {
+    return onSnapshot(ownedQuery('customDatabases'), (snapshot) => {
       const next: Record<string, CustomDatabase> = {};
       snapshot.docs.forEach((d) => {
         const data = d.data();

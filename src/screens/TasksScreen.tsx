@@ -25,7 +25,7 @@ import {
   query,
   updateDoc,
 } from '../firestore';
-import { addDoc } from '../utils/owned';
+import { addDoc, ownedQuery } from '../utils/owned';
 import { db } from '../firebase';
 import { Block, Project } from '../types';
 import { hapticToggle } from '../utils/haptics';
@@ -186,9 +186,10 @@ export default function TasksScreen() {
     // without disturbing the newest-first order within each group) rather
     // than via a second orderBy in the query itself, which would need a
     // composite index set up in the Firebase console before it'd work.
-    const tasksQuery = query(tasksCollection, orderBy('updatedAt', 'desc'));
-    return onSnapshot(tasksQuery, (snapshot) => {
-      const loaded = snapshot.docs.map((docSnapshot) => ({
+    return onSnapshot(ownedQuery('tasks'), (snapshot) => {
+      const loaded = [...snapshot.docs]
+        .sort((a, b) => ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0))
+        .map((docSnapshot) => ({
         id: docSnapshot.id,
         text: docSnapshot.data().text,
         checked: docSnapshot.data().checked,
@@ -209,14 +210,15 @@ export default function TasksScreen() {
   }, []);
 
   useEffect(() => {
-    const projectsQuery = query(projectsCollection, orderBy('name'));
-    return onSnapshot(projectsQuery, (snapshot) => {
+    return onSnapshot(ownedQuery('projects'), (snapshot) => {
       setProjects(
-        snapshot.docs.map((docSnapshot) => ({
-          id: docSnapshot.id,
-          name: docSnapshot.data().name,
-          color: docSnapshot.data().color,
-        }))
+        snapshot.docs
+          .map((docSnapshot) => ({
+            id: docSnapshot.id,
+            name: docSnapshot.data().name,
+            color: docSnapshot.data().color,
+          }))
+          .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
       );
     });
   }, []);

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot, orderBy, query } from '../firestore';
-import { db } from '../firebase';
+import { onSnapshot } from '../firestore';
+import { ownedQuery } from '../utils/owned';
 import { CustomDatabase } from '../types';
 import { defaultColorFor, tileColorsDoc } from '../constants/databaseTiles';
 
@@ -19,20 +19,22 @@ export function useDatabaseTiles() {
   }, []);
 
   useEffect(() => {
-    return onSnapshot(query(collection(db, 'customDatabases'), orderBy('name')), (snapshot) => {
+    return onSnapshot(ownedQuery('customDatabases'), (snapshot) => {
       setCustomDatabases(
-        snapshot.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            name: data.name,
-            icon: data.icon,
-            color: data.color,
-            fields: data.fields ?? [],
-            createdAt: data.createdAt,
-            updatedAt: data.updatedAt,
-          };
-        })
+        snapshot.docs
+          .map((d) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              name: data.name,
+              icon: data.icon,
+              color: data.color,
+              fields: data.fields ?? [],
+              createdAt: data.createdAt,
+              updatedAt: data.updatedAt,
+            };
+          })
+          .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
       );
     });
   }, []);

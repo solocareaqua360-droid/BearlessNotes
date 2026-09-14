@@ -1,5 +1,6 @@
-import { collection, getDocs, doc, writeBatch } from '../firestore';
+import { getDocs, doc, writeBatch } from '../firestore';
 import { db } from '../firebase';
+import { ownedQuery } from './owned';
 
 // A database the user made, and everything that only exists because of it:
 // its rows, and the saved views that describe it. A view left behind is a
@@ -10,8 +11,8 @@ import { db } from '../firebase';
 // would be a second chance to forget one of the three collections.
 export async function deleteCustomDatabase(databaseId: string) {
   const [rows, views] = await Promise.all([
-    getDocs(collection(db, 'customDatabaseRows')),
-    getDocs(collection(db, 'customDatabaseViews')),
+    getDocs(ownedQuery('customDatabaseRows')),
+    getDocs(ownedQuery('customDatabaseViews')),
   ]);
   const batch = writeBatch(db);
   rows.docs.forEach((row) => {

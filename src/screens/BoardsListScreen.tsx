@@ -9,11 +9,9 @@ import {
   deleteDoc,
   doc,
   onSnapshot,
-  orderBy,
-  query,
   updateDoc,
 } from '../firestore';
-import { addDoc, setDoc } from '../utils/owned';
+import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { BoardsStackParamList } from '../navigation';
 import { BoardItem } from '../types';
@@ -67,20 +65,21 @@ export default function BoardsListScreen() {
   const [renamingBoard, setRenamingBoard] = useState<BoardItem | null>(null);
 
   useEffect(() => {
-    const boardsQuery = query(boardsCollection, orderBy('updatedAt', 'desc'));
-    return onSnapshot(boardsQuery, (snapshot) => {
+    return onSnapshot(ownedQuery('boards'), (snapshot) => {
       setBoards(
-        snapshot.docs.map((docSnapshot) => {
-          const data = docSnapshot.data();
-          return {
-            id: docSnapshot.id,
-            title: data.title ?? 'Без назви',
-            cards: data.cards ?? [],
-            columns: data.columns ?? [],
-            createdAt: data.createdAt ?? 0,
-            updatedAt: data.updatedAt ?? 0,
-          };
-        })
+        snapshot.docs
+          .map((docSnapshot) => {
+            const data = docSnapshot.data();
+            return {
+              id: docSnapshot.id,
+              title: data.title ?? 'Без назви',
+              cards: data.cards ?? [],
+              columns: data.columns ?? [],
+              createdAt: data.createdAt ?? 0,
+              updatedAt: data.updatedAt ?? 0,
+            };
+          })
+          .sort((a, b) => b.updatedAt - a.updatedAt)
       );
       setIsLoading(false);
     });

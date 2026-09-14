@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, onSnapshot, orderBy, query } from '../firestore';
-import { db } from '../firebase';
+import { onSnapshot } from '../firestore';
+import { ownedQuery } from '../utils/owned';
 import { CustomDatabase, CustomDatabaseRow, Group } from '../types';
 import { labelForKind } from '../utils/groups';
 import { rowTitleOf } from '../utils/customRowDisplay';
@@ -63,20 +63,24 @@ export function useGroupItems() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    return onSnapshot(query(collection(db, 'groups'), orderBy('name')), (snapshot) => {
-      setGroups(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Group, 'id'>) })));
+    return onSnapshot(ownedQuery('groups'), (snapshot) => {
+      setGroups(
+        snapshot.docs
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<Group, 'id'>) }))
+          .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
+      );
       setIsLoading(false);
     });
   }, []);
 
   useEffect(() => {
-    return onSnapshot(collection(db, 'customDatabases'), (snapshot) => {
+    return onSnapshot(ownedQuery('customDatabases'), (snapshot) => {
       setCustomDatabases(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabase, 'id'>) })));
     });
   }, []);
 
   useEffect(() => {
-    return onSnapshot(collection(db, 'customDatabaseRows'), (snapshot) => {
+    return onSnapshot(ownedQuery('customDatabaseRows'), (snapshot) => {
       const map: Record<string, CustomDatabaseRow> = {};
       snapshot.docs.forEach((d) => {
         map[d.id] = { id: d.id, ...(d.data() as Omit<CustomDatabaseRow, 'id'>) };
@@ -87,7 +91,7 @@ export function useGroupItems() {
 
   useEffect(() => {
     const unsubs = SOURCES.map((source) =>
-      onSnapshot(collection(db, source.collectionName), (snapshot) => {
+      onSnapshot(ownedQuery(source.collectionName), (snapshot) => {
         setItemsByGroup((prev) => {
           const next: Record<string, GroupItem[]> = {};
           // Rebuild only this source's contribution, keeping the others.

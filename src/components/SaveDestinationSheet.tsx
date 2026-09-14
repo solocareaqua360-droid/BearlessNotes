@@ -6,8 +6,8 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 // land between rows. Same fix, same reason, as FieldsEditorSheet.
 import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, onSnapshot, orderBy, query } from '../firestore';
-import { db } from '../firebase';
+import { onSnapshot } from '../firestore';
+import { ownedQuery } from '../utils/owned';
 import {
   GLASS_BACKDROP,
   GLASS_BODY_BLURRED,
@@ -19,8 +19,6 @@ import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#3B82F6';
-const documentsCollection = collection(db, 'documents');
-const boardsCollection = collection(db, 'boards');
 
 type PickableDocument = { id: string; title: string };
 type PickableBoard = { id: string; title: string };
@@ -68,10 +66,10 @@ export default function SaveDestinationSheet({
 
   useEffect(() => {
     if (!visible) return;
-    const documentsQuery = query(documentsCollection, orderBy('updatedAt', 'desc'));
-    return onSnapshot(documentsQuery, (snapshot) => {
+    return onSnapshot(ownedQuery('documents'), (snapshot) => {
       setDocuments(
-        snapshot.docs
+        [...snapshot.docs]
+          .sort((a, b) => ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0))
           .filter((d) => !d.data().calendarDate)
           .map((d) => ({ id: d.id, title: d.data().title }))
       );
@@ -80,9 +78,12 @@ export default function SaveDestinationSheet({
 
   useEffect(() => {
     if (!visible) return;
-    const boardsQuery = query(boardsCollection, orderBy('updatedAt', 'desc'));
-    return onSnapshot(boardsQuery, (snapshot) => {
-      setBoards(snapshot.docs.map((d) => ({ id: d.id, title: d.data().title })));
+    return onSnapshot(ownedQuery('boards'), (snapshot) => {
+      setBoards(
+        [...snapshot.docs]
+          .sort((a, b) => ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0))
+          .map((d) => ({ id: d.id, title: d.data().title }))
+      );
     });
   }, [visible]);
 

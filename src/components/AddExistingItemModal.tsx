@@ -6,8 +6,8 @@ import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 // land between rows. Same fix, same reason, as FieldsEditorSheet.
 import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, onSnapshot, orderBy, query } from '../firestore';
-import { db } from '../firebase';
+import { onSnapshot } from '../firestore';
+import { ownedQuery } from '../utils/owned';
 import { Block, CustomDatabase, CustomDatabaseRow, CustomDatabaseView, SketchElement } from '../types';
 import {
   blockFromCustomRow,
@@ -31,14 +31,17 @@ import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#3B82F6';
 const STICKER_YELLOW = '#FBE97A';
-const filesCollection = collection(db, 'files');
-const photosCollection = collection(db, 'photos');
-const linksCollection = collection(db, 'links');
-const documentsCollection = collection(db, 'documents');
-const stickersCollection = collection(db, 'stickers');
-const customDatabasesCollection = collection(db, 'customDatabases');
-const customRowsCollection = collection(db, 'customDatabaseRows');
-const customViewsCollection = collection(db, 'customDatabaseViews');
+// Newest first, done here rather than by the query. Every read in this
+// file goes through ownedQuery now, which narrows by owner - and an
+// equality filter with an orderBy on another field is what needs a
+// composite index, the one thing this app avoids everywhere.
+function newestFirst(a: { data(): Record<string, unknown> }, b: { data(): Record<string, unknown> }) {
+  return ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0);
+}
+
+function byName(a: { name?: string }, b: { name?: string }) {
+  return String(a.name ?? '').localeCompare(String(b.name ?? ''));
+}
 
 // Links split into video/geo/other exactly like LinksScreen's own tabs
 // (see LinksScreen.tsx's categoryOf) - they're one Firestore collection but
@@ -164,22 +167,22 @@ export default function AddExistingItemModal({
 
   useEffect(() => {
     if (!visible) return;
-    return onSnapshot(query(filesCollection, orderBy('updatedAt', 'desc')), (snapshot) => {
-      setFiles(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<FileRow, 'id'>) })));
+    return onSnapshot(ownedQuery('files'), (snapshot) => {
+      setFiles([...snapshot.docs].sort(newestFirst).map((d) => ({ id: d.id, ...(d.data() as Omit<FileRow, 'id'>) })));
     });
   }, [visible]);
 
   useEffect(() => {
     if (!visible) return;
-    return onSnapshot(query(photosCollection, orderBy('updatedAt', 'desc')), (snapshot) => {
-      setPhotos(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PhotoRow, 'id'>) })));
+    return onSnapshot(ownedQuery('photos'), (snapshot) => {
+      setPhotos([...snapshot.docs].sort(newestFirst).map((d) => ({ id: d.id, ...(d.data() as Omit<PhotoRow, 'id'>) })));
     });
   }, [visible]);
 
   useEffect(() => {
     if (!visible) return;
-    return onSnapshot(query(linksCollection, orderBy('updatedAt', 'desc')), (snapshot) => {
-      setLinks(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<LinkRow, 'id'>) })));
+    return onSnapshot(ownedQuery('links'), (snapshot) => {
+      setLinks([...snapshot.docs].sort(newestFirst).map((d) => ({ id: d.id, ...(d.data() as Omit<LinkRow, 'id'>) })));
     });
   }, [visible]);
 
@@ -188,9 +191,10 @@ export default function AddExistingItemModal({
     // Trashed is filtered client-side (same "avoid a composite index"
     // convention used everywhere else in this app) rather than a
     // `where('trashed','==',false)` query.
-    return onSnapshot(query(stickersCollection, orderBy('updatedAt', 'desc')), (snapshot) => {
+    return onSnapshot(ownedQuery('stickers'), (snapshot) => {
       setStickers(
-        snapshot.docs
+        [...snapshot.docs]
+          .sort(newestFirst)
           .map((d) => ({ id: d.id, ...(d.data() as Omit<StickerRow, 'id'>) }))
           .filter((s) => !s.trashed)
       );
@@ -199,9 +203,9 @@ export default function AddExistingItemModal({
 
   useEffect(() => {
     if (!visible || !includeCustomDatabases) return;
-    return onSnapshot(query(customDatabasesCollection, orderBy('name')), (snapshot) => {
+    return onSnapshot(ownedQuery('customDatabases'), (snapshot) => {
       setCustomDatabases(
-        snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabase, 'id'>) }))
+        snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabase, 'id'>) })).sort(byName)
       );
     });
   }, [visible, includeCustomDatabases]);
@@ -210,9 +214,10 @@ export default function AddExistingItemModal({
     if (!visible || !openDatabaseId) return;
     // Filtered client-side by databaseId, same "avoid a composite index"
     // convention CustomDatabaseScreen's own rows query follows.
-    return onSnapshot(query(customRowsCollection, orderBy('updatedAt', 'desc')), (snapshot) => {
+    return onSnapshot(ownedQuery('customDatabaseRows'), (snapshot) => {
       setCustomRows(
-        snapshot.docs
+        [...snapshot.docs]
+          .sort(newestFirst)
           .map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabaseRow, 'id'>) }))
           .filter((r) => r.databaseId === openDatabaseId)
       );
@@ -221,7 +226,7 @@ export default function AddExistingItemModal({
 
   useEffect(() => {
     if (!visible || !openDatabaseId) return;
-    return onSnapshot(customViewsCollection, (snapshot) => {
+    return onSnapshot(ownedQuery('customDatabaseViews'), (snapshot) => {
       setCustomViews(
         snapshot.docs
           .map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabaseView, 'id'>) }))
@@ -232,9 +237,10 @@ export default function AddExistingItemModal({
 
   useEffect(() => {
     if (!visible || !includeDocuments) return;
-    return onSnapshot(query(documentsCollection, orderBy('updatedAt', 'desc')), (snapshot) => {
+    return onSnapshot(ownedQuery('documents'), (snapshot) => {
       setDocuments(
-        snapshot.docs
+        [...snapshot.docs]
+          .sort(newestFirst)
           .filter((d) => !d.data().calendarDate)
           .map((d) => ({ id: d.id, title: (d.data().title as string) || 'Без назви' }))
       );

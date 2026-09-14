@@ -67,7 +67,7 @@ import {
   query,
   updateDoc,
 } from '../firestore';
-import { setDoc } from '../utils/owned';
+import { ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import { Block, BlockType, Group, SketchElement, Tag, TableRow } from '../types';
@@ -2133,11 +2133,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const [groupPickerVisible, setGroupPickerVisible] = useState(false);
   useEffect(() => {
     if (embedded) return;
-    return onSnapshot(query(collection(db, 'groups'), orderBy('name')), (snapshot) => {
+    return onSnapshot(ownedQuery('groups'), (snapshot) => {
       setGroups(
         snapshot.docs
           .map((d) => ({ id: d.id, ...(d.data() as Omit<Group, 'id'>) }))
           .filter((g) => groupAppliesTo(g, 'document'))
+          .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
       );
     });
   }, [embedded]);

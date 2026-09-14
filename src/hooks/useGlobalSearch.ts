@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, onSnapshot } from '../firestore';
-import { db } from '../firebase';
+import { onSnapshot } from '../firestore';
+import { ownedQuery } from '../utils/owned';
 import { Block, CustomDatabase } from '../types';
 import { TextMatch, documentMatchesQuery, findBodyMatch, findTitleMatch } from '../utils/documentPreview';
 import { categoryFromSiteName } from '../utils/linkCategory';
@@ -78,7 +78,7 @@ function useCollection(name: string): Row[] {
   const [rows, setRows] = useState<Row[]>([]);
   useEffect(
     () =>
-      onSnapshot(collection(db, name), (snapshot) => {
+      onSnapshot(ownedQuery(name), (snapshot) => {
         setRows(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) })));
       }),
     [name]

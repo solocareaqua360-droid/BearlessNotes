@@ -18,18 +18,15 @@ import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import {
-  collection,
   deleteDoc,
   deleteField,
   doc,
   getDoc,
   onSnapshot,
-  orderBy,
-  query,
   updateDoc,
   writeBatch,
 } from '../firestore';
-import { setDoc } from '../utils/owned';
+import { ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { Block, Tag } from '../types';
 import { RootStackParamList } from '../navigation';
@@ -153,24 +150,25 @@ export default function PhotosScreen() {
   }
 
   useEffect(() => {
-    const photosQuery = query(collection(db, 'photos'), orderBy('updatedAt', 'desc'));
-    return onSnapshot(photosQuery, (snapshot) => {
+    return onSnapshot(ownedQuery('photos'), (snapshot) => {
       setPhotos(
-        snapshot.docs.map((docSnapshot) => {
-          const data = docSnapshot.data();
-          return {
-            id: docSnapshot.id,
-            imageUri: data.imageUri,
-            title: data.title,
-            documentIds: Object.keys(data.usedInDocuments ?? {}),
-            tagIds: data.tagIds ?? [],
-            groupId: data.groupId,
-            driveFileId: data.driveFileId,
-            driveBytes: data.driveBytes,
-            updatedAt: data.updatedAt ?? 0,
-            createdAt: data.createdAt,
-          };
-        })
+        snapshot.docs
+          .map((docSnapshot) => {
+            const data = docSnapshot.data();
+            return {
+              id: docSnapshot.id,
+              imageUri: data.imageUri,
+              title: data.title,
+              documentIds: Object.keys(data.usedInDocuments ?? {}),
+              tagIds: data.tagIds ?? [],
+              groupId: data.groupId,
+              driveFileId: data.driveFileId,
+              driveBytes: data.driveBytes,
+              updatedAt: data.updatedAt ?? 0,
+              createdAt: data.createdAt,
+            };
+          })
+          .sort((a, b) => b.updatedAt - a.updatedAt)
       );
       setIsLoading(false);
     });

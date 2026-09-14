@@ -38,7 +38,7 @@ import {
   updateDoc,
   writeBatch,
 } from '../firestore';
-import { setDoc } from '../utils/owned';
+import { ownedQuery, setDoc } from '../utils/owned';
 import {
   GLASS_BODY,
   GLASS_LINE,
@@ -309,7 +309,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   }, [databaseId]);
 
   useEffect(() => {
-    return onSnapshot(collection(db, 'customDatabaseViews'), (snapshot) => {
+    return onSnapshot(ownedQuery('customDatabaseViews'), (snapshot) => {
       setSavedViews(
         snapshot.docs
           .map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabaseView, 'id'>) }))
@@ -322,8 +322,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   useEffect(() => {
     // Filtered client-side by databaseId, same "avoid a composite index"
     // tradeoff every other database screen in this app already makes.
-    const rowsQuery = query(collection(db, 'customDatabaseRows'), orderBy('updatedAt', 'desc'));
-    return onSnapshot(rowsQuery, (snapshot) => {
+    return onSnapshot(ownedQuery('customDatabaseRows'), (snapshot) => {
       setRows(
         snapshot.docs
           .map((docSnapshot) => {
@@ -340,13 +339,14 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
             } as CustomDatabaseRow;
           })
           .filter((r) => r.databaseId === databaseId)
+          .sort((a, b) => b.updatedAt - a.updatedAt)
       );
       setIsLoading(false);
     });
   }, [databaseId]);
 
   useEffect(() => {
-    return onSnapshot(collection(db, 'groups'), (snapshot) => {
+    return onSnapshot(ownedQuery('groups'), (snapshot) => {
       setGroups(
         snapshot.docs
           .map((d) => ({ id: d.id, ...(d.data() as Omit<Group, 'id'>) }))
@@ -357,7 +357,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
 
   // See photosList's own comment above - unconditional, same as groups/tags.
   useEffect(() => {
-    return onSnapshot(collection(db, 'photos'), (snapshot) => {
+    return onSnapshot(ownedQuery('photos'), (snapshot) => {
       setPhotosList(
         snapshot.docs.map((d) => {
           const data = d.data();
@@ -368,7 +368,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   }, []);
 
   useEffect(() => {
-    return onSnapshot(collection(db, 'customDatabases'), (snapshot) => {
+    return onSnapshot(ownedQuery('customDatabases'), (snapshot) => {
       setOtherDatabases(
         snapshot.docs.filter((d) => d.id !== databaseId).map((d) => ({ id: d.id, name: d.data().name ?? 'База' }))
       );
@@ -419,7 +419,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
     // index" tradeoff as this screen's own rows effect above), split by
     // databaseId client-side rather than one listener per referenced
     // database.
-    return onSnapshot(collection(db, 'customDatabaseRows'), (snapshot) => {
+    return onSnapshot(ownedQuery('customDatabaseRows'), (snapshot) => {
       const grouped: Record<string, CustomDatabaseRow[]> = {};
       snapshot.docs.forEach((d) => {
         const data = d.data();

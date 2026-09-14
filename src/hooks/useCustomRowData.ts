@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { collection, doc, onSnapshot } from '../firestore';
+import { doc, onSnapshot } from '../firestore';
 import { db } from '../firebase';
+import { ownedQuery } from '../utils/owned';
 import { CustomDatabase, CustomDatabaseRow } from '../types';
 import { EMPTY_ROW_DISPLAY_CONTEXT, RowDisplayContext } from '../utils/customRowDisplay';
 
@@ -61,7 +62,7 @@ export function useRowDisplayContext(database: CustomDatabase | null): RowDispla
       setPhotos([]);
       return;
     }
-    return onSnapshot(collection(db, 'photos'), (snapshot) => {
+    return onSnapshot(ownedQuery('photos'), (snapshot) => {
       setPhotos(
         snapshot.docs.map((d) => {
           const data = d.data();
@@ -89,7 +90,7 @@ export function useRowDisplayContext(database: CustomDatabase | null): RowDispla
       setRelatedRows({});
       return;
     }
-    return onSnapshot(collection(db, 'customDatabaseRows'), (snapshot) => {
+    return onSnapshot(ownedQuery('customDatabaseRows'), (snapshot) => {
       const grouped: Record<string, CustomDatabaseRow[]> = {};
       snapshot.docs.forEach((d) => {
         const data = d.data();

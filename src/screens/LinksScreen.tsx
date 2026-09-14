@@ -20,12 +20,10 @@ import {
   doc,
   getDoc,
   onSnapshot,
-  orderBy,
-  query,
   updateDoc,
   writeBatch,
 } from '../firestore';
-import { setDoc } from '../utils/owned';
+import { ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { Block, TaggableKind } from '../types';
 import { LINK_CATEGORY_INFO as CATEGORY_INFO, LinkCategory, categoryFromSiteName } from '../utils/linkCategory';
@@ -197,10 +195,11 @@ export default function LinksScreen({
   } = list;
 
   useEffect(() => {
-    const linksQuery = query(linksCollection, orderBy('updatedAt', 'desc'));
-    return onSnapshot(linksQuery, (snapshot) => {
+    return onSnapshot(ownedQuery('links'), (snapshot) => {
       setLinks(
-        snapshot.docs.map((docSnapshot) => {
+        [...snapshot.docs]
+          .sort((a, b) => ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0))
+          .map((docSnapshot) => {
           const data = docSnapshot.data();
           return {
             id: docSnapshot.id,

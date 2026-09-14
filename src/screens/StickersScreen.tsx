@@ -14,8 +14,9 @@ import Svg, { Defs, LinearGradient, Stop, Rect, Path, Text as SvgText } from 're
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { collection, doc, getDoc, onSnapshot, orderBy, query, updateDoc } from '../firestore';
+import { collection, doc, getDoc, onSnapshot, updateDoc } from '../firestore';
 import { db } from '../firebase';
+import { ownedQuery } from '../utils/owned';
 import { RootStackParamList } from '../navigation';
 import { SketchElement } from '../types';
 import StickerComposer from '../components/StickerComposer';
@@ -64,9 +65,12 @@ export default function StickersScreen() {
     // Kept unfiltered here (unlike the free-strip query on DocumentsScreen)
     // so the trash toggle below can switch views without a second
     // subscription - trashed is never actually deleted, just hidden.
-    const stickersQuery = query(stickersCollection, orderBy('updatedAt', 'desc'));
-    return onSnapshot(stickersQuery, (snapshot) => {
-      setStickers(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<StickerItem, 'id'>) })));
+    return onSnapshot(ownedQuery('stickers'), (snapshot) => {
+      setStickers(
+        [...snapshot.docs]
+          .sort((a, b) => ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0))
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<StickerItem, 'id'>) }))
+      );
       setIsLoading(false);
     });
   }, []);

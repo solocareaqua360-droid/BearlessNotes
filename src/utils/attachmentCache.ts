@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
-import { collection, getDocs } from '../firestore';
-import { db } from '../firebase';
+import { getDocs } from '../firestore';
+import { ownedQuery } from './owned';
 
 // How long a file's bytes stay on this device once nobody has opened it.
 //
@@ -66,8 +66,8 @@ function isOurs(uri: string): boolean {
 // rule reads.
 async function attachmentRecords(): Promise<{ uri: string; driveFileId?: string; since: number }[]> {
   const [photos, files] = await Promise.all([
-    getDocs(collection(db, 'photos')),
-    getDocs(collection(db, 'files')),
+    getDocs(ownedQuery('photos')),
+    getDocs(ownedQuery('files')),
   ]);
   const out: { uri: string; driveFileId?: string; since: number }[] = [];
   photos.docs.forEach((d) => {

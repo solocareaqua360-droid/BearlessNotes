@@ -27,12 +27,11 @@ import {
   doc,
   getDoc,
   onSnapshot,
-  orderBy,
   query,
   updateDoc,
   writeBatch,
 } from '../firestore';
-import { addDoc, setDoc } from '../utils/owned';
+import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import { GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { db } from '../firebase';
 import { DocumentItem, SketchElement } from '../types';
@@ -240,9 +239,12 @@ export default function DocumentsScreen() {
     // everywhere else in this app) - only stickers with nothing in
     // usedInDocuments and not trashed belong in this "free stash" strip.
     // The full "Стікери" database screen shows every sticker regardless.
-    return onSnapshot(query(stickersCollection, orderBy('updatedAt', 'desc')), (snapshot) => {
+    return onSnapshot(ownedQuery('stickers'), (snapshot) => {
       setFreeStickers(
-        snapshot.docs
+        // Newest first, read off the raw data - StripSticker itself carries
+        // no updatedAt, and the query no longer sorts (see ownedQuery).
+        [...snapshot.docs]
+          .sort((a, b) => ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0))
           .map((d) => ({ id: d.id, ...(d.data() as Omit<StripSticker, 'id'>) }))
           .filter((s) => !s.trashed && Object.keys(s.usedInDocuments ?? {}).length === 0)
       );
@@ -284,8 +286,7 @@ export default function DocumentsScreen() {
   }
 
   useEffect(() => {
-    const documentsQuery = query(documentsCollection, orderBy('updatedAt', 'desc'));
-    return onSnapshot(documentsQuery, (snapshot) => {
+    return onSnapshot(ownedQuery('documents'), (snapshot) => {
       setDocuments(
         snapshot.docs
           // Daily notes (CalendarScreen) live in this same collection but
@@ -301,6 +302,7 @@ export default function DocumentsScreen() {
             createdAt: docSnapshot.data().createdAt,
             coverImageUri: docSnapshot.data().coverImageUri,
           }))
+          .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
       );
       setIsLoading(false);
     });

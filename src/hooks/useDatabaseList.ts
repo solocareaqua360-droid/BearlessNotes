@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { collection, doc, onSnapshot, orderBy, query } from '../firestore';
-import { setDoc } from '../utils/owned';
+import { doc, onSnapshot } from '../firestore';
+import { ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { Group, Tag, TaggableKind } from '../types';
 import { groupAppliesTo } from '../utils/groups';
@@ -100,15 +100,17 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
 
   useEffect(
     () =>
-      // Filtered client-side rather than with a `where('kind','==',...)`
-      // query - combining an equality filter with `orderBy` on a different
-      // field needs a composite index set up by hand in the Firebase
-      // console, which this app avoids everywhere else too.
-      onSnapshot(query(collection(db, 'groups'), orderBy('name')), (snapshot) => {
+      // Filtered AND sorted client-side rather than by the query - combining
+      // an equality filter with `orderBy` on a different field needs a
+      // composite index set up by hand in the Firebase console, which this
+      // app avoids everywhere else too. Since ownedQuery adds an equality
+      // filter of its own to every read, that now goes for all of them.
+      onSnapshot(ownedQuery('groups'), (snapshot) => {
         setGroups(
           snapshot.docs
             .map((d) => ({ id: d.id, ...(d.data() as Omit<Group, 'id'>) }))
             .filter((g) => groupAppliesTo(g, groupKind))
+            .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
         );
       }),
     [groupKind]

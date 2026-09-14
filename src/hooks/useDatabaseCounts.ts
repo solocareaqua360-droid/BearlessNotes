@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot } from '../firestore';
-import { db } from '../firebase';
+import { onSnapshot } from '../firestore';
+import { ownedQuery } from '../utils/owned';
 import { categoryFromSiteName } from '../utils/linkCategory';
 
 // What each database has in it, for the tiles to show. A tile that only
@@ -39,7 +39,7 @@ function useCollection(name: string): Row[] {
   const [rows, setRows] = useState<Row[]>([]);
   useEffect(
     () =>
-      onSnapshot(collection(db, name), (snapshot) => {
+      onSnapshot(ownedQuery(name), (snapshot) => {
         setRows(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) })));
       }),
     [name]

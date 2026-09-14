@@ -6,8 +6,8 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 // land between rows. Same fix, same reason, as FieldsEditorSheet.
 import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, onSnapshot, orderBy, query } from '../firestore';
-import { db } from '../firebase';
+import { onSnapshot } from '../firestore';
+import { ownedQuery } from '../utils/owned';
 import {
   GLASS_BACKDROP,
   GLASS_BODY_BLURRED,
@@ -19,7 +19,6 @@ import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#3B82F6';
-const documentsCollection = collection(db, 'documents');
 
 type PickableDocument = { id: string; title: string };
 
@@ -42,10 +41,10 @@ export default function CopyToNoteModal({ visible, onPickExisting, onPickNew, on
 
   useEffect(() => {
     if (!visible) return;
-    const documentsQuery = query(documentsCollection, orderBy('updatedAt', 'desc'));
-    return onSnapshot(documentsQuery, (snapshot) => {
+    return onSnapshot(ownedQuery('documents'), (snapshot) => {
       setDocuments(
-        snapshot.docs
+        [...snapshot.docs]
+          .sort((a, b) => ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0))
           .filter((docSnapshot) => !docSnapshot.data().calendarDate)
           .map((docSnapshot) => ({ id: docSnapshot.id, title: docSnapshot.data().title }))
       );

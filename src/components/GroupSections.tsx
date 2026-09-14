@@ -4,8 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { collection, onSnapshot } from '../firestore';
-import { db } from '../firebase';
+import { onSnapshot } from '../firestore';
+import { ownedQuery } from '../utils/owned';
 import { Block, CustomDatabase, Tag } from '../types';
 import { RootStackParamList } from '../navigation';
 import DocumentCard from './DocumentCard';
@@ -58,7 +58,7 @@ function useCollection(name: string, enabled: boolean): Row[] {
       setRows([]);
       return;
     }
-    return onSnapshot(collection(db, name), (snapshot) => {
+    return onSnapshot(ownedQuery(name), (snapshot) => {
       setRows(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) })));
     });
   }, [name, enabled]);

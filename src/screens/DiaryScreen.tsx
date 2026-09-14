@@ -3,8 +3,8 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { collection, onSnapshot, orderBy, query, where } from '../firestore';
-import { db } from '../firebase';
+import { onSnapshot } from '../firestore';
+import { ownedQuery } from '../utils/owned';
 import { DocumentItem } from '../types';
 import { RootStackParamList } from '../navigation';
 import DocumentCard from '../components/DocumentCard';
@@ -13,7 +13,6 @@ import { formatShortDate, parseDateKey } from '../utils/dateLocale';
 import ContentColumn from '../components/ContentColumn';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 
-const documentsCollection = collection(db, 'documents');
 
 // "Щоденник" - calendar sheets (CalendarScreen's daily notes) as their own
 // browsable, searchable database. A sheet only appears here at all once it
@@ -28,12 +27,12 @@ export default function DiaryScreen() {
   const [query_, setQuery] = useState('');
 
   useEffect(() => {
-    // calendarDate sorts the same as the date it represents (YYYY-MM-DD),
-    // so ordering by it directly needs no composite index - ordering by
-    // updatedAt instead would (a range filter and an orderBy on two
-    // different fields).
-    const sheetsQuery = query(documentsCollection, where('calendarDate', '>', ''), orderBy('calendarDate', 'desc'));
-    return onSnapshot(sheetsQuery, (snapshot) => {
+    // "Has a calendarDate" used to be a range filter, and the sort used to
+    // be the query's. Both moved here when ownedQuery started adding an
+    // equality filter to every read: an equality filter with a range on
+    // another field is the one combination Firestore will not serve
+    // without a composite index built by hand.
+    return onSnapshot(ownedQuery('documents'), (snapshot) => {
       setSheets(
         snapshot.docs
           .map((docSnapshot) => ({
@@ -41,9 +40,10 @@ export default function DiaryScreen() {
             title: docSnapshot.data().title,
             updatedAt: docSnapshot.data().updatedAt,
             blocks: docSnapshot.data().blocks ?? [],
-            calendarDate: docSnapshot.data().calendarDate as string,
+            calendarDate: docSnapshot.data().calendarDate as string | undefined,
           }))
-          .filter((d) => hasNoteContent(d.title ?? '', d.blocks))
+          .filter((d) => !!d.calendarDate && hasNoteContent(d.title ?? '', d.blocks))
+          .sort((a, b) => (b.calendarDate ?? '').localeCompare(a.calendarDate ?? ''))
       );
     });
   }, []);

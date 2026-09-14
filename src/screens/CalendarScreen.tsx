@@ -27,7 +27,7 @@ import {
   updateDoc,
   where,
 } from '../firestore';
-import { setDoc } from '../utils/owned';
+import { ownedQuery, setDoc } from '../utils/owned';
 import { GLASS_BODY, GLASS_TEXT } from '../constants/glass';
 import { db } from '../firebase';
 import { Block } from '../types';
@@ -614,8 +614,7 @@ export default function CalendarScreen() {
   // reminder-dated to this one shows here, on the sheet for the day it's
   // actually due, rather than only being visible back where it was typed.
   useEffect(() => {
-    const dueQuery = query(tasksCollection, where('reminderDate', '==', selectedKey));
-    return onSnapshot(dueQuery, (snapshot) => {
+    return onSnapshot(ownedQuery('tasks', where('reminderDate', '==', selectedKey)), (snapshot) => {
       setDueReminders(
         snapshot.docs.map((docSnapshot) => ({
           id: docSnapshot.id,
