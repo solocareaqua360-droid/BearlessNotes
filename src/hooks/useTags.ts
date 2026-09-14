@@ -4,6 +4,7 @@ import {
   arrayUnion,
   collection,
   deleteDoc,
+  setDoc,
   deleteField,
   doc,
   onSnapshot,
@@ -95,6 +96,7 @@ export function useTags() {
             color: data.color,
             types: data.types ?? [],
             usedIn: data.usedIn ?? {},
+            keep: !!data.keep,
           };
         })
       );
@@ -161,13 +163,33 @@ export function useTags() {
     return tagRef.id;
   }
 
+  // A folder made on purpose in «Провідник»: a tag with nothing in it
+  // yet, kept alive by `keep` (see the Tag doc comment in types.ts) so
+  // the empty-tag rule below leaves it alone. Given a folder's own icon
+  // and a colour from the palette, like a tag made from a note is.
+  async function createFolderTag(path: string, kind: TaggableKind, color: string) {
+    const tagRef = doc(tagsCollection);
+    await setDoc(tagRef, {
+      path: path.trim(),
+      icon: 'folder-outline',
+      color,
+      types: [kind],
+      usedIn: {},
+      keep: true,
+      ownerId: auth.currentUser?.uid ?? null,
+    });
+    return tagRef.id;
+  }
+
   // Removing the last usage deletes the tag doc outright rather than
   // leaving a zero-usage tag behind - see the Tag doc comment in types.ts.
+  // Unless the tag is kept: a folder made on purpose survives being
+  // emptied.
   async function detachTag(tag: Tag, kind: TaggableKind, itemId: string, itemsCollection: string) {
     const remainingKeys = Object.keys(tag.usedIn).filter((key) => key !== usedInKey(kind, itemId));
     const batch = writeBatch(db);
     batch.update(doc(db, itemsCollection, itemId), { tagIds: arrayRemove(tag.id) });
-    if (remainingKeys.length === 0) {
+    if (remainingKeys.length === 0 && !tag.keep) {
       batch.delete(doc(db, 'tags', tag.id));
     } else {
       batch.update(doc(db, 'tags', tag.id), { [`usedIn.${usedInKey(kind, itemId)}`]: deleteField() });
@@ -214,6 +236,7 @@ export function useTags() {
     findExactPath,
     attachTag,
     createAndAttachTag,
+    createFolderTag,
     detachTag,
     renameTag,
     updateTag,
@@ -227,7 +250,7 @@ export function useTags() {
 // doc is being removed anyway.
 export async function detachTagFromDeletedItem(tag: Tag, kind: TaggableKind, itemId: string) {
   const remainingKeys = Object.keys(tag.usedIn).filter((key) => key !== usedInKey(kind, itemId));
-  if (remainingKeys.length === 0) {
+  if (remainingKeys.length === 0 && !tag.keep) {
     await deleteDoc(doc(db, 'tags', tag.id));
   } else {
     const batch = writeBatch(db);

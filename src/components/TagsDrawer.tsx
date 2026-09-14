@@ -265,6 +265,11 @@ type Props = {
   // How many documents sit behind each folder and each group. The calling
   // screen counts them - it is the one that knows what it is listing.
   counts?: { byTag: Record<string, number>; untagged: number };
+  // «Провідник» - the folders shown inside the calling screen's own list,
+  // entered one at a time, the way a file manager shows them. Offered by
+  // the screens that can draw them that way (documents); the others pass
+  // nothing and show no switch.
+  explorer?: { enabled: boolean; onToggle: () => void };
   groupSection?: {
     items: { id: string | null; name: string; color: string; count: number }[];
     selected: string | null;
@@ -293,6 +298,7 @@ export default function TagsDrawer({
   hideOpenButton,
   capsuleHeight,
   counts,
+  explorer,
   groupSection,
 }: Props) {
   // Bottom tabs stay mounted when another tab is on screen (React
@@ -446,6 +452,39 @@ export default function TagsDrawer({
               </Text>
             </Pressable>
           </View>
+
+          {explorer && (
+            <Pressable
+              style={[styles.explorerRow, explorer.enabled && styles.explorerRowOn]}
+              onPress={explorer.onToggle}
+            >
+              <Ionicons
+                name={explorer.enabled ? 'folder-open-outline' : 'folder-outline'}
+                size={18}
+                color={explorer.enabled ? GLASS_TEXT : GLASS_TEXT_MUTED}
+              />
+              <Text style={[styles.explorerLabel, explorer.enabled && styles.explorerLabelOn]}>Провідник</Text>
+              <View style={[styles.explorerKnob, explorer.enabled && styles.explorerKnobOn]}>
+                <View style={[styles.explorerDot, explorer.enabled && styles.explorerDotOn]} />
+              </View>
+            </Pressable>
+          )}
+
+          {/* The group tabs at the head of the screen, on or off - a
+              visible switch now, beside the explorer's, rather than only
+              the long press on the folder button (which still works). */}
+          {groupSection && (
+            <Pressable style={styles.explorerRow} onPress={groupSection.onToggleRow}>
+              <Ionicons
+                name={groupSection.rowVisible ? 'checkbox' : 'square-outline'}
+                size={20}
+                color={groupSection.rowVisible ? GLASS_TEXT : GLASS_TEXT_MUTED}
+              />
+              <Text style={[styles.explorerLabel, groupSection.rowVisible && styles.explorerLabelOn]}>
+                Групи над списком
+              </Text>
+            </Pressable>
+          )}
 
           <ScrollView style={styles.scroll}>
             {groupSection && (
@@ -643,6 +682,55 @@ const styles = StyleSheet.create({
   // A track with the chosen half lifted out of it - the same soft panel a
   // selected row gets, rather than two bordered capsules with only their
   // labels telling them apart.
+  // The «Провідник» switch: a row in the tree's own shape, with a small
+  // toggle at its end - the folders move into the list while it is on.
+  explorerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    marginBottom: 14,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  explorerRowOn: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  explorerLabel: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT_MUTED,
+  },
+  explorerLabelOn: {
+    color: GLASS_TEXT,
+  },
+  explorerKnob: {
+    width: 36,
+    height: 20,
+    borderRadius: 10,
+    padding: 2,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    justifyContent: 'center',
+  },
+  explorerKnobOn: {
+    backgroundColor: 'rgba(255,255,255,0.35)',
+  },
+  explorerDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.55)',
+  },
+  explorerDotOn: {
+    backgroundColor: '#fff',
+    alignSelf: 'flex-end',
+  },
   segmented: {
     flexDirection: 'row',
     gap: 4,

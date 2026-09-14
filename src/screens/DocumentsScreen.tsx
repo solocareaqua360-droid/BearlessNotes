@@ -34,8 +34,11 @@ import {
 } from '../firestore';
 import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import { GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
+import { BackHandler } from 'react-native';
 import { db } from '../firebase';
-import { DocumentItem, SketchElement } from '../types';
+import { DocumentItem, SketchElement, Tag } from '../types';
+import RenamePrompt from '../components/RenamePrompt';
+import { TAG_COLORS } from '../constants/tags';
 import { hapticButtonDown, hapticButtonUp } from '../utils/haptics';
 import { RootStackParamList } from '../navigation';
 import { detachTagFromDeletedItem, ITEMS_COLLECTION_BY_KIND } from '../hooks/useTags';
@@ -184,11 +187,107 @@ export default function DocumentsScreen() {
     viewMode,
     changeViewMode,
     drawerTags,
+    explorerMode,
+    toggleExplorerMode,
     displayed: displayedDocuments,
     selected: selectedDocuments,
     needle,
   } = list;
   const searching = searchOpen && needle.length > 0;
+
+  // «Провідник» - the folders in the list itself, one level at a time.
+  //
+  // A folder is a segment of a tag's path ("робота/оренда" is the folder
+  // "робота" holding the folder "оренда"), so the tree is read straight
+  // off the tags; nothing is stored for it. What a level shows is the
+  // file manager's answer: the folders directly under it, and the
+  // documents tagged with exactly this path - not with anything deeper,
+  // which is what the next folder is for. At the root, the documents
+  // that carry no tag at all.
+  const [explorerPath, setExplorerPath] = useState('');
+  const explorer = explorerMode && !searching;
+  // The folders the explorer knows: every document tag, including one
+  // made on purpose and still empty (Tag.keep) - which the drawer's own
+  // list leaves out, since in the ordinary mode an empty folder is not a
+  // folder. That is the user's rule for the two modes.
+  const explorerTags = tags.filter((t) => t.types.includes('document') || drawerTags.some((d) => d.id === t.id));
+  const tagByPath = new Map(explorerTags.map((t) => [t.path, t]));
+  type Folder = { name: string; fullPath: string; tag: Tag | undefined; count: number };
+  function countInside(fullPath: string): number {
+    const inside = new Set(
+      explorerTags.filter((t) => t.path === fullPath || t.path.startsWith(`${fullPath}/`)).map((t) => t.id)
+    );
+    return documents.filter((d) => (d.tagIds ?? []).some((id) => inside.has(id))).length;
+  }
+  const explorerFolders: Folder[] = (() => {
+    if (!explorerMode) return [];
+    // Searching: every folder whose name has the words, from the whole
+    // tree, shown with its path - a search that found the documents but
+    // not the folders would be half a search.
+    if (searching) {
+      return explorerTags
+        .filter((t) => t.path.toLowerCase().includes(needle.toLowerCase()))
+        .map((t) => ({ name: t.path.split('/').join('  /  '), fullPath: t.path, tag: t, count: countInside(t.path) }))
+        .sort((a, b) => a.fullPath.localeCompare(b.fullPath));
+    }
+    const prefix = explorerPath ? `${explorerPath}/` : '';
+    const seen = new Map<string, Folder>();
+    for (const tag of explorerTags) {
+      if (!tag.path.startsWith(prefix)) continue;
+      const rest = tag.path.slice(prefix.length);
+      if (!rest) continue;
+      const name = rest.split('/')[0];
+      const fullPath = prefix + name;
+      if (!seen.has(fullPath)) seen.set(fullPath, { name, fullPath, tag: tagByPath.get(fullPath), count: 0 });
+    }
+    // What a folder's number says: every document anywhere under it,
+    // which is what a file manager's "items" means for a folder.
+    for (const folder of seen.values()) folder.count = countInside(folder.fullPath);
+    return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name));
+  })();
+  const explorerDocuments = !explorer
+    ? displayedDocuments
+    : explorerPath === ''
+      ? displayedDocuments.filter((d) => (d.tagIds ?? []).every((id) => !explorerTags.some((t) => t.id === id)))
+      : displayedDocuments.filter((d) => {
+          const here = tagByPath.get(explorerPath);
+          return !!here && (d.tagIds ?? []).includes(here.id);
+        });
+  // A folder made here, in the level being looked at. Held "+" does it
+  // (a tap makes a document, as always); a folder made this way is kept
+  // while empty - see createFolderTag.
+  const [folderPromptVisible, setFolderPromptVisible] = useState(false);
+  async function createFolder(name: string) {
+    setFolderPromptVisible(false);
+    const clean = name.trim().replace(/\//g, ' ');
+    if (!clean) return;
+    const path = explorerPath ? `${explorerPath}/${clean}` : clean;
+    if (tagByPath.has(path)) return;
+    await list.createFolderTag(path, 'document', TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)]);
+  }
+  // Up one level. On Android the system's back does it too while there is
+  // a level to go up to - a file manager that closed on "back" would be
+  // no file manager.
+  function explorerUp() {
+    setExplorerPath((p) => p.split('/').slice(0, -1).join('/'));
+  }
+  useEffect(() => {
+    if (!explorer || explorerPath === '') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      explorerUp();
+      return true;
+    });
+    return () => sub.remove();
+  }, [explorer, explorerPath]);
+  // Entering the mode starts at the root, and the drawer's own tag filter
+  // is put down - the folders are the filter now.
+  useEffect(() => {
+    if (explorerMode) {
+      setExplorerPath('');
+      setActiveFilter(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [explorerMode]);
   // The screen clears itself only while the search is actually being
   // typed; with the keyboard down the buttons come back and the field is
   // one control among them again.
@@ -893,7 +992,7 @@ export default function DocumentsScreen() {
           <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
             <ActivityIndicator color={ACCENT} />
           </View>
-        ) : displayedDocuments.length === 0 ? (
+        ) : explorerDocuments.length === 0 && explorerFolders.length === 0 && !(explorer && explorerPath) ? (
           <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
             {documents.length === 0 ? (
               <>
@@ -916,7 +1015,50 @@ export default function DocumentsScreen() {
             // FlatList throws if numColumns changes on an already-mounted
             // instance - key forces a clean remount when switching views.
             key={viewMode}
-            data={displayedDocuments}
+            data={explorerDocuments}
+            // The folders of this level, and the way up, above the cards.
+            ListHeaderComponent={
+              explorerMode && (explorerFolders.length > 0 || (explorer && explorerPath !== '')) ? (
+                <View style={styles.explorerHead}>
+                  {explorer && explorerPath !== '' && (
+                    <Pressable style={styles.explorerCrumb} onPress={explorerUp}>
+                      <Ionicons name="chevron-back" size={18} color={GLASS_TEXT} />
+                      <Text style={styles.explorerCrumbText} numberOfLines={1}>
+                        {explorerPath.split('/').join('  /  ')}
+                      </Text>
+                    </Pressable>
+                  )}
+                  {explorerFolders.map((folder) => (
+                    <Pressable
+                      key={folder.fullPath}
+                      style={styles.folderRow}
+                      onPress={() => {
+                        setExplorerPath(folder.fullPath);
+                        // A folder found by searching is a place to go: the
+                        // search is over once it is entered.
+                        if (searching) {
+                          setSearchText('');
+                          setSearchOpen(false);
+                        }
+                      }}
+                    >
+                      <View style={[styles.folderIcon, { backgroundColor: folder.tag?.color ?? GLASS_TEXT_FAINT }]}>
+                        <Ionicons
+                          name={(folder.tag?.icon as keyof typeof Ionicons.glyphMap) || 'folder-outline'}
+                          size={16}
+                          color="#fff"
+                        />
+                      </View>
+                      <Text style={styles.folderName} numberOfLines={1}>
+                        {folder.name}
+                      </Text>
+                      <Text style={styles.folderCount}>{folder.count}</Text>
+                      <Ionicons name="chevron-forward" size={16} color={GLASS_TEXT_FAINT} />
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null
+            }
             keyExtractor={(item) => item.id}
             // FlatList only re-renders an already-mounted row when `data` or
             // `extraData` changes - isSelectMode/selectedIds live outside
@@ -993,7 +1135,10 @@ export default function DocumentsScreen() {
             onPressIn={hapticButtonDown}
             onLongPress={() => {
               setFabPressed(true);
-              openStickerComposer();
+              // In «Провідник» a held "+" makes a folder in the level being
+              // looked at; everywhere else it makes a sticker, as before.
+              if (explorer) setFolderPromptVisible(true);
+              else openStickerComposer();
             }}
             onPressOut={() => {
               hapticButtonUp();
@@ -1053,11 +1198,26 @@ export default function DocumentsScreen() {
       </View>
 
       <TagsDrawer
-        tags={drawerTags}
+        tags={explorerMode ? explorerTags : drawerTags}
         activeFilter={activeFilter}
-        onSelectFilter={setActiveFilter}
+        onSelectFilter={(filter) => {
+          // With the folders in the list, a folder tapped in the drawer
+          // is a place to go, not a filter to add.
+          if (explorerMode && filter?.type === 'tags') {
+            const last = filter.tagIds[filter.tagIds.length - 1];
+            const tag = drawerTags.find((t) => t.id === last);
+            if (tag) setExplorerPath(tag.path);
+            return;
+          }
+          if (explorerMode && filter?.type === 'untagged') {
+            setExplorerPath('');
+            return;
+          }
+          setActiveFilter(filter);
+        }}
         hideOpenButton={isSelectMode || searchingAlone}
         counts={drawerCounts}
+        explorer={{ enabled: explorerMode, onToggle: toggleExplorerMode }}
         groupSection={{
           // The same list the tabs show, sentinels and all, so the two
           // never disagree about what there is to pick.
@@ -1087,6 +1247,15 @@ export default function DocumentsScreen() {
           rowVisible: !groupsRowHidden,
           onToggleRow: toggleGroupsRow,
         }}
+      />
+
+      <RenamePrompt
+        visible={folderPromptVisible}
+        title={explorerPath ? `Нова папка в «${explorerPath.split('/').pop()}»` : 'Нова папка'}
+        initialValue=""
+        placeholder="Назва папки"
+        onCancel={() => setFolderPromptVisible(false)}
+        onSave={createFolder}
       />
 
       <TagPicker
@@ -1414,6 +1583,54 @@ const styles = StyleSheet.create({
   },
   emptySearch: {
     flex: 1,
+  },
+  // «Провідник»: the folder rows above the cards, in the list's own
+  // side margin, and the crumb with the way up.
+  explorerHead: {
+    paddingHorizontal: 20,
+    gap: 8,
+    marginBottom: 8,
+  },
+  explorerCrumb: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+  },
+  explorerCrumbText: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT,
+  },
+  folderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  folderIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  folderName: {
+    flex: 1,
+    fontSize: 16,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT,
+  },
+  folderCount: {
+    fontSize: 13,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT_MUTED,
   },
   list: {
     paddingVertical: 8,

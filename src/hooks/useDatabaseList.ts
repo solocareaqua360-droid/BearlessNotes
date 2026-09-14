@@ -83,6 +83,10 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
   // List or grid, for the databases that offer both - kept in the same
   // per-database preferences document as the sort and the hidden row.
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  // «Провідник»: the folders shown inside the list itself, entered one at
+  // a time, rather than only in the drawer. A preference like the view
+  // mode, in the same document; only the documents screen offers it.
+  const [explorerMode, setExplorerMode] = useState(false);
 
   const { sortPref, selectSortField } = useSortPref(prefsKey);
   const { filterPending, requestDelete, requestDeleteMany, undo, toast } = usePendingDelete<T>();
@@ -94,6 +98,7 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
       onSnapshot(prefsDoc, (snapshot) => {
         setGroupsRowHidden(!!snapshot.data()?.groupsRowHidden);
         setViewMode((snapshot.data()?.viewMode as 'list' | 'grid' | undefined) ?? 'list');
+        setExplorerMode(!!snapshot.data()?.explorerMode);
       }),
     [prefsKey]
   );
@@ -118,6 +123,10 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
 
   function changeViewMode(mode: 'list' | 'grid') {
     setDoc(prefsDoc, { viewMode: mode }, { merge: true });
+  }
+
+  function toggleExplorerMode() {
+    setDoc(prefsDoc, { explorerMode: !explorerMode }, { merge: true });
   }
 
   function toggleGroupsRow() {
@@ -195,6 +204,8 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
     tagFilter,
     setTagFilter,
     drawerTags,
+    explorerMode,
+    toggleExplorerMode,
     isSearching,
     setIsSearching,
     searchQuery,

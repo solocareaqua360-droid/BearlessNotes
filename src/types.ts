@@ -275,8 +275,14 @@ export interface Tag {
   // this particular item stopped using it.
   types: TaggableKind[];
   // Reverse index of everything currently tagged, keyed "`${kind}:${id}`".
-  // A tag only exists while this has at least one key - see useTags.
+  // A tag only exists while this has at least one key - see useTags -
+  // unless it is kept (below).
   usedIn: Record<string, true>;
+  // A folder made on purpose, in «Провідник», rather than one that came
+  // into being by tagging something: it stays when it is empty. The
+  // ordinary rule (an unused tag is deleted) is what keeps the drawer free
+  // of dead branches, and it still holds for every tag without this.
+  keep?: boolean;
 }
 
 // A card on a 'Дошка' (board) canvas. Deliberately just a `Block` (the same
