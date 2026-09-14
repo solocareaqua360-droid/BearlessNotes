@@ -20,7 +20,7 @@ import { AskHost } from './src/components/surfaces/Ask';
 import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
 import { BoardsStackParamList } from './src/navigation';
-import { clearDriveToken, getDriveToken, hasDriveToken, subscribeToDriveToken } from './src/utils/driveToken.web';
+import { getDriveToken, hasDriveToken, subscribeToDriveToken } from './src/utils/driveToken.web';
 
 // The browser build: the board, and nothing else.
 //
@@ -196,10 +196,6 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        {/* The pictures on a board are files on the phone, and a browser
-            cannot read those - they come from Drive instead, which needs
-            asking once. Only a real click may open that window, so this
-            is a button and not something done on load. */}
         {/* Whose data this is, said out loud. It has to be: every read is
             narrowed to the owner now, so signing in as the wrong Google
             account - easy to do on a machine with two of them, since the
@@ -211,13 +207,17 @@ export default function App() {
           <Pressable
             style={styles.linkButton}
             onPress={async () => {
-              clearDriveToken();
               await signOutEverywhere();
               await signInWithGoogleAccount().catch(() => {});
             }}
           >
             <Text style={styles.linkLabel}>Змінити акаунт</Text>
           </Pressable>
+          {/* Signing in grants Drive in the same window now, so this
+              should never appear. It stays for the one case where it
+              still can: a sign-in that fell back to the Firebase popup,
+              which proves who you are and grants nothing. Better a
+              button than pictures that quietly never load. */}
           {!drive && (
             <>
               <Text style={styles.driveText}>Картинки лежать на Google Диску</Text>

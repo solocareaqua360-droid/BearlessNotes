@@ -13,7 +13,13 @@
 import { GOOGLE_CLIENT_ID } from '../constants/googleClient';
 
 const CLIENT_ID = GOOGLE_CLIENT_ID;
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+// Drive, and who is asking. `email profile` are here so this one window
+// can do both jobs: the resulting token opens Drive AND tells Firebase
+// which account granted it (see signInWithGoogleAccount in
+// firebase.web). Without them the token is anonymous as far as identity
+// goes, and signing in would need a second window of its own - which is
+// exactly the arrangement this replaces.
+const DRIVE_SCOPE = 'email profile https://www.googleapis.com/auth/drive.file';
 const GIS_SRC = 'https://accounts.google.com/gsi/client';
 
 type TokenClient = { requestAccessToken: (options?: { prompt?: string }) => void };
