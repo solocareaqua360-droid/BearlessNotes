@@ -97,6 +97,7 @@ import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { canPlaceCaretByTouch, measureNode } from '../utils/measureNode';
 import { setSelection } from '../utils/setSelection';
+import { autoGrowInput } from '../utils/autoGrowInput';
 import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
@@ -1016,6 +1017,16 @@ function BlockRow({
   // TextInput to compete with, a swipe anywhere reaches the ScrollView
   // just like it already did over the icon column.
   const canEditText = isActive && !isSelectMode;
+
+  // Kept alongside the ref the screen collects, purely so the field can be
+  // grown to its text - see autoGrowInput. On a phone this effect does
+  // nothing at all; in a browser it is the difference between a block and
+  // a two-line window with the rest of the block scrolled away inside it.
+  const localInputRef = useRef<TextInput | null>(null);
+  useEffect(() => {
+    autoGrowInput(localInputRef.current);
+  }, [item.text, canEditText]);
+
   const type = item.type ?? 'paragraph';
   // A sticker keeps its own yellow regardless of the document's paper
   // color - see BlockRowProps.paperColor.
@@ -1345,7 +1356,13 @@ function BlockRow({
         // non-editable. textVersion is folded in too - see its declaration
         // for why (avoids a transient grow/shrink flicker on Enter-split).
         key={`editable-${textVersion}`}
-        ref={inputRef}
+        ref={(node) => {
+          localInputRef.current = node;
+          inputRef(node);
+          // On mount too, not only on the effect above: the field is
+          // created already holding the whole block's text.
+          autoGrowInput(node);
+        }}
         // Mount-time focus is what reliably raises the keyboard on Android;
         // this input only ever mounts as the active block, so that's exactly
         // when it should. The screen's focus effect still places the cursor.
@@ -2239,6 +2256,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     textVersionsRef.current[id] = (textVersionsRef.current[id] ?? 0) + 1;
   }
   const inputRefs = useRef<Record<string, TextInput | null>>({});
+  // The title's own field, kept only so it can be grown to its text as it
+  // is typed - see autoGrowInput.
+  const titleInputRef = useRef<TextInput | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // An animated ref (not a plain useRef) so the keyboard-synced scroll below
   // can drive it from the UI thread; `.current` still works for the plain
@@ -4392,8 +4412,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         {!embedded && titleActive && (
         <TextInput
           autoFocus
+          // Grown to its text, same as a block's field - a long title
+          // soft-wraps, and in a browser a wrapped textarea clips instead
+          // of growing. See autoGrowInput.
+          ref={(node) => {
+            titleInputRef.current = node;
+            autoGrowInput(node);
+          }}
           value={title}
-          onChangeText={handleTitleChange}
+          onChangeText={(text) => {
+            handleTitleChange(text);
+            autoGrowInput(titleInputRef.current);
+          }}
           // The pinned toolbar acts on a block, not the title - hide it
           // rather than have it apply to whatever block last had focus.
           onFocus={() => {
