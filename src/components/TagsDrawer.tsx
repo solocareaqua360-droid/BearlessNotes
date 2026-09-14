@@ -9,6 +9,7 @@ import { onAuthStateChanged } from '@react-native-firebase/auth';
 import { hapticButtonDown } from '../utils/haptics';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Tag } from '../types';
+import type { ListMode } from '../hooks/useDatabaseList';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { RAIL_RIGHT } from '../constants/rail';
 import { GLASS_ISLAND } from '../constants/glass';
@@ -269,7 +270,15 @@ type Props = {
   // entered one at a time, the way a file manager shows them. Offered by
   // the screens that can draw them that way (documents); the others pass
   // nothing and show no switch.
-  explorer?: { enabled: boolean; onToggle: () => void };
+  // How the calling screen's list is organised - one of three, chosen
+  // here at the top of the drawer. Given only by the screen that has
+  // three ways (documents); the others show no switch and the drawer is
+  // as it always was for them.
+  mode?: { value: ListMode; onChange: (mode: ListMode) => void };
+  // The stickers, for the screen that has them: a row at the foot, in
+  // every mode - they used to be a tab in the group strip, which only
+  // the group mode shows now.
+  stickers?: { count: number; active: boolean; onToggle: () => void };
   // The bin, for the screens whose items go there instead of away
   // (documents): a row at the foot of the tree, with how many it holds.
   trash?: { count: number; onOpen: () => void };
@@ -277,8 +286,11 @@ type Props = {
     items: { id: string | null; name: string; color: string; count: number }[];
     selected: string | null;
     onSelect: (id: string | null) => void;
-    rowVisible: boolean;
-    onToggleRow: () => void;
+    // The older on/off of the group row, for the screens that still have
+    // it as a switch of its own (the documents screen chooses a mode
+    // instead).
+    rowVisible?: boolean;
+    onToggleRow?: () => void;
   };
 };
 
@@ -301,10 +313,14 @@ export default function TagsDrawer({
   hideOpenButton,
   capsuleHeight,
   counts,
-  explorer,
+  mode,
+  stickers,
   trash,
   groupSection,
 }: Props) {
+  const showGroups = !mode || mode.value === 'groups';
+  const showTree = !mode || mode.value !== 'groups';
+  const showFilterMode = !mode || mode.value === 'list';
   // Bottom tabs stay mounted when another tab is on screen (React
   // Navigation doesn't unmount them), and this drawer's own floating
   // pieces are drawn through a portal that reaches over the WHOLE app -
@@ -440,6 +456,33 @@ export default function TagsDrawer({
           <View style={[StyleSheet.absoluteFill, styles.panelTint]} pointerEvents="none" />
           <Text style={styles.title}>Теги</Text>
 
+          {mode && (
+            <View style={styles.segmented}>
+              {(
+                [
+                  { value: 'groups', label: 'Групи', icon: 'albums-outline' },
+                  { value: 'list', label: 'Список', icon: 'list-outline' },
+                  { value: 'explorer', label: 'Провідник', icon: 'folder-open-outline' },
+                ] as { value: ListMode; label: string; icon: keyof typeof Ionicons.glyphMap }[]
+              ).map((option) => {
+                const active = mode.value === option.value;
+                return (
+                  <Pressable
+                    key={option.value}
+                    style={[styles.segmentButton, active && styles.segmentButtonActive]}
+                    onPress={() => mode.onChange(option.value)}
+                  >
+                    <Ionicons name={option.icon} size={16} color={active ? GLASS_TEXT : GLASS_TEXT_MUTED} />
+                    <Text style={[styles.segmentLabel, styles.modeLabel, active && styles.segmentLabelActive]}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+
+          {showFilterMode && (
           <View style={styles.segmented}>
             <Pressable
               style={[styles.segmentButton, filterMode === 'multi' && styles.segmentButtonActive]}
@@ -456,42 +499,10 @@ export default function TagsDrawer({
               </Text>
             </Pressable>
           </View>
-
-          {explorer && (
-            <Pressable
-              style={[styles.explorerRow, explorer.enabled && styles.explorerRowOn]}
-              onPress={explorer.onToggle}
-            >
-              <Ionicons
-                name={explorer.enabled ? 'folder-open-outline' : 'folder-outline'}
-                size={18}
-                color={explorer.enabled ? GLASS_TEXT : GLASS_TEXT_MUTED}
-              />
-              <Text style={[styles.explorerLabel, explorer.enabled && styles.explorerLabelOn]}>Провідник</Text>
-              <View style={[styles.explorerKnob, explorer.enabled && styles.explorerKnobOn]}>
-                <View style={[styles.explorerDot, explorer.enabled && styles.explorerDotOn]} />
-              </View>
-            </Pressable>
-          )}
-
-          {/* The group tabs at the head of the screen, on or off - a
-              visible switch now, beside the explorer's, rather than only
-              the long press on the folder button (which still works). */}
-          {groupSection && (
-            <Pressable style={styles.explorerRow} onPress={groupSection.onToggleRow}>
-              <Ionicons
-                name={groupSection.rowVisible ? 'checkbox' : 'square-outline'}
-                size={20}
-                color={groupSection.rowVisible ? GLASS_TEXT : GLASS_TEXT_MUTED}
-              />
-              <Text style={[styles.explorerLabel, groupSection.rowVisible && styles.explorerLabelOn]}>
-                Групи над списком
-              </Text>
-            </Pressable>
           )}
 
           <ScrollView style={styles.scroll}>
-            {groupSection && (
+            {groupSection && showGroups && (
               <>
                 <SectionHeader
                   label="Групи"
@@ -524,6 +535,8 @@ export default function TagsDrawer({
               </>
             )}
 
+            {showTree && (
+            <>
             <SectionHeader
               label="Смартпапки"
               collapsed={foldersCollapsed}
@@ -569,8 +582,25 @@ export default function TagsDrawer({
                   onToggleTag={toggleTag}
                 />
               ))}
+            </>
+            )}
+            {stickers && (
+              <Pressable
+                style={[styles.treeRow, styles.trashRow, stickers.active && styles.treeRowSelected]}
+                onPress={stickers.onToggle}
+              >
+                {stickers.active && <View style={[styles.treeRowMark, { backgroundColor: '#F5C77E' }]} />}
+                <View style={{ width: 17 }} />
+                <Ionicons name="reader-outline" size={19} color="#F5C77E" />
+                <Text style={styles.untaggedLabel}>Стікери</Text>
+                <Text style={styles.rowCount}>{stickers.count}</Text>
+                <View style={styles.treeCheckSlot}>
+                  {stickers.active && <Ionicons name="checkmark-outline" size={17} color="#F5C77E" />}
+                </View>
+              </Pressable>
+            )}
             {trash && (
-              <Pressable style={[styles.treeRow, styles.trashRow]} onPress={trash.onOpen}>
+              <Pressable style={[styles.treeRow, styles.trashRow, !stickers && undefined]} onPress={trash.onOpen}>
                 <View style={{ width: 17 }} />
                 <Ionicons name="trash-outline" size={19} color={GLASS_TEXT_MUTED} />
                 <Text style={styles.untaggedLabel}>Кошик</Text>
@@ -620,10 +650,10 @@ export default function TagsDrawer({
             // the screen instead of opening the drawer - they live here
             // now, and the row up there is a convenience you can put away.
             onLongPress={
-              groupSection
+              groupSection?.onToggleRow
                 ? () => {
                     hapticButtonDown();
-                    groupSection.onToggleRow();
+                    groupSection.onToggleRow?.();
                   }
                 : undefined
             }
@@ -773,6 +803,12 @@ const styles = StyleSheet.create({
   },
   segmentLabelActive: {
     color: GLASS_TEXT,
+  },
+  // The three-way mode: an icon over a short word, because three words
+  // in one row do not fit a phone.
+  modeLabel: {
+    fontSize: 12,
+    marginTop: 3,
   },
   // White capsule, border always in its own color (gray for "Без тегів" -
   // it has none of its own) - not just when active. Selection shows as the

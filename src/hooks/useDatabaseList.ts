@@ -54,6 +54,8 @@ export type DatabaseListOptions<T> = {
   searchIgnoresFilters?: boolean;
 };
 
+export type ListMode = 'groups' | 'list' | 'explorer';
+
 export function useDatabaseList<T extends { id: string }>(options: DatabaseListOptions<T>) {
   const {
     prefsKey,
@@ -76,17 +78,19 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
   const [tagFilter, setTagFilter] = useState<TagFilter | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  // The group row at the head of the screen is a convenience now that the
-  // groups also live in the drawer - held down, the folder button puts it
-  // away.
-  const [groupsRowHidden, setGroupsRowHidden] = useState(false);
   // List or grid, for the databases that offer both - kept in the same
   // per-database preferences document as the sort and the hidden row.
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
-  // «Провідник»: the folders shown inside the list itself, entered one at
-  // a time, rather than only in the drawer. A preference like the view
-  // mode, in the same document; only the documents screen offers it.
-  const [explorerMode, setExplorerMode] = useState(false);
+  // How the documents list is organised - ONE of three, because each
+  // gives the list its one axis: 'groups' (the group tabs over the list),
+  // 'list' (documents, folders through the drawer), 'explorer' (folders
+  // in the list). Only the documents screen sets it; every other screen
+  // still keeps groupsRowHidden as its own preference, and the two older
+  // names below are derived from it there so nothing else has to change.
+  const [listMode, setListModeState] = useState<ListMode | null>(null);
+  const [groupsRowHiddenPref, setGroupsRowHiddenPref] = useState(false);
+  const explorerMode = listMode === 'explorer';
+  const groupsRowHidden = listMode ? listMode !== 'groups' : groupsRowHiddenPref;
 
   const { sortPref, selectSortField } = useSortPref(prefsKey);
   const { filterPending, requestDelete, requestDeleteMany, undo, toast } = usePendingDelete<T>();
@@ -96,9 +100,14 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
   useEffect(
     () =>
       onSnapshot(prefsDoc, (snapshot) => {
-        setGroupsRowHidden(!!snapshot.data()?.groupsRowHidden);
+        setGroupsRowHiddenPref(!!snapshot.data()?.groupsRowHidden);
         setViewMode((snapshot.data()?.viewMode as 'list' | 'grid' | undefined) ?? 'list');
-        setExplorerMode(!!snapshot.data()?.explorerMode);
+        // The three-way mode; a preferences document from before it
+        // existed is read through the two switches it had.
+        const stored = snapshot.data()?.listMode as ListMode | undefined;
+        setListModeState(
+          stored ?? (snapshot.data()?.explorerMode ? 'explorer' : snapshot.data()?.groupsRowHidden ? 'list' : 'groups')
+        );
       }),
     [prefsKey]
   );
@@ -125,8 +134,8 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
     setDoc(prefsDoc, { viewMode: mode }, { merge: true });
   }
 
-  function toggleExplorerMode() {
-    setDoc(prefsDoc, { explorerMode: !explorerMode }, { merge: true });
+  function setListMode(mode: ListMode) {
+    setDoc(prefsDoc, { listMode: mode }, { merge: true });
   }
 
   function toggleGroupsRow() {
@@ -205,7 +214,8 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
     setTagFilter,
     drawerTags,
     explorerMode,
-    toggleExplorerMode,
+    listMode: listMode ?? 'groups',
+    setListMode,
     isSearching,
     setIsSearching,
     searchQuery,

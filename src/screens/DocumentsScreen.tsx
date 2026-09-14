@@ -184,12 +184,12 @@ export default function DocumentsScreen() {
     searchQuery: searchText,
     setSearchQuery: setSearchText,
     groupsRowHidden,
-    toggleGroupsRow,
     viewMode,
     changeViewMode,
     drawerTags,
     explorerMode,
-    toggleExplorerMode,
+    listMode,
+    setListMode,
     displayed: displayedDocuments,
     selected: selectedDocuments,
     needle,
@@ -452,15 +452,15 @@ export default function DocumentsScreen() {
     });
     return () => sub.remove();
   }, [explorer, explorerPath]);
-  // Entering the mode starts at the root, and the drawer's own tag filter
-  // is put down - the folders are the filter now.
+  // Changing the mode puts the other modes' filters down: a group chosen
+  // under "Групи" must not keep narrowing the list under "Список", where
+  // nothing shows that it does. The explorer starts at its root.
   useEffect(() => {
-    if (explorerMode) {
-      setExplorerPath('');
-      setActiveFilter(null);
-    }
+    if (listMode !== 'groups' && groupFilter !== STICKERS_GROUP) setGroupFilter(null);
+    if (listMode !== 'list') setActiveFilter(null);
+    if (listMode === 'explorer') setExplorerPath('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [explorerMode]);
+  }, [listMode]);
   // The screen clears itself only while the search is actually being
   // typed; with the keyboard down the buttons come back and the field is
   // one control among them again.
@@ -1533,7 +1533,12 @@ export default function DocumentsScreen() {
         }}
         hideOpenButton={isSelectMode || searchingAlone}
         counts={drawerCounts}
-        explorer={{ enabled: explorerMode, onToggle: toggleExplorerMode }}
+        mode={{ value: listMode, onChange: setListMode }}
+        stickers={{
+          count: freeStickers.length,
+          active: groupFilter === STICKERS_GROUP,
+          onToggle: () => setGroupFilter(groupFilter === STICKERS_GROUP ? null : STICKERS_GROUP),
+        }}
         trash={{ count: trashed.length, onOpen: () => setTrashOpen(true) }}
         groupSection={{
           // The same list the tabs show, sentinels and all, so the two
@@ -1561,8 +1566,6 @@ export default function DocumentsScreen() {
           ],
           selected: groupFilter,
           onSelect: setGroupFilter,
-          rowVisible: !groupsRowHidden,
-          onToggleRow: toggleGroupsRow,
         }}
       />
 
