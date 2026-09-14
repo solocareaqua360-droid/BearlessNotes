@@ -261,6 +261,22 @@ function columnHeight(members: BoardCard[], heights: Map<string, number>): numbe
   return Math.max(COLUMN_MIN_HEIGHT, COLUMN_HEADER_HEIGHT + filled + COLUMN_PADDING);
 }
 
+// What a card looks like when it is compared with what was written down,
+// and when it is written. A card in a COLUMN keeps the position it was
+// last stored with: where it is actually drawn depends on heights this
+// device measured for itself, and sending those makes two screens argue
+// forever. A card that has just changed column is the exception - it has
+// to carry its new place, or it stays written down in the old column.
+function asStored(cards: BoardCard[], saved: BoardCard[]): BoardCard[] {
+  const savedById = new Map(saved.map((card) => [card.id, card]));
+  return cards.map((card) => {
+    if (!card.columnId) return card;
+    const previous = savedById.get(card.id);
+    if (!previous || previous.columnId !== card.columnId) return card;
+    return { ...card, x: previous.x, y: previous.y };
+  });
+}
+
 // The column a card dropped at this point belongs to: the nearest one
 // whose box the point is inside or within COLUMN_SNAP_MARGIN of. Nearest
 // rather than first-match because with a margin that generous, two
@@ -1131,20 +1147,7 @@ export default function BoardScreen() {
       // stack for its own screen, writes the numbers, receives the
       // other's, recomputes again - which is what made the columns
       // flicker and the cards land on top of each other.
-      const savedById = new Map(saved.cards.map((card) => [card.id, card]));
-      const cardsToSave = cards.map((card) => {
-        if (!card.columnId) return card;
-        const previous = savedById.get(card.id);
-        // Only while it STAYS in the same column. A card that has just
-        // moved between columns has to carry its new position, or it
-        // stays written down at the old column's coordinates while
-        // claiming to belong to the new one - and every other device
-        // draws it where the numbers say until its own measurements
-        // catch up. Which is exactly what happened: a card sitting in
-        // one column on the phone and in another in the browser.
-        if (!previous || previous.columnId !== card.columnId) return card;
-        return { ...card, x: previous.x, y: previous.y };
-      });
+      const cardsToSave = asStored(cards, saved.cards);
       // Whole once for a board still in the old shape, the difference
       // ever after.
       const cardPatch = whole ? keyedAll(cardsToSave) : keyedDiff(saved.cards, cardsToSave);
@@ -1777,6 +1780,7 @@ export default function BoardScreen() {
       // difference is measured against it - otherwise the very next save
       // would write the other device's own changes back at it as if they
       // were ours. Kept exactly as it arrived, unstacked.
+      const written = savedRef.current.cards;
       savedRef.current = { ...savedRef.current, cards: incomingCards, columns: incomingColumns };
       // Then stacked for THIS screen before it is shown. The positions in
       // the document are deliberately not kept up to date for cards in a
@@ -1786,8 +1790,35 @@ export default function BoardScreen() {
       // stay wherever the numbers last happened to say: a column with a
       // hole in it where a card used to be, and the ones below it hanging
       // past its bottom edge.
-      const stacked = reflowColumns(incomingCards, incomingColumns, cardHeightsRef.current);
-      setCards((current) => (contentEqual(current, stacked) ? current : stacked));
+      setCards((current) => {
+        // Anything changed here since the last write is a local edit that
+        // has not been sent yet - a card just dragged into another
+        // column, with the save still on its 600ms timer. Those keep
+        // ours; everything else takes theirs. Imposing the whole arriving
+        // board instead is what made a card spring back: the drop was
+        // undone by news that left a moment before it happened.
+        const storedNow = new Map(asStored(current, written).map((card) => [card.id, card]));
+        const writtenById = new Map(written.map((card) => [card.id, card]));
+        const mine = new Set(
+          current
+            .filter((card) => {
+              const before = writtenById.get(card.id);
+              return !before || !contentEqual(before, storedNow.get(card.id));
+            })
+            .map((card) => card.id)
+        );
+        const currentById = new Map(current.map((card) => [card.id, card]));
+        const merged = incomingCards.map((card) =>
+          mine.has(card.id) ? currentById.get(card.id) ?? card : card
+        );
+        // A card made here that the other side has not heard of yet.
+        const arrived = new Set(incomingCards.map((card) => card.id));
+        current.forEach((card) => {
+          if (!arrived.has(card.id) && mine.has(card.id)) merged.push(card);
+        });
+        const stacked = reflowColumns(merged, incomingColumns, cardHeightsRef.current);
+        return contentEqual(current, stacked) ? current : stacked;
+      });
       setColumns((current) => (contentEqual(current, incomingColumns) ? current : incomingColumns));
     },
     []
