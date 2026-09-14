@@ -117,7 +117,11 @@ const ACCENT_GLASS = 'rgba(139,92,246,0.55)';
 // slightest drag, which is the wrong default - a card in a column is
 // almost always meant to stay in it, and pulling one out deliberately is
 // the rarer move.
-const COLUMN_SNAP_MARGIN = 220;
+// How far outside a column still counts as dropping into it. Generous
+// enough to forgive an imprecise finger, small enough that a card meant
+// for open canvas beside a column is not swallowed by it - 220 was the
+// second of those and not the first.
+const COLUMN_SNAP_MARGIN = 90;
 const CONNECTION_COLOR = '#8B5CF6';
 // Padding around a connection's own bounding box, so the curve's bulge and
 // the stroke width itself aren't clipped by the little Svg canvas each
@@ -261,12 +265,23 @@ function columnAtPoint(
   cards: BoardCard[],
   heights: Map<string, number>,
   x: number,
-  y: number
+  y: number,
+  // The card being carried, when one is. The column it was lifted OUT of
+  // keeps its full height for as long as it is in the air - otherwise
+  // that column loses the card's height the instant it leaves, its lower
+  // edge jumps up by as much, and coming back "a little" is suddenly a
+  // hundred points short. Which is what made it look as though a rule
+  // said: having detached it once, you cannot mean to put it back.
+  carried?: BoardCard
 ): BoardColumn | undefined {
   let best: BoardColumn | undefined;
   let bestDistance = COLUMN_SNAP_MARGIN;
   for (const column of columns) {
-    const height = columnHeight(columnMembers(cards, column.id), heights);
+    const members = columnMembers(cards, column.id);
+    const height = columnHeight(
+      carried && carried.columnId === column.id ? [...members, carried] : members,
+      heights
+    );
     // Distance from the point to the column's rectangle - zero anywhere
     // inside it, so a card actually dropped in always wins.
     const dx = Math.max(column.x - x, 0, x - (column.x + COLUMN_WIDTH));
@@ -1852,7 +1867,7 @@ export default function BoardScreen() {
     if (!card) return;
     const others = cards.filter((c) => c.id !== id);
     const centreY = y + heightOf(card, cardHeights) / 2;
-    const target = columnAtPoint(columns, others, cardHeights, x + widthInColumn(card) / 2, centreY);
+    const target = columnAtPoint(columns, others, cardHeights, x + widthInColumn(card) / 2, centreY, card);
     const nextId = target?.id ?? null;
     if (nextId !== hoverColumnId) {
       setHoverColumnId(nextId);
@@ -1871,7 +1886,7 @@ export default function BoardScreen() {
       // height while deciding whether it landed back inside it.
       const others = dropped.filter((c) => c.id !== id);
       const centreY = y + heightOf(card, cardHeights) / 2;
-      const target = columnAtPoint(columns, others, cardHeights, x + widthInColumn(card) / 2, centreY);
+      const target = columnAtPoint(columns, others, cardHeights, x + widthInColumn(card) / 2, centreY, card);
       // Only a card that actually came to rest in a column gets the
       // "landed" feedback - one dropped on open canvas has nothing to
       // confirm, same rule the document editor's own drop follows.
