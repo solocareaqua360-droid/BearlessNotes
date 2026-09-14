@@ -1,5 +1,31 @@
 import { Block, CanvasLink } from '../types';
 
+// Which arrows set the order, and which merely point.
+//
+// The user's way of never having to choose between parallel arrows: the
+// FIRST arrow out of a card is the one that says what comes next, and
+// the first arrow into a card is the one that says what came before.
+// Every later arrow touching an already-taken end is auxiliary - drawn
+// in another colour, read by the eye, ignored by the page. So the
+// arrows that count always form plain chains, and a chain has one
+// reading.
+//
+// "First" is creation order, which the ids carry: each begins with the
+// moment it was made (see the editor's onToggleLink).
+export function sequenceLinkIds(links: Record<string, CanvasLink>): Set<string> {
+  const ordered = Object.entries(links).sort(([a], [b]) => a.localeCompare(b));
+  const fromTaken = new Set<string>();
+  const toTaken = new Set<string>();
+  const primary = new Set<string>();
+  for (const [id, link] of ordered) {
+    if (link.from === link.to || fromTaken.has(link.from) || toTaken.has(link.to)) continue;
+    fromTaken.add(link.from);
+    toTaken.add(link.to);
+    primary.add(id);
+  }
+  return primary;
+}
+
 // The page order the canvas's arrows ask for.
 //
 // The user's rule: an arrow from one card to another says "this one,
@@ -10,12 +36,11 @@ import { Block, CanvasLink } from '../types';
 //
 // The parts the rule does not say, decided here so they are decided
 // once:
-// - A card with several arrows OUT of it is a branch. Its branches are
-//   read in the order they sit on the canvas, top to bottom (then left
-//   to right), each branch to its end before the next - depth first,
-//   the way an outline reads.
+// - Only the arrows that SET the order count - see sequenceLinkIds; the
+//   rest are for the eye. Those always form plain chains, so there is
+//   no branch to choose between.
 // - Several separate chains are read in the order of their starting
-//   cards on the canvas, the same top-to-bottom rule.
+//   cards on the canvas, top to bottom (then left to right).
 // - A loop (arrows that come back round) starts at its topmost card and
 //   stops when it meets a card it has already read.
 // - Cards no arrow touches keep the order they had, after every chain.
@@ -28,7 +53,9 @@ export function orderByCanvasLinks(blocks: Block[], links: Record<string, Canvas
   const byId = new Map(blocks.map((b, index) => [b.id, { block: b, index }]));
   const outgoing = new Map<string, string[]>();
   const incoming = new Set<string>();
-  for (const link of Object.values(links)) {
+  const primary = sequenceLinkIds(links);
+  for (const [id, link] of Object.entries(links)) {
+    if (!primary.has(id)) continue;
     if (!byId.has(link.from) || !byId.has(link.to) || link.from === link.to) continue;
     (outgoing.get(link.from) ?? outgoing.set(link.from, []).get(link.from)!).push(link.to);
     incoming.add(link.to);

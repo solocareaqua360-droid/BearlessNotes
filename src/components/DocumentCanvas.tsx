@@ -29,6 +29,7 @@ import { useCanvasWheel } from '../hooks/useCanvasWheel';
 import { setSelection } from '../utils/setSelection';
 import Svg, { Path } from 'react-native-svg';
 import { Block, CanvasLink } from '../types';
+import { sequenceLinkIds } from '../utils/canvasOrder';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 // The canvas is part of the note, and the note is paper - white, with
@@ -46,6 +47,10 @@ const PAPER_TEXT_FAINT = '#9CA3AF';
 // The board's own violet, for the same thing: an arrow between two
 // cards, and the card an arrow is about to be drawn from.
 const LINK_COLOR = '#8B5CF6';
+// An arrow that merely points, as against one that sets the page order
+// (see sequenceLinkIds): the same shape in a quieter colour, so a glance
+// says which arrows the page will follow.
+const LINK_COLOR_AUX = '#B8B4C9';
 const LINK_PADDING = 24;
 // Where the handle sits in from the card's right edge - the draft line
 // starts from it, not from the corner.
@@ -219,6 +224,7 @@ function DocumentCanvasInner({
   const [cardHeights, setCardHeights] = useState<Record<string, number>>({});
   const placements = useMemo(() => layOutBlocks(blocks, cardHeights), [blocks, cardHeights]);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const sequenceIds = useMemo(() => sequenceLinkIds(links), [links]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // The card a hold has made the start of an arrow. The next tap on
   // another card finishes it; a tap beside the cards, or on the same
@@ -591,6 +597,7 @@ function DocumentCanvasInner({
                 surface is shared; for now the arrow is right whenever
                 nothing is moving. */}
             {Object.entries(links).map(([id, link]) => {
+              const colour = sequenceIds.has(id) ? LINK_COLOR : LINK_COLOR_AUX;
               const fromIndex = blocks.findIndex((b) => b.id === link.from);
               const toIndex = blocks.findIndex((b) => b.id === link.to);
               // Either end deleted on the page: the arrow simply is not
@@ -616,6 +623,7 @@ function DocumentCanvasInner({
                 return (
                   <LiveLine
                     key={id}
+                    colour={colour}
                     from={endpoint(link.from, from, fromIndex)}
                     to={endpoint(link.to, to, toIndex)}
                   />
@@ -634,11 +642,11 @@ function DocumentCanvasInner({
                   <Svg style={[styles.link, { left, top }]} width={w} height={h} pointerEvents="none">
                     <Path
                       d={curvePath(x1 - left, y1 - top, x2 - left, y2 - top)}
-                      stroke={LINK_COLOR}
+                      stroke={colour}
                       strokeWidth={2}
                       fill="none"
                     />
-                    <Path d={arrowHeadPath(x2 - left, y2 - top, x1 - left)} fill={LINK_COLOR} />
+                    <Path d={arrowHeadPath(x2 - left, y2 - top, x1 - left)} fill={colour} />
                   </Svg>
                   {/* The way to take an arrow away: hold the line (see
                       armLinkNear) and a cross appears on its midpoint -
@@ -749,7 +757,7 @@ type LiveEnd = {
 // resized every frame to keep up, and one big enough for any drag runs
 // into Android's view-size limits. A line needs only a transform, and
 // the curve comes back the moment the card is dropped.
-function LiveLine({ from, to }: { from: LiveEnd; to: LiveEnd }) {
+function LiveLine({ from, to, colour }: { from: LiveEnd; to: LiveEnd; colour: string }) {
   const style = useAnimatedStyle(() => {
     const fromX = from.x.value + (from.offsetX?.value ?? 0);
     const fromY = from.y.value + (from.offsetY?.value ?? 0);
@@ -774,7 +782,7 @@ function LiveLine({ from, to }: { from: LiveEnd; to: LiveEnd }) {
       ],
     };
   });
-  return <Animated.View style={[styles.liveLine, style]} pointerEvents="none" />;
+  return <Animated.View style={[styles.liveLine, { backgroundColor: colour }, style]} pointerEvents="none" />;
 }
 
 // The line a handle-drag trails behind the finger. Same rotated View,
