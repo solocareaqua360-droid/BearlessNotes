@@ -21,7 +21,7 @@ import {
 // fields. Same fix (and same reason) as DocumentEditorScreen's block list.
 // Everything else on this screen stays on the RN ScrollView it already
 // scrolled fine with.
-import { GestureHandlerRootView, ScrollView as GestureScrollView } from 'react-native-gesture-handler';
+import { ScrollView as GestureScrollView } from 'react-native-gesture-handler';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -49,6 +49,7 @@ import {
   SHEET_WINDOW,
 } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+import GlassLayer from '../components/GlassLayer';
 import { db } from '../firebase';
 import { deleteCustomDatabase } from '../utils/deleteCustomDatabase';
 import { CustomDatabase, CustomDatabaseRow, CustomDatabaseView, FieldDef, FieldType, Group } from '../types';
@@ -2156,12 +2157,14 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           </View>
       )}
 
-      <Modal visible={rowEditor !== null} transparent animationType="fade" onRequestClose={cancelRowEditor}>
-        {/* RN's Modal renders into its own native window on Android, outside
-            the app-level GestureHandlerRootView in App.tsx - the
-            GestureScrollView below needs its own root re-declared inside it
-            or it silently doesn't scroll at all. */}
-        <GestureHandlerRootView style={{ flex: 1 }}>
+      {/* A layer, not a Modal. A Modal is a native window of its own on
+          Android, drawn above everything in the screen - including the
+          layers this form opens from inside itself: the tag picker, the
+          "which type of field" question, the field's name. All three were
+          appearing BEHIND the form, which read as "+ Поле does nothing". As
+          a layer the form is in the screen with them, and whatever it opens
+          mounts after it and so draws above it. */}
+      <GlassLayer visible={rowEditor !== null} onClose={cancelRowEditor}>
         {/* The dimmed backdrop is a SIBLING behind the sheet, not its
             parent. As a parent (a Pressable wrapping everything, only there
             to stop a tap from closing the sheet) it took the RN touch
@@ -2169,7 +2172,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
             which is exactly what kept the field list from scrolling. With
             it behind instead, nothing above the list claims touches, and a
             tap outside the sheet still closes it. */}
-        <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
+        <View style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={cancelRowEditor} />
           {/* maxHeight has to account for the keyboard this sheet is
               lifted above: at a flat 85% of the screen, sheet + keyboard
@@ -2242,8 +2245,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
             </View>
           </View>
         </View>
-        </GestureHandlerRootView>
-      </Modal>
+      </GlassLayer>
 
       {datePickerField && (
         <MiniDatePicker
@@ -3481,6 +3483,10 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     backgroundColor: 'rgba(17,24,39,0.45)',
+    ...SHEET_BACKDROP,
+  },
+  // For the form that lives in a GlassLayer: the layer draws the dim.
+  layerBackdrop: {
     ...SHEET_BACKDROP,
   },
   sheet: {
