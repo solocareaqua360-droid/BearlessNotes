@@ -4,12 +4,13 @@ import {
   Image,
   Linking,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 // gesture-handler's ScrollView for the outline: it lives over a canvas
@@ -924,7 +925,16 @@ export default function BoardScreen() {
   // cards can be deleted or dragged as one group.
   // 'connect' - a single-finger drag from one card to another links them
   // with a mindmap line instead of panning or selecting.
-  const [canvasTool, setCanvasTool] = useState<'move' | 'select' | 'connect'>('move');
+  //
+  // Which one it STARTS as depends on what the hand already has. A phone
+  // has one finger to spend, and it spends it moving the canvas. A
+  // trackpad does not: two fingers scroll the board and a pinch zooms it
+  // (see useCanvasWheel), so a drag is free - and a free drag on a canvas
+  // means picking things out of it, the way it does in every drawing tool
+  // on a desktop. The button still switches, on both.
+  const [canvasTool, setCanvasTool] = useState<'move' | 'select' | 'connect'>(
+    Platform.OS === 'web' ? 'select' : 'move'
+  );
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const [connections, setConnections] = useState<BoardConnection[]>([]);
   const [columns, setColumns] = useState<BoardColumn[]>([]);
@@ -1382,12 +1392,27 @@ export default function BoardScreen() {
   // tools to draw the box.
   const canvasBlockingGesture =
     canvasTool === 'select' ? selectGesture : canvasTool === 'connect' ? connectGesture : panGesture;
-  const canvasGesture =
+  // A tap on bare canvas puts the selection down. Reaching for the cross
+  // in the bar to say "never mind" is a step nobody takes willingly, and
+  // clicking the empty space beside a thing is how every canvas says it.
+  //
+  // Raced against the others rather than added to them: a tap and a drag
+  // begin identically, so whichever one the hand turns out to be making
+  // wins, and a marquee is never cancelled by the touch that starts it.
+  const clearSelectionGesture = Gesture.Tap()
+    .maxDuration(250)
+    .onEnd((_event, success) => {
+      if (success) runOnJS(setSelectedCardIds)(new Set());
+    });
+
+  const canvasGesture = Gesture.Race(
+    clearSelectionGesture,
     canvasTool === 'select'
       ? selectGesture
       : canvasTool === 'connect'
         ? connectGesture
-        : Gesture.Simultaneous(pinchGesture, panGesture);
+        : Gesture.Simultaneous(pinchGesture, panGesture)
+  );
 
   const marqueeAnimatedStyle = useAnimatedStyle(() => ({
     opacity: marqueeVisible.value ? 1 : 0,
