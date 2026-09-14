@@ -2316,6 +2316,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     groupId: string | null;
     canvasLinks: Record<string, CanvasLink>;
   };
+  // Sync diagnostics, in the browser's console only. Put in while the
+  // note sync was being chased across two devices; costs nothing on a
+  // phone, where it does not run.
+  function syncLog(what: string, detail?: unknown) {
+    if (Platform.OS !== 'web') return;
+    // eslint-disable-next-line no-console
+    console.log(`[sync ${new Date().toISOString().slice(11, 23)}] ${what}`, detail ?? '');
+  }
   const serverRef = useRef<ServerShape | null>(null);
   const serverBlockRef = useRef<Map<string, string>>(new Map());
   function rememberServer(shape: ServerShape) {
@@ -2479,9 +2487,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // The same version we already hold - our own write, arrived back
       // from the server - changes nothing.
       if (serverRef.current && sameAsServer({ ...remote, blocks: remote.blocks })) {
+        syncLog('snapshot = own echo', { blocks: remote.blocks.length });
         rememberServer(remote);
         return;
       }
+      syncLog('snapshot = REMOTE CHANGE, merging', { blocks: remote.blocks.length, updatedAt: data.updatedAt });
       mergeRemoteRef.current(remote);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2817,6 +2827,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // serverRef.
     const shape: ServerShape = { title, blocks, coverImageUri: coverImageUri || undefined, paperColorEnabled, groupId, canvasLinks };
     if (sameAsServer(shape)) return;
+    syncLog('will save: differs from server', {
+      dirtyBlocks: blocks.filter((b) => serverBlockRef.current.get(b.id) !== stableStringify(b)).map((b) => b.id.slice(-4)),
+      orderChanged: serverRef.current ? serverRef.current.blocks.map((b) => b.id).join() !== blocks.map((b) => b.id).join() : 'no server yet',
+      focused: focusedBlockIdRef.current?.slice(-4) ?? null,
+    });
     setSaveStatus('saving');
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
@@ -2853,10 +2868,19 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           ...extraFields,
         },
         { merge: true }
-      ).then(() => {
-        rememberServer({ title, blocks, coverImageUri: coverImageUri || undefined, paperColorEnabled, groupId, canvasLinks });
-        setSaveStatus('saved');
-      });
+      )
+        .then(() => {
+          rememberServer({ title, blocks, coverImageUri: coverImageUri || undefined, paperColorEnabled, groupId, canvasLinks });
+          setSaveStatus('saved');
+          syncLog('saved', { blocks: blocks.length });
+        })
+        .catch((e: Error) => {
+          // A refused write used to be silent: the ring kept turning and
+          // nothing said why. The rule from the web work - an error must
+          // reach the screen.
+          syncLog('SAVE FAILED', { message: e.message });
+          notify('Не збереглося', e.message);
+        });
       syncTasksForDocument(blocks);
       syncLinksForDocument(blocks);
       syncPhotosForDocument(blocks);
