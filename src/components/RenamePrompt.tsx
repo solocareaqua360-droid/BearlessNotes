@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -33,16 +33,39 @@ type Props = {
 //
 // It was a white card in a Modal of its own, which cost it three things.
 // A Modal is a separate Android window, so the blur had nothing behind it
-// to work on and the screen showed through sharp; that same window sits
-// outside the activity's resize handling, so the keyboard overlapped the
-// buttons and needed a KeyboardAvoidingView to be dragged back into view;
-// and a TextInput inside a Modal nested in another Modal loses focus on
-// Android the moment the keyboard opens - the bug that took three
-// attempts in the sketch editor. As a layer inside the screen, all three
-// stop existing.
+// to work on and the screen showed through sharp; and a TextInput inside a
+// Modal nested in another Modal loses focus on Android the moment the
+// keyboard opens - the bug that took three attempts in the sketch editor.
+// As a layer inside the screen, both stop existing.
+//
+// The third, the keyboard covering the field, did NOT stop existing, and
+// this file claimed it had. See the keyboard tracking below.
+//
+// Being a layer has its own price, and it is the caller's to pay: a layer
+// draws inside the screen, so opening one from behind a Modal - the photo
+// viewer, say - puts it underneath, where it stays invisible until that
+// Modal closes. Close the Modal first.
 export default function RenamePrompt({ visible, title, initialValue, placeholder, busy, onCancel, onSave }: Props) {
   const [value, setValue] = useState(initialValue);
   const insets = useContext(SafeAreaInsetsContext);
+
+  // Lifted clear of the keyboard by hand, the way TagPicker,
+  // GroupPickerSheet and FieldsEditorSheet all already do it.
+  //
+  // The comment above says the screen resizing under the keyboard carries
+  // this card up. It does not: KeyboardProvider (App.tsx) puts the window
+  // edge-to-edge and takes that resize away, which is exactly why the
+  // editor has to move its own toolbar by the keyboard's height. So this
+  // card stayed where it was and the keyboard covered the field.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // `title` is in here as well as `initialValue` because a caller that
   // keeps this dialog open across two questions changes the heading to ask
@@ -54,10 +77,9 @@ export default function RenamePrompt({ visible, title, initialValue, placeholder
 
   return (
     <GlassLayer visible={visible} onClose={onCancel} intensity={60}>
-      {/* Bottom of the screen rather than the middle: the keyboard is
-          about to take the lower half, and the activity resizing under it
-          carries the card up with it. */}
-      <View style={[styles.card, { marginBottom: (insets?.bottom ?? 0) + 16 }]}>
+      {/* Bottom of the screen rather than the middle: the keyboard takes
+          the lower half, and the card sits on top of it. */}
+      <View style={[styles.card, { marginBottom: (insets?.bottom ?? 0) + 16 + keyboardHeight }]}>
         <Text style={styles.title}>{title}</Text>
         <TextInput
           autoFocus

@@ -4632,7 +4632,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   key: 'rename',
                   icon: 'pencil-outline',
                   label: 'Назва',
-                  onPress: () => setImageRenameId(viewerBlock.id),
+                  // Viewer first, then the prompt - RenamePrompt is a
+                  // layer inside the screen, not a Modal, so opened from
+                  // behind this one it sat underneath and appeared only
+                  // when the picture was dismissed.
+                  onPress: () => {
+                    const id = viewerBlock.id;
+                    setViewerImageId(null);
+                    setImageRenameId(id);
+                  },
                 },
                 {
                   // The name and the rest of what the record knows, asked
@@ -4676,11 +4684,28 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   key: 'ocr',
                   icon: 'text-outline',
                   label: 'Текст',
+                  // Asked before it starts. It is the one action in this
+                  // bar that takes ten seconds of the phone and adds
+                  // blocks to the document, and it sat between "База" and
+                  // "Поділитись" where a mis-aimed thumb sets it going
+                  // with nothing to stop it.
                   onPress: () => {
                     const uri = viewerBlock.imageUri!;
                     const afterId = viewerBlock.id;
+                    // Closed BEFORE the question, not after it. The
+                    // question is a layer in the screen too, so asking it
+                    // from behind this Modal would have hidden it exactly
+                    // the way the info panel was hidden - and a
+                    // confirmation nobody can see is worse than none.
                     setViewerImageId(null);
-                    startRecognizing([uri], afterId);
+                    confirm({
+                      title: 'Прочитати текст із зображення?',
+                      message: 'Займе кілька секунд. Прочитане додасться в документ під цим зображенням.',
+                      confirmLabel: 'Прочитати',
+                      tone: 'primary',
+                    }).then((yes) => {
+                      if (yes) startRecognizing([uri], afterId);
+                    });
                   },
                 },
                 {
@@ -4693,7 +4718,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   key: 'download',
                   icon: 'download-outline',
                   label: 'Завантажити',
-                  onPress: () => downloadImageBlock(viewerBlock.imageUri!),
+                  // Viewer first, for a quieter version of the same
+                  // reason: this finishes with a toast saying where the
+                  // file went, and that toast lives in the screen. Behind
+                  // the viewer it was invisible for its whole four
+                  // seconds, so a download that worked looked like one
+                  // that did nothing.
+                  onPress: () => {
+                    const uri = viewerBlock.imageUri!;
+                    setViewerImageId(null);
+                    downloadImageBlock(uri);
+                  },
                 },
                 {
                   key: 'delete',
