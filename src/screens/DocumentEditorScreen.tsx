@@ -106,6 +106,7 @@ import { downloadToFolder } from '../utils/downloadToFolder';
 import AttachmentImage from '../components/AttachmentImage';
 import DocumentCanvas, { DocumentCanvasHandle } from '../components/DocumentCanvas';
 import { assembleWithDivider } from '../utils/canvasOrder';
+import { stableStringify } from '../utils/stableStringify';
 import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
@@ -2319,7 +2320,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const serverBlockRef = useRef<Map<string, string>>(new Map());
   function rememberServer(shape: ServerShape) {
     serverRef.current = shape;
-    serverBlockRef.current = new Map(shape.blocks.map((b) => [b.id, JSON.stringify(b)]));
+    serverBlockRef.current = new Map(shape.blocks.map((b) => [b.id, stableStringify(b)]));
   }
   function shapeFrom(data: Record<string, unknown> | undefined, blocksNow: Block[]): ServerShape {
     return {
@@ -2339,11 +2340,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       server.coverImageUri === shape.coverImageUri &&
       server.paperColorEnabled === shape.paperColorEnabled &&
       server.groupId === shape.groupId &&
-      JSON.stringify(server.canvasLinks) === JSON.stringify(shape.canvasLinks) &&
+      stableStringify(server.canvasLinks) === stableStringify(shape.canvasLinks) &&
       server.blocks.length === shape.blocks.length &&
       shape.blocks.every((b, i) => {
         const was = server.blocks[i];
-        return was.id === b.id && serverBlockRef.current.get(b.id) === JSON.stringify(b);
+        return was.id === b.id && serverBlockRef.current.get(b.id) === stableStringify(b);
       })
     );
   }
@@ -2361,7 +2362,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     setBlocks((local) => {
       const localById = new Map(local.map((b) => [b.id, b]));
       const serverIds = new Set(server?.blocks.map((b) => b.id) ?? []);
-      const isDirty = (b: Block) => serverBlockRef.current.get(b.id) !== JSON.stringify(b);
+      const isDirty = (b: Block) => serverBlockRef.current.get(b.id) !== stableStringify(b);
       const deletedHere = (id: string) => serverIds.has(id) && !localById.has(id);
       const merged: Block[] = [];
       for (const r of remote.blocks) {
@@ -2392,7 +2393,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       const was = server?.canvasLinks ?? {};
       const next: Record<string, CanvasLink> = { ...remote.canvasLinks };
       for (const [id, link] of Object.entries(local)) {
-        if (JSON.stringify(was[id]) !== JSON.stringify(link)) next[id] = link;
+        if (stableStringify(was[id]) !== stableStringify(link)) next[id] = link;
       }
       for (const id of Object.keys(was)) {
         if (!(id in local)) delete next[id];
