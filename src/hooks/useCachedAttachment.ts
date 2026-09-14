@@ -32,7 +32,10 @@ export function useCachedAttachment(
     let cancelled = false;
     setStatus('checking');
     (async () => {
-      const info = await LegacyFileSystem.getInfoAsync(uri);
+      // A browser has no such file system at all, and asking it throws
+      // rather than answering "no" - which would leave the caller stuck
+      // on "checking" forever.
+      const info = await LegacyFileSystem.getInfoAsync(uri).catch(() => ({ exists: false }) as const);
       if (cancelled) return;
       if (info.exists) {
         setStatus('ready');

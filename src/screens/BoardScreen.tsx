@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Linking,
@@ -78,6 +79,7 @@ import { Group } from '../types';
 import DocumentEditorScreen from './DocumentEditorScreen';
 import { useRail } from '../hooks/useRail';
 import { useCanvasWheel } from '../hooks/useCanvasWheel';
+import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { useContextMenu } from '../hooks/useContextMenu';
 import Menu from '../components/surfaces/Menu';
 import { FONT_BOLD, FONT_EXTRABOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -689,6 +691,16 @@ function DraggableCard({
   // The last position this card itself put into the parent's state. Used
   // only to tell "our own drag echoing back" (ignore) apart from a real
   // external move (adopt).
+  // An image card whose local file is not here - a card made on another
+  // device, or one whose bytes the ninety-day sweep took - fetches it
+  // back from Drive. The board was the one place that never did: it put
+  // pictures ON the Drive and never asked for them back.
+  const imageStatus = useCachedAttachment(
+    (card.type ?? 'paragraph') === 'image' ? card.imageUri : undefined,
+    card.driveFileId,
+    false
+  );
+
   const reportedX = useSharedValue(card.x);
   const reportedY = useSharedValue(card.y);
 
@@ -845,11 +857,15 @@ function DraggableCard({
           </View>
         ) : type === 'image' ? (
           <View style={styles.refCard}>
-            {card.imageUri ? (
+            {card.imageUri && imageStatus === 'ready' ? (
               <Image source={{ uri: card.imageUri }} style={styles.refThumb} resizeMode="cover" />
             ) : (
               <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
-                <Ionicons name="image-outline" size={22} color="#9CA3AF" />
+                {imageStatus === 'restoring' ? (
+                  <ActivityIndicator color="#9CA3AF" />
+                ) : (
+                  <Ionicons name="image-outline" size={22} color="#9CA3AF" />
+                )}
               </View>
             )}
             <Text style={styles.refLabel} numberOfLines={2}>
@@ -1688,7 +1704,16 @@ export default function BoardScreen() {
       { merge: true }
     );
     backupFileToDrive(imageUri, `${id}.jpg`, 'image/jpeg', 'Photos').then((uploaded) => {
-      if (uploaded) updateDoc(doc(db, 'photos', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+      if (!uploaded) return;
+      updateDoc(doc(db, 'photos', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+      // The card needs it too, and this is the only moment it can be
+      // learned: the upload finishes after the card is already made. A
+      // card without it is a picture no other device can ever fetch.
+      setCards((prev) =>
+        prev.map((c) =>
+          c.id === id ? { ...c, driveFileId: uploaded.fileId, driveBytes: uploaded.bytes } : c
+        )
+      );
     });
     setCards((prev) => [
       ...prev,
@@ -1715,7 +1740,15 @@ export default function BoardScreen() {
     if (asset.mimeType) data.mimeType = asset.mimeType;
     await setDoc(doc(db, 'files', id), data, { merge: true });
     backupFileToDrive(fileUri, asset.name, asset.mimeType ?? 'application/octet-stream', 'Files').then((uploaded) => {
-      if (uploaded) updateDoc(doc(db, 'files', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+      if (!uploaded) return;
+      updateDoc(doc(db, 'files', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+      // Same as the photo above: the card learns where its copy went, or
+      // no other device can ever fetch it.
+      setCards((prev) =>
+        prev.map((c) =>
+          c.id === id ? { ...c, driveFileId: uploaded.fileId, driveBytes: uploaded.bytes } : c
+        )
+      );
     });
     setCards((prev) => [
       ...prev,
