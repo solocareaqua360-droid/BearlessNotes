@@ -10,7 +10,9 @@
 //
 // A client id is public by design; it is in every APK already.
 
-const CLIENT_ID = '502504187063-rvq5eu2j7u81dvd8ej7g0nqjt1ka7hkq.apps.googleusercontent.com';
+import { GOOGLE_CLIENT_ID } from '../constants/googleClient';
+
+const CLIENT_ID = GOOGLE_CLIENT_ID;
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const GIS_SRC = 'https://accounts.google.com/gsi/client';
 

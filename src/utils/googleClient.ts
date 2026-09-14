@@ -1,4 +1,5 @@
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import { GOOGLE_CLIENT_ID } from '../constants/googleClient';
 
 // One configure call for both things a Google sign-in has to do here, and
 // its own module so neither side has to import the other (googleDrive
@@ -22,9 +23,7 @@ import { GoogleSignin } from '@react-native-google-signin/google-signin';
 //
 // The env var still overrides it, for anyone running against another
 // project.
-const WEB_CLIENT_ID =
-  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
-  '502504187063-rvq5euk4tragb83sg99o0d04g215rh1u.apps.googleusercontent.com';
+const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || GOOGLE_CLIENT_ID;
 
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 
