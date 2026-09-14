@@ -265,6 +265,27 @@ refuse to merge — `git restore package-lock.json` before pulling is the
 usual fix, since the local diff is just platform-specific lockfile noise,
 not real changes.
 
+**Build the web version with `npm run build:web`, never a bare `expo
+export`.** The script exists only to force `--clear`, and that flag is
+not optional here. `eas update --environment preview` bundles using the
+EAS environment, which has none of the `EXPO_PUBLIC_*` variables that
+`.env` holds locally — and those are inlined at transform time and
+CACHED by Metro. So any `expo export` run after an `eas update`, without
+`--clear`, reuses modules in which the Firebase config is the empty
+string. The page then loads, mounts nothing, and says
+`auth/invalid-api-key` in the console — which reads like a wrong key and
+is actually a stale cache. The same trap, from the native side, is
+written up in `src/utils/googleClient.ts`; this is its second face.
+
+Serve the export with `scratchpad/serve.py <port> dist` rather than
+`python3 -m http.server`: it adds `Cache-Control: no-store`. A fresh
+export gives the bundle a new hashed name but leaves `index.html` named
+the same, so a browser holding a cached `index.html` keeps asking for a
+bundle that no longer exists. Also serve it on a port that is listed as
+an authorized JavaScript origin on the OAuth client (8081 or 8899) —
+Google issues a Drive token only to an origin it knows, so any other
+port fails sign-in no matter how correct everything else is.
+
 **Breaking change once this branch is pulled:** now that `expo-dev-
 client` is a dependency, Expo CLI auto-detects it and `expo start`
 switches to development-build mode — plain Expo Go will refuse to
