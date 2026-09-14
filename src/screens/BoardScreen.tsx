@@ -926,15 +926,12 @@ export default function BoardScreen() {
   // 'connect' - a single-finger drag from one card to another links them
   // with a mindmap line instead of panning or selecting.
   //
-  // Which one it STARTS as depends on what the hand already has. A phone
-  // has one finger to spend, and it spends it moving the canvas. A
-  // trackpad does not: two fingers scroll the board and a pinch zooms it
-  // (see useCanvasWheel), so a drag is free - and a free drag on a canvas
-  // means picking things out of it, the way it does in every drawing tool
-  // on a desktop. The button still switches, on both.
-  const [canvasTool, setCanvasTool] = useState<'move' | 'select' | 'connect'>(
-    Platform.OS === 'web' ? 'select' : 'move'
-  );
+  // It always STARTS as move, on every device. Selecting is something the
+  // hand asks for - by holding on bare canvas, see below - rather than a
+  // state the board sits in from the moment it opens. Defaulting the web
+  // to select worked, but it left the tool lit as though a mode had been
+  // entered that nobody chose.
+  const [canvasTool, setCanvasTool] = useState<'move' | 'select' | 'connect'>('move');
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const [connections, setConnections] = useState<BoardConnection[]>([]);
   const [columns, setColumns] = useState<BoardColumn[]>([]);
@@ -1399,14 +1396,35 @@ export default function BoardScreen() {
   // Raced against the others rather than added to them: a tap and a drag
   // begin identically, so whichever one the hand turns out to be making
   // wins, and a marquee is never cancelled by the touch that starts it.
+  // Putting the selection down on bare canvas, and coming out of the mode
+  // with it. The button in the rail is not a preference, it says what the
+  // board is doing right now: lit while there is a selection to work with
+  // - including while it is being carried - and out again the moment
+  // there is not.
+  const clearSelection = useCallback(() => {
+    setSelectedCardIds(new Set());
+    setCanvasTool('move');
+  }, []);
+
   const clearSelectionGesture = Gesture.Tap()
     .maxDuration(250)
     .onEnd((_event, success) => {
-      if (success) runOnJS(setSelectedCardIds)(new Set());
+      if (success) runOnJS(clearSelection)();
+    });
+
+  // Holding bare canvas asks for the marquee. The same gesture a phone
+  // uses to mean "I want to do something with these, not to them", and on
+  // a laptop it is the press that the mouse has been holding anyway.
+  const holdToSelectGesture = Gesture.LongPress()
+    .minDuration(400)
+    .onStart(() => {
+      runOnJS(hapticPickUp)();
+      runOnJS(setCanvasTool)('select');
     });
 
   const canvasGesture = Gesture.Race(
     clearSelectionGesture,
+    canvasTool === 'move' ? holdToSelectGesture : Gesture.Tap().enabled(false),
     canvasTool === 'select'
       ? selectGesture
       : canvasTool === 'connect'
@@ -1940,6 +1958,9 @@ export default function BoardScreen() {
       setSelectedCardIds((prev) => {
         const left = new Set(prev);
         ids.forEach((id) => left.delete(id));
+        // Nothing left to work with means the board is not selecting any
+        // more, and the rail should stop saying that it is.
+        if (left.size === 0) setCanvasTool('move');
         return left;
       });
     });
@@ -1953,7 +1974,7 @@ export default function BoardScreen() {
     setConnections((prev) =>
       prev.filter((c) => !selectedCardIds.has(c.fromCardId) && !selectedCardIds.has(c.toCardId))
     );
-    setSelectedCardIds(new Set());
+    clearSelection();
   }
 
   function toggleCanvasTool() {
@@ -2039,7 +2060,7 @@ export default function BoardScreen() {
       await Clipboard.setStringAsync(text);
     }
     hapticSuccess();
-    setSelectedCardIds(new Set());
+    clearSelection();
   }
 
   // Reading a card's text without opening anything that could change it -
@@ -2048,7 +2069,7 @@ export default function BoardScreen() {
   // "pick this card".
   const [readingCard, setReadingCard] = useState<{ card: BoardCard; text: string } | null>(null);
   async function openCardText(card: BoardCard) {
-    setSelectedCardIds(new Set());
+    clearSelection();
     setReadingCard({ card, text: await textOfCard(card) });
   }
 
@@ -2319,7 +2340,7 @@ export default function BoardScreen() {
                   <Text style={styles.selectionBarActionLabel}>Відʼєднати</Text>
                 </Pressable>
               )}
-              <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={() => setSelectedCardIds(new Set())}>
+              <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={clearSelection}>
                 <Ionicons name="close" size={18} color="#fff" />
                 <Text style={styles.selectionBarActionLabel}>Скасувати</Text>
               </Pressable>
