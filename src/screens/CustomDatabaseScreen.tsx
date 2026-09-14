@@ -49,6 +49,7 @@ import {
   SHEET_WINDOW,
 } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+import { TAG_COLORS } from '../constants/tags';
 import GlassLayer from '../components/GlassLayer';
 import { db } from '../firebase';
 import { deleteCustomDatabase } from '../utils/deleteCustomDatabase';
@@ -713,6 +714,28 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
       fields: [...database.fields, field],
       updatedAt: Date.now(),
     });
+  }
+
+  // A variant typed into a list field's picker. Written to the FIELD, so
+  // it stands for every record; the colour follows the same cycle the
+  // fields editor uses, so a list built here and one built there look the
+  // same.
+  async function addFieldOption(fieldId: string, label: string): Promise<string> {
+    if (!database) return '';
+    const field = database.fields.find((f) => f.id === fieldId);
+    if (!field) return '';
+    const option = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      label: label.trim(),
+      color: TAG_COLORS[(field.options?.length ?? 0) % TAG_COLORS.length],
+    };
+    await updateDoc(doc(db, 'customDatabases', databaseId), {
+      fields: database.fields.map((f) =>
+        f.id === fieldId ? { ...f, options: [...(f.options ?? []), option] } : f
+      ),
+      updatedAt: Date.now(),
+    });
+    return option.id;
   }
 
   // Asked through «Питання» now, rather than through a confirmation
@@ -2263,6 +2286,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           field={selectPickerField}
           value={draftValues[selectPickerField.id]}
           onChange={(value) => setDraftValue(selectPickerField.id, value)}
+          onCreateOption={(label) => addFieldOption(selectPickerField.id, label)}
           onClose={() => setSelectPickerFieldId(null)}
         />
       )}
@@ -2364,9 +2388,13 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
 
       {cellPicker && cellPicker.field.type !== 'date' && cellPicker.field.type !== 'relation' && (
         <OptionPickerSheet
-          field={cellPicker.field}
+          // The LIVE field, not the one captured when the cell was
+          // tapped: a variant added from inside the sheet has to show up in
+          // the list it was just added to.
+          field={database.fields.find((f) => f.id === cellPicker.field.id) ?? cellPicker.field}
           value={rows.find((r) => r.id === cellPicker.rowId)?.values[cellPicker.field.id]}
           onChange={(value) => writeRowValue(cellPicker.rowId, cellPicker.field.id, value)}
+          onCreateOption={(label) => addFieldOption(cellPicker.field.id, label)}
           onClose={() => setCellPicker(null)}
         />
       )}
@@ -2498,15 +2526,21 @@ function OptionPickerSheet({
   field,
   value,
   onChange,
+  onCreateOption,
   onClose,
 }: {
   field: FieldDef;
   value: string | number | string[] | undefined;
   onChange: (value: string | string[]) => void;
+  // Adds a variant to the FIELD itself and resolves with its id. The list
+  // is the field's, not this row's, so a variant typed here is there for
+  // every record from now on - which is the whole point of a list field.
+  onCreateOption: (label: string) => Promise<string>;
   onClose: () => void;
 }) {
   const isMulti = field.type === 'multiSelect';
   const keyboardHeight = useKeyboardHeight();
+  const [search, setSearch] = useState('');
   const currentIds = isMulti
     ? Array.isArray(value)
       ? value
@@ -2515,41 +2549,88 @@ function OptionPickerSheet({
       ? [value as string]
       : [];
 
+  const options = field.options ?? [];
+  const needle = search.trim().toLowerCase();
+  const filtered = needle ? options.filter((o) => o.label.toLowerCase().includes(needle)) : options;
+  // Only when what's typed isn't already a variant - an exact match means
+  // "pick that one", not "make a second with the same name".
+  const canCreate = needle.length > 0 && !options.some((o) => o.label.trim().toLowerCase() === needle);
+
+  function choose(optionId: string) {
+    if (isMulti) {
+      onChange(
+        currentIds.includes(optionId)
+          ? currentIds.filter((id) => id !== optionId)
+          : [...currentIds, optionId]
+      );
+    } else {
+      // Tapping the already-chosen option clears it, so a single-select
+      // field can be emptied without a separate "none" row.
+      onChange(currentIds.includes(optionId) ? '' : optionId);
+      onClose();
+    }
+  }
+
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={[styles.backdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
         <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.handle} />
           <Text style={styles.title}>{field.name}</Text>
-          {(field.options ?? []).length === 0 && (
-            <Text style={styles.optionPickerEmpty}>
-              У цього поля ще немає варіантів - додайте їх у "..." → "Поля".
-            </Text>
-          )}
-          {(field.options ?? []).map((option) => {
-            const selected = currentIds.includes(option.id);
-            return (
+          {/* The list is built by typing into it, the way the relation
+              picker builds rows: a field created from the record form has
+              no variants at all, and sending someone to "..." -> "Поля" to
+              write the first one is a trip out of the form they are in. */}
+          <TextInput
+            style={styles.relationSearchInput}
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Пошук або новий варіант"
+            placeholderTextColor={GLASS_TEXT_FAINT}
+            returnKeyType="done"
+            onSubmitEditing={() => {
+              if (!canCreate) return;
+              const label = search.trim();
+              setSearch('');
+              onCreateOption(label)
+                .then((id) => choose(id))
+                .catch(() => {});
+            }}
+          />
+          <GestureScrollView style={styles.relationPickerScroll} keyboardShouldPersistTaps="handled">
+            {canCreate && (
               <Pressable
-                key={option.id}
                 style={styles.optionPickerRow}
                 onPress={() => {
-                  if (isMulti) {
-                    onChange(selected ? currentIds.filter((id) => id !== option.id) : [...currentIds, option.id]);
-                  } else {
-                    // Tapping the already-chosen option clears it, so a
-                    // single-select field can be emptied without a separate
-                    // "none" row.
-                    onChange(selected ? '' : option.id);
-                    onClose();
-                  }
+                  const label = search.trim();
+                  setSearch('');
+                  onCreateOption(label)
+                    .then((id) => choose(id))
+                    .catch(() => {});
                 }}
               >
-                <View style={[styles.optionDot, { backgroundColor: option.color }]} />
-                <Text style={styles.optionPickerLabel}>{option.label}</Text>
-                {selected && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+                <Ionicons name="add-circle-outline" size={18} color={ACCENT} />
+                <Text style={[styles.optionPickerLabel, { color: ACCENT }]} numberOfLines={1}>
+                  Створити «{search.trim()}»
+                </Text>
               </Pressable>
-            );
-          })}
+            )}
+            {filtered.map((option) => {
+              const selected = currentIds.includes(option.id);
+              return (
+                <Pressable key={option.id} style={styles.optionPickerRow} onPress={() => choose(option.id)}>
+                  <View style={[styles.optionDot, { backgroundColor: option.color }]} />
+                  <Text style={styles.optionPickerLabel}>{option.label}</Text>
+                  {selected && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+                </Pressable>
+              );
+            })}
+            {options.length === 0 && !canCreate && (
+              <Text style={styles.optionPickerEmpty}>
+                Впишіть перший варіант - він стане у списку цього поля.
+              </Text>
+            )}
+          </GestureScrollView>
           {isMulti && (
             <Pressable style={styles.saveButton} onPress={onClose}>
               <Text style={styles.saveLabel}>Готово</Text>
