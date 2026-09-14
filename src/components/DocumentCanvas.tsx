@@ -13,11 +13,13 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  makeMutable,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
+import type { SharedValue } from 'react-native-reanimated';
 import AttachmentImage from './AttachmentImage';
 import { autoGrowInput } from '../utils/autoGrowInput';
 import { caretIndexFromDom } from '../utils/caretAtPoint';
@@ -45,6 +47,9 @@ const PAPER_TEXT_FAINT = '#9CA3AF';
 // cards, and the card an arrow is about to be drawn from.
 const LINK_COLOR = '#8B5CF6';
 const LINK_PADDING = 24;
+// Where the handle sits in from the card's right edge - the draft line
+// starts from it, not from the corner.
+const HANDLE_INSET = 11;
 
 // «Полотно» - the same document, laid out freely instead of down a page.
 //
@@ -205,6 +210,75 @@ function DocumentCanvasInner({
   // another card finishes it; a tap beside the cards, or on the same
   // card, lets it go.
   const [linkSourceId, setLinkSourceId] = useState<string | null>(null);
+
+  // Every card's position as a shared value, kept HERE rather than inside
+  // the card, so an arrow can read both of its ends on the UI thread and
+  // follow a card while it is being dragged. The board keeps its
+  // positions the same way and for the same reason. Made once per block
+  // and reused for its life; a block gone from the document is dropped
+  // from here on the next render.
+  const positions = useRef(new Map<string, { x: SharedValue<number>; y: SharedValue<number> }>()).current;
+  function positionOf(id: string, placement: CanvasPlacement) {
+    let position = positions.get(id);
+    if (!position) {
+      position = { x: makeMutable(placement.x), y: makeMutable(placement.y) };
+      positions.set(id, position);
+    }
+    return position;
+  }
+  const liveIds = new Set(blocks.map((b) => b.id));
+  for (const id of Array.from(positions.keys())) {
+    if (!liveIds.has(id)) positions.delete(id);
+  }
+  // The card under the finger, while there is one. Its arrows - and, in a
+  // group drag, every chosen card's - are drawn live off the shared
+  // positions instead of the resting curve.
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  // The line a handle-drag trails behind the finger (the second way of
+  // making an arrow, beside the hold): from the card's edge to wherever
+  // the finger is, in surface coordinates.
+  const draftVisible = useSharedValue(false);
+  const draftStartX = useSharedValue(0);
+  const draftStartY = useSharedValue(0);
+  const draftEndX = useSharedValue(0);
+  const draftEndY = useSharedValue(0);
+
+  function heightOf(index: number) {
+    return cardHeights[blocks[index].id] ?? approximateHeight(blocks[index]);
+  }
+
+  // Last match wins: a card later in the document paints on top of an
+  // earlier one, so where they overlap the visible one is the one meant.
+  function cardAt(x: number, y: number): string | null {
+    let found: string | null = null;
+    blocks.forEach((block, index) => {
+      const place = placements[index];
+      if (x >= place.x && x <= place.x + CARD_WIDTH && y >= place.y && y <= place.y + heightOf(index)) {
+        found = block.id;
+      }
+    });
+    return found;
+  }
+
+  function beginHandleDrag(id: string) {
+    const index = blocks.findIndex((b) => b.id === id);
+    if (index === -1) return;
+    const position = positions.get(id);
+    const x = (position?.x.value ?? placements[index].x) + CARD_WIDTH - HANDLE_INSET;
+    const y = (position?.y.value ?? placements[index].y) + heightOf(index) / 2;
+    draftStartX.value = x;
+    draftStartY.value = y;
+    draftEndX.value = x;
+    draftEndY.value = y;
+    draftVisible.value = true;
+  }
+
+  function endHandleDrag(id: string, x: number, y: number) {
+    draftVisible.value = false;
+    const target = cardAt(x, y);
+    if (target && target !== id) onToggleLink(id, target);
+  }
   // Written by whichever selected card is under the finger, read by every
   // other selected card - which is what makes a whole selection visibly
   // move together. The board does it the same way.
@@ -454,6 +528,29 @@ function DocumentCanvasInner({
               if (fromIndex === -1 || toIndex === -1) return null;
               const from = placements[fromIndex];
               const to = placements[toIndex];
+              // While either end is moving, the arrow is a straight line
+              // read live off the cards' shared positions - the resting
+              // curve below is computed from React state, which does not
+              // change until the drop. A group drag moves every chosen
+              // card, so every arrow touching one of them goes live too.
+              const groupMoving = draggingId !== null && selectedIds.has(draggingId);
+              const isMoving = (blockId: string) =>
+                draggingId !== null && (blockId === draggingId || (groupMoving && selectedIds.has(blockId)));
+              if (isMoving(link.from) || isMoving(link.to)) {
+                const endpoint = (blockId: string, place: CanvasPlacement, index: number) => ({
+                  ...positionOf(blockId, place),
+                  offsetX: groupMoving && selectedIds.has(blockId) ? groupOffsetX : null,
+                  offsetY: groupMoving && selectedIds.has(blockId) ? groupOffsetY : null,
+                  height: heightOf(index),
+                });
+                return (
+                  <LiveLine
+                    key={id}
+                    from={endpoint(link.from, from, fromIndex)}
+                    to={endpoint(link.to, to, toIndex)}
+                  />
+                );
+              }
               const { x1, y1, x2, y2 } = linkEndpoints(
                 { ...from, height: cardHeights[link.from] ?? approximateHeight(blocks[fromIndex]) },
                 { ...to, height: cardHeights[link.to] ?? approximateHeight(blocks[toIndex]) }
@@ -473,12 +570,27 @@ function DocumentCanvasInner({
                 </Svg>
               );
             })}
+            <DraftLine
+              startX={draftStartX}
+              startY={draftStartY}
+              endX={draftEndX}
+              endY={draftEndY}
+              visible={draftVisible}
+            />
             <Animated.View style={[styles.marquee, marqueeStyle]} pointerEvents="none" />
             {blocks.map((block, index) => (
               <CanvasCard
                 key={block.id}
                 block={block}
                 placement={placements[index]}
+                position={positionOf(block.id, placements[index])}
+                dragging={draggingId === block.id}
+                onDragStart={setDraggingId}
+                onDragEnd={() => setDraggingId(null)}
+                draftEndX={draftEndX}
+                draftEndY={draftEndY}
+                onHandleStart={beginHandleDrag}
+                onHandleEnd={endHandleDrag}
                 canvasScale={scale}
                 canvasPanGesture={panGesture}
                 canvasMarqueeGesture={marqueeGesture}
@@ -527,9 +639,92 @@ function DocumentCanvasInner({
   );
 }
 
+// One end of a live arrow: the card's shared position plus whichever
+// shared drag offset applies to it right now.
+type LiveEnd = {
+  x: SharedValue<number>;
+  y: SharedValue<number>;
+  offsetX: SharedValue<number> | null;
+  offsetY: SharedValue<number> | null;
+  height: number;
+};
+
+// The arrow while either card is moving. A straight rotated View rather
+// than the Svg curve, as on the board: a curve's canvas would have to be
+// resized every frame to keep up, and one big enough for any drag runs
+// into Android's view-size limits. A line needs only a transform, and
+// the curve comes back the moment the card is dropped.
+function LiveLine({ from, to }: { from: LiveEnd; to: LiveEnd }) {
+  const style = useAnimatedStyle(() => {
+    const fromX = from.x.value + (from.offsetX?.value ?? 0);
+    const fromY = from.y.value + (from.offsetY?.value ?? 0);
+    const toX = to.x.value + (to.offsetX?.value ?? 0);
+    const toY = to.y.value + (to.offsetY?.value ?? 0);
+    // The same "leave from the side that faces the other card" rule the
+    // resting curve uses, so the line does not jump sides on release.
+    const fromIsLeft = fromX + CARD_WIDTH / 2 <= toX + CARD_WIDTH / 2;
+    const x1 = fromIsLeft ? fromX + CARD_WIDTH : fromX;
+    const y1 = fromY + from.height / 2;
+    const x2 = fromIsLeft ? toX : toX + CARD_WIDTH;
+    const y2 = toY + to.height / 2;
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    return {
+      width: length,
+      transform: [
+        { translateX: (x1 + x2) / 2 - length / 2 },
+        { translateY: (y1 + y2) / 2 - 1 },
+        { rotateZ: `${Math.atan2(dy, dx)}rad` },
+      ],
+    };
+  });
+  return <Animated.View style={[styles.liveLine, style]} pointerEvents="none" />;
+}
+
+// The line a handle-drag trails behind the finger. Same rotated View,
+// positioned by its midpoint and turned about its own centre.
+function DraftLine({
+  startX,
+  startY,
+  endX,
+  endY,
+  visible,
+}: {
+  startX: SharedValue<number>;
+  startY: SharedValue<number>;
+  endX: SharedValue<number>;
+  endY: SharedValue<number>;
+  visible: SharedValue<boolean>;
+}) {
+  const style = useAnimatedStyle(() => {
+    const dx = endX.value - startX.value;
+    const dy = endY.value - startY.value;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    return {
+      opacity: visible.value ? 1 : 0,
+      width: length,
+      transform: [
+        { translateX: (startX.value + endX.value) / 2 - length / 2 },
+        { translateY: (startY.value + endY.value) / 2 - 1 },
+        { rotateZ: `${Math.atan2(dy, dx)}rad` },
+      ],
+    };
+  });
+  return <Animated.View style={[styles.liveLine, style]} pointerEvents="none" />;
+}
+
 function CanvasCard({
   block,
   placement,
+  position,
+  dragging,
+  onDragStart,
+  onDragEnd,
+  draftEndX,
+  draftEndY,
+  onHandleStart,
+  onHandleEnd,
   canvasScale,
   canvasPanGesture,
   canvasMarqueeGesture,
@@ -553,6 +748,16 @@ function CanvasCard({
 }: {
   block: Block;
   placement: CanvasPlacement;
+  // The card's shared position, owned by the canvas - see positionOf.
+  position: { x: SharedValue<number>; y: SharedValue<number> };
+  dragging: boolean;
+  onDragStart: (id: string) => void;
+  onDragEnd: () => void;
+  // The far end of the handle's draft line, written by the handle drag.
+  draftEndX: SharedValue<number>;
+  draftEndY: SharedValue<number>;
+  onHandleStart: (id: string) => void;
+  onHandleEnd: (id: string, x: number, y: number) => void;
   canvasScale: ReturnType<typeof useSharedValue<number>>;
   canvasPanGesture: ReturnType<typeof Gesture.Pan>;
   canvasMarqueeGesture: ReturnType<typeof Gesture.Pan>;
@@ -578,8 +783,17 @@ function CanvasCard({
   onDone: () => void;
   onOpen: (id: string) => void;
 }) {
-  const posX = useSharedValue(placement.x);
-  const posY = useSharedValue(placement.y);
+  const posX = position.x;
+  const posY = position.y;
+  // The card follows its placement whenever it is not under the finger:
+  // the column re-lays itself out as heights are measured, and a group
+  // move gives every chosen card a new place at once. Not while dragging
+  // - then the finger, not the state, says where the card is.
+  useEffect(() => {
+    if (dragging) return;
+    posX.value = placement.x;
+    posY.value = placement.y;
+  }, [placement.x, placement.y, dragging, posX, posY]);
   const isText = TEXT_TYPES.includes(block.type ?? 'paragraph');
   // A browser's multi-line field does not grow with its text: it is a
   // <textarea>, two rows tall, with the rest scrolled out of sight inside
@@ -652,6 +866,9 @@ function CanvasCard({
     // the box was drawn instead. Whatever the surface can do with a
     // touch, a touch that begins on a card is not that.
     .blocksExternalGesture(canvasPanGesture, canvasMarqueeGesture, canvasTapGesture)
+    .onStart(() => {
+      runOnJS(onDragStart)(block.id);
+    })
     // Per-event delta divided by the zoom, so a card keeps up with the
     // finger 1:1 however far in or out the canvas is.
     .onChange((e) => {
@@ -670,9 +887,13 @@ function CanvasCard({
         runOnJS(onGroupMove)(groupOffsetX.value, groupOffsetY.value);
         groupOffsetX.value = 0;
         groupOffsetY.value = 0;
-        return;
+      } else {
+        runOnJS(onMove)(block.id, posX.value, posY.value);
       }
-      runOnJS(onMove)(block.id, posX.value, posY.value);
+      runOnJS(onDragEnd)();
+    })
+    .onFinalize(() => {
+      runOnJS(onDragEnd)();
     });
 
   const tapGesture = Gesture.Tap()
@@ -696,6 +917,25 @@ function CanvasCard({
     });
 
   const gesture = Gesture.Race(dragGesture, tapGesture, holdGesture);
+
+  // The second way to make an arrow: a small handle on the card's right
+  // edge, dragged onto another card. It sits on its own detector and
+  // blocks the card's own gestures, so a touch that begins on the handle
+  // is a line being drawn and never a card being moved. The far end moves
+  // by the same zoom-divided delta a card does.
+  const handleGesture = Gesture.Pan()
+    .enabled(!editing)
+    .blocksExternalGesture(dragGesture, tapGesture, holdGesture, canvasPanGesture, canvasMarqueeGesture, canvasTapGesture)
+    .onStart(() => {
+      runOnJS(onHandleStart)(block.id);
+    })
+    .onChange((e) => {
+      draftEndX.value += e.changeX / canvasScale.value;
+      draftEndY.value += e.changeY / canvasScale.value;
+    })
+    .onEnd(() => {
+      runOnJS(onHandleEnd)(block.id, draftEndX.value, draftEndY.value);
+    });
 
   const cardStyle = useAnimatedStyle(() => ({
     transform: [
@@ -751,6 +991,7 @@ function CanvasCard({
           />
           </>
         ) : (
+          <>
           <CardBody
             block={block}
             textNode={textNodeRef}
@@ -758,6 +999,12 @@ function CanvasCard({
               linesRef.current = e.nativeEvent.lines;
             }}
           />
+          <GestureDetector gesture={handleGesture}>
+            <View style={styles.handle} hitSlop={8}>
+              <View style={styles.handleDot} />
+            </View>
+          </GestureDetector>
+          </>
         )}
       </Animated.View>
     </GestureDetector>
@@ -948,6 +1195,38 @@ const styles = StyleSheet.create({
   // The corner tick. Padded into the card's own padding rather than
   // pushing the text aside - it only exists while that card is being
   // typed into.
+  // A live arrow / the draft line: 2pt of the arrow's colour, positioned
+  // and turned entirely by its animated transform.
+  liveLine: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    height: 2,
+    backgroundColor: LINK_COLOR,
+  },
+  // The arrow handle, on the card's right edge at half its height. Faint
+  // until it is being dragged - it is on every card, and a ring on every
+  // card must not shout.
+  handle: {
+    position: 'absolute',
+    right: 2,
+    top: '50%',
+    marginTop: -9,
+    width: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  handleDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: LINK_COLOR,
+    backgroundColor: PAPER_CARD,
+    opacity: 0.55,
+  },
   cardDone: {
     position: 'absolute',
     top: 6,
