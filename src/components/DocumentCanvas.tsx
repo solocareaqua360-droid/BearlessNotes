@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Keyboard, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -151,12 +151,6 @@ export default function DocumentCanvas({
     });
 
   const panGesture = Gesture.Pan()
-    // Not while something is being typed into. In a browser, dragging
-    // across text is how a word gets selected, and a surface that also
-    // takes that drag slides the whole canvas out from under the cursor
-    // instead. The card is already parked in a known place while it is
-    // being typed into, so there is nothing to pan to.
-    .enabled(editingId === null)
     // The board's own number: a hold and a drag start the same way, and a
     // surface that takes the very first pixel moves before the press can
     // count as anything else.
@@ -170,7 +164,16 @@ export default function DocumentCanvas({
       savedTranslateY.value = translateY.value;
     });
 
-  const canvasGesture = Gesture.Simultaneous(panGesture, pinchGesture);
+  // A tap on bare canvas puts the text down, the way clicking beside a
+  // thing ends editing everywhere else.
+  const surfaceTapGesture = Gesture.Tap().onEnd(() => {
+    runOnJS(stopEditing)();
+  });
+
+  const canvasGesture = Gesture.Simultaneous(
+    Gesture.Race(surfaceTapGesture, panGesture),
+    pinchGesture
+  );
 
   const surfaceStyle = useAnimatedStyle(() => ({
     transform: [
@@ -185,17 +188,6 @@ export default function DocumentCanvas({
       <GestureDetector gesture={canvasGesture}>
         <Animated.View style={styles.fill}>
           <Animated.View style={[styles.surface, surfaceStyle]}>
-            {/* A tap on bare canvas puts the text down, the way clicking
-                beside a thing ends editing everywhere else. It is a view
-                BEHIND the cards rather than a gesture on the whole
-                surface: a gesture up there sees every tap, including the
-                ones meant for the text - so in a browser each attempt to
-                move the caret ended the editing instead, and the caret
-                never left the start. Behind the cards, a tap on a card
-                simply never reaches it. */}
-            {editingId !== null && (
-              <Pressable style={styles.stopEditingCatcher} onPress={stopEditing} />
-            )}
             {blocks.map((block, index) => (
               <CanvasCard
                 key={block.id}
@@ -423,16 +415,6 @@ const styles = StyleSheet.create({
   // it and it is the transform that moves them all together.
   surface: {
     flex: 1,
-  },
-  // Big enough to catch a tap anywhere around the cards, in surface
-  // coordinates - the canvas can be panned and zoomed far from its
-  // origin, and this has to still be under wherever it ends up.
-  stopEditingCatcher: {
-    position: 'absolute',
-    left: -4000,
-    top: -4000,
-    right: -4000,
-    bottom: -4000,
   },
   // Opaque, and with a hairline edge: on white paper an edge is the only
   // thing that says where one card ends and the next begins.
