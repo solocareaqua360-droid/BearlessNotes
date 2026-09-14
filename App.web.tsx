@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   useFonts,
   Nunito_400Regular,
@@ -12,7 +12,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { ensureSignedIn } from './src/firebase';
+import { auth, ensureSignedIn, signInWithGoogleAccount } from './src/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import BoardsListScreen from './src/screens/BoardsListScreen';
 import BoardScreen from './src/screens/BoardScreen';
 import { AskHost } from './src/components/surfaces/Ask';
@@ -36,6 +37,51 @@ import { BoardsStackParamList } from './src/navigation';
 // the screens.
 const Stack = createNativeStackNavigator<BoardsStackParamList>();
 
+const styles = StyleSheet.create({
+  centre: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+    padding: 32,
+    backgroundColor: '#171310',
+  },
+  title: {
+    fontSize: 28,
+    fontFamily: 'Nunito_700Bold',
+    color: '#fff',
+  },
+  body: {
+    fontSize: 15,
+    lineHeight: 22,
+    fontFamily: 'Nunito_400Regular',
+    color: 'rgba(255,255,255,0.62)',
+    textAlign: 'center',
+    maxWidth: 380,
+  },
+  error: {
+    fontSize: 13,
+    fontFamily: 'Nunito_400Regular',
+    color: '#FB7185',
+    textAlign: 'center',
+    maxWidth: 380,
+  },
+  button: {
+    marginTop: 6,
+    backgroundColor: '#F5C77E',
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    minWidth: 220,
+    alignItems: 'center',
+  },
+  buttonLabel: {
+    fontSize: 16,
+    fontFamily: 'Nunito_600SemiBold',
+    color: '#171310',
+  },
+});
+
 export default function App() {
   const [fontsLoaded] = useFonts({
     Nunito_400Regular,
@@ -44,16 +90,54 @@ export default function App() {
     Nunito_700Bold,
     Nunito_800ExtraBold,
   });
-  const [signedIn, setSignedIn] = useState(false);
+  // Three states, not two: still asking, signed in, and signed out. The
+  // browser has no identity of its own to fall back on - see firebase.web.
+  const [user, setUser] = useState<{ email: string | null } | null | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    ensureSignedIn().then(() => setSignedIn(true));
+    ensureSignedIn();
+    return onAuthStateChanged(auth, (next) => setUser(next ? { email: next.email } : null));
   }, []);
 
-  if (!fontsLoaded || !signedIn) {
+  if (!fontsLoaded || user === undefined) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#171310' }}>
+      <View style={styles.centre}>
         <ActivityIndicator color="#F5C77E" />
+      </View>
+    );
+  }
+
+  if (user === null) {
+    return (
+      <View style={styles.centre}>
+        <Text style={styles.title}>mindEva</Text>
+        <Text style={styles.body}>
+          Увійди тим самим акаунтом Google, що й на телефоні - дошка та сама, дані ті самі.
+        </Text>
+        {!!error && <Text style={styles.error}>{error}</Text>}
+        <Pressable
+          style={styles.button}
+          disabled={busy}
+          onPress={async () => {
+            setBusy(true);
+            setError(null);
+            try {
+              await signInWithGoogleAccount();
+            } catch (e) {
+              setError((e as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? (
+            <ActivityIndicator color="#171310" />
+          ) : (
+            <Text style={styles.buttonLabel}>Увійти через Google</Text>
+          )}
+        </Pressable>
       </View>
     );
   }

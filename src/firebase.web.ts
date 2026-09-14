@@ -1,8 +1,9 @@
 import { initializeApp } from 'firebase/app';
 import {
+  GoogleAuthProvider,
   getAuth,
   onAuthStateChanged,
-  signInAnonymously,
+  signInWithPopup,
   signOut,
 } from 'firebase/auth';
 import {
@@ -40,32 +41,35 @@ export const db = initializeFirestore(app, {
 
 export const auth = getAuth(app);
 
-// Same shape as the phone's: a device gets an identity before anyone
-// signs in, so the rules can require one. The browser persists the
-// session in IndexedDB by itself.
+// The browser does NOT sign in anonymously, and that is the point.
+//
+// On a phone an anonymous session is a reasonable identity: it is kept on
+// the device, it is the same one every launch, and linking it to Google
+// later keeps its uid. In a browser the same idea is a hole - the project
+// config sits in the page, so anyone who opens it can call
+// signInAnonymously from the console and read everything. (Demonstrated,
+// not supposed: a throwaway script did exactly that.)
+//
+// So here there is no identity until someone signs in with the Google
+// account the data belongs to, and the owner-only rules can then mean
+// something.
 export function ensureSignedIn(): Promise<void> {
   return new Promise((resolve) => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        unsubscribe();
-        resolve();
-      } else {
-        signInAnonymously(auth).catch(() => {});
-      }
+    const unsubscribe = onAuthStateChanged(auth, () => {
+      unsubscribe();
+      resolve();
     });
   });
 }
 
-// Signing in with Google is the native module's job, and the browser
-// would need a different one entirely (Google Identity Services). Not
-// built yet - and nothing in the board needs it, because with no sign-in
-// every device already looks at the same data. These exist so that
-// anything importing them still type-checks; they are not reachable from
-// the boards-only web app.
 export type GoogleSignInResult = { uid: string; email: string | null; hadToSwitch: boolean };
 
+// A popup rather than a redirect: a redirect loses whatever the page was
+// in the middle of, and this page is a board someone may be arranging.
 export async function signInWithGoogleAccount(): Promise<GoogleSignInResult> {
-  throw new Error('Вхід через Google у браузері ще не зроблений');
+  const provider = new GoogleAuthProvider();
+  const credential = await signInWithPopup(auth, provider);
+  return { uid: credential.user.uid, email: credential.user.email, hadToSwitch: false };
 }
 
 export async function signOutEverywhere(): Promise<void> {
