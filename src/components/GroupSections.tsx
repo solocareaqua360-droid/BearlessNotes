@@ -12,6 +12,7 @@ import DocumentCard from './DocumentCard';
 import ZoomableImageViewer from './ZoomableImageViewer';
 import { FileRow, LinkRow, PhotoCell, PhotoCardItem } from './ItemCards';
 import { extractPreview } from '../utils/documentPreview';
+import { applyLiveRecord, useLiveRecords } from '../hooks/useLiveRecords';
 import { openFileExternally } from '../utils/openFileExternally';
 import { categoryFromSiteName } from '../utils/linkCategory';
 import { colorForDocument } from '../utils/documentColor';
@@ -101,6 +102,9 @@ export default function GroupSections({
   const files = useCollection('files', enabled);
   const customRows = useCollection('customDatabaseRows', enabled);
   const customDatabases = useCollection('customDatabases', enabled);
+  // Records as they are now, for the document cards' pictures - see
+  // DocumentsScreen's same line.
+  const liveRecords = useLiveRecords(enabled);
   // The uri and its Drive copy together - see AttachmentImage.
   const [viewerPhoto, setViewerPhoto] = useState<{ uri: string; driveFileId?: string } | null>(null);
 
@@ -181,7 +185,8 @@ export default function GroupSections({
                 {rows.map((row) => {
                   if (kind === 'document') {
                     const { imageUri, imageDriveFileId, imageUris, imageDriveFileIds, previewText, checklistItems } = extractPreview(
-                      row.blocks as Block[] | undefined,
+                      // Records as they are now - see DocumentsScreen's same line.
+                      (row.blocks as Block[] | undefined)?.map((b) => applyLiveRecord(b, liveRecords)),
                       row.coverImageUri as string | undefined
                     );
                     return (

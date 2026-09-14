@@ -40,6 +40,7 @@ import { hapticButtonDown, hapticButtonUp } from '../utils/haptics';
 import { RootStackParamList } from '../navigation';
 import { detachTagFromDeletedItem, ITEMS_COLLECTION_BY_KIND } from '../hooks/useTags';
 import { useDatabaseList } from '../hooks/useDatabaseList';
+import { applyLiveRecord, useLiveRecords } from '../hooks/useLiveRecords';
 import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import DocumentEditorScreen from './DocumentEditorScreen';
@@ -135,6 +136,7 @@ export default function DocumentsScreen() {
   // mode; on a phone a document is a pushed screen, as before.
   const [openDoc, setOpenDoc] = useState<{ id: string; autoFocusTitle?: boolean } | null>(null);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const liveRecords = useLiveRecords(documents.length > 0);
   const [isLoading, setIsLoading] = useState(true);
   // The machine every database screen shares - see useDatabaseList. This
   // screen keeps its own chrome (the two panes, the glass menu, the
@@ -831,7 +833,12 @@ export default function DocumentsScreen() {
                 const titleMatch = findTitleMatch(item.title ?? '', needle);
                 const bodyMatch = titleMatch ? null : findBodyMatch(item.blocks, needle);
                 const { imageUri, imageDriveFileId, imageUris, imageDriveFileIds, previewText, checklistItems } = extractPreview(
-                  item.blocks,
+                  // Through the records as they are NOW - a block inserted before the
+                  // Drive backup existed carries no driveFileId of its own; the record
+                  // does. The editor overlays the same way, and the Photos database reads
+                  // the record directly, which is why a picture showed there and here
+                  // stayed blank. See useLiveRecords.
+                  (item.blocks ?? []).map((b) => applyLiveRecord(b, liveRecords)),
                   item.coverImageUri,
                   viewMode === 'grid' ? EXPANDED_PREVIEW_LENGTH : undefined
                 );
@@ -942,7 +949,12 @@ export default function DocumentsScreen() {
               // handling) - list rows are unaffected, so they keep the
               // short default length.
               const { imageUri, imageDriveFileId, imageUris, imageDriveFileIds, previewText, checklistItems } = extractPreview(
-                item.blocks,
+                // Through the records as they are NOW - a block inserted before the
+                // Drive backup existed carries no driveFileId of its own; the record
+                // does. The editor overlays the same way, and the Photos database reads
+                // the record directly, which is why a picture showed there and here
+                // stayed blank. See useLiveRecords.
+                (item.blocks ?? []).map((b) => applyLiveRecord(b, liveRecords)),
                 item.coverImageUri,
                 viewMode === 'grid' ? EXPANDED_PREVIEW_LENGTH : undefined
               );

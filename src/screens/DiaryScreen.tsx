@@ -5,6 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { onSnapshot } from '../firestore';
 import { ownedQuery } from '../utils/owned';
+import { applyLiveRecord, useLiveRecords } from '../hooks/useLiveRecords';
 import { DocumentItem } from '../types';
 import { RootStackParamList } from '../navigation';
 import DocumentCard from '../components/DocumentCard';
@@ -24,6 +25,8 @@ import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 export default function DiaryScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [sheets, setSheets] = useState<DocumentItem[]>([]);
+  // Records as they are now - see DocumentsScreen's same line.
+  const liveRecords = useLiveRecords(sheets.length > 0);
   const [query_, setQuery] = useState('');
 
   useEffect(() => {
@@ -85,7 +88,7 @@ export default function DiaryScreen() {
             // the raw field, not the date shown) doesn't apply here - every
             // match is shown as a body/embedded-name snippet instead.
             const bodyMatch = needle ? findBodyMatch(item.blocks, needle) : null;
-            const { imageUri, imageDriveFileId, previewText } = extractPreview(item.blocks);
+            const { imageUri, imageDriveFileId, previewText } = extractPreview((item.blocks ?? []).map((b) => applyLiveRecord(b, liveRecords)));
             return (
               <DocumentCard
                 key={item.id}

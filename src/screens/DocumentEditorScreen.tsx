@@ -4148,7 +4148,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     setViewerImageId(null);
   }
 
-  const viewerBlock = viewerImageId ? blocks.find((b) => b.id === viewerImageId) : null;
+  // From liveBlocks, not blocks: the picture on the block came through the
+  // record overlay (see useLiveRecords), and a viewer reading the raw
+  // block instead got no driveFileId - a picture that showed in the note
+  // and opened onto a crossed-out cloud.
+  const viewerBlock = viewerImageId ? liveBlocks.find((b) => b.id === viewerImageId) : null;
 
   // The page's text, under the page itself. Tesseract reads the number
   // sign as "Мо"/"Ме"/"Хо" almost every time - that one is worth fixing
