@@ -50,6 +50,8 @@ const LINK_PADDING = 24;
 // Where the handle sits in from the card's right edge - the draft line
 // starts from it, not from the corner.
 const HANDLE_INSET = 11;
+// The removal dot on an arrow's midpoint.
+const LINK_DOT = 16;
 
 // «Полотно» - the same document, laid out freely instead of down a page.
 //
@@ -234,6 +236,10 @@ function DocumentCanvasInner({
   // group drag, every chosen card's - are drawn live off the shared
   // positions instead of the resting curve.
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  // The arrow whose midpoint dot has been tapped once: it shows a cross,
+  // and the next tap on it takes the arrow away. The hidden way (the same
+  // pair asked for again) still works, but nobody finds a hidden way.
+  const [armedLinkId, setArmedLinkId] = useState<string | null>(null);
 
   // The line a handle-drag trails behind the finger (the second way of
   // making an arrow, beside the hold): from the card's edge to wherever
@@ -302,6 +308,10 @@ function DocumentCanvasInner({
     setEditingCaret(null);
     setLinkSourceId(null);
     Keyboard.dismiss();
+  }
+
+  function disarmLink() {
+    setArmedLinkId(null);
   }
 
   function handleLinkTap(id: string) {
@@ -505,14 +515,20 @@ function DocumentCanvasInner({
                 move the caret ended the editing instead, and the caret
                 never left the start. Behind the cards, a tap on a card
                 simply never reaches it. */}
-            {(editingId !== null || linkSourceId !== null) && (
+            {(editingId !== null || linkSourceId !== null || armedLinkId !== null) && (
               // A tap beside the cards puts the text down. In a browser
               // this has to be a view BEHIND the cards rather than a
               // gesture over the surface, because a gesture up there also
               // sees the clicks meant for the text; on a phone the field
               // keeps its own touches, so either works and this is the
               // one that already exists.
-              <Pressable style={styles.stopEditingCatcher} onPress={stopEditing} />
+              <Pressable
+                style={styles.stopEditingCatcher}
+                onPress={() => {
+                  stopEditing();
+                  disarmLink();
+                }}
+              />
             )}
             {/* Behind the cards. Drawn from the positions the cards were
                 let go at, so an arrow catches up with a card when the
@@ -560,14 +576,40 @@ function DocumentCanvasInner({
               const w = Math.abs(x2 - x1) + LINK_PADDING * 2;
               const h = Math.abs(y2 - y1) + LINK_PADDING * 2;
               return (
-                <Svg key={id} style={[styles.link, { left, top }]} width={w} height={h} pointerEvents="none">
-                  <Path
-                    d={curvePath(x1 - left, y1 - top, x2 - left, y2 - top)}
-                    stroke={LINK_COLOR}
-                    strokeWidth={2}
-                    fill="none"
-                  />
-                </Svg>
+                <View key={id} style={StyleSheet.absoluteFill} pointerEvents="box-none">
+                  <Svg style={[styles.link, { left, top }]} width={w} height={h} pointerEvents="none">
+                    <Path
+                      d={curvePath(x1 - left, y1 - top, x2 - left, y2 - top)}
+                      stroke={LINK_COLOR}
+                      strokeWidth={2}
+                      fill="none"
+                    />
+                  </Svg>
+                  {/* The way to take an arrow away, where it can be seen:
+                      a dot on the arrow's midpoint (the S-curve passes
+                      through the midpoint of its two ends). One tap arms
+                      it - the dot becomes a cross - the next removes it.
+                      Two taps on purpose: an arrow lies between cards,
+                      where fingers land by accident. */}
+                  <Pressable
+                    hitSlop={10}
+                    style={[
+                      styles.linkDot,
+                      { left: (x1 + x2) / 2 - LINK_DOT / 2, top: (y1 + y2) / 2 - LINK_DOT / 2 },
+                      armedLinkId === id && styles.linkDotArmed,
+                    ]}
+                    onPress={() => {
+                      if (armedLinkId === id) {
+                        setArmedLinkId(null);
+                        onToggleLink(link.from, link.to);
+                      } else {
+                        setArmedLinkId(id);
+                      }
+                    }}
+                  >
+                    {armedLinkId === id && <Ionicons name="close" size={12} color={PAPER_CARD} />}
+                  </Pressable>
+                </View>
               );
             })}
             <DraftLine
@@ -1197,6 +1239,20 @@ const styles = StyleSheet.create({
   // typed into.
   // A live arrow / the draft line: 2pt of the arrow's colour, positioned
   // and turned entirely by its animated transform.
+  linkDot: {
+    position: 'absolute',
+    width: LINK_DOT,
+    height: LINK_DOT,
+    borderRadius: LINK_DOT / 2,
+    backgroundColor: PAPER_CARD,
+    borderWidth: 1.5,
+    borderColor: LINK_COLOR,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  linkDotArmed: {
+    backgroundColor: LINK_COLOR,
+  },
   liveLine: {
     position: 'absolute',
     left: 0,
