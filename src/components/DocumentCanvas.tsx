@@ -11,15 +11,19 @@ import Animated, {
 import AttachmentImage from './AttachmentImage';
 import { Block } from '../types';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import {
-  GLASS_ACCENT,
-  GLASS_BODY_BLURRED,
-  GLASS_EDGE,
-  GLASS_LINE,
-  GLASS_TEXT,
-  GLASS_TEXT_FAINT,
-  GLASS_TEXT_MUTED,
-} from '../constants/glass';
+
+// The canvas is part of the note, and the note is paper - white, with
+// dark text. The glass palette belongs to the windows that float OVER a
+// screen; a card lying ON the page is not one of those, and translucent
+// dark cards on white paper read as smudges. So these are the page's own
+// colours, the same ones the blocks have when they are read down the
+// page instead of across it.
+const PAPER_CARD = '#FFFFFF';
+const PAPER_EDGE = '#E5E7EB';
+const PAPER_EDGE_EDITING = '#8AB4FF';
+const PAPER_TEXT = '#111827';
+const PAPER_TEXT_MUTED = '#6B7280';
+const PAPER_TEXT_FAINT = '#9CA3AF';
 
 // «Полотно» - the same document, laid out freely instead of down a page.
 //
@@ -206,7 +210,7 @@ export default function DocumentCanvas({
       </GestureDetector>
       {blocks.length === 0 && (
         <View style={styles.emptyState} pointerEvents="none">
-          <Ionicons name="shapes-outline" size={30} color={GLASS_TEXT_FAINT} />
+          <Ionicons name="shapes-outline" size={30} color={PAPER_TEXT_FAINT} />
           <Text style={styles.emptyLabel}>Порожня нотатка - напишіть щось на сторінці</Text>
         </View>
       )}
@@ -293,7 +297,7 @@ function CanvasCard({
             value={block.text}
             onChangeText={(text) => onChangeText(block.id, text)}
             placeholder="Текст"
-            placeholderTextColor={GLASS_TEXT_FAINT}
+            placeholderTextColor={PAPER_TEXT_FAINT}
             style={styles.cardInput}
           />
         ) : (
@@ -343,7 +347,7 @@ function CardBody({ block }: { block: Block }) {
         <Ionicons
           name={type === 'bulleted' ? 'ellipse' : 'list-outline'}
           size={type === 'bulleted' ? 7 : 16}
-          color={GLASS_TEXT_MUTED}
+          color={PAPER_TEXT_MUTED}
         />
         <Text style={styles.cardText} numberOfLines={5}>
           {block.text || ' '}
@@ -357,7 +361,7 @@ function CardBody({ block }: { block: Block }) {
         <Ionicons
           name={block.checked ? 'checkbox' : 'square-outline'}
           size={18}
-          color={block.checked ? GLASS_TEXT_MUTED : GLASS_TEXT_FAINT}
+          color={block.checked ? PAPER_TEXT_MUTED : PAPER_TEXT_FAINT}
         />
         <Text style={[styles.cardText, block.checked && styles.cardTextDone]} numberOfLines={4}>
           {block.text || 'Пункт'}
@@ -375,7 +379,7 @@ function CardBody({ block }: { block: Block }) {
 function CardRow({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
   return (
     <View style={styles.cardRow}>
-      <Ionicons name={icon} size={18} color={GLASS_TEXT_MUTED} />
+      <Ionicons name={icon} size={18} color={PAPER_TEXT_MUTED} />
       <Text style={styles.cardText} numberOfLines={3}>
         {label}
       </Text>
@@ -396,21 +400,31 @@ const styles = StyleSheet.create({
   surface: {
     flex: 1,
   },
+  // Opaque, and with a hairline edge: on white paper an edge is the only
+  // thing that says where one card ends and the next begins.
   card: {
     position: 'absolute',
     width: CARD_WIDTH,
     minHeight: 56,
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: PAPER_CARD,
     borderWidth: 1,
-    borderColor: GLASS_EDGE,
+    borderColor: PAPER_EDGE,
     borderRadius: 16,
     padding: 12,
     overflow: 'hidden',
+    // A shadow rather than a fill difference - the card has to lift off
+    // paper of the same colour as itself.
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   // The card being typed into: the app's own blue on its edge, so it is
   // plain which one the keyboard belongs to.
   cardEditing: {
-    borderColor: GLASS_ACCENT,
+    borderColor: PAPER_EDGE_EDITING,
+    borderWidth: 2,
   },
   cardInput: {
     // A browser gives a textarea its own default width (the `cols`
@@ -423,7 +437,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 19,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: PAPER_TEXT,
     padding: 0,
     minHeight: 40,
   },
@@ -431,7 +445,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 140,
     borderRadius: 10,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: '#F3F4F6',
   },
   cardRow: {
     flexDirection: 'row',
@@ -443,20 +457,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 19,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: PAPER_TEXT,
   },
   cardTextDone: {
-    color: GLASS_TEXT_MUTED,
+    color: PAPER_TEXT_MUTED,
     textDecorationLine: 'line-through',
   },
   cardHeading: {
     fontSize: 17,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT,
+    color: PAPER_TEXT,
   },
   cardDivider: {
     height: 1,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: PAPER_EDGE,
     marginVertical: 8,
   },
   emptyState: {
@@ -470,6 +484,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_FAINT,
+    color: PAPER_TEXT_FAINT,
   },
 });
