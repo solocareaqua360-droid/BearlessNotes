@@ -105,6 +105,7 @@ import { attachmentInfoText } from '../utils/attachmentInfo';
 import { downloadToFolder } from '../utils/downloadToFolder';
 import AttachmentImage from '../components/AttachmentImage';
 import DocumentCanvas, { DocumentCanvasHandle } from '../components/DocumentCanvas';
+import { orderByCanvasLinks } from '../utils/canvasOrder';
 import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
@@ -2082,6 +2083,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // DocumentItem.canvasLinks. Saved with the document, like everything
   // else on this screen.
   const [canvasLinks, setCanvasLinks] = useState<Record<string, CanvasLink>>({});
+
+  // Leaving the canvas is when its arrows are honoured: the page is
+  // reordered to read down the chains - see orderByCanvasLinks for the
+  // rule. Here and not while arrows are being drawn, so the page never
+  // reshuffles under a reader who has not asked to see it; and through
+  // handleReorderBlocks, so it is one undo away like any other reorder.
+  function leaveCanvas() {
+    const reordered = orderByCanvasLinks(blocks, canvasLinks);
+    if (reordered !== blocks) handleReorderBlocks(reordered);
+    setCanvasMode(false);
+  }
   const [tagIds, setTagIds] = useState<string[]>([]);
   // Cover image and "paper color" (below) - see the "..." menu. Both are
   // local-only settings (no cloud backup for the cover, same as any other
@@ -4271,7 +4283,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               {/* Page or canvas. An icon alone: the rail has no room for a
                   word, and the icon shown is the one you would be going
                   TO, the way a play/pause button works. */}
-              <Pressable hitSlop={8} onPress={() => setCanvasMode((v) => !v)}>
+              <Pressable hitSlop={8} onPress={() => (canvasMode ? leaveCanvas() : setCanvasMode(true))}>
                 <Ionicons
                   name={canvasMode ? 'document-text-outline' : 'shapes-outline'}
                   size={24}
@@ -4397,16 +4409,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           ref={canvasApiRef}
           onEditingChange={setCanvasEditing}
           links={canvasLinks}
-          // The same pair asked for twice is the link being taken away
-          // again - one gesture makes and unmakes, so nothing extra has to
-          // be learnt for the second.
+          // Arrows have a direction now - it is what says which end of a
+          // chain is the beginning. So the same pair asked for the SAME
+          // way round is the arrow being taken away; asked for the other
+          // way round, it is the arrow turning to point the other way.
+          // One gesture makes, turns and unmakes.
           onToggleLink={(from, to) => {
             setCanvasLinks((prev) => {
-              const existing = Object.entries(prev).find(
-                ([, l]) => (l.from === from && l.to === to) || (l.from === to && l.to === from)
-              );
+              const same = Object.entries(prev).find(([, l]) => l.from === from && l.to === to);
+              const reversed = Object.entries(prev).find(([, l]) => l.from === to && l.to === from);
               const next = { ...prev };
-              if (existing) delete next[existing[0]];
+              if (same) delete next[same[0]];
+              else if (reversed) next[reversed[0]] = { from, to };
               else next[`${Date.now()}-${Math.random().toString(36).slice(2)}`] = { from, to };
               return next;
             });
@@ -4423,7 +4437,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // Writing stays on the page. A tap says which block, the page
           // opens with it active - the canvas is for arranging, not typing.
           onOpenBlock={(id) => {
-            setCanvasMode(false);
+            leaveCanvas();
             handleActivateBlock(id);
           }}
         />

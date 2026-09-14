@@ -124,6 +124,18 @@ function curvePath(x1: number, y1: number, x2: number, y2: number): string {
   return `M ${x1} ${y1} C ${x1 + bend * direction} ${y1} ${x2 - bend * direction} ${y2} ${x2} ${y2}`;
 }
 
+// The head at the TO end. An arrow has a direction now - it is what says
+// which end of a chain the page starts reading from - so the direction
+// has to be visible. The curve always arrives horizontally (its last
+// control point is level with its end), so the head is a horizontal
+// triangle pointing the way the curve was going.
+const ARROW_HEAD = 8;
+function arrowHeadPath(x2: number, y2: number, x1: number): string {
+  const direction = x2 >= x1 ? 1 : -1;
+  const back = x2 - ARROW_HEAD * direction;
+  return `M ${x2} ${y2} L ${back} ${y2 - ARROW_HEAD / 2} L ${back} ${y2 + ARROW_HEAD / 2} Z`;
+}
+
 // Where every block sits: its own position once it has been moved, and
 // otherwise a place in a plain column, in the document's own order. The
 // fallback is computed, never written - a document nobody has arranged
@@ -626,6 +638,7 @@ function DocumentCanvasInner({
                       strokeWidth={2}
                       fill="none"
                     />
+                    <Path d={arrowHeadPath(x2 - left, y2 - top, x1 - left)} fill={LINK_COLOR} />
                   </Svg>
                   {/* The way to take an arrow away: hold the line (see
                       armLinkNear) and a cross appears on its midpoint -
