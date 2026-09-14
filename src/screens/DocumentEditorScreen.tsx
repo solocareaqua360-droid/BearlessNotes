@@ -4645,6 +4645,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   onPress: () => {
                     const id = viewerBlock.id;
                     const fallback = viewerBlock.imageTitle;
+                    // The viewer closes FIRST, as "База" and "Текст"
+                    // already do. It is a Modal, and on Android a Modal
+                    // is its own native window drawn over everything -
+                    // including the app's own question windows, which are
+                    // mounted once at the root. So the info panel opened
+                    // underneath it and only appeared when the picture
+                    // was dismissed, which read as the window arriving on
+                    // the wrong tap.
+                    setViewerImageId(null);
                     attachmentInfoText('photos', id, fallback).then((text) =>
                       notify('Про зображення', text)
                     );
