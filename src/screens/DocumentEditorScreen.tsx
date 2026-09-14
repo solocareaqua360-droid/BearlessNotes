@@ -96,6 +96,7 @@ import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { canPlaceCaretByTouch, measureNode } from '../utils/measureNode';
+import { setSelection } from '../utils/setSelection';
 import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
@@ -2715,12 +2716,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     measureActiveInputForSync(input);
     if (focusToEndRef.current) {
       const block = blocks.find((b) => b.id === id);
-      if (block) input.setSelection(block.text.length, block.text.length);
+      if (block) setSelection(input, block.text.length, block.text.length);
       focusToEndRef.current = false;
     } else if (focusCursorIndexRef.current !== null) {
       const block = blocks.find((b) => b.id === id);
       const index = Math.min(focusCursorIndexRef.current, block?.text.length ?? 0);
-      input.setSelection(index, index);
+      setSelection(input, index, index);
       focusCursorIndexRef.current = null;
     }
     focusIdRef.current = null;
@@ -3178,7 +3179,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     setBlocks((prev) => prev.map((b) => (b.id === sel.blockId ? { ...b, text: newText } : b)));
     setActiveSelection({ blockId: sel.blockId, start: newStart, end: newEnd });
     requestAnimationFrame(() => {
-      inputRefs.current[sel.blockId]?.setSelection(newStart, newEnd);
+      setSelection(inputRefs.current[sel.blockId], newStart, newEnd);
     });
   }
 
@@ -3225,7 +3226,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     setBlocks((prev) => prev.map((b) => (b.id === sel.blockId ? { ...b, text: newText } : b)));
     setActiveSelection({ blockId: sel.blockId, start: newStart, end: newEnd });
     requestAnimationFrame(() => {
-      inputRefs.current[sel.blockId]?.setSelection(newStart, newEnd);
+      setSelection(inputRefs.current[sel.blockId], newStart, newEnd);
     });
   }
 
