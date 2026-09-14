@@ -110,8 +110,10 @@ function approximateHeight(block: Block): number {
   const type = block.type ?? 'paragraph';
   if (type === 'image' || type === 'sketch') return 180;
   if (type === 'file' || type === 'link' || type === 'dbRow' || type === 'dbView') return 96;
-  // Text: the card clamps to six lines, so this is the most it can be.
-  return Math.min(180, 56 + Math.floor((block.text?.length ?? 0) / 28) * 20);
+  // Text: a card shows ALL of it, so this only has to be close - it is
+  // replaced by the measured height on the next frame. Roughly 28
+  // characters to a line at this width, 19pt a line, plus the padding.
+  return 32 + Math.max(1, Math.ceil((block.text?.length ?? 0) / 28)) * 19;
 }
 
 // What the screen around the canvas can ask of it. One method, and it
@@ -544,7 +546,7 @@ function CardBody({
           size={type === 'bulleted' ? 7 : 16}
           color={PAPER_TEXT_MUTED}
         />
-        <Text style={styles.cardText} numberOfLines={5}>
+        <Text style={styles.cardText}>
           {block.text || ' '}
         </Text>
       </View>
@@ -558,14 +560,14 @@ function CardBody({
           size={18}
           color={block.checked ? PAPER_TEXT_MUTED : PAPER_TEXT_FAINT}
         />
-        <Text style={[styles.cardText, block.checked && styles.cardTextDone]} numberOfLines={4}>
+        <Text style={[styles.cardText, block.checked && styles.cardTextDone]}>
           {block.text || 'Пункт'}
         </Text>
       </View>
     );
   }
   return (
-    <Text ref={textNode} onTextLayout={onTextLayout} style={styles.cardText} numberOfLines={6}>
+    <Text ref={textNode} onTextLayout={onTextLayout} style={styles.cardText}>
       {block.text || ' '}
     </Text>
   );
@@ -611,6 +613,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: CARD_WIDTH,
     minHeight: 56,
+    // No cap on the height: a card used to stop at six lines and end in
+    // an ellipsis, which on a surface meant for reading is the card
+    // hiding what it is for. It grows to its text instead - the column
+    // is laid out from measured heights anyway, so a tall card simply
+    // takes the room it needs.
     backgroundColor: PAPER_CARD,
     borderWidth: 1,
     borderColor: PAPER_EDGE,
