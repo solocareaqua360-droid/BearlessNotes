@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -9,6 +9,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import AttachmentImage from './AttachmentImage';
+import { autoGrowInput } from '../utils/autoGrowInput';
 import { Block } from '../types';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
@@ -244,6 +245,15 @@ function CanvasCard({
   const posX = useSharedValue(placement.x);
   const posY = useSharedValue(placement.y);
   const isText = TEXT_TYPES.includes(block.type ?? 'paragraph');
+  // A browser's multi-line field does not grow with its text: it is a
+  // <textarea>, two rows tall, with the rest scrolled out of sight inside
+  // it - so a card being typed into shrank to a slot while the text it
+  // was showing a moment ago was still there, hidden. Same helper the
+  // page's own blocks use; on a phone it does nothing.
+  const inputRef = useRef<TextInput | null>(null);
+  useEffect(() => {
+    autoGrowInput(inputRef.current);
+  }, [block.text, editing]);
 
   function handleTap(x: number, y: number) {
     // A picture or a file has controls of its own, and they are on the
@@ -292,6 +302,12 @@ function CanvasCard({
       >
         {editing ? (
           <TextInput
+            ref={(node) => {
+              inputRef.current = node;
+              // On mount too: the field is created already holding the
+              // whole block's text.
+              autoGrowInput(node);
+            }}
             autoFocus
             multiline
             value={block.text}
@@ -434,6 +450,10 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'stretch',
     textAlignVertical: 'top',
+    // No flex here on purpose. In the editor's rows `flex: 1` governs a
+    // field's WIDTH (those rows lay out sideways); this card lays out
+    // downwards, where flex would govern the HEIGHT instead and fight the
+    // grown height above.
     fontSize: 14,
     lineHeight: 19,
     fontFamily: FONT_REGULAR,
