@@ -21,7 +21,7 @@ import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
 import CrashBoundary from './src/components/CrashBoundary';
 import { BoardsStackParamList } from './src/navigation';
-import { getDriveToken, hasDriveToken, subscribeToDriveToken } from './src/utils/driveToken.web';
+import { driveTokenError, getDriveToken, hasDriveToken, subscribeToDriveToken } from './src/utils/driveToken.web';
 
 // The browser build: the board, and nothing else.
 //
@@ -221,7 +221,14 @@ export default function App() {
               button than pictures that quietly never load. */}
           {!drive && (
             <>
-              <Text style={styles.driveText}>Картинки лежать на Google Диску</Text>
+              <Text style={styles.driveText}>
+                {/* The reason, when there is one. This bar used to say the
+                    same sentence whether Drive had never been asked, had
+                    refused, or had answered and been ignored - so a
+                    failure was indistinguishable from a fresh start, and
+                    the only way to find out was to guess. */}
+                {driveTokenError() ?? 'Картинки лежать на Google Диску'}
+              </Text>
               <Pressable
                 style={styles.driveButton}
                 onPress={() => getDriveToken(true, user.email).then(() => setDrive(hasDriveToken()))}
