@@ -266,27 +266,28 @@ function columnAtPoint(
   heights: Map<string, number>,
   x: number,
   y: number,
-  // Nothing about the carried card is special here, and one attempt at
-  // making it so is worth recording: the column a card came from was
-  // given its FULL height while the card was in the air, so that leaving
-  // and returning would cost the same. It does the opposite. That
-  // rectangle still covers the slot the card was lifted out of, so the
-  // card is inside its old column for its own height plus the margin -
-  // and dropping it anywhere near where it started put it straight back.
-  // Leaving became impossible in order to make returning easy.
+  // The column this card is currently IN, if any. It gets no catch area
+  // at all - the card has to be over its rectangle to stay, and is free
+  // the moment it is outside. Every OTHER column keeps the margin.
   //
-  // The honest rule is the plain one: a column is where it is, and the
-  // one a card came from catches it back on the same terms as any other.
+  // That asymmetry is the whole mechanism, and two attempts got it
+  // backwards. A halo around the card's own column is a halo it has to
+  // escape before it can go anywhere, so the bigger the magnet, the more
+  // firmly a card is held by the place it is trying to leave. Catching
+  // should be generous; holding on should not.
+  homeColumnId?: string
 ): BoardColumn | undefined {
   let best: BoardColumn | undefined;
   let bestDistance = COLUMN_SNAP_MARGIN;
   for (const column of columns) {
+    const margin = column.id === homeColumnId ? 0 : COLUMN_SNAP_MARGIN;
     const height = columnHeight(columnMembers(cards, column.id), heights);
     // Distance from the point to the column's rectangle - zero anywhere
     // inside it, so a card actually dropped in always wins.
     const dx = Math.max(column.x - x, 0, x - (column.x + COLUMN_WIDTH));
     const dy = Math.max(column.y - y, 0, y - (column.y + height));
     const distance = Math.sqrt(dx * dx + dy * dy);
+    if (distance > margin) continue;
     if (distance <= bestDistance) {
       bestDistance = distance;
       best = column;
@@ -1867,7 +1868,14 @@ export default function BoardScreen() {
     if (!card) return;
     const others = cards.filter((c) => c.id !== id);
     const centreY = y + heightOf(card, cardHeights) / 2;
-    const target = columnAtPoint(columns, others, cardHeights, x + widthInColumn(card) / 2, centreY);
+    const target = columnAtPoint(
+      columns,
+      others,
+      cardHeights,
+      x + widthInColumn(card) / 2,
+      centreY,
+      card.columnId
+    );
     const nextId = target?.id ?? null;
     if (nextId !== hoverColumnId) {
       setHoverColumnId(nextId);
@@ -1886,7 +1894,14 @@ export default function BoardScreen() {
       // height while deciding whether it landed back inside it.
       const others = dropped.filter((c) => c.id !== id);
       const centreY = y + heightOf(card, cardHeights) / 2;
-      const target = columnAtPoint(columns, others, cardHeights, x + widthInColumn(card) / 2, centreY);
+      const target = columnAtPoint(
+        columns,
+        others,
+        cardHeights,
+        x + widthInColumn(card) / 2,
+        centreY,
+        card.columnId
+      );
       // Only a card that actually came to rest in a column gets the
       // "landed" feedback - one dropped on open canvas has nothing to
       // confirm, same rule the document editor's own drop follows.
