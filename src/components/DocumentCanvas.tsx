@@ -50,8 +50,8 @@ const LINK_PADDING = 24;
 // Where the handle sits in from the card's right edge - the draft line
 // starts from it, not from the corner.
 const HANDLE_INSET = 11;
-// The removal dot on an arrow's midpoint.
-const LINK_DOT = 16;
+// The removal cross that a hold puts on an arrow's midpoint.
+const LINK_DOT = 22;
 
 // «Полотно» - the same document, laid out freely instead of down a page.
 //
@@ -451,6 +451,48 @@ function DocumentCanvasInner({
 
   // A tap on bare canvas puts the selection down, the way clicking beside
   // a thing does everywhere else.
+  // Hold a line and a cross appears on it - the same hold that starts an
+  // arrow from a card, pointed at the arrow itself. The hold is on the
+  // surface, not on each arrow: an arrow's Svg is a box far larger than
+  // the curve, and a hold in the empty corner of that box must not count.
+  // So the press is tested against the curve, sampled along its length.
+  function armLinkNear(x: number, y: number) {
+    const threshold = 18 / scale.value;
+    let best: { id: string; distance: number } | null = null;
+    for (const [id, link] of Object.entries(links)) {
+      const fromIndex = blocks.findIndex((b) => b.id === link.from);
+      const toIndex = blocks.findIndex((b) => b.id === link.to);
+      if (fromIndex === -1 || toIndex === -1) continue;
+      const { x1, y1, x2, y2 } = linkEndpoints(
+        { ...placements[fromIndex], height: heightOf(fromIndex) },
+        { ...placements[toIndex], height: heightOf(toIndex) }
+      );
+      // The same curve curvePath draws: control points pushed straight
+      // out sideways from each end.
+      const bend = Math.max(30, Math.abs(x2 - x1) / 2);
+      const direction = x2 >= x1 ? 1 : -1;
+      const cx1 = x1 + bend * direction;
+      const cx2 = x2 - bend * direction;
+      for (let i = 0; i <= 24; i++) {
+        const t = i / 24;
+        const u = 1 - t;
+        const px = u * u * u * x1 + 3 * u * u * t * cx1 + 3 * u * t * t * cx2 + t * t * t * x2;
+        const py = u * u * u * y1 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y2;
+        const distance = Math.hypot(px - x, py - y);
+        if (distance <= threshold && (!best || distance < best.distance)) best = { id, distance };
+      }
+    }
+    setArmedLinkId(best ? best.id : null);
+  }
+
+  const holdLineGesture = Gesture.LongPress()
+    .enabled(editingId === null)
+    .minDuration(450)
+    .onStart((e) => {
+      const at = toSurface(e.x, e.y);
+      runOnJS(armLinkNear)(at.x, at.y);
+    });
+
   const clearSelectionGesture = Gesture.Tap()
     .enabled(DRAG_SELECTS)
     .onEnd(() => {
@@ -458,7 +500,7 @@ function DocumentCanvasInner({
     });
 
   const canvasGesture = Gesture.Simultaneous(
-    Gesture.Race(marqueeGesture, clearSelectionGesture, panGesture),
+    Gesture.Race(marqueeGesture, clearSelectionGesture, panGesture, holdLineGesture),
     pinchGesture
   );
 
@@ -585,30 +627,27 @@ function DocumentCanvasInner({
                       fill="none"
                     />
                   </Svg>
-                  {/* The way to take an arrow away, where it can be seen:
-                      a dot on the arrow's midpoint (the S-curve passes
-                      through the midpoint of its two ends). One tap arms
-                      it - the dot becomes a cross - the next removes it.
-                      Two taps on purpose: an arrow lies between cards,
-                      where fingers land by accident. */}
-                  <Pressable
-                    hitSlop={10}
-                    style={[
-                      styles.linkDot,
-                      { left: (x1 + x2) / 2 - LINK_DOT / 2, top: (y1 + y2) / 2 - LINK_DOT / 2 },
-                      armedLinkId === id && styles.linkDotArmed,
-                    ]}
-                    onPress={() => {
-                      if (armedLinkId === id) {
+                  {/* The way to take an arrow away: hold the line (see
+                      armLinkNear) and a cross appears on its midpoint -
+                      the S-curve passes through the midpoint of its two
+                      ends. Tap the cross to remove the arrow; tap beside
+                      the cards to put the cross away. Nothing sits on an
+                      arrow until it is asked for. */}
+                  {armedLinkId === id && (
+                    <Pressable
+                      hitSlop={10}
+                      style={[
+                        styles.linkCross,
+                        { left: (x1 + x2) / 2 - LINK_DOT / 2, top: (y1 + y2) / 2 - LINK_DOT / 2 },
+                      ]}
+                      onPress={() => {
                         setArmedLinkId(null);
                         onToggleLink(link.from, link.to);
-                      } else {
-                        setArmedLinkId(id);
-                      }
-                    }}
-                  >
-                    {armedLinkId === id && <Ionicons name="close" size={12} color={PAPER_CARD} />}
-                  </Pressable>
+                      }}
+                    >
+                      <Ionicons name="close" size={14} color={PAPER_CARD} />
+                    </Pressable>
+                  )}
                 </View>
               );
             })}
@@ -637,6 +676,7 @@ function DocumentCanvasInner({
                 canvasPanGesture={panGesture}
                 canvasMarqueeGesture={marqueeGesture}
                 canvasTapGesture={clearSelectionGesture}
+                canvasHoldGesture={holdLineGesture}
                 editing={editingId === block.id}
                 caretIndex={editingId === block.id ? editingCaret : null}
                 onDone={stopEditing}
@@ -771,6 +811,7 @@ function CanvasCard({
   canvasPanGesture,
   canvasMarqueeGesture,
   canvasTapGesture,
+  canvasHoldGesture,
   editing,
   linkSource,
   linking,
@@ -804,6 +845,7 @@ function CanvasCard({
   canvasPanGesture: ReturnType<typeof Gesture.Pan>;
   canvasMarqueeGesture: ReturnType<typeof Gesture.Pan>;
   canvasTapGesture: ReturnType<typeof Gesture.Tap>;
+  canvasHoldGesture: ReturnType<typeof Gesture.LongPress>;
   editing: boolean;
   // This card is where an arrow is about to start from.
   linkSource: boolean;
@@ -907,7 +949,7 @@ function CanvasCard({
     // one, so it won the touch on every card and the card never moved -
     // the box was drawn instead. Whatever the surface can do with a
     // touch, a touch that begins on a card is not that.
-    .blocksExternalGesture(canvasPanGesture, canvasMarqueeGesture, canvasTapGesture)
+    .blocksExternalGesture(canvasPanGesture, canvasMarqueeGesture, canvasTapGesture, canvasHoldGesture)
     .onStart(() => {
       runOnJS(onDragStart)(block.id);
     })
@@ -942,7 +984,7 @@ function CanvasCard({
     .enabled(!editing)
     // A tap on a card is not a tap on the canvas beside it - which would
     // put the selection down in the same moment the card was chosen.
-    .blocksExternalGesture(canvasTapGesture, canvasMarqueeGesture)
+    .blocksExternalGesture(canvasTapGesture, canvasMarqueeGesture, canvasHoldGesture)
     .onEnd((e) => {
       runOnJS(handleTap)(posX.value, posY.value, e.absoluteX, e.absoluteY);
     });
@@ -953,7 +995,7 @@ function CanvasCard({
   const holdGesture = Gesture.LongPress()
     .enabled(!editing)
     .minDuration(450)
-    .blocksExternalGesture(canvasPanGesture, canvasMarqueeGesture, canvasTapGesture)
+    .blocksExternalGesture(canvasPanGesture, canvasMarqueeGesture, canvasTapGesture, canvasHoldGesture)
     .onStart(() => {
       runOnJS(onHold)(block.id);
     });
@@ -967,7 +1009,7 @@ function CanvasCard({
   // by the same zoom-divided delta a card does.
   const handleGesture = Gesture.Pan()
     .enabled(!editing)
-    .blocksExternalGesture(dragGesture, tapGesture, holdGesture, canvasPanGesture, canvasMarqueeGesture, canvasTapGesture)
+    .blocksExternalGesture(dragGesture, tapGesture, holdGesture, canvasPanGesture, canvasMarqueeGesture, canvasTapGesture, canvasHoldGesture)
     .onStart(() => {
       runOnJS(onHandleStart)(block.id);
     })
@@ -1239,19 +1281,15 @@ const styles = StyleSheet.create({
   // typed into.
   // A live arrow / the draft line: 2pt of the arrow's colour, positioned
   // and turned entirely by its animated transform.
-  linkDot: {
+  linkCross: {
     position: 'absolute',
     width: LINK_DOT,
     height: LINK_DOT,
     borderRadius: LINK_DOT / 2,
-    backgroundColor: PAPER_CARD,
-    borderWidth: 1.5,
-    borderColor: LINK_COLOR,
+    backgroundColor: LINK_COLOR,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  linkDotArmed: {
-    backgroundColor: LINK_COLOR,
+    zIndex: 3,
   },
   liveLine: {
     position: 'absolute',
