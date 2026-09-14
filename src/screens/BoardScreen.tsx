@@ -85,6 +85,7 @@ import { useContextMenu } from '../hooks/useContextMenu';
 import Menu from '../components/surfaces/Menu';
 import { FONT_BOLD, FONT_EXTRABOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_ISLAND, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { GlassPortal } from '../components/GlassPortal';
@@ -923,6 +924,7 @@ type Props = NativeStackScreenProps<BoardsStackParamList, 'Board'>;
 // existing file/photo/link comes straight out of AddExistingItemModal
 // unmodified, exactly like inserting one into a document does.
 export default function BoardScreen() {
+  const keyboardHeight = useKeyboardHeight();
   const boardFocused = useIsFocused();
   const boardInsets = useSafeAreaInsets();
   // Typed against BOTH param lists - this screen lives inside the "Дошки"
@@ -2601,7 +2603,7 @@ export default function BoardScreen() {
           animationType="fade"
           onRequestClose={() => setGroupPickerVisible(false)}
         >
-          <Pressable style={styles.sheetBackdrop} onPress={() => setGroupPickerVisible(false)}>
+          <Pressable style={[styles.sheetBackdrop, { paddingBottom: keyboardHeight }]} onPress={() => setGroupPickerVisible(false)}>
             <Pressable style={styles.sheet} onPress={() => {}}>
               <View style={styles.sheetHandle} />
               <Text style={styles.sheetTitle}>З якої групи</Text>
@@ -2649,7 +2651,7 @@ export default function BoardScreen() {
         />
 
         <Modal visible={addSheetVisible} transparent animationType="fade" onRequestClose={() => setAddSheetVisible(false)}>
-          <Pressable style={styles.sheetBackdrop} onPress={() => setAddSheetVisible(false)}>
+          <Pressable style={[styles.sheetBackdrop, { paddingBottom: keyboardHeight }]} onPress={() => setAddSheetVisible(false)}>
             <Pressable style={styles.sheet} onPress={() => {}}>
               <View style={styles.sheetHandle} />
               {/* First, because it's the one row that brings a whole

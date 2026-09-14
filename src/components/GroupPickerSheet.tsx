@@ -106,8 +106,8 @@ export default function GroupPickerSheet({ visible, kind, groups, onPick, onClos
 
   return (
     <GlassLayer visible={visible} onClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={[styles.sheet, { marginBottom: keyboardHeight }]} onPress={() => {}}>
+      <Pressable style={[styles.backdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
+        <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.handle} />
           <Text style={styles.title}>Групування</Text>
 

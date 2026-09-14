@@ -158,9 +158,9 @@ export default function TagPicker({
           parent it took the RN touch responder for every drag that did not
           land on a deeper child, which is what kept the list from
           scrolling. A tap outside still closes it. */}
-      <View style={styles.backdrop}>
+      <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={[styles.sheet, { marginBottom: keyboardHeight }]}>
+        <View style={styles.sheet}>
           <View style={styles.handle} />
 
           {mode === 'list' ? (

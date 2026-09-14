@@ -18,6 +18,7 @@ import {
   SHEET_BACKDROP,
   SHEET_WINDOW,
 } from '../constants/glass';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
@@ -35,6 +36,7 @@ type Props = {
 // TagPicker.tsx), just pre-filled from an existing tag and always in edit
 // mode rather than reached only through a first assignment.
 export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) {
+  const keyboardHeight = useKeyboardHeight();
   const [path, setPath] = useState('');
   const [iconQuery, setIconQuery] = useState('');
   const [selectedIcon, setSelectedIcon] = useState(TAG_ICONS[0]);
@@ -65,7 +67,7 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
           parent it took the RN touch responder for every drag that did
           not land on a deeper child, which is what kept the list from
           scrolling. A tap outside still closes it. */}
-      <View style={styles.backdrop}>
+      <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onCancel} />
         <View style={styles.sheet}>
           <View style={styles.handle} />

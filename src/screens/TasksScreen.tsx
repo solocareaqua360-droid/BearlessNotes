@@ -849,8 +849,8 @@ export default function TasksScreen() {
         )}
 
         <Modal visible={pickerTaskId !== null} transparent animationType="fade" onRequestClose={() => setPickerTaskId(null)}>
-          <Pressable style={styles.modalBackdrop} onPress={() => setPickerTaskId(null)}>
-            <Pressable style={[styles.modalSheet, { marginBottom: keyboardHeight }]} onPress={() => {}}>
+          <Pressable style={[styles.modalBackdrop, { paddingBottom: keyboardHeight }]} onPress={() => setPickerTaskId(null)}>
+            <Pressable style={styles.modalSheet} onPress={() => {}}>
               <View style={styles.modalHandle} />
               <Text style={styles.modalTitle}>Оберіть проект</Text>
 

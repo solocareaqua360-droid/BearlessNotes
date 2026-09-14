@@ -288,7 +288,7 @@ export default function FieldsEditorSheet({
 
   return (
     <GlassLayer visible={visible} onClose={onClose}>
-      <View style={styles.backdrop}>
+      <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         {/* Same keyboard-aware height as the row editor: sheet + keyboard
             must fit the screen, or the top of the list ends up above the
@@ -297,7 +297,6 @@ export default function FieldsEditorSheet({
           style={[
             styles.sheet,
             {
-              marginBottom: keyboardHeight,
               maxHeight: Math.min(windowHeight * 0.8, windowHeight - keyboardHeight - 48),
             },
           ]}

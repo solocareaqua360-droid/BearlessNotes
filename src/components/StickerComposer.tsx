@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -59,6 +60,7 @@ type Props = {
 // setting `visible` - this component has no opinion on how many stickers
 // already exist.
 export default function StickerComposer({ visible, onClose, editingTextSticker }: Props) {
+  const keyboardHeight = useKeyboardHeight();
   const [step, setStep] = useState<'choose' | 'text'>(editingTextSticker ? 'text' : 'choose');
   const [text, setText] = useState(editingTextSticker?.text ?? '');
   const [sketchVisible, setSketchVisible] = useState(false);
@@ -148,7 +150,7 @@ export default function StickerComposer({ visible, onClose, editingTextSticker }
   return (
     <>
       <Modal visible={visible && step === 'choose'} transparent animationType="fade" onRequestClose={onClose}>
-        <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable style={[styles.backdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
           <Pressable style={styles.sheet} onPress={() => {}}>
             <View style={styles.handle} />
             <Text style={styles.title}>Новий стікер</Text>

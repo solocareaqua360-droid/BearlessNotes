@@ -17,6 +17,7 @@ import {
   SHEET_BACKDROP,
   SHEET_WINDOW,
 } from '../constants/glass';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
@@ -61,6 +62,7 @@ export default function SaveDestinationSheet({
   onPickExistingBoard,
   onClose,
 }: Props) {
+  const keyboardHeight = useKeyboardHeight();
   const [documents, setDocuments] = useState<PickableDocument[]>([]);
   const [boards, setBoards] = useState<PickableBoard[]>([]);
   const [noteSearch, setNoteSearch] = useState('');
@@ -113,7 +115,7 @@ export default function SaveDestinationSheet({
           parent it took the RN touch responder for every drag that did
           not land on a deeper child, which is what kept the list from
           scrolling. A tap outside still closes it. */}
-      <View style={styles.backdrop}>
+      <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={styles.sheet}>
           <View style={styles.handle} />

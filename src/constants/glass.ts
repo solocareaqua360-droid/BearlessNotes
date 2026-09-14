@@ -56,8 +56,10 @@ export const SHEET_WINDOW = {
   borderColor: GLASS_EDGE,
 } as const;
 // For a window that is a direct child of GlassLayer (no backdrop view of
-// its own): the layer centres it, this gives it the same side margin.
+// its own): the same box without the dim, since the layer draws that. It
+// fills the layer so a percentage height inside it has something to be a
+// percentage of; pointerEvents="box-none" on it lets taps beside the
+// window through to the layer's own dim, which is what closes it.
 export const SHEET_FRAME = {
-  alignItems: 'center',
-  paddingHorizontal: 16,
+  ...SHEET_BACKDROP,
 } as const;

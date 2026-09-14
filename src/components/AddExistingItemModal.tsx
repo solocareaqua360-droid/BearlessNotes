@@ -29,6 +29,7 @@ import {
   SHEET_BACKDROP,
   SHEET_WINDOW,
 } from '../constants/glass';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
@@ -153,6 +154,7 @@ export default function AddExistingItemModal({
   onPickDocument,
   includeCustomDatabases,
 }: Props) {
+  const keyboardHeight = useKeyboardHeight();
   const [tab, setTab] = useState<Tab>('file');
   const [searchQuery, setSearchQuery] = useState('');
   const [files, setFiles] = useState<FileRow[]>([]);
@@ -295,7 +297,7 @@ export default function AddExistingItemModal({
           parent it took the RN touch responder for every drag that did
           not land on a deeper child, which is what kept the list from
           scrolling. A tap outside still closes it. */}
-      <View style={styles.backdrop}>
+      <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={styles.sheet}>
           <View style={styles.handle} />

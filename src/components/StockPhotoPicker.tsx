@@ -27,6 +27,7 @@ import {
   SHEET_FRAME,
   SHEET_WINDOW,
 } from '../constants/glass';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 
 // A free picture library beside the gallery button, the way Notion reaches
 // into Unsplash for a page cover - Pexels here (see utils/stockPhotos),
@@ -47,6 +48,7 @@ export default function StockPhotoPicker({
   // A local file, handed back exactly like a gallery pick would be.
   onPicked: (uri: string) => void;
 }) {
+  const keyboardHeight = useKeyboardHeight();
   // Which library is being searched. Openverse needs no key at all, so
   // the sheet opens working; Pexels appears as a second chip only for
   // someone who has actually got a key.
@@ -119,7 +121,7 @@ export default function StockPhotoPicker({
 
   return (
     <GlassLayer visible={visible} onClose={onClose} intensity={60}>
-      <View style={styles.frame} pointerEvents="box-none">
+      <View style={[styles.frame, { paddingBottom: keyboardHeight }]} pointerEvents="box-none">
       <View style={styles.sheet}>
         <View style={styles.header}>
           <Text style={styles.title}>Пошук зображень</Text>

@@ -48,6 +48,7 @@ import {
   SHEET_BACKDROP,
   SHEET_WINDOW,
 } from '../constants/glass';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { db } from '../firebase';
 import { deleteCustomDatabase } from '../utils/deleteCustomDatabase';
 import { CustomDatabase, CustomDatabaseRow, CustomDatabaseView, FieldDef, FieldType, Group } from '../types';
@@ -2168,7 +2169,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
             which is exactly what kept the field list from scrolling. With
             it behind instead, nothing above the list claims touches, and a
             tap outside the sheet still closes it. */}
-        <View style={styles.backdrop}>
+        <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={cancelRowEditor} />
           {/* maxHeight has to account for the keyboard this sheet is
               lifted above: at a flat 85% of the screen, sheet + keyboard
@@ -2179,7 +2180,6 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
             style={[
               styles.editorSheet,
               {
-                marginBottom: keyboardHeight,
                 // Small, and deliberately so. It was 85% of the screen,
                 // which on a phone is the screen - a page in all but
                 // name. The point of this form is that it is a form: it
@@ -2504,6 +2504,7 @@ function OptionPickerSheet({
   onClose: () => void;
 }) {
   const isMulti = field.type === 'multiSelect';
+  const keyboardHeight = useKeyboardHeight();
   const currentIds = isMulti
     ? Array.isArray(value)
       ? value
@@ -2514,7 +2515,7 @@ function OptionPickerSheet({
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      <Pressable style={[styles.backdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
         <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.handle} />
           <Text style={styles.title}>{field.name}</Text>
@@ -2629,8 +2630,8 @@ function RelationPickerSheet({
     const filtered = needle ? photos.filter((p) => (p.title ?? '').toLowerCase().includes(needle)) : photos;
     return (
       <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-        <Pressable style={styles.backdrop} onPress={onClose}>
-          <Pressable style={[styles.sheet, { marginBottom: keyboardHeight }]} onPress={() => {}}>
+        <Pressable style={[styles.backdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
+          <Pressable style={styles.sheet} onPress={() => {}}>
             <View style={styles.handle} />
             <Text style={styles.title}>{field.name}</Text>
             <TextInput
@@ -2677,8 +2678,8 @@ function RelationPickerSheet({
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={[styles.sheet, { marginBottom: keyboardHeight }]} onPress={() => {}}>
+      <Pressable style={[styles.backdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
+        <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.handle} />
           <Text style={styles.title}>{field.name}</Text>
           <TextInput
