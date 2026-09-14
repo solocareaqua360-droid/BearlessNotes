@@ -101,6 +101,7 @@ import { autoGrowInput } from '../utils/autoGrowInput';
 import { caretIndexFromDom } from '../utils/caretAtPoint';
 import { applyLiveRecord, recordIdFor, useLiveRecords } from '../hooks/useLiveRecords';
 import { attachmentInfoText } from '../utils/attachmentInfo';
+import { downloadToFolder } from '../utils/downloadToFolder';
 import AttachmentImage from '../components/AttachmentImage';
 import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
@@ -145,7 +146,6 @@ const DRAG_LONG_PRESS_MS = 500;
 // a word and start text selection (while editing) instead of scrolling.
 // This reserves a wide, blank strip the full height of the block instead.
 const TEXT_SWIPE_MARGIN = 24;
-const DOWNLOAD_DIR_STORAGE_KEY = 'bearlessNotes.downloadDirUri';
 
 // Small fixed palette rather than a full color picker - enough variety for
 // notes without the complexity of a hue/saturation UI.
@@ -203,49 +203,13 @@ function fileIconColorFor(name?: string): string {
 // fetch/parse logic lives in utils/linkPreview.ts, shared with LinksScreen's
 // own "+" button (adding a link with no document at all).
 
-// Asks once (via Android's Storage Access Framework) which folder to save
-// downloads into - the user picks it in the system's own file browser, so
-// it shows up there like any other downloaded file - and reuses that same
-// folder afterward instead of prompting on every download.
-async function getDownloadDirUri(forceReprompt = false): Promise<string | null> {
-  if (!forceReprompt) {
-    const stored = await AsyncStorage.getItem(DOWNLOAD_DIR_STORAGE_KEY);
-    if (stored) return stored;
-  }
-  const permission = await LegacyFileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-  if (!permission.granted) return null;
-  await AsyncStorage.setItem(DOWNLOAD_DIR_STORAGE_KEY, permission.directoryUri);
-  return permission.directoryUri;
-}
-
-// Returns the saved file's own content:// URI (for the post-download
-// "Показати в папці" toast) or null if the user never granted/re-granted a
-// download folder.
+// Saving a copy where the user can find it is the same job here as on
+// the Photos and Files screens, and it is done in one place now - see
+// utils/downloadToFolder, which also has a browser answer. This kept its
+// own copy of that logic for a while, with one branch the shared one
+// lacked and a folder key that happened to match; the two are one.
 async function downloadToDevice(sourceUri: string, fileName: string, mimeType: string): Promise<string | null> {
-  const dirUri = await getDownloadDirUri();
-  if (!dirUri) return null;
-  const dot = fileName.lastIndexOf('.');
-  const nameWithoutExt = dot > 0 ? fileName.slice(0, dot) : fileName;
-  const writeInto = async (targetDirUri: string) => {
-    const destUri = await LegacyFileSystem.StorageAccessFramework.createFileAsync(
-      targetDirUri,
-      nameWithoutExt,
-      mimeType
-    );
-    const content = await LegacyFileSystem.readAsStringAsync(sourceUri, { encoding: 'base64' });
-    await LegacyFileSystem.writeAsStringAsync(destUri, content, { encoding: 'base64' });
-    return destUri;
-  };
-  try {
-    return await writeInto(dirUri);
-  } catch {
-    // The previously granted folder may have been revoked since (e.g. the
-    // user cleared it from Android's settings) - ask once more instead of
-    // silently failing on every future download.
-    const freshDirUri = await getDownloadDirUri(true);
-    if (!freshDirUri) return null;
-    return await writeInto(freshDirUri);
-  }
+  return (await downloadToFolder(sourceUri, fileName, mimeType))?.destUri ?? null;
 }
 
 // Inline formatting is stored as plain markers inside the block's own text

@@ -53,8 +53,23 @@ export async function downloadToFolder(
   // The extension is the OS's business here: it appends its own from the
   // mime type, so a name carrying one already would end up doubled.
   const base = fileName.replace(/\.[^./\\]+$/, '');
-  const destUri = await LegacyFileSystem.StorageAccessFramework.createFileAsync(dirUri, base, mimeType);
-  const content = await LegacyFileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-  await LegacyFileSystem.writeAsStringAsync(destUri, content, { encoding: 'base64' });
-  return { destUri, fileName };
+  const writeInto = async (targetDirUri: string) => {
+    const destUri = await LegacyFileSystem.StorageAccessFramework.createFileAsync(targetDirUri, base, mimeType);
+    const content = await LegacyFileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+    await LegacyFileSystem.writeAsStringAsync(destUri, content, { encoding: 'base64' });
+    return destUri;
+  };
+  try {
+    return { destUri: await writeInto(dirUri), fileName };
+  } catch {
+    // The folder granted earlier may have been revoked since (cleared from
+    // Android's settings, say) - ask once more rather than fail silently
+    // on every download from now on. The editor's own copy of this logic
+    // had this branch and this one did not: the "subtly different" the
+    // comment above warns about, now one implementation.
+    const permission = await LegacyFileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+    if (!permission.granted) return null;
+    await AsyncStorage.setItem(DOWNLOAD_DIR_STORAGE_KEY, permission.directoryUri);
+    return { destUri: await writeInto(permission.directoryUri), fileName };
+  }
 }

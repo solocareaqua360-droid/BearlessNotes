@@ -5,11 +5,13 @@ import { GLASS_BODY, GLASS_EDGE, GLASS_TEXT, GLASS_TEXT_MUTED } from '../constan
 
 export type QuickLookKind = 'docx' | 'xlsx' | 'pdf';
 
-export function quickLookKindFor(fileName: string): QuickLookKind | null {
-  const name = fileName.toLowerCase().trim();
-  if (name.endsWith('.pdf')) return 'pdf';
-  if (name.endsWith('.docx')) return 'docx';
-  if (name.endsWith('.xlsx')) return 'xlsx';
+// Nothing gets a quick look in a browser - and that is the better
+// answer, not the poorer one. The caller treats null as "open it
+// elsewhere", and elsewhere here is a new tab: the browser renders a PDF
+// itself, natively, with search and zoom, which is more than the phone's
+// quick look ever offered. .docx/.xlsx land in the tab as a download,
+// which is also what a browser is for.
+export function quickLookKindFor(_fileName: string): QuickLookKind | null {
   return null;
 }
 
