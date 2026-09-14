@@ -4232,6 +4232,33 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     onSaveStatusChange?.(saveStatus);
   }, [saveStatus]);
 
+  // The canvas's "+": what the page's "/" menu offers for pictures,
+  // files and records, without leaving the canvas. A block is made at
+  // the place the canvas points at (the middle of the view), and the
+  // same handlers the page uses then fill it - so a picture taken here
+  // is a picture block like any other, mirrored into Фото, backed up to
+  // Drive, everything. Text is just the empty card, to be typed into.
+  async function addToCanvas(at: { x: number; y: number }) {
+    const choice = await ask({
+      title: 'Що додати?',
+      actions: [
+        { id: 'text', label: 'Текст', icon: 'text-outline' },
+        { id: 'camera', label: 'Камера', icon: 'camera-outline' },
+        { id: 'gallery', label: 'Зображення', icon: 'image-outline' },
+        { id: 'file', label: 'Файл', icon: 'document-outline' },
+        { id: 'existing', label: 'З бази', hint: 'Фото, файл, посилання або запис, що вже є', icon: 'albums-outline' },
+      ],
+    });
+    if (choice === 'cancel') return;
+    snapshotBeforeChange();
+    const created: Block = { ...newBlock(), canvas: at };
+    setBlocks((prev) => [...prev, created]);
+    if (choice === 'camera') takePhotoForBlock(created.id);
+    else if (choice === 'gallery') pickImageForBlock(created.id);
+    else if (choice === 'file') pickFileForBlock(created.id);
+    else if (choice === 'existing') setExistingItemPickerBlockId(created.id);
+  }
+
   function addBlockAtEnd() {
     snapshotBeforeChange();
     const created = newBlock();
@@ -4566,6 +4593,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           ref={canvasApiRef}
           onEditingChange={setCanvasEditing}
           links={canvasLinks}
+          onAdd={addToCanvas}
           // Arrows have a direction now - it is what says which end of a
           // chain is the beginning. So the same pair asked for the SAME
           // way round is the arrow being taken away; asked for the other

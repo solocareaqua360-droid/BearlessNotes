@@ -190,6 +190,7 @@ function DocumentCanvasInner({
   onEditingChange,
   links,
   onToggleLink,
+  onAdd,
 }: {
   blocks: Block[];
   // Called once, when a card is let go - not on every frame of the drag.
@@ -205,6 +206,10 @@ function DocumentCanvasInner({
   // The arrows, and the one gesture that makes and unmakes them.
   links: Record<string, CanvasLink>;
   onToggleLink: (from: string, to: string) => void;
+  // The "+" - asked with where the middle of the view is in surface
+  // coordinates, so whatever gets added lands where the eye already is
+  // rather than at the bottom of a column somewhere off-screen.
+  onAdd: (at: { x: number; y: number }) => void;
 }, ref: React.Ref<DocumentCanvasHandle>) {
   const { width } = useWindowDimensions();
   // The trackpad, on a laptop: two fingers move the canvas, a pinch zooms
@@ -751,6 +756,21 @@ function DocumentCanvasInner({
           </View>
         </Animated.View>
       </GestureDetector>
+      {/* The page has "Додати блок" at its foot and the "/" menu; the
+          canvas had no way to add anything, which meant no photo, no
+          file, no database record without leaving it. One button, icon
+          only, where the databases keep theirs. */}
+      <Pressable
+        style={styles.addButton}
+        onPress={() => {
+          const centre = toSurface(viewport.width / 2, viewport.height / 2);
+          // A little up and left of the exact middle, so the new card's
+          // top-left corner - not its centre - is where the eye is.
+          onAdd({ x: centre.x - CARD_WIDTH / 2, y: centre.y - 40 });
+        }}
+      >
+        <Ionicons name="add" size={28} color={PAPER_CARD} />
+      </Pressable>
       {blocks.length === 0 && (
         <View style={styles.emptyState} pointerEvents="none">
           <Ionicons name="shapes-outline" size={30} color={PAPER_TEXT_FAINT} />
@@ -1430,6 +1450,23 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: PAPER_EDGE,
     marginVertical: 8,
+  },
+  addButton: {
+    position: 'absolute',
+    right: 20,
+    bottom: 28,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: PAPER_TEXT,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+    zIndex: 5,
   },
   emptyState: {
     ...StyleSheet.absoluteFill,
