@@ -5047,7 +5047,20 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           android.softwareKeyboardLayoutMode), so the bar has to be placed
           at `bottom: keyboardHeight` by hand - nothing lifts it for us. */}
       {isToolbarVisible && (
-        <Animated.View style={[styles.pinnedToolbar, pinnedToolbarStyle]} pointerEvents="box-none">
+        <Animated.View
+          style={[styles.pinnedToolbar, pinnedToolbarStyle]}
+          pointerEvents="box-none"
+          // In a browser, pressing the mouse on anything takes the focus
+          // off the field - so reaching for a toolbar button blurred the
+          // block, the block stopped being the focused one, and the
+          // toolbar vanished under the pointer before the click landed.
+          // Refusing the mouse-down's default keeps the caret where it
+          // is; the click itself still arrives. A phone has no mouse and
+          // the prop is not sent there.
+          {...(Platform.OS === 'web'
+            ? ({ onMouseDown: (e: { preventDefault: () => void }) => e.preventDefault() } as object)
+            : {})}
+        >
           <EditorToolbar
             focusedBlockId={focusedBlockId}
             activeSelection={activeSelection}
