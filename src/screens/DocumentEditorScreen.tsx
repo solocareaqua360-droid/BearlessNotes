@@ -1,4 +1,4 @@
-import { ForwardedRef, ReactNode, forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { ForwardedRef, ReactNode, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -99,6 +99,7 @@ import { canPlaceCaretByTouch, measureNode } from '../utils/measureNode';
 import { setSelection } from '../utils/setSelection';
 import { autoGrowInput } from '../utils/autoGrowInput';
 import { caretIndexFromDom } from '../utils/caretAtPoint';
+import { applyLiveRecord, recordIdFor, useLiveRecords } from '../hooks/useLiveRecords';
 import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
@@ -2309,6 +2310,20 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // was current when the timeout/fetch was scheduled, not the latest.
   const blocksRef = useRef<Block[]>(blocks);
   blocksRef.current = blocks;
+
+  // The same blocks, with every photo/file/link one showing what its
+  // record says now rather than what it said when it was inserted. Only
+  // listened for when this document actually references something, so a
+  // plain text note opens no listeners at all.
+  const hasReferenceBlocks = useMemo(
+    () => blocks.some((b) => recordIdFor(b) !== null),
+    [blocks]
+  );
+  const liveRecords = useLiveRecords(hasReferenceBlocks);
+  const liveBlocks = useMemo(
+    () => (hasReferenceBlocks ? blocks.map((b) => applyLiveRecord(b, liveRecords)) : blocks),
+    [blocks, liveRecords, hasReferenceBlocks]
+  );
   // A link whose title couldn't be fetched automatically (a raw-coordinates
   // Maps link, or any page with no fetchable title) pauses the conversion
   // here instead of silently landing in the `links` mirror unnamed - an
@@ -2505,14 +2520,22 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         updatedAt: Date.now(),
         usedInDocuments: { [documentId]: true },
       };
-      if (b.imageTitle) photoDoc.title = b.imageTitle;
-      if (b.imageFit) photoDoc.imageFit = b.imageFit;
-      if (b.createdAt) photoDoc.createdAt = b.createdAt;
       // Only on first sync, same guard as the Drive backup below - a
       // genuinely new camera photo starts in the fixed "Фото" group, but
       // re-saving the document on every edit must never force it back
       // there after the user has since moved it to a different group.
       const isNewPhoto = !knownPhotoBlockIdsRef.current.has(b.id);
+      // The title obeys that same guard now, and for the same reason one
+      // step further on. It is written when this block CREATES the record
+      // and never again: after that the record owns it. Renaming a photo
+      // in its own database used to survive only until the next time a
+      // document mentioning it was touched, because this line wrote the
+      // block's copy - taken at insert time - straight back over it.
+      // Renaming from inside a document still works; it writes the record
+      // directly now (see renameImageBlock) instead of going through here.
+      if (isNewPhoto && b.imageTitle) photoDoc.title = b.imageTitle;
+      if (b.imageFit) photoDoc.imageFit = b.imageFit;
+      if (b.createdAt) photoDoc.createdAt = b.createdAt;
       if (isNewPhoto && b.imageSource === 'camera') photoDoc.groupId = CAMERA_PHOTOS_GROUP_ID;
       setDoc(doc(db, 'photos', b.id), photoDoc, { merge: true });
       // A genuinely new photo (not one already mirrored before this
@@ -2548,14 +2571,20 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         updatedAt: Date.now(),
         usedInDocuments: { [documentId]: true },
       };
+      const isNewFile = !knownFileBlockIdsRef.current.has(b.id);
       if (b.mimeType) fileDoc.mimeType = b.mimeType;
-      if (b.fileTitle) fileDoc.title = b.fileTitle;
+      // Written on creation only - see syncPhotosForDocument's guard on
+      // the same field. A file renamed in the Files database was losing
+      // that name to whichever document mentioned it next. Nothing renames
+      // a file from inside a document, so there is no second writer here
+      // to arrange, only this one to stop.
+      if (isNewFile && b.fileTitle) fileDoc.title = b.fileTitle;
       if (b.createdAt) fileDoc.createdAt = b.createdAt;
       setDoc(doc(db, 'files', b.id), fileDoc, { merge: true });
       // !b.driveFileId - see syncPhotosForDocument's identical guard: stops
       // a reference to an already-backed-up file (a different document's
       // existing file, just added here too) from re-uploading a duplicate.
-      if (!knownFileBlockIdsRef.current.has(b.id) && !b.driveFileId) {
+      if (isNewFile && !b.driveFileId) {
         backupFileToDrive(b.fileUri!, b.fileName ?? b.id, b.mimeType ?? 'application/octet-stream', 'Files').then(
           (result) => {
             if (result) updateDoc(doc(db, 'files', b.id), { driveFileId: result.fileId, driveBytes: result.bytes });
@@ -4128,6 +4157,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   function renameImageBlock(id: string, title: string) {
     snapshotBeforeChange();
     setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, imageTitle: title } : b)));
+    // Straight to the record, because the sync no longer carries titles
+    // for a photo that already exists - see syncPhotosForDocument. The
+    // block keeps its own copy as the fallback it has always been; the
+    // name everything actually shows comes from here.
+    setDoc(doc(db, 'photos', id), { title, updatedAt: Date.now() }, { merge: true });
   }
 
   // A shortcut for the same thing select-mode's own delete already does -
@@ -4483,7 +4517,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // The daily note's sheet runs under the rail, so its rows draw
           // no handle column - see BlockRow's hideHandle.
           hideHandle={embedded}
-          blocks={blocks}
+          // Drawn from the records as they are NOW, not as they were when
+          // the block was inserted - see useLiveRecords. Applied HERE and
+          // nowhere else on purpose: `blocks` is what gets saved, and a
+          // live value must never be written back into the document as
+          // though someone had typed it.
+          blocks={liveBlocks}
           onReorder={handleReorderBlocks}
           selectedIds={selectedIds}
           isSelectMode={isSelectMode}
