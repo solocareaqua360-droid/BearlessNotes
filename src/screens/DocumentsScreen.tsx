@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -271,6 +271,19 @@ export default function DocumentsScreen() {
   function explorerUp() {
     setExplorerPath((p) => p.split('/').slice(0, -1).join('/'));
   }
+  // The path strip: every level between the root and here, each a
+  // button. It scrolls sideways rather than wrapping, and turns to its
+  // end whenever the level changes, so where you are is always in view;
+  // past four levels the middle folds into "…", which a tap unfolds.
+  const crumbScrollRef = useRef<ScrollView | null>(null);
+  const [crumbsUnfolded, setCrumbsUnfolded] = useState(false);
+  useEffect(() => {
+    setCrumbsUnfolded(false);
+    const t = setTimeout(() => crumbScrollRef.current?.scrollToEnd({ animated: true }), 50);
+    return () => clearTimeout(t);
+  }, [explorerPath]);
+  const crumbSegments = explorerPath ? explorerPath.split('/') : [];
+  const crumbFolded = !crumbsUnfolded && crumbSegments.length > 3;
   useEffect(() => {
     if (!explorer || explorerPath === '') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -1021,12 +1034,51 @@ export default function DocumentsScreen() {
               explorerMode && (explorerFolders.length > 0 || (explorer && explorerPath !== '')) ? (
                 <View style={styles.explorerHead}>
                   {explorer && explorerPath !== '' && (
-                    <Pressable style={styles.explorerCrumb} onPress={explorerUp}>
-                      <Ionicons name="chevron-back" size={18} color={GLASS_TEXT} />
-                      <Text style={styles.explorerCrumbText} numberOfLines={1}>
-                        {explorerPath.split('/').join('  /  ')}
-                      </Text>
-                    </Pressable>
+                    <View style={styles.explorerCrumb}>
+                      <Pressable hitSlop={8} onPress={explorerUp} style={styles.crumbUp}>
+                        <Ionicons name="chevron-back" size={18} color={GLASS_TEXT} />
+                      </Pressable>
+                      <ScrollView
+                        ref={crumbScrollRef}
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.crumbStrip}
+                        keyboardShouldPersistTaps="handled"
+                      >
+                        <Pressable onPress={() => setExplorerPath('')} style={styles.crumbSegment}>
+                          <Text style={styles.crumbLabel}>Всі</Text>
+                        </Pressable>
+                        {crumbSegments.map((segment, index) => {
+                          const isLast = index === crumbSegments.length - 1;
+                          const target = crumbSegments.slice(0, index + 1).join('/');
+                          // The fold: with many levels the middle ones
+                          // become one "…" that a tap unfolds.
+                          const hidden = crumbFolded && index > 0 && index < crumbSegments.length - 2;
+                          const isFoldMark = crumbFolded && index === 1;
+                          if (hidden && !isFoldMark) return null;
+                          return (
+                            <View key={target} style={styles.crumbPair}>
+                              <Ionicons name="chevron-forward" size={14} color={GLASS_TEXT_FAINT} />
+                              {isFoldMark ? (
+                                <Pressable onPress={() => setCrumbsUnfolded(true)} style={styles.crumbSegment}>
+                                  <Text style={styles.crumbLabel}>…</Text>
+                                </Pressable>
+                              ) : (
+                                <Pressable
+                                  disabled={isLast}
+                                  onPress={() => setExplorerPath(target)}
+                                  style={[styles.crumbSegment, isLast && styles.crumbSegmentCurrent]}
+                                >
+                                  <Text style={[styles.crumbLabel, isLast && styles.crumbLabelCurrent]} numberOfLines={1}>
+                                    {segment}
+                                  </Text>
+                                </Pressable>
+                              )}
+                            </View>
+                          );
+                        })}
+                      </ScrollView>
+                    </View>
                   )}
                   {explorerFolders.map((folder) => (
                     <Pressable
@@ -1594,13 +1646,36 @@ const styles = StyleSheet.create({
   explorerCrumb: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
+    gap: 4,
+    paddingVertical: 4,
   },
-  explorerCrumbText: {
-    flex: 1,
+  crumbUp: {
+    padding: 4,
+  },
+  crumbStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 8,
+  },
+  crumbPair: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  crumbSegment: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+  },
+  crumbSegmentCurrent: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  crumbLabel: {
     fontSize: 15,
     fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT_MUTED,
+  },
+  crumbLabelCurrent: {
     color: GLASS_TEXT,
   },
   folderRow: {
