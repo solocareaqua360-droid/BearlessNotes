@@ -98,6 +98,7 @@ import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { canPlaceCaretByTouch, measureNode } from '../utils/measureNode';
 import { setSelection } from '../utils/setSelection';
 import { autoGrowInput } from '../utils/autoGrowInput';
+import { caretIndexFromDom } from '../utils/caretAtPoint';
 import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
@@ -1060,10 +1061,21 @@ function BlockRow({
   async function activateAtTouch(e: GestureResponderEvent) {
     const { pageX, pageY } = e.nativeEvent;
     const textNode = lockedTextRef.current;
-    // Just open it, and let the platform place the caret - which in a
-    // browser is what a real text field does on its own. See
-    // canPlaceCaretByTouch.
-    if (!canPlaceCaretByTouch || !textNode || !item.text) {
+    if (!textNode || !item.text) {
+      onActivate(item.id);
+      return;
+    }
+    // A browser can be asked outright which character the click landed
+    // on, and it answers without any of the measuring below. That is what
+    // makes the FIRST click place the cursor here rather than merely
+    // waking the block up.
+    const fromDom = caretIndexFromDom(textNode, pageX, pageY);
+    if (fromDom !== null) {
+      const domSegments = parseFormattedText(item.text);
+      onActivate(item.id, rawIndexForDisplayIndex(domSegments, item.text, fromDom));
+      return;
+    }
+    if (!canPlaceCaretByTouch) {
       onActivate(item.id);
       return;
     }
