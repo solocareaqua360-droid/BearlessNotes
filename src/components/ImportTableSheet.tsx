@@ -423,6 +423,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
                     value={databaseName}
                     onChangeText={setDatabaseName}
                     placeholder="Назва бази"
+                    placeholderTextColor={GLASS_TEXT_FAINT}
                   />
                 </>
               )}

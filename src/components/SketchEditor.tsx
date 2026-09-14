@@ -550,6 +550,7 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
                 onChangeText={setTextValue}
                 onSubmitEditing={commitText}
                 placeholder="Текст…"
+                placeholderTextColor="rgba(255,255,255,0.3)"
                 style={styles.textPromptInput}
               />
               <View style={styles.textPromptButtons}>

@@ -84,7 +84,7 @@ import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { useContextMenu } from '../hooks/useContextMenu';
 import Menu from '../components/surfaces/Menu';
 import { FONT_BOLD, FONT_EXTRABOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { GLASS_ISLAND, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import { GLASS_ISLAND, GLASS_TEXT_FAINT, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
@@ -2810,6 +2810,7 @@ export default function BoardScreen() {
                 value={editingText}
                 onChangeText={setEditingText}
                 placeholder="Текст…"
+                placeholderTextColor={GLASS_TEXT_FAINT}
                 style={styles.textEditInput}
               />
               <View style={styles.textEditColors}>

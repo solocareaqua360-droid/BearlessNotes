@@ -156,6 +156,7 @@ export default function GroupPickerSheet({ visible, kind, groups, onPick, onClos
               value={newGroupName}
               onChangeText={setNewGroupName}
               placeholder="Нова група"
+              placeholderTextColor={GLASS_TEXT_FAINT}
               onSubmitEditing={addGroup}
               returnKeyType="done"
             />

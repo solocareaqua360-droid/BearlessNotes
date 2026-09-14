@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import { GLASS_TEXT_FAINT, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -185,6 +185,7 @@ export default function StickerComposer({ visible, onClose, editingTextSticker }
               value={text}
               onChangeText={setText}
               placeholder="Коротка думка…"
+              placeholderTextColor={GLASS_TEXT_FAINT}
               style={styles.textInput}
             />
             <Text style={styles.counter}>

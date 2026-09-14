@@ -1098,6 +1098,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           value={typeof value === 'string' ? value : ''}
           onChangeText={(text) => setDraftValue(field.id, text)}
           placeholder={field.name}
+          placeholderTextColor={GLASS_TEXT_FAINT}
         />
       );
     }
@@ -1109,6 +1110,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           onChangeText={(text) => setDraftValue(field.id, text === '' ? '' : Number(text.replace(',', '.')) || 0)}
           keyboardType="numeric"
           placeholder={field.name}
+          placeholderTextColor={GLASS_TEXT_FAINT}
         />
       );
     }
@@ -1939,7 +1941,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder="Пошук у базі"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={GLASS_TEXT_FAINT}
             style={styles.searchInput}
           />
         </View>
@@ -2776,6 +2778,7 @@ function RelationPickerSheet({
               value={search}
               onChangeText={setSearch}
               placeholder="Пошук фото"
+              placeholderTextColor={GLASS_TEXT_FAINT}
             />
             {clearRow}
             <ScrollView style={styles.relationPickerScroll} keyboardShouldPersistTaps="handled">
@@ -2824,6 +2827,7 @@ function RelationPickerSheet({
             value={search}
             onChangeText={setSearch}
             placeholder={relatedDatabase ? `Пошук у "${relatedDatabase.name}"` : 'Пошук'}
+            placeholderTextColor={GLASS_TEXT_FAINT}
           />
           {clearRow}
           <ScrollView style={styles.relationPickerScroll} keyboardShouldPersistTaps="handled">

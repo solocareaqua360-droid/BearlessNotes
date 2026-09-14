@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import { GLASS_TEXT_FAINT, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import {
   ActivityIndicator,
   Keyboard,
@@ -897,6 +897,7 @@ export default function TasksScreen() {
                   value={newProjectName}
                   onChangeText={setNewProjectName}
                   placeholder="Новий проект"
+                  placeholderTextColor={GLASS_TEXT_FAINT}
                   onSubmitEditing={addProject}
                   returnKeyType="done"
                 />

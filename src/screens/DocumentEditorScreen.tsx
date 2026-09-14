@@ -4854,6 +4854,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                 value={linkTitlePromptValue}
                 onChangeText={setLinkTitlePromptValue}
                 placeholder="Наприклад: Кафе на Портовій"
+                placeholderTextColor={GLASS_TEXT_FAINT}
                 style={styles.linkPromptInput}
               />
               <View style={styles.linkPromptButtons}>
