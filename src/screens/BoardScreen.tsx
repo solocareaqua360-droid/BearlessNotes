@@ -41,6 +41,7 @@ import {
   updateDoc,
 } from '../firestore';
 import { addDoc, setDoc } from '../utils/owned';
+import { applyLiveRecord, recordIdFor, useLiveRecords } from '../hooks/useLiveRecords';
 import * as Clipboard from 'expo-clipboard';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import { db } from '../firebase';
@@ -2254,6 +2255,12 @@ export default function BoardScreen() {
   }
 
   const cardById = new Map(cards.map((c) => [c.id, c]));
+
+  // The names and pictures the reference cards show, as their records say
+  // them now - see useLiveRecords. Listened for only when this board has
+  // a card that refers to something.
+  const hasReferenceCards = cards.some((c) => recordIdFor(c) !== null);
+  const liveRecords = useLiveRecords(hasReferenceCards);
   // A dragged card's live position lives in its own shared values, which
   // the connection lines (drawn from React state) can't see - so rather
   // than leave a line anchored to where the card WAS for the length of the
@@ -2381,7 +2388,17 @@ export default function BoardScreen() {
                 return (
                   <DraggableCard
                     key={card.id}
-                    card={card}
+                    // Drawn from the record as it is NOW - the same
+                    // treatment a document's blocks get, and for the same
+                    // reason. A card carries the photo's name as it was
+                    // when the card was made, so renaming the photo in its
+                    // database changed it everywhere except here.
+                    //
+                    // Only what is DRAWN is swapped. `cards` is what gets
+                    // saved back to the board, and a live value must never
+                    // be written into it as though someone had moved or
+                    // edited the card.
+                    card={applyLiveRecord(card, liveRecords)}
                     posX={position.x}
                     posY={position.y}
                     canvasScale={scale}

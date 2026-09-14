@@ -69,7 +69,7 @@ function loadGis(): Promise<void> {
 // back without anything appearing on screen. Only the first time - and
 // only from a real click, because a browser blocks a popup that no one
 // asked for - does it need the window.
-export async function getDriveToken(interactive: boolean): Promise<string | null> {
+export async function getDriveToken(interactive: boolean, hint?: string | null): Promise<string | null> {
   if (hasDriveToken()) return token;
   await loadGis();
   const google = (window as unknown as { google?: { accounts: { oauth2: { initTokenClient: (c: unknown) => TokenClient } } } })
@@ -86,6 +86,13 @@ export async function getDriveToken(interactive: boolean): Promise<string | null
     client = google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
       scope: DRIVE_SCOPE,
+      // WHICH account, said out loud. The token itself lives only in this
+      // page's memory, so every reload has to ask for it again - silently,
+      // which works only while Google can tell which account is meant. On
+      // a browser signed into two of them it cannot, so the silent attempt
+      // failed every time and the "Підключити Диск" bar came back after
+      // each reload. The hint is the account already signed in here.
+      ...(hint ? { hint } : {}),
       callback: (response: { access_token?: string; expires_in?: number }) => {
         if (response.access_token) {
           token = response.access_token;

@@ -28,14 +28,20 @@ export type LiveRecords = Record<string, Partial<Block>>;
 // the block id (see blockFromPhoto/blockFromFile). A link cannot: its
 // record is keyed by the URL, canonicalised, so that the same video pasted
 // in two forms is one row - see linkDocId.
-export function recordIdFor(block: Block): string | null {
+// Typed by shape rather than by name, so a board CARD fits as readily as a
+// document BLOCK: the two differ (a card can be a whole document, a block
+// cannot) but both carry an id, a type and a link's url, which is all this
+// needs. They are the same reference either way.
+type Referencing = { id: string; type?: string; linkUrl?: string };
+
+export function recordIdFor(block: Referencing): string | null {
   const type = block.type ?? 'paragraph';
   if (type === 'image' || type === 'file') return block.id;
   if (type === 'link' && block.linkUrl) return linkDocId(block.linkUrl);
   return null;
 }
 
-export function applyLiveRecord(block: Block, records: LiveRecords): Block {
+export function applyLiveRecord<T extends Referencing>(block: T, records: LiveRecords): T {
   const id = recordIdFor(block);
   if (!id) return block;
   const live = records[id];

@@ -137,7 +137,7 @@ export default function App() {
   // scope, the token comes back with nothing appearing on screen, and the
   // pictures are simply there.
   useEffect(() => {
-    if (user) getDriveToken(false).then(() => setDrive(hasDriveToken()));
+    if (user) getDriveToken(false, user.email).then(() => setDrive(hasDriveToken()));
     return subscribeToDriveToken(() => setDrive(hasDriveToken()));
   }, [user]);
 
@@ -224,7 +224,7 @@ export default function App() {
               <Text style={styles.driveText}>Картинки лежать на Google Диску</Text>
               <Pressable
                 style={styles.driveButton}
-                onPress={() => getDriveToken(true).then(() => setDrive(hasDriveToken()))}
+                onPress={() => getDriveToken(true, user.email).then(() => setDrive(hasDriveToken()))}
               >
                 <Text style={styles.driveButtonLabel}>Підключити Диск</Text>
               </Pressable>
