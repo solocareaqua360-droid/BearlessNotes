@@ -1004,10 +1004,21 @@ export default function BoardScreen() {
     columns: [],
     connections: [],
   });
-  // A board written before cards were keyed still holds arrays. Merging a
-  // keyed patch into an array REPLACES it - so the first save of such a
-  // board writes every part whole, once, and it is keyed from then on.
-  const legacyShapeRef = useRef(false);
+  // What shape the DOCUMENT is in, which decides how a save may be
+  // written - and the one thing here that must never be guessed.
+  //
+  // 'array'   - written before cards were keyed. Merging a keyed patch
+  //             into an array replaces it, so such a board is written
+  //             whole once, and is keyed from then on.
+  // 'keyed'   - the normal case: write only what changed.
+  // 'unknown' - the CACHE says array. That is not evidence: the cache can
+  //             be a copy from before another device migrated the board,
+  //             and writing it whole from here would put this device's
+  //             stale memory over everything that has happened since.
+  //             Which is exactly what it did - a card that existed only
+  //             on the other device stopped existing. So nothing is
+  //             written at all until the server says which it is.
+  const shapeRef = useRef<'unknown' | 'array' | 'keyed'>('keyed');
   // The card a connect-drag started on. A ref, not state, because the
   // gesture's own worklet closure is captured at creation time - by the
   // time onEnd fires, a state value set during the same gesture would
@@ -1043,8 +1054,12 @@ export default function BoardScreen() {
       const loadedCards = readBoardPart<BoardCard>(data?.cards);
       const loadedColumns = readBoardPart<BoardColumn>(data?.columns);
       const loadedConnections = readBoardPart<BoardConnection>(data?.connections);
-      legacyShapeRef.current =
+      const looksLikeArray =
         Array.isArray(data?.cards) || Array.isArray(data?.columns) || Array.isArray(data?.connections);
+      // A keyed copy is trustworthy even from the cache - the change is
+      // one way, and nothing turns a map back into an array. An array is
+      // only believed when the server itself says so.
+      shapeRef.current = !looksLikeArray ? 'keyed' : snapshot.metadata.fromCache ? 'unknown' : 'array';
       savedRef.current = { cards: loadedCards, columns: loadedColumns, connections: loadedConnections };
       setTitle(data?.title ?? 'Без назви');
       setCards(loadedCards);
@@ -1058,18 +1073,26 @@ export default function BoardScreen() {
   useEffect(() => {
     if (!isLoaded) return;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(() => {
+    const attemptSave = () => {
       // Cleared as the write goes out: the listener above reads this to
       // tell "a local change is waiting to be written" from "nothing
       // pending, so whatever arrives is news".
       saveTimeoutRef.current = null;
+      // Nothing is written while the shape is in doubt - see shapeRef.
+      // It comes back to ask again rather than giving up, because the
+      // change is real and the only thing missing is the server's word
+      // on how to write it down.
+      if (shapeRef.current === 'unknown') {
+        saveTimeoutRef.current = setTimeout(attemptSave, 1500);
+        return;
+      }
       // Written down before the write goes out: what comes back on the
       // listener a moment later is this same stamp, and that is how an
       // echo of our own write is told from another device's news.
       const updatedAt = Date.now();
       lastWriteAtRef.current = updatedAt;
       const saved = savedRef.current;
-      const whole = legacyShapeRef.current;
+      const whole = shapeRef.current === 'array';
       const patch: Record<string, unknown> = { title, updatedAt };
       // Whole once for a board still in the old shape, the difference
       // ever after.
@@ -1079,14 +1102,15 @@ export default function BoardScreen() {
       if (cardPatch) patch.cards = cardPatch;
       if (columnPatch) patch.columns = columnPatch;
       if (connectionPatch) patch.connections = connectionPatch;
-      legacyShapeRef.current = false;
+      shapeRef.current = 'keyed';
       // Recorded as sent, not as acknowledged: Firestore keeps an unsent
       // write on disk and replays it in order, so it WILL arrive - and
       // until it does, the next difference must be measured against it
       // rather than against what the server has yet to hear.
       savedRef.current = { cards, columns, connections };
       setDoc(doc(db, 'boards', boardId), patch, { merge: true });
-    }, AUTOSAVE_DELAY_MS);
+    };
+    saveTimeoutRef.current = setTimeout(attemptSave, AUTOSAVE_DELAY_MS);
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
@@ -1252,6 +1276,11 @@ export default function BoardScreen() {
     });
 
   const panGesture = Gesture.Pan()
+    // A hold and a drag start the same way, and the canvas used to take
+    // the very first pixel - so a hand that meant to hold had already
+    // moved the board before the press could count. Now it has to travel
+    // before it is a drag, which leaves room for the hold to win.
+    .minDistance(12)
     .onUpdate((e) => {
       translateX.value = savedTranslateX.value + e.translationX;
       translateY.value = savedTranslateY.value + e.translationY;
@@ -1416,7 +1445,9 @@ export default function BoardScreen() {
   // uses to mean "I want to do something with these, not to them", and on
   // a laptop it is the press that the mouse has been holding anyway.
   const holdToSelectGesture = Gesture.LongPress()
-    .minDuration(400)
+    .minDuration(350)
+    // A hand is never perfectly still, least of all on a trackpad.
+    .maxDistance(10)
     .onStart(() => {
       runOnJS(hapticPickUp)();
       runOnJS(setCanvasTool)('select');
@@ -1705,6 +1736,13 @@ export default function BoardScreen() {
         | { cards?: unknown; columns?: unknown; connections?: unknown; updatedAt?: number }
         | undefined;
       if (!data) return;
+      // The server has spoken, so the shape is no longer in doubt.
+      if (!snapshot.metadata.fromCache) {
+        shapeRef.current =
+          Array.isArray(data.cards) || Array.isArray(data.columns) || Array.isArray(data.connections)
+            ? 'array'
+            : 'keyed';
+      }
       // Our own write, still on its way to the server: Firestore shows it
       // locally first, and that reflection is not news from anywhere.
       if (snapshot.metadata.hasPendingWrites) return;
