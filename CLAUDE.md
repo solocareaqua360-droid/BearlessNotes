@@ -304,6 +304,12 @@ and cached by Metro, so an export following an `eas update` can reuse
 modules built with the empty ones. The same trap, from the native side,
 is written up in `src/utils/googleClient.ts`.
 
+**After every web build, close every tab of the app and open one fresh
+one.** A tab keeps running the bundle it loaded, however many times the
+files on disk change; two tabs on two versions of the sync code fought
+over one block every 1.6 seconds until the old one was closed (2026-09-15),
+and it looked exactly like "the laptop overwrites the phone".
+
 Serve the export with `scratchpad/serve.py <port> web-build` rather than
 `python3 -m http.server`: it adds `Cache-Control: no-store`. A fresh
 export gives the bundle a new hashed name but leaves `index.html` named
