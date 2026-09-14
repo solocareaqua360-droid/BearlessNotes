@@ -17,6 +17,7 @@ import * as Updates from 'expo-updates';
 import { doc, onSnapshot } from '../firestore';
 import { auth, db, signInWithGoogleAccount } from '../firebase';
 import {
+  adoptSignedInAccountForDrive,
   connectGoogleDrive,
   disconnectGoogleDrive,
   DriveStorageQuota,
@@ -212,6 +213,10 @@ export default function SettingsScreen() {
     try {
       const result = await signInWithGoogleAccount();
       setAccountEmail(result.email);
+      // The same sign-in already carries Drive - see
+      // adoptSignedInAccountForDrive. Said here so the Drive card stops
+      // asking for something it has: one sign-in, not two.
+      setEmail(await adoptSignedInAccountForDrive().catch(() => null));
       if (result.hadToSwitch) {
         notify('Увійшли в наявний акаунт', 'Цим акаунтом уже входили раніше, тож прив\'язати до нього дані цього пристрою не вийшло - вони лишились під попередньою анонімною особою.');
       }

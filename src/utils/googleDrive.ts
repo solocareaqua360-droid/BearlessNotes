@@ -51,6 +51,25 @@ async function requestDriveScope(): Promise<boolean> {
   return response.data.scopes?.includes(DRIVE_SCOPE) ?? false;
 }
 
+// Signing into the account IS signing into Drive - there is one
+// GoogleSignin session here, and ensureGoogleConfigured asks for the
+// Drive scope in it from the start. So after signInWithGoogleAccount
+// there is nothing left to connect: the session exists, the scope is
+// granted, uploads work.
+//
+// Settings showed "not connected" anyway, because it reads that state
+// once when the screen opens and nothing told it to look again. Two
+// buttons, one account, and the second one did over what the first had
+// already done - which is exactly the unexplainable extra step this
+// removes. It asks for the scope only in the one case it can be
+// missing: an account signed in before the app ever wanted Drive.
+export async function adoptSignedInAccountForDrive(): Promise<string | null> {
+  ensureConfigured();
+  if (!GoogleSignin.hasPreviousSignIn()) return null;
+  if (!hasDriveScope()) await requestDriveScope();
+  return getConnectedEmail();
+}
+
 // Throws on cancel/failure - the Settings screen shows that as "not
 // connected" rather than treating it as a real error.
 export async function connectGoogleDrive(): Promise<string> {
