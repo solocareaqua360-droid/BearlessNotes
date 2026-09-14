@@ -14,10 +14,11 @@
 export function autoGrowInput(input: unknown): void {
   const element = input as HTMLTextAreaElement | null;
   if (!element || typeof element.scrollHeight !== 'number' || !element.style) return;
-  // Overridden here because the shared style sets flex: 1, which on a
-  // phone lets the field fill the row and here would let the row's height
-  // decide the field's - the wrong way round.
-  element.style.flex = 'none';
+  // `flex` is deliberately left alone. The block row lays out
+  // HORIZONTALLY, so the shared style's flex: 1 governs the field's WIDTH,
+  // not its height - clearing it made the field shrink to a textarea's
+  // default twenty columns while fixing nothing, since height was never
+  // flex's to decide here.
   element.style.overflow = 'hidden';
   element.style.height = '0px';
   element.style.height = `${element.scrollHeight}px`;
