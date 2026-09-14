@@ -8,8 +8,8 @@ import { useRailLayout } from '../constants/rail';
 // agree without measuring one another.
 // A screen whose capsule carries a third button passes its height
 // (CAPSULE_HEIGHT_3) - everything below the capsule is spaced against it.
-export function useRail(capsuleHeight?: number) {
+export function useRail(capsuleHeight?: number, actionsHeight?: number) {
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  return useRailLayout(height, insets.top, insets.bottom, capsuleHeight);
+  return useRailLayout(height, insets.top, insets.bottom, capsuleHeight, actionsHeight);
 }

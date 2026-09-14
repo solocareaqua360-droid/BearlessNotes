@@ -13,7 +13,8 @@ import Menu from './surfaces/Menu';
 import { useBlurTarget } from './GlassTarget';
 import ContentColumn from './ContentColumn';
 import ProjectTabsRow from './ProjectTabsRow';
-import SortMenuRows from './SortMenuRows';
+import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
+import RailCapsule from './RailCapsule';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from './TagsDrawer';
 import BulkActionBar from './BulkActionBar';
 import { useRail } from '../hooks/useRail';
@@ -21,7 +22,7 @@ import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_ISLAND, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
-import { CAPSULE_DROP, CAPSULE_HEIGHT_3, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
+import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_3, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
 // Everything a database screen puts AROUND its records: the gradient it
 // stands on, the capsule on the rail (search / "..." / the way out), the
@@ -104,7 +105,8 @@ export default function DatabaseChrome<T extends { id: string }>({
   const insets = useSafeAreaInsets();
   // Three buttons in the capsule, so the rail spaces what is under it
   // against the taller one.
-  const rail = useRail(CAPSULE_HEIGHT_3);
+  const rail = useRail(CAPSULE_HEIGHT_3, CAPSULE_HEIGHT);
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [menuOpen, setMenuOpen] = useState(false);
   // The chrome floats over the cards, so its height decides where the
@@ -143,27 +145,48 @@ export default function DatabaseChrome<T extends { id: string }>({
           style={{ position: 'absolute', top: 96, right: RAIL_CLEARANCE }}
         >
           {menuRows?.(() => setMenuOpen(false))}
-          <SortMenuRows sortPref={list.sortPref} onSelectField={list.selectSortField} accentColor={accent} />
-          {bulk && (
-            <>
-              <View style={menuStyles.menuRule} />
-              <Pressable
-                style={menuStyles.menuRow}
-                onPress={() => {
-                  setMenuOpen(false);
-                  list.toggleSelectMode();
-                }}
-              >
-                <Ionicons
-                  name={list.isSelectMode ? 'close-outline' : 'checkmark-circle-outline'}
-                  size={17}
-                  color={GLASS_TEXT}
-                />
-                <Text style={menuStyles.menuRowLabel}>{list.isSelectMode ? 'Скасувати вибір' : 'Вибрати'}</Text>
-              </Pressable>
-            </>
-          )}
         </Menu>
+
+        {/* The actions capsule - sort, and choosing where the screen has
+            bulk actions. Rows of the "..." menu until now; see
+            RailCapsule. */}
+        {isFocused && !searchingAlone && (
+          <RailCapsule
+            bottom={rail.actionsBottom}
+            buttons={[
+              { icon: 'swap-vertical-outline', onPress: () => setSortMenuOpen((v) => !v), active: sortMenuOpen },
+              ...(bulk
+                ? [
+                    {
+                      icon: (list.isSelectMode ? 'close-outline' : 'checkmark-circle-outline') as
+                        | 'close-outline'
+                        | 'checkmark-circle-outline',
+                      onPress: () => list.toggleSelectMode(),
+                      active: list.isSelectMode,
+                    },
+                  ]
+                : []),
+            ]}
+          />
+        )}
+        <Menu
+          visible={sortMenuOpen}
+          onClose={() => setSortMenuOpen(false)}
+          accent={accent}
+          entries={[
+            { kind: 'section', label: 'Сортування' },
+            ...FIELD_ORDER.map((field) => ({
+              label: FIELD_LABELS[field],
+              icon: FIELD_ICONS[field],
+              checked: list.sortPref.field === field,
+              onPress: () => {
+                list.selectSortField(field);
+                setSortMenuOpen(false);
+              },
+            })),
+          ]}
+          style={{ position: 'absolute', right: RAIL_CLEARANCE, bottom: rail.actionsBottom }}
+        />
 
         {/* The tabs float over the cards rather than standing above them,
             so a card slides under them and off the top of the screen. */}

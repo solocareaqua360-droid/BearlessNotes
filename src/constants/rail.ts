@@ -71,19 +71,28 @@ export const CAPSULE_HEIGHT_3 = CAPSULE_HEIGHT + 24 + 1 + 18 * 2;
 export const CAPSULE_DROP = 59;
 const ISLAND_DROP = 10;
 
+// `actionsHeight`: the slot above the add button used to be the folder
+// button (RAIL_WIDTH tall). The folder button is gone - the drawer opens
+// on a swipe - and the slot holds the ACTIONS capsule now (sort, select),
+// which is a capsule's height; a screen without one keeps the old size
+// so nothing else moves.
 export function useRailLayout(
   windowHeight: number,
   insetTop: number,
   insetBottom: number,
-  capsuleHeight: number = CAPSULE_HEIGHT
+  capsuleHeight: number = CAPSULE_HEIGHT,
+  actionsHeight: number = RAIL_WIDTH
 ) {
   const tagRowBottom = insetBottom + TAG_ROW_PAD;
   const foot = tagRowBottom + TAG_ROW_HEIGHT + RAIL_GAP - ISLAND_DROP;
   const head = insetTop + CHROME_TOP + CAPSULE_DROP + capsuleHeight;
   const free = windowHeight - head - foot;
-  const gap = Math.max(RAIL_GAP, (free - (RAIL_WIDTH * 2 + NAV_HEIGHT)) / 4);
+  const gap = Math.max(RAIL_GAP, (free - (actionsHeight + RAIL_WIDTH + NAV_HEIGHT)) / 4);
   const navBottom = foot + gap;
   const addBottom = navBottom + NAV_HEIGHT + gap;
-  const tagBottom = addBottom + RAIL_WIDTH + gap;
-  return { tagRowBottom, navBottom, addBottom, tagBottom };
+  // The bottom edge of the slot above the add button - the actions
+  // capsule's, where there is one. Kept under its old name too.
+  const actionsBottom = addBottom + RAIL_WIDTH + gap;
+  const tagBottom = actionsBottom;
+  return { tagRowBottom, navBottom, addBottom, tagBottom, actionsBottom };
 }

@@ -47,7 +47,9 @@ import { applyLiveRecord, useLiveRecords } from '../hooks/useLiveRecords';
 import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import DocumentEditorScreen from './DocumentEditorScreen';
-import SortMenuRows from '../components/SortMenuRows';
+import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from '../components/SortMenuRows';
+import RailCapsule from '../components/RailCapsule';
+import Menu from '../components/surfaces/Menu';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from '../components/TagsDrawer';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import GroupPickerSheet from '../components/GroupPickerSheet';
@@ -68,15 +70,7 @@ import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import SketchEditor from '../components/SketchEditor';
 import { BlurView } from 'expo-blur';
 import { GlassPortal } from '../components/GlassPortal';
-import {
-  CAPSULE_DROP,
-  CHROME_TOP,
-  NAV_HEIGHT,
-  RAIL_CLEARANCE,
-  RAIL_GAP,
-  RAIL_RIGHT,
-  RAIL_WIDTH,
-} from '../constants/rail';
+import { CAPSULE_DROP, CAPSULE_HEIGHT, CHROME_TOP, NAV_HEIGHT, RAIL_CLEARANCE, RAIL_GAP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import { useRail } from '../hooks/useRail';
 import { useBlurTarget } from '../components/GlassTarget';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
@@ -501,7 +495,10 @@ export default function DocumentsScreen() {
   // has to withdraw when this screen isn't the one on show.
   const isFocused = useIsFocused();
   const blurTarget = useBlurTarget();
-  const rail = useRail();
+  // The rail carries an ACTIONS capsule now, a capsule's height where the
+  // folder button stood - see RailCapsule.
+  const rail = useRail(CAPSULE_HEIGHT, CAPSULE_HEIGHT);
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   // How far the list has to clear the bottom edge so its last card never
   // ends up sitting behind the navigation island - the island is the
   // tallest thing on the rail's foot and the closest to that edge.
@@ -958,22 +955,6 @@ export default function DocumentsScreen() {
                     <Ionicons name="grid-outline" size={17} color={GLASS_TEXT} />
                     <Text style={styles.menuRowLabel}>Сітка</Text>
                     {viewMode === 'grid' && <Ionicons name="checkmark-outline" size={18} color={ACCENT} />}
-                  </Pressable>
-                  <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
-                  <View style={styles.menuRule} />
-                  <Pressable
-                    style={styles.menuRow}
-                    onPress={() => {
-                      setMenuOpen(false);
-                      toggleSelectMode();
-                    }}
-                  >
-                    <Ionicons
-                      name={isSelectMode ? 'close-outline' : 'checkmark-circle-outline'}
-                      size={17}
-                      color={GLASS_TEXT}
-                    />
-                    <Text style={styles.menuRowLabel}>{isSelectMode ? 'Скасувати вибір' : 'Вибрати'}</Text>
                   </Pressable>
                 </ScrollView>
               </View>
@@ -1453,6 +1434,41 @@ export default function DocumentsScreen() {
 
         {/* Through the portal, like the rest of the rail: the blur that
             fills it has to sit outside the view it blurs. */}
+        {/* The actions capsule: what can be done to the list - sort it,
+            choose in it. They were rows of the "..." menu, two taps away;
+            the user asked for exactly these two on the rail and no more,
+            grouped, so the rail does not turn into a wall of options. */}
+        {isFocused && !searchingAlone && !(isTwoPane && !!openDoc && paneFullscreen) && (
+          <RailCapsule
+            bottom={rail.actionsBottom}
+            buttons={[
+              { icon: 'swap-vertical-outline', onPress: () => setSortMenuOpen((v) => !v), active: sortMenuOpen },
+              {
+                icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
+                onPress: toggleSelectMode,
+                active: isSelectMode,
+              },
+            ]}
+          />
+        )}
+        <Menu
+          visible={sortMenuOpen}
+          onClose={() => setSortMenuOpen(false)}
+          accent={ACCENT}
+          entries={[
+            { kind: 'section', label: 'Сортування' },
+            ...FIELD_ORDER.map((field) => ({
+              label: FIELD_LABELS[field],
+              icon: FIELD_ICONS[field],
+              checked: sortPref.field === field,
+              onPress: () => {
+                selectSortField(field);
+                setSortMenuOpen(false);
+              },
+            })),
+          ]}
+          style={{ position: 'absolute', right: RAIL_CLEARANCE, bottom: rail.actionsBottom }}
+        />
         {isFocused && !isSelectMode && !searchingAlone && !(isTwoPane && !!openDoc && paneFullscreen) && (
         <GlassPortal>
           <Pressable

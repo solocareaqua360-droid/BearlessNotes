@@ -4,13 +4,15 @@ import { SortField, SortPref } from '../utils/sortItems';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 import { GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 
-const FIELD_ORDER: SortField[] = ['title', 'createdAt', 'updatedAt'];
-const FIELD_LABELS: Record<SortField, string> = {
+// Exported for the rail's sort button, which offers the same three in a
+// «Меню» of its own rather than as a section of the "..." menu.
+export const FIELD_ORDER: SortField[] = ['title', 'createdAt', 'updatedAt'];
+export const FIELD_LABELS: Record<SortField, string> = {
   title: 'За алфавітом',
   createdAt: 'Дата створення',
   updatedAt: 'Дата зміни',
 };
-const FIELD_ICONS: Record<SortField, keyof typeof Ionicons.glyphMap> = {
+export const FIELD_ICONS: Record<SortField, keyof typeof Ionicons.glyphMap> = {
   title: 'text-outline',
   createdAt: 'add-circle-outline',
   updatedAt: 'create-outline',
