@@ -46,7 +46,12 @@ export const WIDE_TILES: Tile[] = [
 // The documents tile has no place in the colour cycle below - it was
 // added after it, and shifting every other tile along by one would have
 // repainted every tile the user never picked a colour for.
-const DOCUMENTS_COLOR = '#3B82F6';
+//
+// The warm beige of the app's own palette, not the system blue it used to
+// be: the tiles are painted in their colour now (see BoardTile), and one
+// tile in a blue nothing else in the app uses stood out as an accident
+// rather than a choice.
+const DOCUMENTS_COLOR = TAG_COLORS[0];
 const COLOR_CYCLE_START = 'tasks';
 export const GRID_TILES: Tile[] = [
   { key: 'geo', label: 'Геоточки', icon: 'location-outline', linkCategory: 'geo' },

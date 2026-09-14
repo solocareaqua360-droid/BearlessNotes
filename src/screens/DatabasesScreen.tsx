@@ -37,7 +37,7 @@ import { db } from '../firebase';
 import { RootStackParamList } from '../navigation';
 import { TAG_COLORS } from '../constants/tags';
 import { FONT_REGULAR, FONT_MEDIUM } from '../utils/fonts';
-import { colorForDocument } from '../utils/documentColor';
+import { colorForDocument, contrastTextColor } from '../utils/documentColor';
 import RenamePrompt from '../components/RenamePrompt';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import ImportTableSheet from '../components/ImportTableSheet';
@@ -282,6 +282,56 @@ export default function DatabasesScreen() {
   function resetSize(key: string) {
     setDoc(tileSizesDoc, { [key]: deleteField() }, { merge: true });
     setColorMenuKey(null);
+  }
+
+  // Repaints every tile at once - random, but not a random colour per
+  // tile, which is what "random" alone would give and what would make the
+  // board look scattered.
+  //
+  // The palette is dealt like a deck instead: shuffled once, then handed
+  // out in turn down the board's own order and reshuffled when it runs
+  // out. Every colour is therefore used about equally often, and two
+  // tiles side by side can only match across a whole cycle of the
+  // palette - which is what "гармонійно" means here, and it is a property
+  // of the dealing rather than of any check afterwards.
+  //
+  // Only tiles that HAVE a colour: the three action tiles are glass.
+  function resetColors() {
+    confirm({
+      title: 'Скинути кольори?',
+      message: 'Плитки будуть розфарбовані наново - випадково, але в нашій гамі. Розміри, порядок і фонові зображення лишаться.',
+      confirmLabel: 'Розфарбувати',
+      tone: 'primary',
+    }).then((yes) => {
+      if (!yes) return;
+      const keys = boardItems.filter((item) => item.kind !== 'action').map((item) => item.key);
+      let deck: string[] = [];
+      const next: Record<string, string> = {};
+      keys.forEach((key) => {
+        if (deck.length === 0) {
+          deck = [...TAG_COLORS];
+          // Fisher-Yates, so every ordering of the deck is as likely as
+          // any other - a sort() with a random comparator is not a
+          // shuffle and biases towards the order it started in.
+          for (let i = deck.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [deck[i], deck[j]] = [deck[j], deck[i]];
+          }
+        }
+        next[key] = deck.pop()!;
+      });
+      // A database the user made carries its own colour on its own record
+      // - the same split pickColor makes, for the same reason: that
+      // colour is the database's everywhere in the app, not this tile's.
+      const own = new Set(customDatabases.map((database) => database.id));
+      const shared: Record<string, string> = {};
+      Object.entries(next).forEach(([key, color]) => {
+        if (own.has(key)) setDoc(doc(db, 'customDatabases', key), { color }, { merge: true });
+        else shared[key] = color;
+      });
+      setDoc(tileColorsDoc, shared, { merge: true });
+      setColorMenuKey(null);
+    });
   }
 
   function resetBoard() {
@@ -622,6 +672,13 @@ export default function DatabasesScreen() {
                 </Pressable>
               )}
               <View style={styles.sheetRule} />
+              {/* Beside "Скинути дошку" because it is the same kind of
+                  act - the whole board at once, not this one tile - and
+                  this is where the board's own actions already live. */}
+              <Pressable style={styles.sheetRow} onPress={resetColors}>
+                <Ionicons name="color-palette-outline" size={17} color={GLASS_TEXT} />
+                <Text style={styles.sheetRowLabel}>Скинути кольори</Text>
+              </Pressable>
               <Pressable
                 style={styles.sheetRow}
                 onPress={() => {
@@ -984,6 +1041,23 @@ function BoardTile({
   const showLatest = !!latest && !isAction && size.w >= 2 && (size.h >= 2 || size.w >= 3);
   const showCount = count !== undefined && !isAction;
 
+  // The tile is PAINTED in its colour now, rather than being glass with a
+  // coloured icon on it - so the ink has to answer to the paint. Same
+  // rule and the same function the note cards have always used: near-black
+  // on a light fill, white on a dark one.
+  //
+  // Two exceptions, both still glass. The action tiles ("Нова база" and
+  // its neighbours) are not databases and have no colour of their own; and
+  // a tile carrying a background picture keeps its scrim and white text,
+  // because what is behind the ink there is the picture, not the colour.
+  const painted = !isAction && !background;
+  const ink = painted ? contrastTextColor(color) : '#fff';
+  const inkMuted = !painted
+    ? 'rgba(255,255,255,0.55)'
+    : ink === '#FFFFFF'
+      ? 'rgba(255,255,255,0.75)'
+      : 'rgba(17,24,39,0.65)';
+
   // The grip: dragged, it turns the distance travelled into whole cells
   // and snaps to the nearest size the board allows, live, so the board
   // re-packs under the finger rather than after it.
@@ -1034,6 +1108,7 @@ function BoardTile({
       layout={carried ? undefined : LinearTransition.duration(220)}
       style={[
         styles.tile,
+        painted && { backgroundColor: color, borderColor: 'rgba(255,255,255,0.18)' },
         isAction && styles.newTile,
         { left, top, width, height },
         carried && { left: carried.x, top: carried.y, zIndex: 20, opacity: 0.95, transform: [{ scale: 1.04 }] },
@@ -1066,11 +1141,11 @@ function BoardTile({
             ))}
           </View>
         ) : (
-          <Ionicons name={icon} size={tiny ? 24 : 22} color={isAction ? 'rgba(255,255,255,0.6)' : color} />
+          <Ionicons name={icon} size={tiny ? 24 : 22} color={isAction ? 'rgba(255,255,255,0.6)' : ink} />
         )}
         {!tiny && (
           <Text
-            style={[styles.tileLabel, { color: isAction ? 'rgba(255,255,255,0.6)' : color }]}
+            style={[styles.tileLabel, { color: isAction ? 'rgba(255,255,255,0.6)' : ink }]}
             numberOfLines={2}
           >
             {label}
@@ -1079,7 +1154,7 @@ function BoardTile({
         {/* The newest record's own name - only where the tile is tall
             enough that it is a line of its own rather than a crush. */}
         {showLatest && (
-          <Text style={styles.tileLatest} numberOfLines={size.h > 1 ? 2 : 1}>
+          <Text style={[styles.tileLatest, { color: inkMuted }]} numberOfLines={size.h > 1 ? 2 : 1}>
             {latest}
           </Text>
         )}
@@ -1090,7 +1165,7 @@ function BoardTile({
           gone while the board is being arranged so it cannot be mistaken
           for a control. */}
       {showCount && !editing && (
-        <Text style={[styles.tileCount, { color }]}>{count}</Text>
+        <Text style={[styles.tileCount, { color: ink }]}>{count}</Text>
       )}
 
       {editing && (
