@@ -40,6 +40,7 @@ import FloatingIslandTabBar from './src/components/FloatingIslandTabBar';
 import ShareIntentHandler from './src/components/ShareIntentHandler';
 import * as SplashScreen from 'expo-splash-screen';
 import { sweepIfDue } from './src/utils/attachmentCache';
+import { migrateBoardShapes } from './src/utils/boardMigration';
 import { navigationRef } from './src/navigationRef';
 import { BoardsStackParamList, RootStackParamList } from './src/navigation';
 import { GlassTargetProvider } from './src/components/GlassTarget';
@@ -135,6 +136,11 @@ export default function App() {
     // once a day - their records stay, and they come back from Drive on
     // the next open. See attachmentCache.
     if (ready) sweepIfDue();
+    // One pass, once, and then never a write again - see
+    // migrateBoardShapes. Deliberately not awaited and deliberately
+    // silent: nothing on screen depends on it, and a board it cannot
+    // reach today it converts on the next launch.
+    if (ready) migrateBoardShapes().catch(() => {});
   }, [ready]);
 
   // ShareIntentProvider wraps BOTH branches below as one stable instance

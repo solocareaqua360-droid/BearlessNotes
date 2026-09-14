@@ -1,7 +1,7 @@
 rules_version = '2';
 
-// NOT DEPLOYED YET - the owner-only rules, kept here so they are written and
-// reviewed before they are switched on.
+// The owner-only rules. Deploy by pasting into Firebase Console →
+// Firestore Database → Rules → Publish (no CLI is installed here).
 //
 // Deploy this ONLY after every device has signed in with Google and
 // claimExistingData has stamped ownerId across every collection. In the
@@ -14,15 +14,39 @@ rules_version = '2';
 // to pull the APK apart first. On the web the config sits in the page, and
 // signInAnonymously() from the console is two lines - which is why this has
 // to land before a web version exists, not after.
+//
+// Two things about reads that are easy to get wrong, and both were:
+//
+// GET and LIST are not the same rule. A rule is not a filter - on a LIST
+// Firestore refuses the whole query unless the query itself proves it can
+// only return permitted documents. That is why every read in this app goes
+// through ownedQuery, which adds `where('ownerId','==',uid)`. A bare
+// `collection(db, 'documents')` returns nothing at all under these rules,
+// not a filtered subset.
+//
+// A GET can ask for a document that DOES NOT EXIST, and then `resource` is
+// null - reading `resource.data.ownerId` off it fails, and the read is
+// denied rather than answered "no such document". The app listens to
+// several settings documents before anything has created them
+// (settings/boardsPrefs, hiddenTags/<kind>, the per-database prefs), so
+// without the null case a fresh install would meet a permission error on
+// its first launch instead of an empty screen.
 service cloud.firestore {
   match /databases/{database}/documents {
     match /{collection}/{docId} {
-      // Reading: only your own.
-      allow read: if request.auth != null && resource.data.ownerId == request.auth.uid;
+      // One document by name: yours, or one that isn't there yet.
+      allow get: if request.auth != null
+        && (resource == null || resource.data.ownerId == request.auth.uid);
+      // A query: only ever satisfiable by one already narrowed to you.
+      allow list: if request.auth != null && resource.data.ownerId == request.auth.uid;
       // Creating: you may only stamp yourself as the owner.
       allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
       // Updating and deleting: only what is already yours, and you may not
-      // hand it to anyone else on the way.
+      // hand it to anyone else on the way. This is also what stops the
+      // quiet change of hands that put three documents under an anonymous
+      // browser session - owned.setDoc stamps the writer's uid on every
+      // write, merges included, so without this line whoever saved last
+      // owned it.
       allow update: if request.auth != null
         && resource.data.ownerId == request.auth.uid
         && request.resource.data.ownerId == request.auth.uid;
