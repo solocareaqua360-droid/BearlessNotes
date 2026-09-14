@@ -5,7 +5,6 @@ import {
   BackHandler,
   Image,
   Keyboard,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -41,6 +40,8 @@ import {
 import { ownedQuery, setDoc } from '../utils/owned';
 import {
   GLASS_BODY,
+  GLASS_BODY_BLURRED,
+  GLASS_CARD,
   GLASS_LINE,
   GLASS_TEXT,
   GLASS_TEXT_FAINT,
@@ -2049,7 +2050,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           <View style={styles.pageContainer}>
             <View style={styles.pageHeader}>
               <Pressable hitSlop={10} onPress={() => setRowPageId(null)}>
-                <Ionicons name="chevron-back" size={24} color="#111827" />
+                <Ionicons name="chevron-back" size={24} color={GLASS_TEXT} />
               </Pressable>
               <Text style={styles.pageHeaderTitle} numberOfLines={1}>
                 {rowPageRow ? titleOf(rowPageRow) : ''}
@@ -2437,8 +2438,8 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
         onClose={() => setBulkGroupPickerVisible(false)}
       />
 
-      <Modal visible={rowMenuRow !== null} transparent animationType="fade" onRequestClose={() => setRowMenuId(null)}>
-        <Pressable style={styles.cardMenuBackdrop} onPress={() => setRowMenuId(null)}>
+      <GlassLayer visible={rowMenuRow !== null} onClose={() => setRowMenuId(null)}>
+        <Pressable style={styles.layerBackdrop} onPress={() => setRowMenuId(null)}>
           <Pressable style={styles.cardMenuSheet} onPress={() => {}}>
             <View style={styles.handle} />
             <Pressable
@@ -2452,7 +2453,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
             </Pressable>
             {rowMenuRow && documentIdsOf(rowMenuRow).length > 0 && (
               <Pressable style={styles.cardMenuRow} onPress={() => openRowDocuments(rowMenuRow)}>
-                <Ionicons name="document-text-outline" size={18} color="#111827" />
+                <Ionicons name="document-text-outline" size={18} color={GLASS_TEXT} />
                 <Text style={styles.cardMenuRowLabel}>
                   Документи ({documentIdsOf(rowMenuRow).length})
                 </Text>
@@ -2471,7 +2472,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
                 setRowMenuId(null);
               }}
             >
-              <Ionicons name="folder-outline" size={18} color="#111827" />
+              <Ionicons name="folder-outline" size={18} color={GLASS_TEXT} />
               <Text style={styles.cardMenuRowLabel}>Групування</Text>
             </Pressable>
             <Pressable
@@ -2494,7 +2495,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
             </Pressable>
           </Pressable>
         </Pressable>
-      </Modal>
+      </GlassLayer>
 
       <DocumentPickerModal
         visible={documentPicker !== null}
@@ -2572,8 +2573,8 @@ function OptionPickerSheet({
   }
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={[styles.backdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
+    <GlassLayer visible onClose={onClose}>
+      <Pressable style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
         <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.handle} />
           <Text style={styles.title}>{field.name}</Text>
@@ -2638,7 +2639,7 @@ function OptionPickerSheet({
           )}
         </Pressable>
       </Pressable>
-    </Modal>
+    </GlassLayer>
   );
 }
 
@@ -2712,8 +2713,8 @@ function RelationPickerSheet({
   if (isPhotos) {
     const filtered = needle ? photos.filter((p) => (p.title ?? '').toLowerCase().includes(needle)) : photos;
     return (
-      <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-        <Pressable style={[styles.backdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
+      <GlassLayer visible onClose={onClose}>
+        <Pressable style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
           <Pressable style={styles.sheet} onPress={() => {}}>
             <View style={styles.handle} />
             <Text style={styles.title}>{field.name}</Text>
@@ -2746,7 +2747,7 @@ function RelationPickerSheet({
             )}
           </Pressable>
         </Pressable>
-      </Modal>
+      </GlassLayer>
     );
   }
 
@@ -2760,8 +2761,8 @@ function RelationPickerSheet({
     !relatedRows.some((r) => String(r.values[titleFieldId ?? ''] ?? '').trim().toLowerCase() === needle);
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={[styles.backdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
+    <GlassLayer visible onClose={onClose}>
+      <Pressable style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
         <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.handle} />
           <Text style={styles.title}>{field.name}</Text>
@@ -2817,7 +2818,7 @@ function RelationPickerSheet({
           )}
         </Pressable>
       </Pressable>
-    </Modal>
+    </GlassLayer>
   );
 }
 
@@ -2839,18 +2840,18 @@ function MiniDatePicker({ value, onPick, onClose }: { value?: string; onPick: (k
   }
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+    <GlassLayer visible onClose={onClose}>
       <Pressable style={miniStyles.backdrop} onPress={onClose}>
         <Pressable style={miniStyles.card} onPress={() => {}}>
           <View style={miniStyles.navRow}>
             <Pressable hitSlop={10} onPress={() => changeMonth(-1)}>
-              <Ionicons name="chevron-back" size={18} color="#111827" />
+              <Ionicons name="chevron-back" size={18} color={GLASS_TEXT} />
             </Pressable>
             <Text style={miniStyles.navTitle}>
               {MONTH_FULL[visibleMonth.month]} {visibleMonth.year}
             </Text>
             <Pressable hitSlop={10} onPress={() => changeMonth(1)}>
-              <Ionicons name="chevron-forward" size={18} color="#111827" />
+              <Ionicons name="chevron-forward" size={18} color={GLASS_TEXT} />
             </Pressable>
           </View>
           <View style={miniStyles.weekdayRow}>
@@ -2886,23 +2887,26 @@ function MiniDatePicker({ value, onPick, onClose }: { value?: string; onPick: (k
           ))}
         </Pressable>
       </Pressable>
-    </Modal>
+    </GlassLayer>
   );
 }
 
 const miniStyles = StyleSheet.create({
+  // The layer draws the dim; this only centres the calendar in it.
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(17,24,39,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
   },
+  // A white card with near-black days, in a dark app: the calendar was
+  // written before the glass palette existed and never converted with the
+  // rest. Same body, same hairline edge as every other window now.
   card: {
-    width: '100%',
+    ...SHEET_WINDOW,
     maxWidth: 340,
-    backgroundColor: '#fff',
-    borderRadius: 16,
+    backgroundColor: GLASS_BODY_BLURRED,
+    overflow: 'hidden',
     padding: 16,
   },
   navRow: {
@@ -2915,7 +2919,7 @@ const miniStyles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   weekdayRow: {
     flexDirection: 'row',
@@ -2925,7 +2929,7 @@ const miniStyles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 11,
     fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
+    color: GLASS_TEXT_MUTED,
     marginBottom: 4,
   },
   weekRow: {
@@ -2954,10 +2958,11 @@ const miniStyles = StyleSheet.create({
   dayNum: {
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
+  // A day from the neighbouring month: still readable, plainly not this one.
   dayNumMuted: {
-    color: '#D1D5DB',
+    color: GLASS_TEXT_FAINT,
   },
   dayNumSelected: {
     color: '#fff',
@@ -3195,13 +3200,17 @@ const styles = StyleSheet.create({
   // The record page: a plain light sheet, deliberately not the dark
   // gradient the database list sits on - it reads as a document about one
   // record rather than another view of the list.
+  // A white page with near-black text, opened from a dark list: the record
+  // page predates the glass palette. It is not a sheet - it covers the
+  // screen - so it takes the screen's own body colour rather than a
+  // window's, and everything on it moves to the glass text colours.
   pageContainer: {
     position: 'absolute',
     left: 0,
     right: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY,
     // Above everything this screen draws: the capsule strip (20), an open
     // param dropdown (30) and the "..." menu (60/61).
     zIndex: 100,
@@ -3214,14 +3223,14 @@ const styles = StyleSheet.create({
     paddingTop: 56,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: GLASS_LINE,
   },
   pageHeaderTitle: {
     flex: 1,
     fontSize: 16,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   pageEditButton: {
     flexDirection: 'row',
@@ -3256,29 +3265,29 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: '#111827',
+    color: GLASS_TEXT,
     marginBottom: 16,
   },
   pageField: {
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: GLASS_LINE,
     gap: 4,
   },
   pageFieldLabel: {
     fontSize: 12,
     fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
+    color: GLASS_TEXT_MUTED,
   },
   pageFieldValue: {
     fontSize: 16,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   pageFieldEmpty: {
     fontSize: 16,
     fontFamily: FONT_REGULAR,
-    color: '#D1D5DB',
+    color: GLASS_TEXT_FAINT,
   },
   pageRelationValue: {
     flexDirection: 'row',
@@ -3315,7 +3324,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    backgroundColor: GLASS_CARD,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -3324,7 +3333,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   backlinkAddRow: {
     flexDirection: 'row',
@@ -3571,7 +3580,8 @@ const styles = StyleSheet.create({
     ...SHEET_BACKDROP,
   },
   sheet: {
-    backgroundColor: GLASS_BODY,
+    backgroundColor: GLASS_BODY_BLURRED,
+    overflow: 'hidden',
     ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
@@ -3579,7 +3589,8 @@ const styles = StyleSheet.create({
     maxHeight: '70%',
   },
   editorSheet: {
-    backgroundColor: GLASS_BODY,
+    backgroundColor: GLASS_BODY_BLURRED,
+    overflow: 'hidden',
     ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
@@ -3780,7 +3791,8 @@ const styles = StyleSheet.create({
     ...SHEET_BACKDROP,
   },
   cardMenuSheet: {
-    backgroundColor: GLASS_BODY,
+    backgroundColor: GLASS_BODY_BLURRED,
+    overflow: 'hidden',
     ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
