@@ -2367,7 +2367,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   function mergeRemote(remote: ServerShape) {
     const server = serverRef.current;
     const focusedId = focusedBlockIdRef.current;
-    setBlocks((local) => {
+    // Worked out NOW, from the blocks as they are now, not inside a
+    // functional setBlocks. The updater runs later, on the next render -
+    // by which time rememberServer below has already replaced "what the
+    // server holds" with the version that just arrived. Judged against
+    // THAT, every block the other device changed looked like an edit
+    // made here, was kept in its old form, and written straight back:
+    // two open copies of a note threw one block back and forth every
+    // second and a card moved on the phone was returned to where it had
+    // been. The order of these two lines is the whole fix.
+    {
+      const local = contentRef.current.blocks;
       const localById = new Map(local.map((b) => [b.id, b]));
       const serverIds = new Set(server?.blocks.map((b) => b.id) ?? []);
       const isDirty = (b: Block) => serverBlockRef.current.get(b.id) !== stableStringify(b);
@@ -2388,8 +2398,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         merged.splice(at === -1 ? merged.length : at + 1, 0, b);
         mergedIds.add(b.id);
       });
-      return merged;
-    });
+      setBlocks(merged);
+    }
     if (server && server.title === title) setTitle(remote.title);
     if (server && server.coverImageUri === coverImageUri) setCoverImageUri(remote.coverImageUri);
     if (server && server.paperColorEnabled === paperColorEnabled) setPaperColorEnabled(remote.paperColorEnabled);
@@ -2487,11 +2497,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // The same version we already hold - our own write, arrived back
       // from the server - changes nothing.
       if (serverRef.current && sameAsServer({ ...remote, blocks: remote.blocks })) {
-        syncLog('snapshot = own echo', { blocks: remote.blocks.length });
+        syncLog('snapshot = own echo', { updatedAt: data.updatedAt });
         rememberServer(remote);
         return;
       }
-      syncLog('snapshot = REMOTE CHANGE, merging', { blocks: remote.blocks.length, updatedAt: data.updatedAt });
+      syncLog('snapshot = REMOTE CHANGE, merging', {
+        updatedAt: data.updatedAt,
+        changed: remote.blocks
+          .filter((b) => serverBlockRef.current.get(b.id) !== stableStringify(b))
+          .map((b) => `${b.id.slice(-4)}${b.canvas ? `@${Math.round(b.canvas.x)},${Math.round(b.canvas.y)}` : ''}`)
+          .join(','),
+        order: remote.blocks.map((b) => b.id.slice(-4)).join('>'),
+      });
       mergeRemoteRef.current(remote);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2828,7 +2845,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const shape: ServerShape = { title, blocks, coverImageUri: coverImageUri || undefined, paperColorEnabled, groupId, canvasLinks };
     if (sameAsServer(shape)) return;
     syncLog('will save: differs from server', {
-      dirtyBlocks: blocks.filter((b) => serverBlockRef.current.get(b.id) !== stableStringify(b)).map((b) => b.id.slice(-4)),
+      dirtyBlocks: blocks.filter((b) => serverBlockRef.current.get(b.id) !== stableStringify(b)).map((b) => b.id.slice(-4)).join(','),
       orderChanged: serverRef.current ? serverRef.current.blocks.map((b) => b.id).join() !== blocks.map((b) => b.id).join() : 'no server yet',
       focused: focusedBlockIdRef.current?.slice(-4) ?? null,
     });
