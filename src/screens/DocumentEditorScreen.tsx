@@ -100,6 +100,7 @@ import { setSelection } from '../utils/setSelection';
 import { autoGrowInput } from '../utils/autoGrowInput';
 import { caretIndexFromDom } from '../utils/caretAtPoint';
 import { applyLiveRecord, recordIdFor, useLiveRecords } from '../hooks/useLiveRecords';
+import { attachmentInfoText } from '../utils/attachmentInfo';
 import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
@@ -4632,6 +4633,22 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   icon: 'pencil-outline',
                   label: 'Назва',
                   onPress: () => setImageRenameId(viewerBlock.id),
+                },
+                {
+                  // The name and the rest of what the record knows, asked
+                  // for rather than printed under the picture - a note
+                  // stays a note. Read fresh, so it is what is true now
+                  // and not what the block was given when it was made.
+                  key: 'info',
+                  icon: 'information-circle-outline',
+                  label: 'Інфо',
+                  onPress: () => {
+                    const id = viewerBlock.id;
+                    const fallback = viewerBlock.imageTitle;
+                    attachmentInfoText('photos', id, fallback).then((text) =>
+                      notify('Про зображення', text)
+                    );
+                  },
                 },
                 {
                   key: 'database',
