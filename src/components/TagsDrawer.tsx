@@ -338,7 +338,7 @@ function TagsDrawerInner({
   tags,
   activeFilter,
   onSelectFilter,
-  capsuleHeight: _capsuleHeight,
+  capsuleHeight,
   counts,
   mode,
   stickers,
