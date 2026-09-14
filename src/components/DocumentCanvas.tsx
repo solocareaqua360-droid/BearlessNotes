@@ -79,6 +79,13 @@ const TEXT_TYPES = ['paragraph', 'bulleted', 'numbered', 'checkbox'];
 // not pan, a view under the cards) and a phone gains nothing in return.
 const NEEDS_TAP_GUARDS = Platform.OS === 'web';
 
+// What a drag across empty canvas does. In a browser it draws a box and
+// chooses the cards inside it - the trackpad moves the view there, so
+// the drag is free for what only a drag can do. On a phone the same drag
+// is the ONLY way to move the view, so it keeps that job and choosing
+// several cards will need a tool of its own, as it does on the board.
+const DRAG_SELECTS = Platform.OS === 'web';
+
 export type CanvasPlacement = { id: string; x: number; y: number };
 
 // Where every block sits: its own position once it has been moved, and
@@ -159,6 +166,12 @@ function DocumentCanvasInner({
   const [cardHeights, setCardHeights] = useState<Record<string, number>>({});
   const placements = useMemo(() => layOutBlocks(blocks, cardHeights), [blocks, cardHeights]);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Written by whichever selected card is under the finger, read by every
+  // other selected card - which is what makes a whole selection visibly
+  // move together. The board does it the same way.
+  const groupOffsetX = useSharedValue(0);
+  const groupOffsetY = useSharedValue(0);
   // Which character the click that started the editing landed on. The
   // field does not exist yet at that moment - the card is showing plain
   // text - so the answer is taken from the text that IS there and handed
@@ -209,6 +222,46 @@ function DocumentCanvasInner({
     savedTranslateY.value = EDIT_TOP - y * target;
   }
 
+  // The selection box, in SURFACE coordinates - the same space the cards
+  // are positioned in, so it moves and scales with them rather than
+  // floating over the screen.
+  const marqueeVisible = useSharedValue(false);
+  const marqueeStartX = useSharedValue(0);
+  const marqueeStartY = useSharedValue(0);
+  const marqueeEndX = useSharedValue(0);
+  const marqueeEndY = useSharedValue(0);
+
+  // Screen -> surface. The surface is the size of the viewport, scaled
+  // about its own centre and then translated, so a point on screen is
+  //   centre + (point - centre) * scale + translate.
+  function toSurface(screenX: number, screenY: number) {
+    'worklet';
+    const cx = viewport.width / 2;
+    const cy = viewport.height / 2;
+    return {
+      x: cx + (screenX - cx - translateX.value) / scale.value,
+      y: cy + (screenY - cy - translateY.value) / scale.value,
+    };
+  }
+
+  function selectWithin(x1: number, y1: number, x2: number, y2: number) {
+    const left = Math.min(x1, x2);
+    const right = Math.max(x1, x2);
+    const top = Math.min(y1, y2);
+    const bottom = Math.max(y1, y2);
+    // A box drawn by accident (a click that moved two points) should not
+    // wipe the selection out - but a real one that caught nothing should.
+    if (right - left < 4 && bottom - top < 4) return;
+    const caught = blocks.filter((block, index) => {
+      const place = placements[index];
+      const height = cardHeights[block.id] ?? approximateHeight(block);
+      return (
+        place.x < right && place.x + CARD_WIDTH > left && place.y < bottom && place.y + height > top
+      );
+    });
+    setSelectedIds(new Set(caught.map((b) => b.id)));
+  }
+
   const pinchGesture = Gesture.Pinch()
     .onUpdate((e) => {
       scale.value = Math.min(MAX_SCALE, Math.max(MIN_SCALE, savedScale.value * e.scale));
@@ -224,7 +277,9 @@ function DocumentCanvasInner({
     // cursor instead. The card is parked in a known place while it is
     // edited anyway. A phone keeps its pan - a finger dragging the canvas
     // never begins inside the field.
-    .enabled(editingId === null || !NEEDS_TAP_GUARDS)
+    // Where a drag draws a selection box, it is not also the way to move
+    // the view - the trackpad is.
+    .enabled(!DRAG_SELECTS && (editingId === null || !NEEDS_TAP_GUARDS))
     // The board's own number: a hold and a drag start the same way, and a
     // surface that takes the very first pixel moves before the press can
     // count as anything else.
@@ -238,7 +293,54 @@ function DocumentCanvasInner({
       savedTranslateY.value = translateY.value;
     });
 
-  const canvasGesture = Gesture.Simultaneous(panGesture, pinchGesture);
+  // The drag across empty canvas: a selection box in a browser, moving
+  // the view everywhere else.
+  const marqueeGesture = Gesture.Pan()
+    .enabled(DRAG_SELECTS && editingId === null)
+    .minDistance(4)
+    .onStart((e) => {
+      const start = toSurface(e.x, e.y);
+      marqueeStartX.value = start.x;
+      marqueeStartY.value = start.y;
+      marqueeEndX.value = start.x;
+      marqueeEndY.value = start.y;
+      marqueeVisible.value = true;
+    })
+    .onUpdate((e) => {
+      const now = toSurface(e.x, e.y);
+      marqueeEndX.value = now.x;
+      marqueeEndY.value = now.y;
+    })
+    .onEnd(() => {
+      marqueeVisible.value = false;
+      runOnJS(selectWithin)(
+        marqueeStartX.value,
+        marqueeStartY.value,
+        marqueeEndX.value,
+        marqueeEndY.value
+      );
+    });
+
+  // A tap on bare canvas puts the selection down, the way clicking beside
+  // a thing does everywhere else.
+  const clearSelectionGesture = Gesture.Tap()
+    .enabled(DRAG_SELECTS)
+    .onEnd(() => {
+      runOnJS(setSelectedIds)(new Set());
+    });
+
+  const canvasGesture = Gesture.Simultaneous(
+    Gesture.Race(marqueeGesture, clearSelectionGesture, panGesture),
+    pinchGesture
+  );
+
+  const marqueeStyle = useAnimatedStyle(() => ({
+    opacity: marqueeVisible.value ? 1 : 0,
+    left: Math.min(marqueeStartX.value, marqueeEndX.value),
+    top: Math.min(marqueeStartY.value, marqueeEndY.value),
+    width: Math.abs(marqueeEndX.value - marqueeStartX.value),
+    height: Math.abs(marqueeEndY.value - marqueeStartY.value),
+  }));
 
   useCanvasWheel(canvasRef, {
     scale,
@@ -294,6 +396,7 @@ function DocumentCanvasInner({
               // one that already exists.
               <Pressable style={styles.stopEditingCatcher} onPress={stopEditing} />
             )}
+            <Animated.View style={[styles.marquee, marqueeStyle]} pointerEvents="none" />
             {blocks.map((block, index) => (
               <CanvasCard
                 key={block.id}
@@ -304,6 +407,18 @@ function DocumentCanvasInner({
                 editing={editingId === block.id}
                 caretIndex={editingId === block.id ? editingCaret : null}
                 onDone={stopEditing}
+                selected={selectedIds.has(block.id)}
+                groupOffsetX={groupOffsetX}
+                groupOffsetY={groupOffsetY}
+                onGroupMove={(dx, dy) => {
+                  // Every selected card keeps its own position; the drag
+                  // only says how far they all went.
+                  selectedIds.forEach((id) => {
+                    const index = blocks.findIndex((b) => b.id === id);
+                    if (index === -1) return;
+                    onMoveBlock(id, placements[index].x + dx, placements[index].y + dy);
+                  });
+                }}
                 onHeight={reportHeight}
                 onMove={onMoveBlock}
                 onChangeText={onChangeText}
@@ -335,6 +450,10 @@ function CanvasCard({
   canvasScale,
   canvasPanGesture,
   editing,
+  selected,
+  groupOffsetX,
+  groupOffsetY,
+  onGroupMove,
   caretIndex,
   onDone,
   onHeight,
@@ -348,6 +467,11 @@ function CanvasCard({
   canvasScale: ReturnType<typeof useSharedValue<number>>;
   canvasPanGesture: ReturnType<typeof Gesture.Pan>;
   editing: boolean;
+  selected: boolean;
+  groupOffsetX: ReturnType<typeof useSharedValue<number>>;
+  groupOffsetY: ReturnType<typeof useSharedValue<number>>;
+  // How far the whole selection was dragged, once it is let go.
+  onGroupMove: (dx: number, dy: number) => void;
   caretIndex: number | null;
   onHeight: (id: string, height: number) => void;
   onMove: (id: string, x: number, y: number) => void;
@@ -424,10 +548,23 @@ function CanvasCard({
     // Per-event delta divided by the zoom, so a card keeps up with the
     // finger 1:1 however far in or out the canvas is.
     .onChange((e) => {
+      if (selected) {
+        // One of a chosen set: the offset is shared, so every other
+        // chosen card moves with this one.
+        groupOffsetX.value += e.changeX / canvasScale.value;
+        groupOffsetY.value += e.changeY / canvasScale.value;
+        return;
+      }
       posX.value += e.changeX / canvasScale.value;
       posY.value += e.changeY / canvasScale.value;
     })
     .onEnd(() => {
+      if (selected) {
+        runOnJS(onGroupMove)(groupOffsetX.value, groupOffsetY.value);
+        groupOffsetX.value = 0;
+        groupOffsetY.value = 0;
+        return;
+      }
       runOnJS(onMove)(block.id, posX.value, posY.value);
     });
 
@@ -440,13 +577,16 @@ function CanvasCard({
   const gesture = Gesture.Race(dragGesture, tapGesture);
 
   const cardStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: posX.value }, { translateY: posY.value }],
+    transform: [
+      { translateX: posX.value + (selected ? groupOffsetX.value : 0) },
+      { translateY: posY.value + (selected ? groupOffsetY.value : 0) },
+    ],
   }));
 
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View
-        style={[styles.card, editing && styles.cardEditing, cardStyle]}
+        style={[styles.card, selected && styles.cardSelected, editing && styles.cardEditing, cardStyle]}
         onLayout={(e) => onHeight(block.id, e.nativeEvent.layout.height)}
       >
         {editing ? (
@@ -609,6 +749,17 @@ const styles = StyleSheet.create({
   },
   // Opaque, and with a hairline edge: on white paper an edge is the only
   // thing that says where one card ends and the next begins.
+  marquee: {
+    position: 'absolute',
+    borderWidth: 1,
+    borderColor: PAPER_EDGE_EDITING,
+    backgroundColor: 'rgba(138,180,255,0.12)',
+    borderRadius: 4,
+  },
+  cardSelected: {
+    borderColor: PAPER_EDGE_EDITING,
+    borderWidth: 2,
+  },
   card: {
     position: 'absolute',
     width: CARD_WIDTH,
