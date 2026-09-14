@@ -79,7 +79,7 @@ import { Group } from '../types';
 import DocumentEditorScreen from './DocumentEditorScreen';
 import { useRail } from '../hooks/useRail';
 import { useCanvasWheel } from '../hooks/useCanvasWheel';
-import { useCachedAttachment } from '../hooks/useCachedAttachment';
+import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { useContextMenu } from '../hooks/useContextMenu';
 import Menu from '../components/surfaces/Menu';
 import { FONT_BOLD, FONT_EXTRABOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -695,7 +695,7 @@ function DraggableCard({
   // device, or one whose bytes the ninety-day sweep took - fetches it
   // back from Drive. The board was the one place that never did: it put
   // pictures ON the Drive and never asked for them back.
-  const imageStatus = useCachedAttachment(
+  const { status: imageStatus, source: imageSource } = useAttachmentSource(
     (card.type ?? 'paragraph') === 'image' ? card.imageUri : undefined,
     card.driveFileId,
     false
@@ -857,8 +857,8 @@ function DraggableCard({
           </View>
         ) : type === 'image' ? (
           <View style={styles.refCard}>
-            {card.imageUri && imageStatus === 'ready' ? (
-              <Image source={{ uri: card.imageUri }} style={styles.refThumb} resizeMode="cover" />
+            {imageSource ? (
+              <Image source={{ uri: imageSource }} style={styles.refThumb} resizeMode="cover" />
             ) : (
               <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
                 {imageStatus === 'restoring' ? (

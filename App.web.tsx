@@ -20,6 +20,7 @@ import { AskHost } from './src/components/surfaces/Ask';
 import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
 import { BoardsStackParamList } from './src/navigation';
+import { getDriveToken, hasDriveToken, subscribeToDriveToken } from './src/utils/driveToken.web';
 
 // The browser build: the board, and nothing else.
 //
@@ -80,6 +81,31 @@ const styles = StyleSheet.create({
     fontFamily: 'Nunito_600SemiBold',
     color: '#171310',
   },
+  driveBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#171310',
+  },
+  driveText: {
+    fontSize: 13,
+    fontFamily: 'Nunito_400Regular',
+    color: 'rgba(255,255,255,0.62)',
+  },
+  driveButton: {
+    backgroundColor: '#F5C77E',
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+  },
+  driveButtonLabel: {
+    fontSize: 13,
+    fontFamily: 'Nunito_600SemiBold',
+    color: '#171310',
+  },
 });
 
 export default function App() {
@@ -95,6 +121,15 @@ export default function App() {
   const [user, setUser] = useState<{ email: string | null } | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [drive, setDrive] = useState(hasDriveToken());
+
+  // Asked for silently on the way in: once this account has granted the
+  // scope, the token comes back with nothing appearing on screen, and the
+  // pictures are simply there.
+  useEffect(() => {
+    if (user) getDriveToken(false).then(() => setDrive(hasDriveToken()));
+    return subscribeToDriveToken(() => setDrive(hasDriveToken()));
+  }, [user]);
 
   useEffect(() => {
     ensureSignedIn();
@@ -152,6 +187,21 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
+        {/* The pictures on a board are files on the phone, and a browser
+            cannot read those - they come from Drive instead, which needs
+            asking once. Only a real click may open that window, so this
+            is a button and not something done on load. */}
+        {!drive && (
+          <View style={styles.driveBar}>
+            <Text style={styles.driveText}>Картинки лежать на Google Диску</Text>
+            <Pressable
+              style={styles.driveButton}
+              onPress={() => getDriveToken(true).then(() => setDrive(hasDriveToken()))}
+            >
+              <Text style={styles.driveButtonLabel}>Підключити Диск</Text>
+            </Pressable>
+          </View>
+        )}
         <NavigationContainer>
           <GlassPortalHost>
             <GlassTargetProvider>
