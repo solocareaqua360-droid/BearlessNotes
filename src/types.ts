@@ -96,6 +96,11 @@ export interface Block {
   // nobody has arranged on the canvas carries nothing extra, and its page
   // order stays the one true order.
   canvas?: { x: number; y: number };
+  // 'divider' blocks only - the line the canvas puts between what its
+  // arrows assembled and everything they did not touch (see
+  // assembleWithDivider). Marked so that leaving the canvas again finds
+  // the line it made last time and moves it rather than adding a second.
+  canvasDivider?: boolean;
   checked?: boolean; // 'checkbox' blocks only
   imageUri?: string; // 'image' blocks only
   // 'image' blocks only - set once at creation, never touched again.

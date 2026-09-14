@@ -105,7 +105,7 @@ import { attachmentInfoText } from '../utils/attachmentInfo';
 import { downloadToFolder } from '../utils/downloadToFolder';
 import AttachmentImage from '../components/AttachmentImage';
 import DocumentCanvas, { DocumentCanvasHandle } from '../components/DocumentCanvas';
-import { orderByCanvasLinks } from '../utils/canvasOrder';
+import { assembleWithDivider } from '../utils/canvasOrder';
 import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
@@ -2090,7 +2090,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // reshuffles under a reader who has not asked to see it; and through
   // handleReorderBlocks, so it is one undo away like any other reorder.
   function leaveCanvas() {
-    const reordered = orderByCanvasLinks(blocks, canvasLinks);
+    // What the arrows assembled, a line, then the leftovers - see
+    // assembleWithDivider. The line is an ordinary divider block of this
+    // document's, made the way every block here is made.
+    const reordered = assembleWithDivider(blocks, canvasLinks, () =>
+      buildBlock(generateId(), 'divider', '')
+    );
     if (reordered !== blocks) handleReorderBlocks(reordered);
     setCanvasMode(false);
   }

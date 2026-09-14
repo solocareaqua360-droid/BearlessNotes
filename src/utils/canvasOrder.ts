@@ -99,3 +99,47 @@ export function orderByCanvasLinks(blocks: Block[], links: Record<string, Canvas
   if (next.every((id, index) => blocks[index].id === id)) return blocks;
   return next.map((id) => byId.get(id)!.block);
 }
+
+// The page as the canvas leaves it: what the arrows assembled first, then
+// a line, then everything they did not touch. The user's words - text
+// gets assembled and there turn out to be leftover pieces; the leftovers
+// go under the line.
+//
+// The line is a real 'divider' block marked canvasDivider, so the page
+// can do anything with it a divider allows - and so that leaving the
+// canvas AGAIN finds the line it made last time and moves it, rather than
+// adding a second under the first. Any such line is lifted out before the
+// order is worked out, and put back only where the boundary now is; with
+// nothing assembled, or nothing left over, there is no line at all.
+//
+// Same contract as orderByCanvasLinks: the SAME array when nothing would
+// change.
+export function assembleWithDivider(
+  blocks: Block[],
+  links: Record<string, CanvasLink>,
+  makeDivider: () => Block
+): Block[] {
+  const withoutLine = blocks.filter((b) => !b.canvasDivider);
+  const ordered = orderByCanvasLinks(withoutLine, links);
+  const primary = sequenceLinkIds(links);
+  const chained = new Set<string>();
+  for (const [id, link] of Object.entries(links)) {
+    if (!primary.has(id)) continue;
+    if (withoutLine.some((b) => b.id === link.from) && withoutLine.some((b) => b.id === link.to)) {
+      chained.add(link.from);
+      chained.add(link.to);
+    }
+  }
+  const assembledCount = ordered.filter((b) => chained.has(b.id)).length;
+  const next =
+    assembledCount > 0 && assembledCount < ordered.length
+      ? [...ordered.slice(0, assembledCount), { ...makeDivider(), canvasDivider: true }, ...ordered.slice(assembledCount)]
+      : ordered;
+  // Unchanged means: the same blocks in the same order, and a divider
+  // (if any) in the same place - its own id may differ, which is fine.
+  const same =
+    next.length === blocks.length &&
+    next.every((b, index) => (b.canvasDivider ? !!blocks[index].canvasDivider : b.id === blocks[index].id));
+  if (same) return blocks;
+  return next.map((b, index) => (b.canvasDivider && blocks[index]?.canvasDivider ? blocks[index] : b));
+}

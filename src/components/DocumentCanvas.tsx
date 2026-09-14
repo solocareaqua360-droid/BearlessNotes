@@ -29,7 +29,7 @@ import { useCanvasWheel } from '../hooks/useCanvasWheel';
 import { setSelection } from '../utils/setSelection';
 import Svg, { Path } from 'react-native-svg';
 import { Block, CanvasLink } from '../types';
-import { sequenceLinkIds } from '../utils/canvasOrder';
+import { orderByCanvasLinks, sequenceLinkIds } from '../utils/canvasOrder';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 // The canvas is part of the note, and the note is paper - white, with
@@ -225,6 +225,24 @@ function DocumentCanvasInner({
   const placements = useMemo(() => layOutBlocks(blocks, cardHeights), [blocks, cardHeights]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const sequenceIds = useMemo(() => sequenceLinkIds(links), [links]);
+  // The number each chained card will have on the page - the order the
+  // arrows ask for, shown on the cards themselves so nobody has to work
+  // it out. Only cards an order-setting arrow touches get one: the rest
+  // keep the order they had, which the arrows say nothing about.
+  const ordinals = useMemo(() => {
+    const chained = new Set<string>();
+    for (const [id, link] of Object.entries(links)) {
+      if (!sequenceIds.has(id)) continue;
+      chained.add(link.from);
+      chained.add(link.to);
+    }
+    const result = new Map<string, number>();
+    if (chained.size === 0) return result;
+    orderByCanvasLinks(blocks, links).forEach((block, index) => {
+      if (chained.has(block.id)) result.set(block.id, index + 1);
+    });
+    return result;
+  }, [blocks, links, sequenceIds]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // The card a hold has made the start of an arrow. The next tap on
   // another card finishes it; a tap beside the cards, or on the same
@@ -701,6 +719,7 @@ function DocumentCanvasInner({
                 editing={editingId === block.id}
                 caretIndex={editingId === block.id ? editingCaret : null}
                 onDone={stopEditing}
+                ordinal={ordinals.get(block.id) ?? null}
                 linkSource={linkSourceId === block.id}
                 linking={linkSourceId !== null}
                 onHold={setLinkSourceId}
@@ -834,6 +853,7 @@ function CanvasCard({
   canvasTapGesture,
   canvasHoldGesture,
   editing,
+  ordinal,
   linkSource,
   linking,
   onHold,
@@ -868,6 +888,9 @@ function CanvasCard({
   canvasTapGesture: ReturnType<typeof Gesture.Tap>;
   canvasHoldGesture: ReturnType<typeof Gesture.LongPress>;
   editing: boolean;
+  // Its number on the page, once the arrows are honoured - null for a
+  // card no order-setting arrow touches.
+  ordinal: number | null;
   // This card is where an arrow is about to start from.
   linkSource: boolean;
   // SOME card is: a tap on this one then finishes the arrow instead of
@@ -1061,6 +1084,11 @@ function CanvasCard({
         ]}
         onLayout={(e) => onHeight(block.id, e.nativeEvent.layout.height)}
       >
+        {ordinal !== null && (
+          <View style={styles.ordinal} pointerEvents="none">
+            <Text style={styles.ordinalLabel}>{ordinal}</Text>
+          </View>
+        )}
         {editing ? (
           <>
           {/* The way out, on the card itself. Tapping beside the cards
@@ -1296,6 +1324,28 @@ const styles = StyleSheet.create({
     color: PAPER_TEXT,
     padding: 0,
     minHeight: 40,
+  },
+  // The card's number on the page, in the arrow's colour, hung off the
+  // top-left corner so it reads as a label on the card rather than part
+  // of its text.
+  ordinal: {
+    position: 'absolute',
+    top: -1,
+    left: -1,
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 6,
+    borderRadius: 11,
+    borderBottomRightRadius: 11,
+    backgroundColor: LINK_COLOR,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 3,
+  },
+  ordinalLabel: {
+    fontSize: 12,
+    fontFamily: FONT_SEMIBOLD,
+    color: PAPER_CARD,
   },
   // The corner tick. Padded into the card's own padding rather than
   // pushing the text aside - it only exists while that card is being
