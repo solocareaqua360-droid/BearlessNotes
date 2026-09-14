@@ -1129,7 +1129,15 @@ export default function BoardScreen() {
       const cardsToSave = cards.map((card) => {
         if (!card.columnId) return card;
         const previous = savedById.get(card.id);
-        return previous ? { ...card, x: previous.x, y: previous.y } : card;
+        // Only while it STAYS in the same column. A card that has just
+        // moved between columns has to carry its new position, or it
+        // stays written down at the old column's coordinates while
+        // claiming to belong to the new one - and every other device
+        // draws it where the numbers say until its own measurements
+        // catch up. Which is exactly what happened: a card sitting in
+        // one column on the phone and in another in the browser.
+        if (!previous || previous.columnId !== card.columnId) return card;
+        return { ...card, x: previous.x, y: previous.y };
       });
       // Whole once for a board still in the old shape, the difference
       // ever after.
