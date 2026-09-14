@@ -69,6 +69,7 @@ import { blockFromFile, blockFromLink, blockFromPhoto } from '../utils/copyToNot
 import { backupFileToDrive } from '../utils/googleDrive';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { contentEqual } from '../utils/contentEqual';
+import { keyedAll, keyedDiff, readBoardPart } from '../utils/boardStorage';
 import GroupImportSheet from '../components/GroupImportSheet';
 import { useGroupItems } from '../hooks/useGroupItems';
 import { importGroupToBoard } from '../utils/importGroupToBoard';
@@ -988,6 +989,18 @@ export default function BoardScreen() {
   // update for good - see the listener below.
   const lastWriteAtRef = useRef(0);
   const pendingRemoteRef = useRef<{ cards: BoardCard[]; columns: BoardColumn[] } | null>(null);
+  // What is believed to be in the document right now. Every save writes
+  // the difference against this, so one moved card is one field - see
+  // utils/boardStorage for why that matters.
+  const savedRef = useRef<{ cards: BoardCard[]; columns: BoardColumn[]; connections: BoardConnection[] }>({
+    cards: [],
+    columns: [],
+    connections: [],
+  });
+  // A board written before cards were keyed still holds arrays. Merging a
+  // keyed patch into an array REPLACES it - so the first save of such a
+  // board writes every part whole, once, and it is keyed from then on.
+  const legacyShapeRef = useRef(false);
   // The card a connect-drag started on. A ref, not state, because the
   // gesture's own worklet closure is captured at creation time - by the
   // time onEnd fires, a state value set during the same gesture would
@@ -1020,10 +1033,16 @@ export default function BoardScreen() {
         snapshot = await getDoc(docRef);
       }
       const data = snapshot.data();
+      const loadedCards = readBoardPart<BoardCard>(data?.cards);
+      const loadedColumns = readBoardPart<BoardColumn>(data?.columns);
+      const loadedConnections = readBoardPart<BoardConnection>(data?.connections);
+      legacyShapeRef.current =
+        Array.isArray(data?.cards) || Array.isArray(data?.columns) || Array.isArray(data?.connections);
+      savedRef.current = { cards: loadedCards, columns: loadedColumns, connections: loadedConnections };
       setTitle(data?.title ?? 'Без назви');
-      setCards(data?.cards ?? []);
-      setConnections(data?.connections ?? []);
-      setColumns(data?.columns ?? []);
+      setCards(loadedCards);
+      setConnections(loadedConnections);
+      setColumns(loadedColumns);
       setIsLoaded(true);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1042,11 +1061,24 @@ export default function BoardScreen() {
       // echo of our own write is told from another device's news.
       const updatedAt = Date.now();
       lastWriteAtRef.current = updatedAt;
-      setDoc(
-        doc(db, 'boards', boardId),
-        { title, cards, connections, columns, updatedAt },
-        { merge: true }
-      );
+      const saved = savedRef.current;
+      const whole = legacyShapeRef.current;
+      const patch: Record<string, unknown> = { title, updatedAt };
+      // Whole once for a board still in the old shape, the difference
+      // ever after.
+      const cardPatch = whole ? keyedAll(cards) : keyedDiff(saved.cards, cards);
+      const columnPatch = whole ? keyedAll(columns) : keyedDiff(saved.columns, columns);
+      const connectionPatch = whole ? keyedAll(connections) : keyedDiff(saved.connections, connections);
+      if (cardPatch) patch.cards = cardPatch;
+      if (columnPatch) patch.columns = columnPatch;
+      if (connectionPatch) patch.connections = connectionPatch;
+      legacyShapeRef.current = false;
+      // Recorded as sent, not as acknowledged: Firestore keeps an unsent
+      // write on disk and replays it in order, so it WILL arrive - and
+      // until it does, the next difference must be measured against it
+      // rather than against what the server has yet to hear.
+      savedRef.current = { cards, columns, connections };
+      setDoc(doc(db, 'boards', boardId), patch, { merge: true });
     }, AUTOSAVE_DELAY_MS);
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -1615,6 +1647,10 @@ export default function BoardScreen() {
   // while nothing local is in flight - no pending save, no card or column
   // under the finger - and never when it matches what's already here.
   const applyRemote = useCallback((incomingCards: BoardCard[], incomingColumns: BoardColumn[]) => {
+    // What arrived is now what the document holds, so the next difference
+    // is measured against it - otherwise the very next save would write
+    // the other device's own changes back at it as if they were ours.
+    savedRef.current = { ...savedRef.current, cards: incomingCards, columns: incomingColumns };
     setCards((current) => (contentEqual(current, incomingCards) ? current : incomingCards));
     setColumns((current) => (contentEqual(current, incomingColumns) ? current : incomingColumns));
   }, []);
@@ -1623,7 +1659,7 @@ export default function BoardScreen() {
     if (!isLoaded) return;
     return onSnapshot(doc(db, 'boards', boardId), (snapshot) => {
       const data = snapshot.data() as
-        | { cards?: BoardCard[]; columns?: BoardColumn[]; updatedAt?: number }
+        | { cards?: unknown; columns?: unknown; connections?: unknown; updatedAt?: number }
         | undefined;
       if (!data) return;
       // Our own write, still on its way to the server: Firestore shows it
@@ -1635,8 +1671,8 @@ export default function BoardScreen() {
       // stamped earlier than our last write would silently ignore the
       // other device for as long as its clock ran behind.
       if ((data.updatedAt ?? 0) === lastWriteAtRef.current) return;
-      const incomingCards = data.cards ?? [];
-      const incomingColumns = data.columns ?? [];
+      const incomingCards = readBoardPart<BoardCard>(data.cards);
+      const incomingColumns = readBoardPart<BoardColumn>(data.columns);
       // A card under the finger must not be yanked out from under it, so
       // this WAITS rather than dropping. Dropping is what the old rule
       // did, and Firestore sends each change exactly once - so an update

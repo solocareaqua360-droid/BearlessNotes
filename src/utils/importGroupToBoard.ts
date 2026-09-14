@@ -1,11 +1,7 @@
-import {
-  collection,
-  doc,
-  getDoc,
-  updateDoc,
-} from '../firestore';
+import { collection, doc, getDoc, setDoc } from '../firestore';
 import { addDoc } from './owned';
 import { db } from '../firebase';
+import { keyedAll, readBoardPart } from './boardStorage';
 import { BoardCard, BoardColumn, Group } from '../types';
 import { blockFromCustomRow, blockFromFile, blockFromLink, blockFromPhoto } from './copyToNote';
 import {
@@ -135,8 +131,12 @@ export async function importGroupToBoard(
 ): Promise<number> {
   const snapshot = await getDoc(doc(db, 'boards', boardId));
   const data = snapshot.data();
-  const existingCards: BoardCard[] = data?.cards ?? [];
-  const existingColumns: BoardColumn[] = data?.columns ?? [];
+  const existingCards = readBoardPart<BoardCard>(data?.cards);
+  const existingColumns = readBoardPart<BoardColumn>(data?.columns);
+  // See addItemToBoard: a board still holding arrays is written whole
+  // once, and only the new cards after that - so an import no longer puts
+  // back the whole board as this device happened to read it.
+  const legacy = Array.isArray(data?.cards) || Array.isArray(data?.columns);
 
   const byKind = new Map<string, ImportableItem[]>();
   items.forEach((item) => {
@@ -176,11 +176,15 @@ export async function importGroupToBoard(
   const existingIds = new Set(existingCards.map((c) => c.id));
   const cardsToAdd = newCards.filter((c) => !existingIds.has(c.id));
 
-  await updateDoc(doc(db, 'boards', boardId), {
-    cards: [...existingCards, ...cardsToAdd],
-    columns: [...existingColumns, ...newColumns],
-    updatedAt: Date.now(),
-  });
+  await setDoc(
+    doc(db, 'boards', boardId),
+    {
+      cards: legacy ? keyedAll([...existingCards, ...cardsToAdd]) : keyedAll(cardsToAdd),
+      columns: legacy ? keyedAll([...existingColumns, ...newColumns]) : keyedAll(newColumns),
+      updatedAt: Date.now(),
+    },
+    { merge: true }
+  );
   return cardsToAdd.length;
 }
 
@@ -190,8 +194,8 @@ export async function createBoardForGroup(name: string): Promise<string> {
   const now = Date.now();
   const ref = await addDoc(collection(db, 'boards'), {
     title: name,
-    cards: [],
-    columns: [],
+    cards: {},
+    columns: {},
     createdAt: now,
     updatedAt: now,
   });

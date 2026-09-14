@@ -2,10 +2,11 @@ import {
   collection,
   doc,
   getDoc,
-  updateDoc,
+  setDoc,
 } from '../firestore';
 import { addDoc } from './owned';
 import { db } from '../firebase';
+import { keyedAll, readBoardPart } from './boardStorage';
 import { BoardCard, BoardColumn } from '../types';
 import { cardFor, ImportableItem } from './importGroupToBoard';
 import { labelForKind } from './groups';
@@ -32,8 +33,15 @@ export async function addItemToBoard(boardId: string, item: ImportableItem): Pro
 
   const snapshot = await getDoc(doc(db, 'boards', boardId));
   const data = snapshot.data();
-  const existingCards: BoardCard[] = data?.cards ?? [];
-  const existingColumns: BoardColumn[] = data?.columns ?? [];
+  const existingCards = readBoardPart<BoardCard>(data?.cards);
+  const existingColumns = readBoardPart<BoardColumn>(data?.columns);
+  // A board still holding arrays has to be written whole once, because
+  // merging a keyed patch into an array replaces it. After that, and for
+  // every board already keyed, only the new card is written - which is
+  // the point: this used to read the array, append, and put the whole
+  // thing back, so anything another device had added in between was
+  // overwritten by what this one happened to have read.
+  const legacy = Array.isArray(data?.cards) || Array.isArray(data?.columns);
 
   // A file/photo/link/document card reuses its record's own id (see the
   // blockFrom* helpers cardFor calls) - already on this board is a
@@ -43,18 +51,21 @@ export async function addItemToBoard(boardId: string, item: ImportableItem): Pro
   const column = existingColumns.find((c) => c.kind === item.kind);
   if (column) {
     const cardsInColumn = existingCards.filter((c) => c.columnId === column.id);
-    await updateDoc(doc(db, 'boards', boardId), {
-      cards: [
-        ...existingCards,
-        {
-          ...card,
-          columnId: column.id,
-          x: column.x + COLUMN_PADDING,
-          y: column.y + COLUMN_HEADER_HEIGHT + cardsInColumn.length * (APPROX_CARD_HEIGHT + COLUMN_CARD_GAP),
-        },
-      ],
-      updatedAt: Date.now(),
-    });
+    const placed: BoardCard = {
+      ...card,
+      columnId: column.id,
+      x: column.x + COLUMN_PADDING,
+      y: column.y + COLUMN_HEADER_HEIGHT + cardsInColumn.length * (APPROX_CARD_HEIGHT + COLUMN_CARD_GAP),
+    };
+    await setDoc(
+      doc(db, 'boards', boardId),
+      {
+        cards: legacy ? keyedAll([...existingCards, placed]) : { [placed.id]: placed },
+        ...(legacy ? { columns: keyedAll(existingColumns) } : {}),
+        updatedAt: Date.now(),
+      },
+      { merge: true }
+    );
     return;
   }
 
@@ -66,11 +77,16 @@ export async function addItemToBoard(boardId: string, item: ImportableItem): Pro
   const y = existingColumns.length === 0 ? WORLD_CENTER : existingColumns[0].y;
   const newColumn: BoardColumn = { id: columnId, title: labelForKind(item.kind, {}), x, y, kind: item.kind };
 
-  await updateDoc(doc(db, 'boards', boardId), {
-    cards: [...existingCards, { ...card, columnId, x: x + COLUMN_PADDING, y: y + COLUMN_HEADER_HEIGHT }],
-    columns: [...existingColumns, newColumn],
-    updatedAt: Date.now(),
-  });
+  const placed: BoardCard = { ...card, columnId, x: x + COLUMN_PADDING, y: y + COLUMN_HEADER_HEIGHT };
+  await setDoc(
+    doc(db, 'boards', boardId),
+    {
+      cards: legacy ? keyedAll([...existingCards, placed]) : { [placed.id]: placed },
+      columns: legacy ? keyedAll([...existingColumns, newColumn]) : { [newColumn.id]: newColumn },
+      updatedAt: Date.now(),
+    },
+    { merge: true }
+  );
 }
 
 // "Нова дошка" from the save-destination sheet - same shape
@@ -80,8 +96,8 @@ export async function createBoardAndAddItem(name: string, item: ImportableItem):
   const now = Date.now();
   const ref = await addDoc(collection(db, 'boards'), {
     title: name || 'Без назви',
-    cards: [],
-    columns: [],
+    cards: {},
+    columns: {},
     createdAt: now,
     updatedAt: now,
   });
