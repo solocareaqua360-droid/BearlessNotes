@@ -95,6 +95,7 @@ import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPic
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
+import { canPlaceCaretByTouch, measureNode } from '../utils/measureNode';
 import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
@@ -1044,24 +1045,30 @@ function BlockRow({
   // into coordinates inside it.
   const lockedTextRef = useRef<Text>(null);
   const lockedLinesRef = useRef<TextLayoutLine[]>([]);
-  function activateAtTouch(e: GestureResponderEvent) {
+  async function activateAtTouch(e: GestureResponderEvent) {
     const { pageX, pageY } = e.nativeEvent;
     const textNode = lockedTextRef.current;
-    if (!textNode || !item.text) {
+    // Just open it, and let the platform place the caret - which in a
+    // browser is what a real text field does on its own. See
+    // canPlaceCaretByTouch.
+    if (!canPlaceCaretByTouch || !textNode || !item.text) {
       onActivate(item.id);
       return;
     }
-    textNode.measure((_x, _y, _w, _h, textPageX, textPageY) => {
-      const segments = parseFormattedText(item.text);
-      const displayText = segments.map((s) => s.text).join('');
-      const displayIndex = displayIndexForTouch(
-        lockedLinesRef.current,
-        displayText,
-        pageX - textPageX,
-        pageY - textPageY
-      );
-      onActivate(item.id, rawIndexForDisplayIndex(segments, item.text, displayIndex));
-    });
+    const box = await measureNode(textNode);
+    if (!box) {
+      onActivate(item.id);
+      return;
+    }
+    const segments = parseFormattedText(item.text);
+    const displayText = segments.map((s) => s.text).join('');
+    const displayIndex = displayIndexForTouch(
+      lockedLinesRef.current,
+      displayText,
+      pageX - box.x,
+      pageY - box.y
+    );
+    onActivate(item.id, rawIndexForDisplayIndex(segments, item.text, displayIndex));
   }
 
   let content: ReactNode;
@@ -2901,8 +2908,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }, [focusedBlockId]);
   function measureActiveInputForSync(input: TextInput) {
     activeInputBottomSV.value = -1;
-    input.measure((_x, _y, _width, height, _pageX, pageY) => {
-      activeInputBottomSV.value = pageY + height;
+    measureNode(input).then((box) => {
+      if (!box) return;
+      activeInputBottomSV.value = box.y + box.height;
       activeInputOffsetSV.value = scrollOffsetRef.current;
     });
   }
@@ -2975,7 +2983,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const id = focusedBlockIdRef.current;
     const input = id ? inputRefs.current[id] : null;
     if (!input) return;
-    input.measure((_x, _y, _width, height, _pageX, pageY) => {
+    measureNode(input).then((box) => {
+      if (!box) return;
+      const { height, y: pageY } = box;
       // RN's first keyboardDidShow can under-report the height by the
       // suggestion strip (323 vs the real 338 on-device) - the synced
       // scroll already targeted the real one, so measuring against the

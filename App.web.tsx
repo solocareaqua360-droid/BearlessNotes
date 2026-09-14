@@ -19,6 +19,7 @@ import BoardScreen from './src/screens/BoardScreen';
 import { AskHost } from './src/components/surfaces/Ask';
 import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
+import CrashBoundary from './src/components/CrashBoundary';
 import { BoardsStackParamList } from './src/navigation';
 import { getDriveToken, hasDriveToken, subscribeToDriveToken } from './src/utils/driveToken.web';
 
@@ -230,6 +231,10 @@ export default function App() {
             </>
           )}
         </View>
+        {/* Below the account bar, not above it: a crash inside the board
+            or the editor must still leave a way to change account or sign
+            out, and the bar is that way. */}
+        <CrashBoundary>
         <NavigationContainer>
           <GlassPortalHost>
             <GlassTargetProvider>
@@ -241,6 +246,7 @@ export default function App() {
             </GlassTargetProvider>
           </GlassPortalHost>
         </NavigationContainer>
+        </CrashBoundary>
       </GestureHandlerRootView>
     </SafeAreaProvider>
   );
