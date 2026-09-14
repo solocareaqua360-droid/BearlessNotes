@@ -26,7 +26,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
-import DocumentScanner, { ResponseType, ScanDocumentResponseStatus } from 'react-native-document-scanner-plugin';
+import { canScan, scanPages } from '../utils/documentScanner';
 import * as Print from 'expo-print';
 import * as Clipboard from 'expo-clipboard';
 import { dateKey, formatShortDate, parseDateKey } from '../utils/dateLocale';
@@ -53,7 +53,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { useKeyboardHandler } from 'react-native-keyboard-controller';
+import { useEditorKeyboard } from '../hooks/useEditorKeyboard';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   collection,
@@ -94,6 +94,7 @@ import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../component
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
+import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
@@ -1026,7 +1027,17 @@ function BlockRow({
   // honest confirmation rather than a decoration that's still green after
   // the file is actually gone.
   const fileCacheStatus = useCachedAttachment(type === 'file' ? item.fileUri : undefined, item.driveFileId);
-  const imageCacheStatus = useCachedAttachment(type === 'image' ? item.imageUri : undefined, item.driveFileId);
+  // Through useAttachmentSource, not useCachedAttachment, because the
+  // picture needs an ADDRESS and not just a verdict. On the phone the two
+  // are the same thing - the stored path is where the bytes are, once the
+  // Drive copy has been pulled back into it. In a browser it can never be:
+  // that path is a file on the phone, which a page may not open, so the
+  // web half fetches the Drive copy and hands back a blob the page can
+  // actually show. Same hook, same call, one truth per platform.
+  const { status: imageCacheStatus, source: imageSource } = useAttachmentSource(
+    type === 'image' ? item.imageUri : undefined,
+    item.driveFileId
+  );
 
   // Tap-to-cursor on the locked text (see displayIndexForTouch): the Text's
   // line layout, and the Text itself to turn the tap's page coordinates
@@ -1082,7 +1093,7 @@ function BlockRow({
           onPress={() => onOpenImage(item.id)}
           style={styles.blockImageTap}
         >
-          <Image source={{ uri: item.imageUri }} style={styles.blockImage} resizeMode={fit} />
+          <Image source={{ uri: imageSource ?? item.imageUri }} style={styles.blockImage} resizeMode={fit} />
         </Pressable>
         {!isSelectMode && (
           <Pressable
@@ -2895,7 +2906,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       activeInputOffsetSV.value = scrollOffsetRef.current;
     });
   }
-  useKeyboardHandler(
+  useEditorKeyboard(
     {
       onStart: (e) => {
         'worklet';
@@ -3850,14 +3861,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   async function scanDocumentForBlock(id: string) {
-    let result;
+    let pages: string[] | null;
     try {
-      result = await DocumentScanner.scanDocument({ responseType: ResponseType.ImageFilePath });
+      pages = await scanPages();
     } catch {
       return;
     }
-    const pages = result.scannedImages;
-    if (result.status !== ScanDocumentResponseStatus.Success || !pages?.length) return;
+    if (!pages) return;
     chooseScanShape(id, pages);
   }
 
