@@ -404,6 +404,8 @@ function DocumentCanvasInner({
                 placement={placements[index]}
                 canvasScale={scale}
                 canvasPanGesture={panGesture}
+                canvasMarqueeGesture={marqueeGesture}
+                canvasTapGesture={clearSelectionGesture}
                 editing={editingId === block.id}
                 caretIndex={editingId === block.id ? editingCaret : null}
                 onDone={stopEditing}
@@ -449,6 +451,8 @@ function CanvasCard({
   placement,
   canvasScale,
   canvasPanGesture,
+  canvasMarqueeGesture,
+  canvasTapGesture,
   editing,
   selected,
   groupOffsetX,
@@ -466,6 +470,8 @@ function CanvasCard({
   placement: CanvasPlacement;
   canvasScale: ReturnType<typeof useSharedValue<number>>;
   canvasPanGesture: ReturnType<typeof Gesture.Pan>;
+  canvasMarqueeGesture: ReturnType<typeof Gesture.Pan>;
+  canvasTapGesture: ReturnType<typeof Gesture.Tap>;
   editing: boolean;
   selected: boolean;
   groupOffsetX: ReturnType<typeof useSharedValue<number>>;
@@ -544,7 +550,12 @@ function CanvasCard({
     // Without this the surface underneath also recognises a sliver of the
     // same touch, which lands as a jump when the finger lifts. The board
     // hit exactly this.
-    .blocksExternalGesture(canvasPanGesture)
+    // ...and since the selection box arrived, the box too: it is a Pan
+    // on the surface as well, with a SHORTER trigger distance than this
+    // one, so it won the touch on every card and the card never moved -
+    // the box was drawn instead. Whatever the surface can do with a
+    // touch, a touch that begins on a card is not that.
+    .blocksExternalGesture(canvasPanGesture, canvasMarqueeGesture, canvasTapGesture)
     // Per-event delta divided by the zoom, so a card keeps up with the
     // finger 1:1 however far in or out the canvas is.
     .onChange((e) => {
@@ -570,6 +581,9 @@ function CanvasCard({
 
   const tapGesture = Gesture.Tap()
     .enabled(!editing)
+    // A tap on a card is not a tap on the canvas beside it - which would
+    // put the selection down in the same moment the card was chosen.
+    .blocksExternalGesture(canvasTapGesture, canvasMarqueeGesture)
     .onEnd((e) => {
       runOnJS(handleTap)(posX.value, posY.value, e.absoluteX, e.absoluteY);
     });
