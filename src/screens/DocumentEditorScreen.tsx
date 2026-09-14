@@ -1219,7 +1219,12 @@ function BlockRow({
             )}
           </View>
           <Text style={styles.fileBlockName} numberOfLines={1}>
-            {item.fileName ?? 'Файл'}
+            {/* The name the user gave it, not the name it arrived with.
+                This showed fileName - "IMG-20250910-WA0002.jpg" - even
+                after being renamed in the Files database, so the rename
+                was invisible everywhere except that one screen. Same
+                order the quick look already uses. */}
+            {item.fileTitle || item.fileName || 'Файл'}
           </Text>
           {fileCacheStatus === 'missing' && <Text style={styles.attachmentStatusLabel}>Недоступно тут</Text>}
         </Pressable>
