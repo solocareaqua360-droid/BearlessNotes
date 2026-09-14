@@ -2,8 +2,8 @@ import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { doc, getDocs, setDoc, updateDoc } from '../firestore';
 import { db } from '../firebase';
 import { ownedQuery } from './owned';
-import { readBoardPart } from './boardStorage';
-import { BoardCard } from '../types';
+import { keyedAll, readBoardPart } from './boardStorage';
+import { BoardCard, BoardColumn } from '../types';
 import { backupFileToDrive } from './googleDrive';
 
 // The photos and files that were saved before there was a Drive backup at
@@ -56,6 +56,14 @@ export async function backfillDriveCopies(
   // record takes it as a field of its own; a board card takes it inside
   // the board's `cards` map, under that card's id - which is why the two
   // cannot share one write.
+  //
+  // And that per-card merge is only safe once `cards` IS a map. Merging a
+  // map into a FIELD THAT HOLDS AN ARRAY does not merge - Firestore
+  // replaces the array outright, and every other card on that board is
+  // gone. This is not hypothetical: it destroyed four cards on a board
+  // called «mindEva» the first time this code ran. So any board still
+  // holding arrays is converted, whole, BEFORE a single upload starts -
+  // the same one-off migration addItemToBoard does for the same reason.
   type Target =
     | { kind: 'record'; collectionName: 'photos' | 'files'; id: string }
     | { kind: 'card'; boardId: string; cardId: string };
@@ -91,8 +99,13 @@ export async function backfillDriveCopies(
       folder: 'Files',
     });
   });
+  // Boards that still hold arrays and have at least one card to upload.
+  const toConvert: string[] = [];
   boards.docs.forEach((snapshot) => {
-    readBoardPart<BoardCard>(snapshot.data()?.cards).forEach((card) => {
+    const data = snapshot.data();
+    const cards = readBoardPart<BoardCard>(data?.cards);
+    const before = jobs.length;
+    cards.forEach((card) => {
       if (card.driveFileId) return;
       if (card.imageUri) {
         jobs.push({
@@ -115,7 +128,25 @@ export async function backfillDriveCopies(
         });
       }
     });
+    if (jobs.length > before && (Array.isArray(data?.cards) || Array.isArray(data?.columns))) {
+      toConvert.push(snapshot.id);
+    }
   });
+
+  // The migration, before any upload. Written whole and once per board -
+  // after this every `cards` is a map, and the per-card merges below
+  // cannot replace anything.
+  for (const boardId of toConvert) {
+    const data = boards.docs.find((d) => d.id === boardId)?.data();
+    await setDoc(
+      doc(db, 'boards', boardId),
+      {
+        cards: keyedAll(readBoardPart<BoardCard>(data?.cards)),
+        columns: keyedAll(readBoardPart<BoardColumn>(data?.columns)),
+      },
+      { merge: true }
+    );
+  }
 
   let done = 0;
   for (const job of jobs) {

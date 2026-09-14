@@ -14,7 +14,8 @@ import {
 import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { BoardsStackParamList } from '../navigation';
-import { BoardItem } from '../types';
+import { BoardCard, BoardColumn, BoardItem } from '../types';
+import { readBoardPart } from '../utils/boardStorage';
 import { colorForDocument } from '../utils/documentColor';
 import BoardMiniMap from '../components/BoardMiniMap';
 import RenamePrompt from '../components/RenamePrompt';
@@ -73,8 +74,14 @@ export default function BoardsListScreen() {
             return {
               id: docSnapshot.id,
               title: data.title ?? 'Без назви',
-              cards: data.cards ?? [],
-              columns: data.columns ?? [],
+              // Through readBoardPart, not raw. A board's cards are an
+              // array on older boards and a map on newer ones, and this
+              // handed whichever it found straight to BoardMiniMap, which
+              // calls .filter on it. A map there crashed the whole list -
+              // and it also meant a keyed board drew no mini-map at all,
+              // because an object has no .length to pass the check below.
+              cards: readBoardPart<BoardCard>(data.cards),
+              columns: readBoardPart<BoardColumn>(data.columns),
               createdAt: data.createdAt ?? 0,
               updatedAt: data.updatedAt ?? 0,
             };
