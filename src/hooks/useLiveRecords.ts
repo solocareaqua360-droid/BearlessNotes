@@ -3,6 +3,7 @@ import { onSnapshot } from '../firestore';
 import { ownedQuery } from '../utils/owned';
 import { Block } from '../types';
 import { linkDocId } from '../utils/linkId';
+import { refreshLinkPreviewIfExpired } from '../utils/linkPreviewRefresh';
 
 // A photo, file or link block showing what its record says NOW.
 //
@@ -92,6 +93,15 @@ export function useLiveRecords(enabled: boolean): LiveRecords {
         });
       }),
       onSnapshot(ownedQuery('links'), (snapshot) => {
+        // A cover past its deadline is fetched again and written to the
+        // record; this listener then delivers the live one. Outside the
+        // state updater on purpose - React may run an updater twice, and
+        // a network call is not something to run twice. See
+        // linkPreviewRefresh.
+        snapshot.docs.forEach((d) => {
+          const data = d.data();
+          refreshLinkPreviewIfExpired({ id: d.id, url: data.url, imageUrl: data.imageUrl });
+        });
         setRecords((prev) => {
           const next = { ...prev };
           snapshot.docs.forEach((d) => {

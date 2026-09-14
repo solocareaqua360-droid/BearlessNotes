@@ -13,6 +13,7 @@ import ZoomableImageViewer from './ZoomableImageViewer';
 import { FileRow, LinkRow, PhotoCell, PhotoCardItem } from './ItemCards';
 import { extractPreview } from '../utils/documentPreview';
 import { applyLiveRecord, useLiveRecords } from '../hooks/useLiveRecords';
+import { refreshLinkPreviewIfExpired } from '../utils/linkPreviewRefresh';
 import { openFileExternally } from '../utils/openFileExternally';
 import { categoryFromSiteName } from '../utils/linkCategory';
 import { colorForDocument } from '../utils/documentColor';
@@ -105,6 +106,13 @@ export default function GroupSections({
   // Records as they are now, for the document cards' pictures - see
   // DocumentsScreen's same line.
   const liveRecords = useLiveRecords(enabled);
+  // A link card here draws the record's own imageUrl, so a cover past its
+  // deadline is refetched from here too - see linkPreviewRefresh.
+  useEffect(() => {
+    links.forEach((l) =>
+      refreshLinkPreviewIfExpired({ id: l.id, url: l.url as string | undefined, imageUrl: l.imageUrl as string | undefined })
+    );
+  }, [links]);
   // The uri and its Drive copy together - see AttachmentImage.
   const [viewerPhoto, setViewerPhoto] = useState<{ uri: string; driveFileId?: string } | null>(null);
 

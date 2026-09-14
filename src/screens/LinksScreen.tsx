@@ -24,6 +24,7 @@ import {
   writeBatch,
 } from '../firestore';
 import { ownedQuery, setDoc } from '../utils/owned';
+import { refreshLinkPreviewIfExpired } from '../utils/linkPreviewRefresh';
 import { db } from '../firebase';
 import { Block, TaggableKind } from '../types';
 import { LINK_CATEGORY_INFO as CATEGORY_INFO, LinkCategory, categoryFromSiteName } from '../utils/linkCategory';
@@ -201,6 +202,10 @@ export default function LinksScreen({
           .sort((a, b) => ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0))
           .map((docSnapshot) => {
           const data = docSnapshot.data();
+          // A TikTok cover past its deadline is fetched again and written
+          // back; this same listener then delivers the live one. See
+          // linkPreviewRefresh.
+          refreshLinkPreviewIfExpired({ id: docSnapshot.id, url: data.url, imageUrl: data.imageUrl });
           return {
             id: docSnapshot.id,
             url: data.url,
