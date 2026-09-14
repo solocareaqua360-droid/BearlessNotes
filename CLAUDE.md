@@ -265,7 +265,18 @@ refuse to merge — `git restore package-lock.json` before pulling is the
 usual fix, since the local diff is just platform-specific lockfile noise,
 not real changes.
 
-**Build the web version with `npm run build:web`, never a bare `expo
+**Never add anything to `package.json`'s `scripts`.** `packageJson:
+scripts` is one of the inputs `expo-updates` hashes into the runtime
+version — adding a single line there changed this app's fingerprint
+(`a47520df…` → `d5d74b3c…`) and silently cut the phone off from every
+OTA update published afterwards. `eas update` kept succeeding; the
+updates simply carried a runtime the installed APK does not answer to,
+and the only symptom on the device was "Оновлень немає". Anything that
+would have been an npm script goes in `scripts/` as a shell file, which
+is not hashed. The same rule is why a new dependency means a new APK:
+see the `@expo/metro-runtime` note above.
+
+**Build the web version with `scripts/build-web.sh`, never a bare `expo
 export`.** The script exists only to force `--clear`, and that flag is
 not optional here. `eas update --environment preview` bundles using the
 EAS environment, which has none of the `EXPO_PUBLIC_*` variables that
