@@ -39,7 +39,6 @@ import {
 } from '../firestore';
 import { ownedQuery, setDoc } from '../utils/owned';
 import {
-  GLASS_BODY,
   GLASS_BODY_BLURRED,
   GLASS_CARD,
   GLASS_LINE,
@@ -2095,17 +2094,21 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
 
       {/* The record as a page: a structured reference to read, with editing
           a deliberate step away rather than the only mode.
-          Deliberately NOT a Modal. The form opens on top of this, and the
-          form's own pickers on top of THAT - as three Modals that is three
-          native windows on Android, and the topmost one renders but never
-          receives touches. As a plain overlay inside this screen, the page
-          costs no window at all and the form/picker pair goes back to the
-          two-window arrangement that has always worked. */}
+          A WINDOW, like everything else here - it used to cover the screen
+          edge to edge, which made it the only thing in the app that left
+          no sign of where it had been opened from. Same centred shape as
+          the form that edits it, one size larger because it is for
+          reading. A layer, never a Modal: the form opens on top of this,
+          and the form's own pickers on top of THAT, and layers stack in
+          the order they mount while a Modal always wins. */}
       {rowPageRow !== null && (
+        <GlassLayer visible onClose={() => setRowPageId(null)}>
+          <View style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setRowPageId(null)} />
           <View style={styles.pageContainer}>
             <View style={styles.pageHeader}>
               <Pressable hitSlop={10} onPress={() => setRowPageId(null)}>
-                <Ionicons name="chevron-back" size={24} color={GLASS_TEXT} />
+                <Ionicons name="close" size={24} color={GLASS_TEXT} />
               </Pressable>
               <Text style={styles.pageHeaderTitle} numberOfLines={1}>
                 {rowPageRow ? titleOf(rowPageRow) : ''}
@@ -2234,6 +2237,8 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
               </GestureScrollView>
             )}
           </View>
+          </View>
+        </GlassLayer>
       )}
 
       {/* A layer, not a Modal. A Modal is a native window of its own on
@@ -3257,27 +3262,22 @@ const styles = StyleSheet.create({
   // The record page: a plain light sheet, deliberately not the dark
   // gradient the database list sits on - it reads as a document about one
   // record rather than another view of the list.
-  // A white page with near-black text, opened from a dark list: the record
-  // page predates the glass palette. It is not a sheet - it covers the
-  // screen - so it takes the screen's own body colour rather than a
-  // window's, and everything on it moves to the glass text colours.
+  // The record's own window. Taller than the form that edits it (85% vs
+  // 55%): this one is for reading, and a record with a dozen fields
+  // should show as many of them as the screen allows.
   pageContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: GLASS_BODY,
-    // Above everything this screen draws: the capsule strip (20), an open
-    // param dropdown (30) and the "..." menu (60/61).
-    zIndex: 100,
+    ...SHEET_WINDOW,
+    maxHeight: '85%',
+    backgroundColor: GLASS_BODY_BLURRED,
+    overflow: 'hidden',
   },
   pageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     paddingHorizontal: 16,
-    paddingTop: 56,
+    // No status bar to clear any more - the window starts below it.
+    paddingTop: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: GLASS_LINE,
