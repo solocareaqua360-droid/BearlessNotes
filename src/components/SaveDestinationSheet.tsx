@@ -74,7 +74,7 @@ export default function SaveDestinationSheet({
       setDocuments(
         [...snapshot.docs]
           .sort((a, b) => ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0))
-          .filter((d) => !d.data().calendarDate)
+          .filter((d) => !d.data().calendarDate && !d.data().deletedAt)
           .map((d) => ({ id: d.id, title: d.data().title }))
       );
     });

@@ -402,6 +402,12 @@ export interface DocumentItem {
   // priority over any image block as the document's card thumbnail (see
   // extractPreview's own coverImageUri parameter).
   coverImageUri?: string;
+  // In the bin. A deleted note is not deleted: it is stamped with the
+  // moment it went, every list leaves it out, and the bin shows it until
+  // it is restored or thrown away for good (or thirty days pass). Its
+  // tags, mirrors and arrows are left exactly as they were, so restoring
+  // gives back the whole note and not a shell of one.
+  deletedAt?: number;
   // Arrows between blocks on the note's canvas («Полотно»). A keyed map,
   // never an array: a merge of a map into an array field REPLACES the
   // array (which is how a board lost four cards), and a map merges one

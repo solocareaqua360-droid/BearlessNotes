@@ -246,7 +246,7 @@ export default function AddExistingItemModal({
       setDocuments(
         [...snapshot.docs]
           .sort(newestFirst)
-          .filter((d) => !d.data().calendarDate)
+          .filter((d) => !d.data().calendarDate && !d.data().deletedAt)
           .map((d) => ({ id: d.id, title: (d.data().title as string) || 'Без назви' }))
       );
     });

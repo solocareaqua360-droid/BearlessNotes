@@ -79,7 +79,8 @@ import {
 } from '../constants/rail';
 import { useRail } from '../hooks/useRail';
 import { useBlurTarget } from '../components/GlassTarget';
-import { confirm, notify } from '../components/surfaces/Ask';
+import { ask, confirm, notify } from '../components/surfaces/Ask';
+import TagEditSheet from '../components/TagEditSheet';
 
 // Палітра №3 (Теплий Теракотовий) - the create/edit action color across
 // this redesign; replaces the old blue ACCENT wherever this screen used it.
@@ -212,7 +213,17 @@ export default function DocumentsScreen() {
   // folder. That is the user's rule for the two modes.
   const explorerTags = tags.filter((t) => t.types.includes('document') || drawerTags.some((d) => d.id === t.id));
   const tagByPath = new Map(explorerTags.map((t) => [t.path, t]));
-  type Folder = { name: string; fullPath: string; tag: Tag | undefined; count: number };
+  type Folder = { name: string; fullPath: string; tag: Tag | undefined; count: number; docs: number; subfolders: number };
+  // What the two small numbers on a folder say: the documents directly in
+  // it (not in its sub-folders), and the sub-folders directly in it.
+  function directDocs(fullPath: string): number {
+    const own = tagByPath.get(fullPath);
+    return own ? documents.filter((d) => (d.tagIds ?? []).includes(own.id)).length : 0;
+  }
+  function directSubfolders(fullPath: string): number {
+    const prefix = `${fullPath}/`;
+    return new Set(explorerTags.filter((t) => t.path.startsWith(prefix)).map((t) => t.path.slice(prefix.length).split('/')[0])).size;
+  }
   function countInside(fullPath: string): number {
     const inside = new Set(
       explorerTags.filter((t) => t.path === fullPath || t.path.startsWith(`${fullPath}/`)).map((t) => t.id)
@@ -227,7 +238,14 @@ export default function DocumentsScreen() {
     if (searching) {
       return explorerTags
         .filter((t) => t.path.toLowerCase().includes(needle.toLowerCase()))
-        .map((t) => ({ name: t.path.split('/').join('  /  '), fullPath: t.path, tag: t, count: countInside(t.path) }))
+        .map((t) => ({
+          name: t.path.split('/').join('  /  '),
+          fullPath: t.path,
+          tag: t,
+          count: countInside(t.path),
+          docs: directDocs(t.path),
+          subfolders: directSubfolders(t.path),
+        }))
         .sort((a, b) => a.fullPath.localeCompare(b.fullPath));
     }
     const prefix = explorerPath ? `${explorerPath}/` : '';
@@ -238,7 +256,16 @@ export default function DocumentsScreen() {
       if (!rest) continue;
       const name = rest.split('/')[0];
       const fullPath = prefix + name;
-      if (!seen.has(fullPath)) seen.set(fullPath, { name, fullPath, tag: tagByPath.get(fullPath), count: 0 });
+      if (!seen.has(fullPath)) {
+        seen.set(fullPath, {
+          name,
+          fullPath,
+          tag: tagByPath.get(fullPath),
+          count: 0,
+          docs: directDocs(fullPath),
+          subfolders: directSubfolders(fullPath),
+        });
+      }
     }
     // What a folder's number says: every document anywhere under it,
     // which is what a file manager's "items" means for a folder.
@@ -256,14 +283,147 @@ export default function DocumentsScreen() {
   // A folder made here, in the level being looked at. Held "+" does it
   // (a tap makes a document, as always); a folder made this way is kept
   // while empty - see createFolderTag.
-  const [folderPromptVisible, setFolderPromptVisible] = useState(false);
-  async function createFolder(name: string) {
-    setFolderPromptVisible(false);
-    const clean = name.trim().replace(/\//g, ' ');
-    if (!clean) return;
-    const path = explorerPath ? `${explorerPath}/${clean}` : clean;
-    if (tagByPath.has(path)) return;
-    await list.createFolderTag(path, 'document', TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)]);
+  // One prompt for every folder name: a new folder in some parent, or a
+  // folder's new name.
+  const [folderPrompt, setFolderPrompt] = useState<{ mode: 'new'; parent: string } | { mode: 'rename'; path: string } | null>(null);
+  const [folderEdit, setFolderEdit] = useState<Tag | null>(null);
+  const [docRename, setDocRename] = useState<DocumentItem | null>(null);
+  const randomColor = () => TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
+  const cleanName = (name: string) => name.trim().replace(/\//g, ' ');
+  const parentOf = (path: string) => path.split('/').slice(0, -1).join('/');
+  const nameOf = (path: string) => path.split('/').pop() ?? path;
+  // Every folder path the tree has, whether or not a tag sits on it (a
+  // folder can be only a segment of a deeper tag's path).
+  const allFolderPaths = Array.from(
+    new Set(
+      explorerTags.flatMap((t) => {
+        const parts = t.path.split('/');
+        return parts.map((_, i) => parts.slice(0, i + 1).join('/'));
+      })
+    )
+  ).sort();
+  // The tag that stands for a folder, made if the folder was only a path
+  // segment until now - a document can only be put IN a folder that is a
+  // tag.
+  async function tagForFolder(path: string): Promise<Tag> {
+    const existing = tagByPath.get(path);
+    if (existing) return existing;
+    const id = await list.createFolderTag(path, 'document', randomColor());
+    return { id, path, icon: 'folder-outline', color: TAG_COLORS[0], types: ['document'], usedIn: {}, keep: true };
+  }
+  // A folder's path changes, and every path under it follows.
+  async function renameFolder(oldPath: string, newPath: string) {
+    if (oldPath === newPath || !newPath) return;
+    const affected = explorerTags.filter((t) => t.path === oldPath || t.path.startsWith(`${oldPath}/`));
+    await Promise.all(affected.map((t) => renameTag(t, newPath + t.path.slice(oldPath.length))));
+    if (explorerPath === oldPath || explorerPath.startsWith(`${oldPath}/`)) {
+      setExplorerPath(newPath + explorerPath.slice(oldPath.length));
+    }
+  }
+  async function saveFolderName(name: string) {
+    const prompt = folderPrompt;
+    setFolderPrompt(null);
+    const clean = cleanName(name);
+    if (!prompt || !clean) return;
+    if (prompt.mode === 'new') {
+      const path = prompt.parent ? `${prompt.parent}/${clean}` : clean;
+      if (tagByPath.has(path)) return;
+      await list.createFolderTag(path, 'document', randomColor());
+    } else {
+      const parent = parentOf(prompt.path);
+      await renameFolder(prompt.path, parent ? `${parent}/${clean}` : clean);
+    }
+  }
+  // Deleting a folder is unpacking it: what was inside goes up one level
+  // - documents to the parent folder (or to no folder at the root), and
+  // sub-folders lose this one segment of their path.
+  async function deleteFolder(path: string) {
+    const yes = await confirm({
+      title: `Видалити папку «${nameOf(path)}»?`,
+      message: 'Документи й підпапки з неї піднімуться на рівень вище.',
+      confirmLabel: 'Видалити',
+    });
+    if (!yes) return;
+    const parent = parentOf(path);
+    const own = tagByPath.get(path);
+    if (own) {
+      const holders = documents.filter((d) => (d.tagIds ?? []).includes(own.id));
+      if (parent) {
+        const parentTag = await tagForFolder(parent);
+        await Promise.all(holders.map((d) => attachTag(parentTag, 'document', d.id, ITEMS_COLLECTION_BY_KIND.document)));
+      }
+      await list.deleteTagCompletely(own);
+    }
+    const below = explorerTags.filter((t) => t.path.startsWith(`${path}/`));
+    await Promise.all(
+      below.map((t) => {
+        const rest = t.path.slice(path.length + 1);
+        return renameTag(t, parent ? `${parent}/${rest}` : rest);
+      })
+    );
+    if (explorerPath === path || explorerPath.startsWith(`${path}/`)) setExplorerPath(parent);
+  }
+  // Where a folder or a document could go: the root, and every folder but
+  // the one being moved and anything under it.
+  async function pickDestination(title: string, exclude?: string): Promise<string | null | 'cancel'> {
+    const choice = await ask({
+      title,
+      actions: [
+        { id: '/', label: exclude === undefined ? 'Без папки' : 'Всі (корінь)', icon: 'home-outline' },
+        ...allFolderPaths
+          .filter((p) => exclude === undefined || (p !== exclude && !p.startsWith(`${exclude}/`)))
+          .map((p) => ({ id: `p:${p}`, label: p.split('/').join(' › '), icon: 'folder-outline' as const })),
+      ],
+    });
+    if (choice === 'cancel') return 'cancel';
+    return choice === '/' ? null : choice.slice(2);
+  }
+  // Held down on a folder row.
+  async function openFolderMenu(folder: { fullPath: string; tag: Tag | undefined }) {
+    const path = folder.fullPath;
+    const choice = await ask({
+      title: nameOf(path),
+      actions: [
+        { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+        { id: 'look', label: 'Іконка й колір', icon: 'color-palette-outline' },
+        { id: 'sub', label: 'Нова підпапка', icon: 'folder-open-outline' },
+        { id: 'move', label: 'Перемістити в…', icon: 'arrow-forward-outline' },
+        { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' },
+      ],
+    });
+    if (choice === 'rename') setFolderPrompt({ mode: 'rename', path });
+    else if (choice === 'look') setFolderEdit(await tagForFolder(path));
+    else if (choice === 'sub') setFolderPrompt({ mode: 'new', parent: path });
+    else if (choice === 'move') {
+      const dest = await pickDestination(`Перемістити «${nameOf(path)}» в…`, path);
+      if (dest === 'cancel') return;
+      await renameFolder(path, dest ? `${dest}/${nameOf(path)}` : nameOf(path));
+    } else if (choice === 'delete') deleteFolder(path);
+  }
+  // Held down on a document card, anywhere in the list.
+  async function openDocumentMenu(item: DocumentItem) {
+    const choice = await ask({
+      title: item.title || 'Без назви',
+      actions: [
+        { id: 'move', label: 'Перемістити в…', icon: 'arrow-forward-outline' },
+        { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+        { id: 'bin', label: 'У кошик', icon: 'trash-outline', tone: 'danger' },
+      ],
+    });
+    if (choice === 'rename') setDocRename(item);
+    else if (choice === 'bin') confirmDeleteDocument(item.id);
+    else if (choice === 'move') {
+      const dest = await pickDestination(`Перемістити «${item.title || 'Без назви'}» в…`);
+      if (dest === 'cancel') return;
+      // Moving means ONE folder from now on: the document leaves every
+      // folder it was in and enters the chosen one.
+      const current = explorerTags.filter((t) => (item.tagIds ?? []).includes(t.id));
+      await Promise.all(current.map((t) => detachTag(t, 'document', item.id, ITEMS_COLLECTION_BY_KIND.document)));
+      if (dest) {
+        const target = await tagForFolder(dest);
+        await attachTag(target, 'document', item.id, ITEMS_COLLECTION_BY_KIND.document);
+      }
+    }
   }
   // Up one level. On Android the system's back does it too while there is
   // a level to go up to - a file manager that closed on "back" would be
@@ -404,27 +564,47 @@ export default function DocumentsScreen() {
     setSketchEditing(null);
   }
 
+  // The bin. A note in it is stamped deletedAt and left out of every
+  // list; it keeps its tags, mirrors and arrows so that coming back is
+  // coming back whole. Emptied by hand, or by time: thirty days.
+  const [trashed, setTrashed] = useState<DocumentItem[]>([]);
+  const [trashOpen, setTrashOpen] = useState(false);
+  const TRASH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+  const purgedRef = useRef(new Set<string>());
+
   useEffect(() => {
     return onSnapshot(ownedQuery('documents'), (snapshot) => {
-      setDocuments(
-        snapshot.docs
-          // Daily notes (CalendarScreen) live in this same collection but
-          // belong to the calendar, not this list.
-          .filter((docSnapshot) => !docSnapshot.data().calendarDate)
-          .map((docSnapshot) => ({
-            id: docSnapshot.id,
-            title: docSnapshot.data().title,
-            updatedAt: docSnapshot.data().updatedAt,
-            tagIds: docSnapshot.data().tagIds ?? [],
-            blocks: docSnapshot.data().blocks ?? [],
-            groupId: docSnapshot.data().groupId,
-            createdAt: docSnapshot.data().createdAt,
-            coverImageUri: docSnapshot.data().coverImageUri,
-          }))
-          .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-      );
+      const all = snapshot.docs
+        // Daily notes (CalendarScreen) live in this same collection but
+        // belong to the calendar, not this list.
+        .filter((docSnapshot) => !docSnapshot.data().calendarDate)
+        .map((docSnapshot) => ({
+          id: docSnapshot.id,
+          title: docSnapshot.data().title,
+          updatedAt: docSnapshot.data().updatedAt,
+          tagIds: docSnapshot.data().tagIds ?? [],
+          blocks: docSnapshot.data().blocks ?? [],
+          groupId: docSnapshot.data().groupId,
+          createdAt: docSnapshot.data().createdAt,
+          coverImageUri: docSnapshot.data().coverImageUri,
+          deletedAt: docSnapshot.data().deletedAt as number | undefined,
+        }))
+        .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+      setDocuments(all.filter((d) => !d.deletedAt));
+      const inBin = all.filter((d) => !!d.deletedAt).sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0));
+      setTrashed(inBin);
+      // Time does the emptying nobody got round to. Once per note per
+      // session, so a slow write does not get asked for twice.
+      const cutoff = Date.now() - TRASH_TTL_MS;
+      inBin.forEach((d) => {
+        if ((d.deletedAt ?? 0) < cutoff && !purgedRef.current.has(d.id)) {
+          purgedRef.current.add(d.id);
+          purgeDocument(d.id).catch(() => {});
+        }
+      });
       setIsLoading(false);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // What the drawer's numbers say. Totals over everything, not over what
@@ -540,8 +720,17 @@ export default function DocumentsScreen() {
     openDocument(newDoc.id, true);
   }
 
+  // "Delete" puts a note in the bin. Everything it carries stays with it
+  // - see DocumentItem.deletedAt.
   async function confirmDeleteDocument(id: string) {
+    await updateDoc(doc(db, 'documents', id), { deletedAt: Date.now() });
+  }
+
+  // Gone for good: what deleting used to be. The tags it carried forget
+  // it; the note itself is removed.
+  async function purgeDocument(id: string) {
     const snapshot = await getDoc(doc(db, 'documents', id));
+    if (!snapshot.exists()) return;
     const docTagIds: string[] = snapshot.data()?.tagIds ?? [];
     deleteDoc(doc(db, 'documents', id));
     await Promise.all(
@@ -552,11 +741,39 @@ export default function DocumentsScreen() {
     );
   }
 
+  async function restoreDocument(id: string) {
+    await updateDoc(doc(db, 'documents', id), { deletedAt: deleteField() });
+  }
+
+  // Held down in the bin: back, or away for good.
+  async function openTrashMenu(item: DocumentItem) {
+    const choice = await ask({
+      title: item.title || 'Без назви',
+      actions: [
+        { id: 'restore', label: 'Відновити', icon: 'arrow-undo-outline', tone: 'primary' },
+        { id: 'purge', label: 'Видалити назавжди', icon: 'trash-outline', tone: 'danger' },
+      ],
+    });
+    if (choice === 'restore') restoreDocument(item.id);
+    if (choice === 'purge') purgeDocument(item.id);
+  }
+
+  async function emptyTrash() {
+    const yes = await confirm({
+      title: `Очистити кошик (${trashed.length})?`,
+      message: 'Ці нотатки буде видалено назавжди.',
+      confirmLabel: 'Очистити',
+    });
+    if (!yes) return;
+    await Promise.all(trashed.map((d) => purgeDocument(d.id)));
+  }
+
   function confirmDeleteSelected() {
     const toDelete = selectedDocuments;
     confirm({
-      title: toDelete.length === 1 ? 'Видалити документ?' : `Видалити документи (${toDelete.length})?`,
-      confirmLabel: 'Видалити',
+      title: toDelete.length === 1 ? 'У кошик?' : `У кошик (${toDelete.length})?`,
+      message: 'Можна буде повернути з кошика протягом 30 днів.',
+      confirmLabel: 'У кошик',
     }).then(async (yes) => {
       if (!yes) return;
       await Promise.all(toDelete.map((d) => confirmDeleteDocument(d.id)));
@@ -1005,7 +1222,7 @@ export default function DocumentsScreen() {
           <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
             <ActivityIndicator color={ACCENT} />
           </View>
-        ) : explorerDocuments.length === 0 && explorerFolders.length === 0 && !(explorer && explorerPath) ? (
+        ) : !trashOpen && explorerDocuments.length === 0 && explorerFolders.length === 0 && !(explorer && explorerPath) ? (
           <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
             {documents.length === 0 ? (
               <>
@@ -1027,11 +1244,27 @@ export default function DocumentsScreen() {
             {...pull.listProps}
             // FlatList throws if numColumns changes on an already-mounted
             // instance - key forces a clean remount when switching views.
-            key={viewMode}
-            data={explorerDocuments}
+            key={`${viewMode}-${trashOpen ? 'trash' : 'list'}`}
+            data={trashOpen ? trashed : explorerDocuments}
             // The folders of this level, and the way up, above the cards.
             ListHeaderComponent={
-              explorerMode && (explorerFolders.length > 0 || (explorer && explorerPath !== '')) ? (
+              trashOpen ? (
+                <View style={styles.explorerHead}>
+                  <View style={styles.explorerCrumb}>
+                    <Pressable hitSlop={8} onPress={() => setTrashOpen(false)} style={styles.crumbUp}>
+                      <Ionicons name="chevron-back" size={18} color={GLASS_TEXT} />
+                    </Pressable>
+                    <Text style={[styles.crumbLabel, styles.crumbLabelCurrent]}>Кошик · {trashed.length}</Text>
+                    <View style={{ flex: 1 }} />
+                    {trashed.length > 0 && (
+                      <Pressable hitSlop={8} onPress={emptyTrash} style={styles.crumbSegment}>
+                        <Text style={styles.crumbLabel}>Очистити</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                  <Text style={styles.trashHint}>Затисни нотатку, щоб відновити або видалити назавжди. Через 30 днів кошик очищається сам.</Text>
+                </View>
+              ) : explorerMode && (explorerFolders.length > 0 || (explorer && explorerPath !== '')) ? (
                 <View style={styles.explorerHead}>
                   {explorer && explorerPath !== '' && (
                     <View style={styles.explorerCrumb}>
@@ -1080,6 +1313,11 @@ export default function DocumentsScreen() {
                       </ScrollView>
                     </View>
                   )}
+                  {/* A folder row wears the document row's clothes - the
+                      same card, with the tag's icon in a frame where a
+                      document shows its picture - so the two read as one
+                      list. Its two small numbers: the documents directly
+                      in it, and the folders directly in it. */}
                   {explorerFolders.map((folder) => (
                     <Pressable
                       key={folder.fullPath}
@@ -1093,21 +1331,46 @@ export default function DocumentsScreen() {
                           setSearchOpen(false);
                         }
                       }}
+                      onLongPress={() => openFolderMenu(folder)}
                     >
-                      <View style={[styles.folderIcon, { backgroundColor: folder.tag?.color ?? GLASS_TEXT_FAINT }]}>
+                      <View style={[styles.folderThumb, { borderColor: folder.tag?.color ?? GLASS_TEXT_FAINT }]}>
                         <Ionicons
                           name={(folder.tag?.icon as keyof typeof Ionicons.glyphMap) || 'folder-outline'}
-                          size={16}
-                          color="#fff"
+                          size={26}
+                          color={folder.tag?.color ?? GLASS_TEXT_MUTED}
                         />
                       </View>
-                      <Text style={styles.folderName} numberOfLines={1}>
-                        {folder.name}
-                      </Text>
-                      <Text style={styles.folderCount}>{folder.count}</Text>
-                      <Ionicons name="chevron-forward" size={16} color={GLASS_TEXT_FAINT} />
+                      <View style={styles.folderBody}>
+                        <Text style={styles.folderName} numberOfLines={1}>
+                          {folder.name}
+                        </Text>
+                        <View style={styles.folderMeta}>
+                          <Ionicons name="document-text-outline" size={14} color={GLASS_TEXT_MUTED} />
+                          <Text style={styles.folderCount}>{folder.docs}</Text>
+                          <Ionicons name="folder-outline" size={14} color={GLASS_TEXT_MUTED} style={styles.folderMetaGap} />
+                          <Text style={styles.folderCount}>{folder.subfolders}</Text>
+                        </View>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={GLASS_TEXT_FAINT} />
                     </Pressable>
                   ))}
+                  {/* The bin, at the root of the explorer, after the
+                      folders - where a file manager keeps it. */}
+                  {explorer && explorerPath === '' && trashed.length > 0 && (
+                    <Pressable style={[styles.folderRow, styles.trashFolderRow]} onPress={() => setTrashOpen(true)}>
+                      <View style={[styles.folderThumb, { borderColor: GLASS_TEXT_FAINT }]}>
+                        <Ionicons name="trash-outline" size={26} color={GLASS_TEXT_MUTED} />
+                      </View>
+                      <View style={styles.folderBody}>
+                        <Text style={[styles.folderName, { color: GLASS_TEXT_MUTED }]}>Кошик</Text>
+                        <View style={styles.folderMeta}>
+                          <Ionicons name="document-text-outline" size={14} color={GLASS_TEXT_MUTED} />
+                          <Text style={styles.folderCount}>{trashed.length}</Text>
+                        </View>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={GLASS_TEXT_FAINT} />
+                    </Pressable>
+                  )}
                 </View>
               ) : null
             }
@@ -1163,7 +1426,8 @@ export default function DocumentsScreen() {
                   imageDriveFileIds={imageDriveFileIds}
                   previewText={previewText}
                   checklistItems={checklistItems}
-                  onPress={() => openDocument(item.id)}
+                  onPress={() => (trashOpen ? openTrashMenu(item) : openDocument(item.id))}
+                  onLongPress={() => (trashOpen ? openTrashMenu(item) : isSelectMode ? undefined : openDocumentMenu(item))}
                   isSelectMode={isSelectMode}
                   isSelected={selectedIds.has(item.id)}
                   onToggleSelect={() => toggleSelected(item.id)}
@@ -1189,7 +1453,7 @@ export default function DocumentsScreen() {
               setFabPressed(true);
               // In «Провідник» a held "+" makes a folder in the level being
               // looked at; everywhere else it makes a sticker, as before.
-              if (explorer) setFolderPromptVisible(true);
+              if (explorer) setFolderPrompt({ mode: 'new', parent: explorerPath });
               else openStickerComposer();
             }}
             onPressOut={() => {
@@ -1270,6 +1534,7 @@ export default function DocumentsScreen() {
         hideOpenButton={isSelectMode || searchingAlone}
         counts={drawerCounts}
         explorer={{ enabled: explorerMode, onToggle: toggleExplorerMode }}
+        trash={{ count: trashed.length, onOpen: () => setTrashOpen(true) }}
         groupSection={{
           // The same list the tabs show, sentinels and all, so the two
           // never disagree about what there is to pick.
@@ -1302,12 +1567,45 @@ export default function DocumentsScreen() {
       />
 
       <RenamePrompt
-        visible={folderPromptVisible}
-        title={explorerPath ? `Нова папка в «${explorerPath.split('/').pop()}»` : 'Нова папка'}
-        initialValue=""
+        visible={folderPrompt !== null}
+        title={
+          folderPrompt?.mode === 'rename'
+            ? 'Назва папки'
+            : folderPrompt?.parent
+              ? `Нова папка в «${nameOf(folderPrompt.parent)}»`
+              : 'Нова папка'
+        }
+        initialValue={folderPrompt?.mode === 'rename' ? nameOf(folderPrompt.path) : ''}
         placeholder="Назва папки"
-        onCancel={() => setFolderPromptVisible(false)}
-        onSave={createFolder}
+        onCancel={() => setFolderPrompt(null)}
+        onSave={saveFolderName}
+      />
+
+      <RenamePrompt
+        visible={docRename !== null}
+        title="Назва нотатки"
+        initialValue={docRename?.title ?? ''}
+        placeholder="Без назви"
+        onCancel={() => setDocRename(null)}
+        onSave={(title) => {
+          const target = docRename;
+          setDocRename(null);
+          if (target) updateDoc(doc(db, 'documents', target.id), { title: title.trim(), updatedAt: Date.now() });
+        }}
+      />
+
+      <TagEditSheet
+        visible={folderEdit !== null}
+        tag={folderEdit}
+        onCancel={() => setFolderEdit(null)}
+        onSave={(path, icon, color) => {
+          const target = folderEdit;
+          setFolderEdit(null);
+          if (!target) return;
+          // The name is the folder's path; a changed name goes through
+          // renameFolder so the folders under it follow.
+          list.updateTag(target, { path: target.path, icon, color }).then(() => renameFolder(target.path, path.trim()));
+        }}
       />
 
       <TagPicker
@@ -1678,34 +1976,59 @@ const styles = StyleSheet.create({
   crumbLabelCurrent: {
     color: GLASS_TEXT,
   },
+  // Glass, like every row of the app's own lists, in the document row's
+  // size - the user's words: the glass stays, only the size grows.
   folderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.10)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.16)',
   },
-  folderIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
+  trashFolderRow: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  folderThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  folderName: {
+  folderBody: {
     flex: 1,
-    fontSize: 16,
+    minWidth: 0,
+    gap: 4,
+  },
+  folderName: {
+    fontSize: 18,
     fontFamily: FONT_SEMIBOLD,
     color: GLASS_TEXT,
   },
+  folderMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  folderMetaGap: {
+    marginLeft: 10,
+  },
   folderCount: {
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_MUTED,
+  },
+  trashHint: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT_MUTED,
+    paddingHorizontal: 4,
   },
   list: {
     paddingVertical: 8,

@@ -49,7 +49,7 @@ export default function CopyToNoteModal({ visible, onPickExisting, onPickNew, on
       setDocuments(
         [...snapshot.docs]
           .sort((a, b) => ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0))
-          .filter((docSnapshot) => !docSnapshot.data().calendarDate)
+          .filter((docSnapshot) => !docSnapshot.data().calendarDate && !docSnapshot.data().deletedAt)
           .map((docSnapshot) => ({ id: docSnapshot.id, title: docSnapshot.data().title }))
       );
     });

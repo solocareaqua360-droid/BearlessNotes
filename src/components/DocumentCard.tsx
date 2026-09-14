@@ -198,6 +198,10 @@ type Props = {
   titleMatch?: TextMatch | null;
   bodyMatch?: TextMatch | null;
   onPress: () => void;
+  // Held down: the card's own menu (move, rename, bin) - see the documents
+  // screen. Optional, because the other screens that draw this card have
+  // no such menu.
+  onLongPress?: () => void;
   isSelectMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: () => void;
@@ -238,6 +242,7 @@ export default function DocumentCard({
   titleMatch,
   bodyMatch,
   onPress,
+  onLongPress,
   isSelectMode,
   isSelected,
   onToggleSelect,
@@ -299,7 +304,7 @@ export default function DocumentCard({
     return (
       <View style={[styles.gridCard, { backgroundColor: background }]}>
         <Image source={GRAIN} resizeMode="cover" style={styles.grain} />
-        <Pressable style={styles.gridTap} onPress={isSelectMode ? onToggleSelect : onPress}>
+        <Pressable style={styles.gridTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
           {/* Bleeds flush to the card's own top/left/right edges - no
               padding, no border-radius of its own. The card's overflow:
               'hidden' + borderRadius clips its top corners to match; a
@@ -342,7 +347,7 @@ export default function DocumentCard({
   return (
     <View style={[styles.row, flush && styles.rowFlush, { backgroundColor: background }]}>
       <Image source={GRAIN} resizeMode="cover" style={styles.grain} />
-      <Pressable style={styles.tap} onPress={isSelectMode ? onToggleSelect : onPress}>
+      <Pressable style={styles.tap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
         {thumbNode}
         <View style={styles.body}>
           {titleNode}

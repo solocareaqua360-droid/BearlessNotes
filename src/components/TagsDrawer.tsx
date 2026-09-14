@@ -270,6 +270,9 @@ type Props = {
   // the screens that can draw them that way (documents); the others pass
   // nothing and show no switch.
   explorer?: { enabled: boolean; onToggle: () => void };
+  // The bin, for the screens whose items go there instead of away
+  // (documents): a row at the foot of the tree, with how many it holds.
+  trash?: { count: number; onOpen: () => void };
   groupSection?: {
     items: { id: string | null; name: string; color: string; count: number }[];
     selected: string | null;
@@ -299,6 +302,7 @@ export default function TagsDrawer({
   capsuleHeight,
   counts,
   explorer,
+  trash,
   groupSection,
 }: Props) {
   // Bottom tabs stay mounted when another tab is on screen (React
@@ -565,6 +569,15 @@ export default function TagsDrawer({
                   onToggleTag={toggleTag}
                 />
               ))}
+            {trash && (
+              <Pressable style={[styles.treeRow, styles.trashRow]} onPress={trash.onOpen}>
+                <View style={{ width: 17 }} />
+                <Ionicons name="trash-outline" size={19} color={GLASS_TEXT_MUTED} />
+                <Text style={styles.untaggedLabel}>Кошик</Text>
+                <Text style={styles.rowCount}>{trash.count}</Text>
+                <View style={styles.treeCheckSlot} />
+              </Pressable>
+            )}
           </ScrollView>
 
           {/* Pinned to the foot of the panel, the way a profile sits at the
@@ -767,6 +780,11 @@ const styles = StyleSheet.create({
   // tag never resizes its pill.
   // It takes the tree row's shape; only the breathing room under it is
   // its own, to set it apart from the tree proper.
+  // The bin: one of the tree's rows, set a little apart at the foot.
+  trashRow: {
+    flexGrow: 0,
+    marginTop: 14,
+  },
   untaggedRow: {
     flexGrow: 0,
     marginBottom: 8,

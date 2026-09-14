@@ -2033,20 +2033,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   function confirmDeleteDocument() {
     setExportMenuOpen(false);
     confirm({
-      title: 'Видалити документ?',
-      message: 'Його не можна буде повернути.',
-      confirmLabel: 'Видалити',
+      title: 'У кошик?',
+      message: 'Нотатку можна буде повернути з кошика протягом 30 днів.',
+      confirmLabel: 'У кошик',
     }).then(async (yes) => {
       if (!yes) return;
-      // Let the tags it carried forget it too, the way the documents
-      // list's own delete does.
-      await Promise.all(
-        (tagIds ?? []).map((tagId) => {
-          const tag = tags.find((t) => t.id === tagId);
-          return tag ? detachTagFromDeletedItem(tag, 'document', documentId) : Promise.resolve();
-        })
-      );
-      await deleteDoc(doc(db, 'documents', documentId));
+      // Into the bin, not gone: the tags, mirrors and arrows stay as they
+      // are so a restored note is the whole note. Throwing it away for
+      // good is the bin's job - see the documents screen.
+      await setDoc(doc(db, 'documents', documentId), { deletedAt: Date.now() }, { merge: true });
       if (closePane) closePane();
       else navigation.goBack();
     });
