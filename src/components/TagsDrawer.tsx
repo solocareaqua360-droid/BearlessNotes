@@ -14,7 +14,6 @@ import type { ListMode } from '../hooks/useDatabaseList';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { RAIL_RIGHT } from '../constants/rail';
 import { GLASS_ISLAND } from '../constants/glass';
-import { useRail } from '../hooks/useRail';
 import {
   GLASS_BODY,
   GLASS_BODY_BLURRED,
@@ -286,7 +285,6 @@ type Props = {
   // two-button one. The folder button is spaced against what is above it,
   // and this component places it - so a screen with a taller capsule has
   // to say so here as well, or the button lands where the capsule is.
-  capsuleHeight?: number;
   // Groups, when the calling screen has them: a section of its own at the
   // head of the drawer, over a rule, above the smart folders. A screen
   // that passes nothing here simply has no such section, and the long
@@ -338,7 +336,6 @@ function TagsDrawerInner({
   tags,
   activeFilter,
   onSelectFilter,
-  capsuleHeight,
   counts,
   mode,
   stickers,
@@ -365,7 +362,6 @@ function TagsDrawerInner({
   // Modal actually unmounts, instead of yanking the drawer away instantly.
   const [isRendered, setIsRendered] = useState(false);
   const blurTarget = useBlurTarget();
-  const rail = useRail(capsuleHeight);
   const { width: windowWidth } = useWindowDimensions();
   const drawerWidth = Math.round(windowWidth * DRAWER_FRACTION);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();

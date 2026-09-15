@@ -106,7 +106,10 @@ export default function DatabaseChrome<T extends { id: string }>({
   const insets = useSafeAreaInsets();
   // Three buttons in the capsule, so the rail spaces what is under it
   // against the taller one.
-  const rail = useRail(CAPSULE_HEIGHT_4, CAPSULE_HEIGHT_1);
+  // Every screen this chrome dresses - files, photos, links, stickers -
+  // is PUSHED over the tabs, so the navigation island is not on it and
+  // the rail must not hold its height at the foot (see useRail).
+  const rail = useRail(CAPSULE_HEIGHT_4, CAPSULE_HEIGHT_1, undefined, undefined, false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -408,7 +411,6 @@ export default function DatabaseChrome<T extends { id: string }>({
         activeFilter={list.tagFilter}
         onSelectFilter={list.setTagFilter}
         hideOpenButton={list.isSelectMode || searchingAlone}
-        capsuleHeight={CAPSULE_HEIGHT_4}
         groupSection={{
           items: list.groupSectionItems,
           selected: list.groupFilter,
