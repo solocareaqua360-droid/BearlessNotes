@@ -27,6 +27,7 @@ export default function ExplorerHead({
   // it. Absent on a database that has no bin yet.
   trash,
   showCrumbs,
+  columns,
 }: {
   crumbs: string[];
   path: string;
@@ -37,6 +38,12 @@ export default function ExplorerHead({
   itemIcon: keyof typeof Ionicons.glyphMap;
   trash?: { count: number; onOpen: () => void };
   showCrumbs: boolean;
+  // How many folders stand across a line. One on a phone; two or three
+  // on the Fold's inner screen, where a folder row - an icon, a name and
+  // two small numbers - is a very long way to say very little at full
+  // width. The rows are sized from this component's OWN measured width,
+  // so it is right whatever list it stands in.
+  columns?: number;
 }) {
   const crumbScrollRef = useRef<ScrollView>(null);
   // Many levels fold the middle ones into one "…" that a tap unfolds; a
@@ -48,11 +55,14 @@ export default function ExplorerHead({
     return () => clearTimeout(id);
   }, [path]);
   const folded = !unfolded && crumbs.length > 3;
+  const [width, setWidth] = useState(0);
+  const cols = Math.max(1, columns ?? 1);
+  const rowWidth = cols > 1 && width > 0 ? Math.floor((width - FOLDER_GAP * (cols - 1)) / cols) : undefined;
 
   if (folders.length === 0 && !(showCrumbs && path !== '') && !trash) return null;
 
   return (
-    <View style={styles.head}>
+    <View style={styles.head} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
       {showCrumbs && path !== '' && (
         <View style={styles.crumbRow}>
           <Pressable hitSlop={8} onPress={onUp} style={styles.crumbUp}>
@@ -99,10 +109,11 @@ export default function ExplorerHead({
         </View>
       )}
 
+      <View style={cols > 1 ? styles.folderGrid : undefined}>
       {folders.map((folder) => (
         <Pressable
           key={folder.fullPath}
-          style={styles.folderRow}
+          style={[styles.folderRow, rowWidth !== undefined && { width: rowWidth }]}
           onPress={() => onGo(folder.fullPath)}
           onLongPress={() => onFolderMenu(folder)}
         >
@@ -129,7 +140,10 @@ export default function ExplorerHead({
       ))}
 
       {!!trash && trash.count > 0 && path === '' && (
-        <Pressable style={[styles.folderRow, styles.trashRow]} onPress={trash.onOpen}>
+        <Pressable
+          style={[styles.folderRow, styles.trashRow, rowWidth !== undefined && { width: rowWidth }]}
+          onPress={trash.onOpen}
+        >
           <View style={[styles.folderThumb, { borderColor: GLASS_TEXT_FAINT }]}>
             <Ionicons name="trash-outline" size={26} color={GLASS_TEXT_MUTED} />
           </View>
@@ -143,14 +157,22 @@ export default function ExplorerHead({
           <Ionicons name="chevron-forward" size={18} color={GLASS_TEXT_FAINT} />
         </Pressable>
       )}
+      </View>
     </View>
   );
 }
+
+const FOLDER_GAP = 10;
 
 const styles = StyleSheet.create({
   head: {
     gap: 8,
     marginBottom: 8,
+  },
+  folderGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: FOLDER_GAP,
   },
   crumbRow: {
     flexDirection: 'row',

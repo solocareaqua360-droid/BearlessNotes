@@ -56,7 +56,7 @@ export default function BoardsListScreen() {
   // Two across where there is room for two. A board's row is a name and a
   // count beside a small map - at the width of the Fold's inner screen one
   // of them per line is a very long way to say very little.
-  const { isTwoPane } = useResponsiveLayout();
+  const { isTwoPane, width: layoutWidth, height: layoutHeight } = useResponsiveLayout();
   const [boards, setBoards] = useState<BoardItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -489,12 +489,17 @@ export default function BoardsListScreen() {
           >
             {/* Where you are and what folders are here - only in
                 explorer mode; in the other two this draws nothing. */}
+            {/* Full width even inside the wrapped row of boards - as a
+                plain child it became one more item in that row and was
+                squeezed to the width of its own icon. */}
             {list.explorerMode && (
+              <View style={styles.headSpan}>
               <ExplorerHead
                 crumbs={explorer.crumbs}
                 path={explorer.path}
                 folders={explorer.folders}
                 showCrumbs={explorer.active}
+                columns={isTwoPane ? (layoutWidth > layoutHeight ? 3 : 2) : 1}
                 itemIcon="apps-outline"
                 onGo={(next) => {
                   explorer.setPath(next);
@@ -508,6 +513,7 @@ export default function BoardsListScreen() {
                 onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
                 onFolderMenu={openFolderMenu}
               />
+              </View>
             )}
             {viewMode === 'cards'
               ? boardsHere.map((board) => renderBoardTile(board, tileWidth))
@@ -593,6 +599,9 @@ const styles = StyleSheet.create({
   listWide: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+  },
+  headSpan: {
+    width: '100%',
   },
   rowHalf: {
     width: '49%',
