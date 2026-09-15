@@ -564,6 +564,23 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
     });
   }, [prefsKey]);
 
+  // ABOVE the early return below, and it has to stay there: a hook that
+  // runs only once the database has loaded is a hook that is missing on
+  // the render before it, and React ends the screen over it. That is what
+  // crashed this screen the moment a database was opened.
+  //
+  // Four pieces stand on this rail: what the list shows (order, filter,
+  // group, saved views), choosing several, and making something. The
+  // filter button exists only where there is something to filter by, so
+  // the capsule is one button shorter without it - read off the database
+  // rather than off filterFields, which is computed further down.
+  const rail = useRail(
+    CAPSULE_HEIGHT_3,
+    filterableFieldsOf(database).length > 0 ? CAPSULE_HEIGHT_4 : CAPSULE_HEIGHT_3,
+    CAPSULE_HEIGHT,
+    CAPSULE_HEIGHT_1
+  );
+
   if (!database) {
     return (
       <View style={[styles.container, styles.emptyState]}>
@@ -630,15 +647,6 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   // already allow, not from the whole database - so narrowing one field
   // never leaves another offering values that would return nothing.
   const filterFields = filterableFieldsOf(database);
-  // Where each capsule of the rail stands. Four pieces here: what the
-  // list shows (order, filter, group, saved views), choosing several,
-  // and making something - so the layout is told each one's height.
-  const rail = useRail(
-    CAPSULE_HEIGHT_3,
-    filterFields.length > 0 ? CAPSULE_HEIGHT_4 : CAPSULE_HEIGHT_3,
-    CAPSULE_HEIGHT,
-    CAPSULE_HEIGHT_1
-  );
   const openFilterField = filterFieldId ? filterFields.find((f) => f.id === filterFieldId) ?? null : null;
   const openFilterFacets: Facet[] = openFilterField
     ? facetsOf(
