@@ -30,6 +30,20 @@ export const NAV_HEIGHT = NAV_BUTTON * NAV_ROUTES + NAV_GAP * (NAV_ROUTES - 1) +
 // left sitting under the capsule or the island.
 export const RAIL_CLEARANCE = RAIL_RIGHT + RAIL_WIDTH + RAIL_GAP;
 
+// The side of a list that has to stay clear of the rail.
+//
+// Every list was written with the rail on the right and its clearance
+// typed in as a paddingRight. In a pane the rail stands on the window's
+// OUTER edge, which is the left one - and the clearance stayed where it
+// was, so the cards ran under the buttons on one side and left a wide
+// empty margin on the other. `base` is what that side keeps when the
+// rail is not on it.
+export function railClear(railSide: 'left' | 'right', base: number) {
+  return railSide === 'left'
+    ? { paddingLeft: RAIL_CLEARANCE, paddingRight: base }
+    : { paddingLeft: base, paddingRight: RAIL_CLEARANCE };
+}
+
 // The band at the foot of the screen the island stops short of. It was
 // the row of smart folders that used to scroll along there; that row is
 // gone (they live in the drawer now), but the numbers stay as they are -

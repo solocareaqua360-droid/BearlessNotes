@@ -35,7 +35,7 @@ import { BlurView } from 'expo-blur';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
-import { RAIL_CLEARANCE } from '../constants/rail';
+import { RAIL_CLEARANCE , railClear } from '../constants/rail';
 import { ask, confirm } from '../components/surfaces/Ask';
 
 const ACCENT = '#8B5CF6';
@@ -507,6 +507,7 @@ export default function BoardsListScreen({
             {...listProps}
             contentContainerStyle={[
               viewMode === 'cards' ? styles.tileGrid : styles.list,
+              railClear(inPane ? 'left' : 'right', viewMode === 'cards' ? 10 : 20),
               viewMode !== 'cards' && isTwoPane && styles.listWide,
               { paddingTop: listTopPad },
               isSelectMode && styles.listWithBulkBar,

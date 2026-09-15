@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { railClear } from '../constants/rail';
 import {
   ActivityIndicator,
   Image,
@@ -297,7 +298,7 @@ export default function StickersScreen({ inPane }: { inPane?: boolean } = {}) {
             )}
           </View>
         ) : (
-          <ScrollView {...listProps} contentContainerStyle={[styles.grid, { paddingTop: listTopPad }]}>
+          <ScrollView {...listProps} contentContainerStyle={[styles.grid, railClear(inPane ? 'left' : 'right', 20), { paddingTop: listTopPad }]}>
             {visibleStickers.map(renderSticker)}
           </ScrollView>
         )

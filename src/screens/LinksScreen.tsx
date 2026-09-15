@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { RAIL_CLEARANCE } from '../constants/rail';
+import { RAIL_CLEARANCE , railClear } from '../constants/rail';
 import {
   ActivityIndicator,
   Image,
@@ -744,6 +744,7 @@ export default function LinksScreen({
             {...listProps}
             contentContainerStyle={[
               styles.gridList,
+              railClear(inPane ? 'left' : 'right', 20),
               { paddingTop: listTopPad },
               isSelectMode && styles.listWithBulkBar,
             ]}
@@ -774,6 +775,7 @@ export default function LinksScreen({
             {...listProps}
             contentContainerStyle={[
               styles.list,
+              railClear(inPane ? 'left' : 'right', 20),
               { paddingTop: listTopPad },
               isSelectMode && styles.listWithBulkBar,
             ]}

@@ -55,7 +55,7 @@ import DownloadToast from '../components/DownloadToast';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import FilePreviewWorker from '../components/FilePreviewWorker';
 import { GLASS_ISLAND, GLASS_TEXT, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
-import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT , railClear } from '../constants/rail';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 
 const ACCENT = '#0EA5E9';
@@ -775,6 +775,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
             {...listProps}
             contentContainerStyle={[
               styles.gridList,
+              railClear(inPane ? 'left' : 'right', 20),
               { paddingTop: listTopPad },
               isSelectMode && styles.listWithBulkBar,
             ]}
@@ -805,6 +806,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
             {...listProps}
             contentContainerStyle={[
               styles.list,
+              railClear(inPane ? 'left' : 'right', 20),
               { paddingTop: listTopPad },
               isSelectMode && styles.listWithBulkBar,
             ]}

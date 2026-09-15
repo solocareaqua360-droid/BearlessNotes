@@ -135,6 +135,7 @@ import {
   CAPSULE_HEIGHT_3,
   CHROME_TOP,
   RAIL_CLEARANCE,
+  railClear,
   RAIL_RIGHT,
   capsuleHeightFor,
   railFits,
@@ -1742,7 +1743,7 @@ export default function CustomDatabaseScreen({
           }}
           scrollEventThrottle={16}
           style={styles.paramsScroll}
-          contentContainerStyle={styles.paramsStrip}
+          contentContainerStyle={[styles.paramsStrip, railClear(railSide, 20)]}
           onLayout={(e) => {
             setStripY(e.nativeEvent.layout.y);
             stripXRef.current = e.nativeEvent.layout.x;
@@ -2143,7 +2144,9 @@ export default function CustomDatabaseScreen({
       ) : viewMode === 'table' ? (
         renderTable()
       ) : viewMode === 'cards' ? (
-        <ScrollView contentContainerStyle={[styles.cardGrid, isSelectMode && styles.listWithBulkBar]}>
+        <ScrollView
+          contentContainerStyle={[styles.cardGrid, railClear(railSide, CARD_GRID_PADDING), isSelectMode && styles.listWithBulkBar]}
+        >
           {displayedRows.map((row) => (
             <CustomRowGridCard
               key={row.id}
@@ -2173,7 +2176,7 @@ export default function CustomDatabaseScreen({
         // Grouped by one field: a header per value with its own count, and
         // the total under the last group - the "how many working, how many
         // in for repair, how many altogether" read.
-        <ScrollView contentContainerStyle={[styles.list, isSelectMode && styles.listWithBulkBar]}>
+        <ScrollView contentContainerStyle={[styles.list, railClear(railSide, 20), isSelectMode && styles.listWithBulkBar]}>
           {rowGroups.map((group) => (
             <View key={group.key || '__empty__'} style={styles.groupSection}>
               <View style={styles.groupHeader}>
@@ -2191,7 +2194,7 @@ export default function CustomDatabaseScreen({
           </View>
         </ScrollView>
       ) : (
-        <ScrollView contentContainerStyle={[styles.list, isSelectMode && styles.listWithBulkBar]}>
+        <ScrollView contentContainerStyle={[styles.list, railClear(railSide, 20), isSelectMode && styles.listWithBulkBar]}>
           {displayedRows.map(renderRowCard)}
         </ScrollView>
       )}

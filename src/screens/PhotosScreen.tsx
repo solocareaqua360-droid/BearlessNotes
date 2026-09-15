@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { RAIL_CLEARANCE } from '../constants/rail';
+import { RAIL_CLEARANCE , railClear } from '../constants/rail';
 import {
   ActivityIndicator,
   Image,
@@ -758,6 +758,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
               // down it. Same scroll view, two container styles - the one
               // thing that cannot be shared between the two views.
               viewMode === 'list' ? styles.list : styles.grid,
+              railClear(inPane ? 'left' : 'right', viewMode === 'list' ? 20 : 16),
               { paddingTop: listTopPad },
               isSelectMode && styles.gridWithBulkBar,
             ]}
