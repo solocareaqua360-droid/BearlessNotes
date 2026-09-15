@@ -518,33 +518,9 @@ export default function PhotosScreen() {
       // the grid, which shows the picture and nothing else - so a photo's
       // name, its date and how many notes use it were invisible here,
       // and the name was invisible everywhere.
-      menuRows={(close) => (
-        <>
-          <Text style={menuStyles.menuSectionLabel}>Вигляд</Text>
-          <Pressable
-            style={menuStyles.menuRow}
-            onPress={() => {
-              close();
-              changeViewMode('list');
-            }}
-          >
-            <Ionicons name="reorder-four-outline" size={17} color={GLASS_TEXT} />
-            <Text style={menuStyles.menuRowLabel}>Список</Text>
-            {viewMode === 'list' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-          </Pressable>
-          <Pressable
-            style={menuStyles.menuRow}
-            onPress={() => {
-              close();
-              changeViewMode('grid');
-            }}
-          >
-            <Ionicons name="grid-outline" size={17} color={GLASS_TEXT} />
-            <Text style={menuStyles.menuRowLabel}>Сітка</Text>
-            {viewMode === 'grid' && <Ionicons name="checkmark" size={18} color={ACCENT} />}
-          </Pressable>
-        </>
-      )}
+      // The shape of the list is a button on the rail now - it was two
+      // rows here saying the same thing, on three screens.
+      shape={{ mode: viewMode, onToggle: () => changeViewMode(viewMode === 'list' ? 'grid' : 'list') }}
       bulk={{
         onTag: () => setBulkTagPickerVisible(true),
         onGroup: () => setBulkGroupPickerVisible(true),

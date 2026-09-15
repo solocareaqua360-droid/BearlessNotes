@@ -23,7 +23,7 @@ import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_ISLAND, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
-import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CAPSULE_HEIGHT_4, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
+import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH, capsuleHeightFor } from '../constants/rail';
 
 // Everything a database screen puts AROUND its records: the gradient it
 // stands on, the capsule on the rail (search / "..." / the way out), the
@@ -50,6 +50,12 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   // photos, files and links only ever arrive from inside a document, and
   // a "+" that cannot do anything is worse than no "+".
   onAdd?: () => void;
+  // The shape of the list, where this database has two of them. It was
+  // the "Вигляд" pair of rows inside the "..." menu on three screens, all
+  // spelling out the same thing; on the rail its icon IS the shape in
+  // force, and with only two to choose from a tap simply swaps them -
+  // a list to pick from would be a list of two.
+  shape?: { mode: 'list' | 'grid'; onToggle: () => void };
   // A database with neither tags nor groups has nothing to browse in the
   // drawer, and a folder button that opens an empty panel is worse than
   // none (stickers).
@@ -87,6 +93,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   searchPlaceholder,
   menuRows,
   onAdd,
+  shape,
   hideDrawer,
   bulk,
   children,
@@ -104,12 +111,26 @@ export default function DatabaseChrome<T extends { id: string }>({
   const blurTarget = useBlurTarget();
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
-  // Three buttons in the capsule, so the rail spaces what is under it
-  // against the taller one.
+  // The top capsule is three buttons now: search, "...", and the way out.
+  // Ordering left it for the actions capsule, where the same button sits
+  // on a custom database - what a screen can DO to its list belongs
+  // together, and a four-button capsule at the top of the rail was the
+  // tallest thing on the screen.
+  //
   // Every screen this chrome dresses - files, photos, links, stickers -
   // is PUSHED over the tabs, so the navigation island is not on it and
-  // the rail must not hold its height at the foot (see useRail).
-  const rail = useRail(CAPSULE_HEIGHT_4, CAPSULE_HEIGHT_1, undefined, undefined, false);
+  // the rail must not hold its height at the foot (see useRail). Nor the
+  // create button's, on the three databases that have no "+": photos,
+  // files and links only ever arrive from inside a document.
+  const rail = useRail(
+    // Search, the way out, and "..." where the screen still has rows for
+    // it - so two buttons or three, and the rail is told which.
+    capsuleHeightFor(2 + (menuRows ? 1 : 0)),
+    capsuleHeightFor((shape ? 1 : 0) + 1),
+    onAdd ? RAIL_WIDTH : 0,
+    bulk ? CAPSULE_HEIGHT_1 : 0,
+    false
+  );
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -143,7 +164,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   const column = (
     <>
         <Menu
-          visible={menuOpen}
+          visible={menuOpen && !!menuRows}
           onClose={() => setMenuOpen(false)}
           entries={[]}
           style={{ position: 'absolute', top: 96, right: RAIL_CLEARANCE }}
@@ -151,24 +172,40 @@ export default function DatabaseChrome<T extends { id: string }>({
           {menuRows?.(() => setMenuOpen(false))}
         </Menu>
 
-        {/* The actions capsule - sort, and choosing where the screen has
-            bulk actions. Rows of the "..." menu until now; see
-            RailCapsule. */}
+        {/* What this screen can do TO its list: what shape it takes, and
+            what order it is in. The same capsule, in the same place, as on
+            a custom database. */}
         {isFocused && !searchingAlone && (
           <RailCapsule
             bottom={rail.actionsBottom}
             buttons={[
-              ...(bulk
+              ...(shape
                 ? [
                     {
-                      icon: (list.isSelectMode ? 'close-outline' : 'checkmark-circle-outline') as
-                        | 'close-outline'
-                        | 'checkmark-circle-outline',
-                      onPress: () => list.toggleSelectMode(),
-                      active: list.isSelectMode,
+                      icon: (shape.mode === 'grid' ? 'grid-outline' : 'reorder-four-outline') as
+                        | 'grid-outline'
+                        | 'reorder-four-outline',
+                      onPress: shape.onToggle,
                     },
                   ]
                 : []),
+              { icon: 'filter-outline', onPress: () => setSortMenuOpen((v) => !v), active: sortMenuOpen },
+            ]}
+          />
+        )}
+        {/* Choosing several is a mode, not an action - its own capsule,
+            where a custom database keeps it too. */}
+        {isFocused && !searchingAlone && !!bulk && (
+          <RailCapsule
+            bottom={rail.historyBottom}
+            buttons={[
+              {
+                icon: (list.isSelectMode ? 'close-outline' : 'checkmark-circle-outline') as
+                  | 'close-outline'
+                  | 'checkmark-circle-outline',
+                onPress: () => list.toggleSelectMode(),
+                active: list.isSelectMode,
+              },
             ]}
           />
         )}
@@ -188,7 +225,8 @@ export default function DatabaseChrome<T extends { id: string }>({
               },
             })),
           ]}
-          style={{ position: 'absolute', right: RAIL_CLEARANCE, top: 96 }}
+          // Beside the button that opens it, which is on the rail now.
+          style={{ position: 'absolute', right: RAIL_CLEARANCE, bottom: rail.actionsBottom }}
         />
 
         {/* The tabs float over the cards rather than standing above them,
@@ -349,15 +387,18 @@ export default function DatabaseChrome<T extends { id: string }>({
                   color="#fff"
                 />
               </Pressable>
-              <View style={styles.headerButtonsDivider} />
-              {/* Sort sits with the other ways of looking at the list. */}
-              <Pressable hitSlop={8} onPress={() => setSortMenuOpen((v) => !v)}>
-                <Ionicons name="filter-outline" size={24} color="#fff" />
-              </Pressable>
-              <View style={styles.headerButtonsDivider} />
-              <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
-              </Pressable>
+              {/* Only where the screen still has rows to put in it. The
+                  three that had nothing but the "Вигляд" pair now have
+                  that on the rail, and a "..." opening an empty panel is
+                  worse than no "...". */}
+              {!!menuRows && (
+                <>
+                  <View style={styles.headerButtonsDivider} />
+                  <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
+                    <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
+                  </Pressable>
+                </>
+              )}
               <View style={styles.headerButtonsDivider} />
               {/* The way out of this database, where the arrow in the
                   header's corner used to be. */}
