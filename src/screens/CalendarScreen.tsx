@@ -1037,7 +1037,22 @@ export default function CalendarScreen() {
               On a phone it stays what it was - a list behind a button. */}
           </View>
           {isTwoPane && (
-            <View style={[styles.historyUnderCalendar, stackedWide && styles.historyBeside]}>
+            <View
+              style={[
+                styles.historyUnderCalendar,
+                stackedWide && styles.historyBeside,
+                // Standing up the history is NOT clipped to the band's
+                // height. It runs on down the screen, behind the sheet -
+                // the user's own words: the cards may scroll up off the
+                // top edge and may pass under the sheet, as long as the
+                // first one starts where it starts now. A height of the
+                // whole window is simply more than the screen has, so the
+                // list scrolls instead of being cut to three cards. The
+                // sheet is drawn after this in the tree, so it paints over
+                // whatever runs under it.
+                stackedWide && { height: windowHeight },
+              ]}
+            >
               <DayHistoryList items={historyByDate.get(selectedKey) ?? []} fill />
             </View>
           )}
