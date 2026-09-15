@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import PlainScreenShell, { shellClear } from '../components/PlainScreenShell';
 import {
   ActivityIndicator,
   Modal,
@@ -24,7 +25,6 @@ import { createBoardForGroup, importGroupToBoard } from '../utils/importGroupToB
 import { hapticSuccess } from '../utils/haptics';
 import { groupKindFields, kindsOf, labelForKind } from '../utils/groups';
 import { rowTitleOf } from '../utils/customRowDisplay';
-import ContentColumn from '../components/ContentColumn';
 import { GroupItem, useGroupItems } from '../hooks/useGroupItems';
 import GroupSections from '../components/GroupSections';
 import { useTags } from '../hooks/useTags';
@@ -40,7 +40,7 @@ const DANGER = '#EF4444';
 // contents have been filed away with tags. This screen is where a group is
 // seen whole - every item it holds, across every database at once - which
 // no single database screen can show.
-export default function GroupsScreen() {
+export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   // Gathering a group's contents is shared with the board, which can pull
@@ -58,6 +58,7 @@ export default function GroupsScreen() {
   const { tags } = useTags();
   const [openGroupId, setOpenGroupId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const railSide = inPane ? ('left' as const) : ('right' as const);
   const [renamingGroup, setRenamingGroup] = useState<Group | null>(null);
   const [kindsEditorGroup, setKindsEditorGroup] = useState<Group | null>(null);
   const [importingGroup, setImportingGroup] = useState<Group | null>(null);
@@ -160,36 +161,13 @@ export default function GroupsScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Svg
-        width={windowWidth + 2}
-        height={windowHeight + 2}
-        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
-        pointerEvents="none"
-      >
-        <Defs>
-          <LinearGradient id="groupsBg" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0.03" stopColor="#705648" />
-            <Stop offset="0.52" stopColor="#69736E" />
-            <Stop offset="1" stopColor="#000000" />
-          </LinearGradient>
-        </Defs>
-        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#groupsBg)" />
-      </Svg>
-      <ContentColumn>
-        <View style={styles.headerRow}>
-          <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={24} color="#fff" />
-          </Pressable>
-          <Text style={styles.header}>Групи</Text>
-        </View>
-
+    <PlainScreenShell id="groupsBg" onBack={() => navigation.goBack()} railSide={railSide} hasIsland={!inPane}>
         {isLoading ? (
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
           </View>
         ) : (
-          <ScrollView contentContainerStyle={styles.list}>
+          <ScrollView contentContainerStyle={[styles.list, shellClear(railSide, 4)]}>
             {activeGroups.length === 0 ? (
               <Text style={styles.emptyHint}>
                 Групи створюються там, де ви їх використовуєте — у документах, фото, файлах чи власній базі.
@@ -343,9 +321,7 @@ export default function GroupsScreen() {
             if (renamingGroup) renameGroup(renamingGroup, name);
           }}
         />
-      </ContentColumn>
-
-    </View>
+    </PlainScreenShell>
   );
 }
 

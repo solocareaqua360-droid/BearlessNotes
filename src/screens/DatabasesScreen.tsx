@@ -62,6 +62,9 @@ import LinksScreen from './LinksScreen';
 import PhotosScreen from './PhotosScreen';
 import FilesScreen from './FilesScreen';
 import StickersScreen from './StickersScreen';
+import TagManageScreen from './TagManageScreen';
+import GroupsScreen from './GroupsScreen';
+import DiaryScreen from './DiaryScreen';
 import TasksScreen from './TasksScreen';
 import { GLASS_BODY, GLASS_DANGER, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import { BlurView } from 'expo-blur';
@@ -152,7 +155,10 @@ type PaneTarget =
   | { kind: 'links'; category: 'video' | 'geo' | 'other' }
   | { kind: 'documents' }
   | { kind: 'boards' }
-  | { kind: 'route'; route: 'Photos' | 'Files' | 'Stickers' | 'Tasks' };
+  // The three registries - the diary, the groups and the tags - open in
+  // the pane like every other database now. They are not lists of records
+  // and carry no chrome of their own; see PlainScreenShell.
+  | { kind: 'route'; route: 'Photos' | 'Files' | 'Stickers' | 'Tasks' | 'Tags' | 'Groups' | 'Diary' };
 
 function paneTargetFor(tile: Tile): PaneTarget | null {
   if (tile.linkCategory) return { kind: 'links', category: tile.linkCategory };
@@ -162,7 +168,15 @@ function paneTargetFor(tile: Tile): PaneTarget | null {
   // told not to split again inside a half-width pane.
   if (tile.opensDocumentsTab) return { kind: 'documents' };
   if (tile.opensBoardsTab) return { kind: 'boards' };
-  if (tile.route === 'Photos' || tile.route === 'Files' || tile.route === 'Stickers' || tile.route === 'Tasks') {
+  if (
+    tile.route === 'Photos' ||
+    tile.route === 'Files' ||
+    tile.route === 'Stickers' ||
+    tile.route === 'Tasks' ||
+    tile.route === 'Tags' ||
+    tile.route === 'Groups' ||
+    tile.route === 'Diary'
+  ) {
     return { kind: 'route', route: tile.route };
   }
   return null;
@@ -1178,6 +1192,12 @@ export default function DatabasesScreen() {
                       <FilesScreen inPane />
                     ) : openInPane.route === 'Stickers' ? (
                       <StickersScreen inPane />
+                    ) : openInPane.route === 'Tags' ? (
+                      <TagManageScreen inPane />
+                    ) : openInPane.route === 'Groups' ? (
+                      <GroupsScreen inPane />
+                    ) : openInPane.route === 'Diary' ? (
+                      <DiaryScreen inPane />
                     ) : (
                       <TasksScreen />
                     )}

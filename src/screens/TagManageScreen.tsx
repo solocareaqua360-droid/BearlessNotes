@@ -7,8 +7,9 @@ import { Tag } from '../types';
 import { RootStackParamList } from '../navigation';
 import { useTags } from '../hooks/useTags';
 import TagEditSheet from '../components/TagEditSheet';
-import ContentColumn from '../components/ContentColumn';
-import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import PlainScreenShell, { shellClear } from '../components/PlainScreenShell';
+import { GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { confirm } from '../components/surfaces/Ask';
 
 const DANGER = '#EF4444';
@@ -29,9 +30,43 @@ const KIND_LABELS: Record<string, string> = {
 // Sorted flat by path (the hook already orders by it) rather than grouped
 // into a visual tree - the tree view belongs to Search's browsing mode, not
 // duplicated here.
-export default function TagManageScreen() {
+export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { tags, isLoading, updateTag, deleteTagCompletely } = useTags();
+  const railSide = inPane ? ('left' as const) : ('right' as const);
+  // A tag's path IS the tree - "робота/оренда" is the folder "робота"
+  // holding "оренда" - and this screen drew them as a flat list of full
+  // paths, which threw the whole structure away. Rows are laid out in
+  // path order with their depth, so the tree reads as a tree; a branch
+  // can be folded shut, and a fold hides everything under it.
+  const [folded, setFolded] = useState<Set<string>>(new Set());
+  const sorted = [...tags].sort((a, b) => a.path.localeCompare(b.path));
+  const rows = sorted
+    .map((tag) => {
+      const parts = tag.path.split('/');
+      return { tag, depth: parts.length - 1, name: parts[parts.length - 1] };
+    })
+    // A tag whose own path has no children is a leaf; anything that is a
+    // prefix of another path can be folded.
+    .map((row) => ({
+      ...row,
+      hasChildren: sorted.some((other) => other.path.startsWith(`${row.tag.path}/`)),
+    }))
+    .filter((row) => {
+      for (const shut of folded) {
+        if (row.tag.path.startsWith(`${shut}/`)) return false;
+      }
+      return true;
+    });
+
+  function toggleFold(path: string) {
+    setFolded((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }
   const [editingTag, setEditingTag] = useState<Tag | null>(null);
 
   function confirmDelete(tag: Tag) {
@@ -47,32 +82,10 @@ export default function TagManageScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <ContentColumn>
-        <View style={styles.headerRow}>
-          {/* The chevron travels with the title rather than beside the
-              "..." - this row spreads its children to the edges, and a
-              third child would have sat in the middle of it.
-
-              A way out, which this screen did not have - see
-              SettingsScreen's same chevron for why that only showed up in
-              the browser. */}
-          <View style={styles.headerLeft}>
-            <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-              <Ionicons name="chevron-back" size={24} color="#111827" />
-            </Pressable>
-            <Text style={styles.header}>Теги</Text>
-          </View>
-          <Pressable
-            hitSlop={8}
-            onPress={() => navigation.navigate('Placeholder', { icon: 'ellipsis-horizontal-outline', label: 'Скоро' })}
-          >
-            <Ionicons name="ellipsis-horizontal-outline" size={22} color="#111827" />
-          </Pressable>
-        </View>
-        <Text style={styles.subtitle}>
-          Керування вже існуючими тегами. Створити новий тег можна лише разом із присвоєнням елементу.
-        </Text>
+    <PlainScreenShell id="tagsBg" onBack={() => navigation.goBack()} railSide={railSide} hasIsland={!inPane}>
+      <Text style={[styles.subtitle, shellClear(railSide, 4)]}>
+        Керування вже існуючими тегами. Створити новий тег можна лише разом із присвоєнням елементу.
+      </Text>
 
         {!isLoading && tags.length === 0 ? (
           <View style={styles.emptyState}>
@@ -83,26 +96,46 @@ export default function TagManageScreen() {
             <Text style={styles.emptyHint}>Додайте перший тег через меню тегів на будь-якому елементі</Text>
           </View>
         ) : (
-          <ScrollView contentContainerStyle={styles.list}>
-            {tags.map((tag) => (
-              <View key={tag.id} style={styles.row}>
+          <ScrollView contentContainerStyle={[styles.list, shellClear(railSide, 4)]}>
+            {rows.map(({ tag, depth, name, hasChildren }) => (
+              <View key={tag.id} style={[styles.row, { marginLeft: depth * 18 }]}>
+                {/* The twist that folds a branch. A leaf keeps the space,
+                    so every row's icon starts on the same line. */}
+                <Pressable
+                  hitSlop={6}
+                  style={styles.twist}
+                  disabled={!hasChildren}
+                  onPress={() => toggleFold(tag.path)}
+                >
+                  {hasChildren && (
+                    <Ionicons
+                      name={folded.has(tag.path) ? 'chevron-forward' : 'chevron-down'}
+                      size={14}
+                      color={GLASS_TEXT_MUTED}
+                    />
+                  )}
+                </Pressable>
                 <Pressable
                   style={styles.rowTap}
                   onPress={() => navigation.navigate('TagItems', { tagId: tag.id })}
                 >
-                  <View style={[styles.rowIcon, { backgroundColor: `${tag.color}1A` }]}>
+                  <View style={[styles.rowIcon, { backgroundColor: `${tag.color}22` }]}>
                     <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={16} color={tag.color} />
                   </View>
                   <View style={styles.rowBody}>
-                    <Text style={styles.rowLabel}>{tag.path}</Text>
-                    <Text style={styles.rowMeta}>
+                    {/* The tag's OWN name, not its whole path - the path is
+                        what the indent says. */}
+                    <Text style={styles.rowLabel} numberOfLines={1}>
+                      {name}
+                    </Text>
+                    <Text style={styles.rowMeta} numberOfLines={1}>
                       {Object.keys(tag.usedIn).length} {Object.keys(tag.usedIn).length === 1 ? 'елемент' : 'елементів'} ·{' '}
                       {tag.types.map((t) => KIND_LABELS[t] ?? t).join(', ')}
                     </Text>
                   </View>
                 </Pressable>
                 <Pressable hitSlop={8} style={styles.rowAction} onPress={() => setEditingTag(tag)}>
-                  <Ionicons name="pencil-outline" size={15} color="#9CA3AF" />
+                  <Ionicons name="pencil-outline" size={15} color={GLASS_TEXT_MUTED} />
                 </Pressable>
                 <Pressable hitSlop={8} style={styles.rowAction} onPress={() => confirmDelete(tag)}>
                   <Ionicons name="trash-outline" size={15} color={DANGER} />
@@ -121,40 +154,21 @@ export default function TagManageScreen() {
             setEditingTag(null);
           }}
         />
-      </ContentColumn>
-
-    </View>
+    </PlainScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  headerLeft: {
-    flexDirection: 'row',
+  // The twist that folds a branch; a leaf keeps the space so every
+  // row's icon starts on the same line.
+  twist: {
+    width: 18,
     alignItems: 'center',
-    gap: 12,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 56,
-  },
-  header: {
-    fontSize: 22,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    color: '#111827',
   },
   subtitle: {
     fontSize: 12,
     fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
-    paddingHorizontal: 20,
+    color: GLASS_TEXT_FAINT,
     paddingTop: 4,
     paddingBottom: 12,
   },
@@ -176,19 +190,18 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
     textAlign: 'center',
   },
   emptyHint: {
     marginTop: 6,
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
+    color: GLASS_TEXT_MUTED,
     textAlign: 'center',
   },
   list: {
-    paddingHorizontal: 20,
-    paddingBottom: 24,
+    paddingBottom: 120,
   },
   row: {
     flexDirection: 'row',
@@ -217,12 +230,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   rowMeta: {
     fontSize: 11,
     fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
+    color: GLASS_TEXT_MUTED,
     marginTop: 1,
   },
   rowAction: {
