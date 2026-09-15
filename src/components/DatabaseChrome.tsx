@@ -163,19 +163,51 @@ export default function DatabaseChrome<T extends { id: string }>({
   // same number of buttons as the documents list there is no reason they
   // cannot have their own.
   const railFree = useRailFree(topHeight, !!hasIsland);
-  const ownHistory =
-    !!explorer?.active &&
-    railFits(railFree, selectHeight, createHeight, CAPSULE_HEIGHT, capsuleHeightFor((shape ? 1 : 0) + 1));
-  const actionsHeight = capsuleHeightFor((shape ? 1 : 0) + 1 + (explorer?.active && !ownHistory ? 2 : 0));
+  // A LADDER, not one fallback. The first version tried the arrows in a
+  // capsule of their own, then in the actions capsule, and stopped - so on
+  // a screen too short for either (the Fold lying down: a tall top inset,
+  // the island at the foot, and only about 440 points between them) the
+  // stack still rode up over the top capsule. Each rung here gives up one
+  // more thing, and the first that stands clear is the one drawn.
+  //
+  // The arrows go before anything else does: back and forward are a
+  // convenience, and the path strip above the list does the same job.
+  // Ordering, the shape of the list and choosing all stay.
+  const RUNGS = [
+    { arrows: 'own' as const, selectOwn: true },
+    { arrows: 'inside' as const, selectOwn: true },
+    { arrows: 'inside' as const, selectOwn: false },
+    { arrows: 'none' as const, selectOwn: true },
+    { arrows: 'none' as const, selectOwn: false },
+  ];
+  const rungActions = (rung: (typeof RUNGS)[number]) =>
+    capsuleHeightFor(
+      (shape ? 1 : 0) + 1 + (rung.arrows === 'inside' ? 2 : 0) + (rung.selectOwn ? 0 : 1)
+    );
+  const rung = explorer?.active
+    ? RUNGS.find((candidate) =>
+        railFits(
+          railFree,
+          candidate.selectOwn ? selectHeight : rungActions(candidate),
+          createHeight,
+          candidate.arrows === 'own' ? CAPSULE_HEIGHT : candidate.selectOwn ? selectHeight : 0,
+          candidate.arrows === 'own' ? rungActions(candidate) : candidate.selectOwn ? rungActions(candidate) : 0
+        )
+      ) ?? RUNGS[RUNGS.length - 1]
+    : { arrows: 'none' as const, selectOwn: true };
+  const ownHistory = rung.arrows === 'own';
+  const showArrows = rung.arrows !== 'none';
+  const actionsHeight = rungActions(rung);
   const rail = useRail(
     topHeight,
     // With a capsule of their own, the arrows take the middle slot and
-    // choosing moves up one; without, the three pieces stand as before.
-    ownHistory ? selectHeight : actionsHeight,
+    // choosing moves up one; with choosing folded in there is no middle
+    // slot at all.
+    rung.selectOwn ? selectHeight : actionsHeight,
     createHeight,
-    ownHistory ? CAPSULE_HEIGHT : selectHeight,
+    ownHistory ? CAPSULE_HEIGHT : rung.selectOwn ? selectHeight : 0,
     !!hasIsland,
-    ownHistory ? actionsHeight : 0
+    ownHistory || rung.selectOwn ? actionsHeight : 0
   );
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -224,10 +256,11 @@ export default function DatabaseChrome<T extends { id: string }>({
             a custom database. */}
         {isFocused && !searchingAlone && (
           <RailCapsule
-            bottom={ownHistory ? rail.extraBottom : rail.actionsBottom}
+            bottom={ownHistory || rung.selectOwn ? rail.extraBottom : rail.actionsBottom}
             buttons={[
-              // Only when they could not have a capsule of their own.
-              ...(explorer?.active && !ownHistory
+              // Only when they could not have a capsule of their own, and
+              // only while this rung still carries them at all.
+              ...(showArrows && !ownHistory && explorer
                 ? [
                     {
                       icon: 'chevron-back-outline' as const,
@@ -265,8 +298,9 @@ export default function DatabaseChrome<T extends { id: string }>({
           />
         )}
         {/* Choosing several is a mode, not an action - its own capsule,
-            where a custom database keeps it too. */}
-        {isFocused && !searchingAlone && !!bulk && (
+            where a custom database keeps it too, for as long as the screen
+            has the height for one. */}
+        {isFocused && !searchingAlone && !!bulk && rung.selectOwn && (
           <RailCapsule
             bottom={ownHistory ? rail.actionsBottom : rail.historyBottom}
             buttons={[

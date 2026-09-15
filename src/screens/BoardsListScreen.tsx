@@ -24,6 +24,7 @@ import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
 import GroupSections from '../components/GroupSections';
 import { useDatabaseList } from '../hooks/useDatabaseList';
+import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
 import ExplorerHead from '../components/ExplorerHead';
 import RenamePrompt from '../components/RenamePrompt';
@@ -52,6 +53,10 @@ const boardsCollection = collection(db, 'boards');
 export default function BoardsListScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<BoardsStackParamList>>();
   const { width: windowWidth } = useWindowDimensions();
+  // Two across where there is room for two. A board's row is a name and a
+  // count beside a small map - at the width of the Fold's inner screen one
+  // of them per line is a very long way to say very little.
+  const { isTwoPane } = useResponsiveLayout();
   const [boards, setBoards] = useState<BoardItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -299,7 +304,7 @@ export default function BoardsListScreen() {
     return (
       <Pressable
         key={item.id}
-        style={[styles.row, { backgroundColor: background }]}
+        style={[styles.row, isTwoPane && styles.rowHalf, { backgroundColor: background }]}
         onPress={() => openBoard(item)}
         onLongPress={() => askBoardActions(item)}
       >
@@ -477,6 +482,7 @@ export default function BoardsListScreen() {
             {...listProps}
             contentContainerStyle={[
               viewMode === 'cards' ? styles.tileGrid : styles.list,
+              viewMode !== 'cards' && isTwoPane && styles.listWide,
               { paddingTop: listTopPad },
               isSelectMode && styles.listWithBulkBar,
             ]}
@@ -582,6 +588,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
     gap: 2,
+  },
+  // Two across where the screen is wide enough - see isTwoPane above.
+  listWide: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  rowHalf: {
+    width: '49%',
   },
   list: {
     paddingLeft: 20,
