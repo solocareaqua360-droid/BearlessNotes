@@ -838,10 +838,11 @@ function DraggableCard({
 
   const type = card.type ?? 'paragraph';
   const cardWidth = liveWidth ?? widthInColumn(card);
-  // A picture is the one thing on this board that is worth making big,
-  // so it is the one thing with a grip. In a column every card takes the
-  // column's width, so there is nothing to drag there.
-  const resizable = type === 'image' && isSelected && !card.columnId;
+  // Every card kind can be made bigger, not just a picture - a sticky
+  // note's text or a document's preview reads just as well wider. In a
+  // column every card takes the column's width, so there is nothing to
+  // drag there.
+  const resizable = isSelected && !card.columnId;
   // blocksExternalGesture for the same reason the card's own drag has it:
   // nested detectors are independent, so without it the card would move
   // while its corner is being pulled.
@@ -906,26 +907,44 @@ function DraggableCard({
             </Text>
           </View>
         ) : type === 'image' ? (
-          <View style={styles.refCard}>
-            {imageSource ? (
+          card.imageBare ? (
+            imageSource ? (
               <Image
                 source={{ uri: imageSource }}
-                style={[styles.refThumb, { height: cardImageHeight(cardWidth) }]}
+                style={[styles.refThumbBare, { height: cardImageHeight(cardWidth) }]}
                 resizeMode="cover" resizeMethod="resize"
               />
             ) : (
-              <View style={[styles.refThumb, styles.refThumbPlaceholder, { height: cardImageHeight(cardWidth) }]}>
+              <View style={[styles.refThumbBare, styles.refThumbPlaceholder, { height: cardImageHeight(cardWidth) }]}>
                 {imageStatus === 'restoring' ? (
                   <ActivityIndicator color="#9CA3AF" />
                 ) : (
                   <Ionicons name="image-outline" size={22} color="#9CA3AF" />
                 )}
               </View>
-            )}
-            <Text style={styles.refLabel} numberOfLines={2}>
-              {card.imageTitle || 'Без назви'}
-            </Text>
-          </View>
+            )
+          ) : (
+            <View style={styles.refCard}>
+              {imageSource ? (
+                <Image
+                  source={{ uri: imageSource }}
+                  style={[styles.refThumb, { height: cardImageHeight(cardWidth) }]}
+                  resizeMode="cover" resizeMethod="resize"
+                />
+              ) : (
+                <View style={[styles.refThumb, styles.refThumbPlaceholder, { height: cardImageHeight(cardWidth) }]}>
+                  {imageStatus === 'restoring' ? (
+                    <ActivityIndicator color="#9CA3AF" />
+                  ) : (
+                    <Ionicons name="image-outline" size={22} color="#9CA3AF" />
+                  )}
+                </View>
+              )}
+              <Text style={styles.refLabel} numberOfLines={2}>
+                {card.imageTitle || 'Без назви'}
+              </Text>
+            </View>
+          )
         ) : type === 'file' ? (
           <View style={styles.refCard}>
             <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
@@ -2301,6 +2320,14 @@ export default function BoardScreen() {
   const onlySelectedCard =
     selectedCardIds.size === 1 ? cards.find((c) => selectedCardIds.has(c.id)) : undefined;
 
+  // Only a lone image card offers the caption toggle - see imageBare.
+  const onlySelectedImageCard =
+    onlySelectedCard && (onlySelectedCard.type ?? 'paragraph') === 'image' ? onlySelectedCard : undefined;
+
+  function toggleImageBare(card: BoardCard) {
+    setCards((prev) => prev.map((c) => (c.id === card.id ? { ...c, imageBare: !c.imageBare } : c)));
+  }
+
   // A card's text as text: its own for a sticky, its document's whole body
   // for a document card - the preview on the card is clipped, and copying
   // half a document silently is worse than not offering it.
@@ -2639,6 +2666,22 @@ export default function BoardScreen() {
                 <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={disconnectSelectedCards}>
                   <MaterialCommunityIcons name="vector-line" size={18} color="#fff" />
                   <Text style={styles.selectionBarActionLabel}>Відʼєднати</Text>
+                </Pressable>
+              )}
+              {!!onlySelectedImageCard && (
+                <Pressable
+                  style={styles.selectionBarAction}
+                  hitSlop={6}
+                  onPress={() => toggleImageBare(onlySelectedImageCard)}
+                >
+                  <Ionicons
+                    name={onlySelectedImageCard.imageBare ? 'text-outline' : 'image-outline'}
+                    size={18}
+                    color="#fff"
+                  />
+                  <Text style={styles.selectionBarActionLabel}>
+                    {onlySelectedImageCard.imageBare ? 'З підписом' : 'Без підпису'}
+                  </Text>
                 </Pressable>
               )}
               <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={clearSelection}>
@@ -3070,6 +3113,18 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 90,
     borderRadius: 6,
+  },
+  // imageBare cards only - no refCard wrapper around this one, so the
+  // picture itself carries the card's own rounding and shadow.
+  refThumbBare: {
+    width: '100%',
+    height: 90,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
   refThumbPlaceholder: {
     backgroundColor: '#F3F4F6',

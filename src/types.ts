@@ -333,6 +333,11 @@ export interface BoardCard extends Omit<Block, 'type'> {
   // 'paragraph' (sticky-note) cards only - no other Block usage in the app
   // has a per-block color, so this lives here rather than on Block itself.
   color?: string;
+  // 'image' cards only - drops the white card chrome and the "Без назви"
+  // caption strip, leaving just the picture. Board-specific for the same
+  // reason color is: a document's own image block always keeps its
+  // caption, since that is where a picture's title is actually set.
+  imageBare?: boolean;
   // 'document' cards only - the referenced doc's id (Editor screen param)
   // and a cached title for display, snapshotted at add-time same as every
   // other reference card's display fields (fileTitle/imageTitle/linkTitle).
