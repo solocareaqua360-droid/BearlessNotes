@@ -773,7 +773,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
           <ScrollView
             {...listProps}
             contentContainerStyle={[
-              styles.gridList,
+              styles.gridPage,
               railClear(inPane ? 'left' : 'right', 20),
               { paddingTop: listTopPad },
               isSelectMode && styles.listWithBulkBar,
@@ -797,7 +797,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
               onFolderMenu={openFolderMenu}
             />
             )}
-            {filesHere.map((item) => renderFileGridCell(item))}
+            <View style={styles.gridRows}>{filesHere.map((item) => renderFileGridCell(item))}</View>
             <GroupSections groupId={list.selectedGroupId} currentKind="file" tags={tags} />
           </ScrollView>
         ) : (
@@ -875,15 +875,24 @@ const styles = StyleSheet.create({
     paddingRight: RAIL_CLEARANCE,
     gap: 10,
   },
-  gridList: {
+  // The page: a column, and the paddings. The rail's side is decided by
+  // railClear at the call site.
+  gridPage: {
     paddingVertical: 8,
-    paddingLeft: 20,
-    // The rail stands at the right edge, and the cells are a percentage
-    // of this container - so the grid stops short of it here rather than
-    // running the last column under the buttons.
-    paddingRight: RAIL_CLEARANCE,
+  },
+  // The cards, and ONLY the cards.
+  //
+  // They used to be children of this row themselves, beside the path
+  // strip and the group sections - so the strip stood in the line and
+  // took its width, the cards were pushed along to whatever was left,
+  // and (a row stretches its children) each one was pulled as tall as
+  // the strip. That is the narrow tall card pressed against the far
+  // side that the user kept being shown. alignItems flex-start so that
+  // nothing in the line can stretch a card again.
+  gridRows: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    alignItems: 'flex-start',
     gap: 12,
   },
   listWithBulkBar: {

@@ -742,7 +742,7 @@ export default function LinksScreen({
           <ScrollView
             {...listProps}
             contentContainerStyle={[
-              styles.gridList,
+              styles.gridPage,
               railClear(inPane ? 'left' : 'right', 20),
               { paddingTop: listTopPad },
               isSelectMode && styles.listWithBulkBar,
@@ -766,7 +766,7 @@ export default function LinksScreen({
                 onFolderMenu={openFolderMenu}
               />
             )}
-            {linksHere.map((item) => renderLinkGridCell(item))}
+            <View style={styles.gridRows}>{linksHere.map((item) => renderLinkGridCell(item))}</View>
             <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />
           </ScrollView>
         ) : (
@@ -854,15 +854,14 @@ const styles = StyleSheet.create({
     paddingRight: RAIL_CLEARANCE,
     gap: 10,
   },
-  gridList: {
+  // See FilesScreen: the page is a column, only the cards are a row.
+  gridPage: {
     paddingVertical: 8,
-    paddingLeft: 20,
-    // The rail stands at the right edge, and the cells are a percentage
-    // of this container - so the grid stops short of it here rather than
-    // running the last column under the buttons.
-    paddingRight: RAIL_CLEARANCE,
+  },
+  gridRows: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    alignItems: 'flex-start',
     gap: 12,
   },
   listWithBulkBar: {

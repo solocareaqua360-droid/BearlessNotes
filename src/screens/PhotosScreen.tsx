@@ -757,7 +757,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
               // The grid wraps cells across the row; the list stacks them
               // down it. Same scroll view, two container styles - the one
               // thing that cannot be shared between the two views.
-              viewMode === 'list' ? styles.list : styles.grid,
+              viewMode === 'list' ? styles.list : styles.gridPage,
               railClear(inPane ? 'left' : 'right', viewMode === 'list' ? 20 : 16),
               { paddingTop: listTopPad },
               isSelectMode && styles.gridWithBulkBar,
@@ -781,6 +781,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                 onFolderMenu={openFolderMenu}
               />
             )}
+            <View style={viewMode === 'list' ? undefined : styles.gridRows}>
             {itemsHere.map((photo) => {
               const shared = {
                 key: photo.id,
@@ -793,6 +794,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
               };
               return viewMode === 'list' ? <PhotoRow {...shared} /> : <PhotoCell {...shared} />;
             })}
+            </View>
             {/* What else is in this group - see GroupSections. */}
             <GroupSections groupId={list.selectedGroupId} currentKind="photo" tags={tags} />
           </ScrollView>
@@ -836,14 +838,16 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.55)',
     textAlign: 'center',
   },
-  grid: {
+  // See FilesScreen: the page is a column, only the cells are a row -
+  // the path strip standing IN that row was what squeezed and stretched
+  // them.
+  gridPage: {
+    paddingBottom: 8,
+  },
+  gridRows: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    paddingLeft: 16,
-    // Clear of the rail, like the row list below.
-    paddingRight: RAIL_CLEARANCE,
-    paddingBottom: 8,
+    alignItems: 'flex-start',
     gap: 12,
   },
   // The same measurements Files and Links use for their own row lists, so
