@@ -154,11 +154,23 @@ export function gridCellWidth(listWidth: number): number | undefined {
   return Math.floor((listWidth - 12) / 2);
 }
 
+// A card's height follows its width, so a row of them is a row of the same
+// shape. Without it each card was as tall as its own title and tags, and a
+// wrapped row came out ragged - which is what the user has been calling
+// deformed.
+export const GRID_CARD_RATIO = 1.3;
+
 export function LinkGridCell({ link, gridWidth, ...rest }: { link: LinkCardItem; gridWidth?: number } & Common) {
   const info = LINK_CATEGORY_INFO[categoryFromSiteName(link.siteName)];
   const { background, text, textMuted } = colorForDocument(link.id);
   return (
-    <View style={[styles.gridCard, gridWidth !== undefined && { width: gridWidth }, { backgroundColor: background }]}>
+    <View
+      style={[
+        styles.gridCard,
+        gridWidth !== undefined && { width: gridWidth, height: Math.round(gridWidth * GRID_CARD_RATIO) },
+        { backgroundColor: background },
+      ]}
+    >
       <Pressable style={styles.gridTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
         {link.imageUrl ? (
           <Image source={{ uri: link.imageUrl }} style={styles.gridThumb} resizeMode="cover" />
@@ -246,7 +258,13 @@ export function FileGridCell({ file, gridWidth, ...rest }: { file: FileCardItem;
   const { background, text, textMuted } = colorForDocument(file.id);
   const preview = useFilePreview(file);
   return (
-    <View style={[styles.gridCard, gridWidth !== undefined && { width: gridWidth }, { backgroundColor: background }]}>
+    <View
+      style={[
+        styles.gridCard,
+        gridWidth !== undefined && { width: gridWidth, height: Math.round(gridWidth * GRID_CARD_RATIO) },
+        { backgroundColor: background },
+      ]}
+    >
       <Pressable style={styles.gridTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
         {preview?.thumbUri ? (
           <Image source={{ uri: preview.thumbUri }} style={styles.gridThumb} resizeMode="cover" />
@@ -456,6 +474,7 @@ const styles = StyleSheet.create({
     padding: 6,
   },
   gridCard: {
+    overflow: 'hidden',
     // Fixed proportion, not flex:1 - a flex card stretches to fill
     // whatever is left in its row, which breaks when a row has only one
     // card left (a filter down to an odd count). The screens that know

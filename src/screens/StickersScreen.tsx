@@ -51,7 +51,7 @@ type StickerItem = {
   updatedAt: number;
 };
 
-export default function StickersScreen() {
+export default function StickersScreen({ inPane }: { inPane?: boolean } = {}) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [stickers, setStickers] = useState<StickerItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);

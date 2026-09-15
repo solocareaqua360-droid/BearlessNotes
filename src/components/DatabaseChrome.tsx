@@ -47,6 +47,10 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   // A tab's root also keeps the navigation island at its foot, so the
   // rail must leave room for it; a PUSHED screen has none.
   hasIsland?: boolean;
+  // Drawn inside another screen's LEFT pane: the rail stands on the
+  // window's outer edge, which is the left one there, rather than against
+  // the divider in the middle of the screen.
+  railSide?: 'left' | 'right';
   searchPlaceholder: string;
   // Rows of this database's own, above the sort rows in the "..." menu
   // (the view-mode switch, for the databases that have one).
@@ -127,6 +131,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   accentGlass,
   onBack,
   hasIsland,
+  railSide = 'right',
   searchPlaceholder,
   menuRows,
   onAdd,
@@ -276,6 +281,7 @@ export default function DatabaseChrome<T extends { id: string }>({
             a custom database. */}
         {isFocused && !searchingAlone && (
           <RailCapsule
+            side={railSide}
             bottom={ownHistory || rung.selectOwn ? rail.extraBottom : rail.actionsBottom}
             buttons={[
               // Only when they could not have a capsule of their own, and
@@ -310,6 +316,7 @@ export default function DatabaseChrome<T extends { id: string }>({
             hand need not reach for the path strip at the top. */}
         {isFocused && !searchingAlone && ownHistory && !!explorer && (
           <RailCapsule
+            side={railSide}
             bottom={rail.historyBottom}
             buttons={[
               { icon: 'chevron-back-outline', onPress: explorer.onBack, disabled: !explorer.canBack },
@@ -322,6 +329,7 @@ export default function DatabaseChrome<T extends { id: string }>({
             has the height for one. */}
         {isFocused && !searchingAlone && !!bulk && rung.selectOwn && (
           <RailCapsule
+            side={railSide}
             bottom={ownHistory ? rail.actionsBottom : rail.historyBottom}
             buttons={[
               {
@@ -491,7 +499,11 @@ export default function DatabaseChrome<T extends { id: string }>({
       {isFocused && !searchingAlone && (
         <GlassPortal>
           <View
-            style={[styles.railWrap, { top: insets.top + CHROME_TOP + CAPSULE_DROP }]}
+            style={[
+              styles.railWrap,
+              railSide === 'left' ? styles.railWrapLeft : styles.railWrapRight,
+              { top: insets.top + CHROME_TOP + CAPSULE_DROP },
+            ]}
             pointerEvents="box-none"
           >
             <View style={styles.headerButtons}>
@@ -579,6 +591,7 @@ export default function DatabaseChrome<T extends { id: string }>({
           one round accent button it has always been. */}
       {isFocused && !list.isSelectMode && !searchingAlone && onAdd && explorer?.active && (
         <RailCapsule
+          side={railSide}
           bottom={rail.addBottom}
           buttons={[
             { icon: addIcon ?? 'add-outline', badge: 'add-circle-outline', onPress: onAdd },
@@ -591,6 +604,7 @@ export default function DatabaseChrome<T extends { id: string }>({
           <Pressable
             style={[
               styles.fab,
+              railSide === 'left' ? styles.fabLeft : styles.fabRight,
               { bottom: rail.addBottom, backgroundColor: accentGlass, shadowColor: accent },
             ]}
             onPress={onAdd}
@@ -700,8 +714,13 @@ const styles = StyleSheet.create({
   },
   railWrap: {
     position: 'absolute',
-    right: RAIL_RIGHT,
     alignItems: 'center',
+  },
+  railWrapRight: {
+    right: RAIL_RIGHT,
+  },
+  railWrapLeft: {
+    left: RAIL_RIGHT,
   },
   // Stood on its end, like every other screen's.
   headerButtons: {
@@ -787,9 +806,14 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   // Same floating "+" every screen uses, not a header icon.
+  fabRight: {
+    right: 20,
+  },
+  fabLeft: {
+    left: 20,
+  },
   fab: {
     position: 'absolute',
-    right: 20,
     width: 56,
     height: 56,
     borderRadius: 999,

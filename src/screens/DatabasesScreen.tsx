@@ -135,7 +135,11 @@ export default function DatabasesScreen() {
   const databasesInsets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const { isTwoPane } = useResponsiveLayout();
+  const responsive = useResponsiveLayout();
+  // Two panes only LYING DOWN. Standing up, half the inner screen is a
+  // phone's width and a database in it is a database squeezed - the user's
+  // rule: full width standing up, two windows lying down.
+  const isTwoPane = responsive.isTwoPane && responsive.width >= responsive.height;
   // What the left pane is showing, on a wide screen: a database opened
   // from a tile. On a phone the same tap navigates, as it always did.
   const [openInPane, setOpenInPane] = useState<PaneTarget | null>(null);
@@ -808,19 +812,19 @@ export default function DatabasesScreen() {
                 <GlassTargetProvider>
                   <NavigationContext.Provider value={paneNavigation}>
                     {openInPane.kind === 'custom' ? (
-                      <CustomDatabaseScreen databaseId={openInPane.databaseId} />
+                      <CustomDatabaseScreen databaseId={openInPane.databaseId} inPane />
                     ) : openInPane.kind === 'documents' ? (
                       <DocumentsScreen inPane />
                     ) : openInPane.kind === 'boards' ? (
                       <BoardsListScreen inPane />
                     ) : openInPane.kind === 'links' ? (
-                      <LinksScreen category={openInPane.category} />
+                      <LinksScreen category={openInPane.category} inPane />
                     ) : openInPane.route === 'Photos' ? (
-                      <PhotosScreen />
+                      <PhotosScreen inPane />
                     ) : openInPane.route === 'Files' ? (
-                      <FilesScreen />
+                      <FilesScreen inPane />
                     ) : openInPane.route === 'Stickers' ? (
-                      <StickersScreen />
+                      <StickersScreen inPane />
                     ) : (
                       <TasksScreen />
                     )}

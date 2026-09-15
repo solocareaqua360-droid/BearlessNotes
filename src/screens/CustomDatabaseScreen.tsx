@@ -205,7 +205,10 @@ type Props = NativeStackScreenProps<RootStackParamList, 'CustomDatabase'>;
 // `databaseId` as a prop, not only from the route: on a wide screen this
 // screen is rendered INSIDE the tile board's left pane, where the route
 // belongs to the board and knows nothing about which database was opened.
-export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Partial<Props> & { databaseId?: string }) {
+export default function CustomDatabaseScreen({
+  databaseId: databaseIdProp,
+  inPane,
+}: Partial<Props> & { databaseId?: string; inPane?: boolean }) {
   const railBlurTarget = useBlurTarget();
   const railFocused = useIsFocused();
   const railInsets = useSafeAreaInsets();
@@ -617,6 +620,9 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   // at its foot and the rail must not hold room for one - that reserved
   // height is what drove the capsules up over the top one.
   const railFree = useRailFree(CAPSULE_HEIGHT_3, false);
+  // Inside another screen's LEFT pane the window's outer edge is the left
+  // one, so the whole rail stands there instead of against the divider.
+  const railSide = inPane ? ('left' as const) : ('right' as const);
   // What the rail would like to carry, and the order it gives it up in
   // when the screen is too short to hold it all.
   //
@@ -2195,6 +2201,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           its own glass through the portal, so these need no wrapper. */}
       {railFocused && !isSelectMode && (
         <RailCapsule
+          side={railSide}
           bottom={rail.actionsBottom}
           buttons={[
             // The shape of the list, which used to be the header's own
@@ -2241,6 +2248,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           while the screen has the height for one. */}
       {railFocused && !isSelectMode && railPlan.selectOwn && (
         <RailCapsule
+          side={railSide}
           bottom={rail.historyBottom}
           buttons={[{ icon: 'checkmark-circle-outline', onPress: toggleSelectMode }]}
         />
@@ -2250,6 +2258,7 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           bookmark button already opens. */}
       {railFocused && !isSelectMode && (
         <RailCapsule
+          side={railSide}
           bottom={rail.addBottom}
           buttons={[{ icon: 'albums-outline', badge: 'add-circle-outline', onPress: openNewRow }]}
         />

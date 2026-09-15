@@ -123,7 +123,8 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Links'>;
 export default function LinksScreen({
   route,
   category: categoryProp,
-}: Partial<Props> & { category?: 'video' | 'geo' | 'other' }) {
+  inPane,
+}: Partial<Props> & { category?: 'video' | 'geo' | 'other'; inPane?: boolean }) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const category = categoryProp ?? route?.params.category ?? 'other';
   const info = CATEGORY_INFO[category];
@@ -521,6 +522,7 @@ export default function LinksScreen({
   return (
     <DatabaseChrome
       list={list}
+      railSide={inPane ? 'left' : 'right'}
       accent={ACCENT}
       accentGlass={ACCENT_GLASS}
       onBack={() => navigation.goBack()}

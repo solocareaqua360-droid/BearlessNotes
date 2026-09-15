@@ -90,7 +90,7 @@ type FileItem = {
 // DocumentEditorScreen - kept as its own small copy here rather than shared,
 // since the two versions have nothing else in common.
 
-export default function FilesScreen() {
+export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { isTwoPane } = useResponsiveLayout();
   const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
@@ -519,6 +519,7 @@ export default function FilesScreen() {
   return (
     <DatabaseChrome
       list={list}
+      railSide={inPane ? 'left' : 'right'}
       accent={ACCENT}
       accentGlass={ACCENT_GLASS}
       onBack={() => navigation.goBack()}

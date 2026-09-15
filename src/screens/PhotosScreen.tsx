@@ -83,7 +83,7 @@ type PhotoItem = {
   createdAt?: number;
 };
 
-export default function PhotosScreen() {
+export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -565,6 +565,7 @@ export default function PhotosScreen() {
   return (
     <DatabaseChrome
       list={list}
+      railSide={inPane ? 'left' : 'right'}
       accent={ACCENT}
       accentGlass={ACCENT_GLASS}
       onBack={() => navigation.goBack()}
