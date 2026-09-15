@@ -134,6 +134,15 @@ export default function DocumentsScreen({ inPane }: { inPane?: boolean } = {}) {
   // list is the whole of this screen and a tapped document is pushed,
   // exactly as on a phone.
   const isTwoPane = responsive.isTwoPane && !inPane;
+  // Drawn in another screen's LEFT pane, the window's outer edge is the
+  // left one - so the rail stands there instead of against the divider in
+  // the middle of the screen, where it would be in the way of both halves.
+  const railSide = inPane ? ('left' as const) : ('right' as const);
+  // Which side the rows keep clear of, since it is the side the rail is on.
+  const listClear =
+    railSide === 'left'
+      ? { paddingLeft: RAIL_CLEARANCE - 20, paddingRight: 0 }
+      : null;
   // The document pane taking the whole window. Only reachable from the
   // editor's own header, and only while there are two panes to collapse.
   const [paneFullscreen, setPaneFullscreen] = useState(false);
@@ -1003,6 +1012,9 @@ export default function DocumentsScreen({ inPane }: { inPane?: boolean } = {}) {
             // was put away. Same place it would have been with the row
             // showing - which is the place that was wanted.
             { top: chromeTop + CAPSULE_DROP, left: paneRect.x, width: paneRect.width },
+            // In a pane the rail stands on the window's outer edge, which
+            // is the left one - so this capsule goes with the rest of it.
+            railSide === 'left' && styles.sideIslandLayerLeft,
           ]}
           pointerEvents="box-none"
         >
@@ -1235,7 +1247,7 @@ export default function DocumentsScreen({ inPane }: { inPane?: boolean } = {}) {
               keyExtractor={(item) => item.id}
               numColumns={drawnMode === 'grid' ? gridColumns : 1}
               columnWrapperStyle={drawnMode === 'grid' ? styles.gridRow : undefined}
-              contentContainerStyle={[styles.list, { paddingTop: chromeBottom, paddingBottom: listBottomPad }]}
+              contentContainerStyle={[styles.list, listClear, { paddingTop: chromeBottom, paddingBottom: listBottomPad }]}
               keyboardShouldPersistTaps="handled"
               renderItem={({ item }) => {
                 // The title's match wins; only when the hit is in the body
@@ -1288,7 +1300,7 @@ export default function DocumentsScreen({ inPane }: { inPane?: boolean } = {}) {
               keyExtractor={(item) => item.id}
               numColumns={drawnMode === 'grid' ? gridColumns : 1}
               columnWrapperStyle={drawnMode === 'grid' ? styles.gridRow : undefined}
-              contentContainerStyle={[styles.list, { paddingTop: chromeBottom, paddingBottom: listBottomPad }]}
+              contentContainerStyle={[styles.list, listClear, { paddingTop: chromeBottom, paddingBottom: listBottomPad }]}
               renderItem={({ item }) => (
                 <Pressable
                   style={[
@@ -1488,7 +1500,7 @@ export default function DocumentsScreen({ inPane }: { inPane?: boolean } = {}) {
             columnWrapperStyle={drawnMode === 'grid' ? styles.gridRow : undefined}
             // The cards start below the floating tabs and scroll up under
             // them from there.
-            contentContainerStyle={[styles.list, { paddingTop: chromeBottom, paddingBottom: listBottomPad }]}
+            contentContainerStyle={[styles.list, listClear, { paddingTop: chromeBottom, paddingBottom: listBottomPad }]}
             renderItem={({ item }) => {
               // Grid cards reclaim the thumbnail's space for text when a
               // document has no image (see DocumentCard's own noImage
@@ -1539,6 +1551,7 @@ export default function DocumentsScreen({ inPane }: { inPane?: boolean } = {}) {
             grouped, so the rail does not turn into a wall of options. */}
         {isFocused && !searchingAlone && !(isTwoPane && !!openDoc && paneFullscreen) && (
           <RailCapsule
+            side={railSide}
             bottom={rail.actionsBottom}
             buttons={[
               {
@@ -1573,6 +1586,7 @@ export default function DocumentsScreen({ inPane }: { inPane?: boolean } = {}) {
             always did. */}
         {isFocused && !isSelectMode && !searchingAlone && !(isTwoPane && !!openDoc && paneFullscreen) && (
           <RailCapsule
+            side={railSide}
             bottom={rail.addBottom}
             buttons={[
               {
@@ -1601,6 +1615,7 @@ export default function DocumentsScreen({ inPane }: { inPane?: boolean } = {}) {
             hand need not reach for the path strip at the top. */}
         {arrowsFit && isFocused && !isSelectMode && !searchingAlone && !(isTwoPane && !!openDoc && paneFullscreen) && (
           <RailCapsule
+            side={railSide}
             bottom={rail.historyBottom}
             buttons={[
               { icon: 'chevron-back-outline', onPress: explorerBack, disabled: !historyState.canBack },
@@ -1815,6 +1830,11 @@ const styles = StyleSheet.create({
   // layer rather than a `top: 50%` offset, so it centres itself without
   // knowing how tall it is; box-none keeps the empty column above and
   // below it from swallowing taps meant for the list.
+  sideIslandLayerLeft: {
+    alignItems: 'flex-start',
+    paddingRight: 0,
+    paddingLeft: 14,
+  },
   sideIslandLayer: {
     position: 'absolute',
     // `top`, `left` and `width` come from the pane's own layout - on a
@@ -2187,7 +2207,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     // The rail stands at the right edge; the cards stop short of it rather
     // than running under it. The cards carry 20 of side margin of their
-    // own, so this is what is left of the clearance.
+    // own, so this is what is left of the clearance. In a pane the rail is
+    // on the LEFT, and listClear below swaps the two.
     paddingRight: RAIL_CLEARANCE - 20,
     // paddingBottom comes from listBottomPad - it depends on the window
     // size and the tag/add buttons' own spread, not a fixed number.

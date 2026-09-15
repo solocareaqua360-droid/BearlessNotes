@@ -41,12 +41,24 @@ export type RailButton = {
   size?: number;
 };
 
-export default function RailCapsule({ buttons, bottom }: { buttons: RailButton[]; bottom: number }) {
+export default function RailCapsule({
+  buttons,
+  bottom,
+  // Which edge the rail stands on. Right everywhere, except a screen drawn
+  // inside another's LEFT pane: there the outer edge of the window is the
+  // left one, and a rail against the divider in the middle of the screen
+  // is a rail in the way of both halves.
+  side = 'right',
+}: {
+  buttons: RailButton[];
+  bottom: number;
+  side?: 'left' | 'right';
+}) {
   const blurTarget = useBlurTarget();
   if (buttons.length === 0) return null;
   return (
     <GlassPortal>
-      <View style={[styles.capsule, { bottom }]}>
+      <View style={[styles.capsule, side === 'left' ? styles.capsuleLeft : styles.capsuleRight, { bottom }]}>
         <BlurView
           intensity={60}
           tint="dark"
@@ -95,7 +107,6 @@ const styles = StyleSheet.create({
   // + 19 across, inside a 1px border, 18 between buttons.
   capsule: {
     position: 'absolute',
-    right: RAIL_RIGHT,
     alignItems: 'center',
     paddingVertical: 18,
     paddingHorizontal: 19,
@@ -105,6 +116,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
     zIndex: 20,
+  },
+  capsuleRight: {
+    right: RAIL_RIGHT,
+  },
+  capsuleLeft: {
+    left: RAIL_RIGHT,
   },
   slot: {
     alignItems: 'center',
