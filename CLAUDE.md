@@ -68,36 +68,44 @@ screen (week strip + expandable month grid, inline daily-note editing,
 real cloud file backup yet (images/files live only in the device's local
 cache/Firestore-referenced URI) — that's item 2 of the roadmap below.
 
-### Post-MVP roadmap — 10 items agreed with the user, in original order:
+### Post-MVP roadmap — 10 items agreed with the user. Nine are done.
 1. Bulk editing of database objects — **done**
-2. Google Drive sync (cloud backup for files/photos + storage counter +
-   real sort/filter) — needs a second auth flow (Google Sign-In) and a
-   second backend (Drive API), so it's deliberately not bundled with the
-   scanner/sketch work below even though all three need the same
-   EAS dev-build transition
+2. Google Drive sync (cloud backup for files/photos + storage counter) —
+   **done**. Whether to move the files to Firebase Storage instead is a
+   PARKED decision, not an open task: Drive lives in a different Cloud
+   project, which is why the browser asks for one "Підключити Диск"
+   click per hour, and Storage needs the Blaze plan.
 3. Group/project-tabs field on every database — **done**
-4. Kanban view for Tasks (todo/doing/paused/done)
-5. Custom database with Notion-like field types — last on purpose: every
-   other database (Tasks/Links/Photos/Files) exists first specifically so
-   this one can reuse their patterns (groups, tags, bulk edit) instead of
-   inventing its own
+4. Kanban view for Tasks (todo/doing/paused/done) — **done** (Stage 15)
+5. Custom database with Notion-like field types — **done**, and it has
+   since grown relation targets (photos, files, the three link
+   databases, other custom databases), embedded views in notes, and a
+   record page of its own
 6. Document scanner (save as JPEG or PDF) — **done**
 7. Sketch/drawing tool — **done**
-8. Task reminders/notifications
-9. Note cover image + paper color
-10. Real (non-test) Firestore security rules — test mode is open for 30
-    days from project creation; must land before real users touch this
+8. Task reminders/notifications — **the one thing not started**: the
+   `reminderDate` field exists and the calendar reads it, but nothing
+   ever notifies
+9. Note cover image + paper color — **done**
+10. Real (non-test) Firestore security rules — **done, deployed
+    2026-09-15**
 
-**Agreed next chunk of work, decided at the end of the previous session:
-scanner (6) → transition to an EAS dev-build (Expo Go can't host a
-scanner, sketch, notifications, or Drive — all need native modules not
-present in Expo Go) → sketch (7) → Google Drive sync (2).** Scanner, the
-dev-build transition, and sketch are all done (see below); Drive sync
-(2) is next — the Google Cloud side (dedicated project, Drive API,
-OAuth consent screen and Android client) is already set up, see Stage
-12 in `DEVELOPMENT_PLAN.md`. After Drive sync, revisit the remaining
-order for 4, 9, 10, 8, 5 together again — it was deliberately left open
-rather than fixed in advance.
+**What the app grew AFTER that roadmap ran out** — none of it has a
+stage in `DEVELOPMENT_PLAN.md`, and the detail lives in the project
+memory, not here: the browser build became the whole app; the note
+canvas («Полотно», AFFiNE's idea - blocks as cards on a surface, arrows
+between them, and the arrows decide the page's order); «Провідник» -
+folders inside the documents list, with a path, a 30-day bin and a
+three-way mode switch; note sync between the two devices, merged per
+block; the right-hand rail of four capsules over a drifting tiled
+backdrop.
+
+**The queue is kept in the project memory (`START HERE`), not in this
+file** - so that it cannot go stale the way the list above did. As of
+2026-09-15 it reads: drag-and-drop of cards into folders → a bin for
+files/photos/links → a toast when leaving the canvas reorders the page
+→ the rail's morph → grids and tile boards clearing the rail. Reminders
+(8) is the only roadmap item still untouched.
 
 **Scanner + EAS dev-build transition (Stage 10 in `DEVELOPMENT_PLAN.md`)
 — done.** Summary of what that took, since the same setup now carries
