@@ -537,8 +537,14 @@ export default function DocumentsScreen() {
   const wideList = isTwoPane && !openDoc;
   // With a document open beside it the list is half a screen wide, and
   // the user's call is one card to a line there, not two squeezed ones.
-  const gridColumns = wideList ? (layoutWidth > layoutHeight ? 4 : 3) : isTwoPane && openDoc ? 1 : 2;
+  const gridColumns = wideList ? (layoutWidth > layoutHeight ? 4 : 3) : 2;
   const folderColumns = gridColumns >= 4 ? 2 : 1;
+  // What the list actually draws. With a document open beside it the list
+  // is half a screen wide, and one card to a line there is the LIST row -
+  // not a grid of one column: the grid card is a fixed-height tile, and a
+  // FlatList refuses columnWrapperStyle on a single column outright,
+  // which is what the white screen was.
+  const drawnMode: 'list' | 'grid' = viewMode === 'grid' && isTwoPane && !!openDoc ? 'list' : viewMode;
   // Widths in PIXELS, from the width the list actually has, so a row of
   // cards ends on the same line as a row of folders above it. As
   // percentages the two could not agree: the gaps between cards are
@@ -1206,11 +1212,11 @@ export default function DocumentsScreen() {
             <GestureDetector gesture={pull.gesture}>
             <FlatList
               {...pull.listProps}
-              key={`search-${viewMode}-${gridColumns}`}
+              key={`search-${drawnMode}-${gridColumns}`}
               data={searchMatches}
               keyExtractor={(item) => item.id}
-              numColumns={viewMode === 'grid' ? gridColumns : 1}
-              columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
+              numColumns={drawnMode === 'grid' ? gridColumns : 1}
+              columnWrapperStyle={drawnMode === 'grid' ? styles.gridRow : undefined}
               contentContainerStyle={[styles.list, { paddingTop: chromeBottom, paddingBottom: listBottomPad }]}
               keyboardShouldPersistTaps="handled"
               renderItem={({ item }) => {
@@ -1226,7 +1232,7 @@ export default function DocumentsScreen() {
                   // stayed blank. See useLiveRecords.
                   (item.blocks ?? []).map((b) => applyLiveRecord(b, liveRecords)),
                   item.coverImageUri,
-                  viewMode === 'grid' ? EXPANDED_PREVIEW_LENGTH : undefined
+                  drawnMode === 'grid' ? EXPANDED_PREVIEW_LENGTH : undefined
                 );
                 return (
                   <DocumentCard
@@ -1242,7 +1248,7 @@ export default function DocumentsScreen() {
                     titleMatch={titleMatch}
                     bodyMatch={bodyMatch}
                     onPress={() => openDocument(item.id)}
-                    layout={viewMode}
+                    layout={drawnMode}
                     gridWidth={gridCardWidth}
                   />
                 );
@@ -1259,17 +1265,17 @@ export default function DocumentsScreen() {
             </View>
           ) : (
             <FlatList
-              key={`stickers-${viewMode}-${gridColumns}`}
+              key={`stickers-${drawnMode}-${gridColumns}`}
               data={freeStickers}
               keyExtractor={(item) => item.id}
-              numColumns={viewMode === 'grid' ? gridColumns : 1}
-              columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
+              numColumns={drawnMode === 'grid' ? gridColumns : 1}
+              columnWrapperStyle={drawnMode === 'grid' ? styles.gridRow : undefined}
               contentContainerStyle={[styles.list, { paddingTop: chromeBottom, paddingBottom: listBottomPad }]}
               renderItem={({ item }) => (
                 <Pressable
                   style={[
                     styles.stickerCard,
-                    viewMode === 'grid' ? styles.stickerCardGrid : styles.stickerCardRow,
+                    drawnMode === 'grid' ? styles.stickerCardGrid : styles.stickerCardRow,
                   ]}
                   onPress={() => openFreeSticker(item)}
                 >
@@ -1306,7 +1312,7 @@ export default function DocumentsScreen() {
             {...pull.listProps}
             // FlatList throws if numColumns changes on an already-mounted
             // instance - key forces a clean remount when switching views.
-            key={`${viewMode}-${gridColumns}-${trashOpen ? 'trash' : 'list'}`}
+            key={`${drawnMode}-${gridColumns}-${trashOpen ? 'trash' : 'list'}`}
             data={trashOpen ? trashed : explorerDocuments}
             // The folders of this level, and the way up, above the cards.
             ListHeaderComponent={
@@ -1460,8 +1466,8 @@ export default function DocumentsScreen() {
                 sidePadding={20}
               />
             }
-            numColumns={viewMode === 'grid' ? gridColumns : 1}
-            columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
+            numColumns={drawnMode === 'grid' ? gridColumns : 1}
+            columnWrapperStyle={drawnMode === 'grid' ? styles.gridRow : undefined}
             // The cards start below the floating tabs and scroll up under
             // them from there.
             contentContainerStyle={[styles.list, { paddingTop: chromeBottom, paddingBottom: listBottomPad }]}
@@ -1478,7 +1484,7 @@ export default function DocumentsScreen() {
                 // stayed blank. See useLiveRecords.
                 (item.blocks ?? []).map((b) => applyLiveRecord(b, liveRecords)),
                 item.coverImageUri,
-                viewMode === 'grid' ? EXPANDED_PREVIEW_LENGTH : undefined
+                drawnMode === 'grid' ? EXPANDED_PREVIEW_LENGTH : undefined
               );
               return (
                 <DocumentCard
@@ -1496,7 +1502,7 @@ export default function DocumentsScreen() {
                   isSelectMode={isSelectMode}
                   isSelected={selectedIds.has(item.id)}
                   onToggleSelect={() => toggleSelected(item.id)}
-                  layout={viewMode}
+                  layout={drawnMode}
                     gridWidth={gridCardWidth}
                 />
               );
