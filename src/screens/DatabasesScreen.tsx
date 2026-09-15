@@ -21,13 +21,14 @@ import {
   DEFAULT_TILE_SIZE,
   tileColumnsFor,
   packedSizes,
-  placeTiles,
+  layoutSections,
   cellAfter,
   tilesOverlap,
   parseTilePosition,
   formatTilePosition,
   type TilePosition,
   type PlacedTile,
+  type BoardSection,
   TileSize,
   formatTileSize,
   packTiles,
@@ -99,15 +100,18 @@ const tileOrderDoc = doc(db, 'settings', 'databaseTileOrder');
 const tileLayoutsDoc = doc(db, 'settings', 'databaseTileLayouts');
 type TileView = 'phone' | 'portrait' | 'landscape';
 const VIEW_LABEL: Record<TileView, string> = { phone: 'Телефон', portrait: 'Стоячи', landscape: 'Лежачи' };
-// A divider: a band across the whole board standing ABOVE row `y`, with
-// a name - what splits the tiles into sections. It lives between rows
-// rather than in cells, so the tiles' places are untouched by it; the
-// rows under it simply move down by its height.
+// A divider: a named band across the whole board, splitting the tiles
+// into sections. `y` is its order among the dividers (the row it last
+// stood on) - where it actually stands is where its section starts,
+// which the sections above decide. See layoutSections.
 type TileDivider = { y: number; label: string };
 const DIVIDER_HEIGHT = 34;
 type TileViewData = {
   sizes?: Record<string, string>;
+  // A tile's place is relative to its section - the divider (by id) it
+  // stands under; absent, the top of the board. See layoutSections.
   positions?: Record<string, string>;
+  sections?: Record<string, string>;
   dividers?: Record<string, TileDivider>;
 };
 const tileBackgroundsDoc = doc(db, 'settings', 'databaseTileBackgrounds');
@@ -405,17 +409,21 @@ export default function DatabasesScreen() {
     // The sizes that fill the board, and then WHERE each one lands with
     // those sizes - written as positions too, so the result stays put
     // instead of flowing again the next time anything changes.
-    const keys = orderedItems.map((item) => item.key);
-    const sizes = packedSizes(keys, columns);
-    const { placed: laid } = packTiles(
-      orderedItems,
-      (item) => parseTileSize(sizes[item.key]) ?? sizeFor(item.key),
-      undefined,
-      columns
-    );
+    // Section by section: a divider is a wall the filling does not cross.
+    const sizes: Record<string, string> = {};
     const positions: Record<string, string> = {};
-    laid.forEach((p) => {
-      positions[p.item.key] = formatTilePosition({ x: p.x, y: p.y });
+    groupSections(orderedItems).forEach((section) => {
+      const own = packedSizes(section.items.map((item) => item.key), columns);
+      Object.assign(sizes, own);
+      const { placed: laid } = packTiles(
+        section.items,
+        (item) => parseTileSize(own[item.key]) ?? sizeFor(item.key),
+        undefined,
+        columns
+      );
+      laid.forEach((p) => {
+        positions[p.item.key] = formatTilePosition({ x: p.x, y: p.y });
+      });
     });
     setDoc(tileLayoutsDoc, { [tileView]: { sizes, positions } }, { merge: true });
   }
@@ -479,10 +487,27 @@ export default function DatabasesScreen() {
     return parseTileSize(viewData.sizes?.[key]) ?? parseTileSize(tileSizes[key]) ?? defaultSizeFor(key);
   }
 
-  // Where the user put this tile in THIS view - or nowhere, and it flows.
+  // Where the user put this tile in THIS view, relative to its section -
+  // or nowhere, and it flows.
   function positionFor(key: string): TilePosition | null {
     if (draftPosition?.key === key) return { x: draftPosition.x, y: draftPosition.y };
     return parseTilePosition(viewData.positions?.[key]);
+  }
+
+  // The divider this tile stands under - '' for the top of the board. A
+  // divider that is gone takes its tiles back to the top.
+  function sectionOf(key: string): string {
+    const id = viewData.sections?.[key];
+    return id && viewData.dividers?.[id] ? id : '';
+  }
+  const dividerIds = Object.entries(viewData.dividers ?? {})
+    .sort((a, b) => a[1].y - b[1].y || a[0].localeCompare(b[0]))
+    .map(([id]) => id);
+  function groupSections(items: BoardItem[]): BoardSection<BoardItem>[] {
+    return [
+      { id: '', items: items.filter((item) => sectionOf(item.key) === '') },
+      ...dividerIds.map((id) => ({ id, items: items.filter((item) => sectionOf(item.key) === id) })),
+    ];
   }
 
   // A dropped tile takes its cell, and any tile it now lies over keeps
@@ -491,15 +516,16 @@ export default function DatabasesScreen() {
   // place, not cleared: a cleared tile would flow to the top of the
   // board, which is the "my tiles wander off to fill holes" the user saw.
   function setPosition(dropped: PlacedTile<BoardItem>, board: PlacedTile<BoardItem>[]) {
+    const section = sectionOf(dropped.item.key);
     const positions: Record<string, string> = {
-      [dropped.item.key]: formatTilePosition({ x: dropped.x, y: dropped.y }),
+      [dropped.item.key]: formatTilePosition(relOf(dropped)),
     };
     board.forEach((p) => {
-      if (p.item.key === dropped.item.key) return;
+      if (p.item.key === dropped.item.key || sectionOf(p.item.key) !== section) return;
       const stored = parseTilePosition(viewData.positions?.[p.item.key]);
       if (!stored) return;
-      const rect = { item: p.item, x: stored.x, y: stored.y, size: p.size };
-      if (tilesOverlap(dropped, rect)) positions[p.item.key] = formatTilePosition({ x: p.x, y: p.y });
+      const rect = { item: p.item, x: stored.x, y: stored.y + startOf(section), size: p.size };
+      if (tilesOverlap(dropped, rect)) positions[p.item.key] = formatTilePosition(relOf(p));
     });
     setDoc(tileLayoutsDoc, { [tileView]: { positions } }, { merge: true });
   }
@@ -565,33 +591,41 @@ export default function DatabasesScreen() {
   // is taken as it frees it - the user's complaint was tiles standing
   // still beside a hole "поки я не перетягну". Which tiles are "after"
   // is read off a placement made with the new size.
-  function boardWith(key: string | null, size: TileSize | null) {
+  // Settling stays inside the resized tile's own section: a divider is a
+  // wall. `without` leaves one tile off the board - the carried one, to
+  // measure the room its section has for it.
+  function boardWith(key: string | null, size: TileSize | null, without?: string) {
+    const items = without ? orderedItems.filter((item) => item.key !== without) : orderedItems;
     const sizeOf = (item: BoardItem) => (item.key === key && size ? size : sizeFor(item.key));
-    if (!key) return placeTiles(orderedItems, sizeOf, pinnedAt, columns, breakAt, carriedFirst);
-    const trial = placeTiles(orderedItems, sizeOf, pinnedAt, columns, breakAt, carriedFirst);
+    const groups = groupSections(items);
+    const run = (settleFrom?: (item: BoardItem) => TilePosition | null) =>
+      layoutSections(groups, sizeOf, pinnedAt, columns, breakAt, carriedFirst, settleFrom);
+    if (!key) return run();
+    const trial = run();
     const anchor = trial.placed.find((p) => p.item.key === key);
     if (!anchor) return trial;
-    const settleFrom = (item: BoardItem) => {
-      if (item.key === key) return null;
+    const section = sectionOf(key);
+    const anchorRel = { x: anchor.x, y: anchor.y - (trial.sections.find((s) => s.id === section)?.start ?? 0) };
+    return run((item) => {
+      if (item.key === key || sectionOf(item.key) !== section) return null;
       const position = pinnedAt(item);
-      return position && cellAfter(anchor, position) ? { x: anchor.x, y: anchor.y } : null;
-    };
-    return placeTiles(orderedItems, sizeOf, pinnedAt, columns, breakAt, carriedFirst, settleFrom);
+      return position && cellAfter(anchorRel, position) ? anchorRel : null;
+    });
   }
-  const { placed, rows } = boardWith(draftSize?.key ?? null, draftSize?.size ?? null);
+  const board = boardWith(draftSize?.key ?? null, draftSize?.size ?? null);
+  const { placed, rows } = board;
   const placedOf = (key: string) => placed.find((p) => p.item.key === key);
+  const startOf = (section: string) => board.sections.find((s) => s.id === section)?.start ?? 0;
+  // A tile's place as it is stored: relative to its section.
+  const relOf = (p: PlacedTile<BoardItem>): TilePosition => ({ x: p.x, y: p.y - startOf(sectionOf(p.item.key)) });
   const ruleRow = showRule ? placedOf(firstOwnKey)?.y ?? 0 : 0;
 
-  // The dividers of this view, in the order they stand, each clamped to
-  // the rows the board has - one stored below a board that has since
-  // shrunk stands under its last row rather than out of sight.
-  const dividers = Object.entries(viewData.dividers ?? {})
-    .map(([id, d]) => ({
-      id,
-      label: d.label,
-      y: Math.max(0, Math.min(rows, draftDivider?.id === id ? draftDivider.y : d.y)),
-    }))
-    .sort((a, b) => a.y - b.y || a.id.localeCompare(b.id));
+  // The dividers as they stand: each at the start of its section.
+  const dividers = board.sections.slice(1).map((section) => ({
+    id: section.id,
+    label: viewData.dividers?.[section.id]?.label ?? '',
+    y: section.start,
+  }));
   // Where a row starts, in board pixels: its cells, plus one band for
   // every divider standing above it. `without` leaves one divider out -
   // the one being carried, so the rows it is measured against do not
@@ -628,7 +662,36 @@ export default function DatabasesScreen() {
       ],
     });
     if (choice === 'rename') setDividerPrompt({ mode: 'rename', id });
-    if (choice === 'delete') writeDivider(id, null);
+    // Its section joins the one above: the tiles keep their rows, only
+    // the wall between them goes.
+    if (choice === 'delete') repartition(dividers.filter((d) => d.id !== id), id);
+  }
+
+  // The sections drawn anew from where the dividers now stand: every
+  // tile goes to the section of the last divider above its row, with
+  // its place measured from that divider. Written for every tile, so
+  // that a tile that was still flowing is pinned where it was.
+  function repartition(walls: { id: string; y: number }[], remove?: string) {
+    const bounds = [...walls].sort((a, b) => a.y - b.y || a.id.localeCompare(b.id));
+    const positions: Record<string, string> = {};
+    const sections: Record<string, string | ReturnType<typeof deleteField>> = {};
+    const walled: Record<string, { y: number } | ReturnType<typeof deleteField>> = {};
+    placed.forEach((p) => {
+      let owner = '';
+      let start = 0;
+      for (const wall of bounds) {
+        if (wall.y > p.y) break;
+        owner = wall.id;
+        start = wall.y;
+      }
+      positions[p.item.key] = formatTilePosition({ x: p.x, y: p.y - start });
+      sections[p.item.key] = owner || deleteField();
+    });
+    bounds.forEach((wall) => {
+      walled[wall.id] = { y: wall.y };
+    });
+    if (remove) walled[remove] = deleteField();
+    setDoc(tileLayoutsDoc, { [tileView]: { positions, sections, dividers: walled } }, { merge: true });
   }
 
   function saveDividerName(label: string) {
@@ -655,8 +718,9 @@ export default function DatabasesScreen() {
     settled.forEach((p) => {
       if (p.item.key === key) return;
       const stored = parseTilePosition(viewData.positions?.[p.item.key]);
-      if (stored && (stored.x !== p.x || stored.y !== p.y)) {
-        positions[p.item.key] = formatTilePosition({ x: p.x, y: p.y });
+      const rel = relOf(p);
+      if (stored && (stored.x !== rel.x || stored.y !== rel.y)) {
+        positions[p.item.key] = formatTilePosition(rel);
       }
     });
     setDoc(
@@ -672,10 +736,18 @@ export default function DatabasesScreen() {
   // - it does not flow anywhere afterwards. The others make room by
   // flowing around it (placeTiles), which is the control the user asked
   // for: "щоб плитка вела себе... а не так, що я її не контролюю".
+  //
+  // Held inside its own section: the rows between the divider above and
+  // the one below, measured with the tile itself off the board. The
+  // answer is relative to the section, like every stored place.
   function cellUnder(key: string, x: number, y: number): TilePosition {
     const size = sizeFor(key);
     const col = Math.max(0, Math.min(columns - size.w, Math.round(x / cellStep)));
-    return { x: col, y: rowUnder(y) };
+    const section = sectionOf(key);
+    const start = startOf(section);
+    const room = boardWith(null, null, key).sections.find((s) => s.id === section)?.rows ?? 0;
+    const row = Math.max(start, Math.min(start + Math.max(0, room - size.h), rowUnder(y)));
+    return { x: col, y: row - start };
   }
 
 
@@ -738,7 +810,9 @@ export default function DatabasesScreen() {
                       const dropped = draftDivider;
                       setDividerDrag(null);
                       setDraftDivider(null);
-                      if (dropped) writeDivider(dropped.id, { y: dropped.y });
+                      if (dropped) {
+                        repartition(dividers.map((d) => (d.id === dropped.id ? { id: d.id, y: dropped.y } : d)));
+                      }
                     }}
                   />
                 ))}
@@ -817,7 +891,7 @@ export default function DatabasesScreen() {
                       hapticButtonDown();
                       carryOrigin.current = { x: x * cellStep, y: rowTop(y) };
                       setDrag({ key: item.key, x: x * cellStep, y: rowTop(y) });
-                      setDraftPosition({ key: item.key, x, y });
+                      setDraftPosition({ key: item.key, x, y: y - startOf(sectionOf(item.key)) });
                     }}
                     onCarryMove={(dx, dy) => {
                       const nextX = carryOrigin.current.x + dx;

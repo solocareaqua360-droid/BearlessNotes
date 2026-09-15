@@ -299,3 +299,44 @@ export function cellAfter(a: TilePosition, b: TilePosition): boolean {
 export function tilesOverlap(a: PlacedTile<unknown>, b: PlacedTile<unknown>): boolean {
   return a.x < b.x + b.size.w && b.x < a.x + a.size.w && a.y < b.y + b.size.h && b.y < a.y + a.size.h;
 }
+
+// The board as a stack of sections, each laid out on its own.
+//
+// A divider is a wall: a tile cannot be carried across it, and a tile
+// growing towards it pushes it down - the user's rule. Both fall out of
+// laying each section out as a board of its own and stacking them: a
+// section is as tall as its tiles need, and the divider stands where the
+// next section starts. Positions inside a section are relative to it.
+// An empty section still has one row, the one a tile is dropped into.
+export type BoardSection<T> = { id: string; items: T[] };
+export type SectionLayout = { id: string; start: number; rows: number };
+
+export function layoutSections<T>(
+  sections: BoardSection<T>[],
+  sizeOf: (item: T) => TileSize,
+  positionOf: (item: T) => TilePosition | null,
+  columns: number,
+  breakBefore?: (item: T) => boolean,
+  first?: (item: T) => boolean,
+  settleFrom?: (item: T) => TilePosition | null
+): { placed: PlacedTile<T>[]; sections: SectionLayout[]; rows: number } {
+  const placed: PlacedTile<T>[] = [];
+  const laid: SectionLayout[] = [];
+  let start = 0;
+  sections.forEach((section, index) => {
+    const own = placeTiles(
+      section.items,
+      sizeOf,
+      positionOf,
+      columns,
+      index === 0 ? breakBefore : undefined,
+      first,
+      settleFrom
+    );
+    const rows = Math.max(sections.length > 1 ? 1 : 0, own.rows);
+    own.placed.forEach((p) => placed.push({ ...p, y: p.y + start }));
+    laid.push({ id: section.id, start, rows });
+    start += rows;
+  });
+  return { placed, sections: laid, rows: start };
+}
