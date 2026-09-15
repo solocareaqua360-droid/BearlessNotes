@@ -109,7 +109,7 @@ export default function ExplorerHead({
         </View>
       )}
 
-      <View style={cols > 1 ? styles.folderGrid : undefined}>
+      <View style={cols > 1 ? styles.folderGrid : styles.folderStack}>
       {folders.map((folder) => (
         <Pressable
           key={folder.fullPath}
@@ -173,6 +173,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: FOLDER_GAP,
+  },
+  // One to a line: the same 8 between rows the head itself keeps, which
+  // the rows lost when they moved one level down into this wrapper.
+  folderStack: {
+    gap: 8,
   },
   crumbRow: {
     flexDirection: 'row',
