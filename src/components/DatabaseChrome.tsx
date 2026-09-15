@@ -1,9 +1,9 @@
-import { ReactNode, useCallback, useRef, useState } from 'react';
+import { ReactNode, useCallback, useMemo, useRef, useState } from 'react';
 import { Keyboard, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
-import { GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -195,6 +195,7 @@ export default function DatabaseChrome<T extends { id: string }>({
     pullHaptic();
     list.setIsSearching(true);
   });
+  const listGesture = useMemo(() => Gesture.Simultaneous(pull.gesture, drawerSwipe), [pull.gesture, drawerSwipe]);
   // ...and closes itself when the keyboard goes away empty, or when a
   // swipe carries the screen off.
   useSearchDismissal({
@@ -400,7 +401,20 @@ export default function DatabaseChrome<T extends { id: string }>({
         {list.isSearching && list.needle.length === 0 ? (
           <View style={styles.emptySearch} />
         ) : (
-          <GestureDetector gesture={pull.gesture}>
+          // ONE detector, with the two gestures composed as equals.
+          //
+          // They used to be two detectors, one inside the other, and that
+          // is a parent/child relation: the inner one - which carries the
+          // list's own native scroll - wins the touch, and the outer pan
+          // is never given the chance to decide. It went unnoticed because
+          // the documents screen, where this was first written, is the one
+          // place the same pair is declared side by side.
+          //
+          // Simultaneous is safe precisely because neither can be greedy:
+          // the drawer's pan fails before it activates unless the finger
+          // went down in its band and moved clearly sideways, and the pull
+          // fails as soon as the movement reads as horizontal.
+          <GestureDetector gesture={listGesture}>
             {children(list.tagFilter || list.isSearching ? 0 : chromeBottom, pull.listProps)}
           </GestureDetector>
         )}
@@ -478,27 +492,16 @@ export default function DatabaseChrome<T extends { id: string }>({
         </GlassPortal>
       )}
 
-      {/* The drawer's swipe holds the WHOLE screen, not just the list.
-          It used to wrap only the rows, which is fine on a database whose
-          list fills the screen and no use at all on one with four boards
-          in it: below the last row the finger was on the background, and
-          the background was listening for nothing. The band in
-          useDrawerSwipe is what keeps this from taking the pager's
-          swipes. */}
-      <GestureDetector gesture={drawerSwipe}>
-        <View style={styles.container}>
-          {splitting ? (
-            <View style={styles.paneRow}>
-              <View style={styles.listPane} onLayout={(e) => setListPaneX(e.nativeEvent.layout.x)}>
-                {column}
-              </View>
-              <View style={styles.sidePane}>{pane}</View>
-            </View>
-          ) : (
-            <ContentColumn>{column}</ContentColumn>
-          )}
+      {splitting ? (
+        <View style={styles.paneRow}>
+          <View style={styles.listPane} onLayout={(e) => setListPaneX(e.nativeEvent.layout.x)}>
+            {column}
+          </View>
+          <View style={styles.sidePane}>{pane}</View>
         </View>
-      </GestureDetector>
+      ) : (
+        <ContentColumn>{column}</ContentColumn>
+      )}
 
       {overlay}
 

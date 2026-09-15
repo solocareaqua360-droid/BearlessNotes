@@ -91,11 +91,18 @@ export function useDrawerSwipe(open: () => void) {
           const dx = touch.absoluteX - startX.value;
           const dy = touch.absoluteY - startY.value;
           // Up or down is the list scrolling; leftward is the other tab.
-          if (Math.abs(dy) > 18 || dx < -12) {
+          if (Math.abs(dy) > 12 || dx < -8) {
             state.fail();
             return;
           }
-          if (dx > 28) state.activate();
+          // Small on purpose. The pager that carries the tabs is NATIVE,
+          // and it claims a horizontal touch at its own slop, around a
+          // dozen points; waiting for 28 meant the drawer asked for a
+          // touch the pager had already taken. This is why the drawer
+          // worked on the documents screen and nowhere else: documents is
+          // the LEFTMOST tab, so a rightward swipe there has no page to
+          // turn to and the pager never claims it.
+          if (dx > 14) state.activate();
         })
         .onEnd((e) => {
           if (e.translationX > 60 || e.velocityX > 500) runOnJS(open)();
