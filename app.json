@@ -6,7 +6,7 @@
     "scheme": "mindeva",
     "orientation": "default",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -20,10 +20,6 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      // DeX and any other desktop window: without this Android refuses the
-      // app a real window and upscales a phone-sized one instead, which is
-      // why the interface looked like stretched pixels there rather than
-      // like itself at a larger size.
       "resizeableActivity": true,
       "predictiveBackGestureEnabled": false,
       "softwareKeyboardLayoutMode": "resize",
@@ -33,7 +29,11 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.USE_EXACT_ALARM",
+        "android.permission.USE_FULL_SCREEN_INTENT",
+        "android.permission.VIBRATE"
       ]
     },
     "web": {
@@ -52,14 +52,7 @@
       [
         "expo-splash-screen",
         {
-          // The launcher's own background, so the icon on the splash is
-          // the same icon in the same colours the morph starts from -
-          // against the gradient's brown it read as a white-edged tile
-          // dropped onto a different screen.
           "backgroundColor": "#0F1839",
-          // Required, not optional: with only a width the plugin still
-          // points the generated theme at a drawable it never writes, and
-          // the build fails linking it.
           "image": "./assets/splash-icon.png",
           "imageWidth": 200
         }
@@ -76,6 +69,24 @@
             "image/*",
             "video/*",
             "*/*"
+          ]
+        }
+      ],
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "Sticker",
+              "label": "Стікер mindEva",
+              "description": "Один стікер на робочому столі",
+              "minWidth": "160dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 3,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "widgetFeatures": "reconfigurable"
+            }
           ]
         }
       ]
