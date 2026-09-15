@@ -25,12 +25,17 @@ import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 const ACCENT = '#3B82F6';
 const DANGER = GLASS_DANGER;
 
+type ReminderKind = 'notify' | 'alarm';
+
 type Props = {
   visible: boolean;
   initialDate?: string;
   initialTime?: string;
+  // Absent (a reminder that has never been given a kind) defaults to
+  // 'alarm' - see types.ts's own note on why.
+  initialKind?: ReminderKind;
   onClose: () => void;
-  onSave: (date: string, time: string | null) => void;
+  onSave: (date: string, time: string | null, kind: ReminderKind) => void;
   onClear: () => void;
 };
 
@@ -42,7 +47,15 @@ function pad2(n: number): string {
 // Android dialog specifically to match the app's own look - see the
 // reminder-picker-comparison mockup). The calendar grid reuses
 // getMonthGrid, the same helper CalendarScreen's month view is built on.
-export default function ReminderSheet({ visible, initialDate, initialTime, onClose, onSave, onClear }: Props) {
+export default function ReminderSheet({
+  visible,
+  initialDate,
+  initialTime,
+  initialKind,
+  onClose,
+  onSave,
+  onClear,
+}: Props) {
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const d = new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
@@ -51,6 +64,11 @@ export default function ReminderSheet({ visible, initialDate, initialTime, onClo
   const [timeEnabled, setTimeEnabled] = useState(false);
   const [hour, setHour] = useState(9);
   const [minute, setMinute] = useState(0);
+  // "для деяких справ сповіщання для деяких будильник" - the user's own
+  // words for why this is a per-reminder choice, not one setting for
+  // every task. Defaults to the alarm for a reminder that has never had
+  // one, since that is what was asked for first ("варіант 2... повноцінний").
+  const [kind, setKind] = useState<ReminderKind>('alarm');
 
   // Only re-seed the draft on the hidden->visible transition, never on
   // every render while open - re-seeding from props on every render is
@@ -71,9 +89,10 @@ export default function ReminderSheet({ visible, initialDate, initialTime, onClo
         setHour(9);
         setMinute(0);
       }
+      setKind(initialKind ?? 'alarm');
     }
     wasVisibleRef.current = visible;
-  }, [visible, initialDate, initialTime]);
+  }, [visible, initialDate, initialTime, initialKind]);
 
   const monthGrid = useMemo(() => getMonthGrid(visibleMonth.year, visibleMonth.month), [visibleMonth]);
   const todayKey = dateKey(new Date());
@@ -99,7 +118,7 @@ export default function ReminderSheet({ visible, initialDate, initialTime, onClo
   }
 
   function handleSave() {
-    onSave(selectedKey, timeEnabled ? `${pad2(hour)}:${pad2(minute)}` : null);
+    onSave(selectedKey, timeEnabled ? `${pad2(hour)}:${pad2(minute)}` : null, kind);
   }
 
   const hasExistingReminder = Boolean(initialDate);
@@ -162,11 +181,11 @@ export default function ReminderSheet({ visible, initialDate, initialTime, onClo
           </View>
 
           <View style={styles.timeRow}>
-            {/* "Час" is what actually makes this ring - a date with no
-                time is only a badge on the task, nothing schedules. The
-                user's own question was "як вибрати будильник?": this IS
-                the choice, it just used to say nothing about it. */}
-            <Text style={styles.timeLabel}>Будильник</Text>
+            {/* A date with no time is only a badge on the task -
+                nothing schedules, alarm or notification, until a time
+                is set. The kind (below) is what that time actually
+                does. */}
+            <Text style={styles.timeLabel}>Час</Text>
             <Pressable
               style={[styles.timeToggle, timeEnabled && styles.timeToggleOn]}
               onPress={() => setTimeEnabled((v) => !v)}
@@ -176,8 +195,42 @@ export default function ReminderSheet({ visible, initialDate, initialTime, onClo
               </Text>
             </Pressable>
           </View>
+
           {timeEnabled && (
-            <Text style={styles.timeHint}>Задзвонить у вказаний час, навіть на беззвучному</Text>
+            <>
+              {/* "для деяких справ сповіщання для деяких будильник" -
+                  the choice itself. A tab, not a checkbox: the two are
+                  alternatives, never both at once. */}
+              <View style={styles.kindRow}>
+                <Pressable
+                  style={[styles.kindTab, kind === 'notify' && styles.kindTabActive]}
+                  onPress={() => setKind('notify')}
+                >
+                  <Ionicons
+                    name="notifications-outline"
+                    size={15}
+                    color={kind === 'notify' ? ACCENT : GLASS_TEXT_MUTED}
+                  />
+                  <Text style={[styles.kindTabLabel, kind === 'notify' && styles.kindTabLabelActive]}>
+                    Сповіщення
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.kindTab, kind === 'alarm' && styles.kindTabActive]}
+                  onPress={() => setKind('alarm')}
+                >
+                  <Ionicons name="alarm-outline" size={15} color={kind === 'alarm' ? ACCENT : GLASS_TEXT_MUTED} />
+                  <Text style={[styles.kindTabLabel, kind === 'alarm' && styles.kindTabLabelActive]}>
+                    Будильник
+                  </Text>
+                </Pressable>
+              </View>
+              <Text style={styles.timeHint}>
+                {kind === 'alarm'
+                  ? 'Задзвонить у вказаний час, навіть на беззвучному'
+                  : 'Один тихий сигнал о вказаний час'}
+              </Text>
+            </>
           )}
 
           {timeEnabled && (
@@ -335,6 +388,36 @@ const styles = StyleSheet.create({
     color: GLASS_TEXT_FAINT,
     marginTop: -2,
     marginBottom: 6,
+  },
+  kindRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  kindTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: 'rgba(120,120,120,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+  },
+  kindTabActive: {
+    backgroundColor: '#EFF6FF',
+    borderColor: ACCENT,
+  },
+  kindTabLabel: {
+    fontSize: 12.5,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT_MUTED,
+  },
+  kindTabLabelActive: {
+    color: ACCENT,
   },
   timeToggle: {
     paddingHorizontal: 12,

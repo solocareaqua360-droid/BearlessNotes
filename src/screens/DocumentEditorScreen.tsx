@@ -34,7 +34,7 @@ import * as Clipboard from 'expo-clipboard';
 import { insertedPiece, parsePastedText, worthSplitting, type ParsedBlock } from '../utils/pasteBlocks';
 import { dateKey, formatShortDate, parseDateKey } from '../utils/dateLocale';
 import ReminderSheet from '../components/ReminderSheet';
-import { cancelReminder, scheduleReminder } from '../utils/reminders';
+import { cancelReminder, scheduleReminder, type ReminderKind } from '../utils/reminders';
 // The new expo-file-system File/Directory API tracks read permission per
 // picked URI internally and rejects copying a URI it didn't hand out
 // itself ("Missing 'READ' permission") - the legacy module just wraps a
@@ -3977,21 +3977,28 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // since the existing autosave effect already calls syncTasksForDocument
   // on every blocks change and (now that it's fixed) carries these fields
   // over on its own.
-  async function saveBlockReminder(reminderDate: string, reminderTime: string | null) {
+  async function saveBlockReminder(reminderDate: string, reminderTime: string | null, reminderKind: ReminderKind) {
     const id = reminderBlockId;
     setReminderBlockId(null);
     const block = blocks.find((b) => b.id === id);
     if (!block) return;
     await cancelReminder(block.reminderNotificationId);
-    const notificationId = reminderTime ? await scheduleReminder(block.text, reminderDate, reminderTime) : undefined;
+    const notificationId = reminderTime
+      ? await scheduleReminder(block.text, reminderDate, reminderTime, reminderKind)
+      : undefined;
     const becomesToday = reminderDate === dateKey(new Date());
     snapshotBeforeChange();
     setBlocks((prev) =>
       prev.map((b) => {
         if (b.id !== id) return b;
         const next: Block = { ...b, reminderDate };
-        if (reminderTime) next.reminderTime = reminderTime;
-        else delete next.reminderTime;
+        if (reminderTime) {
+          next.reminderTime = reminderTime;
+          next.reminderKind = reminderKind;
+        } else {
+          delete next.reminderTime;
+          delete next.reminderKind;
+        }
         if (notificationId) next.reminderNotificationId = notificationId;
         else delete next.reminderNotificationId;
         if (becomesToday) next.todayMarkedDate = dateKey(new Date());
@@ -4010,7 +4017,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     setBlocks((prev) =>
       prev.map((b) => {
         if (b.id !== id) return b;
-        const { reminderDate: _d1, reminderTime: _d2, reminderNotificationId: _d3, ...rest } = b;
+        const {
+          reminderDate: _d1,
+          reminderTime: _d2,
+          reminderKind: _d4,
+          reminderNotificationId: _d3,
+          ...rest
+        } = b;
         return rest;
       })
     );
@@ -5417,6 +5430,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         visible={reminderBlockId !== null}
         initialDate={reminderBlockId ? blocks.find((b) => b.id === reminderBlockId)?.reminderDate : undefined}
         initialTime={reminderBlockId ? blocks.find((b) => b.id === reminderBlockId)?.reminderTime : undefined}
+        initialKind={reminderBlockId ? blocks.find((b) => b.id === reminderBlockId)?.reminderKind : undefined}
         onClose={() => setReminderBlockId(null)}
         onSave={saveBlockReminder}
         onClear={clearBlockReminder}

@@ -176,7 +176,12 @@ export interface Block {
   // todayMarkedDate, per TasksScreen's toggleToday.
   reminderDate?: string; // YYYY-MM-DD
   reminderTime?: string; // HH:mm, local time - absent means date-only, no notification
-  reminderNotificationId?: string; // notifee alarm id, to cancel/reschedule
+  reminderNotificationId?: string; // notifee id, to cancel/reschedule
+  // Absent means 'alarm' - a reminder made before this field existed was
+  // scheduled as one (see reminders.ts's history), so treating it that
+  // way is what keeps it doing what it already does rather than quietly
+  // going quiet the next time it is edited.
+  reminderKind?: 'notify' | 'alarm';
   // 'link' blocks only - a paragraph containing a bare URL auto-converts
   // into one of these. text holds the original URL. Preview fields are
   // best-effort (fetched once at conversion time) and absent when nothing

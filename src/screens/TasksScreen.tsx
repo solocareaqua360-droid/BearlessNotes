@@ -36,7 +36,7 @@ import ReminderSheet from '../components/ReminderSheet';
 import SortMenuRows from '../components/SortMenuRows';
 import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useSortPref } from '../hooks/useSortPref';
-import { cancelReminder, scheduleReminder } from '../utils/reminders';
+import { cancelReminder, scheduleReminder, type ReminderKind } from '../utils/reminders';
 import { formatShortDate, parseDateKey } from '../utils/dateLocale';
 import { sortItems } from '../utils/sortItems';
 import ContentColumn from '../components/ContentColumn';
@@ -91,6 +91,7 @@ type Task = {
   kanbanStatus?: KanbanStatus;
   reminderDate?: string;
   reminderTime?: string;
+  reminderKind?: ReminderKind;
   reminderNotificationId?: string;
   updatedAt: number;
   createdAt?: number;
@@ -231,6 +232,7 @@ export default function TasksScreen() {
         kanbanStatus: docSnapshot.data().kanbanStatus,
         reminderDate: docSnapshot.data().reminderDate,
         reminderTime: docSnapshot.data().reminderTime,
+        reminderKind: docSnapshot.data().reminderKind,
         reminderNotificationId: docSnapshot.data().reminderNotificationId,
         updatedAt: docSnapshot.data().updatedAt ?? 0,
         createdAt: docSnapshot.data().createdAt,
@@ -314,7 +316,12 @@ export default function TasksScreen() {
     updateDoc(doc(db, 'tasks', task.id), {
       todayMarkedDate: newValue ?? deleteField(),
       ...(wasToday
-        ? { reminderDate: deleteField(), reminderTime: deleteField(), reminderNotificationId: deleteField() }
+        ? {
+            reminderDate: deleteField(),
+            reminderTime: deleteField(),
+            reminderKind: deleteField(),
+            reminderNotificationId: deleteField(),
+          }
         : {}),
     });
     const documentRef = doc(db, 'documents', task.documentId);
@@ -325,7 +332,14 @@ export default function TasksScreen() {
     const updatedBlocks = blocks.map((b) => {
       if (b.id !== task.id) return b;
       if (newValue) return { ...b, todayMarkedDate: newValue };
-      const { todayMarkedDate: _d1, reminderDate: _d2, reminderTime: _d3, reminderNotificationId: _d4, ...rest } = b;
+      const {
+        todayMarkedDate: _d1,
+        reminderDate: _d2,
+        reminderTime: _d3,
+        reminderKind: _d5,
+        reminderNotificationId: _d4,
+        ...rest
+      } = b;
       return rest;
     });
     updateDoc(documentRef, { blocks: updatedBlocks });
@@ -339,17 +353,20 @@ export default function TasksScreen() {
   // isTaskToday/toggleToday's "these are the same thing" rule). Any
   // previous notification is cancelled before a new one is scheduled, so
   // editing an existing reminder never leaves a stale one behind.
-  async function saveTaskReminder(reminderDate: string, reminderTime: string | null) {
+  async function saveTaskReminder(reminderDate: string, reminderTime: string | null, reminderKind: ReminderKind) {
     const taskId = reminderTaskId;
     const task = tasks.find((t) => t.id === taskId);
     setReminderTaskId(null);
     if (!task) return;
     await cancelReminder(task.reminderNotificationId);
-    const notificationId = reminderTime ? await scheduleReminder(task.text, reminderDate, reminderTime) : undefined;
+    const notificationId = reminderTime
+      ? await scheduleReminder(task.text, reminderDate, reminderTime, reminderKind)
+      : undefined;
     const becomesToday = reminderDate === today;
     updateDoc(doc(db, 'tasks', task.id), {
       reminderDate,
       reminderTime: reminderTime ?? deleteField(),
+      reminderKind: reminderTime ? reminderKind : deleteField(),
       reminderNotificationId: notificationId ?? deleteField(),
       ...(becomesToday ? { todayMarkedDate: today } : {}),
     });
@@ -361,8 +378,13 @@ export default function TasksScreen() {
     const updatedBlocks = blocks.map((b) => {
       if (b.id !== task.id) return b;
       const next: Block = { ...b, reminderDate };
-      if (reminderTime) next.reminderTime = reminderTime;
-      else delete next.reminderTime;
+      if (reminderTime) {
+        next.reminderTime = reminderTime;
+        next.reminderKind = reminderKind;
+      } else {
+        delete next.reminderTime;
+        delete next.reminderKind;
+      }
       if (notificationId) next.reminderNotificationId = notificationId;
       else delete next.reminderNotificationId;
       if (becomesToday) next.todayMarkedDate = today;
@@ -380,6 +402,7 @@ export default function TasksScreen() {
     updateDoc(doc(db, 'tasks', task.id), {
       reminderDate: deleteField(),
       reminderTime: deleteField(),
+      reminderKind: deleteField(),
       reminderNotificationId: deleteField(),
     });
     const documentRef = doc(db, 'documents', task.documentId);
@@ -389,7 +412,7 @@ export default function TasksScreen() {
     const blocks: Block[] = data.blocks ?? [];
     const updatedBlocks = blocks.map((b) => {
       if (b.id !== task.id) return b;
-      const { reminderDate: _d1, reminderTime: _d2, reminderNotificationId: _d3, ...rest } = b;
+      const { reminderDate: _d1, reminderTime: _d2, reminderKind: _d5, reminderNotificationId: _d3, ...rest } = b;
       return rest;
     });
     updateDoc(documentRef, { blocks: updatedBlocks });
@@ -568,7 +591,14 @@ export default function TasksScreen() {
             {reminderLabel && (
               <Pressable onPress={() => openReminderPicker(item.id)}>
                 <View style={styles.reminderChip}>
-                  <Ionicons name="alarm-outline" size={11} color={ACCENT} />
+                  {/* The chip's own icon says which of the two this is -
+                      a plain notification should never look like it is
+                      about to ring. */}
+                  <Ionicons
+                    name={item.reminderKind === 'notify' ? 'notifications-outline' : 'alarm-outline'}
+                    size={11}
+                    color={ACCENT}
+                  />
                   <Text style={styles.reminderChipText}>{reminderLabel}</Text>
                 </View>
               </Pressable>
@@ -678,7 +708,11 @@ export default function TasksScreen() {
             {reminderLabel && (
               <Pressable onPress={() => openReminderPicker(task.id)}>
                 <View style={styles.reminderChip}>
-                  <Ionicons name="alarm-outline" size={11} color={ACCENT} />
+                  <Ionicons
+                    name={task.reminderKind === 'notify' ? 'notifications-outline' : 'alarm-outline'}
+                    size={11}
+                    color={ACCENT}
+                  />
                   <Text style={styles.reminderChipText}>{reminderLabel}</Text>
                 </View>
               </Pressable>
@@ -955,6 +989,7 @@ export default function TasksScreen() {
           visible={reminderTaskId !== null}
           initialDate={reminderTaskId ? tasks.find((t) => t.id === reminderTaskId)?.reminderDate : undefined}
           initialTime={reminderTaskId ? tasks.find((t) => t.id === reminderTaskId)?.reminderTime : undefined}
+          initialKind={reminderTaskId ? tasks.find((t) => t.id === reminderTaskId)?.reminderKind : undefined}
           onClose={() => setReminderTaskId(null)}
           onSave={saveTaskReminder}
           onClear={clearTaskReminder}
