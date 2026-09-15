@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { GlassPortal } from './GlassPortal';
 import { useBlurTarget } from './GlassTarget';
@@ -15,13 +15,14 @@ import { RAIL_RIGHT } from '../constants/rail';
 //
 // Drawn through the portal like every other piece of glass: the blur
 // that fills it cannot live inside the view it blurs.
-export type RailButton = (
-  | { icon: keyof typeof Ionicons.glyphMap; family?: 'ionicons' }
-  // Ionicons has no "document with a plus" or "folder with a plus";
-  // the other family does, and a button that ADDS a thing should show
-  // the plus on the thing, as the user asked.
-  | { icon: keyof typeof MaterialCommunityIcons.glyphMap; family: 'material-community' }
-) & {
+export type RailButton = {
+  icon: keyof typeof Ionicons.glyphMap;
+  // A small plus (or any glyph) hung off the icon's corner, for a button
+  // that ADDS the thing its icon shows. Ionicons has no "document with a
+  // plus", and the other family's do exist but are drawn heavier and
+  // squarer than anything else here - so the plus is composed, the way
+  // this app already composes it on the empty-state icon.
+  badge?: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
   // Held down - the sticker, on the button that makes a document.
   onLongPress?: () => void;
@@ -65,10 +66,11 @@ export default function RailCapsule({ buttons, bottom }: { buttons: RailButton[]
               disabled={button.disabled}
               style={[styles.button, button.active && styles.buttonActive, button.disabled && styles.buttonDisabled]}
             >
-              {button.family === 'material-community' ? (
-                <MaterialCommunityIcons name={button.icon} size={button.size ?? 24} color="#fff" />
-              ) : (
-                <Ionicons name={button.icon} size={button.size ?? 24} color="#fff" />
+              <Ionicons name={button.icon} size={button.size ?? 24} color="#fff" />
+              {!!button.badge && (
+                <View style={styles.badge}>
+                  <Ionicons name={button.badge} size={11} color="#fff" />
+                </View>
               )}
             </Pressable>
           </View>
@@ -108,9 +110,26 @@ const styles = StyleSheet.create({
   button: {
     width: 24,
     height: 24,
+    // The badge hangs past the glyph's own box.
+    overflow: 'visible',
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 12,
+  },
+  // The corner plus: its own small disc, so the glyph under it stays
+  // readable whatever the capsule is standing on.
+  badge: {
+    position: 'absolute',
+    right: -7,
+    bottom: -5,
+    width: 15,
+    height: 15,
+    borderRadius: 8,
+    backgroundColor: 'rgba(120,120,120,0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonDisabled: {
     opacity: 0.35,

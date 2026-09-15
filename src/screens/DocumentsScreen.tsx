@@ -1488,7 +1488,7 @@ export default function DocumentsScreen() {
           <RailCapsule
             bottom={rail.actionsBottom}
             buttons={[
-              { icon: 'swap-vertical-outline', onPress: () => setSortMenuOpen((v) => !v), active: sortMenuOpen },
+              { icon: 'filter-outline', onPress: () => setSortMenuOpen((v) => !v), active: sortMenuOpen },
               {
                 icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
                 onPress: toggleSelectMode,
@@ -1524,9 +1524,8 @@ export default function DocumentsScreen() {
             bottom={rail.addBottom}
             buttons={[
               {
-                family: 'material-community',
-                icon: 'file-plus-outline',
-                size: 26,
+                icon: 'document-text-outline',
+                badge: 'add',
                 onPress: createDocument,
                 onPressIn: hapticButtonDown,
                 onPressOut: hapticButtonUp,
@@ -1535,9 +1534,8 @@ export default function DocumentsScreen() {
               ...(explorer
                 ? [
                     {
-                      family: 'material-community' as const,
-                      icon: 'folder-plus-outline' as const,
-                      size: 26,
+                      icon: 'folder-outline' as const,
+                      badge: 'add' as const,
                       onPress: () => setFolderPrompt({ mode: 'new', parent: explorerPath }),
                       onPressIn: hapticButtonDown,
                       onPressOut: hapticButtonUp,

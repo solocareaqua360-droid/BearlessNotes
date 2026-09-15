@@ -154,7 +154,7 @@ export default function DatabaseChrome<T extends { id: string }>({
           <RailCapsule
             bottom={rail.actionsBottom}
             buttons={[
-              { icon: 'swap-vertical-outline', onPress: () => setSortMenuOpen((v) => !v), active: sortMenuOpen },
+              { icon: 'filter-outline', onPress: () => setSortMenuOpen((v) => !v), active: sortMenuOpen },
               ...(bulk
                 ? [
                     {
