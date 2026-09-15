@@ -211,11 +211,11 @@ type Props = {
   // instead of a trailing icon (a grid card has no natural trailing edge
   // the way a full-width row does).
   layout?: 'list' | 'grid';
-  // How many cards stand across the grid. The width below was a flat 48%,
-  // which is right for two and sends the third and fourth off the edge of
-  // the screen - which is exactly what the Fold's inner screen did once
-  // the documents list started asking for three and four.
-  columns?: number;
+  // The card's width in a grid, in pixels, worked out by the list from
+  // its own width and column count - so a row of cards ends where a row
+  // of folders does. Absent, the card keeps the 48% it always had for a
+  // phone's two columns.
+  gridWidth?: number;
   // A list row carries its own side margin, because the documents list it
   // was built for has none of its own. Anywhere the container already
   // provides that margin (a group's section under another database's
@@ -252,7 +252,7 @@ export default function DocumentCard({
   isSelected,
   onToggleSelect,
   layout = 'list',
-  columns = 2,
+  gridWidth,
   flush,
 }: Props) {
   const { background, text, textMuted } = colorForDocument(id);
@@ -311,13 +311,7 @@ export default function DocumentCard({
       <View
         style={[
           styles.gridCard,
-          // The share of the row this card takes, worked out from how many
-          // stand across it. The slack left over is what the row's own 12pt
-          // gaps are drawn in - percentages of the padded row, so it has to
-          // be enough at a phone's width as well as the Fold's: 2.5% a
-          // card is about 9pt on a phone and 22 on the inner screen, and
-          // the gap is 12.
-          { width: `${(100 - columns * 2.5) / columns}%` },
+          gridWidth !== undefined ? { width: gridWidth } : styles.gridCardHalf,
           { backgroundColor: background },
         ]}
       >
@@ -525,6 +519,9 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
     elevation: 4,
+  },
+  gridCardHalf: {
+    width: '48%',
   },
   // flex: 1 fills the card's own fixed height. No padding/gap of its own -
   // the thumbnail (a direct child, when there is one) needs zero space

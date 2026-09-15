@@ -1002,7 +1002,7 @@ export default function CalendarScreen() {
               On a phone it stays what it was - a list behind a button. */}
           </View>
           {isTwoPane && (
-            <View style={[styles.historyUnderCalendar, stackedWide && styles.topHalf]}>
+            <View style={[styles.historyUnderCalendar, stackedWide && styles.historyBeside]}>
               <DayHistoryList items={historyByDate.get(selectedKey) ?? []} fill />
             </View>
           )}
@@ -1457,6 +1457,14 @@ const styles = StyleSheet.create({
   },
   topHalf: {
     flex: 1,
+  },
+  // Level with the plate, standing up: its top on the plate's top line (the
+  // column's own 8 of margin was what set it lower), and it stops short of
+  // the rail the way the plate does, rather than running under the capsule.
+  historyBeside: {
+    flex: 1,
+    marginTop: 0,
+    marginRight: RAIL_CLEARANCE,
   },
   noteBelow: {
     // Whatever the band above it did not need.

@@ -71,8 +71,8 @@ import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import SketchEditor from '../components/SketchEditor';
 import { BlurView } from 'expo-blur';
 import { GlassPortal } from '../components/GlassPortal';
-import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CHROME_TOP, NAV_HEIGHT, RAIL_CLEARANCE, RAIL_GAP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
-import { useRail } from '../hooks/useRail';
+import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CHROME_TOP, NAV_HEIGHT, RAIL_CLEARANCE, RAIL_GAP, RAIL_RIGHT, RAIL_WIDTH, railFits } from '../constants/rail';
+import { useRail, useRailFree } from '../hooks/useRail';
 import { useBlurTarget } from '../components/GlassTarget';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import TagEditSheet from '../components/TagEditSheet';
@@ -537,6 +537,14 @@ export default function DocumentsScreen() {
   const wideList = isTwoPane && !openDoc;
   const gridColumns = wideList ? (layoutWidth > layoutHeight ? 4 : 3) : 2;
   const folderColumns = gridColumns >= 4 ? 2 : 1;
+  // Widths in PIXELS, from the width the list actually has, so a row of
+  // cards ends on the same line as a row of folders above it. As
+  // percentages the two could not agree: the gaps between cards are
+  // pixels, so the percentage had to leave slack for them, and the slack
+  // came out on the right as a ragged edge against the folders.
+  const listWidth = (paneRect.width || layoutWidth) - 40;
+  const gridCardWidth = Math.floor((listWidth - 12 * (gridColumns - 1)) / gridColumns);
+  const folderRowWidth = folderColumns > 1 ? Math.floor((listWidth - 10) / 2) : undefined;
   const insets = useSafeAreaInsets();
   const chromeTop = insets.top + CHROME_TOP;
   const chromeBottom = chromeTop + chromeHeight + 8;
@@ -546,14 +554,20 @@ export default function DocumentsScreen() {
   const blurTarget = useBlurTarget();
   // The rail carries an ACTIONS capsule now, a capsule's height where the
   // folder button stood - see RailCapsule.
+  // In the explorer the create capsule carries a second button (a new
+  // folder) and a back/forward capsule appears; elsewhere the rail is as
+  // it was. The arrows are asked whether they FIT first: on the Fold
+  // lying down the top capsule, the island and a tall inset leave about
+  // 320 points for the three pieces, and the four of them with the arrows
+  // want 340 - so they rode up over each other. The path strip does what
+  // the arrows do, so they are what goes.
+  const railFree = useRailFree(CAPSULE_HEIGHT_3, true);
+  const arrowsFit = explorer && railFits(railFree, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT, CAPSULE_HEIGHT);
   const rail = useRail(
     CAPSULE_HEIGHT_3,
     CAPSULE_HEIGHT_1,
-    // In the explorer the create capsule carries a second button (a new
-    // folder) and a back/forward capsule appears; elsewhere the rail is
-    // as it was.
     explorer ? CAPSULE_HEIGHT : RAIL_WIDTH,
-    explorer ? CAPSULE_HEIGHT : 0
+    arrowsFit ? CAPSULE_HEIGHT : 0
   );
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   // How far the list has to clear the bottom edge so its last card never
@@ -1220,7 +1234,7 @@ export default function DocumentsScreen() {
                     bodyMatch={bodyMatch}
                     onPress={() => openDocument(item.id)}
                     layout={viewMode}
-                    columns={gridColumns}
+                    gridWidth={gridCardWidth}
                   />
                 );
               }}
@@ -1360,7 +1374,7 @@ export default function DocumentsScreen() {
                   {explorerFolders.map((folder) => (
                     <Pressable
                       key={folder.fullPath}
-                      style={[styles.folderRow, folderColumns > 1 && styles.folderRowHalf]}
+                      style={[styles.folderRow, folderRowWidth !== undefined && { width: folderRowWidth }]}
                       onPress={() => {
                         setExplorerPath(folder.fullPath);
                         // A folder found by searching is a place to go: the
@@ -1397,7 +1411,7 @@ export default function DocumentsScreen() {
                       folders - where a file manager keeps it. */}
                   {explorer && explorerPath === '' && trashed.length > 0 && (
                     <Pressable
-                      style={[styles.folderRow, styles.trashFolderRow, folderColumns > 1 && styles.folderRowHalf]}
+                      style={[styles.folderRow, styles.trashFolderRow, folderRowWidth !== undefined && { width: folderRowWidth }]}
                       onPress={() => setTrashOpen(true)}
                     >
                       <View style={[styles.folderThumb, { borderColor: GLASS_TEXT_FAINT }]}>
@@ -1474,7 +1488,7 @@ export default function DocumentsScreen() {
                   isSelected={selectedIds.has(item.id)}
                   onToggleSelect={() => toggleSelected(item.id)}
                   layout={viewMode}
-                    columns={gridColumns}
+                    gridWidth={gridCardWidth}
                 />
               );
             }}
@@ -1552,7 +1566,7 @@ export default function DocumentsScreen() {
         )}
         {/* Back and forward through the folders you have been in - so the
             hand need not reach for the path strip at the top. */}
-        {explorer && isFocused && !isSelectMode && !searchingAlone && !(isTwoPane && !!openDoc && paneFullscreen) && (
+        {arrowsFit && isFocused && !isSelectMode && !searchingAlone && !(isTwoPane && !!openDoc && paneFullscreen) && (
           <RailCapsule
             bottom={rail.historyBottom}
             buttons={[
@@ -2089,9 +2103,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
-  },
-  folderRowHalf: {
-    width: '49%',
   },
   // The path is a place, not an item: it keeps its own full-width line
   // above the pairs.
