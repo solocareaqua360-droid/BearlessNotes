@@ -32,6 +32,18 @@ export function formatUpdatedAt(timestamp: number): string {
   });
 }
 
+// A card's own date: when the thing was ADDED, and the year with it.
+// Without the year a card from March says nothing about which March -
+// the user's own point, and a database this old has more than one.
+export function formatAddedOn(timestamp: number, withTime = false): string {
+  return new Date(timestamp).toLocaleString('uk-UA', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    ...(withTime ? { hour: '2-digit' as const, minute: '2-digit' as const } : {}),
+  });
+}
+
 export type PreviewChecklistItem = { text: string; checked: boolean };
 
 const PREVIEW_CHECKLIST_LIMIT = 4;

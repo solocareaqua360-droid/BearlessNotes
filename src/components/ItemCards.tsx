@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tag } from '../types';
 import TagChips from './TagChips';
 import { colorForDocument } from '../utils/documentColor';
-import { formatUpdatedAt } from '../utils/documentPreview';
+import { formatAddedOn, formatUpdatedAt } from '../utils/documentPreview';
 import { useFilePreview } from '../hooks/useFilePreview';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import AttachmentImage from './AttachmentImage';
@@ -341,7 +341,7 @@ export function PhotoRow({ photo, ...rest }: { photo: PhotoCardItem } & Common) 
           </Text>
           {!!(photo.createdAt ?? photo.updatedAt) && (
             <Text style={[styles.rowCaption, { color: textMuted }]}>
-              {formatUpdatedAt((photo.createdAt ?? photo.updatedAt) as number)}
+              {formatAddedOn((photo.createdAt ?? photo.updatedAt) as number, true)}
             </Text>
           )}
           {docCount > 0 && (
@@ -351,7 +351,9 @@ export function PhotoRow({ photo, ...rest }: { photo: PhotoCardItem } & Common) 
           )}
           {rest.tags.length > 0 && (
             <View style={styles.rowMeta}>
-              <TagChips tags={rest.tags} onPress={rest.onTagPress ?? (() => {})} glass />
+              {/* One folder's name and a count of the rest - the user's
+                  own rule for a card. */}
+              <TagChips tags={rest.tags} onPress={rest.onTagPress ?? (() => {})} glass max={1} />
             </View>
           )}
         </View>
@@ -385,18 +387,30 @@ export function PhotoCell({ photo, ...rest }: { photo: PhotoCardItem } & Common)
           />
         </View>
       ) : (
-        <>
-          {docCount > 1 && (
-            <View style={styles.cellBadge}>
-              <Text style={styles.cellBadgeLabel}>{docCount}</Text>
-            </View>
-          )}
+        // The same three facts the row carries - when it was added, how
+        // many notes use it, and which folder it is in - on a scrim
+        // along the foot of the picture, so a grid cell says as much as
+        // a row without stopping being a picture.
+        <View style={styles.cellFooter} pointerEvents="box-none">
+          <View style={styles.cellFacts}>
+            {!!(photo.createdAt ?? photo.updatedAt) && (
+              <Text style={styles.cellFactLabel} numberOfLines={1}>
+                {formatAddedOn((photo.createdAt ?? photo.updatedAt) as number)}
+              </Text>
+            )}
+            {docCount > 0 && (
+              <>
+                <Ionicons name="document-text-outline" size={11} color="rgba(255,255,255,0.8)" />
+                <Text style={styles.cellFactLabel}>{docCount}</Text>
+              </>
+            )}
+          </View>
           {rest.tags.length > 0 && (
             <View style={styles.cellTagRow}>
-              <TagChips tags={rest.tags} onPress={rest.onTagPress ?? (() => {})} glass />
+              <TagChips tags={rest.tags} onPress={rest.onTagPress ?? (() => {})} glass max={1} />
             </View>
           )}
-        </>
+        </View>
       )}
     </Pressable>
   );
@@ -575,10 +589,28 @@ const styles = StyleSheet.create({
     fontFamily: FONT_BOLD,
     color: '#fff',
   },
-  cellTagRow: {
+  // The foot of a picture: a dark band the facts can be read against,
+  // whatever the photograph under it happens to be.
+  cellFooter: {
     position: 'absolute',
-    left: 8,
-    right: 8,
-    bottom: 8,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 8,
+    paddingTop: 14,
+    paddingBottom: 8,
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
+  cellFacts: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  cellFactLabel: {
+    fontSize: 11,
+    fontFamily: FONT_REGULAR,
+    color: 'rgba(255,255,255,0.88)',
+  },
+  cellTagRow: {},
 });

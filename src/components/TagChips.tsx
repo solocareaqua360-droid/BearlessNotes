@@ -13,6 +13,10 @@ type Props = {
   // the original flat-tint chip still reads fine - so this only opts in
   // where asked for, rather than changing the shared default.
   glass?: boolean;
+  // Show at most this many chips, and then one "+N" for the rest. A card
+  // is a card, not a list of folders: the user's rule is the first
+  // folder's name and a count of what else it is in.
+  max?: number;
 };
 
 // Shared row of tag chips for Files/Photos/Links rows - each existing tag
@@ -20,10 +24,12 @@ type Props = {
 // Every chip (existing or the dashed one) opens the same TagPicker sheet;
 // there's no separate "remove" tap target on a chip itself, matching the
 // mockup (TagChipsRow.dc.html).
-export default function TagChips({ tags, onPress, glass }: Props) {
+export default function TagChips({ tags, onPress, glass, max }: Props) {
+  const shown = max === undefined ? tags : tags.slice(0, max);
+  const hidden = tags.length - shown.length;
   return (
     <View style={styles.row}>
-      {tags.map((tag) => (
+      {shown.map((tag) => (
         <Pressable
           key={tag.id}
           style={[styles.chip, glass ? styles.chipGlass : { backgroundColor: `${tag.color}1A` }]}
@@ -31,10 +37,15 @@ export default function TagChips({ tags, onPress, glass }: Props) {
         >
           <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={12} color={glass ? '#fff' : tag.color} />
           <Text style={[styles.chipLabel, glass ? styles.chipLabelGlass : { color: tag.color }]} numberOfLines={1}>
-            {tag.path}
+            {tag.path.split('/').pop()}
           </Text>
         </Pressable>
       ))}
+      {hidden > 0 && (
+        <Pressable style={[styles.chip, glass ? styles.chipGlass : styles.chipMore]} onPress={onPress}>
+          <Text style={[styles.chipLabel, glass ? styles.chipLabelGlass : styles.chipMoreLabel]}>+{hidden}</Text>
+        </Pressable>
+      )}
       <Pressable style={[styles.addChip, glass && styles.addChipGlass]} onPress={onPress}>
         <Ionicons name="add" size={12} color={glass ? 'rgba(255,255,255,0.75)' : '#9CA3AF'} />
         <Text style={[styles.addChipLabel, glass && styles.addChipLabelGlass]}>Тег</Text>
@@ -48,6 +59,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
+  },
+  chipMore: {
+    backgroundColor: 'rgba(107,114,128,0.14)',
+  },
+  chipMoreLabel: {
+    color: '#6B7280',
   },
   chip: {
     flexDirection: 'row',

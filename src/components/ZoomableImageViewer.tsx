@@ -2,7 +2,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AttachmentImage from './AttachmentImage';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 
 export type ViewerAction = {
@@ -30,6 +30,12 @@ type Props = {
   // screen's viewer (all of them, including a document picker for a photo
   // used in more than one document).
   actions?: ViewerAction[];
+  // The pictures either side of this one, when the viewer was opened from
+  // a list that HAS a side - swipe across, or tap an arrow, instead of
+  // closing and opening the next one by hand. Absent (a picture opened
+  // from inside a note) the viewer is one picture, as it was.
+  onPrev?: () => void;
+  onNext?: () => void;
 };
 
 // Full-screen viewer opened by tapping an image (a block in a document, or a
@@ -38,7 +44,7 @@ type Props = {
 // on the same gesture-handler/reanimated stack used elsewhere in the app
 // rather than adding a dedicated image-viewer dependency for this one
 // feature.
-export default function ZoomableImageViewer({ uri, driveFileId, onClose, actions }: Props) {
+export default function ZoomableImageViewer({ uri, driveFileId, onClose, actions, onPrev, onNext }: Props) {
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(0);
@@ -62,22 +68,45 @@ export default function ZoomableImageViewer({ uri, driveFileId, onClose, actions
       }
     });
 
+  // How far the unzoomed picture has been dragged sideways, so the swipe
+  // is something the hand can see happening rather than a thing that
+  // either fires or does not.
+  const swipeX = useSharedValue(0);
+
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
-      if (savedScale.value <= 1) return;
-      translateX.value = savedTranslateX.value + e.translationX;
-      translateY.value = savedTranslateY.value + e.translationY;
+      // Zoomed in, a drag moves the picture around, as it always has.
+      if (savedScale.value > 1) {
+        translateX.value = savedTranslateX.value + e.translationX;
+        translateY.value = savedTranslateY.value + e.translationY;
+        return;
+      }
+      // At rest it is a page turn - and only towards a picture that is
+      // there, so the end of the list has an edge you can feel.
+      const wanted = e.translationX;
+      const allowed = (wanted < 0 && !onNext) || (wanted > 0 && !onPrev) ? wanted * 0.15 : wanted;
+      swipeX.value = allowed;
     })
-    .onEnd(() => {
-      savedTranslateX.value = translateX.value;
-      savedTranslateY.value = translateY.value;
+    .onEnd((e) => {
+      if (savedScale.value > 1) {
+        savedTranslateX.value = translateX.value;
+        savedTranslateY.value = translateY.value;
+        return;
+      }
+      const far = Math.abs(e.translationX) > SWIPE_DISTANCE;
+      const fast = Math.abs(e.velocityX) > 600;
+      if (far || fast) {
+        if (e.translationX < 0 && onNext) runOnJS(onNext)();
+        else if (e.translationX > 0 && onPrev) runOnJS(onPrev)();
+      }
+      swipeX.value = withTiming(0, { duration: 160 });
     });
 
   const gesture = Gesture.Simultaneous(pinchGesture, panGesture);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateX: translateX.value },
+      { translateX: translateX.value + swipeX.value },
       { translateY: translateY.value },
       { scale: scale.value },
     ],
@@ -102,6 +131,19 @@ export default function ZoomableImageViewer({ uri, driveFileId, onClose, actions
           />
         </Animated.View>
       </GestureDetector>
+      {/* The arrows, for a finger that would rather tap - and the one
+          sign on screen that there is anything either side. */}
+      {!!onPrev && (
+        <Pressable style={[styles.pageButton, styles.pagePrev]} hitSlop={10} onPress={onPrev}>
+          <Ionicons name="chevron-back" size={26} color="#fff" />
+        </Pressable>
+      )}
+      {!!onNext && (
+        <Pressable style={[styles.pageButton, styles.pageNext]} hitSlop={10} onPress={onNext}>
+          <Ionicons name="chevron-forward" size={26} color="#fff" />
+        </Pressable>
+      )}
+
       {!!actions?.length && (
         <View style={styles.actionBar}>
           {actions.map((action) => (
@@ -144,7 +186,27 @@ export default function ZoomableImageViewer({ uri, driveFileId, onClose, actions
   );
 }
 
+// Far enough that a pinch that drifted sideways is not a page turn.
+const SWIPE_DISTANCE = 70;
+
 const styles = StyleSheet.create({
+  pageButton: {
+    position: 'absolute',
+    top: '46%',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    zIndex: 5,
+  },
+  pagePrev: {
+    left: 12,
+  },
+  pageNext: {
+    right: 12,
+  },
   backdrop: {
     flex: 1,
     backgroundColor: '#000',

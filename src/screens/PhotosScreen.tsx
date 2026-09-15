@@ -216,6 +216,14 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     detachTag: list.detachTag,
   });
   const itemsHere = explorer.visibleItems;
+  // The pictures either side of the open one, in the order this screen is
+  // actually showing - the folder you are in, the filter you set, the
+  // search you typed. Not the whole database: what the viewer pages
+  // through should be what you were looking at.
+  const viewerIndex = viewerPhotoId ? itemsHere.findIndex((p) => p.id === viewerPhotoId) : -1;
+  const viewerPrevId = viewerIndex > 0 ? itemsHere[viewerIndex - 1].id : null;
+  const viewerNextId =
+    viewerIndex >= 0 && viewerIndex < itemsHere.length - 1 ? itemsHere[viewerIndex + 1].id : null;
 
   function openFolderMenu(folder: ExplorerFolder) {
     ask({
@@ -624,6 +632,8 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                   driveFileId={viewerPhoto.driveFileId}
                   onClose={() => setViewerPhotoId(null)}
                   actions={viewerActionsFor(viewerPhoto)}
+                  onPrev={viewerPrevId ? () => setViewerPhotoId(viewerPrevId) : undefined}
+                  onNext={viewerNextId ? () => setViewerPhotoId(viewerNextId) : undefined}
                 />
               </GestureHandlerRootView>
             </Modal>
