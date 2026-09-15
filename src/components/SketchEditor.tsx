@@ -230,6 +230,20 @@ export default function SketchEditor({ visible, initialElements, background, onS
   // The picture's shape, asked of the file itself. Until it answers the
   // canvas is square, which is only ever seen for a frame.
   const [aspect, setAspect] = useState(background?.aspectRatio ?? 1);
+  // The room the picture has, and the box it actually takes in it.
+  //
+  // A tall photograph asked for `width: 100%` plus its own aspectRatio
+  // came out taller than the screen and simply OVERFLOWED - over the
+  // toolbar, and over the header, which is where "Готово" lives. So the
+  // picture is FITTED: whichever of the two sides runs out first decides
+  // the size, and the whole photograph is on screen with its controls.
+  const [stage, setStage] = useState({ width: 0, height: 0 });
+  const fitted =
+    stage.width > 0 && stage.height > 0
+      ? stage.width / stage.height > aspect
+        ? { width: Math.round(stage.height * aspect), height: stage.height }
+        : { width: stage.width, height: Math.round(stage.width / aspect) }
+      : { width: 0, height: 0 };
   useEffect(() => {
     if (!visible || !background?.uri || background.aspectRatio) return;
     let alive = true;
@@ -432,23 +446,33 @@ export default function SketchEditor({ visible, initialElements, background, onS
     isShapeTool(tool) && shapeStart && shapeCurrent
       ? { kind: tool, x1: shapeStart.x, y1: shapeStart.y, x2: shapeCurrent.x, y2: shapeCurrent.y }
       : null;
+  // Over a photograph the bar is dark glass, so its own marks are light.
+  const ink = background ? '#fff' : '#111827';
+  const inkOff = background ? 'rgba(255,255,255,0.35)' : '#D1D5DB';
   const selected = selectedIndex !== null ? elements[selectedIndex] : undefined;
   const selectedBounds = selected ? boundsOf(selected) : null;
   const selectedHandles = selected && selected.kind === 'path' && selected.shape ? shapeHandles(selected.shape) : [];
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-        <View style={styles.header}>
+      <SafeAreaView
+        style={[styles.container, background && styles.containerDark]}
+        edges={['top', 'bottom']}
+      >
+        {/* Drawing on a photograph, the bars float OVER it rather than
+            standing above and below: a picture squeezed between two
+            solid bars is a picture you cannot see, which is what the
+            user met. On a blank canvas they stay where they were. */}
+        <View style={[styles.header, background && styles.headerFloating]}>
           <Pressable hitSlop={10} onPress={onClose}>
-            <Ionicons name="close" size={24} color="#111827" />
+            <Ionicons name="close" size={24} color={ink} />
           </Pressable>
           <View style={styles.headerActions}>
             <Pressable hitSlop={10} onPress={undo} disabled={elements.length === 0}>
-              <Ionicons name="arrow-undo-outline" size={22} color={elements.length ? '#111827' : '#D1D5DB'} />
+              <Ionicons name="arrow-undo-outline" size={22} color={elements.length ? ink : inkOff} />
             </Pressable>
             <Pressable hitSlop={10} onPress={clear} disabled={elements.length === 0}>
-              <Ionicons name="trash-outline" size={22} color={elements.length ? '#111827' : '#D1D5DB'} />
+              <Ionicons name="trash-outline" size={22} color={elements.length ? ink : inkOff} />
             </Pressable>
           </View>
           <Pressable
@@ -459,9 +483,12 @@ export default function SketchEditor({ visible, initialElements, background, onS
           </Pressable>
         </View>
 
-        <View style={background ? styles.canvasStage : styles.canvasFill}>
         <View
-          style={[styles.canvas, background && { aspectRatio: aspect, flex: 0, width: '100%' }]}
+          style={background ? styles.canvasStage : styles.canvasFill}
+          onLayout={(e) => setStage({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
+        >
+        <View
+          style={[styles.canvas, background && { flex: 0, width: fitted.width, height: fitted.height }]}
           onLayout={handleCanvasLayout}
           onStartShouldSetResponder={() => true}
           onMoveShouldSetResponder={() => true}
@@ -533,7 +560,7 @@ export default function SketchEditor({ visible, initialElements, background, onS
         </View>
         </View>
 
-        <View style={styles.toolbar}>
+        <View style={[styles.toolbar, background && styles.toolbarFloating]}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolRow}>
             {TOOLS.map(({ tool: t, family, icon }) => (
               <Pressable
@@ -618,6 +645,29 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
+  containerDark: {
+    backgroundColor: '#111',
+  },
+  // Floating: over the picture, out of the layout, on its own glass.
+  headerFloating: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    zIndex: 10,
+    borderBottomWidth: 0,
+    backgroundColor: 'rgba(17,17,17,0.55)',
+  },
+  toolbarFloating: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    bottom: 8,
+    zIndex: 10,
+    borderTopWidth: 0,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -652,6 +702,7 @@ const styles = StyleSheet.create({
   // of the photo are plain to see.
   canvasStage: {
     flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#111',
   },
