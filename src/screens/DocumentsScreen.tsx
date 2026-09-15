@@ -535,14 +535,23 @@ export default function DocumentsScreen() {
   // the folders, which are wide rows rather than cards, pair up only when
   // there is room for four cards beside them.
   const wideList = isTwoPane && !openDoc;
-  const gridColumns = wideList ? (layoutWidth > layoutHeight ? 4 : 3) : 2;
+  // With a document open beside it the list is half a screen wide, and
+  // the user's call is one card to a line there, not two squeezed ones.
+  const gridColumns = wideList ? (layoutWidth > layoutHeight ? 4 : 3) : isTwoPane && openDoc ? 1 : 2;
   const folderColumns = gridColumns >= 4 ? 2 : 1;
   // Widths in PIXELS, from the width the list actually has, so a row of
   // cards ends on the same line as a row of folders above it. As
   // percentages the two could not agree: the gaps between cards are
   // pixels, so the percentage had to leave slack for them, and the slack
   // came out on the right as a ragged edge against the folders.
-  const listWidth = (paneRect.width || layoutWidth) - 40;
+  //
+  // What the rows actually have: the pane, less the list's own clearance
+  // from the rail on the right, less the 20 each row keeps on either side.
+  // Worked out from the pane alone it came to more than that, so two
+  // folders would not fit a line and fell one under the other, leaving
+  // the right half empty - while four cards did fit, by running under the
+  // rail.
+  const listWidth = (paneRect.width || layoutWidth) - (RAIL_CLEARANCE - 20) - 40;
   const gridCardWidth = Math.floor((listWidth - 12 * (gridColumns - 1)) / gridColumns);
   const folderRowWidth = folderColumns > 1 ? Math.floor((listWidth - 10) / 2) : undefined;
   const insets = useSafeAreaInsets();
