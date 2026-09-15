@@ -185,6 +185,12 @@ export default function DatabasesScreen() {
   // The tile being carried right now: where it is under the finger, and
   // the cell the board is placing it in while it is held there.
   const [drag, setDrag] = useState<{ key: string; x: number; y: number } | null>(null);
+  // The cell the carried tile stood in when the finger went down, in
+  // board pixels. The finger's travel is added to THIS, not to the cell
+  // the tile is drawn in now - that cell follows the finger, so adding
+  // the travel to it counted the travel twice and the tile ran a third
+  // of the screen ahead of the hand.
+  const carryOrigin = useRef({ x: 0, y: 0 });
   // A picture behind a tile, cropped to that tile's own shape.
   const [tileBackgrounds, setTileBackgrounds] = useState<Record<string, string>>({});
   // The tile whose background is being chosen, and the picture waiting to
@@ -695,12 +701,13 @@ export default function DatabasesScreen() {
                     carried={drag?.key === item.key ? { x: drag.x, y: drag.y } : null}
                     onCarryStart={() => {
                       hapticButtonDown();
+                      carryOrigin.current = { x: x * cellStep, y: y * cellStep };
                       setDrag({ key: item.key, x: x * cellStep, y: y * cellStep });
                       setDraftPosition({ key: item.key, x, y });
                     }}
                     onCarryMove={(dx, dy) => {
-                      const nextX = x * cellStep + dx;
-                      const nextY = y * cellStep + dy;
+                      const nextX = carryOrigin.current.x + dx;
+                      const nextY = carryOrigin.current.y + dy;
                       setDrag({ key: item.key, x: nextX, y: nextY });
                       const cell = cellUnder(item.key, nextX, nextY);
                       setDraftPosition({ key: item.key, x: cell.x, y: cell.y });
