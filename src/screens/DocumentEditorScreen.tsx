@@ -227,11 +227,23 @@ async function downloadToDevice(sourceUri: string, fileName: string, mimeType: s
 
 // Inline formatting is stored as plain markers inside the block's own text
 // (**bold**, *italic*, __underline__, ~~strikethrough~~, {c:#hex}color{/c},
-// {h:#hex}highlight{/h}) rather than a separate rich-text model - Android's
-// TextInput can't render live bold-while-typing inside an editable field
-// regardless of data model, so there was nothing to gain from a heavier
-// representation. Markers are visible as-is while a block is being edited
-// (see BlockRow) and parsed into styled <Text> runs otherwise.
+// {h:#hex}highlight{/h}) rather than a separate rich-text model.
+//
+// The user's own words: "Я не хочу бачити зірочки та всякі риски коли
+// друкую, це мене збиває." The active field no longer shows the raw
+// markers - it shows plainTextOf(text), the same marker-free string the
+// locked block already displayed, and applyDisplayEdit turns whatever
+// the OS reports back into the correct edit on the RAW text underneath.
+// One real trade-off, taken deliberately over the alternative: a plain
+// TextInput can only render ONE uniform style for its own value, so
+// there is no LIVE bold-while-typing in the exact block you are editing
+// - only the markers vanish, not the styling gap. Nested styled <Text>
+// children inside an editable Android TextInput is the technique that
+// would close that gap too, and it is known to be unreliable there
+// (Expensify's own react-native-live-markdown exists because plain RN
+// children were not enough for them either) - not attempted here. The
+// moment a block is no longer the active one it renders through
+// FormattedText exactly as it always did, bold and all.
 const COLOR_OPEN = /^\{c:(#[0-9A-Fa-f]{6})\}/;
 const HIGHLIGHT_OPEN = /^\{h:(#[0-9A-Fa-f]{6})\}/;
 const COLOR_CLOSE = '{/c}';
@@ -347,6 +359,66 @@ function rawIndexForDisplayIndex(segments: TextSegment[], rawText: string, displ
     displayStart += seg.text.length;
   }
   return rawText.length;
+}
+
+// One raw index per display character, PLUS one more for the position
+// right after the last one - a "boundary" for every gap a caret or a
+// selection edge can sit in, not just every character. parseFormattedText
+// is exhaustive (every raw character ends up inside some segment's own
+// text, markers included when unmatched), so this never has a gap: index
+// `displayLength` always lands exactly on `rawText.length`.
+function displayBoundaries(rawText: string): number[] {
+  const segments = parseFormattedText(rawText);
+  const bounds: number[] = [];
+  for (const seg of segments) {
+    for (let k = 0; k < seg.text.length; k++) bounds.push(seg.rawStart + k);
+  }
+  bounds.push(rawText.length);
+  return bounds;
+}
+
+// The other direction from rawIndexForDisplayIndex: where a raw position
+// (the edge of a marker this screen just inserted or removed) lands in
+// the display text that goes with it. Used to put the selection back in
+// DISPLAY terms after applyMarkerToSelection/applyColorToSelection edit
+// the raw text - the active field's own selection is always in display
+// coordinates now, never raw.
+function displayIndexForRawIndex(rawText: string, rawIndex: number): number {
+  const bounds = displayBoundaries(rawText);
+  for (let i = 0; i < bounds.length; i++) {
+    if (bounds[i] >= rawIndex) return i;
+  }
+  return bounds.length - 1;
+}
+
+// What the active field's own onChangeText turns into: not "the block's
+// new text" directly, but the edit that produced it, replayed on the RAW
+// text. The active field's value is plainTextOf(text) - marker-free - so
+// what the OS hands back on every keystroke is a new DISPLAY string, and
+// this is what turns that into the correct new RAW string underneath,
+// using the same prefix/suffix diff insertedPiece uses for a paste, but
+// with no length floor: a single typed or deleted character goes through
+// here exactly the same as a whole pasted paragraph.
+function applyDisplayEdit(oldRawText: string, newDisplayText: string): string {
+  const oldDisplayText = plainTextOf(oldRawText);
+  if (oldDisplayText === newDisplayText) return oldRawText;
+  const maxCommon = Math.min(oldDisplayText.length, newDisplayText.length);
+  let prefix = 0;
+  while (prefix < maxCommon && oldDisplayText[prefix] === newDisplayText[prefix]) prefix++;
+  let suffix = 0;
+  const maxSuffix = maxCommon - prefix;
+  while (
+    suffix < maxSuffix &&
+    oldDisplayText[oldDisplayText.length - 1 - suffix] === newDisplayText[newDisplayText.length - 1 - suffix]
+  ) {
+    suffix++;
+  }
+  const removedEnd = oldDisplayText.length - suffix;
+  const insertedText = newDisplayText.slice(prefix, newDisplayText.length - suffix);
+  const bounds = displayBoundaries(oldRawText);
+  const rawStart = bounds[prefix];
+  const rawEnd = bounds[removedEnd];
+  return oldRawText.slice(0, rawStart) + insertedText + oldRawText.slice(rawEnd);
 }
 
 // Tap-to-cursor for a locked block. Android gives no way to ask "which
@@ -708,7 +780,7 @@ type BlockRowProps = {
   showBoundary: boolean;
   listNumber?: number;
   textVersion: number;
-  // cursorIndex: raw-text position to place the cursor at (from a tap on
+  // cursorIndex: DISPLAY-text position to place the cursor at (from a tap on
   // the locked text); omitted = end of the text.
   onActivate: (id: string, cursorIndex?: number) => void;
   onBlur: (id: string) => void;
@@ -1045,11 +1117,12 @@ function BlockRow({
     // A browser can be asked outright which character the click landed
     // on, and it answers without any of the measuring below. That is what
     // makes the FIRST click place the cursor here rather than merely
-    // waking the block up.
+    // waking the block up. A display index, not raw - the active field's
+    // own cursor is always in display terms now (see cursorIndex on
+    // onActivate), so this is handed over as-is, no conversion needed.
     const fromDom = caretIndexFromDom(textNode, pageX, pageY);
     if (fromDom !== null) {
-      const domSegments = parseFormattedText(item.text);
-      onActivate(item.id, rawIndexForDisplayIndex(domSegments, item.text, fromDom));
+      onActivate(item.id, fromDom);
       return;
     }
     if (!canPlaceCaretByTouch) {
@@ -1061,15 +1134,14 @@ function BlockRow({
       onActivate(item.id);
       return;
     }
-    const segments = parseFormattedText(item.text);
-    const displayText = segments.map((s) => s.text).join('');
+    const displayText = plainTextOf(item.text);
     const displayIndex = displayIndexForTouch(
       lockedLinesRef.current,
       displayText,
       pageX - box.x,
       pageY - box.y
     );
-    onActivate(item.id, rawIndexForDisplayIndex(segments, item.text, displayIndex));
+    onActivate(item.id, displayIndex);
   }
 
   let content: ReactNode;
@@ -1418,8 +1490,14 @@ function BlockRow({
         // this input only ever mounts as the active block, so that's exactly
         // when it should. The screen's focus effect still places the cursor.
         autoFocus
-        value={item.text}
-        onChangeText={(text) => onChangeText(item.id, text)}
+        // Marker-free while it is being typed - the same string the
+        // locked block has always shown (plainTextOf). A code block is
+        // the one exception: nothing in it is ever parsed, so it keeps
+        // showing its own raw text untouched.
+        value={type === 'code' ? item.text : plainTextOf(item.text)}
+        onChangeText={(displayText) =>
+          onChangeText(item.id, type === 'code' ? displayText : applyDisplayEdit(item.text, displayText))
+        }
         onFocus={() => onFocus(item.id)}
         onBlur={() => onBlur(item.id)}
         onSelectionChange={({ nativeEvent }) =>
@@ -1590,7 +1668,7 @@ type SortableBlockRowProps = {
   isSelected: boolean;
   isSelectMode: boolean;
   isActive: boolean;
-  // cursorIndex: raw-text position to place the cursor at (from a tap on
+  // cursorIndex: DISPLAY-text position to place the cursor at (from a tap on
   // the locked text); omitted = end of the text.
   onActivate: (id: string, cursorIndex?: number) => void;
   onBlur: (id: string) => void;
@@ -1770,7 +1848,7 @@ type BlockListProps = {
   selectedIds: Set<string>;
   isSelectMode: boolean;
   focusedBlockId: string | null;
-  // cursorIndex: raw-text position to place the cursor at (from a tap on
+  // cursorIndex: DISPLAY-text position to place the cursor at (from a tap on
   // the locked text); omitted = end of the text.
   onActivate: (id: string, cursorIndex?: number) => void;
   onBlur: (id: string) => void;
@@ -3084,13 +3162,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     if (!input) return;
     input.focus();
     measureActiveInputForSync(input);
+    // The field's own length now - the DISPLAY text, since that is what
+    // it actually holds (see the active TextInput's value); a code block
+    // is the one field still showing its raw text untouched.
+    const fieldLength = (block: Block) => ((block.type ?? 'paragraph') === 'code' ? block.text.length : plainTextOf(block.text).length);
     if (focusToEndRef.current) {
       const block = blocks.find((b) => b.id === id);
-      if (block) setSelection(input, block.text.length, block.text.length);
+      if (block) setSelection(input, fieldLength(block), fieldLength(block));
       focusToEndRef.current = false;
     } else if (focusCursorIndexRef.current !== null) {
       const block = blocks.find((b) => b.id === id);
-      const index = Math.min(focusCursorIndexRef.current, block?.text.length ?? 0);
+      const index = Math.min(focusCursorIndexRef.current, block ? fieldLength(block) : 0);
       setSelection(input, index, index);
       focusCursorIndexRef.current = null;
     }
@@ -3529,9 +3611,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     if (!sel) return;
     const block = blocks.find((b) => b.id === sel.blockId);
     if (!block) return;
-    const before = block.text.slice(0, sel.start);
-    const selected = block.text.slice(sel.start, sel.end);
-    const after = block.text.slice(sel.end);
+    // sel.start/end are DISPLAY positions (the active field's own
+    // selection, marker-free) - the wrap/unwrap itself still has to
+    // happen on the RAW text, since that is what markers live in.
+    const rawSegments = parseFormattedText(block.text);
+    const rawStart = rawIndexForDisplayIndex(rawSegments, block.text, sel.start);
+    const rawEnd = rawIndexForDisplayIndex(rawSegments, block.text, sel.end);
+    const before = block.text.slice(0, rawStart);
+    const selected = block.text.slice(rawStart, rawEnd);
+    const after = block.text.slice(rawEnd);
     // A single '*' (italic) also matches the tail of '**' (bold), so a
     // plain endsWith/startsWith would misfire "already italic" on text
     // that's actually bold-wrapped. Require the boundary to be exactly
@@ -3541,17 +3629,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         ? before.endsWith('*') && !before.endsWith('**') && after.startsWith('*') && !after.startsWith('**')
         : before.endsWith(open) && after.startsWith(close);
     let newText: string;
-    let newStart: number;
+    let newRawStart: number;
     if (isExactBoundary) {
       newText = before.slice(0, -open.length) + selected + after.slice(close.length);
-      newStart = sel.start - open.length;
+      newRawStart = rawStart - open.length;
     } else {
       newText = before + open + selected + close + after;
-      newStart = sel.start + open.length;
+      newRawStart = rawStart + open.length;
     }
-    const newEnd = newStart + selected.length;
+    const newRawEnd = newRawStart + selected.length;
     snapshotBeforeChange();
     setBlocks((prev) => prev.map((b) => (b.id === sel.blockId ? { ...b, text: newText } : b)));
+    // Back to display terms for the field's own selection - the new text
+    // just gained or lost markers, so this is read off the NEW raw text.
+    const newStart = displayIndexForRawIndex(newText, newRawStart);
+    const newEnd = displayIndexForRawIndex(newText, newRawEnd);
     setActiveSelection({ blockId: sel.blockId, start: newStart, end: newEnd });
     requestAnimationFrame(() => {
       setSelection(inputRefs.current[sel.blockId], newStart, newEnd);
@@ -3567,38 +3659,45 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     if (!sel) return;
     const block = blocks.find((b) => b.id === sel.blockId);
     if (!block) return;
+    // sel.start/end are DISPLAY positions - convert to raw before slicing
+    // block.text, same as applyMarkerToSelection above.
+    const rawSegments = parseFormattedText(block.text);
+    const rawStart = rawIndexForDisplayIndex(rawSegments, block.text, sel.start);
+    const rawEnd = rawIndexForDisplayIndex(rawSegments, block.text, sel.end);
     const openPattern = kind === 'c' ? COLOR_OPEN : HIGHLIGHT_OPEN;
     const closeTag = kind === 'c' ? COLOR_CLOSE : HIGHLIGHT_CLOSE;
-    const before = block.text.slice(0, sel.start);
-    const selected = block.text.slice(sel.start, sel.end);
-    const after = block.text.slice(sel.end);
+    const before = block.text.slice(0, rawStart);
+    const selected = block.text.slice(rawStart, rawEnd);
+    const after = block.text.slice(rawEnd);
     // openPattern is anchored to the start of a string (^...) for matching
     // an upcoming tag while parsing; here we need "ends with", so the
     // leading ^ has to be dropped before anchoring to the end instead.
     const existingOpenMatch = before.match(new RegExp(openPattern.source.replace(/^\^/, '') + '$'));
     const hasExistingClose = after.startsWith(closeTag);
     let newText: string;
-    let newStart: number;
+    let newRawStart: number;
     if (existingOpenMatch && hasExistingClose) {
       const existingHex = existingOpenMatch[1];
       if (existingHex.toLowerCase() === hex.toLowerCase()) {
         // Same color already applied - remove it.
         newText = before.slice(0, -existingOpenMatch[0].length) + selected + after.slice(closeTag.length);
-        newStart = sel.start - existingOpenMatch[0].length;
+        newRawStart = rawStart - existingOpenMatch[0].length;
       } else {
         // Different color - swap the hex value in place, tag lengths match.
         const newOpen = `{${kind}:${hex}}`;
         newText = before.slice(0, -existingOpenMatch[0].length) + newOpen + selected + after;
-        newStart = sel.start - existingOpenMatch[0].length + newOpen.length;
+        newRawStart = rawStart - existingOpenMatch[0].length + newOpen.length;
       }
     } else {
       const openTag = `{${kind}:${hex}}`;
       newText = before + openTag + selected + closeTag + after;
-      newStart = sel.start + openTag.length;
+      newRawStart = rawStart + openTag.length;
     }
-    const newEnd = newStart + selected.length;
+    const newRawEnd = newRawStart + selected.length;
     snapshotBeforeChange();
     setBlocks((prev) => prev.map((b) => (b.id === sel.blockId ? { ...b, text: newText } : b)));
+    const newStart = displayIndexForRawIndex(newText, newRawStart);
+    const newEnd = displayIndexForRawIndex(newText, newRawEnd);
     setActiveSelection({ blockId: sel.blockId, start: newStart, end: newEnd });
     requestAnimationFrame(() => {
       setSelection(inputRefs.current[sel.blockId], newStart, newEnd);
