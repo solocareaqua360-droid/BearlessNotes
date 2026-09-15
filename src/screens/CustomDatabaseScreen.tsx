@@ -128,7 +128,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
-import { CAPSULE_DROP, CAPSULE_HEIGHT_3, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
+import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CAPSULE_HEIGHT_4, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 import Menu from '../components/surfaces/Menu';
 
 const ACCENT = '#A05C7B';
@@ -201,7 +201,6 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   // (a saved view, list/cards/table, grouping); what it can DO to that
   // list - order it, filter it, choose in it - belongs on the rail, with
   // the same two or three buttons as every other screen.
-  const rail = useRail(CAPSULE_HEIGHT_3, CAPSULE_HEIGHT_3);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute();
   const params = (route.params ?? {}) as {
@@ -631,6 +630,15 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   // already allow, not from the whole database - so narrowing one field
   // never leaves another offering values that would return nothing.
   const filterFields = filterableFieldsOf(database);
+  // Where each capsule of the rail stands. Four pieces here: what the
+  // list shows (order, filter, group, saved views), choosing several,
+  // and making something - so the layout is told each one's height.
+  const rail = useRail(
+    CAPSULE_HEIGHT_3,
+    filterFields.length > 0 ? CAPSULE_HEIGHT_4 : CAPSULE_HEIGHT_3,
+    CAPSULE_HEIGHT,
+    CAPSULE_HEIGHT_1
+  );
   const openFilterField = filterFieldId ? filterFields.find((f) => f.id === filterFieldId) ?? null : null;
   const openFilterFacets: Facet[] = openFilterField
     ? facetsOf(
@@ -1595,21 +1603,6 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
             stripXRef.current = e.nativeEvent.layout.x;
           }}
         >
-          {/* Named slices of this database come first: they set every other
-              capsule at once, so they read as the coarse choice the rest
-              refine. */}
-          <Pressable
-            style={[styles.paramChip, !!activeView && styles.paramChipActive]}
-            onLayout={(e) => rememberChip('views', e.nativeEvent.layout)}
-            onPress={() => openParamList('views')}
-          >
-            <Ionicons name="bookmark-outline" size={13} color="rgba(255,255,255,0.85)" />
-            <Text style={styles.paramChipLabel} numberOfLines={1}>
-              {activeView ? activeView.name : 'Вигляди'}
-            </Text>
-            <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
-          </Pressable>
-
           <Pressable
             style={styles.paramChip}
             onLayout={(e) => rememberChip('view', e.nativeEvent.layout)}
@@ -1622,23 +1615,10 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
             <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
           </Pressable>
 
-          {/* Ordering and filtering left this strip for the rail - the
-              strip had four or five chips and the last was cut off by the
-              rail itself. What stays is what the list IS: a saved view,
-              its shape, its grouping. */}
-          {groupFields.length > 0 && (
-            <Pressable
-              style={[styles.paramChip, !!groupField && styles.paramChipActive]}
-              onLayout={(e) => rememberChip('group', e.nativeEvent.layout)}
-              onPress={() => openParamList('group')}
-            >
-              <Ionicons name="layers-outline" size={13} color="rgba(255,255,255,0.85)" />
-              <Text style={styles.paramChipLabel} numberOfLines={1}>
-                {groupField ? groupField.name : 'Групувати'}
-              </Text>
-              <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
-            </Pressable>
-          )}
+          {/* Everything else left this strip for the rail: ordering,
+              filtering, grouping and the saved views. The strip had five
+              chips and the rail cut the last of them off. What is left is
+              the one thing that is the list's own SHAPE. */}
         </ScrollView>
 
       {/* An open list is drawn HERE, over the whole screen, rather than
@@ -2063,13 +2043,10 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
         </ScrollView>
       )}
 
-      {/* Through the portal, where its blur is safe. */}
+      {/* Order it, narrow it, group it, and the saved slices of it - the
+          four things that decide WHAT this list shows. RailCapsule draws
+          its own glass through the portal, so these need no wrapper. */}
       {railFocused && !isSelectMode && (
-        <GlassPortal>
-          {/* Order it, narrow it, choose in it - the three things this
-          screen can do TO its list, in the same place every other screen
-          keeps them. The strip above the list keeps what the list IS. */}
-      {!isSelectMode && (
         <RailCapsule
           bottom={rail.actionsBottom}
           buttons={[
@@ -2084,28 +2061,37 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
                 ]
               : []),
             {
-              icon: (isSelectMode ? 'close-outline' : 'checkmark-circle-outline') as
-                | 'close-outline'
-                | 'checkmark-circle-outline',
-              onPress: toggleSelectMode,
-              active: isSelectMode,
+              icon: 'layers-outline' as const,
+              onPress: () => openParamList('group'),
+              active: openParam === 'group' || !!groupField,
+            },
+            {
+              icon: 'bookmark-outline' as const,
+              onPress: () => openParamList('views'),
+              active: openParam === 'views' || !!activeView,
             },
           ]}
         />
       )}
-      <Pressable style={[styles.fab, { bottom: rail.addBottom }]} onPress={openNewRow}>
-            <BlurView
-              intensity={60}
-              tint="dark"
-              blurMethod="dimezisBlurView"
-              blurTarget={railBlurTarget ?? undefined}
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
-            <Ionicons name="add-outline" size={28} color="#fff" />
-          </Pressable>
-        </GlassPortal>
+      {/* Choosing several is a mode, not an action - its own capsule. */}
+      {railFocused && !isSelectMode && (
+        <RailCapsule
+          bottom={rail.historyBottom}
+          buttons={[{ icon: 'checkmark-circle-outline', onPress: toggleSelectMode }]}
+        />
       )}
+      {/* A record, and a view of the records - the two things this screen
+          makes. The plus is drawn on the thing it adds. */}
+      {railFocused && !isSelectMode && (
+        <RailCapsule
+          bottom={rail.addBottom}
+          buttons={[
+            { icon: 'albums-outline', badge: 'add-circle-outline', onPress: openNewRow },
+            { icon: 'bookmark-outline', badge: 'add-circle-outline', onPress: () => setViewPrompt({ mode: 'new' }) },
+          ]}
+        />
+      )}
+
 
       {/* The second half of adding a field from the form: the type is
           picked, this asks what it is called. */}
