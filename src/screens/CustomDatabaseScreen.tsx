@@ -605,40 +605,49 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   const hasRailFilter = filterableFieldsOf(database).length > 0;
   const hasRailGroup = groupableFieldsOf(database).length > 0;
   // What the rail would like to carry, and the order it gives it up in
-  // when the screen is too short to hold it all. The user's own ranking:
-  // saved views are a fourth button only "якщо влізе"; choosing keeps a
-  // capsule of its own for as long as it can; grouping goes back to the
-  // strip before anything essential does; and on the shortest screens the
-  // create capsule keeps only the button that makes a record.
+  // when the screen is too short to hold it all.
+  //
+  // The strip over the list is the OVERFLOW now, not a place of its own:
+  // whatever the rail cannot hold appears there as a chip, and on a screen
+  // tall enough for everything the strip is not drawn at all. That is the
+  // user's own instruction - the shape of the list ("Список") left the
+  // header for the rail - with the one thing it needs to stay honest,
+  // which is that nothing becomes unreachable on a short phone.
+  //
+  // Making things is not on the ladder: the rail makes a RECORD and
+  // nothing else. A second button for a new view was there for one release
+  // and the user pointed out it was already the last entry in the views
+  // list that the other button opens.
   //
   // Nothing here decides by screen NAME or a breakpoint - each shape is
   // asked whether it stands clear of the top capsule, and the first that
   // does is the one drawn. A Fold's two screens need no case of their own.
   const RAIL_PLANS = [
-    { views: true, group: true, selectOwn: true, createBoth: true },
-    { views: false, group: true, selectOwn: true, createBoth: true },
-    { views: false, group: true, selectOwn: false, createBoth: true },
-    { views: false, group: false, selectOwn: false, createBoth: true },
-    { views: false, group: false, selectOwn: false, createBoth: false },
+    { shape: true, filter: true, group: true, views: true, selectOwn: true },
+    { shape: true, filter: true, group: true, views: false, selectOwn: true },
+    { shape: true, filter: true, group: true, views: false, selectOwn: false },
+    { shape: true, filter: true, group: false, views: false, selectOwn: false },
+    { shape: true, filter: false, group: false, views: false, selectOwn: false },
+    { shape: false, filter: false, group: false, views: false, selectOwn: false },
   ];
   type RailPlan = (typeof RAIL_PLANS)[number];
   const railActionsHeight = (plan: RailPlan) =>
     capsuleHeightFor(
-      1 + // ordering, which never leaves
-        (hasRailFilter ? 1 : 0) +
+      1 + // ordering, which never leaves the rail
+        (plan.shape ? 1 : 0) +
+        (plan.filter && hasRailFilter ? 1 : 0) +
         (plan.group && hasRailGroup ? 1 : 0) +
         (plan.views ? 1 : 0) +
         (plan.selectOwn ? 0 : 1)
     );
-  const railCreateHeight = (plan: RailPlan) => capsuleHeightFor(plan.createBoth ? 2 : 1);
   const railPlan =
     RAIL_PLANS.find((plan) =>
-      railFits(railFree, railActionsHeight(plan), railCreateHeight(plan), plan.selectOwn ? CAPSULE_HEIGHT_1 : 0)
+      railFits(railFree, railActionsHeight(plan), CAPSULE_HEIGHT_1, plan.selectOwn ? CAPSULE_HEIGHT_1 : 0)
     ) ?? RAIL_PLANS[RAIL_PLANS.length - 1];
   const rail = useRail(
     CAPSULE_HEIGHT_3,
     railActionsHeight(railPlan),
-    railCreateHeight(railPlan),
+    CAPSULE_HEIGHT_1,
     railPlan.selectOwn ? CAPSULE_HEIGHT_1 : 0,
     false
   );
@@ -721,12 +730,64 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   const groupFields = groupableFieldsOf(database);
   const groupField = groupFieldId ? (groupFields.find((f) => f.id === groupFieldId) ?? null) : null;
   const rowGroups = groupField ? groupRows(displayedRows, groupField, displayContext) : [];
-  const openChipLayout = openParam ? chipLayouts[openParam] ?? null : null;
+  const activeView = savedViews.find((v) => viewMatchesState(v, viewMode, sortPref, filters)) ?? null;
+
+  // The overflow chips, in the order the rail gives their buttons up. An
+  // empty list means the rail holds everything, and then the header row
+  // above the list is not drawn at all.
+  const stripChips: {
+    key: 'view' | 'filter' | 'group' | 'views';
+    icon: keyof typeof Ionicons.glyphMap;
+    label: string;
+    active: boolean;
+  }[] = [
+    ...(railPlan.shape
+      ? []
+      : [{ key: 'view' as const, icon: VIEW_ICONS[viewMode], label: VIEW_LABELS[viewMode], active: false }]),
+    ...(!railPlan.filter && filterFields.length > 0
+      ? [
+          {
+            key: 'filter' as const,
+            icon: 'funnel-outline' as const,
+            label: filters.length > 0 ? `Фільтр · ${filters.length}` : 'Фільтр',
+            active: filters.length > 0,
+          },
+        ]
+      : []),
+    ...(!railPlan.group && groupFields.length > 0
+      ? [
+          {
+            key: 'group' as const,
+            icon: 'layers-outline' as const,
+            label: groupField ? groupField.name : 'Групування',
+            active: !!groupField,
+          },
+        ]
+      : []),
+    ...(railPlan.views
+      ? []
+      : [
+          {
+            key: 'views' as const,
+            icon: 'bookmark-outline' as const,
+            label: activeView ? activeView.name : 'Вигляди',
+            active: !!activeView,
+          },
+        ]),
+  ];
+
+  // Only while that chip is actually on the screen. A layout remembered
+  // from the last time a button was in the strip would otherwise anchor
+  // the list to where a chip no longer is, once the same button moved on
+  // to the rail.
+  const openChipLayout =
+    openParam && stripChips.some((chip) => chip.key === openParam)
+      ? chipLayouts[openParam] ?? null
+      : null;
   // A chip's onLayout position is relative to the scrolling strip's
   // content, not the screen - undo the current scroll offset to place the
   // overlay under where the chip actually sits right now.
   const openChipScreenX = openChipLayout ? stripXRef.current + openChipLayout.x - scrollXRef.current : 0;
-  const activeView = savedViews.find((v) => viewMatchesState(v, viewMode, sortPref, filters)) ?? null;
   const selectedRows = rows.filter((r) => selectedIds.has(r.id));
   const rowMenuRow = rowMenuId ? rows.find((r) => r.id === rowMenuId) ?? null : null;
   const rowPageRow = rowPageId ? rows.find((r) => r.id === rowPageId) ?? null : null;
@@ -1652,9 +1713,12 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
         ]}
       />
 
-      {/* The view, the sort, the filter: what is changed all day while
-          working, and so always on the screen rather than behind a gear. */}
-      <ScrollView
+      {/* What the rail could not hold. Every chip here is a button that
+          did not fit on it, in the same order the ladder above gives them
+          up - and when the rail holds everything this row is not drawn at
+          all, which is the header the user asked to get back. */}
+      {stripChips.length > 0 && (
+        <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           // Frozen while a list is open: a horizontal drag meant to scroll
@@ -1673,54 +1737,22 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
             stripXRef.current = e.nativeEvent.layout.x;
           }}
         >
-          <Pressable
-            style={styles.paramChip}
-            onLayout={(e) => rememberChip('view', e.nativeEvent.layout)}
-            onPress={() => openParamList('view')}
-          >
-            <Ionicons name={VIEW_ICONS[viewMode]} size={13} color="rgba(255,255,255,0.85)" />
-            <Text style={styles.paramChipLabel} numberOfLines={1}>
-              {VIEW_LABELS[viewMode]}
-            </Text>
-            <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
-          </Pressable>
-
-          {/* Everything else left this strip for the rail: ordering,
-              filtering, grouping and the saved views. The strip had five
-              chips and the rail cut the last of them off. What is left is
-              the one thing that is the list's own SHAPE.
-
-              Except the saved views, on a screen too short to give them a
-              fourth button on the rail: they come back here rather than
-              become unreachable. */}
-          {!railPlan.group && groupFields.length > 0 && (
+          {stripChips.map((chip) => (
             <Pressable
-              style={[styles.paramChip, !!groupField && styles.paramChipActive]}
-              onLayout={(e) => rememberChip('group', e.nativeEvent.layout)}
-              onPress={() => openParamList('group')}
+              key={chip.key}
+              style={[styles.paramChip, chip.active && styles.paramChipActive]}
+              onLayout={(e) => rememberChip(chip.key, e.nativeEvent.layout)}
+              onPress={() => openParamList(chip.key)}
             >
-              <Ionicons name="layers-outline" size={13} color="rgba(255,255,255,0.85)" />
+              <Ionicons name={chip.icon} size={13} color="rgba(255,255,255,0.85)" />
               <Text style={styles.paramChipLabel} numberOfLines={1}>
-                {groupField ? groupField.name : 'Групування'}
+                {chip.label}
               </Text>
               <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
             </Pressable>
-          )}
-
-          {!railPlan.views && (
-            <Pressable
-              style={[styles.paramChip, !!activeView && styles.paramChipActive]}
-              onLayout={(e) => rememberChip('views', e.nativeEvent.layout)}
-              onPress={() => openParamList('views')}
-            >
-              <Ionicons name="bookmark-outline" size={13} color="rgba(255,255,255,0.85)" />
-              <Text style={styles.paramChipLabel} numberOfLines={1}>
-                {activeView ? activeView.name : 'Вигляди'}
-              </Text>
-              <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
-            </Pressable>
-          )}
+          ))}
         </ScrollView>
+      )}
 
       {/* An open list is drawn HERE, over the whole screen, rather than
           inside the capsule it belongs to - even though it's positioned to
@@ -2157,8 +2189,20 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
         <RailCapsule
           bottom={rail.actionsBottom}
           buttons={[
+            // The shape of the list, which used to be the header's own
+            // chip - its icon IS the shape, so the button says which one
+            // is in force with no label at all.
+            ...(railPlan.shape
+              ? [
+                  {
+                    icon: VIEW_ICONS[viewMode],
+                    onPress: () => openParamList('view'),
+                    active: openParam === 'view',
+                  },
+                ]
+              : []),
             { icon: 'filter-outline', onPress: () => openParamList('sort'), active: openParam === 'sort' },
-            ...(filterFields.length > 0
+            ...(railPlan.filter && filterFields.length > 0
               ? [
                   {
                     icon: 'funnel-outline' as const,
@@ -2176,7 +2220,6 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
                   },
                 ]
               : []),
-            // The fourth button, on a screen tall enough to hold it.
             ...(railPlan.views
               ? [
                   {
@@ -2186,8 +2229,8 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
                   },
                 ]
               : []),
-            // And where even three capsules will not stand clear of the
-            // top one, choosing gives up its own and joins these.
+            // And where the stack will not stand clear of the top
+            // capsule, choosing gives up its own and joins these.
             ...(railPlan.selectOwn
               ? []
               : [{ icon: 'checkmark-circle-outline' as const, onPress: toggleSelectMode }]),
@@ -2202,26 +2245,13 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           buttons={[{ icon: 'checkmark-circle-outline', onPress: toggleSelectMode }]}
         />
       )}
-      {/* A record, and a view of the records - the two things this screen
-          makes. The plus is drawn on the thing it adds. */}
+      {/* A record. The plus is drawn on the thing it adds. Making a view
+          is not here: it is the last entry of the views list, which the
+          bookmark button already opens. */}
       {railFocused && !isSelectMode && (
         <RailCapsule
           bottom={rail.addBottom}
-          buttons={[
-            { icon: 'albums-outline', badge: 'add-circle-outline', onPress: openNewRow },
-            // The second button goes on the shortest screens, where the
-            // rail has already given up everything else it can; a new view
-            // is still reachable from the strip's own chip.
-            ...(railPlan.createBoth
-              ? [
-                  {
-                    icon: 'bookmark-outline' as const,
-                    badge: 'add-circle-outline' as const,
-                    onPress: () => setViewPrompt({ mode: 'new' }),
-                  },
-                ]
-              : []),
-          ]}
+          buttons={[{ icon: 'albums-outline', badge: 'add-circle-outline', onPress: openNewRow }]}
         />
       )}
 

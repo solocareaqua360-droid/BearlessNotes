@@ -10,6 +10,11 @@
 // gesture, so the rail stands a little in from the edge.
 export const RAIL_RIGHT = 14;
 export const RAIL_GAP = 12;
+// The least the pieces of the rail may be pushed together before a shape
+// counts as not fitting. Two points below the preferred gap, and those two
+// points are the difference between choosing keeping its own capsule on a
+// 736pt phone and having to join the others.
+export const RAIL_MIN_GAP = 10;
 
 // The navigation island, laid out vertically.
 export const NAV_BUTTON = 48;
@@ -106,7 +111,7 @@ export function railFreeHeight(
 // put on the fourth button.
 export function railFits(free: number, actionsHeight: number, createHeight: number, historyHeight: number = 0) {
   const gaps = historyHeight > 0 ? 4 : 3;
-  return free - (actionsHeight + createHeight + historyHeight) >= gaps * RAIL_GAP;
+  return free - (actionsHeight + createHeight + historyHeight) >= gaps * RAIL_MIN_GAP;
 }
 
 // `actionsHeight`: the slot above the add button used to be the folder
@@ -133,7 +138,7 @@ export function useRailLayout(
   const navBottom = insetBottom + NAV_BOTTOM;
   const pieces = actionsHeight + createHeight + historyHeight;
   const gaps = historyHeight > 0 ? 4 : 3;
-  const gap = Math.max(RAIL_GAP, (free - pieces) / gaps);
+  const gap = Math.max(RAIL_MIN_GAP, (free - pieces) / gaps);
   const addBottom = foot + gap;
   const historyBottom = addBottom + createHeight + gap;
   // The bottom edge of the actions capsule. Kept under its old name too.
