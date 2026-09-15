@@ -487,26 +487,23 @@ export default function DatabasesScreen() {
     return parseTileSize(viewData.sizes?.[key]) ?? parseTileSize(tileSizes[key]) ?? defaultSizeFor(key);
   }
 
-  // Where the user put this tile in THIS view, relative to its section -
-  // or nowhere, and it flows.
-  function positionFor(key: string): TilePosition | null {
-    if (draftPosition?.key === key) return { x: draftPosition.x, y: draftPosition.y };
+  // Where the user put this tile in THIS view, relative to its section,
+  // and the divider that section stands under ('' for the top of the
+  // board). A divider that is gone takes its tiles back to the top.
+  function storedPosition(key: string): TilePosition | null {
     return parseTilePosition(viewData.positions?.[key]);
   }
-
-  // The divider this tile stands under - '' for the top of the board. A
-  // divider that is gone takes its tiles back to the top.
-  function sectionOf(key: string): string {
+  function storedSection(key: string): string {
     const id = viewData.sections?.[key];
     return id && viewData.dividers?.[id] ? id : '';
   }
   const dividerIds = Object.entries(viewData.dividers ?? {})
     .sort((a, b) => a[1].y - b[1].y || a[0].localeCompare(b[0]))
     .map(([id]) => id);
-  function groupSections(items: BoardItem[]): BoardSection<BoardItem>[] {
+  function groupSections(items: BoardItem[], member = sectionOf): BoardSection<BoardItem>[] {
     return [
-      { id: '', items: items.filter((item) => sectionOf(item.key) === '') },
-      ...dividerIds.map((id) => ({ id, items: items.filter((item) => sectionOf(item.key) === id) })),
+      { id: '', items: items.filter((item) => member(item.key) === '') },
+      ...dividerIds.map((id) => ({ id, items: items.filter((item) => member(item.key) === id) })),
     ];
   }
 
@@ -520,6 +517,11 @@ export default function DatabasesScreen() {
     const positions: Record<string, string> = {
       [dropped.item.key]: formatTilePosition(relOf(dropped)),
     };
+    // Which side of the dividers it came down on - it may have been
+    // carried across one.
+    const sections: Record<string, string | ReturnType<typeof deleteField>> = {
+      [dropped.item.key]: section || deleteField(),
+    };
     board.forEach((p) => {
       if (p.item.key === dropped.item.key || sectionOf(p.item.key) !== section) return;
       const stored = parseTilePosition(viewData.positions?.[p.item.key]);
@@ -527,7 +529,7 @@ export default function DatabasesScreen() {
       const rect = { item: p.item, x: stored.x, y: stored.y + startOf(section), size: p.size };
       if (tilesOverlap(dropped, rect)) positions[p.item.key] = formatTilePosition(relOf(p));
     });
-    setDoc(tileLayoutsDoc, { [tileView]: { positions } }, { merge: true });
+    setDoc(tileLayoutsDoc, { [tileView]: { positions, sections } }, { merge: true });
   }
 
   // Built in first, then the databases the user made, then the two tiles
@@ -582,8 +584,40 @@ export default function DatabasesScreen() {
   const cellStep = cellSize + gap;
   const spanSize = (cells: number) => cells * cellSize + (cells - 1) * gap;
 
-  const pinnedAt = (item: BoardItem) => positionFor(item.key);
   const breakAt = (item: BoardItem) => showRule && item.key === firstOwnKey;
+  // The board as it stands, with nothing in the hand: what the rows of
+  // the dividers are measured off. The tile being carried is resolved
+  // against THESE rows - which section it is now over, and where in it -
+  // so that a tile can be carried across a divider into the section on
+  // the other side. A divider stops a tile only when the board moves it
+  // ITSELF: growth and filling stay inside a section (layoutSections).
+  const baseBoard = layoutSections(
+    groupSections(orderedItems, storedSection),
+    (item) => sizeFor(item.key),
+    (item) => storedPosition(item.key),
+    columns,
+    breakAt
+  );
+  const draftAt = (() => {
+    if (!draftPosition) return null;
+    let section = '';
+    let start = 0;
+    for (const id of dividerIds) {
+      const row = baseBoard.sections.find((s) => s.id === id)?.start ?? 0;
+      if (row > draftPosition.y) break;
+      section = id;
+      start = row;
+    }
+    return { key: draftPosition.key, section, x: draftPosition.x, y: Math.max(0, draftPosition.y - start) };
+  })();
+  function positionFor(key: string): TilePosition | null {
+    if (draftAt?.key === key) return { x: draftAt.x, y: draftAt.y };
+    return storedPosition(key);
+  }
+  function sectionOf(key: string): string {
+    return draftAt?.key === key ? draftAt.section : storedSection(key);
+  }
+  const pinnedAt = (item: BoardItem) => positionFor(item.key);
   const carriedFirst = (item: BoardItem) => item.key === draftPosition?.key;
   // The board with one tile at a given size - the size a grip is asking
   // for, or the one it just let go at. Every placed tile after that one
@@ -737,17 +771,14 @@ export default function DatabasesScreen() {
   // flowing around it (placeTiles), which is the control the user asked
   // for: "щоб плитка вела себе... а не так, що я її не контролюю".
   //
-  // Held inside its own section: the rows between the divider above and
-  // the one below, measured with the tile itself off the board. The
-  // answer is relative to the section, like every stored place.
+  // The row is the board's own, not a section's: a finger may carry a
+  // tile across a divider, and which section it then belongs to is read
+  // off where it landed (draftAt). Only the board moving a tile by
+  // itself - a resize, a fill - is stopped by a divider.
   function cellUnder(key: string, x: number, y: number): TilePosition {
     const size = sizeFor(key);
     const col = Math.max(0, Math.min(columns - size.w, Math.round(x / cellStep)));
-    const section = sectionOf(key);
-    const start = startOf(section);
-    const room = boardWith(null, null, key).sections.find((s) => s.id === section)?.rows ?? 0;
-    const row = Math.max(start, Math.min(start + Math.max(0, room - size.h), rowUnder(y)));
-    return { x: col, y: row - start };
+    return { x: col, y: rowUnder(y) };
   }
 
 
@@ -891,7 +922,7 @@ export default function DatabasesScreen() {
                       hapticButtonDown();
                       carryOrigin.current = { x: x * cellStep, y: rowTop(y) };
                       setDrag({ key: item.key, x: x * cellStep, y: rowTop(y) });
-                      setDraftPosition({ key: item.key, x, y: y - startOf(sectionOf(item.key)) });
+                      setDraftPosition({ key: item.key, x, y });
                     }}
                     onCarryMove={(dx, dy) => {
                       const nextX = carryOrigin.current.x + dx;
