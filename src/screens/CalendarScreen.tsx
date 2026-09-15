@@ -56,9 +56,7 @@ import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import SaveRing from '../components/SaveRing';
 import { GLASS_ISLAND } from '../constants/glass';
-import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
-import RailCapsule from '../components/RailCapsule';
-import { useRail } from '../hooks/useRail';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import Menu from '../components/surfaces/Menu';
 
 const ACCENT = '#3B82F6';
@@ -194,15 +192,6 @@ export default function CalendarScreen() {
     { id: string; text: string; checked: boolean; documentId: string; reminderTime?: string }[]
   >([]);
   const [menuOpen, setMenuOpen] = useState(false);
-  // Which days the strip shows, on the rail's own funnel - the same button
-  // every other list screen in the app carries. Its OPTIONS stay rows with
-  // ticks inside a menu, because they are switches and the user's own call
-  // was that a switch reads better as a line than as one more circle.
-  const [dayFilterOpen, setDayFilterOpen] = useState(false);
-  // Two buttons and the save ring in the top capsule; a funnel under it;
-  // choosing in a capsule of its own, where it is on every other screen.
-  // The calendar is one of the four TABS, so the island is at its foot.
-  const rail = useRail(CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, 0, CAPSULE_HEIGHT_1, true);
   // The capsule stands on the rail at the right edge now, drawn through
   // the portal for its blur - so it has to withdraw when the calendar
   // isn't the screen on show.
@@ -472,7 +461,6 @@ export default function CalendarScreen() {
 
   async function toggleCompactFilter(mode: 'filled' | 'history') {
     setMenuOpen(false);
-    setDayFilterOpen(false);
     const next = compactFilter === mode ? 'none' : mode;
     await setDoc(calendarPrefsDoc, { compactFilter: next }, { merge: true });
   }
@@ -745,64 +733,6 @@ export default function CalendarScreen() {
         </GlassPortal>
       )}
 
-      {/* Which days the strip shows, and choosing among the notes - the
-          two things this screen does TO its list, in the two places the
-          rest of the app keeps them. */}
-      {calendarFocused && (
-        <RailCapsule
-          bottom={rail.actionsBottom}
-          buttons={[
-            {
-              icon: 'funnel-outline',
-              onPress: () => setDayFilterOpen((v) => !v),
-              active: dayFilterOpen || compactFilter !== 'none',
-            },
-          ]}
-        />
-      )}
-      {calendarFocused && (
-        <RailCapsule
-          bottom={rail.historyBottom}
-          buttons={[
-            {
-              icon: noteSelectMode ? 'close-outline' : 'checkmark-circle-outline',
-              onPress: () => noteEditorRef.current?.toggleSelectMode(),
-              active: noteSelectMode,
-            },
-          ]}
-        />
-      )}
-
-      <Menu
-        visible={dayFilterOpen}
-        onClose={() => setDayFilterOpen(false)}
-        accent={ACCENT}
-        style={{ position: 'absolute', bottom: rail.actionsBottom, right: RAIL_CLEARANCE }}
-        entries={[
-          {
-            label: 'Усі дні',
-            icon: 'calendar-outline' as const,
-            checked: compactFilter === 'none',
-            onPress: () => {
-              if (compactFilter !== 'none') toggleCompactFilter(compactFilter);
-              setDayFilterOpen(false);
-            },
-          },
-          {
-            label: 'Лише заповнені дні',
-            icon: 'filter-outline' as const,
-            checked: compactFilter === 'filled',
-            onPress: () => toggleCompactFilter('filled'),
-          },
-          {
-            label: 'Лише дні з історією',
-            icon: 'time-outline' as const,
-            checked: compactFilter === 'history',
-            onPress: () => toggleCompactFilter('history'),
-          },
-        ]}
-      />
-
       <Menu
         visible={menuOpen}
         onClose={() => setMenuOpen(false)}
@@ -838,10 +768,25 @@ export default function CalendarScreen() {
                 },
               ]
             : []),
-          // Which days to show, and choosing among the notes, are on the
-          // rail now - the funnel and the tick, where they are on every
-          // other screen. What stays here is what only this screen has:
-          // the two things that unfold.
+          { kind: 'rule' as const },
+          {
+            label: 'Лише заповнені дні',
+            icon: 'filter-outline' as const,
+            checked: compactFilter === 'filled',
+            onPress: () => toggleCompactFilter('filled'),
+          },
+          {
+            label: 'Лише дні з історією',
+            icon: 'time-outline' as const,
+            checked: compactFilter === 'history',
+            onPress: () => toggleCompactFilter('history'),
+          },
+          { kind: 'rule' as const },
+          {
+            label: noteSelectMode ? 'Скасувати вибір' : 'Вибрати',
+            icon: noteSelectMode ? ('close-outline' as const) : ('ellipse-outline' as const),
+            onPress: () => noteEditorRef.current?.toggleSelectMode(),
+          },
         ]}
       />
 
