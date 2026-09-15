@@ -30,6 +30,7 @@ import { canScan, scanPages } from '../utils/documentScanner';
 import * as Print from 'expo-print';
 import { photoWithSketchHtml, sketchToSvg } from '../utils/sketchSvg';
 import * as Clipboard from 'expo-clipboard';
+import { insertedPiece, parsePastedText, worthSplitting, type ParsedBlock } from '../utils/pasteBlocks';
 import { dateKey, formatShortDate, parseDateKey } from '../utils/dateLocale';
 import ReminderSheet from '../components/ReminderSheet';
 import { cancelReminder, scheduleReminder } from '../utils/reminders';
@@ -3585,6 +3586,24 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     keepCaretVisibleWhileTyping();
     const current = blocks.find((b) => b.id === id);
     const currentType = current?.type ?? 'paragraph';
+
+    // A paste that carries a shape keeps it. React Native hands a
+    // TextInput plain text and nothing else, so the structure is read
+    // back OUT of what was inserted (see pasteBlocks): blank lines part
+    // paragraphs, "- " and "1." and "[ ]" become the lists they are
+    // written as, a run of tab-separated lines becomes a table. Before
+    // this, a page copied from anywhere arrived as one paragraph the
+    // length of the page.
+    if (!['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'link', 'divider'].includes(currentType)) {
+      const inserted = insertedPiece(current?.text ?? '', text);
+      if (inserted && /[\n\t]/.test(inserted.piece)) {
+        const parsed = parsePastedText(inserted.piece);
+        if (worthSplitting(parsed)) {
+          applyPaste(id, currentType, inserted.head, parsed, inserted.tail);
+          return;
+        }
+      }
+    }
     // A slash typed into an EMPTY block, and only then - a "/" in the
     // middle of a sentence is a slash.
     if (text === '/' && (current?.text ?? '') === '' && !['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'link', 'divider'].includes(currentType)) {
@@ -3661,6 +3680,52 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       const next = [...prev];
       next[index] = { ...next[index], text: before };
       next.splice(index + 1, 0, created);
+      return next;
+    });
+  }
+
+  // A parsed paste, laid into the document.
+  //
+  // The first piece joins what was already in the block (so pasting at
+  // the end of a sentence continues that sentence), the rest become
+  // blocks of their own after it, and whatever stood after the caret
+  // ends up at the end - the text around a paste is the user's own.
+  function applyPaste(
+    id: string,
+    currentType: BlockType,
+    head: string,
+    parsed: ParsedBlock[],
+    tail: string
+  ) {
+    const [first, ...rest] = parsed;
+    const made = rest.map((piece) => {
+      const block = buildBlock(generateId(), piece.type, piece.text);
+      if (piece.checked) block.checked = true;
+      if (piece.tableRows) block.tableRows = piece.tableRows;
+      return block;
+    });
+    // The caret lands at the end of what was pasted.
+    const last = made[made.length - 1];
+    if (last) focusIdRef.current = last.id;
+    bumpTextVersion(id);
+    setBlocks((prev) => {
+      const index = prev.findIndex((block) => block.id === id);
+      if (index === -1) return prev;
+      const next = [...prev];
+      // The block the paste started in keeps its own type unless it was
+      // empty and the first piece brought one of its own.
+      const emptyHost = head.trim() === '' && (prev[index].text ?? '') === '';
+      if (emptyHost && first.type !== 'paragraph') {
+        const rebuilt = buildBlock(id, first.type, first.text);
+        if (first.checked) rebuilt.checked = true;
+        if (first.tableRows) rebuilt.tableRows = first.tableRows;
+        next[index] = rebuilt;
+      } else {
+        next[index] = { ...next[index], text: `${head}${first.type === 'table' ? '' : first.text}` };
+      }
+      if (rest.length === 0 && tail) next[index] = { ...next[index], text: `${next[index].text}${tail}` };
+      else if (last && tail) made[made.length - 1] = { ...last, text: `${last.text}${tail}` };
+      next.splice(index + 1, 0, ...made);
       return next;
     });
   }
