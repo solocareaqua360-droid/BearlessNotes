@@ -672,9 +672,13 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   // grid takes as many columns as fit: two on a phone, three on that
   // screen, four on a tablet. Widths are exact rather than percentages,
   // since the gaps between columns have to come out of them.
-  const gridColumns = Math.max(2, Math.min(4, Math.floor(windowWidth / 300)));
+  // The rail's clearance comes off the right, as it does on every other
+  // grid in the app - the tiles are an exact pixel width, so the number
+  // they are worked out from has to be the width actually left over.
+  const gridUsable = windowWidth - CARD_GRID_PADDING - RAIL_CLEARANCE;
+  const gridColumns = Math.max(2, Math.min(4, Math.floor(gridUsable / 300)));
   const gridTileWidth = Math.floor(
-    (windowWidth - CARD_GRID_PADDING * 2 - CARD_GRID_GAP * (gridColumns - 1)) / gridColumns
+    (gridUsable - CARD_GRID_GAP * (gridColumns - 1)) / gridColumns
   );
 
   const titleOf = (row: CustomDatabaseRow) => rowTitleOf(database, row);
@@ -3889,7 +3893,10 @@ const styles = StyleSheet.create({
     // already account for the gap, so spreading them would double it and
     // leave a short last row strung across the screen.
     justifyContent: 'flex-start',
-    paddingHorizontal: CARD_GRID_PADDING,
+    paddingLeft: CARD_GRID_PADDING,
+    // Clear of the rail - the same number gridUsable above is worked out
+    // against.
+    paddingRight: RAIL_CLEARANCE,
     paddingVertical: 8,
     gap: CARD_GRID_GAP,
     paddingBottom: 170,

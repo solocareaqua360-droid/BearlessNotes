@@ -115,7 +115,11 @@ export default function BoardsListScreen() {
   // Same rule as a database's card grid: a tile stays near 300dp and the
   // grid takes as many columns as fit - two on a phone, more on a wide
   // screen. The content column caps the width it divides.
-  const gridWidth = Math.min(windowWidth, MAX_CONTENT_WIDTH) - 40;
+  // 20 of padding on the left and the rail's clearance on the right -
+  // the tile width is an exact number of pixels, so it has to be worked
+  // out from the SAME margins the grid actually uses, or the last column
+  // ends up under the buttons.
+  const gridWidth = Math.min(windowWidth, MAX_CONTENT_WIDTH) - 20 - RAIL_CLEARANCE;
   const tileColumns = Math.max(2, Math.min(4, Math.floor(gridWidth / 300)));
   const tileWidth = Math.floor((gridWidth - 12 * (tileColumns - 1)) / tileColumns);
 
@@ -385,7 +389,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 12,
     paddingTop: RAIL_TOP_PAD,
-    paddingHorizontal: 20,
+    paddingLeft: 20,
+    // Clear of the rail, like the row list.
+    paddingRight: RAIL_CLEARANCE,
     paddingBottom: 140,
   },
   tile: {

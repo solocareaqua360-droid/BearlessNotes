@@ -761,7 +761,11 @@ const styles = StyleSheet.create({
   },
   gridList: {
     paddingVertical: 8,
-    paddingHorizontal: 20,
+    paddingLeft: 20,
+    // The rail stands at the right edge, and the cells are a percentage
+    // of this container - so the grid stops short of it here rather than
+    // running the last column under the buttons.
+    paddingRight: RAIL_CLEARANCE,
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
