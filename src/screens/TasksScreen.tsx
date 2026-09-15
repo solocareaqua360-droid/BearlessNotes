@@ -626,7 +626,7 @@ export default function TasksScreen() {
               <Ionicons
                 name={expandedGroups.has(section.key) ? 'chevron-down' : 'chevron-forward'}
                 size={16}
-                color="#9CA3AF"
+                color="rgba(255,255,255,0.45)"
               />
               <Text style={styles.collapseLabel}>Завершені ({section.completed.length})</Text>
             </Pressable>
@@ -1084,24 +1084,29 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingVertical: 8,
+    paddingLeft: 20,
+    gap: 8,
     // The rail stands at the right edge; the rows stop short of it rather
     // than running under it, as they do on every other list.
-    paddingRight: RAIL_CLEARANCE - 20,
+    paddingRight: RAIL_CLEARANCE,
   },
   group: {
+    gap: 8,
     marginBottom: 8,
   },
   todayDivider: {
     height: 1,
     backgroundColor: GLASS_LINE,
-    marginHorizontal: 20,
-    marginBottom: 4,
+    marginVertical: 4,
   },
   groupHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 20,
+    // The list itself keeps the side margins now, so a header lines up
+    // with the left edge of the cards under it rather than indenting
+    // twice.
+    paddingHorizontal: 4,
     paddingTop: 12,
     paddingBottom: 4,
   },
@@ -1120,7 +1125,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 20,
+    paddingHorizontal: 4,
     paddingVertical: 10,
   },
   collapseLabel: {
@@ -1128,12 +1133,20 @@ const styles = StyleSheet.create({
     fontFamily: FONT_REGULAR,
     color: 'rgba(255,255,255,0.45)',
   },
+  // A task sits on a card of its own, the same one a folder row and a
+  // file row sit on. On white the rows were separated by nothing but
+  // space and that was enough; on the dark backdrop the user could not
+  // tell where one ended - "без меж погано зчитується візуально".
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingHorizontal: 20,
+    paddingHorizontal: 14,
     paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
   },
   rowTextTap: {
     flex: 1,
