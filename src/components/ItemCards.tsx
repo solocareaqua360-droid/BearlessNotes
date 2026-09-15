@@ -118,7 +118,7 @@ export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
     <View style={[styles.row, { backgroundColor: background }]}>
       <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
         {link.imageUrl ? (
-          <Image source={{ uri: link.imageUrl }} style={styles.rowThumbWide} resizeMode="cover" />
+          <Image source={{ uri: link.imageUrl }} style={styles.rowThumbWide} resizeMode="cover" resizeMethod="resize" />
         ) : (
           <View style={[styles.rowThumbWide, styles.thumbIconWindow, { backgroundColor: `${info.color}1A` }]}>
             <Ionicons name={info.icon} size={22} color={info.color} />
@@ -173,7 +173,7 @@ export function LinkGridCell({ link, gridWidth, ...rest }: { link: LinkCardItem;
     >
       <Pressable style={styles.gridTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
         {link.imageUrl ? (
-          <Image source={{ uri: link.imageUrl }} style={styles.gridThumb} resizeMode="cover" />
+          <Image source={{ uri: link.imageUrl }} style={styles.gridThumb} resizeMode="cover" resizeMethod="resize" />
         ) : (
           <View style={[styles.gridThumb, styles.gridThumbIcon, { backgroundColor: `${info.color}1A` }]}>
             <Ionicons name={info.icon} size={26} color={info.color} />
@@ -212,7 +212,7 @@ export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
             name room. Blown up to the full width it was still not
             readable, so the space was spent on nothing. */}
         {preview?.thumbUri ? (
-          <Image source={{ uri: preview.thumbUri }} style={styles.rowThumbWide} resizeMode="cover" />
+          <Image source={{ uri: preview.thumbUri }} style={styles.rowThumbWide} resizeMode="cover" resizeMethod="resize" />
         ) : (
           // The same window, whatever the file is: a row of cards whose
           // pictures are different shapes reads as a broken grid, and an
@@ -267,7 +267,7 @@ export function FileGridCell({ file, gridWidth, ...rest }: { file: FileCardItem;
     >
       <Pressable style={styles.gridTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
         {preview?.thumbUri ? (
-          <Image source={{ uri: preview.thumbUri }} style={styles.gridThumb} resizeMode="cover" />
+          <Image source={{ uri: preview.thumbUri }} style={styles.gridThumb} resizeMode="cover" resizeMethod="resize" />
         ) : preview?.text ? (
           // No picture to make from a document, but its own first lines
           // say more than an icon of a page does - in the same window.
@@ -327,7 +327,7 @@ export function PhotoRow({ photo, ...rest }: { photo: PhotoCardItem } & Common) 
     <View style={[styles.row, { backgroundColor: background }]}>
       <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
         {status === 'ready' ? (
-          <Image source={{ uri: source ?? photo.imageUri }} style={styles.rowThumbWide} resizeMode="cover" />
+          <Image source={{ uri: source ?? photo.imageUri }} style={styles.rowThumbWide} resizeMode="cover" resizeMethod="resize" />
         ) : (
           <View style={[styles.rowThumbWide, styles.thumbIconWindow, { backgroundColor: 'rgba(236,72,153,0.10)' }]}>
             {status === 'missing' ? (

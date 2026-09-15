@@ -884,7 +884,7 @@ function DraggableCard({
           <View style={styles.refCard}>
             {!card.documentExpanded &&
               (card.documentPreviewImageUri ? (
-                <Image source={{ uri: card.documentPreviewImageUri }} style={styles.refThumb} resizeMode="cover" />
+                <Image source={{ uri: card.documentPreviewImageUri }} style={styles.refThumb} resizeMode="cover" resizeMethod="resize" />
               ) : (
                 <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
                   <Ionicons name="document-text-outline" size={22} color="#6B7280" />
@@ -911,7 +911,7 @@ function DraggableCard({
               <Image
                 source={{ uri: imageSource }}
                 style={[styles.refThumb, { height: cardImageHeight(cardWidth) }]}
-                resizeMode="cover"
+                resizeMode="cover" resizeMethod="resize"
               />
             ) : (
               <View style={[styles.refThumb, styles.refThumbPlaceholder, { height: cardImageHeight(cardWidth) }]}>
@@ -938,7 +938,7 @@ function DraggableCard({
         ) : type === 'link' ? (
           <View style={styles.refCard}>
             {card.linkImageUrl ? (
-              <Image source={{ uri: card.linkImageUrl }} style={styles.refThumb} resizeMode="cover" />
+              <Image source={{ uri: card.linkImageUrl }} style={styles.refThumb} resizeMode="cover" resizeMethod="resize" />
             ) : (
               <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
                 <Ionicons name="link-outline" size={22} color="#9CA3AF" />

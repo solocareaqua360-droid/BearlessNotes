@@ -315,7 +315,7 @@ export default function DocumentCard({
           { backgroundColor: background },
         ]}
       >
-        <Image source={GRAIN} resizeMode="cover" style={styles.grain} />
+        <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />
         <Pressable style={styles.gridTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
           {/* Bleeds flush to the card's own top/left/right edges - no
               padding, no border-radius of its own. The card's overflow:
@@ -358,7 +358,7 @@ export default function DocumentCard({
 
   return (
     <View style={[styles.row, flush && styles.rowFlush, { backgroundColor: background }]}>
-      <Image source={GRAIN} resizeMode="cover" style={styles.grain} />
+      <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />
       <Pressable style={styles.tap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
         {thumbNode}
         <View style={styles.body}>

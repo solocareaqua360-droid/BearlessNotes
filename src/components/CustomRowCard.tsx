@@ -47,7 +47,7 @@ export function RelationThumb({
       ]}
     >
       {shown === 'ready' ? (
-        <Image source={{ uri: source ?? uri }} style={styles.thumbImage} resizeMode="cover" />
+        <Image source={{ uri: source ?? uri }} style={styles.thumbImage} resizeMode="cover" resizeMethod="resize" />
       ) : (
         <View style={[styles.thumbImage, styles.thumbStatus]}>
           {shown === 'missing' ? (

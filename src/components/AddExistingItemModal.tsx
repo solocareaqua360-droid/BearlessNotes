@@ -389,7 +389,7 @@ export default function AddExistingItemModal({
                 filteredVideoLinks.map((l) => (
                   <Pressable key={l.id} style={styles.row} onPress={() => onPick(blockFromLink(l))}>
                     {l.imageUrl ? (
-                      <Image source={{ uri: l.imageUrl }} style={styles.thumb} resizeMode="cover" />
+                      <Image source={{ uri: l.imageUrl }} style={styles.thumb} resizeMode="cover" resizeMethod="resize" />
                     ) : (
                       <View style={styles.docIcon}>
                         <Ionicons name="videocam-outline" size={18} color={ACCENT} />
@@ -425,7 +425,7 @@ export default function AddExistingItemModal({
                 filteredOtherLinks.map((l) => (
                   <Pressable key={l.id} style={styles.row} onPress={() => onPick(blockFromLink(l))}>
                     {l.imageUrl ? (
-                      <Image source={{ uri: l.imageUrl }} style={styles.thumb} resizeMode="cover" />
+                      <Image source={{ uri: l.imageUrl }} style={styles.thumb} resizeMode="cover" resizeMethod="resize" />
                     ) : (
                       <View style={styles.docIcon}>
                         <Ionicons name="link-outline" size={18} color={ACCENT} />

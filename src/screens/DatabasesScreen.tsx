@@ -1603,7 +1603,7 @@ function BoardTile({
           bright picture. */}
       {background && (
         <>
-          <Image source={{ uri: background }} style={styles.tileImage} resizeMode="cover" />
+          <Image source={{ uri: background }} style={styles.tileImage} resizeMode="cover" resizeMethod="resize" />
           <View style={styles.tileScrim} pointerEvents="none" />
         </>
       )}
@@ -1620,7 +1620,7 @@ function BoardTile({
         {showThumbs ? (
           <View style={styles.thumbRow}>
             {thumbs!.slice(0, size.w >= 3 ? 4 : 2).map((uri) => (
-              <Image key={uri} source={{ uri }} style={styles.thumb} resizeMode="cover" />
+              <Image key={uri} source={{ uri }} style={styles.thumb} resizeMode="cover" resizeMethod="resize" />
             ))}
           </View>
         ) : (

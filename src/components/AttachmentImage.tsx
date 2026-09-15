@@ -28,6 +28,14 @@ export default function AttachmentImage({
   driveFileId,
   style,
   resizeMode = 'cover',
+  // Android decodes a picture at its FULL resolution unless told the
+  // size it will actually be drawn at. A screen of photographs is then a
+  // screen of forty-megabyte bitmaps, the garbage collector runs
+  // continuously, and the whole interface stutters in a way that reads
+  // as a dropped frame rate rather than as this. 'resize' hands Fresco
+  // the view's size and it decodes to fit. Thumbnails only: a picture
+  // meant to be looked at full size stays 'auto'.
+  resizeMethod = 'resize',
   // A picture in a grid being scrolled past is not someone looking at it
   // - see attachmentCache. Only a note that carries the picture says so.
   countsAsUse = false,
@@ -36,10 +44,12 @@ export default function AttachmentImage({
   driveFileId?: string;
   style?: StyleProp<ImageStyle>;
   resizeMode?: ImageResizeMode;
+  resizeMethod?: 'auto' | 'resize' | 'scale' | 'none';
   countsAsUse?: boolean;
 }) {
   const { status, source } = useAttachmentSource(uri, driveFileId, countsAsUse);
-  if (source) return <Image source={{ uri: source }} style={style} resizeMode={resizeMode} />;
+  if (source)
+    return <Image source={{ uri: source }} style={style} resizeMode={resizeMode} resizeMethod={resizeMethod} />;
   return (
     <View style={[style, styles.frame]}>
       {status === 'missing' ? (

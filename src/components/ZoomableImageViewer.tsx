@@ -90,7 +90,16 @@ export default function ZoomableImageViewer({ uri, driveFileId, onClose, actions
       </Pressable>
       <GestureDetector gesture={gesture}>
         <Animated.View style={[styles.imageWrap, animatedStyle]}>
-          <AttachmentImage uri={uri} driveFileId={driveFileId} style={styles.image} resizeMode="contain" countsAsUse />
+          {/* The one picture that must NOT be decoded down to its frame:
+              this is the viewer, and it is meant to be zoomed into. */}
+          <AttachmentImage
+            uri={uri}
+            driveFileId={driveFileId}
+            style={styles.image}
+            resizeMode="contain"
+            resizeMethod="scale"
+            countsAsUse
+          />
         </Animated.View>
       </GestureDetector>
       {!!actions?.length && (
