@@ -26,6 +26,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
+import { useFlattenPhoto } from '../hooks/useFlattenPhoto';
 import { canScan, scanPages } from '../utils/documentScanner';
 import * as Print from 'expo-print';
 import { photoWithSketchHtml, sketchToSvg } from '../utils/sketchSvg';
@@ -2133,6 +2134,10 @@ export type DocumentEditorHandle = {
 
 function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHandle>) {
   const embedded = 'embedded' in props;
+  // Puts a shared/downloaded photo together with its drawing - see
+  // useFlattenPhoto. `flattenNode` mounts off-screen; it only ever
+  // draws for the one frame a flatten is actually happening.
+  const { flatten: flattenPhoto, node: flattenNode } = useFlattenPhoto();
   // The editor's own controls stand on the right edge the way the
   // documents screen's do. Drawn through the portal for the blur's sake,
   // which means they have to withdraw when this screen isn't the one on
@@ -4020,7 +4025,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     );
   }
 
-  async function downloadImageBlock(uri: string) {
+  async function downloadImageBlock(block: Block) {
+    const uri = await flattenPhoto(
+      block.imageUri!,
+      block.driveFileId,
+      block.sketchElements,
+      block.sketchWidth,
+      block.sketchHeight
+    );
     const fileName = `photo-${Date.now()}.jpg`;
     const destUri = await downloadToDevice(uri, fileName, 'image/jpeg');
     if (destUri) showDownloadToast(fileName, destUri, 'image/jpeg');
@@ -4600,10 +4612,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     setBlocks(next);
   }
 
-  async function shareImageBlock(uri: string) {
+  async function shareImageBlock(block: Block) {
     try {
       const available = await Sharing.isAvailableAsync();
       if (!available) return;
+      const uri = await flattenPhoto(
+        block.imageUri!,
+        block.driveFileId,
+        block.sketchElements,
+        block.sketchWidth,
+        block.sketchHeight
+      );
       await Sharing.shareAsync(uri);
     } catch {
       // No sharing app available or the user backed out - nothing to do.
@@ -5260,7 +5279,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   key: 'share',
                   icon: 'share-social-outline',
                   label: 'Поділитись',
-                  onPress: () => shareImageBlock(viewerBlock.imageUri!),
+                  // The picture and its drawing (if it has one) go out
+                  // together - see useFlattenPhoto. The layer is never
+                  // touched by this; it is only put together for the
+                  // file that leaves the app.
+                  onPress: () => shareImageBlock(viewerBlock),
                 },
                 {
                   key: 'download',
@@ -5273,9 +5296,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   // seconds, so a download that worked looked like one
                   // that did nothing.
                   onPress: () => {
-                    const uri = viewerBlock.imageUri!;
+                    const block = viewerBlock;
                     setViewerImageId(null);
-                    downloadImageBlock(uri);
+                    downloadImageBlock(block);
                   },
                 },
                 {
@@ -5497,6 +5520,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           )
         }
       />
+      {flattenNode}
     </View>
   );
 }
