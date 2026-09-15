@@ -40,6 +40,23 @@ import { cancelReminder, scheduleReminder } from '../utils/reminders';
 import { formatShortDate, parseDateKey } from '../utils/dateLocale';
 import { sortItems } from '../utils/sortItems';
 import ContentColumn from '../components/ContentColumn';
+import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ScreenBackdrop from '../components/ScreenBackdrop';
+import RailCapsule from '../components/RailCapsule';
+import Menu from '../components/surfaces/Menu';
+import { GlassPortal } from '../components/GlassPortal';
+import { useBlurTarget } from '../components/GlassTarget';
+import { useRail } from '../hooks/useRail';
+import {
+  CAPSULE_HEIGHT,
+  CAPSULE_HEIGHT_1,
+  CHROME_TOP,
+  CAPSULE_DROP,
+  RAIL_CLEARANCE,
+  RAIL_RIGHT,
+} from '../constants/rail';
+import { GLASS_BODY_BLURRED, GLASS_CARD, GLASS_ISLAND, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { confirm } from '../components/surfaces/Ask';
 
@@ -140,6 +157,13 @@ export default function TasksScreen() {
     clear: clearSelection,
   } = useMultiSelect();
   const [menuOpen, setMenuOpen] = useState(false);
+  const railBlurTarget = useBlurTarget();
+  const insets = useSafeAreaInsets();
+  // One button at the top (the way out), what this list can be DONE to
+  // under it, and choosing in its own capsule. This screen is PUSHED over
+  // the tabs, so there is no island at its foot, and tasks are made inside
+  // a document, so there is no "+" either.
+  const rail = useRail(CAPSULE_HEIGHT_1, CAPSULE_HEIGHT, 0, CAPSULE_HEIGHT_1, false);
   const { sortPref, selectSortField } = useSortPref('tasksPrefs');
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -507,7 +531,7 @@ export default function TasksScreen() {
           <Ionicons
             name={item.checked ? 'checkbox' : 'square-outline'}
             size={22}
-            color={item.checked ? ACCENT : '#9CA3AF'}
+            color={item.checked ? ACCENT : 'rgba(255,255,255,0.45)'}
           />
         </Pressable>
         <Pressable
@@ -529,7 +553,7 @@ export default function TasksScreen() {
                   project ? { backgroundColor: `${project.color}1A` } : styles.chipEmpty,
                 ]}
               >
-                <Text style={[styles.chipText, { color: project ? project.color : '#9CA3AF' }]}>
+                <Text style={[styles.chipText, { color: project ? project.color : 'rgba(255,255,255,0.45)' }]}>
                   {project ? project.name : 'Без проекту'}
                 </Text>
               </View>
@@ -549,14 +573,14 @@ export default function TasksScreen() {
           onPress={() => toggleToday(item)}
           onLongPress={() => openReminderPicker(item.id)}
         >
-          <Ionicons name={isToday ? 'star' : 'star-outline'} size={20} color={isToday ? '#F59E0B' : '#9CA3AF'} />
+          <Ionicons name={isToday ? 'star' : 'star-outline'} size={20} color={isToday ? '#F59E0B' : 'rgba(255,255,255,0.45)'} />
         </Pressable>
         {isSelectMode && (
           <Pressable hitSlop={8} onPress={() => toggleSelected(item.id)} style={styles.rowDelete}>
             <Ionicons
               name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
               size={20}
-              color={isSelected ? ACCENT : '#9CA3AF'}
+              color={isSelected ? ACCENT : 'rgba(255,255,255,0.45)'}
             />
           </Pressable>
         )}
@@ -581,11 +605,11 @@ export default function TasksScreen() {
         {section.title && (
           <View style={styles.groupHeader}>
             {section.icon === 'star' ? (
-              <Ionicons name="star" size={14} color={section.color ?? '#9CA3AF'} />
+              <Ionicons name="star" size={14} color={section.color ?? 'rgba(255,255,255,0.45)'} />
             ) : (
-              <View style={[styles.groupDot, { backgroundColor: section.color ?? '#9CA3AF' }]} />
+              <View style={[styles.groupDot, { backgroundColor: section.color ?? 'rgba(255,255,255,0.45)' }]} />
             )}
-            <Text style={[styles.groupTitle, { color: section.color ?? '#9CA3AF' }]}>{section.title}</Text>
+            <Text style={[styles.groupTitle, { color: section.color ?? 'rgba(255,255,255,0.45)' }]}>{section.title}</Text>
           </View>
         )}
         {section.unfinished.map((task) => renderTaskRow(task))}
@@ -623,7 +647,7 @@ export default function TasksScreen() {
             <Ionicons
               name={task.checked ? 'checkbox' : 'square-outline'}
               size={20}
-              color={task.checked ? ACCENT : '#9CA3AF'}
+              color={task.checked ? ACCENT : 'rgba(255,255,255,0.45)'}
             />
           </Pressable>
           <Pressable
@@ -639,7 +663,7 @@ export default function TasksScreen() {
           <View style={styles.chipsRow}>
             <Pressable onPress={() => openProjectPicker(task.id)}>
               <View style={[styles.chip, project ? { backgroundColor: `${project.color}1A` } : styles.chipEmpty]}>
-                <Text style={[styles.chipText, { color: project ? project.color : '#9CA3AF' }]}>
+                <Text style={[styles.chipText, { color: project ? project.color : 'rgba(255,255,255,0.45)' }]}>
                   {project ? project.name : 'Без проекту'}
                 </Text>
               </View>
@@ -659,7 +683,7 @@ export default function TasksScreen() {
               disabled={columnIndex === 0}
               onPress={() => moveTaskColumn(task, -1)}
             >
-              <Ionicons name="chevron-back" size={16} color={columnIndex === 0 ? '#D1D5DB' : '#6B7280'} />
+              <Ionicons name="chevron-back" size={16} color={columnIndex === 0 ? 'rgba(255,255,255,0.25)' : GLASS_TEXT_MUTED} />
             </Pressable>
             <Pressable
               style={styles.kanbanArrowButton}
@@ -669,7 +693,7 @@ export default function TasksScreen() {
               <Ionicons
                 name="chevron-forward"
                 size={16}
-                color={columnIndex === KANBAN_COLUMNS.length - 1 ? '#D1D5DB' : '#6B7280'}
+                color={columnIndex === KANBAN_COLUMNS.length - 1 ? 'rgba(255,255,255,0.25)' : GLASS_TEXT_MUTED}
               />
             </Pressable>
           </View>
@@ -739,69 +763,74 @@ export default function TasksScreen() {
 
   return (
     <View style={styles.container}>
-      <ContentColumn>
-        <View style={styles.headerRow}>
-          <View style={styles.headerLeft}>
-            <Pressable
-              hitSlop={8}
-              onPress={() => (kanbanMode ? setKanbanMode(false) : navigation.goBack())}
-            >
-              <Ionicons name="chevron-back" size={22} color="#111827" />
-            </Pressable>
-            <Text style={styles.header}>{kanbanMode ? 'Справи на сьогодні' : 'Справи'}</Text>
-          </View>
-          <View style={styles.headerButtonsCapsule}>
-            <Pressable
-              style={styles.headerButtonsCapsuleBtn}
-              hitSlop={6}
-              onPress={() => setMenuOpen((v) => !v)}
-              accessibilityLabel="Меню"
-            >
-              <Ionicons name="ellipsis-horizontal" size={18} color="#6B7280" />
-            </Pressable>
-            <View style={styles.headerButtonsCapsuleDivider} />
-            <Pressable
-              style={styles.headerButtonsCapsuleBtn}
-              hitSlop={6}
-              onPress={() =>
-                setKanbanMode((v) => {
-                  const next = !v;
-                  if (next) clearSelection();
-                  return next;
-                })
-              }
-              accessibilityLabel="Канбан"
-            >
-              <Ionicons
-                name={kanbanMode ? 'list-outline' : 'albums-outline'}
-                size={18}
-                color={kanbanMode ? '#111827' : '#6B7280'}
-              />
-            </Pressable>
-            <View style={styles.headerButtonsCapsuleDivider} />
-            <Pressable
-              style={styles.headerButtonsCapsuleBtn}
-              hitSlop={6}
-              onPress={() => {
-                if (!isSelectMode) setKanbanMode(false);
-                toggleSelectMode();
-              }}
-              accessibilityLabel="Виділити"
-            >
-              <Ionicons
-                name={isSelectMode ? 'close' : 'checkmark-circle-outline'}
-                size={18}
-                color={isSelectMode ? '#111827' : '#6B7280'}
-              />
+      <ScreenBackdrop id="tasksBg" colors={['#705648', '#69736E', '#000000']} />
+
+      {/* The way out, in the top capsule where it is on every database. */}
+      <GlassPortal>
+        <View style={[styles.railTop, { top: insets.top + CHROME_TOP + CAPSULE_DROP }]} pointerEvents="box-none">
+          <View style={styles.topCapsule}>
+            <BlurView
+              intensity={60}
+              tint="dark"
+              blurMethod="dimezisBlurView"
+              blurTarget={railBlurTarget ?? undefined}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+            <Pressable hitSlop={8} onPress={() => (kanbanMode ? setKanbanMode(false) : navigation.goBack())}>
+              <Ionicons name="arrow-back-outline" size={24} color="#fff" />
             </Pressable>
           </View>
         </View>
+      </GlassPortal>
 
-        {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
+      {/* What shape the list takes, and what order it is in. */}
+      <RailCapsule
+        bottom={rail.actionsBottom}
+        buttons={[
+          {
+            icon: kanbanMode ? 'albums-outline' : 'reorder-four-outline',
+            onPress: () =>
+              setKanbanMode((v) => {
+                const next = !v;
+                if (next) clearSelection();
+                return next;
+              }),
+          },
+          { icon: 'filter-outline', onPress: () => setMenuOpen((v) => !v), active: menuOpen },
+        ]}
+      />
+      <RailCapsule
+        bottom={rail.historyBottom}
+        buttons={[
+          {
+            icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
+            onPress: () => {
+              if (!isSelectMode) setKanbanMode(false);
+              toggleSelectMode();
+            },
+            active: isSelectMode,
+          },
+        ]}
+      />
+
+      <ContentColumn>
+        {/* The band the status bar and the rail's top capsule stand in.
+            It was the header row's own top padding until the header went. */}
+        <View style={{ height: insets.top + CHROME_TOP + 8 }} />
+        {/* No header row any more. Its title said the name of the screen
+            you had just tapped to reach, and its three buttons were a
+            light capsule of this screen's own invention - the one screen
+            in the app that was still white. They are on the rail now,
+            each in the place it has everywhere else. */}
+        {/* Ordering hangs off the button that opens it, on the rail. */}
         {menuOpen && (
-          <View style={styles.menuPanel}>
-            <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
-          </View>
+          <>
+            <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />
+            <View style={[styles.menuPanel, { bottom: rail.actionsBottom }]}>
+              <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
+            </View>
+          </>
         )}
 
         {!kanbanMode && projects.length > 0 && (
@@ -855,7 +884,7 @@ export default function TasksScreen() {
               <Text style={styles.modalTitle}>Оберіть проект</Text>
 
               <Pressable style={styles.modalRow} onPress={() => assignProject(null)}>
-                <View style={[styles.modalDot, { backgroundColor: '#9CA3AF' }]} />
+                <View style={[styles.modalDot, { backgroundColor: 'rgba(255,255,255,0.45)' }]} />
                 <Text style={styles.modalRowText}>Без проекту</Text>
               </Pressable>
 
@@ -926,54 +955,24 @@ export default function TasksScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
-  headerRow: {
-    flexDirection: 'row',
+  railTop: {
+    position: 'absolute',
+    right: RAIL_RIGHT,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    // 56, not 16 - this screen has no native header (headerShown: false on
-    // the stack), so its own top padding is what clears the status bar,
-    // matching DocumentEditorScreen's header for the same reason.
-    paddingTop: 56,
-    paddingBottom: 8,
+    zIndex: 20,
   },
-  headerLeft: {
-    flexDirection: 'row',
+  // The same capsule every other screen's top one is - 19 of padding
+  // around a 24px icon, inside a hairline border.
+  topCapsule: {
     alignItems: 'center',
-    gap: 14,
-  },
-  header: {
-    fontSize: 22,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    color: '#111827',
-  },
-  // Icon-only, frosted glass - this screen's own background is plain
-  // white (not the dark gradient Documents/Calendar/Databases got), so
-  // this is the same light-glass variant ProjectTabsRow's pills use:
-  // still translucent and bordered, just legible on white.
-  headerButtonsCapsule: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(120,120,120,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
+    paddingVertical: 18,
+    paddingHorizontal: 19,
+    borderRadius: 999,
     overflow: 'hidden',
-  },
-  headerButtonsCapsuleBtn: {
-    width: 40,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerButtonsCapsuleDivider: {
-    width: 1,
-    height: 16,
-    backgroundColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: GLASS_ISLAND,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
   },
   menuBackdrop: {
     position: 'absolute',
@@ -985,10 +984,11 @@ const styles = StyleSheet.create({
   },
   menuPanel: {
     position: 'absolute',
-    top: 94,
-    right: 20,
+    // Beside the button that opens it, which is on the rail now - the
+    // `bottom` comes from the rail at the call site.
+    right: RAIL_CLEARANCE,
     width: 200,
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY_BLURRED,
     borderRadius: 14,
     padding: 6,
     shadowColor: '#000',
@@ -1003,9 +1003,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY_BLURRED,
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    borderTopColor: 'rgba(255,255,255,0.08)',
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 24,
@@ -1022,7 +1022,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   selectionDeleteBtn: {
     flexDirection: 'row',
@@ -1045,7 +1045,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 20,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: 'rgba(255,255,255,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1053,31 +1053,34 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   emptyFilterLabel: {
     textAlign: 'center',
     marginTop: 24,
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
+    color: 'rgba(255,255,255,0.45)',
   },
   emptyHint: {
     marginTop: 6,
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
+    color: 'rgba(255,255,255,0.45)',
     textAlign: 'center',
   },
   list: {
     paddingVertical: 8,
+    // The rail stands at the right edge; the rows stop short of it rather
+    // than running under it, as they do on every other list.
+    paddingRight: RAIL_CLEARANCE - 20,
   },
   group: {
     marginBottom: 8,
   },
   todayDivider: {
     height: 1,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: GLASS_LINE,
     marginHorizontal: 20,
     marginBottom: 4,
   },
@@ -1110,7 +1113,7 @@ const styles = StyleSheet.create({
   collapseLabel: {
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
+    color: 'rgba(255,255,255,0.45)',
   },
   row: {
     flexDirection: 'row',
@@ -1126,7 +1129,7 @@ const styles = StyleSheet.create({
   rowText: {
     fontSize: 16,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
   },
   rowTextChecked: {
     textDecorationLine: 'line-through',
@@ -1144,10 +1147,10 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   chipEmpty: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: '#D1D5DB',
+    borderColor: 'rgba(255,255,255,0.25)',
   },
   chipText: {
     fontSize: 12,
@@ -1162,7 +1165,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 10,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: 'rgba(255,255,255,0.10)',
   },
   reminderChipText: {
     fontSize: 11.5,
@@ -1178,7 +1181,7 @@ const styles = StyleSheet.create({
     ...SHEET_BACKDROP,
   },
   modalSheet: {
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_BODY_BLURRED,
     ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
@@ -1187,7 +1190,7 @@ const styles = StyleSheet.create({
   modalHandle: {
     width: 36,
     height: 4,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: GLASS_LINE,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -1196,7 +1199,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: '#111827',
+    color: GLASS_TEXT,
     marginBottom: 4,
   },
   modalRow: {
@@ -1219,12 +1222,12 @@ const styles = StyleSheet.create({
   modalRowText: {
     fontSize: 16,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
     flexGrow: 1,
   },
   modalDivider: {
     height: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     marginVertical: 4,
   },
   modalAddRow: {
@@ -1237,14 +1240,14 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
     paddingVertical: 6,
   },
   modalRenameInput: {
     flex: 1,
     fontSize: 16,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
     paddingVertical: 2,
     borderBottomWidth: 1,
     borderBottomColor: ACCENT,
@@ -1253,7 +1256,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   kanbanBoard: {
-    paddingHorizontal: 16,
+    paddingLeft: 16,
+    // Clear of the rail, like every other list on this screen.
+    paddingRight: RAIL_CLEARANCE,
     paddingBottom: 16,
     gap: KANBAN_COLUMN_GAP,
   },
@@ -1270,20 +1275,20 @@ const styles = StyleSheet.create({
     fontFamily: FONT_BOLD,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
-    color: '#6B7280',
+    color: GLASS_TEXT_MUTED,
   },
   kanbanColumnCount: {
     fontSize: 11,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: '#9CA3AF',
-    backgroundColor: '#F3F4F6',
+    color: 'rgba(255,255,255,0.45)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 8,
     paddingHorizontal: 7,
     paddingVertical: 1,
   },
   kanbanColumnBody: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: 'rgba(255,255,255,0.06)',
     borderRadius: 14,
   },
   kanbanColumnBodyContent: {
@@ -1292,7 +1297,7 @@ const styles = StyleSheet.create({
     minHeight: 200,
   },
   kanbanCard: {
-    backgroundColor: '#fff',
+    backgroundColor: GLASS_CARD,
     borderRadius: 12,
     padding: 10,
     gap: 6,
@@ -1313,7 +1318,7 @@ const styles = StyleSheet.create({
   kanbanCardText: {
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: GLASS_TEXT,
     lineHeight: 19,
   },
   kanbanCardBottom: {
@@ -1330,7 +1335,7 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 7,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },
