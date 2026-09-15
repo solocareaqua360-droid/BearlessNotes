@@ -127,6 +127,11 @@ import { GLASS_DANGER, GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_FAINT } from '../con
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import SaveRing from '../components/SaveRing';
 
+// The rail's capsule stood on its end is RAIL_WIDTH across; lying down on
+// a pane's left edge it is this tall - 19 of padding above and below a
+// 24px icon, inside the 1px border. What the title has to clear there.
+const HORIZONTAL_CAPSULE_HEIGHT = 19 * 2 + 24 + 2;
+
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -4478,7 +4483,16 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // In a pane the document starts on the same line the list's
           // cards do - so the cover, not empty space, is what the capsule
           // lies across.
-          railTop !== undefined && { paddingTop: railTop, paddingBottom: 0 },
+          //
+          // Except where the capsule LIES DOWN, which is what it does on
+          // the left edge of a pane: there it is a bar across the top of
+          // the document, and starting the text on the same line put the
+          // title underneath it. Its own height plus a gap, so the title
+          // begins below it instead.
+          railTop !== undefined && {
+            paddingTop: railTop + (railHorizontal ? HORIZONTAL_CAPSULE_HEIGHT + 12 : 0),
+            paddingBottom: 0,
+          },
         ]}
       >
         {/* Empty - both its buttons stand on the rail. It stays for the

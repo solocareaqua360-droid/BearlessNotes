@@ -127,7 +127,7 @@ export default function DocumentsScreen() {
   // over the top of the list. Folding the phone shut resizes the window,
   // which drops straight back to one column with the same document still
   // remembered - unfolding brings it back where it was.
-  const { isTwoPane } = useResponsiveLayout();
+  const { isTwoPane, width: layoutWidth, height: layoutHeight } = useResponsiveLayout();
   // The document pane taking the whole window. Only reachable from the
   // editor's own header, and only while there are two panes to collapse.
   const [paneFullscreen, setPaneFullscreen] = useState(false);
@@ -527,6 +527,16 @@ export default function DocumentsScreen() {
   // Where the open document's own pane starts - what its rail stands in
   // from, on the left.
   const [editorPaneLeft, setEditorPaneLeft] = useState(0);
+  // How many cards stand across the list, and how many folders.
+  //
+  // Two on a phone, as always. On the Fold's inner screen with no
+  // document open the list has the whole width, and the user said what to
+  // do with it: four cards across it lying down, three standing up - and
+  // the folders, which are wide rows rather than cards, pair up only when
+  // there is room for four cards beside them.
+  const wideList = isTwoPane && !openDoc;
+  const gridColumns = wideList ? (layoutWidth > layoutHeight ? 4 : 3) : 2;
+  const folderColumns = gridColumns >= 4 ? 2 : 1;
   const insets = useSafeAreaInsets();
   const chromeTop = insets.top + CHROME_TOP;
   const chromeBottom = chromeTop + chromeHeight + 8;
@@ -1173,10 +1183,10 @@ export default function DocumentsScreen() {
             <GestureDetector gesture={pull.gesture}>
             <FlatList
               {...pull.listProps}
-              key={`search-${viewMode}`}
+              key={`search-${viewMode}-${gridColumns}`}
               data={searchMatches}
               keyExtractor={(item) => item.id}
-              numColumns={viewMode === 'grid' ? 2 : 1}
+              numColumns={viewMode === 'grid' ? gridColumns : 1}
               columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
               contentContainerStyle={[styles.list, { paddingTop: chromeBottom, paddingBottom: listBottomPad }]}
               keyboardShouldPersistTaps="handled"
@@ -1225,10 +1235,10 @@ export default function DocumentsScreen() {
             </View>
           ) : (
             <FlatList
-              key={`stickers-${viewMode}`}
+              key={`stickers-${viewMode}-${gridColumns}`}
               data={freeStickers}
               keyExtractor={(item) => item.id}
-              numColumns={viewMode === 'grid' ? 2 : 1}
+              numColumns={viewMode === 'grid' ? gridColumns : 1}
               columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
               contentContainerStyle={[styles.list, { paddingTop: chromeBottom, paddingBottom: listBottomPad }]}
               renderItem={({ item }) => (
@@ -1272,12 +1282,12 @@ export default function DocumentsScreen() {
             {...pull.listProps}
             // FlatList throws if numColumns changes on an already-mounted
             // instance - key forces a clean remount when switching views.
-            key={`${viewMode}-${trashOpen ? 'trash' : 'list'}`}
+            key={`${viewMode}-${gridColumns}-${trashOpen ? 'trash' : 'list'}`}
             data={trashOpen ? trashed : explorerDocuments}
             // The folders of this level, and the way up, above the cards.
             ListHeaderComponent={
               trashOpen ? (
-                <View style={styles.explorerHead}>
+                <View style={[styles.explorerHead, folderColumns > 1 && styles.explorerHeadWide]}>
                   <View style={styles.explorerCrumb}>
                     <Pressable hitSlop={8} onPress={() => setTrashOpen(false)} style={styles.crumbUp}>
                       <Ionicons name="chevron-back" size={18} color={GLASS_TEXT} />
@@ -1293,9 +1303,9 @@ export default function DocumentsScreen() {
                   <Text style={styles.trashHint}>Затисни нотатку, щоб відновити або видалити назавжди. Через 30 днів кошик очищається сам.</Text>
                 </View>
               ) : explorerMode && (explorerFolders.length > 0 || (explorer && explorerPath !== '')) ? (
-                <View style={styles.explorerHead}>
+                <View style={[styles.explorerHead, folderColumns > 1 && styles.explorerHeadWide]}>
                   {explorer && explorerPath !== '' && (
-                    <View style={styles.explorerCrumb}>
+                    <View style={[styles.explorerCrumb, folderColumns > 1 && styles.explorerCrumbWide]}>
                       <Pressable hitSlop={8} onPress={explorerUp} style={styles.crumbUp}>
                         <Ionicons name="chevron-back" size={18} color={GLASS_TEXT} />
                       </Pressable>
@@ -1349,7 +1359,7 @@ export default function DocumentsScreen() {
                   {explorerFolders.map((folder) => (
                     <Pressable
                       key={folder.fullPath}
-                      style={styles.folderRow}
+                      style={[styles.folderRow, folderColumns > 1 && styles.folderRowHalf]}
                       onPress={() => {
                         setExplorerPath(folder.fullPath);
                         // A folder found by searching is a place to go: the
@@ -1385,7 +1395,10 @@ export default function DocumentsScreen() {
                   {/* The bin, at the root of the explorer, after the
                       folders - where a file manager keeps it. */}
                   {explorer && explorerPath === '' && trashed.length > 0 && (
-                    <Pressable style={[styles.folderRow, styles.trashFolderRow]} onPress={() => setTrashOpen(true)}>
+                    <Pressable
+                      style={[styles.folderRow, styles.trashFolderRow, folderColumns > 1 && styles.folderRowHalf]}
+                      onPress={() => setTrashOpen(true)}
+                    >
                       <View style={[styles.folderThumb, { borderColor: GLASS_TEXT_FAINT }]}>
                         <Ionicons name="trash-outline" size={26} color={GLASS_TEXT_MUTED} />
                       </View>
@@ -1423,7 +1436,7 @@ export default function DocumentsScreen() {
                 sidePadding={20}
               />
             }
-            numColumns={viewMode === 'grid' ? 2 : 1}
+            numColumns={viewMode === 'grid' ? gridColumns : 1}
             columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
             // The cards start below the floating tabs and scroll up under
             // them from there.
@@ -1548,12 +1561,16 @@ export default function DocumentsScreen() {
         )}
         </View>
 
-        {isTwoPane && (
+        {/* Only where there IS a document. An empty half saying "pick
+            one from the list" was half the inner screen spent on an
+            instruction; with nothing open the list takes the whole width
+            and shows more of itself instead. */}
+        {isTwoPane && !!openDoc && (
           <View
             style={styles.editorPane}
             onLayout={(e) => setEditorPaneLeft(e.nativeEvent.layout.x)}
           >
-            {openDoc ? (
+            {openDoc && (
               // Keyed by id so switching documents remounts the editor
               // rather than re-seeding one instance's state mid-edit.
               <DocumentEditorScreen
@@ -1575,11 +1592,6 @@ export default function DocumentsScreen() {
                 railTop={chromeBottom}
                 onToggleFullscreen={() => setPaneFullscreen((v) => !v)}
               />
-            ) : (
-              <View style={styles.editorPaneEmpty}>
-                <Ionicons name="document-text-outline" size={34} color="rgba(255,255,255,0.3)" />
-                <Text style={styles.editorPaneEmptyLabel}>Виберіть документ зі списку</Text>
-              </View>
             )}
           </View>
         )}
@@ -2067,6 +2079,22 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.10)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.16)',
+  },
+  // Two across, where the list has the whole width of the inner screen.
+  // The crumb strip above them stays one full-width line - it is a place,
+  // not an item.
+  explorerHeadWide: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  folderRowHalf: {
+    width: '49%',
+  },
+  // The path is a place, not an item: it keeps its own full-width line
+  // above the pairs.
+  explorerCrumbWide: {
+    width: '100%',
   },
   trashFolderRow: {
     backgroundColor: 'rgba(255,255,255,0.05)',
