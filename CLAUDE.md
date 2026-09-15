@@ -68,7 +68,7 @@ screen (week strip + expandable month grid, inline daily-note editing,
 real cloud file backup yet (images/files live only in the device's local
 cache/Firestore-referenced URI) — that's item 2 of the roadmap below.
 
-### Post-MVP roadmap — 10 items agreed with the user. Nine are done.
+### Post-MVP roadmap — 10 items agreed with the user. All ten are done.
 1. Bulk editing of database objects — **done**
 2. Google Drive sync (cloud backup for files/photos + storage counter) —
    **done**. Whether to move the files to Firebase Storage instead is a
@@ -83,9 +83,11 @@ cache/Firestore-referenced URI) — that's item 2 of the roadmap below.
    record page of its own
 6. Document scanner (save as JPEG or PDF) — **done**
 7. Sketch/drawing tool — **done**
-8. Task reminders/notifications — **the one thing not started**: the
-   `reminderDate` field exists and the calendar reads it, but nothing
-   ever notifies
+8. Task reminders/notifications — **done** (confirmed by the user
+   2026-09-15): `expo-notifications` is a dependency and an app.json
+   plugin, `src/utils/reminders.ts` owns the Android channel, the
+   permission and schedule/cancel, and TasksScreen and
+   DocumentEditorScreen both call it. All ten roadmap items are done.
 9. Note cover image + paper color — **done**
 10. Real (non-test) Firestore security rules — **done, deployed
     2026-09-15**
@@ -104,8 +106,7 @@ backdrop.
 file** - so that it cannot go stale the way the list above did. As of
 2026-09-15 it reads: drag-and-drop of cards into folders → a bin for
 files/photos/links → a toast when leaving the canvas reorders the page
-→ the rail's morph → grids and tile boards clearing the rail. Reminders
-(8) is the only roadmap item still untouched.
+→ the rail's morph → grids and tile boards clearing the rail.
 
 **Scanner + EAS dev-build transition (Stage 10 in `DEVELOPMENT_PLAN.md`)
 — done.** Summary of what that took, since the same setup now carries
