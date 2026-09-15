@@ -145,11 +145,20 @@ export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
   );
 }
 
-export function LinkGridCell({ link, ...rest }: { link: LinkCardItem } & Common) {
+// Two cells to a line, in pixels, from the width the rows actually have -
+// the row's own 12pt gap taken off first. As a percentage the two could
+// never agree: the gap is pixels, and in a half-width pane the difference
+// is enough to deform the cards.
+export function gridCellWidth(listWidth: number): number | undefined {
+  if (listWidth <= 0) return undefined;
+  return Math.floor((listWidth - 12) / 2);
+}
+
+export function LinkGridCell({ link, gridWidth, ...rest }: { link: LinkCardItem; gridWidth?: number } & Common) {
   const info = LINK_CATEGORY_INFO[categoryFromSiteName(link.siteName)];
   const { background, text, textMuted } = colorForDocument(link.id);
   return (
-    <View style={[styles.gridCard, { backgroundColor: background }]}>
+    <View style={[styles.gridCard, gridWidth !== undefined && { width: gridWidth }, { backgroundColor: background }]}>
       <Pressable style={styles.gridTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
         {link.imageUrl ? (
           <Image source={{ uri: link.imageUrl }} style={styles.gridThumb} resizeMode="cover" />
@@ -233,11 +242,11 @@ export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
   );
 }
 
-export function FileGridCell({ file, ...rest }: { file: FileCardItem } & Common) {
+export function FileGridCell({ file, gridWidth, ...rest }: { file: FileCardItem; gridWidth?: number } & Common) {
   const { background, text, textMuted } = colorForDocument(file.id);
   const preview = useFilePreview(file);
   return (
-    <View style={[styles.gridCard, { backgroundColor: background }]}>
+    <View style={[styles.gridCard, gridWidth !== undefined && { width: gridWidth }, { backgroundColor: background }]}>
       <Pressable style={styles.gridTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
         {preview?.thumbUri ? (
           <Image source={{ uri: preview.thumbUri }} style={styles.gridThumb} resizeMode="cover" />
@@ -336,14 +345,18 @@ export function PhotoRow({ photo, ...rest }: { photo: PhotoCardItem } & Common) 
   );
 }
 
-export function PhotoCell({ photo, ...rest }: { photo: PhotoCardItem } & Common) {
+export function PhotoCell({ photo, gridWidth, ...rest }: { photo: PhotoCardItem; gridWidth?: number } & Common) {
   // This device may never have had the actual bytes (a fresh install, a
   // different device than the one the photo was taken on) - quietly
   // re-pulled from the Drive backup the first time it is rendered.
   // A thumbnail in the grid is not someone looking at the photo.
   const docCount = photo.documentIds.length;
   return (
-    <Pressable style={styles.cell} onPress={rest.onPress} onLongPress={rest.onLongPress}>
+    <Pressable
+      style={[styles.cell, gridWidth !== undefined && { width: gridWidth }]}
+      onPress={rest.onPress}
+      onLongPress={rest.onLongPress}
+    >
       {/* The grid was the last place in the Photos database still
           drawing the phone's path directly - see AttachmentImage. */}
       <AttachmentImage uri={photo.imageUri} driveFileId={photo.driveFileId} style={styles.cellImage} />
@@ -445,7 +458,8 @@ const styles = StyleSheet.create({
   gridCard: {
     // Fixed proportion, not flex:1 - a flex card stretches to fill
     // whatever is left in its row, which breaks when a row has only one
-    // card left (a filter down to an odd count).
+    // card left (a filter down to an odd count). The screens that know
+    // their real width pass it in pixels instead; this is the fallback.
     width: '48%',
     borderRadius: 16,
     borderWidth: 1,

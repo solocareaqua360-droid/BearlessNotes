@@ -98,7 +98,17 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   // The list itself. It is handed the line the first card rests on, and
   // the props that let the pull-down-for-search gesture watch it (spread
   // them onto the ScrollView or FlatList).
-  children: (listTopPad: number, listProps: ReturnType<typeof usePullToSearch>['listProps']) => ReactNode;
+  // `listWidth` is the width the rows actually have: this column, less the
+  // clearance it keeps from the rail and the margin each row carries. A
+  // grid cell sized as a PERCENTAGE of that cannot line up with anything,
+  // because the gaps between cells are pixels - and in a half-width pane
+  // the two disagree enough to deform the cards. Every grid works this
+  // number out in pixels instead.
+  children: (
+    listTopPad: number,
+    listProps: ReturnType<typeof usePullToSearch>['listProps'],
+    listWidth: number
+  ) => ReactNode;
   // Anything that must reach the whole window rather than the content
   // column: toasts, viewers, the sheets a database opens. Drawn outside
   // the column, the way the drawer is.
@@ -137,6 +147,9 @@ export default function DatabaseChrome<T extends { id: string }>({
   // edge rather than at the window's - they span the window, so that a
   // long row can still be scrolled across the whole display.
   const [listPaneX, setListPaneX] = useState(0);
+  // The column the rows stand in - measured, because in a pane it is not
+  // the window.
+  const [columnWidth, setColumnWidth] = useState(0);
   const blurTarget = useBlurTarget();
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
@@ -456,7 +469,11 @@ export default function DatabaseChrome<T extends { id: string }>({
           // went down in its band and moved clearly sideways, and the pull
           // fails as soon as the movement reads as horizontal.
           <GestureDetector gesture={listGesture}>
-            {children(list.tagFilter || list.isSearching ? 0 : chromeBottom, pull.listProps)}
+            {children(
+              list.tagFilter || list.isSearching ? 0 : chromeBottom,
+              pull.listProps,
+              Math.max(0, columnWidth - RAIL_CLEARANCE - 20)
+            )}
           </GestureDetector>
         )}
     </>
@@ -535,13 +552,23 @@ export default function DatabaseChrome<T extends { id: string }>({
 
       {splitting ? (
         <View style={styles.paneRow}>
-          <View style={styles.listPane} onLayout={(e) => setListPaneX(e.nativeEvent.layout.x)}>
+          <View
+            style={styles.listPane}
+            onLayout={(e) => {
+              setListPaneX(e.nativeEvent.layout.x);
+              setColumnWidth(e.nativeEvent.layout.width);
+            }}
+          >
             {column}
           </View>
           <View style={styles.sidePane}>{pane}</View>
         </View>
       ) : (
-        <ContentColumn>{column}</ContentColumn>
+        <ContentColumn>
+          <View style={styles.container} onLayout={(e) => setColumnWidth(e.nativeEvent.layout.width)}>
+            {column}
+          </View>
+        </ContentColumn>
       )}
 
       {overlay}
