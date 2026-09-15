@@ -24,6 +24,7 @@ import { navigationRef } from './src/navigationRef';
 import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
 import { AskHost } from './src/components/surfaces/Ask';
+import AlarmRingOverlay from './src/components/AlarmRingOverlay';
 
 // The screens themselves - every route, and the tab navigator they sit
 // behind - live in src/AppNavigator, shared with the browser build. What
@@ -108,6 +109,9 @@ export default function App() {
                 blur target: what it blurs is the screens, and from outside
                 them expo-blur quietly falls back to a flat dim. */}
             <AskHost />
+            {/* A ringing alarm is its own Modal too, for the same reason -
+                see AlarmRingOverlay. */}
+            <AlarmRingOverlay />
             {/* Inside the target too: it raises the naming dialog. */}
             <ShareIntentHandler />
             <RootNavigator />

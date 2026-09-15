@@ -176,7 +176,7 @@ export interface Block {
   // todayMarkedDate, per TasksScreen's toggleToday.
   reminderDate?: string; // YYYY-MM-DD
   reminderTime?: string; // HH:mm, local time - absent means date-only, no notification
-  reminderNotificationId?: string; // expo-notifications id, to cancel/reschedule
+  reminderNotificationId?: string; // notifee alarm id, to cancel/reschedule
   // 'link' blocks only - a paragraph containing a bare URL auto-converts
   // into one of these. text holds the original URL. Preview fields are
   // best-effort (fetched once at conversion time) and absent when nothing
