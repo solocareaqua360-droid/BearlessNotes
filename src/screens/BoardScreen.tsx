@@ -644,6 +644,9 @@ type DraggableCardProps = {
   onTap: (card: BoardCard) => void;
   onLongPress: (card: BoardCard) => void;
   onResize: (id: string, width: number) => void;
+  // The canvas's own "hold to reach for the marquee". A card's hold has
+  // to beat it - see the card's longPressGesture.
+  canvasHoldGesture: ReturnType<typeof Gesture.LongPress>;
 };
 
 // One card's own drag.
@@ -693,6 +696,7 @@ function DraggableCard({
   onTap,
   onLongPress,
   onResize,
+  canvasHoldGesture,
 }: DraggableCardProps) {
   // The last position this card itself put into the parent's state. Used
   // only to tell "our own drag echoing back" (ignore) apart from a real
@@ -790,8 +794,20 @@ function DraggableCard({
     runOnJS(onTap)(card);
   });
 
+  // Holding a card picks THAT card - which is what raises the bar of
+  // things to do with it, and the grip on a picture's corner.
+  //
+  // It has to block the canvas's own hold, and it has to be no slower.
+  // The canvas reaches for the marquee after 350ms and the card waited
+  // 500, in a detector of its own that knows nothing about it - so a
+  // hold on a card put the board into marquee mode instead, and the only
+  // way left to pick one card was to draw a box around it.
   const longPressGesture = Gesture.LongPress()
-    .minDuration(500)
+    .minDuration(350)
+    // A hand is never perfectly still - the same allowance the canvas's
+    // own hold makes.
+    .maxDistance(10)
+    .blocksExternalGesture(canvasHoldGesture, canvasPanGesture)
     .onStart(() => {
       runOnJS(onLongPress)(card);
     });
@@ -2506,6 +2522,7 @@ export default function BoardScreen() {
                     onTap={handleCardTap}
                     onLongPress={handleCardLongPress}
                     onResize={commitCardResize}
+                    canvasHoldGesture={holdToSelectGesture}
                   />
                 );
               })}
