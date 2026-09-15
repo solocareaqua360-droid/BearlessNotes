@@ -202,12 +202,20 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingBottom: 120,
+    gap: 8,
   },
+  // A card, like every other row in the app. Bare text over the drifting
+  // backdrop could not be read - the rows were written for white.
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(20,20,20,0.35)',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
   },
   rowTap: {
     flex: 1,
