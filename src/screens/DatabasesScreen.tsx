@@ -666,11 +666,23 @@ export default function DatabasesScreen() {
   // shift under it as it passes them.
   const rowTop = (y: number, without?: string) =>
     y * cellStep + dividers.filter((d) => d.y <= y && d.id !== without).length * DIVIDER_HEIGHT;
+  // Where a row starts on the board as it stood BEFORE anything was
+  // picked up - what a finger is measured against.
+  //
+  // It cannot be the live board. A tile carried below a divider makes
+  // the section it left shorter, which pulls the divider up, which moves
+  // every row under the finger - so the next move read the finger as
+  // being above the divider again, and the tile sprang back. The board
+  // the finger is measured on has to stand still while it moves, the
+  // same reason the carry remembers where it started (carryOrigin).
+  const baseDividers = baseBoard.sections.slice(1).map((section) => ({ id: section.id, y: section.start }));
+  const baseRowTop = (y: number, without?: string) =>
+    y * cellStep + baseDividers.filter((d) => d.y <= y && d.id !== without).length * DIVIDER_HEIGHT;
   // The row nearest a board pixel, counting the row below the last one.
   const rowUnder = (py: number, without?: string) => {
     let best = 0;
-    for (let r = 0; r <= rows; r += 1) {
-      if (Math.abs(rowTop(r, without) - py) < Math.abs(rowTop(best, without) - py)) best = r;
+    for (let r = 0; r <= baseBoard.rows + 1; r += 1) {
+      if (Math.abs(baseRowTop(r, without) - py) < Math.abs(baseRowTop(best, without) - py)) best = r;
     }
     return best;
   };
