@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { GlassPortal } from './GlassPortal';
 import { useBlurTarget } from './GlassTarget';
@@ -15,11 +15,24 @@ import { RAIL_RIGHT } from '../constants/rail';
 //
 // Drawn through the portal like every other piece of glass: the blur
 // that fills it cannot live inside the view it blurs.
-export type RailButton = {
-  icon: keyof typeof Ionicons.glyphMap;
+export type RailButton = (
+  | { icon: keyof typeof Ionicons.glyphMap; family?: 'ionicons' }
+  // Ionicons has no "document with a plus" or "folder with a plus";
+  // the other family does, and a button that ADDS a thing should show
+  // the plus on the thing, as the user asked.
+  | { icon: keyof typeof MaterialCommunityIcons.glyphMap; family: 'material-community' }
+) & {
   onPress: () => void;
+  // Held down - the sticker, on the button that makes a document.
+  onLongPress?: () => void;
+  onPressIn?: () => void;
+  onPressOut?: () => void;
   // The button whose mode is in force (select mode on): drawn lit.
   active?: boolean;
+  // Nothing to do right now (no page to go back to): dimmed, inert.
+  disabled?: boolean;
+  // Bigger glyph, for the create capsule whose plus used to be 28.
+  size?: number;
 };
 
 export default function RailCapsule({ buttons, bottom }: { buttons: RailButton[]; bottom: number }) {
@@ -36,11 +49,27 @@ export default function RailCapsule({ buttons, bottom }: { buttons: RailButton[]
           style={StyleSheet.absoluteFill}
           pointerEvents="none"
         />
+        {/* One flat column with one gap between everything - the hairline
+            is a sibling of the buttons, not part of the next one, or it
+            hugs the button above it instead of standing midway. */}
         {buttons.map((button, index) => (
           <View key={button.icon + index} style={styles.slot}>
             {index > 0 && <View style={styles.divider} />}
-            <Pressable hitSlop={8} onPress={button.onPress} style={[styles.button, button.active && styles.buttonActive]}>
-              <Ionicons name={button.icon} size={24} color="#fff" />
+            <Pressable
+              hitSlop={8}
+              onPress={button.onPress}
+              onLongPress={button.onLongPress}
+              onPressIn={button.onPressIn}
+              onPressOut={button.onPressOut}
+              delayLongPress={400}
+              disabled={button.disabled}
+              style={[styles.button, button.active && styles.buttonActive, button.disabled && styles.buttonDisabled]}
+            >
+              {button.family === 'material-community' ? (
+                <MaterialCommunityIcons name={button.icon} size={button.size ?? 24} color="#fff" />
+              ) : (
+                <Ionicons name={button.icon} size={button.size ?? 24} color="#fff" />
+              )}
             </Pressable>
           </View>
         ))}
@@ -73,7 +102,8 @@ const styles = StyleSheet.create({
     width: 20,
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.3)',
-    marginBottom: 18,
+    // The same 18 above the line as the slot's gap puts below it.
+    marginTop: 18,
   },
   button: {
     width: 24,
@@ -81,6 +111,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 12,
+  },
+  buttonDisabled: {
+    opacity: 0.35,
   },
   buttonActive: {
     // Lit, not filled: the mode in force reads as a glow behind the glyph.

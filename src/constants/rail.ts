@@ -76,23 +76,32 @@ const ISLAND_DROP = 10;
 // on a swipe - and the slot holds the ACTIONS capsule now (sort, select),
 // which is a capsule's height; a screen without one keeps the old size
 // so nothing else moves.
+// `createHeight`: the add button became a capsule that can carry a second
+// button (a new folder, in the explorer); `historyHeight`: the explorer's
+// back/forward capsule, absent (0) everywhere else. The pieces stack from
+// the foot with one equal gap between them, so a screen with more of
+// them simply spaces them a little tighter.
 export function useRailLayout(
   windowHeight: number,
   insetTop: number,
   insetBottom: number,
   capsuleHeight: number = CAPSULE_HEIGHT,
-  actionsHeight: number = RAIL_WIDTH
+  actionsHeight: number = RAIL_WIDTH,
+  createHeight: number = RAIL_WIDTH,
+  historyHeight: number = 0
 ) {
   const tagRowBottom = insetBottom + TAG_ROW_PAD;
   const foot = tagRowBottom + TAG_ROW_HEIGHT + RAIL_GAP - ISLAND_DROP;
   const head = insetTop + CHROME_TOP + CAPSULE_DROP + capsuleHeight;
   const free = windowHeight - head - foot;
-  const gap = Math.max(RAIL_GAP, (free - (actionsHeight + RAIL_WIDTH + NAV_HEIGHT)) / 4);
+  const pieces = actionsHeight + createHeight + historyHeight + NAV_HEIGHT;
+  const gaps = historyHeight > 0 ? 5 : 4;
+  const gap = Math.max(RAIL_GAP, (free - pieces) / gaps);
   const navBottom = foot + gap;
   const addBottom = navBottom + NAV_HEIGHT + gap;
-  // The bottom edge of the slot above the add button - the actions
-  // capsule's, where there is one. Kept under its old name too.
-  const actionsBottom = addBottom + RAIL_WIDTH + gap;
+  const historyBottom = addBottom + createHeight + gap;
+  // The bottom edge of the actions capsule. Kept under its old name too.
+  const actionsBottom = historyHeight > 0 ? historyBottom + historyHeight + gap : addBottom + createHeight + gap;
   const tagBottom = actionsBottom;
-  return { tagRowBottom, navBottom, addBottom, tagBottom, actionsBottom };
+  return { tagRowBottom, navBottom, addBottom, historyBottom, tagBottom, actionsBottom };
 }

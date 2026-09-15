@@ -203,7 +203,41 @@ export default function DocumentsScreen() {
   // documents tagged with exactly this path - not with anything deeper,
   // which is what the next folder is for. At the root, the documents
   // that carry no tag at all.
-  const [explorerPath, setExplorerPath] = useState('');
+  const [explorerPath, setExplorerPathState] = useState('');
+  // Where you have been, for the rail's back/forward: a plain history like
+  // a browser's. Going somewhere new cuts off whatever was "forward";
+  // back and forward only move along what is there, and do nothing at
+  // either end - the user's rule: forward into a folder you have not
+  // been to is no action at all.
+  const historyRef = useRef<{ paths: string[]; index: number }>({ paths: [''], index: 0 });
+  const [historyState, setHistoryState] = useState({ canBack: false, canForward: false });
+  function syncHistoryState() {
+    const h = historyRef.current;
+    setHistoryState({ canBack: h.index > 0, canForward: h.index < h.paths.length - 1 });
+  }
+  function setExplorerPath(next: string | ((prev: string) => string)) {
+    const h = historyRef.current;
+    const path = typeof next === 'function' ? next(h.paths[h.index]) : next;
+    if (path === h.paths[h.index]) return;
+    h.paths = [...h.paths.slice(0, h.index + 1), path];
+    h.index = h.paths.length - 1;
+    setExplorerPathState(path);
+    syncHistoryState();
+  }
+  function explorerBack() {
+    const h = historyRef.current;
+    if (h.index === 0) return;
+    h.index -= 1;
+    setExplorerPathState(h.paths[h.index]);
+    syncHistoryState();
+  }
+  function explorerForward() {
+    const h = historyRef.current;
+    if (h.index >= h.paths.length - 1) return;
+    h.index += 1;
+    setExplorerPathState(h.paths[h.index]);
+    syncHistoryState();
+  }
   const explorer = explorerMode && !searching;
   // The folders the explorer knows: every document tag, including one
   // made on purpose and still empty (Tag.keep) - which the drawer's own
@@ -456,7 +490,11 @@ export default function DocumentsScreen() {
   useEffect(() => {
     if (listMode !== 'groups' && groupFilter !== STICKERS_GROUP) setGroupFilter(null);
     if (listMode !== 'list') setActiveFilter(null);
-    if (listMode === 'explorer') setExplorerPath('');
+    if (listMode === 'explorer') {
+      historyRef.current = { paths: [''], index: 0 };
+      setExplorerPathState('');
+      syncHistoryState();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listMode]);
   // The screen clears itself only while the search is actually being
@@ -497,7 +535,15 @@ export default function DocumentsScreen() {
   const blurTarget = useBlurTarget();
   // The rail carries an ACTIONS capsule now, a capsule's height where the
   // folder button stood - see RailCapsule.
-  const rail = useRail(CAPSULE_HEIGHT, CAPSULE_HEIGHT);
+  const rail = useRail(
+    CAPSULE_HEIGHT,
+    CAPSULE_HEIGHT,
+    // In the explorer the create capsule carries a second button (a new
+    // folder) and a back/forward capsule appears; elsewhere the rail is
+    // as it was.
+    explorer ? CAPSULE_HEIGHT : RAIL_WIDTH,
+    explorer ? CAPSULE_HEIGHT : 0
+  );
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   // How far the list has to clear the bottom edge so its last card never
   // ends up sitting behind the navigation island - the island is the
@@ -1469,38 +1515,48 @@ export default function DocumentsScreen() {
           ]}
           style={{ position: 'absolute', right: RAIL_CLEARANCE, bottom: rail.actionsBottom }}
         />
+        {/* The create capsule: a new note, and in the explorer a new folder
+            beside it - each glyph shows the plus ON the thing it adds, the
+            user's ask. The note button held makes a sticker, as the plus
+            always did. */}
         {isFocused && !isSelectMode && !searchingAlone && !(isTwoPane && !!openDoc && paneFullscreen) && (
-        <GlassPortal>
-          <Pressable
-            style={[styles.fab, { bottom: rail.addBottom }, fabPressed && styles.fabSticker]}
-            onPress={createDocument}
-            // The two halves of a mechanical key: resistance under the
-            // finger, rebound when it lifts (see hapticButtonDown/Up).
-            onPressIn={hapticButtonDown}
-            onLongPress={() => {
-              setFabPressed(true);
-              // In «Провідник» a held "+" makes a folder in the level being
-              // looked at; everywhere else it makes a sticker, as before.
-              if (explorer) setFolderPrompt({ mode: 'new', parent: explorerPath });
-              else openStickerComposer();
-            }}
-            onPressOut={() => {
-              hapticButtonUp();
-              setFabPressed(false);
-            }}
-            delayLongPress={400}
-          >
-            <BlurView
-              intensity={60}
-              tint="dark"
-              blurMethod="dimezisBlurView"
-              blurTarget={blurTarget ?? undefined}
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
-            <Ionicons name="add-outline" size={28} color={fabPressed ? STICKER_DARK : '#fff'} />
-          </Pressable>
-        </GlassPortal>
+          <RailCapsule
+            bottom={rail.addBottom}
+            buttons={[
+              {
+                family: 'material-community',
+                icon: 'file-plus-outline',
+                size: 26,
+                onPress: createDocument,
+                onPressIn: hapticButtonDown,
+                onPressOut: hapticButtonUp,
+                onLongPress: openStickerComposer,
+              },
+              ...(explorer
+                ? [
+                    {
+                      family: 'material-community' as const,
+                      icon: 'folder-plus-outline' as const,
+                      size: 26,
+                      onPress: () => setFolderPrompt({ mode: 'new', parent: explorerPath }),
+                      onPressIn: hapticButtonDown,
+                      onPressOut: hapticButtonUp,
+                    },
+                  ]
+                : []),
+            ]}
+          />
+        )}
+        {/* Back and forward through the folders you have been in - so the
+            hand need not reach for the path strip at the top. */}
+        {explorer && isFocused && !isSelectMode && !searchingAlone && !(isTwoPane && !!openDoc && paneFullscreen) && (
+          <RailCapsule
+            bottom={rail.historyBottom}
+            buttons={[
+              { icon: 'chevron-back-outline', onPress: explorerBack, disabled: !historyState.canBack },
+              { icon: 'chevron-forward-outline', onPress: explorerForward, disabled: !historyState.canForward },
+            ]}
+          />
         )}
         </View>
 
