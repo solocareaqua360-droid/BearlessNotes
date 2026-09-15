@@ -751,7 +751,13 @@ export default function DatabasesScreen() {
           Outside ContentColumn on purpose: that column caps content at a
           readable 760, which is right for one column of tiles and wrong
           for two panes, which should have the whole unfolded screen. */}
-      {isTwoPane ? (
+      {/* The tiles take the WHOLE unfolded screen until something is
+          actually open beside them. Half of it spent on "torkny plytky"
+          was half a screen spent on an instruction - the same thing the
+          documents list stopped doing. */}
+      {isTwoPane && !openInPane && !colorMenuKey ? (
+        boardScroll
+      ) : isTwoPane ? (
         <View style={styles.paneRow}>
           <View style={styles.boardPane}>{boardScroll}</View>
           <View style={styles.menuPane}>
@@ -784,6 +790,9 @@ export default function DatabasesScreen() {
                 </GlassTargetProvider>
               </GlassPortalHost>
             ) : (
+              // Only ever seen for the instant between one pane closing and
+              // the row unmounting - with nothing open the row is not drawn
+              // at all now.
               <View style={styles.menuPaneEmpty}>
                 <Ionicons name="apps-outline" size={26} color={GLASS_TEXT_FAINT} />
                 <Text style={styles.menuPaneHint}>
