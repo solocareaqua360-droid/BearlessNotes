@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Svg, { Circle, Path, Rect, Text as SvgText } from 'react-native-svg';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SketchElement, SketchPathElement, SketchShape } from '../types';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
@@ -238,6 +238,14 @@ export default function SketchEditor({ visible, initialElements, background, onS
   // picture is FITTED: whichever of the two sides runs out first decides
   // the size, and the whole photograph is on screen with its controls.
   const [stage, setStage] = useState({ width: 0, height: 0 });
+  // The palette hides behind one dot on the floating bar - open only
+  // while it is being used.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  // The system's own bars. Over a photograph the editor takes the whole
+  // screen (no safe-area padding, or the picture loses two strips), so
+  // the floating chrome keeps clear of them itself - otherwise "Готово"
+  // sat on top of the clock.
+  const insets = useSafeAreaInsets();
   const fitted =
     stage.width > 0 && stage.height > 0
       ? stage.width / stage.height > aspect
@@ -457,13 +465,13 @@ export default function SketchEditor({ visible, initialElements, background, onS
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView
         style={[styles.container, background && styles.containerDark]}
-        edges={['top', 'bottom']}
+        edges={background ? [] : ['top', 'bottom']}
       >
         {/* Drawing on a photograph, the bars float OVER it rather than
             standing above and below: a picture squeezed between two
             solid bars is a picture you cannot see, which is what the
             user met. On a blank canvas they stay where they were. */}
-        <View style={[styles.header, background && styles.headerFloating]}>
+        <View style={[styles.header, background && [styles.headerFloating, { paddingTop: insets.top + 8 }]]}>
           <Pressable hitSlop={10} onPress={onClose}>
             <Ionicons name="close" size={24} color={ink} />
           </Pressable>
@@ -560,46 +568,107 @@ export default function SketchEditor({ visible, initialElements, background, onS
         </View>
         </View>
 
-        <View style={[styles.toolbar, background && styles.toolbarFloating]}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolRow}>
+        {background ? (
+          // One pill, floating clear of every edge: the tools in a row,
+          // then the colour as a single dot that opens the palette above
+          // it. Three stacked rows across the whole foot of the screen
+          // was a quarter of the picture spent on controls.
+          <>
+            {paletteOpen && (
+              <View style={[styles.palettePop, { bottom: insets.bottom + 74 }]}>
+                {COLORS.map((c) => (
+                  <Pressable
+                    key={c}
+                    hitSlop={4}
+                    onPress={() => {
+                      selectColor(c);
+                      setPaletteOpen(false);
+                    }}
+                    style={[styles.colorSwatch, { backgroundColor: c }, color === c && styles.colorSwatchActive]}
+                  />
+                ))}
+                <View style={styles.pillDivider} />
+                {WIDTHS.map((w) => (
+                  <Pressable
+                    key={w}
+                    hitSlop={4}
+                    onPress={() => setStrokeWidth(w)}
+                    style={[styles.widthButton, strokeWidth === w && styles.widthButtonActive]}
+                  >
+                    <View style={[styles.widthDot, { width: w * 2, height: w * 2, borderRadius: w }]} />
+                  </Pressable>
+                ))}
+              </View>
+            )}
+            <View style={[styles.toolbarFloating, { bottom: insets.bottom + 10 }]}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.pillTools}
+              >
+                {TOOLS.map(({ tool: t, family, icon }) => (
+                  <Pressable
+                    key={t}
+                    hitSlop={4}
+                    style={[styles.pillTool, tool === t && styles.pillToolActive]}
+                    onPress={() => selectTool(t)}
+                  >
+                    {family === 'ion' ? (
+                      <Ionicons name={icon as never} size={19} color={tool === t ? '#111827' : '#fff'} />
+                    ) : (
+                      <MaterialCommunityIcons name={icon as never} size={19} color={tool === t ? '#111827' : '#fff'} />
+                    )}
+                  </Pressable>
+                ))}
+              </ScrollView>
+              <View style={styles.pillDivider} />
+              <Pressable hitSlop={6} onPress={() => setPaletteOpen((open) => !open)} style={styles.pillColor}>
+                <View style={[styles.pillColorDot, { backgroundColor: color }]} />
+              </Pressable>
+            </View>
+          </>
+        ) : (
+          <View style={styles.toolbar}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolRow}>
             {TOOLS.map(({ tool: t, family, icon }) => (
-              <Pressable
+                <Pressable
                 key={t}
                 hitSlop={4}
                 style={[styles.toolButton, tool === t && styles.toolButtonActive]}
                 onPress={() => selectTool(t)}
               >
                 {family === 'ion' ? (
-                  <Ionicons name={icon as never} size={20} color={tool === t ? '#fff' : '#111827'} />
+                    <Ionicons name={icon as never} size={20} color={tool === t ? '#fff' : '#111827'} />
                 ) : (
-                  <MaterialCommunityIcons name={icon as never} size={20} color={tool === t ? '#fff' : '#111827'} />
+                    <MaterialCommunityIcons name={icon as never} size={20} color={tool === t ? '#fff' : '#111827'} />
                 )}
-              </Pressable>
+                </Pressable>
             ))}
-          </ScrollView>
-          <View style={styles.colorRow}>
+            </ScrollView>
+            <View style={styles.colorRow}>
             {COLORS.map((c) => (
-              <Pressable
+                <Pressable
                 key={c}
                 hitSlop={4}
                 onPress={() => selectColor(c)}
                 style={[styles.colorSwatch, { backgroundColor: c }, color === c && styles.colorSwatchActive]}
               />
             ))}
-          </View>
-          <View style={styles.widthRow}>
+            </View>
+            <View style={styles.widthRow}>
             {WIDTHS.map((w) => (
-              <Pressable
+                <Pressable
                 key={w}
                 hitSlop={4}
                 onPress={() => setStrokeWidth(w)}
                 style={[styles.widthButton, strokeWidth === w && styles.widthButtonActive]}
               >
-                <View style={[styles.widthDot, { width: w * 2, height: w * 2, borderRadius: w }]} />
-              </Pressable>
+                  <View style={[styles.widthDot, { width: w * 2, height: w * 2, borderRadius: w }]} />
+                </Pressable>
             ))}
+            </View>
           </View>
-        </View>
+        )}
 
         {pendingText && (
           <View style={styles.textPromptBackdrop}>
@@ -658,15 +727,80 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
     backgroundColor: 'rgba(17,17,17,0.55)',
   },
+  // The floating bar: ONE pill, centred, clear of every edge - the
+  // shape Apple's own markup uses, and the reference the user drew.
   toolbarFloating: {
     position: 'absolute',
-    left: 8,
-    right: 8,
-    bottom: 8,
+    alignSelf: 'center',
+    maxWidth: '94%',
     zIndex: 10,
-    borderTopWidth: 0,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 28,
+    backgroundColor: 'rgba(28,28,30,0.94)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.18)',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  pillTools: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  pillTool: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pillToolActive: {
+    backgroundColor: '#fff',
+  },
+  pillDivider: {
+    width: StyleSheet.hairlineWidth,
+    alignSelf: 'stretch',
+    marginVertical: 6,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  pillColor: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pillColorDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.85)',
+  },
+  // The palette, only while it is open, on its own pill above the bar.
+  palettePop: {
+    position: 'absolute',
+    alignSelf: 'center',
+    maxWidth: '94%',
+    zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 22,
+    backgroundColor: 'rgba(28,28,30,0.94)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.18)',
   },
   header: {
     flexDirection: 'row',
