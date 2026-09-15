@@ -28,13 +28,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
-import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
+import { CAPSULE_HEIGHT_1, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
+import RailCapsule from '../components/RailCapsule';
+import { useRail } from '../hooks/useRail';
 import { ask, confirm } from '../components/surfaces/Ask';
 
 const ACCENT = '#8B5CF6';
-// Where the content starts now that the screen has no header: the same
-// line the capsule hangs from, so the first board sits level with it.
-const RAIL_TOP_PAD = 96;
+// Where the content starts. It used to be the line the top capsule hung
+// from, so the first board sat level with it; that capsule is gone from
+// this screen (its two buttons are on the rail proper now), so the list
+// starts under the status bar instead of a hand's width below it.
+const RAIL_TOP_PAD = 16;
 const boardsCollection = collection(db, 'boards');
 
 // List of "Дошка" boards - Stage 1 of the board feature (see DEVELOPMENT_PLAN.md).
@@ -42,9 +46,12 @@ const boardsCollection = collection(db, 'boards');
 // menu or bulk-select yet - a handful of boards doesn't need them, and
 // nothing in the brief for this stage asks for them.
 export default function BoardsListScreen() {
-  const railBlurTarget = useBlurTarget();
   const railFocused = useIsFocused();
-  const railInsets = useSafeAreaInsets();
+  const insets = useSafeAreaInsets();
+  // No top capsule at all here: this screen has no search, no menu and no
+  // way out to draw - it is a tab's own root. It IS one of the four tabs,
+  // so the island is at its foot and the rail leaves room for it.
+  const rail = useRail(0, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_1, 0, true);
   const navigation = useNavigation<NativeStackNavigationProp<BoardsStackParamList>>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [boards, setBoards] = useState<BoardItem[]>([]);
@@ -239,42 +246,32 @@ export default function BoardsListScreen() {
         <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#boardsBg)" />
       </Svg>
       <ContentColumn>
-      {/* The rail, as on every other screen: right edge, same width, same
-          glass, hanging from the same line. Through the portal, which is
-          where a blur is safe. The section's own title is gone with the
-          header that carried it. */}
+      {/* The rail, in the same two places as on every other screen: what
+          this list can be DONE to in the middle, and what it MAKES at the
+          foot. Both were one capsule at the top, which is the one place
+          the rest of the app does not keep the "+".
+
+          RailCapsule draws its own glass through the portal, so neither
+          needs a wrapper here any more. */}
       {railFocused && (
-        <GlassPortal>
-          <View
-            style={[styles.railWrap, { top: railInsets.top + CHROME_TOP + CAPSULE_DROP }]}
-            pointerEvents="box-none"
-          >
-            <View style={styles.headerButtons}>
-              <BlurView
-                intensity={60}
-                tint="dark"
-                blurMethod="dimezisBlurView"
-                blurTarget={railBlurTarget ?? undefined}
-                style={StyleSheet.absoluteFill}
-                pointerEvents="none"
-              />
-              <Pressable
-                hitSlop={8}
-                onPress={() => changeViewMode(viewMode === 'list' ? 'cards' : 'list')}
-              >
-                <Ionicons
-                  name={viewMode === 'cards' ? 'reorder-four-outline' : 'grid-outline'}
-                  size={24}
-                  color="#fff"
-                />
-              </Pressable>
-              <View style={styles.headerButtonsDivider} />
-              <Pressable hitSlop={8} onPress={createBoard}>
-                <Ionicons name="add-outline" size={24} color="#fff" />
-              </Pressable>
-            </View>
-          </View>
-        </GlassPortal>
+        <RailCapsule
+          bottom={rail.actionsBottom}
+          buttons={[
+            {
+              // The icon is the shape in force, not the one a tap would
+              // switch to - it reads as a label everywhere else on the
+              // rail, and it read as one here too, just the wrong way up.
+              icon: viewMode === 'cards' ? 'grid-outline' : 'reorder-four-outline',
+              onPress: () => changeViewMode(viewMode === 'list' ? 'cards' : 'list'),
+            },
+          ]}
+        />
+      )}
+      {railFocused && (
+        <RailCapsule
+          bottom={rail.addBottom}
+          buttons={[{ icon: 'easel-outline', badge: 'add-circle-outline', onPress: createBoard }]}
+        />
       )}
 
         {isLoading ? (
@@ -298,7 +295,14 @@ export default function BoardsListScreen() {
             <Text style={styles.emptyHint}>Дошка - вільний канвас для карток, які потім можна зібрати в документ</Text>
           </View>
         ) : (
-          <ScrollView contentContainerStyle={viewMode === 'cards' ? styles.tileGrid : styles.list}>
+          <ScrollView
+            contentContainerStyle={[
+              viewMode === 'cards' ? styles.tileGrid : styles.list,
+              // The status bar's own band, which the capsule that used to
+              // hang here was clearing on the list's behalf.
+              { paddingTop: insets.top + RAIL_TOP_PAD },
+            ]}
+          >
             {viewMode === 'cards'
               ? boards.map((board) => renderBoardTile(board, tileWidth))
               : boards.map(renderBoardRow)}
@@ -350,7 +354,6 @@ const styles = StyleSheet.create({
   },
   emptyState: {
     flex: 1,
-    paddingTop: RAIL_TOP_PAD,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,
