@@ -2889,6 +2889,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       if (b.imageFit) photoDoc.imageFit = b.imageFit;
       if (b.createdAt) photoDoc.createdAt = b.createdAt;
       if (isNewPhoto && b.imageSource === 'camera') photoDoc.groupId = CAMERA_PHOTOS_GROUP_ID;
+      // A drawing made on this block (see onDrawOverImage) mirrors into the
+      // photos database too - same rule as the title above, just without
+      // the isNewPhoto guard: drawing is additive, never something a later
+      // save should silently revert.
+      if (b.sketchElements?.length) {
+        photoDoc.sketchElements = b.sketchElements;
+        photoDoc.sketchWidth = b.sketchWidth;
+        photoDoc.sketchHeight = b.sketchHeight;
+      }
       setDoc(doc(db, 'photos', b.id), photoDoc, { merge: true });
       // A genuinely new photo (not one already mirrored before this
       // render) also gets backed up to Google Drive, if connected -

@@ -3,7 +3,9 @@ import { Ionicons } from '@expo/vector-icons';
 import AttachmentImage from './AttachmentImage';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
+import { SketchElement } from '../types';
 
 export type ViewerAction = {
   key: string;
@@ -36,6 +38,15 @@ type Props = {
   // from inside a note) the viewer is one picture, as it was.
   onPrev?: () => void;
   onNext?: () => void;
+  // A drawing over this picture (see SketchEditor) - the viewBox is the
+  // canvas size it was captured against, same as the inline block preview,
+  // so a stroke lands where it was put. Default preserveAspectRatio (not
+  // "none") deliberately matches the image's own resizeMode="contain"
+  // letterboxing, since sketchWidth/sketchHeight always share the image's
+  // aspect ratio.
+  sketchElements?: SketchElement[];
+  sketchWidth?: number;
+  sketchHeight?: number;
 };
 
 // Full-screen viewer opened by tapping an image (a block in a document, or a
@@ -44,7 +55,17 @@ type Props = {
 // on the same gesture-handler/reanimated stack used elsewhere in the app
 // rather than adding a dedicated image-viewer dependency for this one
 // feature.
-export default function ZoomableImageViewer({ uri, driveFileId, onClose, actions, onPrev, onNext }: Props) {
+export default function ZoomableImageViewer({
+  uri,
+  driveFileId,
+  onClose,
+  actions,
+  onPrev,
+  onNext,
+  sketchElements,
+  sketchWidth,
+  sketchHeight,
+}: Props) {
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(0);
@@ -129,6 +150,31 @@ export default function ZoomableImageViewer({ uri, driveFileId, onClose, actions
             resizeMethod="scale"
             countsAsUse
           />
+          {!!sketchElements?.length && (
+            <Svg
+              style={StyleSheet.absoluteFill}
+              viewBox={`0 0 ${sketchWidth || 1} ${sketchHeight || 1}`}
+              pointerEvents="none"
+            >
+              {sketchElements.map((el, i) =>
+                el.kind === 'text' ? (
+                  <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
+                    {el.text}
+                  </SvgText>
+                ) : (
+                  <Path
+                    key={i}
+                    d={el.d}
+                    stroke={el.color}
+                    strokeWidth={el.width}
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                )
+              )}
+            </Svg>
+          )}
         </Animated.View>
       </GestureDetector>
       {/* The arrows, for a finger that would rather tap - and the one

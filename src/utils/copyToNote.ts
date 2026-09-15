@@ -54,6 +54,9 @@ export function blockFromPhoto(photo: {
   createdAt?: number;
   driveFileId?: string;
   driveBytes?: number;
+  sketchElements?: SketchElement[];
+  sketchWidth?: number;
+  sketchHeight?: number;
 }): Block {
   const block: Block = { id: photo.id, text: '', type: 'image', imageUri: photo.imageUri };
   if (photo.imageFit) block.imageFit = photo.imageFit;
@@ -63,6 +66,13 @@ export function blockFromPhoto(photo: {
   // Drive upload when referencing an already-backed-up photo.
   if (photo.driveFileId) block.driveFileId = photo.driveFileId;
   if (photo.driveBytes) block.driveBytes = photo.driveBytes;
+  // A drawing already made on this photo (from the Photos database viewer)
+  // travels with it into the note - same record, same drawing.
+  if (photo.sketchElements?.length) {
+    block.sketchElements = photo.sketchElements;
+    block.sketchWidth = photo.sketchWidth;
+    block.sketchHeight = photo.sketchHeight;
+  }
   return block;
 }
 

@@ -29,9 +29,11 @@ import {
 } from '../firestore';
 import { ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
-import { Block, Tag } from '../types';
+import { Block, SketchElement, Tag } from '../types';
 import { RootStackParamList } from '../navigation';
 import ZoomableImageViewer, { ViewerAction } from '../components/ZoomableImageViewer';
+import SketchEditor from '../components/SketchEditor';
+import { useFlattenPhoto } from '../hooks/useFlattenPhoto';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
@@ -81,6 +83,14 @@ type PhotoItem = {
   driveBytes?: number;
   updatedAt: number;
   createdAt?: number;
+  // A drawing kept beside the photo, not merged into it - see
+  // DocumentEditorScreen's own image blocks (sketchWidth/sketchHeight are
+  // the canvas size the elements' coordinates were captured against).
+  // Flattened into one picture only at the moment of sharing/downloading
+  // - see useFlattenPhoto.
+  sketchElements?: SketchElement[];
+  sketchWidth?: number;
+  sketchHeight?: number;
 };
 
 export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
@@ -142,8 +152,11 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     changeViewMode,
   } = list;
   const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
+  const { flatten: flattenPhoto, node: flattenPhotoNode } = useFlattenPhoto();
+  const [sketchPhotoId, setSketchPhotoId] = useState<string | null>(null);
 
-  async function handleDownloadPhoto(uri: string) {
+  async function handleDownloadPhoto(photo: PhotoItem) {
+    const uri = await flattenPhoto(photo.imageUri, photo.driveFileId, photo.sketchElements, photo.sketchWidth, photo.sketchHeight);
     const result = await downloadToFolder(uri, `photo-${Date.now()}.jpg`, 'image/jpeg');
     if (result) showDownloadToast(result.fileName, result.destUri, 'image/jpeg');
   }
@@ -172,6 +185,9 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
               driveBytes: data.driveBytes,
               updatedAt: data.updatedAt ?? 0,
               createdAt: data.createdAt,
+              sketchElements: data.sketchElements,
+              sketchWidth: data.sketchWidth,
+              sketchHeight: data.sketchHeight,
             };
           })
           .sort((a, b) => b.updatedAt - a.updatedAt)
@@ -383,10 +399,17 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     navigation.navigate('Editor', { documentId });
   }
 
-  async function shareImage(uri: string) {
+  async function shareImage(photo: PhotoItem) {
     try {
       const available = await Sharing.isAvailableAsync();
       if (!available) return;
+      const uri = await flattenPhoto(
+        photo.imageUri,
+        photo.driveFileId,
+        photo.sketchElements,
+        photo.sketchWidth,
+        photo.sketchHeight
+      );
       await Sharing.shareAsync(uri);
     } catch {
       // No sharing app available or the user backed out - nothing to do.
@@ -555,12 +578,18 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
         badge: photo.documentIds.length,
         onPress: () => openDocumentIcon(photo),
       },
-      { key: 'share', icon: 'share-social-outline', label: 'Поділитись', onPress: () => shareImage(photo.imageUri) },
+      {
+        key: 'draw',
+        icon: 'brush-outline',
+        label: 'Малювати',
+        onPress: () => setSketchPhotoId(photo.id),
+      },
+      { key: 'share', icon: 'share-social-outline', label: 'Поділитись', onPress: () => shareImage(photo) },
       {
         key: 'download',
         icon: 'download-outline',
         label: 'Завантажити',
-        onPress: () => handleDownloadPhoto(photo.imageUri),
+        onPress: () => handleDownloadPhoto(photo),
       },
       {
         key: 'delete',
@@ -570,6 +599,40 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
         onPress: () => confirmDeletePhoto(photo),
       },
     ];
+  }
+
+  const sketchPhoto = sketchPhotoId ? photos.find((p) => p.id === sketchPhotoId) ?? null : null;
+
+  async function saveSketchToPhoto(elements: SketchElement[], width: number, height: number) {
+    const photo = sketchPhoto;
+    setSketchPhotoId(null);
+    if (!photo) return;
+    await updateDoc(doc(db, 'photos', photo.id), {
+      sketchElements: elements,
+      sketchWidth: width,
+      sketchHeight: height,
+      updatedAt: Date.now(),
+    });
+    // Same propagation renamePhoto does for a title change - a photo used
+    // in a note stays one record, not two copies that can drift apart.
+    await Promise.all(
+      photo.documentIds.map(async (docId) => {
+        const documentRef = doc(db, 'documents', docId);
+        const snapshot = await getDoc(documentRef);
+        const data = snapshot.data();
+        if (!data) return;
+        const blocks: Block[] = data.blocks ?? [];
+        let changed = false;
+        const updatedBlocks = blocks.map((b) => {
+          if (b.id === photo.id && (b.type ?? 'paragraph') === 'image') {
+            changed = true;
+            return { ...b, sketchElements: elements, sketchWidth: width, sketchHeight: height };
+          }
+          return b;
+        });
+        if (changed) await updateDoc(documentRef, { blocks: updatedBlocks });
+      })
+    );
   }
 
   return (
@@ -636,10 +699,22 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                   actions={viewerActionsFor(viewerPhoto)}
                   onPrev={viewerPrevId ? () => setViewerPhotoId(viewerPrevId) : undefined}
                   onNext={viewerNextId ? () => setViewerPhotoId(viewerNextId) : undefined}
+                  sketchElements={viewerPhoto.sketchElements}
+                  sketchWidth={viewerPhoto.sketchWidth}
+                  sketchHeight={viewerPhoto.sketchHeight}
                 />
               </GestureHandlerRootView>
             </Modal>
           )}
+
+          <SketchEditor
+            visible={sketchPhotoId !== null}
+            initialElements={sketchPhoto?.sketchElements ?? []}
+            background={sketchPhoto ? { uri: sketchPhoto.imageUri } : undefined}
+            onSave={saveSketchToPhoto}
+            onClose={() => setSketchPhotoId(null)}
+          />
+          {flattenPhotoNode}
 
           <RenamePrompt
             visible={renamingPhoto !== null}
