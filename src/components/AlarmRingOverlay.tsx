@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Modal, StyleSheet, View } from 'react-native';
 import notifee, { EventType } from '@notifee/react-native';
 import { dismissReminder, reminderTextOf, snoozeReminder } from '../utils/reminders';
-import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import AlarmRingCard from './AlarmRingCard';
 
-// The in-app half of a ringing alarm.
+// The in-app half of a ringing alarm - for the app already being open
+// when it fires. A cold start goes to AlarmRingScreenRoot's own Activity
+// instead (see plugins/withAlarmRingActivity), which is what actually
+// turns the screen on and shows over the lock screen; this Modal only
+// ever appears once the app is already the thing on screen.
 //
 // notifee's fullScreenAction brings the app forward, and its tray
 // notification keeps ringing regardless - but arriving in the app to
@@ -24,7 +27,11 @@ export default function AlarmRingOverlay() {
   useEffect(() => {
     // The app was launched BY tapping the alarm (it was not already
     // running) - the one case onForegroundEvent below never sees, since
-    // it only fires for events after the JS runtime is already up.
+    // it only fires for events after the JS runtime is already up. In
+    // practice this path is now rare: a cold start goes to
+    // AlarmRingScreenRoot's dedicated Activity instead, but the app can
+    // still have been launched some OTHER way at the exact moment the
+    // alarm was already ringing, so this stays as a fallback.
     notifee.getInitialNotification().then((initial) => {
       if (initial?.notification?.data?.kind === 'task-alarm') {
         setRinging({ id: initial.notification.id, text: reminderTextOf(initial.notification) });
@@ -60,29 +67,11 @@ export default function AlarmRingOverlay() {
   return (
     <Modal visible transparent animationType="fade" onRequestClose={stop}>
       <View style={styles.backdrop}>
-        <View style={styles.card}>
-          <View style={styles.iconWrap}>
-            <Ionicons name="alarm" size={40} color="#fff" />
-          </View>
-          <Text style={styles.title}>Нагадування</Text>
-          <Text style={styles.text} numberOfLines={4}>
-            {ringing.text}
-          </Text>
-          <View style={styles.actions}>
-            <Pressable style={styles.snoozeBtn} onPress={snooze}>
-              <Text style={styles.snoozeLabel}>Відкласти на 10 хв</Text>
-            </Pressable>
-            <Pressable style={styles.stopBtn} onPress={stop}>
-              <Text style={styles.stopLabel}>Готово</Text>
-            </Pressable>
-          </View>
-        </View>
+        <AlarmRingCard text={ringing.text} onSnooze={snooze} onStop={stop} />
       </View>
     </Modal>
   );
 }
-
-const ACCENT = '#3B82F6';
 
 const styles = StyleSheet.create({
   backdrop: {
@@ -91,61 +80,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
-  },
-  card: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: '#fff',
-    borderRadius: 24,
-    padding: 24,
-    alignItems: 'center',
-  },
-  iconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: ACCENT,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-  title: {
-    fontSize: 20,
-    fontFamily: FONT_BOLD,
-    color: '#111827',
-    marginBottom: 6,
-  },
-  text: {
-    fontSize: 15,
-    fontFamily: FONT_REGULAR,
-    color: '#374151',
-    textAlign: 'center',
-    marginBottom: 22,
-  },
-  actions: {
-    width: '100%',
-    gap: 10,
-  },
-  snoozeBtn: {
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: 'center',
-    backgroundColor: '#EFF6FF',
-  },
-  snoozeLabel: {
-    fontSize: 15,
-    fontFamily: FONT_SEMIBOLD,
-    color: ACCENT,
-  },
-  stopBtn: {
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: 'center',
-    backgroundColor: ACCENT,
-  },
-  stopLabel: {
-    fontSize: 15,
-    fontFamily: FONT_SEMIBOLD,
-    color: '#fff',
   },
 });

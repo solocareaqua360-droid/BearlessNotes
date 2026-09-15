@@ -36,6 +36,8 @@ import notifee, {
 // bypassing activity needs a small native Activity of its own; this is
 // as far as the JS/notifee side goes without one.
 const ANDROID_CHANNEL_ID = 'reminders-alarm';
+// Matches app.json's android.package - see plugins/withAlarmRingActivity.
+const ANDROID_PACKAGE = 'com.bearlessnotes.notes';
 
 let channelReady: Promise<void> | null = null;
 
@@ -92,7 +94,14 @@ async function createAlarm(taskText: string, fireDate: Date): Promise<string> {
         ongoing: true,
         autoCancel: false,
         pressAction: { id: 'default' },
-        fullScreenAction: { id: 'default' },
+        // A dedicated Activity, in its own process, that turns the
+        // screen on and shows itself over the lock screen without the
+        // phone being unlocked first - see plugins/withAlarmRingActivity
+        // and AlarmRingScreenRoot. Plain notifee full-screen intents
+        // into the app's own MainActivity only bring the app forward;
+        // MainActivity has no reason to ever bypass the lock screen for
+        // ordinary use, so that had to be a separate, isolated Activity.
+        fullScreenAction: { id: 'default', launchActivity: `${ANDROID_PACKAGE}.AlarmRingActivity` },
         actions: [
           { title: 'Відкласти на 10 хв', pressAction: { id: 'snooze' } },
           { title: 'Готово', pressAction: { id: 'dismiss' } },
