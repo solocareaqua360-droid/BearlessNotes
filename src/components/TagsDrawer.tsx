@@ -50,18 +50,57 @@ const OPEN_BUTTON_SIZE = 64;
 // system's own "back".
 export type TagsDrawerHandle = { open: () => void };
 
+// How much of the screen's height, in the middle, the drawer's swipe
+// answers to. The user's problem: the same rightward drag both turned the
+// page to the calendar and opened the drawer, and which one you got was a
+// coin toss. Their own fix - "шторку повісити на жест... тільки
+// посередині якби, екрану" - so the drag has a place: the middle third
+// opens the drawer, everywhere else the tabs turn.
+const DRAWER_BAND = 0.3;
+
 export function useDrawerSwipe(open: () => void) {
+  const { height } = useWindowDimensions();
+  const bandTop = height * (0.5 - DRAWER_BAND / 2);
+  const bandBottom = height * (0.5 + DRAWER_BAND / 2);
+  // Where the finger went down, since a manually-activated pan is told
+  // about touches rather than translations.
+  const startX = useSharedValue(0);
+  const startY = useSharedValue(0);
   return useMemo(
     () =>
       Gesture.Pan()
-        .hitSlop({ left: -32 })
-        .activeOffsetX(28)
-        .failOffsetX(-12)
-        .failOffsetY([-18, 18])
+        // Manual, and that is the whole point. The old gesture ACTIVATED
+        // on any rightward drag and then decided what to do; activating is
+        // what takes the swipe away from the pager, so a drag outside the
+        // band was eaten either way. This one fails before it activates,
+        // and a failed gesture leaves the swipe to the tabs.
+        .manualActivation(true)
+        .onTouchesDown((e, state) => {
+          const touch = e.allTouches[0];
+          if (!touch) {
+            state.fail();
+            return;
+          }
+          startX.value = touch.absoluteX;
+          startY.value = touch.absoluteY;
+          if (touch.absoluteY < bandTop || touch.absoluteY > bandBottom) state.fail();
+        })
+        .onTouchesMove((e, state) => {
+          const touch = e.allTouches[0];
+          if (!touch) return;
+          const dx = touch.absoluteX - startX.value;
+          const dy = touch.absoluteY - startY.value;
+          // Up or down is the list scrolling; leftward is the other tab.
+          if (Math.abs(dy) > 18 || dx < -12) {
+            state.fail();
+            return;
+          }
+          if (dx > 28) state.activate();
+        })
         .onEnd((e) => {
           if (e.translationX > 60 || e.velocityX > 500) runOnJS(open)();
         }),
-    [open]
+    [open, bandTop, bandBottom, startX, startY]
   );
 }
 
