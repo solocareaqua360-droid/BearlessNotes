@@ -155,9 +155,27 @@ export default function CalendarScreen() {
   // measurement then recorded that widened pane, which locked it in.
   // That is the "note too narrow until the app is reopened" the user saw
   // lying down.
+  //
+  // Side by side, the calendar's column is GIVEN a width rather than
+  // measured. Flex alone could not hold it: the month grid inside is laid
+  // out in exact pixels, and a flex item will not shrink below its
+  // content unless every wrapper between them says it may - so the column
+  // grew to fit the grid, the grid was sized from the column, and the two
+  // fed each other. The note kept whatever was left, which is the narrow
+  // sheet the user saw. 1 / (1 + 1.3) is the share the two flex values
+  // always meant it to have.
+  // Standing up the calendar shares a band with the history instead, and
+  // there the measured half is right - so this is the lying-down case
+  // only. Spelled out rather than reusing stackedWide, which is declared
+  // further down with the rest of the writing state.
+  const calendarPaneWidthFixed =
+    isTwoPane && windowWidth >= windowHeight ? Math.floor(windowWidth / 2.3) : null;
   const paneFallback = isTwoPane ? windowWidth / 2 : windowWidth;
   const stripWidth =
-    (isTwoPane && calendarPaneWidth > 0 ? calendarPaneWidth : paneFallback) - PLATE_MARGIN - plateRightMargin;
+    (calendarPaneWidthFixed ??
+      (isTwoPane && calendarPaneWidth > 0 ? calendarPaneWidth : paneFallback)) -
+    PLATE_MARGIN -
+    plateRightMargin;
   const today = useMemo(() => new Date(), []);
 
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
@@ -827,7 +845,15 @@ export default function CalendarScreen() {
           in the row, so they split the window evenly. */}
       <View style={stackedWide ? styles.stack : isTwoPane ? styles.paneRow : styles.stack}>
         <View
-          style={stackedWide ? [styles.topBand, { height: bandHeight }, foldedAway && styles.bandFolded] : isTwoPane ? styles.sidePane : null}
+          style={
+            stackedWide
+              ? [styles.topBand, { height: bandHeight }, foldedAway && styles.bandFolded]
+              : calendarPaneWidthFixed !== null
+                ? [styles.sidePane, { width: calendarPaneWidthFixed, flexGrow: 0, flexShrink: 0, flexBasis: 'auto' }]
+                : isTwoPane
+                  ? styles.sidePane
+                  : null
+          }
         >
           {/* The fold gesture lives on the plate only - never on the
               history list under it, where a drag is someone scrolling
