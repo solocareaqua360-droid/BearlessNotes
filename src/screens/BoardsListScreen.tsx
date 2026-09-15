@@ -24,6 +24,8 @@ import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
 import GroupSections from '../components/GroupSections';
 import { useDatabaseList } from '../hooks/useDatabaseList';
+import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
+import ExplorerHead from '../components/ExplorerHead';
 import RenamePrompt from '../components/RenamePrompt';
 import { MAX_CONTENT_WIDTH } from '../components/ContentColumn';
 import { GLASS_BODY, GLASS_TEXT } from '../constants/glass';
@@ -125,7 +127,55 @@ export default function BoardsListScreen() {
     clearSelection();
   }
 
+  // Folders, and the path through them. A folder is a segment of a tag's
+  // path, so boards get the explorer for free now that they carry tags -
+  // see useExplorer, which is this machinery lifted out of the documents
+  // screen so the two cannot drift apart.
+  const explorer = useExplorer<BoardItem>({
+    kind: 'board',
+    collection: 'boards',
+    items: boards,
+    displayed: displayedBoards,
+    tagIdsOf: (b) => b.tagIds ?? [],
+    tags: list.tags,
+    drawerTags: list.drawerTags,
+    explorerMode: list.explorerMode,
+    searching: needle !== '',
+    needle,
+    createFolderTag: list.createFolderTag,
+    deleteTagCompletely: list.deleteTagCompletely,
+    renameTag: list.renameTag,
+    attachTag: list.attachTag,
+    detachTag: list.detachTag,
+  });
+
+  // What a held folder can do, the same three things it can do in the
+  // documents explorer.
+  function openFolderMenu(folder: ExplorerFolder) {
+    ask({
+      title: nameOf(folder.fullPath),
+      actions: [
+        { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+        { id: 'move', label: 'Перемістити', icon: 'arrow-forward-outline' },
+        { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' },
+      ],
+    }).then(async (answer) => {
+      if (answer === 'rename') explorer.setFolderPrompt({ mode: 'rename', path: folder.fullPath });
+      if (answer === 'delete') explorer.deleteFolder(folder.fullPath);
+      if (answer === 'move') {
+        const destination = await explorer.pickDestination('Куди перемістити папку?', folder.fullPath);
+        if (destination === 'cancel') return;
+        const name = nameOf(folder.fullPath);
+        await explorer.renameFolder(folder.fullPath, destination ? `${destination}/${name}` : name);
+      }
+    });
+  }
+
   const tagPickerBoard = tagPickerBoardId ? boards.find((b) => b.id === tagPickerBoardId) ?? null : null;
+
+  // In explorer mode the list is what is IN this folder; in the other two
+  // it is everything the filters left.
+  const boardsHere = explorer.visibleItems;
 
   function confirmDeleteSelected() {
     const toDelete = selectedBoards;
@@ -215,12 +265,21 @@ export default function BoardsListScreen() {
       actions: [
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
         { id: 'tags', label: 'Теги', icon: 'pricetag-outline' },
+        // Only where there are folders to move it BETWEEN.
+        ...(explorer.active
+          ? [{ id: 'move', label: 'Перемістити', icon: 'arrow-forward-outline' as const }]
+          : []),
         { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' },
       ],
-    }).then((answer) => {
+    }).then(async (answer) => {
       if (answer === 'rename') setRenamingBoard(board);
       if (answer === 'tags') setTagPickerBoardId(board.id);
       if (answer === 'delete') confirmDeleteBoard(board);
+      if (answer === 'move') {
+        const destination = await explorer.pickDestination('Куди перемістити дошку?');
+        if (destination === 'cancel') return;
+        await explorer.moveItem(board, destination);
+      }
     });
   }
 
@@ -312,6 +371,17 @@ export default function BoardsListScreen() {
       hasIsland
       searchPlaceholder="Пошук дощок"
       onAdd={createBoard}
+      addIcon="easel-outline"
+      explorer={{
+        mode: list.listMode,
+        onChangeMode: list.setListMode,
+        active: explorer.active,
+        onNewFolder: () => explorer.setFolderPrompt({ mode: 'new', parent: explorer.path }),
+        onBack: explorer.back,
+        onForward: explorer.forward,
+        canBack: explorer.historyState.canBack,
+        canForward: explorer.historyState.canForward,
+      }}
       shape={{
         icon: viewMode === 'cards' ? 'grid-outline' : 'reorder-four-outline',
         onToggle: () => changeViewMode(viewMode === 'list' ? 'cards' : 'list'),
@@ -329,7 +399,7 @@ export default function BoardsListScreen() {
             tags={tags}
             selectedTagIds={tagPickerBoard?.tagIds ?? []}
             onAttach={(tag) => tagPickerBoard && attachTag(tag, 'board', tagPickerBoard.id, 'boards')}
-            onDetach={(tagId) => tagPickerBoard && detachTag(tagId, 'board', tagPickerBoard.id, 'boards')}
+            onDetach={(tag) => tagPickerBoard && detachTag(tag, 'board', tagPickerBoard.id, 'boards')}
             onCreateAndAttach={(path, icon, color) =>
               tagPickerBoard && createAndAttachTag(path, icon, color, 'board', tagPickerBoard.id, 'boards')
             }
@@ -358,6 +428,14 @@ export default function BoardsListScreen() {
           />
 
           <RenamePrompt
+            visible={explorer.folderPrompt !== null}
+            title={explorer.folderPrompt?.mode === 'rename' ? 'Назва папки' : 'Нова папка'}
+            initialValue={explorer.folderPrompt?.mode === 'rename' ? nameOf(explorer.folderPrompt.path) : ''}
+            onCancel={() => explorer.setFolderPrompt(null)}
+            onSave={(name) => explorer.saveFolderName(name)}
+          />
+
+          <RenamePrompt
             visible={renamingBoard !== null}
             title="Назва дошки"
             initialValue={renamingBoard?.title ?? ''}
@@ -382,7 +460,7 @@ export default function BoardsListScreen() {
             <Text style={styles.emptyLabel}>Не вдалося прочитати дошки</Text>
             <Text style={styles.emptyHint}>{loadError}</Text>
           </View>
-        ) : displayedBoards.length === 0 ? (
+        ) : boardsHere.length === 0 && explorer.folders.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
               <Ionicons name="apps-outline" size={32} color={ACCENT} />
@@ -403,9 +481,31 @@ export default function BoardsListScreen() {
               isSelectMode && styles.listWithBulkBar,
             ]}
           >
+            {/* Where you are and what folders are here - only in
+                explorer mode; in the other two this draws nothing. */}
+            {list.explorerMode && (
+              <ExplorerHead
+                crumbs={explorer.crumbs}
+                path={explorer.path}
+                folders={explorer.folders}
+                showCrumbs={explorer.active}
+                itemIcon="apps-outline"
+                onGo={(next) => {
+                  explorer.setPath(next);
+                  // A folder found by searching is a place to go: the
+                  // search is over once it is entered.
+                  if (needle !== '') {
+                    list.setSearchQuery('');
+                    list.setIsSearching(false);
+                  }
+                }}
+                onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
+                onFolderMenu={openFolderMenu}
+              />
+            )}
             {viewMode === 'cards'
-              ? displayedBoards.map((board) => renderBoardTile(board, tileWidth))
-              : displayedBoards.map(renderBoardRow)}
+              ? boardsHere.map((board) => renderBoardTile(board, tileWidth))
+              : boardsHere.map(renderBoardRow)}
             {/* What else is in this group - see GroupSections. */}
             <GroupSections groupId={list.selectedGroupId} currentKind="board" tags={tags} />
           </ScrollView>

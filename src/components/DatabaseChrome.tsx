@@ -55,6 +55,10 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   // photos, files and links only ever arrive from inside a document, and
   // a "+" that cannot do anything is worse than no "+".
   onAdd?: () => void;
+  // What the "+" makes, for the create capsule the explorer turns it into
+  // - the plus is drawn ON the thing it adds there, as it is on the
+  // documents screen.
+  addIcon?: keyof typeof Ionicons.glyphMap;
   // The shape of the list, where this database has two of them. It was
   // the "Вигляд" pair of rows inside the "..." menu on three screens, all
   // spelling out the same thing; on the rail its icon IS the shape in
@@ -64,6 +68,23 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   // rail reads; the caller names it, because "the other one" is a grid on
   // three of these screens and a tile on another.
   shape?: { icon: keyof typeof Ionicons.glyphMap; onToggle: () => void };
+  // A database with folders: the three-way switch in the drawer, a second
+  // button on the create capsule for a new folder, and back/forward
+  // through the folders you have been in.
+  //
+  // Those two arrows join the ACTIONS capsule rather than taking one of
+  // their own, as they do on the documents screen: the rail stacks three
+  // pieces, and all three are spoken for here.
+  explorer?: {
+    mode: 'groups' | 'list' | 'explorer';
+    onChangeMode: (mode: 'groups' | 'list' | 'explorer') => void;
+    active: boolean;
+    onNewFolder: () => void;
+    onBack: () => void;
+    onForward: () => void;
+    canBack: boolean;
+    canForward: boolean;
+  };
   // A database with neither tags nor groups has nothing to browse in the
   // drawer, and a folder button that opens an empty panel is worse than
   // none (stickers).
@@ -102,7 +123,9 @@ export default function DatabaseChrome<T extends { id: string }>({
   searchPlaceholder,
   menuRows,
   onAdd,
+  addIcon,
   shape,
+  explorer,
   hideDrawer,
   bulk,
   children,
@@ -136,8 +159,8 @@ export default function DatabaseChrome<T extends { id: string }>({
     // way out where there is one - one, two or three buttons, and the
     // rail is told which.
     capsuleHeightFor(1 + (menuRows ? 1 : 0) + (onBack ? 1 : 0)),
-    capsuleHeightFor((shape ? 1 : 0) + 1),
-    onAdd ? RAIL_WIDTH : 0,
+    capsuleHeightFor((shape ? 1 : 0) + 1 + (explorer?.active ? 2 : 0)),
+    onAdd ? (explorer?.active ? CAPSULE_HEIGHT : RAIL_WIDTH) : 0,
     bulk ? CAPSULE_HEIGHT_1 : 0,
     !!hasIsland
   );
@@ -189,6 +212,22 @@ export default function DatabaseChrome<T extends { id: string }>({
           <RailCapsule
             bottom={rail.actionsBottom}
             buttons={[
+              // Back and forward through the folders you have been in, so
+              // the hand need not reach for the path strip at the top.
+              ...(explorer?.active
+                ? [
+                    {
+                      icon: 'chevron-back-outline' as const,
+                      onPress: explorer.onBack,
+                      disabled: !explorer.canBack,
+                    },
+                    {
+                      icon: 'chevron-forward-outline' as const,
+                      onPress: explorer.onForward,
+                      disabled: !explorer.canForward,
+                    },
+                  ]
+                : []),
               ...(shape
                 ? [
                     {
@@ -435,7 +474,20 @@ export default function DatabaseChrome<T extends { id: string }>({
 
       {overlay}
 
-      {isFocused && !list.isSelectMode && !searchingAlone && onAdd && (
+      {/* In the explorer the "+" is a capsule of two: this database's own
+          record, and a folder beside it - the same pair, drawn the same
+          way, as on the documents screen. Everywhere else it stays the
+          one round accent button it has always been. */}
+      {isFocused && !list.isSelectMode && !searchingAlone && onAdd && explorer?.active && (
+        <RailCapsule
+          bottom={rail.addBottom}
+          buttons={[
+            { icon: addIcon ?? 'add-outline', badge: 'add-circle-outline', onPress: onAdd },
+            { icon: 'folder-outline', badge: 'add-circle-outline', onPress: explorer.onNewFolder },
+          ]}
+        />
+      )}
+      {isFocused && !list.isSelectMode && !searchingAlone && onAdd && !explorer?.active && (
         <GlassPortal>
           <Pressable
             style={[
@@ -464,6 +516,7 @@ export default function DatabaseChrome<T extends { id: string }>({
         activeFilter={list.tagFilter}
         onSelectFilter={list.setTagFilter}
         hideOpenButton={list.isSelectMode || searchingAlone}
+        mode={explorer ? { value: explorer.mode, onChange: explorer.onChangeMode } : undefined}
         groupSection={{
           items: list.groupSectionItems,
           selected: list.groupFilter,
