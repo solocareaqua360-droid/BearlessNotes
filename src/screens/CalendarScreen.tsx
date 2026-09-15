@@ -76,8 +76,6 @@ const ACCENT = '#3B82F6';
 // one - the columns drift apart and the last days of the week fall off
 // the right edge, which is exactly how this screen has broken twice.
 const PLATE_MARGIN = 16;
-const documentsCollection = collection(db, 'documents');
-const tasksCollection = collection(db, 'tasks');
 const calendarPrefsDoc = doc(db, 'settings', 'calendarPrefs');
 
 // The week strip pages between exactly 3 in-memory weeks (prev/current/next)
@@ -359,8 +357,14 @@ export default function CalendarScreen() {
     const monthEndKey = unbounded
       ? '9999-12-31'
       : dateKey(addDays(new Date(visibleMonth.year, visibleMonth.month + 1, 0), 7));
-    const filledQuery = query(
-      documentsCollection,
+    // Through ownedQuery, like every other read in the app: the
+    // owner-only rules do not FILTER a query, they refuse one that cannot
+    // prove it only asks for this account's own documents. Without the
+    // ownerId condition Firestore denies the whole thing, the listener
+    // throws, and the app goes down with it - which is exactly what
+    // happened the first time the rules were published.
+    const filledQuery = ownedQuery(
+      'documents',
       where('calendarDate', '>=', monthStartKey),
       where('calendarDate', '<=', monthEndKey)
     );
@@ -371,7 +375,12 @@ export default function CalendarScreen() {
         if (hasNoteContent(data.title ?? '', data.blocks ?? [])) filled.add(data.calendarDate as string);
       });
       setNoteFilledDates(filled);
-    });
+    },
+    // Every listener needs one of these. A refused read - the rules, an
+    // expired session - arrives here; without a handler it is thrown, and
+    // an unhandled throw from a listener takes the app down rather than
+    // dimming one calendar dot.
+    () => setNoteFilledDates(new Set()));
   }, [visibleMonth.year, visibleMonth.month, compactFilter]);
 
   // Same range, same reasoning, but against tasks' own reminderDate - a day
@@ -385,8 +394,8 @@ export default function CalendarScreen() {
     const monthEndKey = unbounded
       ? '9999-12-31'
       : dateKey(addDays(new Date(visibleMonth.year, visibleMonth.month + 1, 0), 7));
-    const remindersQuery = query(
-      tasksCollection,
+    const remindersQuery = ownedQuery(
+      'tasks',
       where('reminderDate', '>=', monthStartKey),
       where('reminderDate', '<=', monthEndKey)
     );
@@ -397,7 +406,8 @@ export default function CalendarScreen() {
         if (reminderDate) filled.add(reminderDate as string);
       });
       setReminderFilledDates(filled);
-    });
+    },
+    () => setReminderFilledDates(new Set()));
   }, [visibleMonth.year, visibleMonth.month, compactFilter]);
 
   function selectDay(date: Date) {
