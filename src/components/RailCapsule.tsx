@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { GlassPortal } from './GlassPortal';
@@ -23,6 +23,11 @@ export type RailButton = {
   // squarer than anything else here - so the plus is composed, the way
   // this app already composes it on the empty-state icon.
   badge?: keyof typeof Ionicons.glyphMap;
+  // How many of the things behind this button are in force, drawn as a
+  // small numeral in the same corner the badge uses. One button that
+  // opens three settings cannot say "one of us is on" by lighting up, so
+  // it says how many. Zero draws nothing.
+  count?: number;
   onPress: () => void;
   // Held down - the sticker, on the button that makes a document.
   onLongPress?: () => void;
@@ -70,6 +75,11 @@ export default function RailCapsule({ buttons, bottom }: { buttons: RailButton[]
               {!!button.badge && (
                 <View style={styles.badge}>
                   <Ionicons name={button.badge} size={14} color="#fff" />
+                </View>
+              )}
+              {!!button.count && (
+                <View style={styles.count}>
+                  <Text style={styles.countLabel}>{button.count}</Text>
                 </View>
               )}
             </Pressable>
@@ -125,6 +135,23 @@ const styles = StyleSheet.create({
     bottom: -6,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // The numeral sits where the plus does, and like the plus it has no
+  // disc behind it - a filled shape among outlines is exactly what the
+  // heavier icons this app dropped were doing wrong.
+  count: {
+    position: 'absolute',
+    right: -8,
+    bottom: -7,
+    minWidth: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countLabel: {
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: '700',
+    color: '#fff',
   },
   buttonDisabled: {
     opacity: 0.35,
