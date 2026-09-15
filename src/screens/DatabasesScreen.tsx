@@ -106,6 +106,14 @@ const VIEW_LABEL: Record<TileView, string> = { phone: 'Телефон', portrait
 // which the sections above decide. See layoutSections.
 type TileDivider = { y: number; label: string };
 const DIVIDER_HEIGHT = 34;
+// A tile's key as a FIELD NAME. Firestore refuses any field name that
+// begins and ends with two underscores - it keeps that shape for itself -
+// and the three tiles that make things ("Нова база", "Імпорт таблиці",
+// "Закріпити") are keyed exactly that way. So their places were thrown
+// out on the way to the server and they were the three tiles that could
+// not be moved at all.
+const fieldKey = (key: string) => (key.startsWith('__') && key.endsWith('__') ? `tile_${key.slice(2, -2)}` : key);
+
 type TileViewData = {
   sizes?: Record<string, string>;
   // A tile's place is relative to its section - the divider (by id) it
@@ -414,7 +422,9 @@ export default function DatabasesScreen() {
     const positions: Record<string, string> = {};
     groupSections(orderedItems).forEach((section) => {
       const own = packedSizes(section.items.map((item) => item.key), columns);
-      Object.assign(sizes, own);
+      Object.entries(own).forEach(([key, value]) => {
+        sizes[fieldKey(key)] = value;
+      });
       const { placed: laid } = packTiles(
         section.items,
         (item) => parseTileSize(own[item.key]) ?? sizeFor(item.key),
@@ -484,17 +494,17 @@ export default function DatabasesScreen() {
     if (draftSize?.key === key) return draftSize.size;
     // This view's own size; before it has one, the size from before the
     // views existed; before that, the default.
-    return parseTileSize(viewData.sizes?.[key]) ?? parseTileSize(tileSizes[key]) ?? defaultSizeFor(key);
+    return parseTileSize(viewData.sizes?.[fieldKey(key)]) ?? parseTileSize(tileSizes[key]) ?? defaultSizeFor(key);
   }
 
   // Where the user put this tile in THIS view, relative to its section,
   // and the divider that section stands under ('' for the top of the
   // board). A divider that is gone takes its tiles back to the top.
   function storedPosition(key: string): TilePosition | null {
-    return parseTilePosition(viewData.positions?.[key]);
+    return parseTilePosition(viewData.positions?.[fieldKey(key)]);
   }
   function storedSection(key: string): string {
-    const id = viewData.sections?.[key];
+    const id = viewData.sections?.[fieldKey(key)];
     return id && viewData.dividers?.[id] ? id : '';
   }
   const dividerIds = Object.entries(viewData.dividers ?? {})
@@ -515,19 +525,19 @@ export default function DatabasesScreen() {
   function setPosition(dropped: PlacedTile<BoardItem>, board: PlacedTile<BoardItem>[]) {
     const section = sectionOf(dropped.item.key);
     const positions: Record<string, string> = {
-      [dropped.item.key]: formatTilePosition(relOf(dropped)),
+      [fieldKey(dropped.item.key)]: formatTilePosition(relOf(dropped)),
     };
     // Which side of the dividers it came down on - it may have been
     // carried across one.
     const sections: Record<string, string | ReturnType<typeof deleteField>> = {
-      [dropped.item.key]: section || deleteField(),
+      [fieldKey(dropped.item.key)]: section || deleteField(),
     };
     board.forEach((p) => {
       if (p.item.key === dropped.item.key || sectionOf(p.item.key) !== section) return;
-      const stored = parseTilePosition(viewData.positions?.[p.item.key]);
+      const stored = parseTilePosition(viewData.positions?.[fieldKey(p.item.key)]);
       if (!stored) return;
       const rect = { item: p.item, x: stored.x, y: stored.y + startOf(section), size: p.size };
-      if (tilesOverlap(dropped, rect)) positions[p.item.key] = formatTilePosition(relOf(p));
+      if (tilesOverlap(dropped, rect)) positions[fieldKey(p.item.key)] = formatTilePosition(relOf(p));
     });
     setDoc(tileLayoutsDoc, { [tileView]: { positions, sections } }, { merge: true });
   }
@@ -730,8 +740,8 @@ export default function DatabasesScreen() {
         owner = wall.id;
         start = wall.y;
       }
-      positions[p.item.key] = formatTilePosition({ x: p.x, y: p.y - start });
-      sections[p.item.key] = owner || deleteField();
+      positions[fieldKey(p.item.key)] = formatTilePosition({ x: p.x, y: p.y - start });
+      sections[fieldKey(p.item.key)] = owner || deleteField();
     });
     bounds.forEach((wall) => {
       walled[wall.id] = { y: wall.y };
@@ -763,15 +773,15 @@ export default function DatabasesScreen() {
     const positions: Record<string, string> = {};
     settled.forEach((p) => {
       if (p.item.key === key) return;
-      const stored = parseTilePosition(viewData.positions?.[p.item.key]);
+      const stored = parseTilePosition(viewData.positions?.[fieldKey(p.item.key)]);
       const rel = relOf(p);
       if (stored && (stored.x !== rel.x || stored.y !== rel.y)) {
-        positions[p.item.key] = formatTilePosition(rel);
+        positions[fieldKey(p.item.key)] = formatTilePosition(rel);
       }
     });
     setDoc(
       tileLayoutsDoc,
-      { [tileView]: { sizes: { [key]: size ? formatTileSize(size) : deleteField() }, positions } },
+      { [tileView]: { sizes: { [fieldKey(key)]: size ? formatTileSize(size) : deleteField() }, positions } },
       { merge: true }
     );
   }
