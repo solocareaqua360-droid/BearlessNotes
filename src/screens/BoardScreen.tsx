@@ -1695,9 +1695,22 @@ export default function BoardScreen() {
     const result =
       source === 'camera'
         ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 })
-        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
-    if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
+        // A whole set at once - the board is where a handful of pictures
+        // are laid out beside each other, and one at a time meant opening
+        // the gallery again for every one of them.
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            quality: 1,
+            allowsMultipleSelection: true,
+          });
+    if (result.canceled) return;
+    // One after another, in the order they were picked: each is written,
+    // laid on the board, and only then the next - so two pictures cannot
+    // land on the same spot.
+    for (const asset of result.assets) await addPhotoCard(asset);
+  }
+
+  async function addPhotoCard(asset: ImagePicker.ImagePickerAsset) {
     const imageUri = await compressPickedImage(asset.uri, asset.width, asset.height);
     const id = generateId();
     const now = Date.now();
