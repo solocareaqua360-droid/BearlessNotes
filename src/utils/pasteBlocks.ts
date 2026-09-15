@@ -13,9 +13,12 @@ export type ParsedBlock = {
   type: BlockType;
   text: string;
   checked?: boolean;
+  headingLevel?: number;
   tableRows?: TableRow[];
 };
 
+// "# ", "## ", "### " - a heading, and its level is how many hashes.
+const HEADING = /^\s*(#{1,3})\s+(.*)$/;
 // A line that is only a rule.
 const DIVIDER = /^\s*([-*_])\1{2,}\s*$/;
 // "- ", "* ", "• " - and the checkbox forms that start the same way.
@@ -97,6 +100,12 @@ export function parsePastedText(raw: string): ParsedBlock[] {
     if (DIVIDER.test(line)) {
       flush();
       out.push({ type: 'divider', text: '' });
+      continue;
+    }
+    const heading = line.match(HEADING);
+    if (heading) {
+      flush();
+      out.push({ type: 'heading', text: heading[2], headingLevel: heading[1].length });
       continue;
     }
     const checkbox = line.match(CHECKBOX);

@@ -172,6 +172,7 @@ function generateId(): string {
 function buildBlock(id: string, type: BlockType, text: string): Block {
   const block: Block = { id, text, type, createdAt: Date.now() };
   if (type === 'checkbox') block.checked = false;
+  if (type === 'heading') block.headingLevel = 2;
   if (type === 'table') block.tableRows = [{ cells: ['', ''] }, { cells: ['', ''] }];
   return block;
 }
@@ -571,6 +572,9 @@ async function buildDocumentHtml(title: string, blocks: Block[]): Promise<string
       parts.push(
         `<p><a href="${escapeHtml(block.linkUrl ?? '')}">${escapeHtml(block.linkTitle || block.linkUrl || '')}</a></p>`
       );
+    } else if (type === 'heading') {
+      const level = block.headingLevel === 1 ? 1 : block.headingLevel === 3 ? 3 : 2;
+      parts.push(`<h${level} style="margin:14px 0 6px;">${textToHtml(block.text)}</h${level}>`);
     } else if (type === 'sketch') {
       // Vectors, not a picture of them - see sketchToSvg. This used to be
       // the words "[Малюнок]", which is what a note full of drawings came
@@ -999,6 +1003,16 @@ function BlockRow({
   // "show the original" the user asked for, which costs nothing because
   // the picture was never drawn on in the first place.
   const [showingOriginal, setShowingOriginal] = useState(false);
+  // Three levels, each a step down from the one above. A heading with no
+  // level stored is a level two - what one typed rather than pasted is.
+  const headingStyle =
+    (item.type ?? 'paragraph') === 'heading'
+      ? item.headingLevel === 1
+        ? styles.heading1
+        : item.headingLevel === 3
+          ? styles.heading3
+          : styles.heading2
+      : null;
   // The shape the drawing was made against, which is the picture's own -
   // see SketchEditor's background canvas.
   const drawnAspect =
@@ -1410,9 +1424,16 @@ function BlockRow({
             onBackspaceEmpty(item.id);
           }
         }}
-        placeholder={type === 'checkbox' ? 'Завдання…' : '…'}
+        placeholder={type === 'checkbox' ? 'Завдання…' : type === 'heading' ? 'Заголовок…' : '…'}
         placeholderTextColor={rowPaperColor?.textMuted}
-        style={[styles.blockInput, item.checked && styles.checkedText, rowPaperColor && { color: rowPaperColor.text }]}
+        style={[
+          styles.blockInput,
+          // A heading is the same field, in its own size - so the text
+          // does not jump between typing it and reading it.
+          headingStyle,
+          item.checked && styles.checkedText,
+          rowPaperColor && { color: rowPaperColor.text },
+        ]}
         multiline
       />
     ) : (
@@ -1431,7 +1452,7 @@ function BlockRow({
           onTextLayout={(e) => {
             lockedLinesRef.current = e.nativeEvent.lines;
           }}
-          style={[styles.blockDisplayText, item.checked && styles.checkedText]}
+          style={[styles.blockDisplayText, headingStyle, item.checked && styles.checkedText]}
         >
           {item.text ? (
             <FormattedText
@@ -3701,6 +3722,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const made = rest.map((piece) => {
       const block = buildBlock(generateId(), piece.type, piece.text);
       if (piece.checked) block.checked = true;
+      if (piece.headingLevel) block.headingLevel = piece.headingLevel;
       if (piece.tableRows) block.tableRows = piece.tableRows;
       return block;
     });
@@ -3718,6 +3740,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       if (emptyHost && first.type !== 'paragraph') {
         const rebuilt = buildBlock(id, first.type, first.text);
         if (first.checked) rebuilt.checked = true;
+        if (first.headingLevel) rebuilt.headingLevel = first.headingLevel;
         if (first.tableRows) rebuilt.tableRows = first.tableRows;
         next[index] = rebuilt;
       } else {
@@ -4353,6 +4376,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // threaded through the toolbar too.
   function handleBlockAction(action: BlockAction, blockId: string) {
     switch (action) {
+      case 'heading':
       case 'bulleted':
       case 'numbered':
       case 'checkbox':
@@ -5667,6 +5691,21 @@ const styles = StyleSheet.create({
     fontFamily: FONT_REGULAR,
     lineHeight: 22,
     includeFontPadding: false,
+  },
+  heading1: {
+    fontSize: 26,
+    lineHeight: 32,
+    fontFamily: FONT_BOLD,
+  },
+  heading2: {
+    fontSize: 21,
+    lineHeight: 27,
+    fontFamily: FONT_SEMIBOLD,
+  },
+  heading3: {
+    fontSize: 18,
+    lineHeight: 24,
+    fontFamily: FONT_SEMIBOLD,
   },
   blockPlaceholder: {
     color: '#9CA3AF',

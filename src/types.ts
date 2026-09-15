@@ -1,6 +1,11 @@
 import { LinkCategory } from './utils/linkCategory';
 export type BlockType =
   | 'paragraph'
+  // A heading, at one of three levels (headingLevel). Text pasted from
+  // anywhere markdown-shaped carries "#", "##", "###", and without a
+  // heading to become they stayed as the hashes themselves - which is
+  // what a pasted page of notes looked like.
+  | 'heading'
   | 'bulleted'
   | 'numbered'
   | 'checkbox'
@@ -184,6 +189,9 @@ export interface Block {
   // captured against - the editor and the inline preview both use that
   // as the SVG viewBox so a drawing still scales correctly if reopened
   // on a different screen size.
+  // 'heading' blocks only: 1, 2 or 3. Absent means 2, which is what a
+  // heading typed rather than pasted starts as.
+  headingLevel?: number;
   sketchElements?: SketchElement[];
   sketchWidth?: number;
   sketchHeight?: number;

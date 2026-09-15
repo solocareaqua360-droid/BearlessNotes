@@ -1,6 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
 export type BlockAction =
+  | 'heading'
   | 'bulleted'
   | 'numbered'
   | 'checkbox'
@@ -32,6 +33,7 @@ export type BlockActionEntry =
 // and the "+" sheet shows icon + label together. Keeping both off the same
 // array is what stops the two from drifting apart as block types are added.
 export const BLOCK_ACTIONS: BlockActionEntry[] = [
+  { key: 'heading', family: 'material-community', icon: 'format-header-2', label: 'Заголовок' },
   { key: 'bulleted', family: 'material-community', icon: 'format-list-bulleted', label: 'Список' },
   { key: 'numbered', family: 'material-community', icon: 'format-list-numbered', label: 'Нумерований список' },
   { key: 'checkbox', family: 'ionicons', icon: 'checkbox-outline', label: 'Чекбокс' },
