@@ -77,7 +77,7 @@ export default function StickerWidgetConfigScreen({ widgetInfo, renderWidget, se
 
   async function chooseText(item: StickerItem) {
     setPreparingId(item.id);
-    await saveAndClose({ kind: 'text', text: item.text || 'Порожній стікер', color: STICKER_YELLOW });
+    await saveAndClose({ kind: 'text', id: item.id, text: item.text || 'Порожній стікер', color: STICKER_YELLOW });
     setPreparingId(null);
   }
 
@@ -94,7 +94,7 @@ export default function StickerWidgetConfigScreen({ widgetInfo, renderWidget, se
       const rendered = await context.renderAsync();
       const saved = await rendered.saveAsync({ compress: 0.7, format: SaveFormat.JPEG, base64: true });
       if (!saved.base64) throw new Error('no base64');
-      await saveAndClose({ kind: 'image', image: `data:image/jpeg;base64,${saved.base64}`, color: '#000' });
+      await saveAndClose({ kind: 'image', id: item.id, image: `data:image/jpeg;base64,${saved.base64}`, color: '#000' });
     } catch {
       await chooseText({ ...item, text: 'Зображення недоступне' });
     } finally {
@@ -116,7 +116,7 @@ export default function StickerWidgetConfigScreen({ widgetInfo, renderWidget, se
       try {
         const uri = await captureRef(captureRefObj, { format: 'png', result: 'data-uri' });
         if (!uri.startsWith('data:image')) throw new Error('bad capture');
-        await saveAndClose({ kind: 'image', image: uri as `data:image${string}`, color: STICKER_YELLOW });
+        await saveAndClose({ kind: 'image', id: sketchToCapture.id, image: uri as `data:image${string}`, color: STICKER_YELLOW });
       } catch {
         await chooseText({ ...sketchToCapture, text: 'Малюнок недоступний' });
       } finally {

@@ -20,22 +20,31 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export const STICKER_WIDGET_KEY = (widgetId: number) => `widget:sticker:${widgetId}`;
 
 export type StoredSticker =
-  | { kind: 'text'; text: string; color: `#${string}` }
+  | { kind: 'text'; id: string; text: string; color: `#${string}` }
   // `image` is a data: URI (see stickerFromItem) - the only local form
   // ImageWidget accepts. A sketch sticker is flattened to one of these
   // at configuration time, since there is nowhere later to draw an SVG.
-  | { kind: 'image'; image: `data:image${string}`; color: `#${string}` };
+  | { kind: 'image'; id: string; image: `data:image${string}`; color: `#${string}` };
 
 // The one place the widget's shape is drawn - the task handler (a
 // redraw the launcher asked for) and the configuration screen (the
 // preview right after picking a sticker) both go through this, so the
 // two can never drift apart.
+// A tap goes straight to THIS sticker, not just the app in general - a
+// deep link the app parses in App.tsx into `Stickers` with the id as a
+// param. Without a sticker to open (the placeholder, before the widget
+// has been configured) there is nowhere to send it, so it just opens
+// the app.
+function clickIntoSticker(sticker: StoredSticker | null) {
+  return sticker ? { clickAction: 'OPEN_URI', clickActionData: { uri: `mindeva://sticker/${sticker.id}` } } : { clickAction: 'OPEN_APP' };
+}
+
 export function stickerWidgetElement(sticker: StoredSticker | null, width: number, height: number) {
   if (sticker?.kind === 'image') {
     return (
       <FlexWidget
         style={{ width, height, backgroundColor: sticker.color, borderRadius: 18, overflow: 'hidden' }}
-        clickAction="OPEN_APP"
+        {...clickIntoSticker(sticker)}
       >
         <ImageWidget image={sticker.image} imageWidth={width} imageHeight={height} resizeMode="cover" />
       </FlexWidget>
@@ -52,7 +61,7 @@ export function stickerWidgetElement(sticker: StoredSticker | null, width: numbe
         justifyContent: 'flex-start',
         alignItems: 'flex-start',
       }}
-      clickAction="OPEN_APP"
+      {...clickIntoSticker(sticker)}
     >
       <TextWidget
         text={sticker?.kind === 'text' ? sticker.text : 'Стікер mindEva\n\nЗатисни й обери «Налаштувати», щоб вибрати стікер.'}

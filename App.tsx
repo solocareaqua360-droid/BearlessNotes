@@ -25,6 +25,7 @@ import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
 import { AskHost } from './src/components/surfaces/Ask';
 import AlarmRingOverlay from './src/components/AlarmRingOverlay';
+import { useStickerDeepLink } from './src/hooks/useStickerDeepLink';
 
 // The screens themselves - every route, and the tab navigator they sit
 // behind - live in src/AppNavigator, shared with the browser build. What
@@ -39,6 +40,10 @@ import AlarmRingOverlay from './src/components/AlarmRingOverlay';
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function App() {
+  // A tap on the sticker widget opens straight into that sticker - see
+  // the hook itself for why this needs both a cold-start and a
+  // while-running case.
+  useStickerDeepLink();
   // Only the redesigned surfaces (Documents/Calendar and the components
   // they share) reference these family names in their own styles - the
   // rest of the app keeps the system font, matching how this whole visual

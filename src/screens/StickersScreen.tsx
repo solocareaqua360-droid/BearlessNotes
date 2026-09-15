@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { railClear } from '../constants/rail';
 import {
   ActivityIndicator,
@@ -15,7 +15,7 @@ import Svg, { Defs, LinearGradient, Stop, Rect, Path, Text as SvgText } from 're
 import { Ionicons } from '@expo/vector-icons';
 import AttachmentImage from '../components/AttachmentImage';
 import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { collection, doc, getDoc, onSnapshot, updateDoc } from '../firestore';
 import { db } from '../firebase';
 import { ownedQuery } from '../utils/owned';
@@ -52,8 +52,20 @@ type StickerItem = {
   updatedAt: number;
 };
 
-export default function StickersScreen({ inPane }: { inPane?: boolean } = {}) {
+type Props = NativeStackScreenProps<RootStackParamList, 'Stickers'>;
+
+export default function StickersScreen({
+  route,
+  inPane,
+}: Partial<Props> & { inPane?: boolean } = {}) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  // Opened straight from the sticker widget on the home screen - see
+  // App.tsx's deep-link handling. Read once: the param does not change
+  // again while this screen stays mounted, and re-opening the same
+  // sticker on every unrelated re-render would be a sticker that
+  // refuses to close.
+  const openStickerId = useRef(route?.params?.openStickerId).current;
+  const openedStickerRef = useRef(false);
   const [stickers, setStickers] = useState<StickerItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [viewingTrash, setViewingTrash] = useState(false);
@@ -78,6 +90,18 @@ export default function StickersScreen({ inPane }: { inPane?: boolean } = {}) {
       setIsLoading(false);
     });
   }, []);
+
+  // The one time the sticker this screen was opened FOR becomes
+  // available, open it - the same three things a tap inside the grid
+  // opens it to.
+  useEffect(() => {
+    if (!openStickerId || openedStickerRef.current) return;
+    const sticker = stickers.find((s) => s.id === openStickerId);
+    if (!sticker) return;
+    openedStickerRef.current = true;
+    openSticker(sticker);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stickers, openStickerId]);
 
   const activeStickers = stickers.filter((s) => !s.trashed);
   const trashedStickers = stickers.filter((s) => s.trashed);

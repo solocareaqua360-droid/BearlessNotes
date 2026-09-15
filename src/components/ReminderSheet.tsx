@@ -162,16 +162,23 @@ export default function ReminderSheet({ visible, initialDate, initialTime, onClo
           </View>
 
           <View style={styles.timeRow}>
-            <Text style={styles.timeLabel}>Час нагадування</Text>
+            {/* "Час" is what actually makes this ring - a date with no
+                time is only a badge on the task, nothing schedules. The
+                user's own question was "як вибрати будильник?": this IS
+                the choice, it just used to say nothing about it. */}
+            <Text style={styles.timeLabel}>Будильник</Text>
             <Pressable
               style={[styles.timeToggle, timeEnabled && styles.timeToggleOn]}
               onPress={() => setTimeEnabled((v) => !v)}
             >
               <Text style={[styles.timeToggleText, timeEnabled && styles.timeToggleTextOn]}>
-                {timeEnabled ? `${pad2(hour)}:${pad2(minute)}` : 'Без часу'}
+                {timeEnabled ? `${pad2(hour)}:${pad2(minute)}` : 'Вимкнено'}
               </Text>
             </Pressable>
           </View>
+          {timeEnabled && (
+            <Text style={styles.timeHint}>Задзвонить у вказаний час, навіть на беззвучному</Text>
+          )}
 
           {timeEnabled && (
             <View style={styles.stepperRow}>
@@ -321,6 +328,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
     color: GLASS_TEXT,
+  },
+  timeHint: {
+    fontSize: 11.5,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT_FAINT,
+    marginTop: -2,
+    marginBottom: 6,
   },
   timeToggle: {
     paddingHorizontal: 12,
