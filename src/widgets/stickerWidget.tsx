@@ -65,8 +65,13 @@ export function stickerWidgetElement(sticker: StoredSticker | null, width: numbe
     >
       <TextWidget
         text={sticker?.kind === 'text' ? sticker.text : 'Стікер mindEva\n\nЗатисни й обери «Налаштувати», щоб вибрати стікер.'}
-        style={{ fontSize: 15, color: '#1F2937' }}
-        maxLines={12}
+        // A widget is glanced at from across a room, not read closely -
+        // 15 was sized like a line of the app itself, which is too
+        // small for that. Fewer lines fit at 20, which is the point:
+        // a sticker on the home screen is a couple of words, not a
+        // paragraph.
+        style={{ fontSize: 20, fontWeight: '600', color: '#1F2937' }}
+        maxLines={8}
       />
     </FlexWidget>
   );
