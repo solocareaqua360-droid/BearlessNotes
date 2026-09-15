@@ -53,6 +53,7 @@ import { TAG_COLORS } from '../constants/tags';
 import { LINK_CATEGORY_INFO, LinkCategory, categoryFromSiteName } from '../utils/linkCategory';
 import { refreshLinkPreviewIfExpired } from '../utils/linkPreviewRefresh';
 import GlassLayer from '../components/GlassLayer';
+import RailCapsule from '../components/RailCapsule';
 import { db } from '../firebase';
 import { deleteCustomDatabase } from '../utils/deleteCustomDatabase';
 import {
@@ -195,7 +196,12 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   const railInsets = useSafeAreaInsets();
   // Three buttons in the capsule here, so the rail spaces what is under
   // it against the taller one.
-  const rail = useRail(CAPSULE_HEIGHT_3);
+  // The rail carries an actions capsule here too - see RailCapsule. The
+  // strip over the list is where a database says what it is SHOWING
+  // (a saved view, list/cards/table, grouping); what it can DO to that
+  // list - order it, filter it, choose in it - belongs on the rail, with
+  // the same two or three buttons as every other screen.
+  const rail = useRail(CAPSULE_HEIGHT_3, CAPSULE_HEIGHT_3);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute();
   const params = (route.params ?? {}) as {
@@ -1616,32 +1622,10 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
             <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
           </Pressable>
 
-          <Pressable
-            style={styles.paramChip}
-            onLayout={(e) => rememberChip('sort', e.nativeEvent.layout)}
-            onPress={() => openParamList('sort')}
-          >
-            <Ionicons name="swap-vertical-outline" size={13} color="rgba(255,255,255,0.85)" />
-            <Text style={styles.paramChipLabel} numberOfLines={1}>
-              {sortLabelFor(sortPref, database)} {sortPref.dir === 'asc' ? '↑' : '↓'}
-            </Text>
-            <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
-          </Pressable>
-
-          {filterFields.length > 0 && (
-            <Pressable
-              style={[styles.paramChip, filters.length > 0 && styles.paramChipActive]}
-              onLayout={(e) => rememberChip('filter', e.nativeEvent.layout)}
-              onPress={() => openParamList('filter')}
-            >
-              <Ionicons name="funnel-outline" size={13} color="rgba(255,255,255,0.85)" />
-              <Text style={styles.paramChipLabel} numberOfLines={1}>
-                {filters.length > 0 ? `Фільтр · ${filters.length}` : 'Фільтр'}
-              </Text>
-              <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
-            </Pressable>
-          )}
-
+          {/* Ordering and filtering left this strip for the rail - the
+              strip had four or five chips and the last was cut off by the
+              rail itself. What stays is what the list IS: a saved view,
+              its shape, its grouping. */}
           {groupFields.length > 0 && (
             <Pressable
               style={[styles.paramChip, !!groupField && styles.paramChipActive]}
@@ -1669,19 +1653,25 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           against its own tree instead of Android's bounds. Anchored to the
           capsule's measured position, so it still reads as the capsule
           stretching downward. */}
-      {openParam !== null && openChipLayout && (
+      {openParam !== null && (
         <View style={styles.paramOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={closeParamList} />
           <View
             style={[
               styles.paramExpanded,
-              { top: stripY + openChipLayout.y, minWidth: openChipLayout.width },
-              // The filter is the last capsule in the row, so its list is
-              // anchored to its RIGHT edge - growing rightward would run
-              // off the screen.
-              openParam === 'filter'
-                ? { right: Math.max(8, windowWidth - openChipScreenX - openChipLayout.width) }
-                : { left: openChipScreenX },
+              // Opened from a chip in the strip: under that chip. Opened
+              // from the rail (sorting and filtering live there now, and
+              // have no chip): beside the button that opened it.
+              openChipLayout
+                ? [
+                    { top: stripY + openChipLayout.y, minWidth: openChipLayout.width },
+                    // The last capsule in the row is anchored to its RIGHT
+                    // edge - growing rightward would run off the screen.
+                    openParam === 'filter'
+                      ? { right: Math.max(8, windowWidth - openChipScreenX - openChipLayout.width) }
+                      : { left: openChipScreenX },
+                  ]
+                : { bottom: rail.actionsBottom, right: RAIL_CLEARANCE, minWidth: 220 },
             ]}
           >
             {openParam === 'views' && (
@@ -2076,7 +2066,34 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
       {/* Through the portal, where its blur is safe. */}
       {railFocused && !isSelectMode && (
         <GlassPortal>
-          <Pressable style={[styles.fab, { bottom: rail.addBottom }]} onPress={openNewRow}>
+          {/* Order it, narrow it, choose in it - the three things this
+          screen can do TO its list, in the same place every other screen
+          keeps them. The strip above the list keeps what the list IS. */}
+      {!isSelectMode && (
+        <RailCapsule
+          bottom={rail.actionsBottom}
+          buttons={[
+            { icon: 'filter-outline', onPress: () => openParamList('sort'), active: openParam === 'sort' },
+            ...(filterFields.length > 0
+              ? [
+                  {
+                    icon: 'funnel-outline' as const,
+                    onPress: () => openParamList('filter'),
+                    active: openParam === 'filter' || filters.length > 0,
+                  },
+                ]
+              : []),
+            {
+              icon: (isSelectMode ? 'close-outline' : 'checkmark-circle-outline') as
+                | 'close-outline'
+                | 'checkmark-circle-outline',
+              onPress: toggleSelectMode,
+              active: isSelectMode,
+            },
+          ]}
+        />
+      )}
+      <Pressable style={[styles.fab, { bottom: rail.addBottom }]} onPress={openNewRow}>
             <BlurView
               intensity={60}
               tint="dark"
