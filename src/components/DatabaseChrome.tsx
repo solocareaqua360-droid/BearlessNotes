@@ -400,14 +400,8 @@ export default function DatabaseChrome<T extends { id: string }>({
         {list.isSearching && list.needle.length === 0 ? (
           <View style={styles.emptySearch} />
         ) : (
-          // A swipe to the right, anywhere on the list, opens the drawer -
-          // see useDrawerSwipe.
-          <GestureDetector gesture={drawerSwipe}>
-          <View style={{ flex: 1 }}>
           <GestureDetector gesture={pull.gesture}>
             {children(list.tagFilter || list.isSearching ? 0 : chromeBottom, pull.listProps)}
-          </GestureDetector>
-          </View>
           </GestureDetector>
         )}
     </>
@@ -484,16 +478,27 @@ export default function DatabaseChrome<T extends { id: string }>({
         </GlassPortal>
       )}
 
-      {splitting ? (
-        <View style={styles.paneRow}>
-          <View style={styles.listPane} onLayout={(e) => setListPaneX(e.nativeEvent.layout.x)}>
-            {column}
-          </View>
-          <View style={styles.sidePane}>{pane}</View>
+      {/* The drawer's swipe holds the WHOLE screen, not just the list.
+          It used to wrap only the rows, which is fine on a database whose
+          list fills the screen and no use at all on one with four boards
+          in it: below the last row the finger was on the background, and
+          the background was listening for nothing. The band in
+          useDrawerSwipe is what keeps this from taking the pager's
+          swipes. */}
+      <GestureDetector gesture={drawerSwipe}>
+        <View style={styles.container}>
+          {splitting ? (
+            <View style={styles.paneRow}>
+              <View style={styles.listPane} onLayout={(e) => setListPaneX(e.nativeEvent.layout.x)}>
+                {column}
+              </View>
+              <View style={styles.sidePane}>{pane}</View>
+            </View>
+          ) : (
+            <ContentColumn>{column}</ContentColumn>
+          )}
         </View>
-      ) : (
-        <ContentColumn>{column}</ContentColumn>
-      )}
+      </GestureDetector>
 
       {overlay}
 
