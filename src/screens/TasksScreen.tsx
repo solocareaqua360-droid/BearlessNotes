@@ -41,6 +41,7 @@ import { formatShortDate, parseDateKey } from '../utils/dateLocale';
 import { sortItems } from '../utils/sortItems';
 import ContentColumn from '../components/ContentColumn';
 import { BlurView } from 'expo-blur';
+import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import RailCapsule from '../components/RailCapsule';
@@ -159,6 +160,12 @@ export default function TasksScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const railBlurTarget = useBlurTarget();
   const insets = useSafeAreaInsets();
+  // Every piece of this rail is drawn through the portal, and the portal
+  // reaches over the WHOLE app - so a screen pushed on top of this one
+  // (a document opened from a task) had these capsules still floating
+  // above it, overlapping its own. A screen's rail belongs to the screen
+  // that is actually on show.
+  const isFocused = useIsFocused();
   // One button at the top (the way out), what this list can be DONE to
   // under it, and choosing in its own capsule. This screen is PUSHED over
   // the tabs, so there is no island at its foot, and tasks are made inside
@@ -766,6 +773,7 @@ export default function TasksScreen() {
       <ScreenBackdrop id="tasksBg" colors={['#705648', '#69736E', '#000000']} />
 
       {/* The way out, in the top capsule where it is on every database. */}
+      {isFocused && (
       <GlassPortal>
         <View style={[styles.railTop, { top: insets.top + CHROME_TOP + CAPSULE_DROP }]} pointerEvents="box-none">
           <View style={styles.topCapsule}>
@@ -783,8 +791,10 @@ export default function TasksScreen() {
           </View>
         </View>
       </GlassPortal>
+      )}
 
       {/* What shape the list takes, and what order it is in. */}
+      {isFocused && (
       <RailCapsule
         bottom={rail.actionsBottom}
         buttons={[
@@ -800,6 +810,8 @@ export default function TasksScreen() {
           { icon: 'filter-outline', onPress: () => setMenuOpen((v) => !v), active: menuOpen },
         ]}
       />
+      )}
+      {isFocused && (
       <RailCapsule
         bottom={rail.historyBottom}
         buttons={[
@@ -813,6 +825,7 @@ export default function TasksScreen() {
           },
         ]}
       />
+      )}
 
       <ContentColumn>
         {/* The band the status bar and the rail's top capsule stand in.
