@@ -860,7 +860,13 @@ export default function CalendarScreen() {
               their own past. Off entirely where the month cannot fold:
               beside the note there is room for it always, and in
               "only filled days" the strip is not a real week. */}
-          <View style={stackedWide ? styles.topRow : styles.topStack}>
+          {/* Standing up: the band's row. Side by side: a column that
+              fills, because the history lives inside it and takes what the
+              plate leaves. On a PHONE neither - there the history, the due
+              card and the sheet are siblings BELOW this, and a flex:1 here
+              swallowed the whole column and pushed all three off the
+              bottom of the screen. */}
+          <View style={stackedWide ? styles.topRow : isTwoPane ? styles.topStack : undefined}>
           {/* The ONE thing that measures the calendar's width, whichever
               way the screen is turned. It used to be measured on the band
               in one arrangement and on this half in the other, and the
