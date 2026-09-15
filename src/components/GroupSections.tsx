@@ -18,7 +18,7 @@ import { openFileExternally } from '../utils/openFileExternally';
 import { categoryFromSiteName } from '../utils/linkCategory';
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_SEMIBOLD } from '../utils/fonts';
-import { GLASS_LINE, GLASS_TEXT_MUTED } from '../constants/glass';
+import { GLASS_LINE, GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
 
 // What else is in this group. A group is the one thing in the app that
 // deliberately crosses databases (see the Group comment in types.ts), and
@@ -34,6 +34,7 @@ type Row = Record<string, unknown> & { id: string };
 
 const ORDER = [
   'document',
+  'board',
   'link-geo',
   'link-other',
   'link-video',
@@ -43,6 +44,7 @@ const ORDER = [
 
 const FACE: Record<string, { label: string; icon: keyof typeof Ionicons.glyphMap; color: string }> = {
   document: { label: 'Документи', icon: 'document-text-outline', color: '#3B82F6' },
+  board: { label: 'Дошки', icon: 'apps-outline', color: '#8B5CF6' },
   'link-geo': { label: 'Геоточки', icon: 'location-outline', color: '#16A34A' },
   'link-other': { label: 'Посилання', icon: 'link-outline', color: '#14B8A6' },
   'link-video': { label: 'YouTube / TikTok', icon: 'videocam-outline', color: '#EF4444' },
@@ -101,6 +103,7 @@ export default function GroupSections({
   const links = useCollection('links', enabled);
   const photos = useCollection('photos', enabled);
   const files = useCollection('files', enabled);
+  const boards = useCollection('boards', enabled);
   const customRows = useCollection('customDatabaseRows', enabled);
   const customDatabases = useCollection('customDatabases', enabled);
   // Records as they are now, for the document cards' pictures - see
@@ -126,6 +129,7 @@ export default function GroupSections({
 
   const byKind: Record<string, Row[]> = {
     document: inGroup(documents).filter((d) => !d.calendarDate),
+    board: inGroup(boards).filter((b) => b.trashed !== true),
     photo: inGroup(photos),
     file: inGroup(files),
     'link-geo': [],
@@ -212,6 +216,27 @@ export default function GroupSections({
                         flush
                         onPress={() => open(() => navigation.navigate('Editor', { documentId: row.id }))}
                       />
+                    );
+                  }
+                  if (kind === 'board') {
+                    return (
+                      <Pressable
+                        key={row.id}
+                        style={styles.boardRow}
+                        onPress={() =>
+                          open(() =>
+                            navigation.navigate('Tabs', {
+                              screen: 'Дошки',
+                              params: { screen: 'Board', params: { boardId: row.id } },
+                            })
+                          )
+                        }
+                      >
+                        <Ionicons name="apps-outline" size={18} color={FACE.board.color} />
+                        <Text style={styles.boardRowLabel} numberOfLines={1}>
+                          {(row.title as string) || 'Без назви'}
+                        </Text>
+                      </Pressable>
                     );
                   }
                   if (kind === 'file') {
@@ -313,6 +338,23 @@ const styles = StyleSheet.create({
   // wrapping grid, and a full-width block is also what forces the break.
   wrap: {
     width: '100%',
+  },
+  boardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  boardRowLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT,
   },
   section: {
     width: '100%',

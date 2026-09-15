@@ -376,6 +376,13 @@ export interface BoardItem {
   cards: BoardCard[];
   connections?: BoardConnection[];
   columns?: BoardColumn[];
+  // A board is a record of a database like any other now: it carries tags
+  // (which are also its folders - see the explorer), a group, and a bin
+  // flag. Absent on every board made before that, and read as empty.
+  tagIds?: string[];
+  groupId?: string;
+  trashed?: boolean;
+  trashedAt?: number;
   createdAt: number;
   updatedAt: number;
 }

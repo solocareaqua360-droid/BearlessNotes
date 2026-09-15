@@ -41,7 +41,12 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   // The "+" button's fill - the accent at half strength, since the blur
   // behind it is what separates it from the screen.
   accentGlass: string;
-  onBack: () => void;
+  // Absent on a tab's own root, which has nowhere to go back TO. The
+  // button leaves the top capsule with it.
+  onBack?: () => void;
+  // A tab's root also keeps the navigation island at its foot, so the
+  // rail must leave room for it; a PUSHED screen has none.
+  hasIsland?: boolean;
   searchPlaceholder: string;
   // Rows of this database's own, above the sort rows in the "..." menu
   // (the view-mode switch, for the databases that have one).
@@ -55,7 +60,10 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   // spelling out the same thing; on the rail its icon IS the shape in
   // force, and with only two to choose from a tap simply swaps them -
   // a list to pick from would be a list of two.
-  shape?: { mode: 'list' | 'grid'; onToggle: () => void };
+  // The icon is the shape IN FORCE, which is how every other icon on the
+  // rail reads; the caller names it, because "the other one" is a grid on
+  // three of these screens and a tile on another.
+  shape?: { icon: keyof typeof Ionicons.glyphMap; onToggle: () => void };
   // A database with neither tags nor groups has nothing to browse in the
   // drawer, and a folder button that opens an empty panel is worse than
   // none (stickers).
@@ -90,6 +98,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   accent,
   accentGlass,
   onBack,
+  hasIsland,
   searchPlaceholder,
   menuRows,
   onAdd,
@@ -123,13 +132,14 @@ export default function DatabaseChrome<T extends { id: string }>({
   // create button's, on the three databases that have no "+": photos,
   // files and links only ever arrive from inside a document.
   const rail = useRail(
-    // Search, the way out, and "..." where the screen still has rows for
-    // it - so two buttons or three, and the rail is told which.
-    capsuleHeightFor(2 + (menuRows ? 1 : 0)),
+    // Search, plus "..." where the screen still has rows for it, plus the
+    // way out where there is one - one, two or three buttons, and the
+    // rail is told which.
+    capsuleHeightFor(1 + (menuRows ? 1 : 0) + (onBack ? 1 : 0)),
     capsuleHeightFor((shape ? 1 : 0) + 1),
     onAdd ? RAIL_WIDTH : 0,
     bulk ? CAPSULE_HEIGHT_1 : 0,
-    false
+    !!hasIsland
   );
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -182,9 +192,7 @@ export default function DatabaseChrome<T extends { id: string }>({
               ...(shape
                 ? [
                     {
-                      icon: (shape.mode === 'grid' ? 'grid-outline' : 'reorder-four-outline') as
-                        | 'grid-outline'
-                        | 'reorder-four-outline',
+                      icon: shape.icon,
                       onPress: shape.onToggle,
                     },
                   ]
@@ -399,12 +407,16 @@ export default function DatabaseChrome<T extends { id: string }>({
                   </Pressable>
                 </>
               )}
-              <View style={styles.headerButtonsDivider} />
               {/* The way out of this database, where the arrow in the
-                  header's corner used to be. */}
-              <Pressable hitSlop={8} onPress={onBack}>
-                <Ionicons name="arrow-back-outline" size={24} color="#fff" />
-              </Pressable>
+                  header's corner used to be. A tab's own root has none. */}
+              {!!onBack && (
+                <>
+                  <View style={styles.headerButtonsDivider} />
+                  <Pressable hitSlop={8} onPress={onBack}>
+                    <Ionicons name="arrow-back-outline" size={24} color="#fff" />
+                  </Pressable>
+                </>
+              )}
             </View>
           </View>
         </GlassPortal>

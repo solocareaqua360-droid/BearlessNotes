@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   collection,
   deleteDoc,
+  deleteField,
   doc,
   onSnapshot,
   updateDoc,
+  writeBatch,
 } from '../firestore';
 import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
@@ -18,42 +19,37 @@ import { BoardCard, BoardColumn, BoardItem } from '../types';
 import { readBoardPart } from '../utils/boardStorage';
 import { colorForDocument } from '../utils/documentColor';
 import BoardMiniMap from '../components/BoardMiniMap';
+import DatabaseChrome from '../components/DatabaseChrome';
+import GroupPickerSheet from '../components/GroupPickerSheet';
+import TagPicker from '../components/TagPicker';
+import GroupSections from '../components/GroupSections';
+import { useDatabaseList } from '../hooks/useDatabaseList';
 import RenamePrompt from '../components/RenamePrompt';
-import ContentColumn, { MAX_CONTENT_WIDTH } from '../components/ContentColumn';
+import { MAX_CONTENT_WIDTH } from '../components/ContentColumn';
 import { GLASS_BODY, GLASS_TEXT } from '../constants/glass';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { BlurView } from 'expo-blur';
-import { useIsFocused } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
-import { CAPSULE_HEIGHT_1, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
-import RailCapsule from '../components/RailCapsule';
-import { useRail } from '../hooks/useRail';
+import { RAIL_CLEARANCE } from '../constants/rail';
 import { ask, confirm } from '../components/surfaces/Ask';
 
 const ACCENT = '#8B5CF6';
-// Where the content starts. It used to be the line the top capsule hung
-// from, so the first board sat level with it; that capsule is gone from
-// this screen (its two buttons are on the rail proper now), so the list
-// starts under the status bar instead of a hand's width below it.
-const RAIL_TOP_PAD = 16;
+// The "+" fill: the accent at half strength, since the blur behind it is
+// what separates it from the screen (see DatabaseChrome).
+const ACCENT_GLASS = 'rgba(139,92,246,0.5)';
 const boardsCollection = collection(db, 'boards');
 
-// List of "Дошка" boards - Stage 1 of the board feature (see DEVELOPMENT_PLAN.md).
-// Deliberately minimal next to Files/Links/Photos: no tags, groups, sort
-// menu or bulk-select yet - a handful of boards doesn't need them, and
-// nothing in the brief for this stage asks for them.
+// List of "Дошка" boards. It WAS deliberately minimal next to Files,
+// Links and Photos - no tags, groups, sort or bulk-select, on the
+// reasoning that a handful of boards needs none of it. The user's call is
+// that boards are a database like the others, so it wears the same chrome
+// they do: search, sorting, choosing with bulk actions, tags, groups, the
+// drawer on a swipe, and the same rail.
 export default function BoardsListScreen() {
-  const railFocused = useIsFocused();
-  const insets = useSafeAreaInsets();
-  // No top capsule at all here: this screen has no search, no menu and no
-  // way out to draw - it is a tab's own root. It IS one of the four tabs,
-  // so the island is at its foot and the rail leaves room for it.
-  const rail = useRail(0, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_1, 0, true);
   const navigation = useNavigation<NativeStackNavigationProp<BoardsStackParamList>>();
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const { width: windowWidth } = useWindowDimensions();
   const [boards, setBoards] = useState<BoardItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -72,6 +68,72 @@ export default function BoardsListScreen() {
     await setDoc(doc(db, 'settings', 'boardsPrefs'), { viewMode: mode }, { merge: true });
   }
   const [renamingBoard, setRenamingBoard] = useState<BoardItem | null>(null);
+  const [tagPickerBoardId, setTagPickerBoardId] = useState<string | null>(null);
+  const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
+  const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
+
+  // The machine every database shares - see useDatabaseList. Boards were
+  // "deliberately minimal next to Files/Links/Photos" for a long time; the
+  // user's call is that they should be one of them.
+  const list = useDatabaseList<BoardItem>({
+    prefsKey: 'boardsPrefs',
+    groupKind: 'board',
+    tagKind: 'board',
+    items: boards,
+    tagIdsOf: (b) => b.tagIds ?? [],
+    groupIdOf: (b) => b.groupId,
+    titleOf: (b) => b.title,
+    createdAtOf: (b) => b.createdAt,
+    updatedAtOf: (b) => b.updatedAt,
+  });
+  const {
+    displayed: displayedBoards,
+    groups,
+    tags,
+    attachTag,
+    detachTag,
+    createAndAttachTag,
+    renameTag,
+    isSelectMode,
+    selectedIds,
+    toggle: toggleSelected,
+    clear: clearSelection,
+    requestDeleteMany,
+    selected: selectedBoards,
+    needle,
+  } = list;
+
+  async function bulkAttachTag(tag: Parameters<typeof attachTag>[0]) {
+    setBulkTagPickerVisible(false);
+    await Promise.all(selectedBoards.map((b) => attachTag(tag, 'board', b.id, 'boards')));
+    clearSelection();
+  }
+
+  async function bulkCreateAndAttachTag(path: string, icon: string, color: string) {
+    setBulkTagPickerVisible(false);
+    await Promise.all(selectedBoards.map((b) => createAndAttachTag(path, icon, color, 'board', b.id, 'boards')));
+    clearSelection();
+  }
+
+  async function bulkAssignGroup(groupId: string | null) {
+    setBulkGroupPickerVisible(false);
+    const batch = writeBatch(db);
+    selectedBoards.forEach((b) => {
+      batch.update(doc(db, 'boards', b.id), { groupId: groupId ?? deleteField() });
+    });
+    await batch.commit();
+    clearSelection();
+  }
+
+  const tagPickerBoard = tagPickerBoardId ? boards.find((b) => b.id === tagPickerBoardId) ?? null : null;
+
+  function confirmDeleteSelected() {
+    const toDelete = selectedBoards;
+    requestDeleteMany(toDelete, `Видалено дощок: ${toDelete.length}`, () => {
+      toDelete.forEach((b) => deleteDoc(doc(db, 'boards', b.id)));
+    });
+    clearSelection();
+  }
 
   useEffect(() => {
     return onSnapshot(
@@ -92,10 +154,16 @@ export default function BoardsListScreen() {
               // because an object has no .length to pass the check below.
               cards: readBoardPart<BoardCard>(data.cards),
               columns: readBoardPart<BoardColumn>(data.columns),
+              tagIds: data.tagIds ?? [],
+              groupId: data.groupId,
+              trashed: data.trashed === true,
               createdAt: data.createdAt ?? 0,
               updatedAt: data.updatedAt ?? 0,
             };
           })
+          // A board in the bin is not in the list. The bin itself is the
+          // next slice of this work.
+          .filter((board) => !board.trashed)
           .sort((a, b) => b.updatedAt - a.updatedAt)
       );
         setIsLoading(false);
@@ -146,10 +214,12 @@ export default function BoardsListScreen() {
       title: board.title || 'Без назви',
       actions: [
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+        { id: 'tags', label: 'Теги', icon: 'pricetag-outline' },
         { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' },
       ],
     }).then((answer) => {
       if (answer === 'rename') setRenamingBoard(board);
+      if (answer === 'tags') setTagPickerBoardId(board.id);
       if (answer === 'delete') confirmDeleteBoard(board);
     });
   }
@@ -233,52 +303,74 @@ export default function BoardsListScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Svg
-        width={windowWidth + 2}
-        height={windowHeight + 2}
-        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
-        pointerEvents="none"
-      >
-        <Defs>
-          <LinearGradient id="boardsBg" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0.03" stopColor="#705648" />
-            <Stop offset="0.52" stopColor="#69736E" />
-            <Stop offset="1" stopColor="#000000" />
-          </LinearGradient>
-        </Defs>
-        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#boardsBg)" />
-      </Svg>
-      <ContentColumn>
-      {/* The rail, in the same two places as on every other screen: what
-          this list can be DONE to in the middle, and what it MAKES at the
-          foot. Both were one capsule at the top, which is the one place
-          the rest of the app does not keep the "+".
+    <DatabaseChrome<BoardItem>
+      list={list}
+      accent={ACCENT}
+      accentGlass={ACCENT_GLASS}
+      // A tab's own root: nowhere to go back to, and the navigation
+      // island stands at its foot, so the rail leaves room for it.
+      hasIsland
+      searchPlaceholder="Пошук дощок"
+      onAdd={createBoard}
+      shape={{
+        icon: viewMode === 'cards' ? 'grid-outline' : 'reorder-four-outline',
+        onToggle: () => changeViewMode(viewMode === 'list' ? 'cards' : 'list'),
+      }}
+      bulk={{
+        onTag: () => setBulkTagPickerVisible(true),
+        onGroup: () => setBulkGroupPickerVisible(true),
+        onDelete: confirmDeleteSelected,
+      }}
+      overlay={
+        <>
+          <TagPicker
+            visible={tagPickerBoardId !== null}
+            kind="board"
+            tags={tags}
+            selectedTagIds={tagPickerBoard?.tagIds ?? []}
+            onAttach={(tag) => tagPickerBoard && attachTag(tag, 'board', tagPickerBoard.id, 'boards')}
+            onDetach={(tagId) => tagPickerBoard && detachTag(tagId, 'board', tagPickerBoard.id, 'boards')}
+            onCreateAndAttach={(path, icon, color) =>
+              tagPickerBoard && createAndAttachTag(path, icon, color, 'board', tagPickerBoard.id, 'boards')
+            }
+            onRenameTag={renameTag}
+            onClose={() => setTagPickerBoardId(null)}
+          />
 
-          RailCapsule draws its own glass through the portal, so neither
-          needs a wrapper here any more. */}
-      {railFocused && (
-        <RailCapsule
-          bottom={rail.actionsBottom}
-          buttons={[
-            {
-              // The icon is the shape in force, not the one a tap would
-              // switch to - it reads as a label everywhere else on the
-              // rail, and it read as one here too, just the wrong way up.
-              icon: viewMode === 'cards' ? 'grid-outline' : 'reorder-four-outline',
-              onPress: () => changeViewMode(viewMode === 'list' ? 'cards' : 'list'),
-            },
-          ]}
-        />
-      )}
-      {railFocused && (
-        <RailCapsule
-          bottom={rail.addBottom}
-          buttons={[{ icon: 'easel-outline', badge: 'add-circle-outline', onPress: createBoard }]}
-        />
-      )}
+          <TagPicker
+            visible={bulkTagPickerVisible}
+            kind="board"
+            tags={tags}
+            selectedTagIds={[]}
+            onAttach={bulkAttachTag}
+            onDetach={() => {}}
+            onCreateAndAttach={bulkCreateAndAttachTag}
+            onRenameTag={renameTag}
+            onClose={() => setBulkTagPickerVisible(false)}
+          />
 
-        {isLoading ? (
+          <GroupPickerSheet
+            visible={bulkGroupPickerVisible}
+            kind="board"
+            groups={groups}
+            onPick={bulkAssignGroup}
+            onClose={() => setBulkGroupPickerVisible(false)}
+          />
+
+          <RenamePrompt
+            visible={renamingBoard !== null}
+            title="Назва дошки"
+            initialValue={renamingBoard?.title ?? ''}
+            onCancel={() => setRenamingBoard(null)}
+            onSave={(title) => {
+              if (renamingBoard) renameBoard(renamingBoard, title);
+            }}
+          />
+        </>
+      }
+    >
+      {(listTopPad, listProps) =>
+        isLoading ? (
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
           </View>
@@ -290,42 +382,36 @@ export default function BoardsListScreen() {
             <Text style={styles.emptyLabel}>Не вдалося прочитати дошки</Text>
             <Text style={styles.emptyHint}>{loadError}</Text>
           </View>
-        ) : boards.length === 0 ? (
+        ) : displayedBoards.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
               <Ionicons name="apps-outline" size={32} color={ACCENT} />
             </View>
-            <Text style={styles.emptyLabel}>Ще немає дощок</Text>
-            <Text style={styles.emptyHint}>Дошка - вільний канвас для карток, які потім можна зібрати в документ</Text>
+            <Text style={styles.emptyLabel}>{needle ? 'Нічого не знайдено' : 'Ще немає дощок'}</Text>
+            <Text style={styles.emptyHint}>
+              {needle
+                ? 'Спробуйте інше слово'
+                : 'Дошка - вільний канвас для карток, які потім можна зібрати в документ'}
+            </Text>
           </View>
         ) : (
           <ScrollView
+            {...listProps}
             contentContainerStyle={[
               viewMode === 'cards' ? styles.tileGrid : styles.list,
-              // The status bar's own band, which the capsule that used to
-              // hang here was clearing on the list's behalf.
-              { paddingTop: insets.top + RAIL_TOP_PAD },
+              { paddingTop: listTopPad },
+              isSelectMode && styles.listWithBulkBar,
             ]}
           >
             {viewMode === 'cards'
-              ? boards.map((board) => renderBoardTile(board, tileWidth))
-              : boards.map(renderBoardRow)}
+              ? displayedBoards.map((board) => renderBoardTile(board, tileWidth))
+              : displayedBoards.map(renderBoardRow)}
+            {/* What else is in this group - see GroupSections. */}
+            <GroupSections groupId={list.selectedGroupId} currentKind="board" tags={tags} />
           </ScrollView>
-        )}
-
-
-        <RenamePrompt
-          visible={renamingBoard !== null}
-          title="Назва дошки"
-          initialValue={renamingBoard?.title ?? ''}
-          onCancel={() => setRenamingBoard(null)}
-          onSave={(title) => {
-            if (renamingBoard) renameBoard(renamingBoard, title);
-          }}
-        />
-      </ContentColumn>
-
-    </View>
+        )
+      }
+    </DatabaseChrome>
   );
 }
 
@@ -333,29 +419,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  railWrap: {
-    position: 'absolute',
-    right: RAIL_RIGHT,
-    alignItems: 'center',
-  },
   // Stood on its end, like every other screen's.
-  headerButtons: {
-    alignItems: 'center',
-    gap: 18,
-    paddingVertical: 18,
-    paddingHorizontal: 19,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-  },
   // Turned with the capsule.
-  headerButtonsDivider: {
-    width: 20,
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-  },
   emptyState: {
     flex: 1,
     alignItems: 'center',
@@ -388,11 +453,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
-    paddingTop: RAIL_TOP_PAD,
     paddingLeft: 20,
     // Clear of the rail, like the row list.
     paddingRight: RAIL_CLEARANCE,
     paddingBottom: 140,
+  },
+  // Room for the bulk-action bar while choosing, so the last board can
+  // still be scrolled out from under it.
+  listWithBulkBar: {
+    paddingBottom: 90,
   },
   tile: {
     borderRadius: 16,
@@ -415,7 +484,6 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   list: {
-    paddingTop: RAIL_TOP_PAD,
     paddingLeft: 20,
     // The rail stands at the right edge; the rows stop short of it rather
     // than running under it - the same clearance the calendar keeps.

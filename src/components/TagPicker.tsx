@@ -27,6 +27,7 @@ import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 const ACCENT = '#3B82F6';
 
 const KIND_LABELS: Record<string, string> = {
+  board: 'Дошки',
   file: 'Файли',
   photo: 'Фото',
   'link-video': 'Відео',

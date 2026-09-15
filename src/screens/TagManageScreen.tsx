@@ -14,6 +14,7 @@ import { confirm } from '../components/surfaces/Ask';
 const DANGER = '#EF4444';
 
 const KIND_LABELS: Record<string, string> = {
+  board: 'Дошки',
   file: 'Файли',
   photo: 'Фото',
   'link-video': 'Відео',

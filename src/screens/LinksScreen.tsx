@@ -482,7 +482,10 @@ export default function LinksScreen({
       onAdd={() => setAddLinkUrlPromptVisible(true)}
       // The shape of the list is a button on the rail now - it was two
       // rows here saying the same thing, on three screens.
-      shape={{ mode: viewMode, onToggle: () => changeViewMode(viewMode === 'list' ? 'grid' : 'list') }}
+      shape={{
+        icon: viewMode === 'grid' ? 'grid-outline' : 'reorder-four-outline',
+        onToggle: () => changeViewMode(viewMode === 'list' ? 'grid' : 'list'),
+      }}
       bulk={{
         onTag: () => setBulkTagPickerVisible(true),
         onGroup: () => setBulkGroupPickerVisible(true),
