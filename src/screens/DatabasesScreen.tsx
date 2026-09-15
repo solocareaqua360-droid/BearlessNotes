@@ -99,7 +99,17 @@ const tileOrderDoc = doc(db, 'settings', 'databaseTileOrder');
 const tileLayoutsDoc = doc(db, 'settings', 'databaseTileLayouts');
 type TileView = 'phone' | 'portrait' | 'landscape';
 const VIEW_LABEL: Record<TileView, string> = { phone: 'Телефон', portrait: 'Стоячи', landscape: 'Лежачи' };
-type TileViewData = { sizes?: Record<string, string>; positions?: Record<string, string> };
+// A divider: a band across the whole board standing ABOVE row `y`, with
+// a name - what splits the tiles into sections. It lives between rows
+// rather than in cells, so the tiles' places are untouched by it; the
+// rows under it simply move down by its height.
+type TileDivider = { y: number; label: string };
+const DIVIDER_HEIGHT = 34;
+type TileViewData = {
+  sizes?: Record<string, string>;
+  positions?: Record<string, string>;
+  dividers?: Record<string, TileDivider>;
+};
 const tileBackgroundsDoc = doc(db, 'settings', 'databaseTileBackgrounds');
 const tilePinsDoc = doc(db, 'settings', 'databaseTilePins');
 
@@ -191,6 +201,12 @@ export default function DatabasesScreen() {
   // the travel to it counted the travel twice and the tile ran a third
   // of the screen ahead of the hand.
   const carryOrigin = useRef({ x: 0, y: 0 });
+  // A divider being carried: the row it is over, and where it is drawn
+  // under the finger, in board pixels.
+  const [draftDivider, setDraftDivider] = useState<{ id: string; y: number } | null>(null);
+  const [dividerDrag, setDividerDrag] = useState<{ id: string; top: number } | null>(null);
+  const dividerOrigin = useRef(0);
+  const [dividerPrompt, setDividerPrompt] = useState<{ mode: 'new' } | { mode: 'rename'; id: string } | null>(null);
   // A picture behind a tile, cropped to that tile's own shape.
   const [tileBackgrounds, setTileBackgrounds] = useState<Record<string, string>>({});
   // The tile whose background is being chosen, and the picture waiting to
@@ -407,7 +423,7 @@ export default function DatabasesScreen() {
   function resetBoard() {
     confirm({
       title: 'Скинути дошку?',
-      message: 'Розміри й порядок плиток повернуться до стандартних. Кольори й фони лишаться.',
+      message: 'Розміри, порядок плиток і розділювачі повернуться до стандартних. Кольори й фони лишаться.',
       confirmLabel: 'Скинути',
     }).then((yes) => {
       if (!yes) return;
@@ -566,6 +582,69 @@ export default function DatabasesScreen() {
   const placedOf = (key: string) => placed.find((p) => p.item.key === key);
   const ruleRow = showRule ? placedOf(firstOwnKey)?.y ?? 0 : 0;
 
+  // The dividers of this view, in the order they stand, each clamped to
+  // the rows the board has - one stored below a board that has since
+  // shrunk stands under its last row rather than out of sight.
+  const dividers = Object.entries(viewData.dividers ?? {})
+    .map(([id, d]) => ({
+      id,
+      label: d.label,
+      y: Math.max(0, Math.min(rows, draftDivider?.id === id ? draftDivider.y : d.y)),
+    }))
+    .sort((a, b) => a.y - b.y || a.id.localeCompare(b.id));
+  // Where a row starts, in board pixels: its cells, plus one band for
+  // every divider standing above it. `without` leaves one divider out -
+  // the one being carried, so the rows it is measured against do not
+  // shift under it as it passes them.
+  const rowTop = (y: number, without?: string) =>
+    y * cellStep + dividers.filter((d) => d.y <= y && d.id !== without).length * DIVIDER_HEIGHT;
+  // The row nearest a board pixel, counting the row below the last one.
+  const rowUnder = (py: number, without?: string) => {
+    let best = 0;
+    for (let r = 0; r <= rows; r += 1) {
+      if (Math.abs(rowTop(r, without) - py) < Math.abs(rowTop(best, without) - py)) best = r;
+    }
+    return best;
+  };
+  // A divider's band: from the end of the row above it (the gap is part
+  // of the band) to the start of the row it stands over.
+  const dividerTop = (index: number) =>
+    dividers[index].y * cellStep - gap + index * DIVIDER_HEIGHT;
+  const boardHeight =
+    rows * cellStep - gap + dividers.length * DIVIDER_HEIGHT + (dividers.some((d) => d.y >= rows) ? gap : 0);
+
+  function writeDivider(id: string, data: Partial<TileDivider> | null) {
+    setDoc(tileLayoutsDoc, { [tileView]: { dividers: { [id]: data ?? deleteField() } } }, { merge: true });
+  }
+
+  async function editDivider(id: string) {
+    const divider = viewData.dividers?.[id];
+    if (!divider) return;
+    const choice = await ask({
+      title: divider.label || 'Розділювач',
+      actions: [
+        { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+        { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' },
+      ],
+    });
+    if (choice === 'rename') setDividerPrompt({ mode: 'rename', id });
+    if (choice === 'delete') writeDivider(id, null);
+  }
+
+  function saveDividerName(label: string) {
+    const prompt = dividerPrompt;
+    setDividerPrompt(null);
+    if (!prompt) return;
+    const name = label.trim();
+    if (prompt.mode === 'rename') {
+      writeDivider(prompt.id, { label: name });
+      return;
+    }
+    // A new divider stands under the last row; the user carries it to
+    // where it belongs.
+    writeDivider(`d${Date.now().toString(36)}`, { y: rows, label: name });
+  }
+
   // A resize is written down together with the places the tiles after
   // it settled into - the same thing the finger saw while resizing,
   // kept. Written as places, not cleared: a cleared tile would flow to
@@ -596,8 +675,7 @@ export default function DatabasesScreen() {
   function cellUnder(key: string, x: number, y: number): TilePosition {
     const size = sizeFor(key);
     const col = Math.max(0, Math.min(columns - size.w, Math.round(x / cellStep)));
-    const row = Math.max(0, Math.round(y / cellStep));
-    return { x: col, y: row };
+    return { x: col, y: rowUnder(y) };
   }
 
 
@@ -625,13 +703,45 @@ export default function DatabasesScreen() {
                 changes, which is what makes a resize look like the board
                 closing up around it rather than everything jumping. */}
             <View
-              style={[styles.board, { height: Math.max(0, rows * cellStep - gap) }]}
+              style={[styles.board, { height: Math.max(0, boardHeight) }]}
               onLayout={(e) => setBoardWidth(e.nativeEvent.layout.width)}
             >
               {/* Everything above is built in; everything below is yours. */}
               {showRule && ruleRow > 0 && (
-                <View style={[styles.boardRule, { top: ruleRow * cellStep - gap / 2 }]} />
+                <View style={[styles.boardRule, { top: rowTop(ruleRow) - gap / 2 }]} />
               )}
+
+              {cellSize > 0 &&
+                dividers.map((divider, index) => (
+                  <BoardDivider
+                    key={divider.id}
+                    label={divider.label}
+                    top={dividerDrag?.id === divider.id ? dividerDrag.top : Math.max(0, dividerTop(index))}
+                    height={DIVIDER_HEIGHT + (divider.y === 0 ? 0 : gap)}
+                    editing={editing}
+                    carried={dividerDrag?.id === divider.id}
+                    onEdit={() => editDivider(divider.id)}
+                    onCarryStart={() => {
+                      hapticButtonDown();
+                      dividerOrigin.current = Math.max(0, dividerTop(index));
+                      setDividerDrag({ id: divider.id, top: dividerOrigin.current });
+                      setDraftDivider({ id: divider.id, y: divider.y });
+                    }}
+                    onCarryMove={(dy) => {
+                      const top = dividerOrigin.current + dy;
+                      setDividerDrag({ id: divider.id, top });
+                      // The band's lower edge is where the row it stands over
+                      // begins - that is what is matched to a row.
+                      setDraftDivider({ id: divider.id, y: rowUnder(top + gap, divider.id) });
+                    }}
+                    onCarryEnd={() => {
+                      const dropped = draftDivider;
+                      setDividerDrag(null);
+                      setDraftDivider(null);
+                      if (dropped) writeDivider(dropped.id, { y: dropped.y });
+                    }}
+                  />
+                ))}
 
               {cellSize > 0 &&
                 placed.map(({ item, x, y, size }) => (
@@ -639,7 +749,7 @@ export default function DatabasesScreen() {
                     key={item.key}
                     item={item}
                     left={x * cellStep}
-                    top={y * cellStep}
+                    top={rowTop(y)}
                     width={spanSize(size.w)}
                     height={spanSize(size.h)}
                     color={
@@ -705,8 +815,8 @@ export default function DatabasesScreen() {
                     carried={drag?.key === item.key ? { x: drag.x, y: drag.y } : null}
                     onCarryStart={() => {
                       hapticButtonDown();
-                      carryOrigin.current = { x: x * cellStep, y: y * cellStep };
-                      setDrag({ key: item.key, x: x * cellStep, y: y * cellStep });
+                      carryOrigin.current = { x: x * cellStep, y: rowTop(y) };
+                      setDrag({ key: item.key, x: x * cellStep, y: rowTop(y) });
                       setDraftPosition({ key: item.key, x, y });
                     }}
                     onCarryMove={(dx, dy) => {
@@ -963,13 +1073,21 @@ export default function DatabasesScreen() {
       {/* The way out of arranging - and the only thing on screen that
           says the board is in it. */}
       {editing && (
-        <Pressable
+        <View
           style={[
-            styles.doneButton,
+            styles.editBar,
             // Clear of the island lying across the foot of the screen -
             // its own height plus the gap it keeps from the edge.
             { bottom: databasesInsets.bottom + NAV_BOTTOM + RAIL_WIDTH + 16 },
           ]}
+        >
+        {/* A new section: a named band across the board. */}
+        <Pressable style={styles.doneButton} onPress={() => setDividerPrompt({ mode: 'new' })}>
+          <Ionicons name="remove-outline" size={18} color="#171310" />
+          <Text style={styles.doneLabel}>Розділювач</Text>
+        </Pressable>
+        <Pressable
+          style={styles.doneButton}
           onPress={() => {
             setEditing(false);
             // The settings pane belongs to arranging: leaving that mode
@@ -982,6 +1100,7 @@ export default function DatabasesScreen() {
           <Ionicons name="checkmark" size={18} color="#171310" />
           <Text style={styles.doneLabel}>Готово</Text>
         </Pressable>
+        </View>
       )}
 
       <ImportTableSheet
@@ -993,6 +1112,17 @@ export default function DatabasesScreen() {
           notify('Імпортовано', `Додано записів: ${rowCount}`);
           navigation.navigate('CustomDatabase', { databaseId });
         }}
+      />
+
+      <RenamePrompt
+        // Remounted per opening: the prompt seeds its field once.
+        key={dividerPrompt ? (dividerPrompt.mode === 'rename' ? dividerPrompt.id : 'new') : 'closed'}
+        visible={dividerPrompt !== null}
+        title={dividerPrompt?.mode === 'rename' ? 'Назва секції' : 'Новий розділювач'}
+        initialValue={dividerPrompt?.mode === 'rename' ? viewData.dividers?.[dividerPrompt.id]?.label ?? '' : ''}
+        placeholder="Назва секції"
+        onCancel={() => setDividerPrompt(null)}
+        onSave={saveDividerName}
       />
 
       <RenamePrompt
@@ -1123,6 +1253,58 @@ export default function DatabasesScreen() {
 // One tile. It knows nothing about the board it sits on: where it is and
 // how big it is are given to it, and the corner grip hands back the size
 // the finger is asking for, in whole cells.
+// A named band across the board, between two rows. Held down while the
+// board is being arranged, it lifts and follows the finger to another
+// row, the way a tile does; tapped, it is renamed or removed.
+function BoardDivider({
+  label,
+  top,
+  height,
+  editing,
+  carried,
+  onEdit,
+  onCarryStart,
+  onCarryMove,
+  onCarryEnd,
+}: {
+  label: string;
+  top: number;
+  height: number;
+  editing: boolean;
+  carried: boolean;
+  onEdit: () => void;
+  onCarryStart: () => void;
+  onCarryMove: (dy: number) => void;
+  onCarryEnd: () => void;
+}) {
+  const carry = Gesture.Pan()
+    .runOnJS(true)
+    .activateAfterLongPress(220)
+    .enabled(editing)
+    .onStart(() => onCarryStart())
+    .onUpdate((e) => onCarryMove(e.translationY))
+    .onFinalize(() => onCarryEnd());
+  return (
+    <Animated.View
+      layout={carried ? undefined : LinearTransition.duration(220)}
+      style={[styles.divider, { top, height }, carried && styles.dividerCarried]}
+    >
+      <GestureDetector gesture={carry}>
+        <Pressable style={styles.dividerBody} onPress={editing ? onEdit : undefined} disabled={!editing}>
+          <View style={styles.dividerLine} />
+          {!!label && (
+            <Text style={styles.dividerLabel} numberOfLines={1}>
+              {label}
+            </Text>
+          )}
+          <View style={styles.dividerLine} />
+          {editing && <Ionicons name="reorder-two-outline" size={16} color={GLASS_TEXT_FAINT} />}
+        </Pressable>
+      </GestureDetector>
+    </Animated.View>
+  );
+}
+
 function BoardTile({
   item,
   left,
@@ -1479,9 +1661,42 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.12)',
     marginVertical: 6,
   },
-  doneButton: {
+  editBar: {
     position: 'absolute',
     alignSelf: 'center',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  divider: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    justifyContent: 'center',
+  },
+  dividerCarried: {
+    zIndex: 20,
+    opacity: 0.95,
+  },
+  dividerBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 4,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+  dividerLabel: {
+    fontSize: 12,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    fontFamily: FONT_MEDIUM,
+    color: GLASS_TEXT_FAINT,
+    maxWidth: '60%',
+  },
+  doneButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
