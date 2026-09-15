@@ -36,8 +36,14 @@ owner-scoped). Pictures come from the user's Google Drive and need one
 "Підключити Диск" click per hour in a browser; that is structural (see
 the memory `project_google_auth_and_web`), and the decision whether to
 move files to Firebase Storage instead is parked until the app has had
-real use. `firestore.rules.owner-only` is written, reviewed, and still
-NOT deployed - one paste in Firebase Console once the user says so.
+real use. `firestore.rules.owner-only` is DEPLOYED (2026-09-15): every read and
+write now needs a signed-in user whose uid matches the document's
+`ownerId`. Two consequences to keep in mind forever: a list query must
+carry the ownerId condition (use `ownedQuery` - the rules refuse an
+unscoped query outright rather than filtering it), and every listener
+needs an error handler, or a refused read throws and takes the app down.
+Publishing it the first time did exactly that, through two hand-built
+queries in CalendarScreen.
 
 Stages 0–4 (`DEVELOPMENT_PLAN.md`) are fully done and confirmed on a real
 Android device via Expo Go — undo/redo, inline text formatting, the "/"
