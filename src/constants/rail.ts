@@ -11,10 +11,10 @@
 export const RAIL_RIGHT = 14;
 export const RAIL_GAP = 12;
 // The least the pieces of the rail may be pushed together before a shape
-// counts as not fitting. Two points below the preferred gap, and those two
-// points are the difference between choosing keeping its own capsule on a
-// 736pt phone and having to join the others.
-export const RAIL_MIN_GAP = 10;
+// counts as not fitting. Below the preferred gap on purpose: these few
+// points are the difference between a capsule keeping its own place on a
+// 736pt phone and having to join the one above it, twice now.
+export const RAIL_MIN_GAP = 8;
 
 // The navigation island, laid out vertically.
 export const NAV_BUTTON = 48;
@@ -109,9 +109,15 @@ export function railFreeHeight(
 // a screen that can choose what it puts on the rail asks this FIRST, and
 // leaves out what does not fit - which is exactly the condition the user
 // put on the fourth button.
-export function railFits(free: number, actionsHeight: number, createHeight: number, historyHeight: number = 0) {
-  const gaps = historyHeight > 0 ? 4 : 3;
-  return free - (actionsHeight + createHeight + historyHeight) >= gaps * RAIL_MIN_GAP;
+export function railFits(
+  free: number,
+  actionsHeight: number,
+  createHeight: number,
+  historyHeight: number = 0,
+  extraHeight: number = 0
+) {
+  const gaps = 3 + (historyHeight > 0 ? 1 : 0) + (extraHeight > 0 ? 1 : 0);
+  return free - (actionsHeight + createHeight + historyHeight + extraHeight) >= gaps * RAIL_MIN_GAP;
 }
 
 // `actionsHeight`: the slot above the add button used to be the folder
@@ -131,18 +137,25 @@ export function useRailLayout(
   actionsHeight: number = RAIL_WIDTH,
   createHeight: number = RAIL_WIDTH,
   historyHeight: number = 0,
-  hasIsland: boolean = true
+  hasIsland: boolean = true,
+  // A FOURTH piece, above the actions capsule. The stack was three, which
+  // is why a database with folders could not give back/forward a capsule
+  // of its own the way the documents screen does - and the user was right
+  // that this was never about height: it was the layout having nowhere to
+  // put a fourth thing.
+  extraHeight: number = 0
 ) {
   const tagRowBottom = insetBottom + TAG_ROW_PAD;
   const { free, foot, islandHeight } = railFreeHeight(windowHeight, insetTop, insetBottom, capsuleHeight, hasIsland);
   const navBottom = insetBottom + NAV_BOTTOM;
-  const pieces = actionsHeight + createHeight + historyHeight;
-  const gaps = historyHeight > 0 ? 4 : 3;
+  const pieces = actionsHeight + createHeight + historyHeight + extraHeight;
+  const gaps = 3 + (historyHeight > 0 ? 1 : 0) + (extraHeight > 0 ? 1 : 0);
   const gap = Math.max(RAIL_MIN_GAP, (free - pieces) / gaps);
   const addBottom = foot + gap;
   const historyBottom = addBottom + createHeight + gap;
   // The bottom edge of the actions capsule. Kept under its old name too.
   const actionsBottom = historyHeight > 0 ? historyBottom + historyHeight + gap : addBottom + createHeight + gap;
+  const extraBottom = actionsBottom + actionsHeight + gap;
   const tagBottom = actionsBottom;
-  return { tagRowBottom, navBottom, islandHeight, addBottom, historyBottom, tagBottom, actionsBottom };
+  return { tagRowBottom, navBottom, islandHeight, addBottom, historyBottom, tagBottom, actionsBottom, extraBottom };
 }

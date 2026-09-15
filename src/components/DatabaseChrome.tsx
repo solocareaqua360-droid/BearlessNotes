@@ -18,12 +18,12 @@ import RailCapsule from './RailCapsule';
 import ScreenBackdrop from './ScreenBackdrop';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from './TagsDrawer';
 import BulkActionBar from './BulkActionBar';
-import { useRail } from '../hooks/useRail';
+import { useRail, useRailFree } from '../hooks/useRail';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_ISLAND, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
-import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH, capsuleHeightFor } from '../constants/rail';
+import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH, capsuleHeightFor, railFits } from '../constants/rail';
 
 // Everything a database screen puts AROUND its records: the gradient it
 // stands on, the capsule on the rail (search / "..." / the way out), the
@@ -70,11 +70,8 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   shape?: { icon: keyof typeof Ionicons.glyphMap; onToggle: () => void };
   // A database with folders: the three-way switch in the drawer, a second
   // button on the create capsule for a new folder, and back/forward
-  // through the folders you have been in.
-  //
-  // Those two arrows join the ACTIONS capsule rather than taking one of
-  // their own, as they do on the documents screen: the rail stacks three
-  // pieces, and all three are spoken for here.
+  // through the folders you have been in - in a capsule of their own,
+  // where the documents screen keeps them.
   explorer?: {
     mode: 'groups' | 'list' | 'explorer';
     onChangeMode: (mode: 'groups' | 'list' | 'explorer') => void;
@@ -154,15 +151,31 @@ export default function DatabaseChrome<T extends { id: string }>({
   // the rail must not hold its height at the foot (see useRail). Nor the
   // create button's, on the three databases that have no "+": photos,
   // files and links only ever arrive from inside a document.
+  // Search, plus "..." where the screen still has rows for it, plus the
+  // way out where there is one - one, two or three buttons.
+  const topHeight = capsuleHeightFor(1 + (menuRows ? 1 : 0) + (onBack ? 1 : 0));
+  const createHeight = onAdd ? (explorer?.active ? CAPSULE_HEIGHT : RAIL_WIDTH) : 0;
+  const selectHeight = bulk ? CAPSULE_HEIGHT_1 : 0;
+  // Back and forward take a capsule of their own wherever the screen is
+  // tall enough to stand five pieces clear of one another; where it is
+  // not, they fall back into the actions capsule rather than ride up over
+  // the top one. The user's point, and it was right: on a screen with the
+  // same number of buttons as the documents list there is no reason they
+  // cannot have their own.
+  const railFree = useRailFree(topHeight, !!hasIsland);
+  const ownHistory =
+    !!explorer?.active &&
+    railFits(railFree, selectHeight, createHeight, CAPSULE_HEIGHT, capsuleHeightFor((shape ? 1 : 0) + 1));
+  const actionsHeight = capsuleHeightFor((shape ? 1 : 0) + 1 + (explorer?.active && !ownHistory ? 2 : 0));
   const rail = useRail(
-    // Search, plus "..." where the screen still has rows for it, plus the
-    // way out where there is one - one, two or three buttons, and the
-    // rail is told which.
-    capsuleHeightFor(1 + (menuRows ? 1 : 0) + (onBack ? 1 : 0)),
-    capsuleHeightFor((shape ? 1 : 0) + 1 + (explorer?.active ? 2 : 0)),
-    onAdd ? (explorer?.active ? CAPSULE_HEIGHT : RAIL_WIDTH) : 0,
-    bulk ? CAPSULE_HEIGHT_1 : 0,
-    !!hasIsland
+    topHeight,
+    // With a capsule of their own, the arrows take the middle slot and
+    // choosing moves up one; without, the three pieces stand as before.
+    ownHistory ? selectHeight : actionsHeight,
+    createHeight,
+    ownHistory ? CAPSULE_HEIGHT : selectHeight,
+    !!hasIsland,
+    ownHistory ? actionsHeight : 0
   );
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -210,11 +223,10 @@ export default function DatabaseChrome<T extends { id: string }>({
             a custom database. */}
         {isFocused && !searchingAlone && (
           <RailCapsule
-            bottom={rail.actionsBottom}
+            bottom={ownHistory ? rail.extraBottom : rail.actionsBottom}
             buttons={[
-              // Back and forward through the folders you have been in, so
-              // the hand need not reach for the path strip at the top.
-              ...(explorer?.active
+              // Only when they could not have a capsule of their own.
+              ...(explorer?.active && !ownHistory
                 ? [
                     {
                       icon: 'chevron-back-outline' as const,
@@ -240,11 +252,22 @@ export default function DatabaseChrome<T extends { id: string }>({
             ]}
           />
         )}
+        {/* Back and forward through the folders you have been in, so the
+            hand need not reach for the path strip at the top. */}
+        {isFocused && !searchingAlone && ownHistory && !!explorer && (
+          <RailCapsule
+            bottom={rail.historyBottom}
+            buttons={[
+              { icon: 'chevron-back-outline', onPress: explorer.onBack, disabled: !explorer.canBack },
+              { icon: 'chevron-forward-outline', onPress: explorer.onForward, disabled: !explorer.canForward },
+            ]}
+          />
+        )}
         {/* Choosing several is a mode, not an action - its own capsule,
             where a custom database keeps it too. */}
         {isFocused && !searchingAlone && !!bulk && (
           <RailCapsule
-            bottom={rail.historyBottom}
+            bottom={ownHistory ? rail.actionsBottom : rail.historyBottom}
             buttons={[
               {
                 icon: (list.isSelectMode ? 'close-outline' : 'checkmark-circle-outline') as

@@ -15,11 +15,22 @@ export function useRail(
   actionsHeight?: number,
   createHeight?: number,
   historyHeight?: number,
-  hasIsland: boolean = true
+  hasIsland: boolean = true,
+  extraHeight: number = 0
 ) {
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  return useRailLayout(height, insets.top, insets.bottom, capsuleHeight, actionsHeight, createHeight, historyHeight, hasIsland);
+  return useRailLayout(
+    height,
+    insets.top,
+    insets.bottom,
+    capsuleHeight,
+    actionsHeight,
+    createHeight,
+    historyHeight,
+    hasIsland,
+    extraHeight
+  );
 }
 
 // Only the height the stack has to share - asked BEFORE deciding what to
