@@ -595,6 +595,14 @@ export default function DocumentsScreen({ inPane }: { inPane?: boolean } = {}) {
     arrowsFit ? CAPSULE_HEIGHT : 0
   );
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  // Opening the search takes the screen, so anything hanging off the rail
+  // goes with it - the sort menu stayed up over the keyboard otherwise.
+  useEffect(() => {
+    if (searchOpen || isSelectMode) {
+      setSortMenuOpen(false);
+      setMenuOpen(false);
+    }
+  }, [searchOpen, isSelectMode]);
   // How far the list has to clear the bottom edge so its last card never
   // ends up sitting behind the navigation island - the island is the
   // tallest thing on the rail's foot and the closest to that edge.

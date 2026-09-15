@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
+import { useIsFocused } from '@react-navigation/native';
 import { useBlurTarget } from '../GlassTarget';
 import { GlassPortal } from '../GlassPortal';
 import { FONT_BOLD, FONT_REGULAR } from '../../utils/fonts';
@@ -70,7 +71,13 @@ export default function Menu({
   // Read at render, never captured at module scope - a stale window size
   // is what broke the calendar's week strip twice before.
   const { height: windowHeight } = useWindowDimensions();
-  if (!visible) return null;
+  // Drawn through the portal, which reaches over the WHOLE app - so a menu
+  // left open on one screen went on floating above the next one the user
+  // swiped to, and two of them could stack. Every rail piece is already
+  // behind its own isFocused; this is the same rule, made once here rather
+  // than at each of the six places a menu is opened.
+  const isFocused = useIsFocused();
+  if (!visible || !isFocused) return null;
   return (
     <GlassPortal>
       <Pressable style={styles.backdrop} onPress={onClose} />

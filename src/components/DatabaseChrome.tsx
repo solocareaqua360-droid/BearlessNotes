@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useMemo, useRef, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
@@ -228,6 +228,13 @@ export default function DatabaseChrome<T extends { id: string }>({
     list.setIsSearching(true);
   });
   const listGesture = useMemo(() => Gesture.Simultaneous(pull.gesture, drawerSwipe), [pull.gesture, drawerSwipe]);
+  // The search takes the screen; what hangs off the rail goes with it.
+  useEffect(() => {
+    if (list.isSearching || list.isSelectMode) {
+      setSortMenuOpen(false);
+      setMenuOpen(false);
+    }
+  }, [list.isSearching, list.isSelectMode]);
   // ...and closes itself when the keyboard goes away empty, or when a
   // swipe carries the screen off.
   useSearchDismissal({
