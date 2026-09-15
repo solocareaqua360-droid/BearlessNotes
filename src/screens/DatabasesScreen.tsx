@@ -21,6 +21,13 @@ import {
   DEFAULT_TILE_SIZE,
   tileColumnsFor,
   packedSizes,
+  placeTiles,
+  cellAfter,
+  tilesOverlap,
+  parseTilePosition,
+  formatTilePosition,
+  type TilePosition,
+  type PlacedTile,
   TileSize,
   formatTileSize,
   packTiles,
@@ -83,6 +90,16 @@ const ACCENT = '#14B8A6';
 const DANGER = GLASS_DANGER;
 const tileSizesDoc = doc(db, 'settings', 'databaseTileSizes');
 const tileOrderDoc = doc(db, 'settings', 'databaseTileOrder');
+// The board has THREE views - the phone, the inner screen standing up, and
+// lying down - and each keeps its own sizes and positions, under its own
+// branch of this one document. The two older documents above are what a
+// view falls back to while it has nothing of its own: the sizes as they
+// were before the views, and the order, which still decides how the tiles
+// that have no position flow.
+const tileLayoutsDoc = doc(db, 'settings', 'databaseTileLayouts');
+type TileView = 'phone' | 'portrait' | 'landscape';
+const VIEW_LABEL: Record<TileView, string> = { phone: 'Телефон', portrait: 'Стоячи', landscape: 'Лежачи' };
+type TileViewData = { sizes?: Record<string, string>; positions?: Record<string, string> };
 const tileBackgroundsDoc = doc(db, 'settings', 'databaseTileBackgrounds');
 const tilePinsDoc = doc(db, 'settings', 'databaseTilePins');
 
@@ -140,6 +157,8 @@ export default function DatabasesScreen() {
   // phone's width and a database in it is a database squeezed - the user's
   // rule: full width standing up, two windows lying down.
   const isTwoPane = responsive.isTwoPane && responsive.width >= responsive.height;
+  // Which of the board's three views is on screen - see tileLayoutsDoc.
+  const tileView: TileView = !responsive.isTwoPane ? 'phone' : isTwoPane ? 'landscape' : 'portrait';
   // What the left pane is showing, on a wide screen: a database opened
   // from a tile. On a phone the same tap navigates, as it always did.
   const [openInPane, setOpenInPane] = useState<PaneTarget | null>(null);
@@ -149,6 +168,10 @@ export default function DatabasesScreen() {
   const { counts, latest, photoThumbs, pinnableGroups, pinnableTags } = useDatabaseContents();
   const [colorMenuKey, setColorMenuKey] = useState<string | null>(null);
   const [tileSizes, setTileSizes] = useState<Record<string, string>>({});
+  const [tileLayouts, setTileLayouts] = useState<Partial<Record<TileView, TileViewData>>>({});
+  const viewData = tileLayouts[tileView] ?? {};
+  // Where the carried tile is, in cells, while the finger holds it.
+  const [draftPosition, setDraftPosition] = useState<{ key: string; x: number; y: number } | null>(null);
   // Held-down, the board goes into its arranging state: the tiles draw
   // apart to make room for the grips, and nothing opens on a tap.
   const [editing, setEditing] = useState(false);
@@ -160,12 +183,8 @@ export default function DatabasesScreen() {
   // then there is none, and the board keeps the order it was written in.
   const [order, setOrder] = useState<string[] | null>(null);
   // The tile being carried right now: where it is under the finger, and
-  // the order the board is packing itself into while it is held there.
+  // the cell the board is placing it in while it is held there.
   const [drag, setDrag] = useState<{ key: string; x: number; y: number } | null>(null);
-  const [draftOrder, setDraftOrder] = useState<string[] | null>(null);
-  // The order the board was in when the carry began - what every drop is
-  // measured against, so the target cannot drift under the finger.
-  const dragBaseOrder = useRef<string[] | null>(null);
   // A picture behind a tile, cropped to that tile's own shape.
   const [tileBackgrounds, setTileBackgrounds] = useState<Record<string, string>>({});
   // The tile whose background is being chosen, and the picture waiting to
@@ -195,6 +214,13 @@ export default function DatabasesScreen() {
     return onSnapshot(tileSizesDoc, (snapshot) => {
       setTileSizes((snapshot.data() as Record<string, string> | undefined) ?? {});
     });
+  }, []);
+  useEffect(() => {
+    return onSnapshot(
+      tileLayoutsDoc,
+      (snapshot) => setTileLayouts((snapshot.data() as Partial<Record<TileView, TileViewData>> | undefined) ?? {}),
+      () => setTileLayouts({})
+    );
   }, []);
 
   useEffect(() => {
@@ -295,7 +321,7 @@ export default function DatabasesScreen() {
   // a deletion rather than the default value, so a later change of mind
   // about defaults reaches it.
   function resetSize(key: string) {
-    setDoc(tileSizesDoc, { [key]: deleteField() }, { merge: true });
+    writeSize(key, null);
     setColorMenuKey(null);
   }
 
@@ -354,7 +380,22 @@ export default function DatabasesScreen() {
   // packed in.
   function fillBoard() {
     setColorMenuKey(null);
-    setDoc(tileSizesDoc, packedSizes(orderedItems.map((item) => item.key), columns), { merge: false });
+    // The sizes that fill the board, and then WHERE each one lands with
+    // those sizes - written as positions too, so the result stays put
+    // instead of flowing again the next time anything changes.
+    const keys = orderedItems.map((item) => item.key);
+    const sizes = packedSizes(keys, columns);
+    const { placed: laid } = packTiles(
+      orderedItems,
+      (item) => parseTileSize(sizes[item.key]) ?? sizeFor(item.key),
+      undefined,
+      columns
+    );
+    const positions: Record<string, string> = {};
+    laid.forEach((p) => {
+      positions[p.item.key] = formatTilePosition({ x: p.x, y: p.y });
+    });
+    setDoc(tileLayoutsDoc, { [tileView]: { sizes, positions } }, { merge: true });
   }
 
   function resetBoard() {
@@ -364,6 +405,10 @@ export default function DatabasesScreen() {
       confirmLabel: 'Скинути',
     }).then((yes) => {
       if (!yes) return;
+      // This view goes back to defaults. The order and the sizes from
+      // before the views are cleared too, since they are what a view with
+      // nothing of its own shows.
+      setDoc(tileLayoutsDoc, { [tileView]: deleteField() }, { merge: true });
       setDoc(tileSizesDoc, {}, { merge: false });
       setDoc(tileOrderDoc, { order: deleteField() }, { merge: true });
     });
@@ -407,11 +452,33 @@ export default function DatabasesScreen() {
     // finger is asking for - that is what makes the other tiles move out
     // of the way under the hand rather than after it.
     if (draftSize?.key === key) return draftSize.size;
-    return parseTileSize(tileSizes[key]) ?? defaultSizeFor(key);
+    // This view's own size; before it has one, the size from before the
+    // views existed; before that, the default.
+    return parseTileSize(viewData.sizes?.[key]) ?? parseTileSize(tileSizes[key]) ?? defaultSizeFor(key);
   }
 
-  function setSize(key: string, size: TileSize) {
-    setDoc(tileSizesDoc, { [key]: formatTileSize(size) }, { merge: true });
+  // Where the user put this tile in THIS view - or nowhere, and it flows.
+  function positionFor(key: string): TilePosition | null {
+    if (draftPosition?.key === key) return { x: draftPosition.x, y: draftPosition.y };
+    return parseTilePosition(viewData.positions?.[key]);
+  }
+
+  // A dropped tile takes its cell, and any tile it now lies over gives its
+  // own up and flows - it was already flowing under the hand; this keeps
+  // it so, rather than letting the two fight over the cell on every
+  // render, with the first in the list winning.
+  function setPosition(dropped: PlacedTile<BoardItem>) {
+    const positions: Record<string, string | ReturnType<typeof deleteField>> = {
+      [dropped.item.key]: formatTilePosition({ x: dropped.x, y: dropped.y }),
+    };
+    orderedItems.forEach((item) => {
+      if (item.key === dropped.item.key) return;
+      const stored = parseTilePosition(viewData.positions?.[item.key]);
+      if (!stored) return;
+      const rect = { item, x: stored.x, y: stored.y, size: sizeFor(item.key) };
+      if (tilesOverlap(dropped, rect)) positions[item.key] = deleteField();
+    });
+    setDoc(tileLayoutsDoc, { [tileView]: { positions } }, { merge: true });
   }
 
   // Built in first, then the databases the user made, then the two tiles
@@ -438,7 +505,7 @@ export default function DatabasesScreen() {
   ];
   // The arranged order wins where there is one; anything it does not
   // mention (a database made since) keeps its natural place at the end.
-  const activeOrder = draftOrder ?? order;
+  const activeOrder = order;
   const orderedItems = activeOrder
     ? [
         ...activeOrder
@@ -451,7 +518,7 @@ export default function DatabasesScreen() {
   // The rule only means anything while the board is in the order it was
   // written in: once the tiles have been arranged, "everything above is
   // built in" is no longer true, and a line drawn there would be a lie.
-  const showRule = !activeOrder;
+  const showRule = !activeOrder && !viewData.positions;
   const firstOwnKey = customDatabases[0]?.id ?? NEW_TILE_KEY;
   // A cell is square, and the board is as wide as the column it sits in.
   // While arranging, the gap grows: the tiles draw apart to make room for
@@ -466,45 +533,63 @@ export default function DatabasesScreen() {
   const cellStep = cellSize + gap;
   const spanSize = (cells: number) => cells * cellSize + (cells - 1) * gap;
 
-  const { placed, rows } = packTiles(
-    orderedItems,
-    (item) => sizeFor(item.key),
-    (item) => showRule && item.key === firstOwnKey,
-    columns
-  );
+  const sizeOf = (item: BoardItem) => sizeFor(item.key);
+  const pinnedAt = (item: BoardItem) => positionFor(item.key);
+  const breakAt = (item: BoardItem) => showRule && item.key === firstOwnKey;
+  const carriedFirst = (item: BoardItem) => item.key === draftPosition?.key;
+  // While a tile is being resized, every tile after it lets go of its
+  // place and flows again, so the space it frees is taken as it frees it
+  // - the user's complaint was tiles standing still beside a hole "поки я
+  // не перетягну". The resized tile itself stays where it is. Which
+  // tiles are "after" is read off a placement made with the new size.
+  let positionOf = pinnedAt;
+  if (draftSize) {
+    const trial = placeTiles(orderedItems, sizeOf, pinnedAt, columns, breakAt);
+    const anchor = trial.placed.find((p) => p.item.key === draftSize.key);
+    if (anchor) {
+      positionOf = (item) => {
+        const position = pinnedAt(item);
+        return position && item.key !== draftSize.key && cellAfter(anchor, position) ? null : position;
+      };
+    }
+  }
+  const { placed, rows } = placeTiles(orderedItems, sizeOf, positionOf, columns, breakAt, carriedFirst);
+  const placedOf = (key: string) => placed.find((p) => p.item.key === key);
+
+  // A resize is written down together with the places it frees: the
+  // tiles after the resized one lose theirs, for good, and flow - the
+  // same thing the finger saw while resizing, kept.
+  function writeSize(key: string, size: TileSize | null) {
+    const anchor = placedOf(key);
+    const positions: Record<string, ReturnType<typeof deleteField>> = {};
+    if (anchor) {
+      placed.forEach((p) => {
+        if (p.item.key === key) return;
+        const stored = parseTilePosition(viewData.positions?.[p.item.key]);
+        if (stored && cellAfter(anchor, stored)) positions[p.item.key] = deleteField();
+      });
+    }
+    setDoc(
+      tileLayoutsDoc,
+      { [tileView]: { sizes: { [key]: size ? formatTileSize(size) : deleteField() }, positions } },
+      { merge: true }
+    );
+  }
   const ruleRow = showRule ? placed.find((p) => p.item.key === firstOwnKey)?.y ?? 0 : 0;
 
-  // Where a carried tile would land.
-  //
-  // Measured against the board WITHOUT the carried tile, packed from the
-  // order the drag started in - a fixed picture that does not move while
-  // the finger does. The first version compared against the live board
-  // instead, which was being re-packed by this very function on every
-  // move: the tile it was aiming at kept sliding away under it, and when
-  // nothing matched the answer was "last", which is how a tile halfway up
-  // the board could suddenly be flung to the end.
-  function orderWithDrop(key: string, x: number, y: number): string[] {
-    const base = dragBaseOrder.current ?? orderedItems.map((item) => item.key);
-    const without = base.filter((k) => k !== key);
-    if (cellStep <= 0) return base;
-    const others = without
-      .map((k) => boardItems.find((item) => item.key === k))
-      .filter((item): item is BoardItem => !!item);
-    const { placed: stable } = packTiles(others, (item) => sizeFor(item.key), undefined, columns);
-    // Both the finger and every tile become one number along the board's
-    // reading order, so the comparison is a single "before or after" and
-    // moves with the finger instead of jumping.
-    const col = Math.max(0, Math.min(columns - 1, Math.round(x / cellStep)));
+  // The cell under the finger, for a tile of this size: the column is
+  // clamped so the tile stays on the board. That cell is the tile's
+  // position while it is carried, and its position for good once let go
+  // - it does not flow anywhere afterwards. The others make room by
+  // flowing around it (placeTiles), which is the control the user asked
+  // for: "щоб плитка вела себе... а не так, що я її не контролюю".
+  function cellUnder(key: string, x: number, y: number): TilePosition {
+    const size = sizeFor(key);
+    const col = Math.max(0, Math.min(columns - size.w, Math.round(x / cellStep)));
     const row = Math.max(0, Math.round(y / cellStep));
-    const fingerAt = row * columns + col;
-    let index = stable.findIndex(
-      (p) => (p.y + p.size.h / 2) * columns + (p.x + p.size.w / 2) > fingerAt
-    );
-    if (index < 0) index = without.length;
-    const next = [...without];
-    next.splice(index, 0, key);
-    return next;
+    return { x: col, y: row };
   }
+
 
 
   // The real navigation with one thing changed: going back closes the
@@ -605,27 +690,26 @@ export default function DatabasesScreen() {
                     onResize={(next) => setDraftSize({ key: item.key, size: next })}
                     onResizeEnd={(next) => {
                       setDraftSize(null);
-                      setSize(item.key, next);
+                      writeSize(item.key, next);
                     }}
                     carried={drag?.key === item.key ? { x: drag.x, y: drag.y } : null}
                     onCarryStart={() => {
                       hapticButtonDown();
-                      dragBaseOrder.current = orderedItems.map((i) => i.key);
                       setDrag({ key: item.key, x: x * cellStep, y: y * cellStep });
-                      setDraftOrder(dragBaseOrder.current);
+                      setDraftPosition({ key: item.key, x, y });
                     }}
                     onCarryMove={(dx, dy) => {
                       const nextX = x * cellStep + dx;
                       const nextY = y * cellStep + dy;
                       setDrag({ key: item.key, x: nextX, y: nextY });
-                      setDraftOrder(orderWithDrop(item.key, nextX, nextY));
+                      const cell = cellUnder(item.key, nextX, nextY);
+                      setDraftPosition({ key: item.key, x: cell.x, y: cell.y });
                     }}
                     onCarryEnd={() => {
-                      const next = draftOrder;
-                      dragBaseOrder.current = null;
+                      const dropped = draftPosition ? placedOf(draftPosition.key) : undefined;
                       setDrag(null);
-                      setDraftOrder(null);
-                      if (next) setDoc(tileOrderDoc, { order: next }, { merge: true });
+                      setDraftPosition(null);
+                      if (dropped) setPosition(dropped);
                     }}
                   />
                 ))}
@@ -635,7 +719,7 @@ export default function DatabasesScreen() {
 
   const tileMenu = (
     <>
-              <Text style={styles.colorMenuTitle}>Плитка</Text>
+              <Text style={styles.colorMenuTitle}>Плитка · {VIEW_LABEL[tileView]}</Text>
               <View style={styles.colorMenuRow}>
                 {TAG_COLORS.map((color) => (
                   <Pressable key={color} onPress={() => colorMenuKey && pickColor(colorMenuKey, color)}>

@@ -176,3 +176,105 @@ export function packedSizes(keys: string[], columns: number): Record<string, str
   });
   return out;
 }
+
+// A tile's own cell on the board, where the user put it.
+export type TilePosition = { x: number; y: number };
+
+export function parseTilePosition(stored: unknown): TilePosition | null {
+  if (typeof stored !== 'string') return null;
+  const [x, y] = stored.split(',').map((n) => Number.parseInt(n, 10));
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0) return null;
+  return { x, y };
+}
+
+export function formatTilePosition(position: TilePosition): string {
+  return `${position.x},${position.y}`;
+}
+
+// Places tiles the way the user left them, and packs the rest around them.
+//
+// The board used to keep only an ORDER, and the packer decided where each
+// tile stood - so a dragged tile could land anywhere a gap happened to be,
+// which the user felt as no control at all. A tile that has been put
+// somewhere keeps its cell now; only tiles that have not (a new database,
+// a board never arranged) still flow into the first gap. Two positioned
+// tiles that would overlap - one dragged onto another - keep the first
+// and let the second flow, which is what makes room under the hand.
+//
+// A stored position that no longer fits the column count (the board got
+// narrower) is treated as none, rather than drawn off the edge.
+//
+// `first` names a tile that wins every collision - the one under the
+// finger, which must land where the finger is whatever else is there.
+export function placeTiles<T>(
+  items: T[],
+  sizeOf: (item: T) => TileSize,
+  positionOf: (item: T) => TilePosition | null,
+  columns: number,
+  breakBefore?: (item: T) => boolean,
+  first?: (item: T) => boolean
+): { placed: PlacedTile<T>[]; rows: number } {
+  const occupied: number[] = [];
+  const isFree = (x: number, y: number, size: TileSize) => {
+    for (let row = y; row < y + size.h; row += 1) {
+      const taken = occupied[row] ?? 0;
+      for (let col = x; col < x + size.w; col += 1) if (taken & (1 << col)) return false;
+    }
+    return true;
+  };
+  const take = (x: number, y: number, size: TileSize) => {
+    for (let row = y; row < y + size.h; row += 1) {
+      let taken = occupied[row] ?? 0;
+      for (let col = x; col < x + size.w; col += 1) taken |= 1 << col;
+      occupied[row] = taken;
+    }
+  };
+
+  // First the tiles that have a place, so the flowing ones go around them.
+  const fixed = new Map<T, PlacedTile<T>>();
+  const firstPass = first ? [...items.filter(first), ...items.filter((item) => !first(item))] : items;
+  for (const item of firstPass) {
+    const position = positionOf(item);
+    if (!position) continue;
+    const size = sizeOf(item);
+    if (position.x + size.w > columns) continue;
+    if (!isFree(position.x, position.y, size)) continue;
+    take(position.x, position.y, size);
+    fixed.set(item, { item, x: position.x, y: position.y, size });
+  }
+
+  const placed: PlacedTile<T>[] = [];
+  let floor = 0;
+  for (const item of items) {
+    const done = fixed.get(item);
+    if (done) {
+      placed.push(done);
+      continue;
+    }
+    const size = sizeOf(item);
+    if (breakBefore?.(item)) floor = occupied.length;
+    let y = floor;
+    let x = 0;
+    for (;;) {
+      if (x + size.w <= columns && isFree(x, y, size)) break;
+      x += 1;
+      if (x + size.w > columns) {
+        x = 0;
+        y += 1;
+      }
+    }
+    take(x, y, size);
+    placed.push({ item, x, y, size });
+  }
+  return { placed, rows: occupied.length };
+}
+
+// Whether cell b comes after cell a in reading order - left to right, top
+// to bottom - which is the order tiles flow in.
+export function cellAfter(a: TilePosition, b: TilePosition): boolean {
+  return b.y > a.y || (b.y === a.y && b.x > a.x);
+}
+
+export function tilesOverlap(a: PlacedTile<unknown>, b: PlacedTile<unknown>): boolean {
+  return a.x < b.x + b.size.w && b.x < a.x + a.size.w && a.y < b.y + b.size.h && b.y < a.y + a.size.h;
+}
