@@ -504,6 +504,15 @@ export default function CalendarScreen() {
   }, [monthGrid]);
   const monthAreaHeight = rowHeight * monthRows;
   const filledRowHeight = rowHeight + WEEKDAY_HEADER_HEIGHT;
+  // The band's height, standing up on the inner screen, WORKED OUT rather
+  // than measured. Its only children are the calendar plate - whose
+  // height is animated, so Yoga is not told about it in time - and the
+  // history beside it; left to size itself the band came out a sliver
+  // tall, and the sheet below climbed up over the calendar. This is the
+  // plate's own arithmetic: its padding and border, the month bar, the
+  // weekday header, and the rows of the grid (open, in two panes).
+  const bandHeight =
+    27 + 32 + 2 + MONTH_NAV_HEIGHT + (onlyFilledDays ? 0 : WEEKDAY_HEADER_HEIGHT) + monthAreaHeight;
   const weekRowHeight = onlyFilledDays ? filledRowHeight : rowHeight;
   // calendarPlate's own border/padding used to be plain (non-animated)
   // styling around calendarWrap - so even once calendarWrap's own height
@@ -809,7 +818,7 @@ export default function CalendarScreen() {
           in the row, so they split the window evenly. */}
       <View style={stackedWide ? styles.stack : isTwoPane ? styles.paneRow : styles.stack}>
         <View
-          style={stackedWide ? [styles.topBand, foldedAway && styles.bandFolded] : isTwoPane ? styles.sidePane : null}
+          style={stackedWide ? [styles.topBand, { height: bandHeight }, foldedAway && styles.bandFolded] : isTwoPane ? styles.sidePane : null}
         >
           {/* The fold gesture lives on the plate only - never on the
               history list under it, where a drag is someone scrolling
