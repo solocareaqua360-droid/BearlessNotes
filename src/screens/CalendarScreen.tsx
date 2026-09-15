@@ -147,8 +147,17 @@ export default function CalendarScreen() {
   // last day of the week drops off the end - which is exactly the failure
   // PLATE_MARGIN's own comment above describes, arriving a third time.
   const plateRightMargin = isTwoPane ? 0 : RAIL_CLEARANCE;
+  //
+  // While the pane is not yet measured (the first frame, and the frame
+  // after a turn) the fallback must be a PANE'S width, not the window's.
+  // A child does not shrink in React Native, so a grid laid out to the
+  // whole window pushed its pane out to the window's width - and the
+  // measurement then recorded that widened pane, which locked it in.
+  // That is the "note too narrow until the app is reopened" the user saw
+  // lying down.
+  const paneFallback = isTwoPane ? windowWidth / 2 : windowWidth;
   const stripWidth =
-    (isTwoPane && calendarPaneWidth > 0 ? calendarPaneWidth : windowWidth) - PLATE_MARGIN - plateRightMargin;
+    (isTwoPane && calendarPaneWidth > 0 ? calendarPaneWidth : paneFallback) - PLATE_MARGIN - plateRightMargin;
   const today = useMemo(() => new Date(), []);
 
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
@@ -1426,8 +1435,12 @@ const styles = StyleSheet.create({
   // The calendar and the history take a column each; the note takes a
   // little more, since it's the one column whose content is text being
   // written rather than a grid or a list of cards sized by their own.
+  // minWidth 0 with flexShrink: the pane's width is the row's decision,
+  // never its content's - see stripWidth's comment.
   sidePane: {
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
   notePane: {
     flex: 1.3,
@@ -1457,6 +1470,8 @@ const styles = StyleSheet.create({
   },
   topHalf: {
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
   // Level with the plate, standing up: its top on the plate's top line (the
   // column's own 8 of margin was what set it lower), and it stops short of
