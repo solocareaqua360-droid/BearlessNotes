@@ -1151,7 +1151,7 @@ export default function DatabasesScreen() {
       ) : isTwoPane ? (
         <View style={styles.paneRow}>
           <View style={styles.boardPane}>{boardScroll}</View>
-          <View style={styles.menuPane}>
+          <View style={colorMenuKey ? styles.menuPane : styles.databasePane}>
             {colorMenuKey ? (
               <ScrollView contentContainerStyle={styles.menuPaneCard}>{tileMenu}</ScrollView>
             ) : openInPane ? (
@@ -1889,12 +1889,25 @@ const styles = StyleSheet.create({
   boardPane: {
     flex: 1,
   },
+  // The tile's settings: a small card, centred in the pane with room
+  // around it.
   menuPane: {
     flex: 1,
     borderRightWidth: 1,
     borderRightColor: GLASS_LINE,
     padding: 16,
     justifyContent: 'center',
+  },
+  // A whole database is not that card. It takes the pane entire - no
+  // padding, and no centring: a screen given "justifyContent: center"
+  // is not stretched at all, it is sized by its own content and stood
+  // in the middle, which is what left the cards a narrow tall strip
+  // pressed against one side. It measures the pane it is given, so
+  // the pane has to be the pane.
+  databasePane: {
+    flex: 1,
+    borderRightWidth: 1,
+    borderRightColor: GLASS_LINE,
   },
   menuPaneCard: {
     gap: 10,
