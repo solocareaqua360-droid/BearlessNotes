@@ -44,6 +44,8 @@ import CopyToNoteModal from '../components/CopyToNoteModal';
 import { detachTagFromDeletedItem } from '../hooks/useTags';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import { useDatabaseList } from '../hooks/useDatabaseList';
+import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
+import ExplorerHead from '../components/ExplorerHead';
 import { downloadToFolder } from '../utils/downloadToFolder';
 import { touchAttachment } from '../utils/attachmentCache';
 import DatabaseChrome, { menuStyles } from '../components/DatabaseChrome';
@@ -195,6 +197,46 @@ export default function PhotosScreen() {
   useEffect(() => {
     if (viewerPhoto) touchAttachment(viewerPhoto.imageUri);
   }, [viewerPhoto]);
+  // Folders, read off the tag tree - see useExplorer.
+  const explorer = useExplorer<PhotoItem>({
+    kind: 'photo',
+    collection: 'photos',
+    items: photos,
+    displayed: displayedPhotos,
+    tagIdsOf: (item) => item.tagIds,
+    tags: list.tags,
+    drawerTags: list.drawerTags,
+    explorerMode: list.explorerMode,
+    searching: needle !== '',
+    needle,
+    createFolderTag: list.createFolderTag,
+    deleteTagCompletely: list.deleteTagCompletely,
+    renameTag: list.renameTag,
+    attachTag: list.attachTag,
+    detachTag: list.detachTag,
+  });
+  const itemsHere = explorer.visibleItems;
+
+  function openFolderMenu(folder: ExplorerFolder) {
+    ask({
+      title: nameOf(folder.fullPath),
+      actions: [
+        { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+        { id: 'move', label: 'Перемістити', icon: 'arrow-forward-outline' },
+        { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' },
+      ],
+    }).then(async (answer) => {
+      if (answer === 'rename') explorer.setFolderPrompt({ mode: 'rename', path: folder.fullPath });
+      if (answer === 'delete') explorer.deleteFolder(folder.fullPath);
+      if (answer === 'move') {
+        const destination = await explorer.pickDestination('Куди перемістити папку?', folder.fullPath);
+        if (destination === 'cancel') return;
+        const name = nameOf(folder.fullPath);
+        await explorer.renameFolder(folder.fullPath, destination ? `${destination}/${name}` : name);
+      }
+    });
+  }
+
   const tagPickerPhoto = tagPickerForId ? photos.find((p) => p.id === tagPickerForId) ?? null : null;
 
   // The one selected row, put on the app's own clipboard as the block that
@@ -255,28 +297,42 @@ export default function PhotosScreen() {
     const result =
       source === 'camera'
         ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 })
-        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
-    if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
-    const imageUri = await compressPickedImage(asset.uri, asset.width, asset.height);
-    const id = generateId();
+        // The gallery takes as many as you tick. Importing a trip one
+        // picture at a time was the user's own complaint; the camera stays
+        // one at a time, because it is one shutter.
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            quality: 1,
+            allowsMultipleSelection: true,
+          });
+    if (result.canceled || result.assets.length === 0) return;
     const now = Date.now();
-    const data: Record<string, unknown> = {
-      imageUri,
-      imageFit: 'contain',
-      updatedAt: now,
-      createdAt: now,
-      usedInDocuments: {},
-    };
-    if (source === 'camera') data.groupId = CAMERA_PHOTOS_GROUP_ID;
-    await setDoc(doc(db, 'photos', id), data, { merge: true });
-    backupFileToDrive(imageUri, `${id}.jpg`, 'image/jpeg', 'Photos').then((uploaded) => {
-      if (uploaded) updateDoc(doc(db, 'photos', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
-    });
+    const added: JustAddedPhoto[] = [];
+    // In the order they were picked, and each one written before the next
+    // is compressed - a batch of twenty on a phone is enough to matter.
+    for (const asset of result.assets) {
+      const imageUri = await compressPickedImage(asset.uri, asset.width, asset.height);
+      const id = generateId();
+      const data: Record<string, unknown> = {
+        imageUri,
+        imageFit: 'contain',
+        updatedAt: now,
+        createdAt: now,
+        usedInDocuments: {},
+      };
+      if (source === 'camera') data.groupId = CAMERA_PHOTOS_GROUP_ID;
+      await setDoc(doc(db, 'photos', id), data, { merge: true });
+      backupFileToDrive(imageUri, `${id}.jpg`, 'image/jpeg', 'Photos').then((uploaded) => {
+        if (uploaded) updateDoc(doc(db, 'photos', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+      });
+      added.push({ id, imageUri, createdAt: now });
+    }
     // Lands in the base either way (unchanged, fast) - see FilesScreen's
     // identical justAddedFile for why "Перемістити" only ADDS a block
-    // elsewhere rather than moving anything.
-    setJustAddedPhoto({ id, imageUri, createdAt: now });
+    // elsewhere rather than moving anything. With several, the offer is
+    // about the last one; the rest are already where they belong.
+    if (added.length === 1) setJustAddedPhoto(added[0]);
+    else notify(`Додано зображень: ${added.length}`);
   }
 
   function photoToBlock(item: JustAddedPhoto) {
@@ -524,6 +580,16 @@ export default function PhotosScreen() {
         icon: viewMode === 'grid' ? 'grid-outline' : 'reorder-four-outline',
         onToggle: () => changeViewMode(viewMode === 'list' ? 'grid' : 'list'),
       }}
+      explorer={{
+        mode: list.listMode,
+        onChangeMode: list.setListMode,
+        active: explorer.active,
+        onNewFolder: () => explorer.setFolderPrompt({ mode: 'new', parent: explorer.path }),
+        onBack: explorer.back,
+        onForward: explorer.forward,
+        canBack: explorer.historyState.canBack,
+        canForward: explorer.historyState.canForward,
+      }}
       bulk={{
         onTag: () => setBulkTagPickerVisible(true),
         onGroup: () => setBulkGroupPickerVisible(true),
@@ -598,6 +664,14 @@ export default function PhotosScreen() {
             onClose={() => setTagPickerForId(null)}
           />
 
+          <RenamePrompt
+            visible={explorer.folderPrompt !== null}
+            title={explorer.folderPrompt?.mode === 'rename' ? 'Назва папки' : 'Нова папка'}
+            initialValue={explorer.folderPrompt?.mode === 'rename' ? nameOf(explorer.folderPrompt.path) : ''}
+            onCancel={() => explorer.setFolderPrompt(null)}
+            onSave={(name) => explorer.saveFolderName(name)}
+          />
+
           <TagPicker
             visible={bulkTagPickerVisible}
             kind="photo"
@@ -663,7 +737,7 @@ export default function PhotosScreen() {
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
           </View>
-        ) : displayedPhotos.length === 0 ? (
+        ) : itemsHere.length === 0 && explorer.folders.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
               <Ionicons name="image-outline" size={32} color={ACCENT} />
@@ -687,7 +761,25 @@ export default function PhotosScreen() {
               isSelectMode && styles.gridWithBulkBar,
             ]}
           >
-            {displayedPhotos.map((photo) => {
+            {list.explorerMode && (
+              <ExplorerHead
+                crumbs={explorer.crumbs}
+                path={explorer.path}
+                folders={explorer.folders}
+                showCrumbs={explorer.active}
+                itemIcon="image-outline"
+                onGo={(next) => {
+                  explorer.setPath(next);
+                  if (needle !== '') {
+                    list.setSearchQuery('');
+                    list.setIsSearching(false);
+                  }
+                }}
+                onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
+                onFolderMenu={openFolderMenu}
+              />
+            )}
+            {itemsHere.map((photo) => {
               const shared = {
                 key: photo.id,
                 photo,

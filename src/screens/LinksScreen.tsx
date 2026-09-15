@@ -40,6 +40,9 @@ import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import GroupPickerSheet, { GroupKind } from '../components/GroupPickerSheet';
 import CopyToNoteModal from '../components/CopyToNoteModal';
 import { useDatabaseList } from '../hooks/useDatabaseList';
+import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
+import ExplorerHead from '../components/ExplorerHead';
+import { ask } from '../components/surfaces/Ask';
 import DatabaseChrome, { menuStyles } from '../components/DatabaseChrome';
 import { detachTagFromDeletedItem, isTagAllowedForKind } from '../hooks/useTags';
 import { appendBlocksToToday, blockFromLink, copyObjectsToNote } from '../utils/copyToNote';
@@ -224,6 +227,48 @@ export default function LinksScreen({
       setIsLoading(false);
     });
   }, []);
+
+  // Folders, read off the tag tree - see useExplorer. One screen, three
+  // kinds: the video, geo and other links each keep their own tree,
+  // because tagKind is what a folder's tag is filed under.
+  const explorer = useExplorer<LinkItem>({
+    kind: tagKind,
+    collection: 'links',
+    items: links,
+    displayed: filteredLinks,
+    tagIdsOf: (item) => item.tagIds,
+    tags: list.tags,
+    drawerTags: list.drawerTags,
+    explorerMode: list.explorerMode,
+    searching: needle !== '',
+    needle,
+    createFolderTag: list.createFolderTag,
+    deleteTagCompletely: list.deleteTagCompletely,
+    renameTag: list.renameTag,
+    attachTag: list.attachTag,
+    detachTag: list.detachTag,
+  });
+  const linksHere = explorer.visibleItems;
+
+  function openFolderMenu(folder: ExplorerFolder) {
+    ask({
+      title: nameOf(folder.fullPath),
+      actions: [
+        { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+        { id: 'move', label: 'Перемістити', icon: 'arrow-forward-outline' },
+        { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' },
+      ],
+    }).then(async (answer) => {
+      if (answer === 'rename') explorer.setFolderPrompt({ mode: 'rename', path: folder.fullPath });
+      if (answer === 'delete') explorer.deleteFolder(folder.fullPath);
+      if (answer === 'move') {
+        const destination = await explorer.pickDestination('Куди перемістити папку?', folder.fullPath);
+        if (destination === 'cancel') return;
+        const name = nameOf(folder.fullPath);
+        await explorer.renameFolder(folder.fullPath, destination ? `${destination}/${name}` : name);
+      }
+    });
+  }
 
   const tagPickerLink = tagPickerForId ? links.find((l) => l.id === tagPickerForId) ?? null : null;
   const cardMenuLink = cardMenuLinkId ? links.find((l) => l.id === cardMenuLinkId) ?? null : null;
@@ -486,6 +531,16 @@ export default function LinksScreen({
         icon: viewMode === 'grid' ? 'grid-outline' : 'reorder-four-outline',
         onToggle: () => changeViewMode(viewMode === 'list' ? 'grid' : 'list'),
       }}
+      explorer={{
+        mode: list.listMode,
+        onChangeMode: list.setListMode,
+        active: explorer.active,
+        onNewFolder: () => explorer.setFolderPrompt({ mode: 'new', parent: explorer.path }),
+        onBack: explorer.back,
+        onForward: explorer.forward,
+        canBack: explorer.historyState.canBack,
+        canForward: explorer.historyState.canForward,
+      }}
       bulk={{
         onTag: () => setBulkTagPickerVisible(true),
         onGroup: () => setBulkGroupPickerVisible(true),
@@ -600,6 +655,14 @@ export default function LinksScreen({
             onClose={() => setTagPickerForId(null)}
           />
 
+          <RenamePrompt
+            visible={explorer.folderPrompt !== null}
+            title={explorer.folderPrompt?.mode === 'rename' ? 'Назва папки' : 'Нова папка'}
+            initialValue={explorer.folderPrompt?.mode === 'rename' ? nameOf(explorer.folderPrompt.path) : ''}
+            onCancel={() => explorer.setFolderPrompt(null)}
+            onSave={(name) => explorer.saveFolderName(name)}
+          />
+
           <TagPicker
             visible={bulkTagPickerVisible}
             kind={tagKind}
@@ -665,7 +728,7 @@ export default function LinksScreen({
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
           </View>
-        ) : filteredLinks.length === 0 ? (
+        ) : linksHere.length === 0 && explorer.folders.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={[styles.emptyIcon, { backgroundColor: `${info.color}1A` }]}>
               <Ionicons name={info.icon} size={32} color={info.color} />
@@ -682,7 +745,25 @@ export default function LinksScreen({
               isSelectMode && styles.listWithBulkBar,
             ]}
           >
-            {filteredLinks.map(renderLinkGridCell)}
+            {list.explorerMode && (
+              <ExplorerHead
+                crumbs={explorer.crumbs}
+                path={explorer.path}
+                folders={explorer.folders}
+                showCrumbs={explorer.active}
+                itemIcon="link-outline"
+                onGo={(next) => {
+                  explorer.setPath(next);
+                  if (needle !== '') {
+                    list.setSearchQuery('');
+                    list.setIsSearching(false);
+                  }
+                }}
+                onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
+                onFolderMenu={openFolderMenu}
+              />
+            )}
+            {linksHere.map(renderLinkGridCell)}
             <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />
           </ScrollView>
         ) : (
@@ -694,7 +775,25 @@ export default function LinksScreen({
               isSelectMode && styles.listWithBulkBar,
             ]}
           >
-            {filteredLinks.map(renderLinkRow)}
+            {list.explorerMode && (
+              <ExplorerHead
+                crumbs={explorer.crumbs}
+                path={explorer.path}
+                folders={explorer.folders}
+                showCrumbs={explorer.active}
+                itemIcon="link-outline"
+                onGo={(next) => {
+                  explorer.setPath(next);
+                  if (needle !== '') {
+                    list.setSearchQuery('');
+                    list.setIsSearching(false);
+                  }
+                }}
+                onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
+                onFolderMenu={openFolderMenu}
+              />
+            )}
+            {linksHere.map(renderLinkRow)}
             {/* What else is in this group - see GroupSections. */}
             <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />
           </ScrollView>

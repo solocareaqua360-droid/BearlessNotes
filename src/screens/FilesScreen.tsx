@@ -37,6 +37,8 @@ import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import CopyToNoteModal from '../components/CopyToNoteModal';
 import { useDatabaseList } from '../hooks/useDatabaseList';
+import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
+import ExplorerHead from '../components/ExplorerHead';
 import DatabaseChrome, { menuStyles } from '../components/DatabaseChrome';
 import { detachTagFromDeletedItem } from '../hooks/useTags';
 import { appendBlocksToToday, blockFromFile, copyObjectsToNote } from '../utils/copyToNote';
@@ -185,6 +187,48 @@ export default function FilesScreen() {
     });
   }, []);
 
+  // Folders, read off the tag tree - see useExplorer. Every database that
+  // carries tags can have them, and the user asked for exactly that:
+  // "немає папок тут та в інших базах".
+  const explorer = useExplorer<FileItem>({
+    kind: 'file',
+    collection: 'files',
+    items: files,
+    displayed: displayedFiles,
+    tagIdsOf: (f) => f.tagIds,
+    tags: list.tags,
+    drawerTags: list.drawerTags,
+    explorerMode: list.explorerMode,
+    searching: needle !== '',
+    needle,
+    createFolderTag: list.createFolderTag,
+    deleteTagCompletely: list.deleteTagCompletely,
+    renameTag: list.renameTag,
+    attachTag: list.attachTag,
+    detachTag: list.detachTag,
+  });
+  const filesHere = explorer.visibleItems;
+
+  function openFolderMenu(folder: ExplorerFolder) {
+    ask({
+      title: nameOf(folder.fullPath),
+      actions: [
+        { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+        { id: 'move', label: 'Перемістити', icon: 'arrow-forward-outline' },
+        { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' },
+      ],
+    }).then(async (answer) => {
+      if (answer === 'rename') explorer.setFolderPrompt({ mode: 'rename', path: folder.fullPath });
+      if (answer === 'delete') explorer.deleteFolder(folder.fullPath);
+      if (answer === 'move') {
+        const destination = await explorer.pickDestination('Куди перемістити папку?', folder.fullPath);
+        if (destination === 'cancel') return;
+        const name = nameOf(folder.fullPath);
+        await explorer.renameFolder(folder.fullPath, destination ? `${destination}/${name}` : name);
+      }
+    });
+  }
+
   const tagPickerFile = tagPickerForId ? files.find((f) => f.id === tagPickerForId) ?? null : null;
   const cardMenuFile = cardMenuFileId ? files.find((f) => f.id === cardMenuFileId) ?? null : null;
 
@@ -205,24 +249,36 @@ export default function FilesScreen() {
   // uses (see its comment on why copyToCacheDirectory stays false), and the
   // same fire-and-forget Drive backup every new file block already gets.
   async function addFileDirectly() {
-    const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: false });
-    if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
-    const id = generateId();
-    const fileUri = `${LegacyFileSystem.cacheDirectory}${id}-${asset.name}`;
-    await LegacyFileSystem.copyAsync({ from: asset.uri, to: fileUri });
-    const now = Date.now();
-    const data: Record<string, unknown> = { fileUri, fileName: asset.name, updatedAt: now, createdAt: now, usedInDocuments: {} };
-    if (asset.mimeType) data.mimeType = asset.mimeType;
-    await setDoc(doc(db, 'files', id), data, { merge: true });
-    backupFileToDrive(fileUri, asset.name, asset.mimeType ?? 'application/octet-stream', 'Files').then((uploaded) => {
-      if (uploaded) updateDoc(doc(db, 'files', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+    // As many as are ticked: importing a folder of documents one at a
+    // time was the user's own complaint.
+    const result = await DocumentPicker.getDocumentAsync({
+      type: '*/*',
+      copyToCacheDirectory: false,
+      multiple: true,
     });
+    if (result.canceled || result.assets.length === 0) return;
+    const now = Date.now();
+    const added: JustAddedFile[] = [];
+    for (const asset of result.assets) {
+      const id = generateId();
+      const fileUri = `${LegacyFileSystem.cacheDirectory}${id}-${asset.name}`;
+      await LegacyFileSystem.copyAsync({ from: asset.uri, to: fileUri });
+      const data: Record<string, unknown> = { fileUri, fileName: asset.name, updatedAt: now, createdAt: now, usedInDocuments: {} };
+      if (asset.mimeType) data.mimeType = asset.mimeType;
+      await setDoc(doc(db, 'files', id), data, { merge: true });
+      backupFileToDrive(fileUri, asset.name, asset.mimeType ?? 'application/octet-stream', 'Files').then((uploaded) => {
+        if (uploaded) updateDoc(doc(db, 'files', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+      });
+      added.push({ id, fileUri, fileName: asset.name, mimeType: asset.mimeType, createdAt: now });
+    }
     // Lands in the base either way (unchanged, fast); "Перемістити" on the
     // toast below is the opt-in path to ALSO reference it from a note/
     // today/board, via the same SaveDestinationSheet ShareIntentHandler
     // uses - it never removes the base record, only adds a block elsewhere.
-    setJustAddedFile({ id, fileUri, fileName: asset.name, mimeType: asset.mimeType, createdAt: now });
+    // With several, the offer is about the last one; the rest are already
+    // where they belong.
+    if (added.length === 1) setJustAddedFile(added[0]);
+    else notify(`Додано файлів: ${added.length}`);
   }
 
   function fileToBlock(item: JustAddedFile) {
@@ -473,6 +529,16 @@ export default function FilesScreen() {
         icon: viewMode === 'grid' ? 'grid-outline' : 'reorder-four-outline',
         onToggle: () => changeViewMode(viewMode === 'list' ? 'grid' : 'list'),
       }}
+      explorer={{
+        mode: list.listMode,
+        onChangeMode: list.setListMode,
+        active: explorer.active,
+        onNewFolder: () => explorer.setFolderPrompt({ mode: 'new', parent: explorer.path }),
+        onBack: explorer.back,
+        onForward: explorer.forward,
+        canBack: explorer.historyState.canBack,
+        canForward: explorer.historyState.canForward,
+      }}
       bulk={{
         onTag: () => setBulkTagPickerVisible(true),
         onGroup: () => setBulkGroupPickerVisible(true),
@@ -617,6 +683,14 @@ export default function FilesScreen() {
             onClose={() => setTagPickerForId(null)}
           />
 
+          <RenamePrompt
+            visible={explorer.folderPrompt !== null}
+            title={explorer.folderPrompt?.mode === 'rename' ? 'Назва папки' : 'Нова папка'}
+            initialValue={explorer.folderPrompt?.mode === 'rename' ? nameOf(explorer.folderPrompt.path) : ''}
+            onCancel={() => explorer.setFolderPrompt(null)}
+            onSave={(name) => explorer.saveFolderName(name)}
+          />
+
           <TagPicker
             visible={bulkTagPickerVisible}
             kind="file"
@@ -682,7 +756,7 @@ export default function FilesScreen() {
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
           </View>
-        ) : displayedFiles.length === 0 ? (
+        ) : filesHere.length === 0 && explorer.folders.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
               <Ionicons name="document-outline" size={32} color={ACCENT} />
@@ -703,7 +777,25 @@ export default function FilesScreen() {
               isSelectMode && styles.listWithBulkBar,
             ]}
           >
-            {displayedFiles.map(renderFileGridCell)}
+{list.explorerMode && (
+            <ExplorerHead
+              crumbs={explorer.crumbs}
+              path={explorer.path}
+              folders={explorer.folders}
+              showCrumbs={explorer.active}
+              itemIcon="document-outline"
+              onGo={(next) => {
+                explorer.setPath(next);
+                if (needle !== '') {
+                  list.setSearchQuery('');
+                  list.setIsSearching(false);
+                }
+              }}
+              onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
+              onFolderMenu={openFolderMenu}
+            />
+            )}
+            {filesHere.map(renderFileGridCell)}
             <GroupSections groupId={list.selectedGroupId} currentKind="file" tags={tags} />
           </ScrollView>
         ) : (
@@ -715,7 +807,25 @@ export default function FilesScreen() {
               isSelectMode && styles.listWithBulkBar,
             ]}
           >
-            {displayedFiles.map(renderFileRow)}
+{list.explorerMode && (
+            <ExplorerHead
+              crumbs={explorer.crumbs}
+              path={explorer.path}
+              folders={explorer.folders}
+              showCrumbs={explorer.active}
+              itemIcon="document-outline"
+              onGo={(next) => {
+                explorer.setPath(next);
+                if (needle !== '') {
+                  list.setSearchQuery('');
+                  list.setIsSearching(false);
+                }
+              }}
+              onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
+              onFolderMenu={openFolderMenu}
+            />
+            )}
+            {filesHere.map(renderFileRow)}
             {/* What else is in this group - see GroupSections. */}
             <GroupSections groupId={list.selectedGroupId} currentKind="file" tags={tags} />
           </ScrollView>
