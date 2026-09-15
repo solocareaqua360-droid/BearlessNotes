@@ -71,7 +71,7 @@ import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import SketchEditor from '../components/SketchEditor';
 import { BlurView } from 'expo-blur';
 import { GlassPortal } from '../components/GlassPortal';
-import { CAPSULE_DROP, CAPSULE_HEIGHT, CHROME_TOP, NAV_HEIGHT, RAIL_CLEARANCE, RAIL_GAP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
+import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CHROME_TOP, NAV_HEIGHT, RAIL_CLEARANCE, RAIL_GAP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import { useRail } from '../hooks/useRail';
 import { useBlurTarget } from '../components/GlassTarget';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
@@ -537,8 +537,8 @@ export default function DocumentsScreen() {
   // The rail carries an ACTIONS capsule now, a capsule's height where the
   // folder button stood - see RailCapsule.
   const rail = useRail(
-    CAPSULE_HEIGHT,
-    CAPSULE_HEIGHT,
+    CAPSULE_HEIGHT_3,
+    CAPSULE_HEIGHT_1,
     // In the explorer the create capsule carries a second button (a new
     // folder) and a back/forward capsule appears; elsewhere the rail is
     // as it was.
@@ -1008,6 +1008,13 @@ export default function DocumentsScreen() {
                 <Ionicons name={searchOpen ? 'close-outline' : 'search-outline'} size={24} color="#fff" />
               </Pressable>
               <View style={styles.sideIslandDivider} />
+              {/* Sort sits with the other two ways of looking at the
+                  list - search and the menu - rather than alone lower
+                  down. */}
+              <Pressable hitSlop={8} onPress={() => setSortMenuOpen((v) => !v)}>
+                <Ionicons name="filter-outline" size={24} color="#fff" />
+              </Pressable>
+              <View style={styles.sideIslandDivider} />
               <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
                 <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
               </Pressable>
@@ -1472,7 +1479,6 @@ export default function DocumentsScreen() {
           <RailCapsule
             bottom={rail.actionsBottom}
             buttons={[
-              { icon: 'filter-outline', onPress: () => setSortMenuOpen((v) => !v), active: sortMenuOpen },
               {
                 icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
                 onPress: toggleSelectMode,
@@ -1497,7 +1503,7 @@ export default function DocumentsScreen() {
               },
             })),
           ]}
-          style={{ position: 'absolute', right: RAIL_CLEARANCE, bottom: rail.actionsBottom }}
+          style={{ position: 'absolute', right: RAIL_CLEARANCE, top: chromeTop + CAPSULE_DROP }}
         />
         {/* The create capsule: a new note, and in the explorer a new folder
             beside it - each glyph shows the plus ON the thing it adds, the
@@ -1509,7 +1515,7 @@ export default function DocumentsScreen() {
             buttons={[
               {
                 icon: 'document-text-outline',
-                badge: 'add',
+                badge: 'add-circle-outline',
                 onPress: createDocument,
                 onPressIn: hapticButtonDown,
                 onPressOut: hapticButtonUp,
@@ -1519,7 +1525,7 @@ export default function DocumentsScreen() {
                 ? [
                     {
                       icon: 'folder-outline' as const,
-                      badge: 'add' as const,
+                      badge: 'add-circle-outline' as const,
                       onPress: () => setFolderPrompt({ mode: 'new', parent: explorerPath }),
                       onPressIn: hapticButtonDown,
                       onPressOut: hapticButtonUp,

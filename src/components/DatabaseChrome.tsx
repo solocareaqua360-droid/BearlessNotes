@@ -23,7 +23,7 @@ import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_ISLAND, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
-import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_3, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
+import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CAPSULE_HEIGHT_4, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 
 // Everything a database screen puts AROUND its records: the gradient it
 // stands on, the capsule on the rail (search / "..." / the way out), the
@@ -106,7 +106,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   const insets = useSafeAreaInsets();
   // Three buttons in the capsule, so the rail spaces what is under it
   // against the taller one.
-  const rail = useRail(CAPSULE_HEIGHT_3, CAPSULE_HEIGHT);
+  const rail = useRail(CAPSULE_HEIGHT_4, CAPSULE_HEIGHT_1);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -155,7 +155,6 @@ export default function DatabaseChrome<T extends { id: string }>({
           <RailCapsule
             bottom={rail.actionsBottom}
             buttons={[
-              { icon: 'filter-outline', onPress: () => setSortMenuOpen((v) => !v), active: sortMenuOpen },
               ...(bulk
                 ? [
                     {
@@ -186,7 +185,7 @@ export default function DatabaseChrome<T extends { id: string }>({
               },
             })),
           ]}
-          style={{ position: 'absolute', right: RAIL_CLEARANCE, bottom: rail.actionsBottom }}
+          style={{ position: 'absolute', right: RAIL_CLEARANCE, top: 96 }}
         />
 
         {/* The tabs float over the cards rather than standing above them,
@@ -348,6 +347,11 @@ export default function DatabaseChrome<T extends { id: string }>({
                 />
               </Pressable>
               <View style={styles.headerButtonsDivider} />
+              {/* Sort sits with the other ways of looking at the list. */}
+              <Pressable hitSlop={8} onPress={() => setSortMenuOpen((v) => !v)}>
+                <Ionicons name="filter-outline" size={24} color="#fff" />
+              </Pressable>
+              <View style={styles.headerButtonsDivider} />
               <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
                 <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
               </Pressable>
@@ -404,7 +408,7 @@ export default function DatabaseChrome<T extends { id: string }>({
         activeFilter={list.tagFilter}
         onSelectFilter={list.setTagFilter}
         hideOpenButton={list.isSelectMode || searchingAlone}
-        capsuleHeight={CAPSULE_HEIGHT_3}
+        capsuleHeight={CAPSULE_HEIGHT_4}
         groupSection={{
           items: list.groupSectionItems,
           selected: list.groupFilter,

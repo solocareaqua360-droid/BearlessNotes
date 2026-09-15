@@ -56,6 +56,12 @@ export const CAPSULE_HEIGHT = 123;
 // on top of the capsule. A screen with three buttons has to say so - both
 // to useRail and to TagsDrawer, which is what places that button.
 export const CAPSULE_HEIGHT_3 = CAPSULE_HEIGHT + 24 + 1 + 18 * 2;
+// And a fourth: one more icon, one more divider, two more gaps again.
+export const CAPSULE_HEIGHT_4 = CAPSULE_HEIGHT_3 + 24 + 1 + 18 * 2;
+// A capsule carrying a single button: the padding at each end and the
+// icon between them, inside the 1px border - the same sum as RAIL_WIDTH,
+// named for what it is.
+export const CAPSULE_HEIGHT_1 = 18 * 2 + 24 + 2;
 
 // How far the capsule hangs below the top of the chrome band, and how far
 // the island drops into the tag row's own band. Both rows keep the rail's

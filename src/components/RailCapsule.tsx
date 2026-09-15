@@ -69,7 +69,7 @@ export default function RailCapsule({ buttons, bottom }: { buttons: RailButton[]
               <Ionicons name={button.icon} size={button.size ?? 24} color="#fff" />
               {!!button.badge && (
                 <View style={styles.badge}>
-                  <Ionicons name={button.badge} size={11} color="#fff" />
+                  <Ionicons name={button.badge} size={14} color="#fff" />
                 </View>
               )}
             </Pressable>
@@ -116,18 +116,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 12,
   },
-  // The corner plus: its own small disc, so the glyph under it stays
-  // readable whatever the capsule is standing on.
+  // The corner plus, drawn and nothing else - the disc it sat on was a
+  // filled shape among outlines, which is exactly what the heavier icons
+  // it replaced were doing wrong.
   badge: {
     position: 'absolute',
     right: -7,
-    bottom: -5,
-    width: 15,
-    height: 15,
-    borderRadius: 8,
-    backgroundColor: 'rgba(120,120,120,0.95)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
+    bottom: -6,
     alignItems: 'center',
     justifyContent: 'center',
   },
