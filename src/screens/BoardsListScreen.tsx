@@ -50,13 +50,15 @@ const boardsCollection = collection(db, 'boards');
 // that boards are a database like the others, so it wears the same chrome
 // they do: search, sorting, choosing with bulk actions, tags, groups, the
 // drawer on a swipe, and the same rail.
-export default function BoardsListScreen() {
+export default function BoardsListScreen({ inPane }: { inPane?: boolean } = {}) {
   const navigation = useNavigation<NativeStackNavigationProp<BoardsStackParamList>>();
   const { width: windowWidth } = useWindowDimensions();
   // Two across where there is room for two. A board's row is a name and a
   // count beside a small map - at the width of the Fold's inner screen one
   // of them per line is a very long way to say very little.
-  const { isTwoPane, width: layoutWidth, height: layoutHeight } = useResponsiveLayout();
+  const responsive = useResponsiveLayout();
+  const { width: layoutWidth, height: layoutHeight } = responsive;
+  const isTwoPane = responsive.isTwoPane && !inPane;
   const [boards, setBoards] = useState<BoardItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);

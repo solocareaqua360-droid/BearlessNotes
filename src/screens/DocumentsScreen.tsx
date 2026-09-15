@@ -114,7 +114,7 @@ type StripSticker = {
   trashed?: boolean;
 };
 
-export default function DocumentsScreen() {
+export default function DocumentsScreen({ inPane }: { inPane?: boolean } = {}) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   // react-native-svg's own "100%" width/height on the root <Svg> doesn't
   // reliably re-measure when the window itself resizes at runtime (seen on
@@ -127,7 +127,13 @@ export default function DocumentsScreen() {
   // over the top of the list. Folding the phone shut resizes the window,
   // which drops straight back to one column with the same document still
   // remembered - unfolding brings it back where it was.
-  const { isTwoPane, width: layoutWidth, height: layoutHeight } = useResponsiveLayout();
+  const responsive = useResponsiveLayout();
+  const { width: layoutWidth, height: layoutHeight } = responsive;
+  // Drawn INSIDE another screen's pane (the tile board opens every
+  // database there now), where there is no room to split again - so the
+  // list is the whole of this screen and a tapped document is pushed,
+  // exactly as on a phone.
+  const isTwoPane = responsive.isTwoPane && !inPane;
   // The document pane taking the whole window. Only reachable from the
   // editor's own header, and only while there are two panes to collapse.
   const [paneFullscreen, setPaneFullscreen] = useState(false);

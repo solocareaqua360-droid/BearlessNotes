@@ -7,7 +7,22 @@
 // takes the first gap it fits in, scanning left to right, top to bottom,
 // which is what makes a board of mixed sizes close up on itself.
 
+// The board is four columns on a phone. On a wider screen it is MORE
+// columns rather than bigger cells: the user's own rule - the tiles must
+// not simply scale up, they must regroup - and since a tile's size is
+// stored in cells, keeping the cell the same size is what keeps the tile
+// the same size while the packing below finds it a new place.
 export const TILE_COLUMNS = 4;
+// What a cell comes out as on a phone, and so what it should stay near.
+const TARGET_CELL = 84;
+
+export function tileColumnsFor(boardWidth: number, gap: number): number {
+  if (boardWidth <= 0) return TILE_COLUMNS;
+  const columns = Math.round((boardWidth + gap) / (TARGET_CELL + gap));
+  // Never fewer than four - the stored sizes go up to four cells wide, and
+  // a tile wider than the board has nowhere to be placed at all.
+  return Math.max(TILE_COLUMNS, Math.min(12, columns));
+}
 
 export type TileSize = { w: number; h: number };
 
@@ -67,7 +82,8 @@ export type PlacedTile<T> = { item: T; x: number; y: number; size: TileSize };
 export function packTiles<T>(
   items: T[],
   sizeOf: (item: T) => TileSize,
-  breakBefore?: (item: T) => boolean
+  breakBefore?: (item: T) => boolean,
+  columns: number = TILE_COLUMNS
 ): { placed: PlacedTile<T>[]; rows: number } {
   // occupied[row] is a bitmask of the columns taken in that row.
   const occupied: number[] = [];
@@ -100,9 +116,9 @@ export function packTiles<T>(
     // Scan for the first gap this tile fits in. The loop always ends: past
     // the last occupied row every position is free.
     for (;;) {
-      if (x + size.w <= TILE_COLUMNS && isFree(x, y, size)) break;
+      if (x + size.w <= columns && isFree(x, y, size)) break;
       x += 1;
-      if (x + size.w > TILE_COLUMNS) {
+      if (x + size.w > columns) {
         x = 0;
         y += 1;
       }

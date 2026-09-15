@@ -19,7 +19,7 @@ import { deleteCustomDatabase } from '../utils/deleteCustomDatabase';
 import { CustomDatabase } from '../types';
 import {
   DEFAULT_TILE_SIZE,
-  TILE_COLUMNS,
+  tileColumnsFor,
   TileSize,
   formatTileSize,
   packTiles,
@@ -47,6 +47,8 @@ import { NavigationContext } from '@react-navigation/native';
 import { GlassPortalHost } from '../components/GlassPortal';
 import { GlassTargetProvider } from '../components/GlassTarget';
 import CustomDatabaseScreen from './CustomDatabaseScreen';
+import DocumentsScreen from './DocumentsScreen';
+import BoardsListScreen from './BoardsListScreen';
 import LinksScreen from './LinksScreen';
 import PhotosScreen from './PhotosScreen';
 import FilesScreen from './FilesScreen';
@@ -108,10 +110,18 @@ function defaultSizeFor(key: string): TileSize {
 type PaneTarget =
   | { kind: 'custom'; databaseId: string }
   | { kind: 'links'; category: 'video' | 'geo' | 'other' }
+  | { kind: 'documents' }
+  | { kind: 'boards' }
   | { kind: 'route'; route: 'Photos' | 'Files' | 'Stickers' | 'Tasks' };
 
 function paneTargetFor(tile: Tile): PaneTarget | null {
   if (tile.linkCategory) return { kind: 'links', category: tile.linkCategory };
+  // Documents and boards open here too now - every database in the same
+  // place, which is the user's rule. They are tab ROOTS, so unlike the
+  // rest they carry their own two-pane logic; `inPane` is how they are
+  // told not to split again inside a half-width pane.
+  if (tile.opensDocumentsTab) return { kind: 'documents' };
+  if (tile.opensBoardsTab) return { kind: 'boards' };
   if (tile.route === 'Photos' || tile.route === 'Files' || tile.route === 'Stickers' || tile.route === 'Tasks') {
     return { kind: 'route', route: tile.route };
   }
@@ -419,10 +429,24 @@ export default function DatabasesScreen() {
   // built in" is no longer true, and a line drawn there would be a lie.
   const showRule = !activeOrder;
   const firstOwnKey = customDatabases[0]?.id ?? NEW_TILE_KEY;
+  // A cell is square, and the board is as wide as the column it sits in.
+  // While arranging, the gap grows: the tiles draw apart to make room for
+  // the grips, and close back up into a dense board when it is done.
+  const gap = editing ? TILE_GAP_EDITING : TILE_GAP;
+  // More columns on a wider board, not bigger cells - see tileColumnsFor.
+  // A tile's size is stored in cells, so a cell that stays the same size
+  // is a tile that stays the same size, and the packing below simply
+  // finds it a new place among more of them.
+  const columns = tileColumnsFor(boardWidth, gap);
+  const cellSize = boardWidth > 0 ? (boardWidth - gap * (columns - 1)) / columns : 0;
+  const cellStep = cellSize + gap;
+  const spanSize = (cells: number) => cells * cellSize + (cells - 1) * gap;
+
   const { placed, rows } = packTiles(
     orderedItems,
     (item) => sizeFor(item.key),
-    (item) => showRule && item.key === firstOwnKey
+    (item) => showRule && item.key === firstOwnKey,
+    columns
   );
   const ruleRow = showRule ? placed.find((p) => p.item.key === firstOwnKey)?.y ?? 0 : 0;
 
@@ -442,15 +466,15 @@ export default function DatabasesScreen() {
     const others = without
       .map((k) => boardItems.find((item) => item.key === k))
       .filter((item): item is BoardItem => !!item);
-    const { placed: stable } = packTiles(others, (item) => sizeFor(item.key));
+    const { placed: stable } = packTiles(others, (item) => sizeFor(item.key), undefined, columns);
     // Both the finger and every tile become one number along the board's
     // reading order, so the comparison is a single "before or after" and
     // moves with the finger instead of jumping.
-    const col = Math.max(0, Math.min(TILE_COLUMNS - 1, Math.round(x / cellStep)));
+    const col = Math.max(0, Math.min(columns - 1, Math.round(x / cellStep)));
     const row = Math.max(0, Math.round(y / cellStep));
-    const fingerAt = row * TILE_COLUMNS + col;
+    const fingerAt = row * columns + col;
     let index = stable.findIndex(
-      (p) => (p.y + p.size.h / 2) * TILE_COLUMNS + (p.x + p.size.w / 2) > fingerAt
+      (p) => (p.y + p.size.h / 2) * columns + (p.x + p.size.w / 2) > fingerAt
     );
     if (index < 0) index = without.length;
     const next = [...without];
@@ -458,13 +482,6 @@ export default function DatabasesScreen() {
     return next;
   }
 
-  // A cell is square, and the board is as wide as the column it sits in.
-  // While arranging, the gap grows: the tiles draw apart to make room for
-  // the grips, and close back up into a dense board when it is done.
-  const gap = editing ? TILE_GAP_EDITING : TILE_GAP;
-  const cellSize = boardWidth > 0 ? (boardWidth - gap * (TILE_COLUMNS - 1)) / TILE_COLUMNS : 0;
-  const cellStep = cellSize + gap;
-  const spanSize = (cells: number) => cells * cellSize + (cells - 1) * gap;
 
   // The real navigation with one thing changed: going back closes the
   // pane. Built with Object.create so every method the navigator put on
@@ -775,6 +792,10 @@ export default function DatabasesScreen() {
                   <NavigationContext.Provider value={paneNavigation}>
                     {openInPane.kind === 'custom' ? (
                       <CustomDatabaseScreen databaseId={openInPane.databaseId} />
+                    ) : openInPane.kind === 'documents' ? (
+                      <DocumentsScreen inPane />
+                    ) : openInPane.kind === 'boards' ? (
+                      <BoardsListScreen inPane />
                     ) : openInPane.kind === 'links' ? (
                       <LinksScreen category={openInPane.category} />
                     ) : openInPane.route === 'Photos' ? (
