@@ -5,7 +5,7 @@ import {
   Image,
   Modal,
   Pressable,
-  ScrollView,
+  FlatList,
   StyleSheet,
   Text,
   View,
@@ -751,40 +751,64 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
             )}
           </View>
         ) : (
-          <ScrollView
+          <FlatList
             {...listProps}
+            // Remounted when the shape changes: FlatList cannot be told a
+            // new column count in place, and it refuses columnWrapperStyle
+            // on a single column outright.
+            key={viewMode}
+            data={itemsHere}
+            keyExtractor={(photo) => photo.id}
+            numColumns={viewMode === 'list' ? 1 : 2}
+            columnWrapperStyle={viewMode === 'list' ? undefined : styles.gridRow}
+            // Only what is on screen, and a screen either side of it.
+            //
+            // The whole database used to be mounted at once - forty
+            // photographs is forty decoded bitmaps held together, and
+            // however small each one is decoded (see AttachmentImage),
+            // the collector has to walk all of them. That is the frame
+            // rate the user has been watching drop. Off-screen rows are
+            // detached on Android as well, which is what actually frees
+            // the bitmap rather than merely hiding it.
+            initialNumToRender={8}
+            maxToRenderPerBatch={6}
+            windowSize={5}
+            removeClippedSubviews
             contentContainerStyle={[
               // The grid wraps cells across the row; the list stacks them
-              // down it. Same scroll view, two container styles - the one
-              // thing that cannot be shared between the two views.
+              // down it. Same list, two container styles - the one thing
+              // that cannot be shared between the two views.
               viewMode === 'list' ? styles.list : styles.gridPage,
               railClear(inPane ? 'left' : 'right', viewMode === 'list' ? 20 : 16),
               { paddingTop: listTopPad },
               isSelectMode && styles.gridWithBulkBar,
             ]}
-          >
-            {list.explorerMode && (
-              <ExplorerHead
-                crumbs={explorer.crumbs}
-                path={explorer.path}
-                folders={explorer.folders}
-                showCrumbs={explorer.active}
-                itemIcon="image-outline"
-                onGo={(next) => {
-                  explorer.setPath(next);
-                  if (needle !== '') {
-                    list.setSearchQuery('');
-                    list.setIsSearching(false);
-                  }
-                }}
-                onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
-                onFolderMenu={openFolderMenu}
-              />
-            )}
-            <View style={viewMode === 'list' ? undefined : styles.gridRows}>
-            {itemsHere.map((photo) => {
+            ListHeaderComponent={
+              list.explorerMode ? (
+                <ExplorerHead
+                  crumbs={explorer.crumbs}
+                  path={explorer.path}
+                  folders={explorer.folders}
+                  showCrumbs={explorer.active}
+                  itemIcon="image-outline"
+                  onGo={(next) => {
+                    explorer.setPath(next);
+                    if (needle !== '') {
+                      list.setSearchQuery('');
+                      list.setIsSearching(false);
+                    }
+                  }}
+                  onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
+                  onFolderMenu={openFolderMenu}
+                />
+              ) : null
+            }
+            // What else is in this group - see GroupSections.
+            ListFooterComponent={
+              <GroupSections groupId={list.selectedGroupId} currentKind="photo" tags={tags} />
+            }
+            renderItem={({ item: photo }) => {
               const shared = {
-                key: photo.id,
                 photo,
                 tags: tags.filter((t) => photo.tagIds.includes(t.id)),
                 onPress: () => (isSelectMode ? toggleSelected(photo.id) : setViewerPhotoId(photo.id)),
@@ -793,11 +817,8 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                 isSelected: selectedIds.has(photo.id),
               };
               return viewMode === 'list' ? <PhotoRow {...shared} /> : <PhotoCell {...shared} />;
-            })}
-            </View>
-            {/* What else is in this group - see GroupSections. */}
-            <GroupSections groupId={list.selectedGroupId} currentKind="photo" tags={tags} />
-          </ScrollView>
+            }}
+          />
         )
       }
     </DatabaseChrome>
@@ -843,10 +864,12 @@ const styles = StyleSheet.create({
   // them.
   gridPage: {
     paddingBottom: 8,
+    // Between the rows; the gap ACROSS a row is columnWrapperStyle's.
+    gap: 12,
   },
-  gridRows: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  // One row of the grid. alignItems flex-start so a taller cell can
+  // never stretch the one beside it.
+  gridRow: {
     alignItems: 'flex-start',
     gap: 12,
   },
