@@ -50,7 +50,10 @@ const boardsCollection = collection(db, 'boards');
 // that boards are a database like the others, so it wears the same chrome
 // they do: search, sorting, choosing with bulk actions, tags, groups, the
 // drawer on a swipe, and the same rail.
-export default function BoardsListScreen({ inPane }: { inPane?: boolean } = {}) {
+export default function BoardsListScreen({
+  inPane,
+  standalone,
+}: { inPane?: boolean; standalone?: boolean } = {}) {
   const navigation = useNavigation<NativeStackNavigationProp<BoardsStackParamList>>();
   const { width: windowWidth } = useWindowDimensions();
   // Two across where there is room for two. A board's row is a name and a
@@ -373,9 +376,11 @@ export default function BoardsListScreen({ inPane }: { inPane?: boolean } = {}) 
       list={list}
       accent={ACCENT}
       accentGlass={ACCENT_GLASS}
-      // A tab's own root: nowhere to go back to, and the navigation
-      // island stands at its foot, so the rail leaves room for it.
-      hasIsland
+      // A tab's own root has nowhere to go back to and the island at its
+      // foot; a COPY pushed over the tile board has a way back and no
+      // island, like every other pushed screen.
+      hasIsland={!standalone}
+      onBack={standalone ? () => navigation.goBack() : undefined}
       searchPlaceholder="Пошук дощок"
       onAdd={createBoard}
       addIcon="easel-outline"

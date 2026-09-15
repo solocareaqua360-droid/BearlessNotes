@@ -384,6 +384,17 @@ export default function DatabasesScreen() {
   }
 
   function openTile(tile: Tile) {
+    // Documents and boards are doors like every other tile, not shortcuts
+    // to their tab: a copy opens on top and back returns here. (Lying down
+    // on the inner screen they open in the pane instead - see onPress.)
+    if (tile.opensDocumentsTab) {
+      navigation.navigate('DocumentsCopy');
+      return;
+    }
+    if (tile.opensBoardsTab) {
+      navigation.navigate('BoardsCopy');
+      return;
+    }
     openDatabaseTile(navigation, tile);
   }
 

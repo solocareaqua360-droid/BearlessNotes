@@ -41,6 +41,12 @@ export type RootStackParamList = {
   // separate screen.
   EditorModal: { documentId: string; autoFocusTitle?: boolean };
   Tasks: undefined;
+  // A COPY of the documents list, or of the boards, pushed over the tile
+  // board. The tile is a door into the database, the way every other tile
+  // is, not a shortcut to its tab - so it opens a screen on top, and back
+  // returns to the board. The tab's own instance stays where it was.
+  DocumentsCopy: undefined;
+  BoardsCopy: undefined;
   // Geo/video/other links all live in the one `links` mirror collection
   // (see DocumentEditorScreen's fetchLinkPreview) - this param is what
   // splits LinksScreen's one query into three separate-looking databases.

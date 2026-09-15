@@ -71,7 +71,7 @@ import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import SketchEditor from '../components/SketchEditor';
 import { BlurView } from 'expo-blur';
 import { GlassPortal } from '../components/GlassPortal';
-import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CHROME_TOP, NAV_HEIGHT, RAIL_CLEARANCE, RAIL_GAP, RAIL_RIGHT, RAIL_WIDTH, railFits } from '../constants/rail';
+import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CAPSULE_HEIGHT_4, CHROME_TOP, NAV_HEIGHT, RAIL_CLEARANCE, RAIL_GAP, RAIL_RIGHT, RAIL_WIDTH, railFits } from '../constants/rail';
 import { useRail, useRailFree } from '../hooks/useRail';
 import { useBlurTarget } from '../components/GlassTarget';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
@@ -114,7 +114,11 @@ type StripSticker = {
   trashed?: boolean;
 };
 
-export default function DocumentsScreen({ inPane }: { inPane?: boolean } = {}) {
+export default function DocumentsScreen({
+  inPane,
+  // A copy pushed over the tile board: it has a way back and no island.
+  standalone,
+}: { inPane?: boolean; standalone?: boolean } = {}) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   // react-native-svg's own "100%" width/height on the root <Svg> doesn't
   // reliably re-measure when the window itself resizes at runtime (seen on
@@ -595,13 +599,17 @@ export default function DocumentsScreen({ inPane }: { inPane?: boolean } = {}) {
   // 320 points for the three pieces, and the four of them with the arrows
   // want 340 - so they rode up over each other. The path strip does what
   // the arrows do, so they are what goes.
-  const railFree = useRailFree(CAPSULE_HEIGHT_3, true);
+  // A pushed copy carries the way back as a fourth button, and has no
+  // island at its foot - like every other pushed screen.
+  const topCapsuleHeight = standalone ? CAPSULE_HEIGHT_4 : CAPSULE_HEIGHT_3;
+  const railFree = useRailFree(topCapsuleHeight, !standalone);
   const arrowsFit = explorer && railFits(railFree, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT, CAPSULE_HEIGHT);
   const rail = useRail(
-    CAPSULE_HEIGHT_3,
+    topCapsuleHeight,
     CAPSULE_HEIGHT_1,
     explorer ? CAPSULE_HEIGHT : RAIL_WIDTH,
-    arrowsFit ? CAPSULE_HEIGHT : 0
+    arrowsFit ? CAPSULE_HEIGHT : 0,
+    !standalone
   );
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   // Opening the search takes the screen, so anything hanging off the rail
@@ -1087,6 +1095,16 @@ export default function DocumentsScreen({ inPane }: { inPane?: boolean } = {}) {
               <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
                 <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
               </Pressable>
+              {/* The way out of a copy pushed over the tile board. The
+                  tab's own list has nowhere to go back to and no button. */}
+              {standalone && (
+                <>
+                  <View style={styles.sideIslandDivider} />
+                  <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+                    <Ionicons name="arrow-back-outline" size={24} color="#fff" />
+                  </Pressable>
+                </>
+              )}
             </View>
           </View>
         </View>
