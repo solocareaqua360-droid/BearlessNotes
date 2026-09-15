@@ -469,20 +469,21 @@ export default function DatabasesScreen() {
     return parseTilePosition(viewData.positions?.[key]);
   }
 
-  // A dropped tile takes its cell, and any tile it now lies over gives its
-  // own up and flows - it was already flowing under the hand; this keeps
-  // it so, rather than letting the two fight over the cell on every
-  // render, with the first in the list winning.
-  function setPosition(dropped: PlacedTile<BoardItem>) {
-    const positions: Record<string, string | ReturnType<typeof deleteField>> = {
+  // A dropped tile takes its cell, and any tile it now lies over keeps
+  // the place it was pushed to under the hand - written down, so the two
+  // do not fight over the cell on every render afterwards. Written as a
+  // place, not cleared: a cleared tile would flow to the top of the
+  // board, which is the "my tiles wander off to fill holes" the user saw.
+  function setPosition(dropped: PlacedTile<BoardItem>, board: PlacedTile<BoardItem>[]) {
+    const positions: Record<string, string> = {
       [dropped.item.key]: formatTilePosition({ x: dropped.x, y: dropped.y }),
     };
-    orderedItems.forEach((item) => {
-      if (item.key === dropped.item.key) return;
-      const stored = parseTilePosition(viewData.positions?.[item.key]);
+    board.forEach((p) => {
+      if (p.item.key === dropped.item.key) return;
+      const stored = parseTilePosition(viewData.positions?.[p.item.key]);
       if (!stored) return;
-      const rect = { item, x: stored.x, y: stored.y, size: sizeFor(item.key) };
-      if (tilesOverlap(dropped, rect)) positions[item.key] = deleteField();
+      const rect = { item: p.item, x: stored.x, y: stored.y, size: p.size };
+      if (tilesOverlap(dropped, rect)) positions[p.item.key] = formatTilePosition({ x: p.x, y: p.y });
     });
     setDoc(tileLayoutsDoc, { [tileView]: { positions } }, { merge: true });
   }
@@ -539,49 +540,52 @@ export default function DatabasesScreen() {
   const cellStep = cellSize + gap;
   const spanSize = (cells: number) => cells * cellSize + (cells - 1) * gap;
 
-  const sizeOf = (item: BoardItem) => sizeFor(item.key);
   const pinnedAt = (item: BoardItem) => positionFor(item.key);
   const breakAt = (item: BoardItem) => showRule && item.key === firstOwnKey;
   const carriedFirst = (item: BoardItem) => item.key === draftPosition?.key;
-  // While a tile is being resized, every tile after it lets go of its
-  // place and flows again, so the space it frees is taken as it frees it
-  // - the user's complaint was tiles standing still beside a hole "поки я
-  // не перетягну". The resized tile itself stays where it is. Which
-  // tiles are "after" is read off a placement made with the new size.
-  let positionOf = pinnedAt;
-  if (draftSize) {
-    const trial = placeTiles(orderedItems, sizeOf, pinnedAt, columns, breakAt);
-    const anchor = trial.placed.find((p) => p.item.key === draftSize.key);
-    if (anchor) {
-      positionOf = (item) => {
-        const position = pinnedAt(item);
-        return position && item.key !== draftSize.key && cellAfter(anchor, position) ? null : position;
-      };
-    }
+  // The board with one tile at a given size - the size a grip is asking
+  // for, or the one it just let go at. Every placed tile after that one
+  // is allowed to settle towards it (placeTiles), so the space it frees
+  // is taken as it frees it - the user's complaint was tiles standing
+  // still beside a hole "поки я не перетягну". Which tiles are "after"
+  // is read off a placement made with the new size.
+  function boardWith(key: string | null, size: TileSize | null) {
+    const sizeOf = (item: BoardItem) => (item.key === key && size ? size : sizeFor(item.key));
+    if (!key) return placeTiles(orderedItems, sizeOf, pinnedAt, columns, breakAt, carriedFirst);
+    const trial = placeTiles(orderedItems, sizeOf, pinnedAt, columns, breakAt, carriedFirst);
+    const anchor = trial.placed.find((p) => p.item.key === key);
+    if (!anchor) return trial;
+    const settleFrom = (item: BoardItem) => {
+      if (item.key === key) return null;
+      const position = pinnedAt(item);
+      return position && cellAfter(anchor, position) ? { x: anchor.x, y: anchor.y } : null;
+    };
+    return placeTiles(orderedItems, sizeOf, pinnedAt, columns, breakAt, carriedFirst, settleFrom);
   }
-  const { placed, rows } = placeTiles(orderedItems, sizeOf, positionOf, columns, breakAt, carriedFirst);
+  const { placed, rows } = boardWith(draftSize?.key ?? null, draftSize?.size ?? null);
   const placedOf = (key: string) => placed.find((p) => p.item.key === key);
+  const ruleRow = showRule ? placedOf(firstOwnKey)?.y ?? 0 : 0;
 
-  // A resize is written down together with the places it frees: the
-  // tiles after the resized one lose theirs, for good, and flow - the
-  // same thing the finger saw while resizing, kept.
+  // A resize is written down together with the places the tiles after
+  // it settled into - the same thing the finger saw while resizing,
+  // kept. Written as places, not cleared: a cleared tile would flow to
+  // the top of the board the next time anything moved.
   function writeSize(key: string, size: TileSize | null) {
-    const anchor = placedOf(key);
-    const positions: Record<string, ReturnType<typeof deleteField>> = {};
-    if (anchor) {
-      placed.forEach((p) => {
-        if (p.item.key === key) return;
-        const stored = parseTilePosition(viewData.positions?.[p.item.key]);
-        if (stored && cellAfter(anchor, stored)) positions[p.item.key] = deleteField();
-      });
-    }
+    const settled = boardWith(key, size ?? defaultSizeFor(key)).placed;
+    const positions: Record<string, string> = {};
+    settled.forEach((p) => {
+      if (p.item.key === key) return;
+      const stored = parseTilePosition(viewData.positions?.[p.item.key]);
+      if (stored && (stored.x !== p.x || stored.y !== p.y)) {
+        positions[p.item.key] = formatTilePosition({ x: p.x, y: p.y });
+      }
+    });
     setDoc(
       tileLayoutsDoc,
       { [tileView]: { sizes: { [key]: size ? formatTileSize(size) : deleteField() }, positions } },
       { merge: true }
     );
   }
-  const ruleRow = showRule ? placed.find((p) => p.item.key === firstOwnKey)?.y ?? 0 : 0;
 
   // The cell under the finger, for a tile of this size: the column is
   // clamped so the tile stays on the board. That cell is the tile's
@@ -716,7 +720,7 @@ export default function DatabasesScreen() {
                       const dropped = draftPosition ? placedOf(draftPosition.key) : undefined;
                       setDrag(null);
                       setDraftPosition(null);
-                      if (dropped) setPosition(dropped);
+                      if (dropped) setPosition(dropped, placed);
                     }}
                   />
                 ))}

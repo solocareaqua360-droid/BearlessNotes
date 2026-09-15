@@ -197,22 +197,31 @@ export function formatTilePosition(position: TilePosition): string {
 // tile stood - so a dragged tile could land anywhere a gap happened to be,
 // which the user felt as no control at all. A tile that has been put
 // somewhere keeps its cell now; only tiles that have not (a new database,
-// a board never arranged) still flow into the first gap. Two positioned
-// tiles that would overlap - one dragged onto another - keep the first
-// and let the second flow, which is what makes room under the hand.
+// a board never arranged) still flow into the first gap.
 //
-// A stored position that no longer fits the column count (the board got
-// narrower) is treated as none, rather than drawn off the edge.
+// A placed tile whose cell is taken (another tile dropped on it, a tile
+// beside it grown over it) is not sent back to the top of the board to
+// fill whatever hole is there - that is what the user saw as "the tiles
+// I just put down move off to fill holes". It goes to the nearest free
+// spot AFTER its own cell, so it stays where it was put, or as near as it
+// can. A cell that no longer fits the column count (the board got
+// narrower) is treated as the start of its row.
 //
 // `first` names a tile that wins every collision - the one under the
 // finger, which must land where the finger is whatever else is there.
+// `settleFrom` names tiles allowed to move EARLIER, and the cell they
+// may start looking from: while a tile is being shrunk, the tiles after
+// it look from the shrinking tile's own cell, so the space it frees is
+// taken as it frees it. Each still ends up at or before its own cell
+// unless that cell is taken too.
 export function placeTiles<T>(
   items: T[],
   sizeOf: (item: T) => TileSize,
   positionOf: (item: T) => TilePosition | null,
   columns: number,
   breakBefore?: (item: T) => boolean,
-  first?: (item: T) => boolean
+  first?: (item: T) => boolean,
+  settleFrom?: (item: T) => TilePosition | null
 ): { placed: PlacedTile<T>[]; rows: number } {
   const occupied: number[] = [];
   const isFree = (x: number, y: number, size: TileSize) => {
@@ -229,18 +238,39 @@ export function placeTiles<T>(
       occupied[row] = taken;
     }
   };
+  // The first free spot for this size, reading on from `from`. Always
+  // ends: past the last occupied row every position is free.
+  const scan = (from: TilePosition, size: TileSize): TilePosition => {
+    let x = Math.min(from.x, Math.max(0, columns - size.w));
+    let y = from.y;
+    for (;;) {
+      if (x + size.w <= columns && isFree(x, y, size)) return { x, y };
+      x += 1;
+      if (x + size.w > columns) {
+        x = 0;
+        y += 1;
+      }
+    }
+  };
 
-  // First the tiles that have a place, so the flowing ones go around them.
+  // First the tiles that have a place, in the order of those places, so
+  // that when two of them are pushed the earlier one settles first.
+  const positioned = items
+    .map((item) => ({ item, position: positionOf(item) }))
+    .filter((entry): entry is { item: T; position: TilePosition } => !!entry.position)
+    .sort((a, b) => {
+      const af = first?.(a.item) ? 0 : 1;
+      const bf = first?.(b.item) ? 0 : 1;
+      if (af !== bf) return af - bf;
+      return a.position.y - b.position.y || a.position.x - b.position.x;
+    });
   const fixed = new Map<T, PlacedTile<T>>();
-  const firstPass = first ? [...items.filter(first), ...items.filter((item) => !first(item))] : items;
-  for (const item of firstPass) {
-    const position = positionOf(item);
-    if (!position) continue;
+  for (const { item, position } of positioned) {
     const size = sizeOf(item);
-    if (position.x + size.w > columns) continue;
-    if (!isFree(position.x, position.y, size)) continue;
-    take(position.x, position.y, size);
-    fixed.set(item, { item, x: position.x, y: position.y, size });
+    const from = settleFrom?.(item) ?? position;
+    const cell = scan(from, size);
+    take(cell.x, cell.y, size);
+    fixed.set(item, { item, x: cell.x, y: cell.y, size });
   }
 
   const placed: PlacedTile<T>[] = [];
@@ -253,18 +283,9 @@ export function placeTiles<T>(
     }
     const size = sizeOf(item);
     if (breakBefore?.(item)) floor = occupied.length;
-    let y = floor;
-    let x = 0;
-    for (;;) {
-      if (x + size.w <= columns && isFree(x, y, size)) break;
-      x += 1;
-      if (x + size.w > columns) {
-        x = 0;
-        y += 1;
-      }
-    }
-    take(x, y, size);
-    placed.push({ item, x, y, size });
+    const cell = scan({ x: 0, y: floor }, size);
+    take(cell.x, cell.y, size);
+    placed.push({ item, x: cell.x, y: cell.y, size });
   }
   return { placed, rows: occupied.length };
 }
