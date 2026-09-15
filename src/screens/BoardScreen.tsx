@@ -1166,6 +1166,27 @@ export default function BoardScreen() {
       // one way, and nothing turns a map back into an array. An array is
       // only believed when the server itself says so.
       shapeRef.current = !looksLikeArray ? 'keyed' : snapshot.metadata.fromCache ? 'unknown' : 'array';
+      // Nothing is written while the shape is in doubt, so the doubt has
+      // to be settled rather than waited out: only the server can say
+      // whether those arrays are really there. Without this a board read
+      // from the cache stayed unknown for as long as it was open, and
+      // every change made to it was dropped.
+      if (shapeRef.current === 'unknown') {
+        getDoc(docRef)
+          .then((fresh) => {
+            const server = fresh.data();
+            shapeRef.current =
+              Array.isArray(server?.cards) || Array.isArray(server?.columns) || Array.isArray(server?.connections)
+                ? 'array'
+                : 'keyed';
+          })
+          // Offline, and the server cannot be asked. Treated as the old
+          // shape, which writes the board whole - more than is needed,
+          // and never wrong.
+          .catch(() => {
+            shapeRef.current = 'array';
+          });
+      }
       savedRef.current = { cards: loadedCards, columns: loadedColumns, connections: loadedConnections };
       setTitle(data?.title ?? 'Без назви');
       setCards(loadedCards);

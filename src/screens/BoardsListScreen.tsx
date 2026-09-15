@@ -253,7 +253,14 @@ export default function BoardsListScreen({
 
   async function createBoard() {
     const now = Date.now();
-    const ref = await addDoc(boardsCollection, { title: 'Без назви', cards: [], createdAt: now, updatedAt: now });
+    // A MAP, not an array. A board's parts were arrays once and are
+    // keyed maps now, and BoardScreen refuses to write anything while it
+    // cannot tell which shape a board is in - it only believes "array"
+    // when the SERVER says so, and a board just made is read from the
+    // cache. Born as an array, a new board therefore sat in that doubt
+    // for ever and saved nothing at all: everything put on it was lost
+    // on the way out. Born keyed, there is nothing to doubt.
+    const ref = await addDoc(boardsCollection, { title: 'Без назви', cards: {}, createdAt: now, updatedAt: now });
     openBoardById(ref.id);
   }
 
