@@ -20,6 +20,7 @@ import { CustomDatabase } from '../types';
 import {
   DEFAULT_TILE_SIZE,
   tileColumnsFor,
+  packedSizes,
   TileSize,
   formatTileSize,
   packTiles,
@@ -342,6 +343,14 @@ export default function DatabasesScreen() {
       setDoc(tileColorsDoc, shared, { merge: true });
       setColorMenuKey(null);
     });
+  }
+
+  // Sizes chosen so the board has no gaps - see packedSizes. Written in
+  // the order the tiles are actually in, since that is the order they are
+  // packed in.
+  function fillBoard() {
+    setColorMenuKey(null);
+    setDoc(tileSizesDoc, packedSizes(orderedItems.map((item) => item.key), columns), { merge: false });
   }
 
   function resetBoard() {
@@ -696,6 +705,14 @@ export default function DatabasesScreen() {
                 <Ionicons name="color-palette-outline" size={17} color={GLASS_TEXT} />
                 <Text style={styles.sheetRowLabel}>Скинути кольори</Text>
               </Pressable>
+              {/* Every tile given the widest size that still fits the gap
+                  in front of it, row by row - so the board comes out solid
+                  instead of pitted with the holes a hand-picked one fills
+                  up with. */}
+              <Pressable style={styles.sheetRow} onPress={fillBoard}>
+                <Ionicons name="grid-outline" size={17} color={GLASS_TEXT} />
+                <Text style={styles.sheetRowLabel}>Заповнити без дірок</Text>
+              </Pressable>
               <Pressable
                 style={styles.sheetRow}
                 onPress={() => {
@@ -843,7 +860,14 @@ export default function DatabasesScreen() {
             // its own height plus the gap it keeps from the edge.
             { bottom: databasesInsets.bottom + NAV_BOTTOM + RAIL_WIDTH + 16 },
           ]}
-          onPress={() => setEditing(false)}
+          onPress={() => {
+            setEditing(false);
+            // The settings pane belongs to arranging: leaving that mode
+            // leaves it. On a wide screen it was opened by the same hold
+            // that started the arranging, and it stayed behind after
+            // "Готово" with nothing left to settle.
+            setColorMenuKey(null);
+          }}
         >
           <Ionicons name="checkmark" size={18} color="#171310" />
           <Text style={styles.doneLabel}>Готово</Text>

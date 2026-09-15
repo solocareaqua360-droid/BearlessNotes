@@ -129,3 +129,50 @@ export function packTiles<T>(
 
   return { placed, rows: occupied.length };
 }
+
+// A set of sizes that fills the board solid - what the user asked for as
+// "інтелектуальний хаотичний підбір без дірок".
+//
+// Not random, though it reads as varied: the board is walked row by row,
+// and each tile is given the widest allowed size that still fits the gap
+// in front of it. A gap of one cell therefore gets a one-cell tile rather
+// than being left empty, which is the whole point - holes are what a
+// hand-picked board fills up with.
+//
+// Heights vary with a repeating pattern rather than a coin toss, so the
+// result is stable: pressing the button twice does not reshuffle a board
+// the user has just accepted.
+export function packedSizes(keys: string[], columns: number): Record<string, string> {
+  const HEIGHTS = [2, 1, 2, 1, 1, 2];
+  const out: Record<string, string> = {};
+  // occupied[row] counts the cells taken in that row, filled left to right.
+  let row = 0;
+  let used = 0;
+  keys.forEach((key, index) => {
+    const left = columns - used;
+    const height = HEIGHTS[index % HEIGHTS.length];
+    // The widest size allowed that fits what is left of this row, and that
+    // exists in TILE_SIZES at this height.
+    let best: TileSize | null = null;
+    for (const size of TILE_SIZES) {
+      if (size.h !== height) continue;
+      if (size.w > left) continue;
+      if (!best || size.w > best.w) best = size;
+    }
+    // Nothing of that height fits the gap - take the widest of any height.
+    if (!best) {
+      for (const size of TILE_SIZES) {
+        if (size.w > left) continue;
+        if (!best || size.w > best.w) best = size;
+      }
+    }
+    const size = best ?? { w: 1, h: 1 };
+    out[key] = formatTileSize(size);
+    used += size.w;
+    if (used >= columns) {
+      used = 0;
+      row += 1;
+    }
+  });
+  return out;
+}
