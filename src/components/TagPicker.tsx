@@ -1,0 +1,544 @@
+import { useEffect, useState } from 'react';
+import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+// gesture-handler's ScrollView, not the core RN one: on Android a drag that
+// starts on a TextInput never reaches an RN ScrollView's scroll recognition,
+// so a sheet with a search/name field only scrolled when a finger happened to
+// land between rows. Same fix, same reason, as FieldsEditorSheet.
+import { ScrollView } from 'react-native-gesture-handler';
+import { Ionicons } from '@expo/vector-icons';
+import { Tag, TaggableKind } from '../types';
+import { TAG_COLORS, TAG_ICONS } from '../constants/tags';
+import { isTagAllowedForKind } from '../hooks/useTags';
+import { useHiddenTags } from '../hooks/useHiddenTags';
+import RenamePrompt from './RenamePrompt';
+import {
+  GLASS_BACKDROP,
+  GLASS_BODY_BLURRED,
+  GLASS_LINE,
+  GLASS_TEXT,
+  GLASS_TEXT_FAINT,
+  GLASS_TEXT_MUTED,
+  SHEET_BACKDROP,
+  SHEET_WINDOW,
+} from '../constants/glass';
+import GlassLayer from './GlassLayer';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+
+const ACCENT = '#3B82F6';
+
+const KIND_LABELS: Record<string, string> = {
+  board: 'Дошки',
+  file: 'Файли',
+  photo: 'Фото',
+  'link-video': 'Відео',
+  'link-geo': 'Геоточки',
+  'link-other': 'Посилання',
+  document: 'Документи',
+};
+
+// Every custom database mints its own `customRow:${id}` kind (see
+// types.ts's TaggableKind comment) - KIND_LABELS has no entry per database,
+// so this is the fallback for any kind it doesn't recognize.
+function kindLabel(kind: TaggableKind): string {
+  return KIND_LABELS[kind] ?? 'База';
+}
+
+type Props = {
+  visible: boolean;
+  kind: TaggableKind;
+  tags: Tag[];
+  selectedTagIds: string[];
+  onAttach: (tag: Tag) => void;
+  onDetach: (tag: Tag) => void;
+  onCreateAndAttach: (path: string, icon: string, color: string) => void;
+  onRenameTag: (tag: Tag, newPath: string) => void;
+  onClose: () => void;
+  // Opens the sheet straight into the create form (DocumentTagsBlock's own
+  // inline search has no popup of its own, so "create tag" there reuses
+  // just this sub-view rather than duplicating the icon/color grid).
+  initialMode?: 'list' | 'create';
+  initialPath?: string;
+};
+
+// Bottom-sheet tag picker for a single database item (Files/Photos/Links
+// row) - see TagPicker.dc.html / IconColorPicker.dc.html. Two internal
+// modes: the search+list, and a "new tag" icon+color form reached only
+// from a first assignment (there's no standalone tag-creation path).
+export default function TagPicker({
+  visible,
+  kind,
+  tags,
+  selectedTagIds,
+  onAttach,
+  onDetach,
+  onCreateAndAttach,
+  onRenameTag,
+  onClose,
+  initialMode = 'list',
+  initialPath = '',
+}: Props) {
+  const [query, setQuery] = useState('');
+  const [mode, setMode] = useState<'list' | 'create'>('list');
+  const [creatingPath, setCreatingPath] = useState('');
+  const [iconQuery, setIconQuery] = useState('');
+  const [selectedIcon, setSelectedIcon] = useState(TAG_ICONS[0]);
+  const [selectedColor, setSelectedColor] = useState(TAG_COLORS[0]);
+  const [renamingTag, setRenamingTag] = useState<Tag | null>(null);
+  const { hiddenIds, hideTag } = useHiddenTags(kind);
+  // Same manual Keyboard-height tracking as TasksScreen's project-picker
+  // and GroupPickerSheet - this Android build doesn't resize the window
+  // under the keyboard, so without this the search/create inputs end up
+  // hidden behind it.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (visible) {
+      setQuery('');
+      if (initialMode === 'create') {
+        setCreatingPath(initialPath);
+        setIconQuery('');
+        setSelectedIcon(TAG_ICONS[0]);
+        setSelectedColor(TAG_COLORS[0]);
+        setMode('create');
+      } else {
+        setMode('list');
+      }
+    }
+    // initialMode/initialPath are read once when the sheet opens, not
+    // tracked live - re-running this on their identity would reset the
+    // in-progress create form on every keystroke of the caller's own state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  const needle = query.trim().toLowerCase();
+  const visibleTags = tags.filter((tag) => isTagAllowedForKind(tag, kind));
+  // The empty-search "recommended" list drops anything hidden via the "x"
+  // below; typing a search still surfaces a hidden tag so it can be found
+  // and re-attached - attachTag un-hides it the moment that happens (see
+  // useTags), which is exactly how a hidden tag is meant to come back.
+  const matches =
+    needle.length === 0
+      ? visibleTags.filter((tag) => !hiddenIds.has(tag.id))
+      : visibleTags.filter((tag) => tag.path.toLowerCase().includes(needle));
+  // Checked against the FULL tag list (not just what's visible for this
+  // kind) so a name already used by a hidden, cross-kind tag can't be
+  // duplicated - it just stays unavailable here, same as being filtered out.
+  const hasExactMatch = tags.some((tag) => tag.path.toLowerCase() === needle);
+  const canCreate = needle.length >= 2 && !hasExactMatch;
+
+  function startCreate() {
+    setCreatingPath(query.trim());
+    setIconQuery('');
+    setSelectedIcon(TAG_ICONS[0]);
+    setSelectedColor(TAG_COLORS[0]);
+    setMode('create');
+  }
+
+  function saveNewTag() {
+    if (!creatingPath.trim()) return;
+    onCreateAndAttach(creatingPath.trim(), selectedIcon, selectedColor);
+    onClose();
+  }
+
+  const filteredIcons =
+    iconQuery.trim().length === 0
+      ? TAG_ICONS
+      : TAG_ICONS.filter((name) => name.includes(iconQuery.trim().toLowerCase()));
+
+  return (
+    <GlassLayer visible={visible} onClose={onClose}>
+      {/* Backdrop as a SIBLING behind the sheet, not its parent - as a
+          parent it took the RN touch responder for every drag that did not
+          land on a deeper child, which is what kept the list from
+          scrolling. A tap outside still closes it. */}
+      <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={styles.sheet}>
+          <View style={styles.handle} />
+
+          {mode === 'list' ? (
+            <>
+              <Text style={styles.title}>Теги</Text>
+              <View style={styles.searchRow}>
+                <Ionicons name="search" size={16} color={GLASS_TEXT_FAINT} />
+                <TextInput
+                  autoFocus
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder='пошук або нова назва "робота/..."'
+                  placeholderTextColor={GLASS_TEXT_FAINT}
+                  style={styles.searchInput}
+                />
+              </View>
+
+              <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
+                {matches.map((tag) => {
+                  const selected = selectedTagIds.includes(tag.id);
+                  return (
+                    <View key={tag.id} style={styles.row}>
+                      <Pressable
+                        style={styles.rowTap}
+                        onPress={() => (selected ? onDetach(tag) : onAttach(tag))}
+                      >
+                        <View style={[styles.rowIcon, { backgroundColor: `${tag.color}1A` }]}>
+                          <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={15} color={tag.color} />
+                        </View>
+                        <View style={styles.rowBody}>
+                          <Text style={styles.rowLabel}>{tag.path}</Text>
+                          <Text style={styles.rowMeta}>
+                            {Object.keys(tag.usedIn).length} елем. · {tag.types.map(kindLabel).join(', ')}
+                          </Text>
+                        </View>
+                        <View style={selected ? styles.checkFilled : styles.checkEmpty}>
+                          {selected && <Ionicons name="checkmark" size={13} color="#fff" />}
+                        </View>
+                      </Pressable>
+                      <Pressable hitSlop={8} style={styles.pencilButton} onPress={() => setRenamingTag(tag)}>
+                        <Ionicons name="pencil-outline" size={14} color={GLASS_TEXT_FAINT} />
+                      </Pressable>
+                      <Pressable hitSlop={8} style={styles.pencilButton} onPress={() => hideTag(tag.id)}>
+                        <Ionicons name="close" size={14} color={GLASS_TEXT_FAINT} />
+                      </Pressable>
+                    </View>
+                  );
+                })}
+
+                {canCreate && (
+                  <Pressable style={styles.createRow} onPress={startCreate}>
+                    <Ionicons name="add" size={18} color={ACCENT} />
+                    <Text style={styles.createLabel}>Створити тег "{query.trim()}"</Text>
+                  </Pressable>
+                )}
+              </ScrollView>
+            </>
+          ) : (
+            <>
+              <View style={styles.createHeaderRow}>
+                <Pressable onPress={() => setMode('list')}>
+                  <Text style={styles.createHeaderCancel}>Скасувати</Text>
+                </Pressable>
+                <Text style={styles.createHeaderTitle}>Новий тег</Text>
+                <Pressable onPress={saveNewTag}>
+                  <Text style={styles.createHeaderSave}>Зберегти</Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.createPreviewRow}>
+                <View style={[styles.createPreviewIcon, { backgroundColor: `${selectedColor}1F` }]}>
+                  <Ionicons name={selectedIcon as keyof typeof Ionicons.glyphMap} size={22} color={selectedColor} />
+                </View>
+                <Text style={styles.createPreviewPath} numberOfLines={1}>
+                  {creatingPath}
+                </Text>
+              </View>
+
+              <Text style={styles.sectionLabel}>КОЛІР</Text>
+              <View style={styles.colorRow}>
+                {TAG_COLORS.map((color) => (
+                  <Pressable
+                    key={color}
+                    style={[
+                      styles.colorSwatch,
+                      { backgroundColor: color },
+                      selectedColor === color && styles.colorSwatchSelected,
+                    ]}
+                    onPress={() => setSelectedColor(color)}
+                  />
+                ))}
+              </View>
+
+              <Text style={styles.sectionLabel}>ІКОНКА</Text>
+              <View style={styles.iconSearchRow}>
+                <Ionicons name="search" size={14} color={GLASS_TEXT_FAINT} />
+                <TextInput
+                  value={iconQuery}
+                  onChangeText={setIconQuery}
+                  placeholder="пошук іконки"
+                  placeholderTextColor={GLASS_TEXT_FAINT}
+                  style={styles.iconSearchInput}
+                />
+              </View>
+              <ScrollView style={styles.iconGridScroll} keyboardShouldPersistTaps="handled">
+                <View style={styles.iconGrid}>
+                  {filteredIcons.map((name) => (
+                    <Pressable
+                      key={name}
+                      style={[styles.iconCell, selectedIcon === name && { backgroundColor: selectedColor }]}
+                      onPress={() => setSelectedIcon(name)}
+                    >
+                      <Ionicons
+                        name={name as keyof typeof Ionicons.glyphMap}
+                        size={18}
+                        color={selectedIcon === name ? '#fff' : GLASS_TEXT_MUTED}
+                      />
+                    </Pressable>
+                  ))}
+                </View>
+              </ScrollView>
+
+              <Text style={styles.sectionLabel}>ТИП</Text>
+              <View style={styles.typeRow}>
+                <View style={styles.typeChip}>
+                  <Text style={styles.typeChipLabel}>{kindLabel(kind)}</Text>
+                </View>
+                <Text style={styles.typeHint}>- звідки створюєш</Text>
+              </View>
+            </>
+          )}
+        </View>
+      </View>
+
+      <RenamePrompt
+        visible={renamingTag !== null}
+        title="Назва тега"
+        initialValue={renamingTag?.path ?? ''}
+        onCancel={() => setRenamingTag(null)}
+        onSave={(value) => {
+          if (renamingTag) onRenameTag(renamingTag, value);
+          setRenamingTag(null);
+        }}
+      />
+    </GlassLayer>
+  );
+}
+
+const styles = StyleSheet.create({
+  backdrop: {
+    ...SHEET_BACKDROP,
+  },
+  sheet: {
+    backgroundColor: GLASS_BODY_BLURRED,
+    ...SHEET_WINDOW,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 28,
+    maxHeight: '80%',
+  },
+  handle: {
+    width: 36,
+    height: 4,
+    backgroundColor: GLASS_LINE,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: '700',
+    fontFamily: FONT_BOLD,
+    color: GLASS_TEXT,
+    marginBottom: 10,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: GLASS_LINE,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT,
+  },
+  list: {
+    marginTop: 8,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  rowTap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 8,
+  },
+  rowIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  rowLabel: {
+    fontSize: 15,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT,
+  },
+  rowMeta: {
+    fontSize: 11,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT_FAINT,
+    marginTop: 1,
+  },
+  checkFilled: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: ACCENT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkEmpty: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: GLASS_TEXT_FAINT,
+  },
+  pencilButton: {
+    padding: 8,
+  },
+  createRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: GLASS_LINE,
+    marginTop: 4,
+  },
+  createLabel: {
+    fontSize: 15,
+    color: ACCENT,
+    fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
+  },
+  createHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  createHeaderCancel: {
+    fontSize: 15,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT_MUTED,
+  },
+  createHeaderTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    fontFamily: FONT_BOLD,
+    color: GLASS_TEXT,
+  },
+  createHeaderSave: {
+    fontSize: 15,
+    fontWeight: '700',
+    fontFamily: FONT_BOLD,
+    color: ACCENT,
+  },
+  createPreviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 16,
+  },
+  createPreviewIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createPreviewPath: {
+    flex: 1,
+    fontSize: 17,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT,
+    borderBottomWidth: 1.5,
+    borderBottomColor: GLASS_LINE,
+    paddingBottom: 8,
+  },
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT_MUTED,
+    marginBottom: 8,
+  },
+  colorRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  colorSwatch: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+  },
+  colorSwatchSelected: {
+    borderWidth: 2,
+    borderColor: GLASS_TEXT,
+  },
+  iconSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: GLASS_LINE,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+  iconSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT,
+  },
+  iconGridScroll: {
+    maxHeight: 180,
+    marginBottom: 12,
+  },
+  iconGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  iconCell: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  typeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  typeChip: {
+    borderRadius: 16,
+    backgroundColor: '#EFF6FF',
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+  },
+  typeChipLabel: {
+    fontSize: 13,
+    color: ACCENT,
+    fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
+  },
+  typeHint: {
+    fontSize: 12,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT_FAINT,
+  },
+});

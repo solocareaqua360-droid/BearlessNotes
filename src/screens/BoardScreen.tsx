@@ -1,0 +1,3406 @@
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+// gesture-handler's ScrollView for the outline: it lives over a canvas
+// that claims pans of its own, and the core RN one loses the drag to it.
+import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
+import Animated, {
+  makeMutable,
+  runOnJS,
+  SharedValue,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
+import Svg, { Path } from 'react-native-svg';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
+import * as DocumentPicker from 'expo-document-picker';
+import * as LegacyFileSystem from 'expo-file-system/legacy';
+import * as ImagePicker from 'expo-image-picker';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocFromCache,
+  onSnapshot,
+  updateDoc,
+} from '../firestore';
+import { addDoc, setDoc } from '../utils/owned';
+import { applyLiveRecord, recordIdFor, useLiveRecords } from '../hooks/useLiveRecords';
+import * as Clipboard from 'expo-clipboard';
+import { copyObject, labelForBlock } from '../utils/objectClipboard';
+import { db } from '../firebase';
+import { BoardsStackParamList, RootStackParamList } from '../navigation';
+import { Block, BoardCard, BoardColumn, BoardConnection } from '../types';
+import CustomRowBlockCard from '../components/CustomRowBlockCard';
+import { hapticDrop, hapticPickUp, hapticSuccess } from '../utils/haptics';
+import {
+  APPROX_CARD_HEIGHT,
+  COLUMN_CARD_GAP,
+  COLUMN_HEADER_HEIGHT,
+  COLUMN_MIN_HEIGHT,
+  COLUMN_PADDING,
+  widthInColumn,
+  clampCardWidth,
+  cardImageHeight,
+  COLUMN_SPACING,
+  COLUMN_WIDTH,
+  DEFAULT_CARD_WIDTH,
+  WORLD_CENTER,
+  WORLD_SIZE,
+} from '../utils/boardLayout';
+import AddExistingItemModal from '../components/AddExistingItemModal';
+import RenamePrompt from '../components/RenamePrompt';
+import VideoPlayerModal from '../components/VideoPlayerModal';
+import { getVideoEmbedInfo } from '../utils/videoEmbed';
+import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
+import { linkDocId } from '../utils/linkId';
+import { blockFromFile, blockFromLink, blockFromPhoto } from '../utils/copyToNote';
+import { backupFileToDrive } from '../utils/googleDrive';
+import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
+import { contentEqual } from '../utils/contentEqual';
+import { keyedAll, keyedDiff, readBoardPart } from '../utils/boardStorage';
+import GroupImportSheet from '../components/GroupImportSheet';
+import { useGroupItems } from '../hooks/useGroupItems';
+import { importGroupToBoard } from '../utils/importGroupToBoard';
+import { Group } from '../types';
+import DocumentEditorScreen from './DocumentEditorScreen';
+import { useRail } from '../hooks/useRail';
+import { useCanvasWheel } from '../hooks/useCanvasWheel';
+import { useAttachmentSource } from '../hooks/useAttachmentSource';
+import { useContextMenu } from '../hooks/useContextMenu';
+import Menu from '../components/surfaces/Menu';
+import { FONT_BOLD, FONT_EXTRABOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { GLASS_ISLAND, GLASS_TEXT_FAINT, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+import { BlurView } from 'expo-blur';
+import { useIsFocused } from '@react-navigation/native';
+import { GlassPortal } from '../components/GlassPortal';
+import { useBlurTarget } from '../components/GlassTarget';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
+import { ask, confirm } from '../components/surfaces/Ask';
+
+const AUTOSAVE_DELAY_MS = 600;
+const MIN_SCALE = 0.4;
+const MAX_SCALE = 3;
+// A large fixed virtual canvas rather than an unbounded one - card x/y are
+// plain offsets from this world's own top-left, and the world container
+// itself starts centered on screen (see canvasSurface/world styles), so
+// WORLD_CENTER is where a freshly created card lands by default.
+const STICKY_COLORS = ['#FEF3C7', '#DBEAFE', '#DCFCE7', '#FCE7F3', '#EDE9FE', '#FFE4E6'];
+// Cards don't carry their own rendered height (only width) - close enough
+// for hit-testing the marquee-selection rectangle against, not meant to be
+// pixel-exact.
+const SELECTION_COLOR = '#2563EB';
+// Kanban columns. A column is exactly wide enough for a default card plus
+// its own padding on both sides, so a card dropped in sits flush.
+// A column with nothing in it still has to be a visible drop target.
+// How far outside a column's own bounds a dropped card still gets pulled
+// into it. Generous on purpose - dropping a card "at" a column shouldn't
+// require landing inside its box.
+// The boards section's own colour, the same one BoardsListScreen uses - it
+// was written into the "+" button's style as a number, which is how a
+// screen ends up with a colour nothing else knows about.
+const ACCENT = '#8B5CF6';
+// The same half-strength tint the documents screen's add button uses.
+const ACCENT_GLASS = 'rgba(139,92,246,0.55)';
+// Raised from 90: a card was coming loose from its column on the
+// slightest drag, which is the wrong default - a card in a column is
+// almost always meant to stay in it, and pulling one out deliberately is
+// the rarer move.
+// How far outside a column still counts as dropping into it. Generous
+// enough to forgive an imprecise finger, small enough that a card meant
+// for open canvas beside a column is not swallowed by it - 220 was the
+// second of those and not the first.
+const COLUMN_SNAP_MARGIN = 90;
+const CONNECTION_COLOR = '#8B5CF6';
+// Padding around a connection's own bounding box, so the curve's bulge and
+// the stroke width itself aren't clipped by the little Svg canvas each
+// connection is drawn into.
+const CONNECTION_PADDING = 24;
+
+const documentsCollection = collection(db, 'documents');
+
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+// Same resize-then-compress every other image-picking flow in this app
+// already goes through (PhotosScreen's own "+", StickerComposer) -
+// duplicated rather than shared, per this app's established convention for
+// small single-purpose helpers.
+async function compressPickedImage(uri: string, width: number, height: number): Promise<string> {
+  const MAX_DIMENSION = 1600;
+  try {
+    const longest = Math.max(width, height);
+    let context = ImageManipulator.manipulate(uri);
+    if (longest > MAX_DIMENSION) {
+      const scale = MAX_DIMENSION / longest;
+      context = context.resize({ width: Math.round(width * scale), height: Math.round(height * scale) });
+    }
+    const rendered = await context.renderAsync();
+    const saved = await rendered.saveAsync({ compress: 0.7, format: SaveFormat.JPEG });
+    return saved.uri;
+  } catch {
+    return uri;
+  }
+}
+
+function newTextCard(index: number): BoardCard {
+  const jitter = (index % 6) * 24;
+  return {
+    id: generateId(),
+    text: '',
+    type: 'paragraph',
+    createdAt: Date.now(),
+    x: WORLD_CENTER - DEFAULT_CARD_WIDTH / 2 + jitter,
+    y: WORLD_CENTER - 60 + jitter,
+    width: DEFAULT_CARD_WIDTH,
+    color: STICKY_COLORS[index % STICKY_COLORS.length],
+  };
+}
+
+function cardFromExistingBlock(block: Block, index: number): BoardCard {
+  const jitter = (index % 6) * 24;
+  return {
+    ...block,
+    x: WORLD_CENTER - DEFAULT_CARD_WIDTH / 2 + jitter,
+    y: WORLD_CENTER - 60 + jitter,
+    width: DEFAULT_CARD_WIDTH,
+  };
+}
+
+// A document card always gets a fresh id, unlike file/photo cards which
+// reuse the referenced record's own id - there's no Drive-dedup or
+// usedInDocuments concern for a document reference (it's just a documentId
+// pointer), so nothing stops the same document from being pinned to the
+// board more than once.
+function newDocumentCard(
+  document: { id: string; title: string },
+  preview: { text?: string; imageUri?: string },
+  index: number
+): BoardCard {
+  const jitter = (index % 6) * 24;
+  const card: BoardCard = {
+    id: generateId(),
+    text: '',
+    type: 'document',
+    createdAt: Date.now(),
+    documentId: document.id,
+    documentTitle: document.title,
+    x: WORLD_CENTER - DEFAULT_CARD_WIDTH / 2 + jitter,
+    y: WORLD_CENTER - 60 + jitter,
+    width: DEFAULT_CARD_WIDTH,
+  };
+  if (preview.text) card.documentPreviewText = preview.text;
+  if (preview.imageUri) card.documentPreviewImageUri = preview.imageUri;
+  return card;
+}
+
+function fileIconFor(name: string): 'document-text-outline' | 'document-outline' {
+  return name.toLowerCase().endsWith('.pdf') ? 'document-text-outline' : 'document-outline';
+}
+
+// A plain-text peek at a document's blocks, cached onto the card at
+// add-time - not a real rendering of the editor's block types, just enough
+// to tell what's in there before deciding to open it for real. Text-bearing
+// block types show their text as-is; everything else gets a short
+// bracketed tag rather than being silently dropped, so an image/file/link-
+// heavy document doesn't preview as an empty page.
+function blocksToPreviewText(blocks: Block[]): string {
+  const TEXT_TYPES = new Set(['paragraph', 'bulleted', 'numbered', 'checkbox', undefined]);
+  return blocks
+    .map((b) => {
+      const type = b.type;
+      if (TEXT_TYPES.has(type) && b.text.trim()) return b.text;
+      if (type === 'image') return `[Зображення${b.imageTitle ? ': ' + b.imageTitle : ''}]`;
+      if (type === 'file') return `[Файл: ${b.fileTitle || b.fileName || ''}]`;
+      if (type === 'link') return `[Посилання: ${b.linkTitle || b.linkSiteName || ''}]`;
+      if (type === 'sketch') return '[Малюнок]';
+      if (type === 'table') return '[Таблиця]';
+      return null;
+    })
+    .filter((line): line is string => !!line)
+    .join('\n');
+}
+
+function firstImageUri(blocks: Block[]): string | undefined {
+  return blocks.find((b) => b.type === 'image' && b.imageUri)?.imageUri;
+}
+
+// A card's real rendered height, reported by its own onLayout (see
+// DraggableCard's onMeasure). Falls back to the rough constant only for a
+// card that hasn't been laid out yet - stacking a column by the constant
+// is what made tall cards overflow their column and overlap each other.
+function heightOf(card: BoardCard, heights: Map<string, number>): number {
+  return heights.get(card.id) ?? APPROX_CARD_HEIGHT;
+}
+
+// A column's cards, top to bottom in their current vertical order - which
+// is what makes dropping a card above another genuinely reorder them.
+function columnMembers(cards: BoardCard[], columnId: string): BoardCard[] {
+  // By index where there is one, and by drawn position where there is
+  // not - a board written before cards carried an index still opens in
+  // the order it was left in, and gains one the first time it is touched.
+  return cards
+    .filter((c) => c.columnId === columnId)
+    .sort((a, b) => (a.order != null && b.order != null ? a.order - b.order : a.y - b.y));
+}
+
+function columnHeight(members: BoardCard[], heights: Map<string, number>): number {
+  const filled = members.reduce((sum, card) => sum + heightOf(card, heights) + COLUMN_CARD_GAP, 0);
+  return Math.max(COLUMN_MIN_HEIGHT, COLUMN_HEADER_HEIGHT + filled + COLUMN_PADDING);
+}
+
+// What a card looks like when it is compared with what was written down,
+// and when it is written. A card in a COLUMN keeps the position it was
+// last stored with: where it is actually drawn depends on heights this
+// device measured for itself, and sending those makes two screens argue
+// forever. A card that has just changed column is the exception - it has
+// to carry its new place, or it stays written down in the old column.
+function asStored(cards: BoardCard[], saved: BoardCard[]): BoardCard[] {
+  const savedById = new Map(saved.map((card) => [card.id, card]));
+  return cards.map((card) => {
+    if (!card.columnId) return card;
+    const previous = savedById.get(card.id);
+    if (!previous || previous.columnId !== card.columnId) return card;
+    return { ...card, x: previous.x, y: previous.y };
+  });
+}
+
+// The column a card dropped at this point belongs to: the nearest one
+// whose box the point is inside or within COLUMN_SNAP_MARGIN of. Nearest
+// rather than first-match because with a margin that generous, two
+// neighbouring columns' catch areas overlap.
+function columnAtPoint(
+  columns: BoardColumn[],
+  cards: BoardCard[],
+  heights: Map<string, number>,
+  x: number,
+  y: number,
+  // The column this card is currently IN, if any. It gets no catch area
+  // at all - the card has to be over its rectangle to stay, and is free
+  // the moment it is outside. Every OTHER column keeps the margin.
+  //
+  // That asymmetry is the whole mechanism, and two attempts got it
+  // backwards. A halo around the card's own column is a halo it has to
+  // escape before it can go anywhere, so the bigger the magnet, the more
+  // firmly a card is held by the place it is trying to leave. Catching
+  // should be generous; holding on should not.
+  homeColumnId?: string
+): BoardColumn | undefined {
+  let best: BoardColumn | undefined;
+  let bestDistance = COLUMN_SNAP_MARGIN;
+  for (const column of columns) {
+    const margin = column.id === homeColumnId ? 0 : COLUMN_SNAP_MARGIN;
+    const height = columnHeight(columnMembers(cards, column.id), heights);
+    // Distance from the point to the column's rectangle - zero anywhere
+    // inside it, so a card actually dropped in always wins.
+    const dx = Math.max(column.x - x, 0, x - (column.x + COLUMN_WIDTH));
+    const dy = Math.max(column.y - y, 0, y - (column.y + height));
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    if (distance > margin) continue;
+    if (distance <= bestDistance) {
+      bestDistance = distance;
+      best = column;
+    }
+  }
+  return best;
+}
+
+// A card in a column doesn't own its own position - the column stacks its
+// members top to bottom, each below the real height of the one above it.
+// Cards outside every column are left exactly where they were put.
+//
+// Returns the ORIGINAL array when nothing actually moved: this runs from
+// onLayout, and a fresh array every time would re-render and re-save the
+// board on every measurement.
+function reflowColumns(
+  cards: BoardCard[],
+  columns: BoardColumn[],
+  heights: Map<string, number>
+): BoardCard[] {
+  const columnIds = new Set(columns.map((c) => c.id));
+  const slots = new Map<string, { x: number; y: number; order: number }>();
+  for (const column of columns) {
+    const members = columnMembers(cards, column.id);
+    // Only a column NOTHING in which has been measured yet is left alone -
+    // that is the board opening, where the saved positions are already
+    // right and laying out against the fallback constant would visibly
+    // yank every card for one frame. Once anything in the column has a
+    // real height, a card that has not reported yet is placed against the
+    // approximate one instead of stopping the whole column: a card just
+    // dropped in would otherwise sit exactly where it fell, which is the
+    // one moment it must not.
+    if (members.length > 0 && members.every((card) => !heights.has(card.id))) continue;
+    let y = column.y + COLUMN_HEADER_HEIGHT;
+    members.forEach((card, index) => {
+      slots.set(card.id, { x: column.x + COLUMN_PADDING, y, order: index });
+      y += heightOf(card, heights) + COLUMN_CARD_GAP;
+    });
+  }
+  let changed = false;
+  const next = cards.map((card) => {
+    const slot = slots.get(card.id);
+    if (slot) {
+      if (card.x === slot.x && card.y === slot.y && card.order === slot.order) return card;
+      changed = true;
+      return { ...card, ...slot };
+    }
+    // Pointing at a column that's since been deleted releases the card. The
+    // key is dropped rather than set to undefined - Firestore rejects an
+    // undefined field value outright.
+    if (card.columnId && !columnIds.has(card.columnId)) {
+      changed = true;
+      return releaseFromColumn(card);
+    }
+    return card;
+  });
+  return changed ? next : cards;
+}
+
+function releaseFromColumn(card: BoardCard): BoardCard {
+  const { columnId: _columnId, ...rest } = card;
+  return rest;
+}
+
+// Where a connection meets each of its two cards: the middle of whichever
+// vertical side faces the other card, so the line never has to cross back
+// over a card to reach it. Recomputed on every render rather than stored,
+// which is what lets dragging a card past its partner flip the routing.
+function connectionEndpoints(from: BoardCard, to: BoardCard, heights: Map<string, number>) {
+  const fromCenterX = from.x + from.width / 2;
+  const toCenterX = to.x + to.width / 2;
+  const fromIsLeft = fromCenterX <= toCenterX;
+  return {
+    x1: fromIsLeft ? from.x + from.width : from.x,
+    // The measured height, matching what LiveConnectionLine uses - taking
+    // the rough constant here instead would make the line jump vertically
+    // the moment a drag ended on any card that isn't exactly that tall.
+    y1: from.y + heightOf(from, heights) / 2,
+    x2: fromIsLeft ? to.x : to.x + to.width,
+    y2: to.y + heightOf(to, heights) / 2,
+  };
+}
+
+// A mindmap S-curve: control points pushed straight out sideways from each
+// end, so the line leaves and arrives horizontally regardless of the
+// vertical distance between the two cards.
+function curvePath(x1: number, y1: number, x2: number, y2: number): string {
+  const bend = Math.max(30, Math.abs(x2 - x1) / 2);
+  const direction = x2 >= x1 ? 1 : -1;
+  return `M ${x1} ${y1} C ${x1 + bend * direction} ${y1} ${x2 - bend * direction} ${y2} ${x2} ${y2}`;
+}
+
+// The straight rubber band a connect-drag trails behind the finger, drawn
+// as one rotated View rather than an Svg: it has to follow the finger on
+// the UI thread, and an Svg big enough to cover anywhere the finger might
+// go is the whole 6000px world. A plain View takes a transform just as
+// well and costs nothing when idle.
+function ConnectDraftLine({
+  startX,
+  startY,
+  endX,
+  endY,
+  visible,
+}: {
+  startX: SharedValue<number>;
+  startY: SharedValue<number>;
+  endX: SharedValue<number>;
+  endY: SharedValue<number>;
+  visible: SharedValue<boolean>;
+}) {
+  const animatedStyle = useAnimatedStyle(() => {
+    const dx = endX.value - startX.value;
+    const dy = endY.value - startY.value;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    return {
+      opacity: visible.value ? 1 : 0,
+      width: length,
+      // Positioned by its midpoint, then rotated about its own centre -
+      // which after that translation is exactly the line's midpoint.
+      transform: [
+        { translateX: (startX.value + endX.value) / 2 - length / 2 },
+        { translateY: (startY.value + endY.value) / 2 - 1 },
+        { rotateZ: `${Math.atan2(dy, dx)}rad` },
+      ],
+    };
+  });
+  return <Animated.View style={[styles.connectDraft, animatedStyle]} pointerEvents="none" />;
+}
+
+// One endpoint of a live connection: a card's position shared value plus
+// whichever shared drag offsets currently apply to it, so the line tracks
+// a card being dragged on its own, as part of a selection, or inside a
+// column being moved.
+type LiveEndpoint = {
+  posX: SharedValue<number>;
+  posY: SharedValue<number>;
+  offsetX: SharedValue<number> | null;
+  offsetY: SharedValue<number> | null;
+  columnOffsetX: SharedValue<number> | null;
+  columnOffsetY: SharedValue<number> | null;
+  width: number;
+  height: number;
+};
+
+// The version of a connection drawn while either of its cards is moving.
+// Deliberately a straight rotated View rather than the resting state's
+// Svg curve: the curve's canvas would have to be resized every frame to
+// keep up with the endpoints, and a fixed one big enough for any drag
+// distance runs into Android's own view-size limits. A straight line
+// needs nothing but a transform, and the curve comes back the moment the
+// card is dropped.
+function LiveConnectionLine({ from, to }: { from: LiveEndpoint; to: LiveEndpoint }) {
+  const animatedStyle = useAnimatedStyle(() => {
+    const fromX = from.posX.value + (from.offsetX?.value ?? 0) + (from.columnOffsetX?.value ?? 0);
+    const fromY = from.posY.value + (from.offsetY?.value ?? 0) + (from.columnOffsetY?.value ?? 0);
+    const toX = to.posX.value + (to.offsetX?.value ?? 0) + (to.columnOffsetX?.value ?? 0);
+    const toY = to.posY.value + (to.offsetY?.value ?? 0) + (to.columnOffsetY?.value ?? 0);
+
+    // Same "leave from the side that faces the other card" rule the
+    // resting curve uses, so the line doesn't jump sides on release.
+    const fromIsLeft = fromX + from.width / 2 <= toX + to.width / 2;
+    const x1 = fromIsLeft ? fromX + from.width : fromX;
+    const y1 = fromY + from.height / 2;
+    const x2 = fromIsLeft ? toX : toX + to.width;
+    const y2 = toY + to.height / 2;
+
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    return {
+      width: length,
+      transform: [
+        { translateX: (x1 + x2) / 2 - length / 2 },
+        { translateY: (y1 + y2) / 2 - 1 },
+        { rotateZ: `${Math.atan2(dy, dx)}rad` },
+      ],
+    };
+  });
+  return <Animated.View style={[styles.connectDraft, animatedStyle]} pointerEvents="none" />;
+}
+
+// A kanban lane, dragged by its own header. Same position architecture as
+// DraggableCard (the view's left/top pinned at 0, everything on an animated
+// transform), and the same shared-offset trick group drags use: this
+// column writes columnOffsetX/Y, and every card inside it reads the same
+// values, so the lane and its contents move together in one paint.
+function DraggableColumn({
+  column,
+  memberCount,
+  height,
+  isDragging,
+  isCatching,
+  canvasScale,
+  canvasPanGesture,
+  columnOffsetX,
+  columnOffsetY,
+  onDragStart,
+  onDragEnd,
+  onRename,
+  onDelete,
+}: {
+  column: BoardColumn;
+  memberCount: number;
+  height: number;
+  isDragging: boolean;
+  // A card is being carried over this column right now: it lights up to
+  // say it will catch, rather than the drop being a surprise.
+  isCatching: boolean;
+  canvasScale: SharedValue<number>;
+  canvasPanGesture: ReturnType<typeof Gesture.Pan>;
+  columnOffsetX: SharedValue<number>;
+  columnOffsetY: SharedValue<number>;
+  onDragStart: (id: string) => void;
+  onDragEnd: (id: string, dx: number, dy: number) => void;
+  onRename: (column: BoardColumn) => void;
+  onDelete: (column: BoardColumn) => void;
+}) {
+  const posX = useSharedValue(column.x);
+  const posY = useSharedValue(column.y);
+  const reportedX = useSharedValue(column.x);
+  const reportedY = useSharedValue(column.y);
+
+  useLayoutEffect(() => {
+    if (column.x === reportedX.value && column.y === reportedY.value) return;
+    reportedX.value = column.x;
+    reportedY.value = column.y;
+    posX.value = column.x;
+    posY.value = column.y;
+    columnOffsetX.value = 0;
+    columnOffsetY.value = 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [column.x, column.y]);
+
+  const panGesture = Gesture.Pan()
+    .blocksExternalGesture(canvasPanGesture)
+    .onStart(() => {
+      runOnJS(onDragStart)(column.id);
+    })
+    .onChange((e) => {
+      columnOffsetX.value += e.changeX / canvasScale.value;
+      columnOffsetY.value += e.changeY / canvasScale.value;
+    })
+    .onEnd(() => {
+      runOnJS(onDragEnd)(column.id, columnOffsetX.value, columnOffsetY.value);
+    });
+
+  const tapGesture = Gesture.Tap().onEnd(() => {
+    runOnJS(onRename)(column);
+  });
+
+  const longPressGesture = Gesture.LongPress()
+    .minDuration(500)
+    .onStart(() => {
+      runOnJS(onDelete)(column);
+    });
+
+  const headerGesture = Gesture.Race(panGesture, tapGesture, longPressGesture);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: posX.value + (isDragging ? columnOffsetX.value : 0) },
+      { translateY: posY.value + (isDragging ? columnOffsetY.value : 0) },
+    ],
+  }));
+
+  return (
+    // box-none so only the header takes touches - the rest of the lane
+    // stays transparent to the canvas's own pan, and the cards sitting on
+    // top of it keep their own drags.
+    <Animated.View
+      style={[styles.column, isCatching && styles.columnCatching, { height }, animatedStyle]}
+      pointerEvents="box-none"
+    >
+      <GestureDetector gesture={headerGesture}>
+        <View style={styles.columnHeader}>
+          <View style={styles.columnTitleWrap}>
+            <Text style={styles.columnTitle} numberOfLines={1}>
+              {column.title}
+            </Text>
+          </View>
+          <Text style={styles.columnCount}>{memberCount}</Text>
+        </View>
+      </GestureDetector>
+    </Animated.View>
+  );
+}
+
+type DraggableCardProps = {
+  card: BoardCard;
+  // This card's live world position. Owned by BoardScreen (see
+  // cardPositions) rather than created here, so the connection lines can
+  // read it while a drag is in flight - the card itself still treats it
+  // exactly as it did when it was local state.
+  posX: SharedValue<number>;
+  posY: SharedValue<number>;
+  canvasScale: SharedValue<number>;
+  canvasPanGesture: ReturnType<typeof Gesture.Pan>;
+  isDragging: boolean;
+  isSelected: boolean;
+  // True while this card is being dragged AND it's part of a multi-card
+  // selection - in that case the drag moves the whole selection together
+  // (via the shared groupOffsetX/Y) instead of just this one card.
+  isGroupDrag: boolean;
+  groupOffsetX: SharedValue<number>;
+  groupOffsetY: SharedValue<number>;
+  // True while the column this card sits in is itself being dragged - the
+  // card then rides the column's own live offset, so the lane and its
+  // contents move as one piece instead of the cards catching up on drop.
+  followsColumnDrag: boolean;
+  columnOffsetX: SharedValue<number>;
+  columnOffsetY: SharedValue<number>;
+  // False while the canvas is in 'connect' mode: a drag starting on a card
+  // has to reach the canvas's own connect gesture to draw a link, and this
+  // card's Pan would otherwise win that touch (it blocksExternalGesture)
+  // and just move the card instead.
+  dragEnabled: boolean;
+  // Reports this card's real rendered height, which is what a column
+  // stacks by. Layout is measured before the canvas's own scale transform
+  // is applied, so this is already in world units.
+  onMeasure: (id: string, height: number) => void;
+  onDragStart: (id: string) => void;
+  onDragEnd: (id: string, x: number, y: number) => void;
+  // Where this card is, mid-drag, every few points of travel - what tells
+  // the board which column would catch it right now.
+  onHover: (id: string, x: number, y: number) => void;
+  onGroupDragEnd: (dx: number, dy: number) => void;
+  onTap: (card: BoardCard) => void;
+  onLongPress: (card: BoardCard) => void;
+  onResize: (id: string, width: number) => void;
+  // The canvas's own "hold to reach for the marquee". A card's hold has
+  // to beat it - see the card's longPressGesture.
+  canvasHoldGesture: ReturnType<typeof Gesture.LongPress>;
+};
+
+// One card's own drag.
+//
+// The position lives in `posX`/`posY` shared values and NOWHERE else - the
+// view's `left`/`top` stay pinned at 0 forever and the whole world offset
+// rides on the animated transform. That's the load-bearing decision here,
+// arrived at after two failed attempts at the "jitter on release" bug:
+// splitting a card's position across a layout prop (`left`/`top`, which
+// travels JS render -> shadow tree -> native commit) AND an animated
+// transform (which Reanimated writes straight to the view on the UI thread)
+// means the two halves land in different frames. Every "swap the offset
+// into the base position" scheme therefore had a 1-2 frame window showing
+// either base+offset+offset (a jump of exactly the drag distance) or
+// base+0 (a snap back to where the drag started) - which is precisely what
+// the jitter was. One value, one pipeline, no swap, no window.
+//
+// React state is then only a persistence concern: `onDragEnd` reports the
+// final position up so it reaches Firestore, and the `card.x`/`card.y`
+// props coming back down are deliberately ignored unless they differ from
+// what this card last reported (i.e. a genuinely external change), so a
+// re-render can never fight the gesture.
+//
+// `canvasScale` is read inside the worklet so a drag still tracks the
+// finger 1:1 while the canvas is pinch-zoomed. A Tap is raced against the
+// Pan so a quick tap (edit a sticky's text) and a real drag never fight.
+function DraggableCard({
+  card,
+  posX,
+  posY,
+  canvasScale,
+  canvasPanGesture,
+  isDragging,
+  isSelected,
+  isGroupDrag,
+  groupOffsetX,
+  groupOffsetY,
+  followsColumnDrag,
+  columnOffsetX,
+  columnOffsetY,
+  dragEnabled,
+  onMeasure,
+  onDragStart,
+  onDragEnd,
+  onHover,
+  onGroupDragEnd,
+  onTap,
+  onLongPress,
+  onResize,
+  canvasHoldGesture,
+}: DraggableCardProps) {
+  // The last position this card itself put into the parent's state. Used
+  // only to tell "our own drag echoing back" (ignore) apart from a real
+  // external move (adopt).
+  // An image card whose local file is not here - a card made on another
+  // device, or one whose bytes the ninety-day sweep took - fetches it
+  // back from Drive. The board was the one place that never did: it put
+  // pictures ON the Drive and never asked for them back.
+  const { status: imageStatus, source: imageSource } = useAttachmentSource(
+    (card.type ?? 'paragraph') === 'image' ? card.imageUri : undefined,
+    card.driveFileId,
+    false
+  );
+
+  const reportedX = useSharedValue(card.x);
+  const reportedY = useSharedValue(card.y);
+
+  useLayoutEffect(() => {
+    if (card.x === reportedX.value && card.y === reportedY.value) return;
+    reportedX.value = card.x;
+    reportedY.value = card.y;
+    posX.value = card.x;
+    posY.value = card.y;
+    // A group drag this card took part in (as a non-dragged, merely
+    // selected sibling) only ever moves it via groupOffsetX/Y, never posX/
+    // posY directly - reset that shared offset back to 0 in the same
+    // layout effect that adopts the new base position, so the two changes
+    // land in the same paint. Redundant (and harmless) for a plain solo
+    // drag, where the offset was never touched to begin with.
+    groupOffsetX.value = 0;
+    groupOffsetY.value = 0;
+    // Same for a column drag this card rode along on - the committed
+    // position already includes that offset, so it has to go back to zero
+    // in the very paint that adopts it.
+    columnOffsetX.value = 0;
+    columnOffsetY.value = 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card.x, card.y]);
+
+  // blocksExternalGesture: RNGH's Gesture API treats gestures in separate
+  // (even nested) GestureDetectors as fully independent, so without this
+  // the canvas's own Pan (see BoardScreen) also recognizes movement on the
+  // very same touch that is dragging a card, and both move at once. An
+  // expanded document card drags exactly like a collapsed one - only the
+  // tap-to-edit interaction differs (see the selection bar's "Редагувати"
+  // button in BoardScreen, reached via long-press) now that there's no
+  // in-card button whose own gesture needed to win against this one.
+  const hoverReportedX = useSharedValue(0);
+  const hoverReportedY = useSharedValue(0);
+  // The width the corner grip is asking for, while it is held. Kept in
+  // the card rather than in the board's state so a resize re-renders one
+  // card per frame instead of every card on the canvas.
+  const [liveWidth, setLiveWidth] = useState<number | null>(null);
+  const resizeBase = useRef(0);
+  const panGesture = Gesture.Pan()
+    .enabled(dragEnabled)
+    .blocksExternalGesture(canvasPanGesture)
+    .onStart(() => {
+      runOnJS(onDragStart)(card.id);
+    })
+    // onChange (per-event delta) rather than onUpdate (cumulative
+    // translation) - the position accumulates in place, so there's no
+    // separate "drag start" baseline to capture or reconcile afterwards.
+    .onChange((e) => {
+      if (isGroupDrag) {
+        groupOffsetX.value += e.changeX / canvasScale.value;
+        groupOffsetY.value += e.changeY / canvasScale.value;
+      } else {
+        posX.value += e.changeX / canvasScale.value;
+        posY.value += e.changeY / canvasScale.value;
+        // Told to JS only every few points of travel: it is the answer to
+        // "which column would catch this", and asking that on every frame
+        // of a drag costs far more than it is worth.
+        if (
+          Math.abs(posX.value - hoverReportedX.value) > 8 ||
+          Math.abs(posY.value - hoverReportedY.value) > 8
+        ) {
+          hoverReportedX.value = posX.value;
+          hoverReportedY.value = posY.value;
+          runOnJS(onHover)(card.id, posX.value, posY.value);
+        }
+      }
+    })
+    .onEnd(() => {
+      if (isGroupDrag) {
+        runOnJS(onGroupDragEnd)(groupOffsetX.value, groupOffsetY.value);
+      } else {
+        reportedX.value = posX.value;
+        reportedY.value = posY.value;
+        runOnJS(onDragEnd)(card.id, posX.value, posY.value);
+      }
+    });
+
+  const tapGesture = Gesture.Tap().onEnd(() => {
+    runOnJS(onTap)(card);
+  });
+
+  // Holding a card picks THAT card - which is what raises the bar of
+  // things to do with it, and the grip on a picture's corner.
+  //
+  // It has to block the canvas's own hold, and it has to be no slower.
+  // The canvas reaches for the marquee after 350ms and the card waited
+  // 500, in a detector of its own that knows nothing about it - so a
+  // hold on a card put the board into marquee mode instead, and the only
+  // way left to pick one card was to draw a box around it.
+  const longPressGesture = Gesture.LongPress()
+    .minDuration(350)
+    // A hand is never perfectly still - the same allowance the canvas's
+    // own hold makes.
+    .maxDistance(10)
+    .blocksExternalGesture(canvasHoldGesture, canvasPanGesture)
+    .onStart(() => {
+      runOnJS(onLongPress)(card);
+    });
+
+  const gesture = Gesture.Race(panGesture, tapGesture, longPressGesture);
+
+  // Two shared offsets can apply on top of this card's own position: the
+  // group-drag one (a selected sibling is being dragged) and the column
+  // one (the column this card sits in is being dragged). Both work the
+  // same way - the thing actually under the finger writes the offset,
+  // everything moving with it reads the same value.
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateX:
+          posX.value +
+          (isSelected ? groupOffsetX.value : 0) +
+          (followsColumnDrag ? columnOffsetX.value : 0),
+      },
+      {
+        translateY:
+          posY.value +
+          (isSelected ? groupOffsetY.value : 0) +
+          (followsColumnDrag ? columnOffsetY.value : 0),
+      },
+    ],
+  }));
+
+  const type = card.type ?? 'paragraph';
+  const cardWidth = liveWidth ?? widthInColumn(card);
+  // A picture is the one thing on this board that is worth making big,
+  // so it is the one thing with a grip. In a column every card takes the
+  // column's width, so there is nothing to drag there.
+  const resizable = type === 'image' && isSelected && !card.columnId;
+  // blocksExternalGesture for the same reason the card's own drag has it:
+  // nested detectors are independent, so without it the card would move
+  // while its corner is being pulled.
+  const resizeGesture = Gesture.Pan()
+    .runOnJS(true)
+    .minDistance(0)
+    .blocksExternalGesture(panGesture, canvasPanGesture)
+    .onBegin(() => {
+      resizeBase.current = widthInColumn(card);
+    })
+    // Divided by the canvas scale so the corner tracks the finger 1:1
+    // however far the board is zoomed - the same rule the drag follows.
+    .onUpdate((e) => setLiveWidth(clampCardWidth(resizeBase.current + e.translationX / canvasScale.value)))
+    .onFinalize((e) => {
+      const next = clampCardWidth(resizeBase.current + e.translationX / canvasScale.value);
+      onResize(card.id, next);
+      setLiveWidth(null);
+    });
+
+  return (
+    <GestureDetector gesture={gesture}>
+      <Animated.View
+        onLayout={(e) => onMeasure(card.id, e.nativeEvent.layout.height)}
+        style={[
+          styles.card,
+          // A card in a column is drawn at the column's width, whatever
+          // its own is - see widthInColumn.
+          { width: cardWidth },
+          // A plain (non-animated) style, not part of useAnimatedStyle -
+          // isDragging only flips twice per drag (start/end), not per
+          // frame, so it doesn't need to live on the UI thread. Elevation
+          // is Android's own stacking mechanism (zIndex alone isn't always
+          // enough there for sibling Views to reorder above one another).
+          isDragging && styles.cardDragging,
+          isSelected && styles.cardSelected,
+          animatedStyle,
+        ]}
+      >
+        {type === 'document' ? (
+          <View style={styles.refCard}>
+            {!card.documentExpanded &&
+              (card.documentPreviewImageUri ? (
+                <Image source={{ uri: card.documentPreviewImageUri }} style={styles.refThumb} resizeMode="cover" resizeMethod="resize" />
+              ) : (
+                <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
+                  <Ionicons name="document-text-outline" size={22} color="#6B7280" />
+                </View>
+              ))}
+            <Text style={styles.refLabel} numberOfLines={card.documentExpanded ? undefined : 2}>
+              {card.documentTitle || 'Без назви'}
+            </Text>
+            {!!card.documentPreviewText && (
+              <Text style={styles.documentPreviewText} numberOfLines={card.documentExpanded ? undefined : 4}>
+                {card.documentPreviewText}
+              </Text>
+            )}
+          </View>
+        ) : type === 'paragraph' ? (
+          <View style={[styles.stickyCard, { backgroundColor: card.color ?? STICKY_COLORS[0] }]}>
+            <Text style={styles.stickyText} numberOfLines={6}>
+              {card.text || 'Порожня картка'}
+            </Text>
+          </View>
+        ) : type === 'image' ? (
+          <View style={styles.refCard}>
+            {imageSource ? (
+              <Image
+                source={{ uri: imageSource }}
+                style={[styles.refThumb, { height: cardImageHeight(cardWidth) }]}
+                resizeMode="cover" resizeMethod="resize"
+              />
+            ) : (
+              <View style={[styles.refThumb, styles.refThumbPlaceholder, { height: cardImageHeight(cardWidth) }]}>
+                {imageStatus === 'restoring' ? (
+                  <ActivityIndicator color="#9CA3AF" />
+                ) : (
+                  <Ionicons name="image-outline" size={22} color="#9CA3AF" />
+                )}
+              </View>
+            )}
+            <Text style={styles.refLabel} numberOfLines={2}>
+              {card.imageTitle || 'Без назви'}
+            </Text>
+          </View>
+        ) : type === 'file' ? (
+          <View style={styles.refCard}>
+            <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
+              <Ionicons name={fileIconFor(card.fileName ?? '')} size={22} color="#6B7280" />
+            </View>
+            <Text style={styles.refLabel} numberOfLines={2}>
+              {card.fileTitle || card.fileName || 'Файл'}
+            </Text>
+          </View>
+        ) : type === 'link' ? (
+          <View style={styles.refCard}>
+            {card.linkImageUrl ? (
+              <Image source={{ uri: card.linkImageUrl }} style={styles.refThumb} resizeMode="cover" resizeMethod="resize" />
+            ) : (
+              <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
+                <Ionicons name="link-outline" size={22} color="#9CA3AF" />
+              </View>
+            )}
+            <Text style={styles.refLabel} numberOfLines={2}>
+              {card.linkTitle || card.linkSiteName || 'Посилання'}
+            </Text>
+          </View>
+        ) : type === 'dbRow' ? (
+          // A row of a user-created database, rendered live from that
+          // database through the same card its own list and its document
+          // block use (see CustomRowBlockCard) - a rename there shows up
+          // here without the board storing anything but the row's id.
+          <View style={styles.dbRowCard} pointerEvents="none">
+            <CustomRowBlockCard
+              databaseId={card.dbRowDatabaseId}
+              rowId={card.id}
+              fallbackTitle={card.dbRowTitle}
+              tags={[]}
+              onOpen={() => {}}
+            />
+          </View>
+        ) : null}
+
+        {resizable && (
+          <GestureDetector gesture={resizeGesture}>
+            <View style={styles.cardGrip}>
+              <Ionicons name="resize-outline" size={13} color="#fff" />
+            </View>
+          </GestureDetector>
+        )}
+      </Animated.View>
+    </GestureDetector>
+  );
+}
+
+type Props = NativeStackScreenProps<BoardsStackParamList, 'Board'>;
+
+// Stage 1 of the "Дошка" feature (see DEVELOPMENT_PLAN.md / PROJECT_BRIEF.md):
+// a pannable/zoomable canvas of cards. A card is deliberately just a `Block`
+// plus x/y/width (see BoardCard in types.ts) - a card referencing an
+// existing file/photo/link comes straight out of AddExistingItemModal
+// unmodified, exactly like inserting one into a document does.
+export default function BoardScreen() {
+  const keyboardHeight = useKeyboardHeight();
+  const boardFocused = useIsFocused();
+  const boardInsets = useSafeAreaInsets();
+  // Typed against BOTH param lists - this screen lives inside the "Дошки"
+  // tab's own nested BoardsStack (goBack to BoardsList) but also reaches
+  // UP into the root stack to open Editor/EditorModal, which React
+  // Navigation's navigate() resolves correctly at runtime by walking up
+  // the navigator tree regardless of which param list a call site is
+  // typed against.
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList & BoardsStackParamList>>();
+  const { params } = useRoute<Props['route']>();
+  const { boardId, openDocumentId } = params;
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const { isTwoPane } = useResponsiveLayout();
+  // A document card opened beside the board instead of over it: the board
+  // keeps panning and scrolling while the document is being written, which
+  // is the whole point of a board full of documents. Full screen is still
+  // a tap away, so nothing that worked before stops working.
+  const [paneDocId, setPaneDocId] = useState<string | null>(null);
+  // One column read as flowing text in the right-hand half. Not a document
+  // and not a copy: it edits the cards themselves, which is why nothing
+  // here is synchronised with anything. Opened by long-pressing a column
+  // header. "Сформувати" from inside it still writes a real document, and
+  // that document is a snapshot from then on.
+  const [paneFullscreen, setPaneFullscreen] = useState(false);
+  // The canvas's own size, which stops being the window's the moment a
+  // document takes half of it. Screen->world maths below reads this, not
+  // the window - the gestures report x/y relative to the canvas surface,
+  // so the two must be the same rectangle.
+  const [viewport, setViewport] = useState({ width: windowWidth, height: windowHeight });
+  // Added on top of the fixed 104 the FAB/selection bar already clear the
+  // floating tab bar by - a device with a tall gesture-nav inset needs more
+  // than that fixed number to keep either from sitting partly behind it.
+  // Same fix as BulkActionBar's own bottom offset.
+  const bottomInset = useSafeAreaInsets().bottom;
+  const rail = useRail();
+  const boardBlurTarget = useBlurTarget();
+
+  const [title, setTitle] = useState('');
+  const [cards, setCards] = useState<BoardCard[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [addSheetVisible, setAddSheetVisible] = useState(false);
+  const [existingItemPickerVisible, setExistingItemPickerVisible] = useState(false);
+  const [editingCard, setEditingCard] = useState<BoardCard | null>(null);
+  const [editingText, setEditingText] = useState('');
+  const [renamingTitle, setRenamingTitle] = useState(false);
+  const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
+  // The column a carried card is currently over - lit while it is, so the
+  // magnet is seen and felt before the finger lifts.
+  const [hoverColumnId, setHoverColumnId] = useState<string | null>(null);
+  const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
+  // 'move' - single-finger drag pans the canvas (the original Stage 1
+  // behaviour). 'select' - single-finger drag instead draws a marquee
+  // rectangle over the world, selecting every card it overlaps, so several
+  // cards can be deleted or dragged as one group.
+  // 'connect' - a single-finger drag from one card to another links them
+  // with a mindmap line instead of panning or selecting.
+  //
+  // It always STARTS as move, on every device. Selecting is something the
+  // hand asks for - by holding on bare canvas, see below - rather than a
+  // state the board sits in from the moment it opens. Defaulting the web
+  // to select worked, but it left the tool lit as though a mode had been
+  // entered that nobody chose.
+  const [canvasTool, setCanvasTool] = useState<'move' | 'select' | 'connect'>('move');
+  const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
+  const [connections, setConnections] = useState<BoardConnection[]>([]);
+  const [columns, setColumns] = useState<BoardColumn[]>([]);
+  // Each card's real rendered height, reported by its own onLayout - what
+  // a column stacks by. State rather than a ref specifically so a height
+  // change re-renders: a column whose single card grew has nothing to
+  // reposition, but its OWN height still has to catch up.
+  const [cardHeights, setCardHeights] = useState<Map<string, number>>(new Map());
+  // The same heights, reachable from a callback that must not be rebuilt
+  // every time one of them is measured - the listener depends on it, and
+  // resubscribing on every measurement would be a lot of churn for
+  // nothing.
+  const cardHeightsRef = useRef(cardHeights);
+  cardHeightsRef.current = cardHeights;
+  const [renamingColumn, setRenamingColumn] = useState<BoardColumn | null>(null);
+  const [draggingColumnId, setDraggingColumnId] = useState<string | null>(null);
+  // Both steps of adding a link live in ONE piece of state so they can
+  // share ONE dialog: asking for the URL, waiting on its preview, then (if
+  // the page had no readable title) asking for a name. Two separate
+  // dialogs meant Android unmounting one modal and mounting another
+  // between the steps, which reads as a flicker. `kind` only picks the
+  // first step's wording - where the link is actually filed comes from the
+  // URL itself (see saveNewLink).
+  const [linkPrompt, setLinkPrompt] = useState<
+    | { step: 'url'; kind: 'other' | 'video' | 'geo'; busy: boolean }
+    | { step: 'title'; url: string; preview: LinkPreview }
+    | null
+  >(null);
+
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const savedTranslateX = useSharedValue(0);
+  const savedTranslateY = useSharedValue(0);
+  // Shared by every selected card (see DraggableCard's isGroupDrag branch) -
+  // whichever selected card is actually being dragged writes into this, and
+  // every OTHER selected card reads the same live value in its own animated
+  // style, which is what makes the whole selection visibly move together.
+  const groupOffsetX = useSharedValue(0);
+  const groupOffsetY = useSharedValue(0);
+  // The same idea one level up: written by the column being dragged, read
+  // by that column AND by every card inside it.
+  const columnOffsetX = useSharedValue(0);
+  const columnOffsetY = useSharedValue(0);
+  // The marquee-selection rectangle, in world coordinates (same space as
+  // card x/y) so it can be rendered inside the same transformed `world`
+  // container the cards live in and compared against their x/y directly -
+  // no screen<->world conversion needed except once, at the very start of
+  // the gesture (see selectGesture below).
+  const marqueeStartX = useSharedValue(0);
+  const marqueeStartY = useSharedValue(0);
+  const marqueeCurrentX = useSharedValue(0);
+  const marqueeCurrentY = useSharedValue(0);
+  const marqueeVisible = useSharedValue(false);
+  // The connect-drag's rubber-band line, in world coordinates like
+  // everything else inside the transformed `world` container.
+  const connectStartX = useSharedValue(0);
+  const connectStartY = useSharedValue(0);
+  const connectEndX = useSharedValue(0);
+  const connectEndY = useSharedValue(0);
+  const connectVisible = useSharedValue(false);
+
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The updatedAt of the last write this device made, and the newest
+  // thing that arrived while hands were busy. Between them they replace
+  // the old rule "drop whatever arrives while saving", which lost the
+  // update for good - see the listener below.
+  const lastWriteAtRef = useRef(0);
+  const pendingRemoteRef = useRef<{ cards: BoardCard[]; columns: BoardColumn[] } | null>(null);
+  // What is believed to be in the document right now. Every save writes
+  // the difference against this, so one moved card is one field - see
+  // utils/boardStorage for why that matters.
+  const savedRef = useRef<{ cards: BoardCard[]; columns: BoardColumn[]; connections: BoardConnection[] }>({
+    cards: [],
+    columns: [],
+    connections: [],
+  });
+  // What shape the DOCUMENT is in, which decides how a save may be
+  // written - and the one thing here that must never be guessed.
+  //
+  // 'array'   - written before cards were keyed. Merging a keyed patch
+  //             into an array replaces it, so such a board is written
+  //             whole once, and is keyed from then on.
+  // 'keyed'   - the normal case: write only what changed.
+  // 'unknown' - the CACHE says array. That is not evidence: the cache can
+  //             be a copy from before another device migrated the board,
+  //             and writing it whole from here would put this device's
+  //             stale memory over everything that has happened since.
+  //             Which is exactly what it did - a card that existed only
+  //             on the other device stopped existing. So nothing is
+  //             written at all until the server says which it is.
+  const shapeRef = useRef<'unknown' | 'array' | 'keyed'>('keyed');
+  // The card a connect-drag started on. A ref, not state, because the
+  // gesture's own worklet closure is captured at creation time - by the
+  // time onEnd fires, a state value set during the same gesture would
+  // still read as whatever it was when the gesture was built. The ref is
+  // read on the JS thread inside finishConnection, where it's current.
+  const connectingFromIdRef = useRef<string | null>(null);
+  // Every card's live world position, keyed by card id. Lifted out of the
+  // cards themselves so a connection line can read both of its endpoints
+  // while they're being dragged - a card's own component can't hand its
+  // position to a sibling. Created with makeMutable rather than
+  // useSharedValue because the set of cards is dynamic and hooks can't be.
+  const cardPositions = useRef<Map<string, { x: SharedValue<number>; y: SharedValue<number> }>>(new Map());
+
+  function positionOf(card: BoardCard) {
+    const existing = cardPositions.current.get(card.id);
+    if (existing) return existing;
+    const created = { x: makeMutable(card.x), y: makeMutable(card.y) };
+    cardPositions.current.set(card.id, created);
+    return created;
+  }
+
+  useEffect(() => {
+    (async () => {
+      const docRef = doc(db, 'boards', boardId);
+      let snapshot;
+      try {
+        snapshot = await getDocFromCache(docRef);
+        if (!snapshot.exists()) throw new Error('not cached');
+      } catch {
+        snapshot = await getDoc(docRef);
+      }
+      const data = snapshot.data();
+      const loadedCards = readBoardPart<BoardCard>(data?.cards);
+      const loadedColumns = readBoardPart<BoardColumn>(data?.columns);
+      const loadedConnections = readBoardPart<BoardConnection>(data?.connections);
+      const looksLikeArray =
+        Array.isArray(data?.cards) || Array.isArray(data?.columns) || Array.isArray(data?.connections);
+      // A keyed copy is trustworthy even from the cache - the change is
+      // one way, and nothing turns a map back into an array. An array is
+      // only believed when the server itself says so.
+      shapeRef.current = !looksLikeArray ? 'keyed' : snapshot.metadata.fromCache ? 'unknown' : 'array';
+      // Nothing is written while the shape is in doubt, so the doubt has
+      // to be settled rather than waited out: only the server can say
+      // whether those arrays are really there. Without this a board read
+      // from the cache stayed unknown for as long as it was open, and
+      // every change made to it was dropped.
+      if (shapeRef.current === 'unknown') {
+        getDoc(docRef)
+          .then((fresh) => {
+            const server = fresh.data();
+            shapeRef.current =
+              Array.isArray(server?.cards) || Array.isArray(server?.columns) || Array.isArray(server?.connections)
+                ? 'array'
+                : 'keyed';
+          })
+          // Offline, and the server cannot be asked. Treated as the old
+          // shape, which writes the board whole - more than is needed,
+          // and never wrong.
+          .catch(() => {
+            shapeRef.current = 'array';
+          });
+      }
+      savedRef.current = { cards: loadedCards, columns: loadedColumns, connections: loadedConnections };
+      setTitle(data?.title ?? 'Без назви');
+      setCards(loadedCards);
+      setConnections(loadedConnections);
+      setColumns(loadedColumns);
+      setIsLoaded(true);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardId]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    const attemptSave = () => {
+      // Cleared as the write goes out: the listener above reads this to
+      // tell "a local change is waiting to be written" from "nothing
+      // pending, so whatever arrives is news".
+      saveTimeoutRef.current = null;
+      // Nothing is written while the shape is in doubt - see shapeRef.
+      // It comes back to ask again rather than giving up, because the
+      // change is real and the only thing missing is the server's word
+      // on how to write it down.
+      if (shapeRef.current === 'unknown') {
+        saveTimeoutRef.current = setTimeout(attemptSave, 1500);
+        return;
+      }
+      // Written down before the write goes out: what comes back on the
+      // listener a moment later is this same stamp, and that is how an
+      // echo of our own write is told from another device's news.
+      const updatedAt = Date.now();
+      lastWriteAtRef.current = updatedAt;
+      const saved = savedRef.current;
+      const whole = shapeRef.current === 'array';
+      const patch: Record<string, unknown> = { title, updatedAt };
+      // A card in a column is DRAWN where the measured heights of the
+      // cards above it put it, and those differ between a phone and a
+      // laptop because text wraps differently. So that position is NOT
+      // written: it is kept at whatever was written last, and the card's
+      // index carries the real meaning.
+      //
+      // Without this the two devices never settle. Each recomputes the
+      // stack for its own screen, writes the numbers, receives the
+      // other's, recomputes again - which is what made the columns
+      // flicker and the cards land on top of each other.
+      const cardsToSave = asStored(cards, saved.cards);
+      // Whole once for a board still in the old shape, the difference
+      // ever after.
+      const cardPatch = whole ? keyedAll(cardsToSave) : keyedDiff(saved.cards, cardsToSave);
+      const columnPatch = whole ? keyedAll(columns) : keyedDiff(saved.columns, columns);
+      const connectionPatch = whole ? keyedAll(connections) : keyedDiff(saved.connections, connections);
+      if (cardPatch) patch.cards = cardPatch;
+      if (columnPatch) patch.columns = columnPatch;
+      if (connectionPatch) patch.connections = connectionPatch;
+      shapeRef.current = 'keyed';
+      // Recorded as sent, not as acknowledged: Firestore keeps an unsent
+      // write on disk and replays it in order, so it WILL arrive - and
+      // until it does, the next difference must be measured against it
+      // rather than against what the server has yet to hear.
+      savedRef.current = { cards: cardsToSave, columns, connections };
+      setDoc(doc(db, 'boards', boardId), patch, { merge: true });
+    };
+    saveTimeoutRef.current = setTimeout(attemptSave, AUTOSAVE_DELAY_MS);
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, cards, connections, columns, isLoaded]);
+
+  // Read by the focus-time preview refresh below, which must not re-run
+  // every time a card moves - so it reads the current cards through this
+  // rather than closing over them.
+  const cardsRef = useRef<BoardCard[]>(cards);
+  useEffect(() => {
+    cardsRef.current = cards;
+  }, [cards]);
+
+  // A document card's preview (title, text, first image) is snapshotted
+  // when the card is made, so editing the document leaves the card showing
+  // the old version. Re-reading every document card's source whenever the
+  // board comes back into focus is what catches that up: the only way a
+  // document changes while its card exists is that you left the board to
+  // edit it - including via the card's own "Редагувати", which opens the
+  // editor as a modal over this screen and blurs it.
+  const refreshDocumentPreviews = useCallback(async () => {
+    const documentIds = [
+      ...new Set(
+        cardsRef.current
+          .filter((c) => (c.type ?? 'paragraph') === 'document' && c.documentId)
+          .map((c) => c.documentId as string)
+      ),
+    ];
+    if (documentIds.length === 0) return;
+    const snapshots = await Promise.all(documentIds.map((id) => getDoc(doc(db, 'documents', id))));
+    const fresh = new Map<string, { title: string; text: string; imageUri?: string }>();
+    snapshots.forEach((snapshot, index) => {
+      // A document deleted elsewhere is left alone rather than blanked -
+      // the card keeps showing what it last knew instead of silently
+      // emptying itself.
+      if (!snapshot.exists()) return;
+      const data = snapshot.data();
+      const blocks: Block[] = data?.blocks ?? [];
+      fresh.set(documentIds[index], {
+        title: data?.title ?? 'Без назви',
+        text: blocksToPreviewText(blocks).slice(0, 20000),
+        // The cover image (DocumentEditorScreen's "..." menu) takes
+        // priority over a body image block, same rule extractPreview
+        // uses for the Documents/Search/Diary list cards.
+        imageUri: data?.coverImageUri ?? firstImageUri(blocks),
+      });
+    });
+    setCards((prev) => {
+      let changed = false;
+      const next = prev.map((card) => {
+        if (!card.documentId) return card;
+        const current = fresh.get(card.documentId);
+        if (!current) return card;
+        if (
+          card.documentTitle === current.title &&
+          (card.documentPreviewText ?? '') === current.text &&
+          card.documentPreviewImageUri === current.imageUri
+        ) {
+          return card;
+        }
+        changed = true;
+        const updated: BoardCard = { ...card, documentTitle: current.title };
+        // Written as key-deletes rather than undefined values: Firestore
+        // rejects undefined outright, and a document whose last image was
+        // removed has to lose the field, not carry a stale one.
+        if (current.text) updated.documentPreviewText = current.text;
+        else delete updated.documentPreviewText;
+        if (current.imageUri) updated.documentPreviewImageUri = current.imageUri;
+        else delete updated.documentPreviewImageUri;
+        return updated;
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
+  // While a document is open in the pane beside the board, its card keeps
+  // up with it: the editor saves on its own 600ms beat and this hears
+  // every one of those writes, so the card on the canvas changes as the
+  // document is written rather than when the pane is closed.
+  useEffect(() => {
+    if (!paneDocId) return;
+    return onSnapshot(doc(db, 'documents', paneDocId), (snapshot) => {
+      const data = snapshot.data();
+      if (!data) return;
+      const blocks: Block[] = data.blocks ?? [];
+      const title = (data.title as string) ?? 'Без назви';
+      const text = blocksToPreviewText(blocks).slice(0, 20000);
+      const imageUri = (data.coverImageUri as string | undefined) ?? firstImageUri(blocks);
+      setCards((prev) => {
+        let changed = false;
+        const next = prev.map((card) => {
+          if (card.documentId !== paneDocId) return card;
+          if (
+            card.documentTitle === title &&
+            (card.documentPreviewText ?? '') === text &&
+            card.documentPreviewImageUri === imageUri
+          ) {
+            return card;
+          }
+          changed = true;
+          // Key-deletes rather than undefined values, for the reason
+          // refreshDocumentPreviews spells out: Firestore rejects
+          // undefined, and a removed image has to lose its field.
+          const updated: BoardCard = { ...card, documentTitle: title };
+          if (text) updated.documentPreviewText = text;
+          else delete updated.documentPreviewText;
+          if (imageUri) updated.documentPreviewImageUri = imageUri;
+          else delete updated.documentPreviewImageUri;
+          return updated;
+        });
+        return changed ? next : prev;
+      });
+    });
+  }, [paneDocId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isLoaded) return;
+      refreshDocumentPreviews();
+      // The editor saves on a 600ms debounce, so closing it right after
+      // typing hands focus back here before that write is even issued -
+      // the read above would then see the previous version. A second pass
+      // safely past that window catches it.
+      const timeout = setTimeout(refreshDocumentPreviews, 1000);
+      return () => clearTimeout(timeout);
+    }, [isLoaded, refreshDocumentPreviews])
+  );
+
+  // Positions and measured heights outlive the cards they belong to
+  // otherwise - both are keyed by card id in structures React doesn't
+  // clean up for us.
+  useEffect(() => {
+    if (!isLoaded) return;
+    const live = new Set(cards.map((c) => c.id));
+    for (const id of cardPositions.current.keys()) {
+      if (!live.has(id)) cardPositions.current.delete(id);
+    }
+    setCardHeights((prev) => {
+      if (![...prev.keys()].some((id) => !live.has(id))) return prev;
+      return new Map([...prev].filter(([id]) => live.has(id)));
+    });
+  }, [cards, isLoaded]);
+
+  // Re-lays every column out whenever a card's measured height changes or
+  // the columns themselves do. Deliberately does NOT depend on `cards`:
+  // the two places that change cards in a way a column cares about
+  // (dropping one in, deleting one) reflow explicitly, and depending on
+  // cards here would mean reflowing on every unrelated edit. reflowColumns
+  // returns the same array when nothing moved, so this can't loop.
+  useEffect(() => {
+    if (!isLoaded) return;
+    setCards((prev) => reflowColumns(prev, columns, cardHeights));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardHeights, columns, isLoaded]);
+
+  const pinchGesture = Gesture.Pinch()
+    .onUpdate((e) => {
+      scale.value = Math.min(MAX_SCALE, Math.max(MIN_SCALE, savedScale.value * e.scale));
+    })
+    .onEnd(() => {
+      savedScale.value = scale.value;
+    });
+
+  const panGesture = Gesture.Pan()
+    // A hold and a drag start the same way, and the canvas used to take
+    // the very first pixel - so a hand that meant to hold had already
+    // moved the board before the press could count. Now it has to travel
+    // before it is a drag, which leaves room for the hold to win.
+    .minDistance(12)
+    .onUpdate((e) => {
+      translateX.value = savedTranslateX.value + e.translationX;
+      translateY.value = savedTranslateY.value + e.translationY;
+    })
+    .onEnd(() => {
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+    });
+
+  // A fresh marquee replaces whatever was selected before, rather than
+  // adding to it - simpler to reason about than shift-click-style additive
+  // selection, and matches what "draw a box around the things you want"
+  // reads as as a first pass.
+  function finishMarqueeSelection(x1: number, y1: number, x2: number, y2: number) {
+    const left = Math.min(x1, x2);
+    const right = Math.max(x1, x2);
+    const top = Math.min(y1, y2);
+    const bottom = Math.max(y1, y2);
+    const matched = cards.filter(
+      (c) => c.x < right && c.x + c.width > left && c.y < bottom && c.y + APPROX_CARD_HEIGHT > top
+    );
+    setSelectedCardIds(new Set(matched.map((c) => c.id)));
+  }
+
+  // Held in a ref so the context-menu callback above can reach it
+  // without this function having to move up the file.
+  const cardAtRef = useRef<(x: number, y: number) => BoardCard | undefined>(() => undefined);
+  cardAtRef.current = cardAt;
+
+  function cardAt(worldX: number, worldY: number): BoardCard | undefined {
+    // Last match wins - cards later in the array paint on top of earlier
+    // ones, so where they overlap the visually topmost is the one meant.
+    return cards
+      .filter(
+        (c) =>
+          worldX >= c.x &&
+          worldX <= c.x + c.width &&
+          worldY >= c.y &&
+          worldY <= c.y + APPROX_CARD_HEIGHT
+      )
+      .pop();
+  }
+
+  function beginConnection(worldX: number, worldY: number) {
+    const source = cardAt(worldX, worldY);
+    connectingFromIdRef.current = source ? source.id : null;
+  }
+
+  function finishConnection(worldX: number, worldY: number) {
+    const fromId = connectingFromIdRef.current;
+    connectingFromIdRef.current = null;
+    if (!fromId) return;
+    const target = cardAt(worldX, worldY);
+    if (!target || target.id === fromId) return;
+    setConnections((prev) => {
+      // Links are undirected as far as the user is concerned, so a pair
+      // that's already joined (in either direction) isn't joined twice.
+      const exists = prev.some(
+        (c) =>
+          (c.fromCardId === fromId && c.toCardId === target.id) ||
+          (c.fromCardId === target.id && c.toCardId === fromId)
+      );
+      if (exists) return prev;
+      return [...prev, { id: generateId(), fromCardId: fromId, toCardId: target.id }];
+    });
+  }
+
+  // Same screen->world conversion the marquee does, for the same reason -
+  // once at the start, then the gesture's own translation from there.
+  const connectGesture = Gesture.Pan()
+    .onStart((e) => {
+      const wx = (e.x - viewport.width / 2 - translateX.value) / scale.value + WORLD_CENTER;
+      const wy = (e.y - viewport.height / 2 - translateY.value) / scale.value + WORLD_CENTER;
+      connectStartX.value = wx;
+      connectStartY.value = wy;
+      connectEndX.value = wx;
+      connectEndY.value = wy;
+      connectVisible.value = true;
+      runOnJS(beginConnection)(wx, wy);
+    })
+    .onUpdate((e) => {
+      connectEndX.value = connectStartX.value + e.translationX / scale.value;
+      connectEndY.value = connectStartY.value + e.translationY / scale.value;
+    })
+    .onEnd(() => {
+      runOnJS(finishConnection)(connectEndX.value, connectEndY.value);
+    })
+    // Same reason as the card drag's own onFinalize - a cancelled gesture
+    // never reaches onEnd, and the rubber band would hang there.
+    .onFinalize(() => {
+      connectVisible.value = false;
+    });
+
+  // Only active in 'select' mode (see canvasGesture below). `e.x`/`e.y` are
+  // reported relative to the view this gesture is attached to
+  // (`canvasSurface`, which fills the whole screen), so they're already
+  // absolute screen coordinates - converting the START point into world
+  // coordinates once is enough; every point after that is just that start
+  // plus the gesture's own cumulative translation (divided by scale, same
+  // trick card-dragging already uses), no repeated screen<->world math.
+  const selectGesture = Gesture.Pan()
+    .onStart((e) => {
+      const wx = (e.x - viewport.width / 2 - translateX.value) / scale.value + WORLD_CENTER;
+      const wy = (e.y - viewport.height / 2 - translateY.value) / scale.value + WORLD_CENTER;
+      marqueeStartX.value = wx;
+      marqueeStartY.value = wy;
+      marqueeCurrentX.value = wx;
+      marqueeCurrentY.value = wy;
+      marqueeVisible.value = true;
+    })
+    .onUpdate((e) => {
+      marqueeCurrentX.value = marqueeStartX.value + e.translationX / scale.value;
+      marqueeCurrentY.value = marqueeStartY.value + e.translationY / scale.value;
+    })
+    .onEnd(() => {
+      marqueeVisible.value = false;
+      runOnJS(finishMarqueeSelection)(
+        marqueeStartX.value,
+        marqueeStartY.value,
+        marqueeCurrentX.value,
+        marqueeCurrentY.value
+      );
+    });
+
+  // Simultaneous here only combines the canvas's OWN pinch+pan with each
+  // other. A card's Pan (see DraggableCard) sits on its own nested
+  // GestureDetector and explicitly calls `.blocksExternalGesture(...)`
+  // against whichever of these two is currently active - gesture-handler's
+  // default is to treat gestures in separate GestureDetectors as fully
+  // independent (NOT exclusive), so without that explicit block this
+  // canvas gesture was free to also recognize a sliver of movement on a
+  // touch that started on a card, visible as a jitter once the touch
+  // lifted and that unwanted micro-pan committed. Pinch-zoom is
+  // deliberately unavailable while selecting - zoom first, then switch
+  // tools to draw the box.
+  const canvasBlockingGesture =
+    canvasTool === 'select' ? selectGesture : canvasTool === 'connect' ? connectGesture : panGesture;
+  // A tap on bare canvas puts the selection down. Reaching for the cross
+  // in the bar to say "never mind" is a step nobody takes willingly, and
+  // clicking the empty space beside a thing is how every canvas says it.
+  //
+  // Raced against the others rather than added to them: a tap and a drag
+  // begin identically, so whichever one the hand turns out to be making
+  // wins, and a marquee is never cancelled by the touch that starts it.
+  // Putting the selection down on bare canvas, and coming out of the mode
+  // with it. The button in the rail is not a preference, it says what the
+  // board is doing right now: lit while there is a selection to work with
+  // - including while it is being carried - and out again the moment
+  // there is not.
+  const clearSelection = useCallback(() => {
+    setSelectedCardIds(new Set());
+    setCanvasTool('move');
+  }, []);
+
+  const clearSelectionGesture = Gesture.Tap()
+    .maxDuration(250)
+    .onEnd((_event, success) => {
+      if (success) runOnJS(clearSelection)();
+    });
+
+  // Holding bare canvas asks for the marquee. The same gesture a phone
+  // uses to mean "I want to do something with these, not to them", and on
+  // a laptop it is the press that the mouse has been holding anyway.
+  const holdToSelectGesture = Gesture.LongPress()
+    .minDuration(350)
+    // A hand is never perfectly still, least of all on a trackpad.
+    .maxDistance(10)
+    .onStart(() => {
+      runOnJS(hapticPickUp)();
+      runOnJS(setCanvasTool)('select');
+    });
+
+  const canvasGesture = Gesture.Race(
+    clearSelectionGesture,
+    canvasTool === 'move' ? holdToSelectGesture : Gesture.Tap().enabled(false),
+    canvasTool === 'select'
+      ? selectGesture
+      : canvasTool === 'connect'
+        ? connectGesture
+        : Gesture.Simultaneous(pinchGesture, panGesture)
+  );
+
+  const marqueeAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: marqueeVisible.value ? 1 : 0,
+    left: Math.min(marqueeStartX.value, marqueeCurrentX.value),
+    top: Math.min(marqueeStartY.value, marqueeCurrentY.value),
+    width: Math.abs(marqueeCurrentX.value - marqueeStartX.value),
+    height: Math.abs(marqueeCurrentY.value - marqueeStartY.value),
+  }));
+
+  // A trackpad and a mouse have no pinch; in a browser this is what
+  // gives the board its zoom (see useCanvasWheel). A no-op on the phone.
+  const canvasRef = useRef<View | null>(null);
+  // Where the right button was pressed, and on which card. A laptop's
+  // answer to holding a card down - see useContextMenu.
+  const [cardMenu, setCardMenu] = useState<{ x: number; y: number; card: BoardCard } | null>(null);
+  useCanvasWheel(canvasRef, {
+    scale,
+    savedScale,
+    translateX,
+    translateY,
+    savedTranslateX,
+    savedTranslateY,
+    viewport,
+    minScale: MIN_SCALE,
+    maxScale: MAX_SCALE,
+  });
+
+  // The same screen->world conversion the marquee and the connector use.
+  // Selecting the card first means every action below is the SAME code
+  // the selection bar runs - the menu is a second way in, not a second
+  // implementation.
+  const openCardMenu = useCallback(
+    (x: number, y: number) => {
+      const worldX = (x - viewport.width / 2 - translateX.value) / scale.value + WORLD_CENTER;
+      const worldY = (y - viewport.height / 2 - translateY.value) / scale.value + WORLD_CENTER;
+      const card = cardAtRef.current(worldX, worldY);
+      if (!card) {
+        setCardMenu(null);
+        return;
+      }
+      // Deliberately NOT selected: selecting it would raise the
+      // selection bar at the foot of the screen, and two menus for one
+      // right-click is exactly what this was meant to replace.
+      setCardMenu({ x, y, card });
+    },
+    [viewport.width, viewport.height, translateX, translateY, scale]
+  );
+  useContextMenu(canvasRef, openCardMenu);
+
+  const worldAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }, { translateY: translateY.value }, { scale: scale.value }],
+  }));
+
+  function addTextCard() {
+    setAddSheetVisible(false);
+    const card = newTextCard(cards.length);
+    setCards((prev) => [...prev, card]);
+    setEditingCard(card);
+    setEditingText('');
+  }
+
+  function openExistingItemPicker() {
+    setAddSheetVisible(false);
+    setExistingItemPickerVisible(true);
+  }
+
+  // Everything below creates a BRAND NEW database record from the board and
+  // drops a card for it, rather than referencing something that already
+  // exists (that's openExistingItemPicker's job). Each one writes the same
+  // record shape its own database screen's "+" writes, `usedInDocuments`
+  // included: the object belongs to its database from the moment it's
+  // made, and the board card is a reference to it like any other.
+
+  async function createDocumentCard() {
+    setAddSheetVisible(false);
+    const now = Date.now();
+    const created = await addDoc(documentsCollection, {
+      title: 'Без назви',
+      createdAt: now,
+      updatedAt: now,
+      blocks: [],
+    });
+    setCards((prev) => [...prev, newDocumentCard({ id: created.id, title: 'Без назви' }, {}, prev.length)]);
+  }
+
+  // One flow behind all three link menu entries. The category a link ends
+  // up filed under (video / geo / other - separate databases as far as the
+  // UI is concerned) is derived from the fetched preview's siteName, NOT
+  // from which entry was tapped, exactly as LinksScreen does it: paste a
+  // YouTube URL under "Геоточка" and it still correctly lands in
+  // YouTube/TikTok rather than being mis-filed.
+  function openLinkPrompt(kind: 'other' | 'video' | 'geo') {
+    setAddSheetVisible(false);
+    setLinkPrompt({ step: 'url', kind, busy: false });
+  }
+
+  // The dialog stays open the whole way through: it goes busy while the
+  // preview is fetched, then either closes (the page named itself) or
+  // turns into the name question.
+  async function submitLinkStep(value: string) {
+    if (!linkPrompt) return;
+    if (linkPrompt.step === 'title') {
+      const { url, preview } = linkPrompt;
+      setLinkPrompt(null);
+      saveNewLink(url, preview, value.trim());
+      return;
+    }
+    const url = value.trim();
+    if (!url) return;
+    setLinkPrompt({ ...linkPrompt, busy: true });
+    const preview = await fetchLinkPreview(url);
+    if (preview.title) {
+      setLinkPrompt(null);
+      saveNewLink(url, preview, preview.title);
+    } else {
+      // No title to read out of the page (a raw-coordinates Maps link, or
+      // a page with no og:title) - ask rather than filing something
+      // nameless nobody could find later. Same as LinksScreen's own "+".
+      setLinkPrompt({ step: 'title', url, preview });
+    }
+  }
+
+  async function saveNewLink(url: string, preview: LinkPreview, title: string) {
+    // Keyed by the URL (linkDocId), not a fresh id - the same link saved
+    // twice is one record, which is what makes the databases dedupe.
+    const id = linkDocId(url);
+    const now = Date.now();
+    const data: Record<string, unknown> = { url, updatedAt: now, createdAt: now, usedInDocuments: {} };
+    if (title) data.title = title;
+    if (preview.imageUrl) data.imageUrl = preview.imageUrl;
+    if (preview.siteName) data.siteName = preview.siteName;
+    await setDoc(doc(db, 'links', id), data, { merge: true });
+    setCards((prev) => [
+      ...prev,
+      cardFromExistingBlock(blockFromLink({ url, title, imageUrl: preview.imageUrl, siteName: preview.siteName }), prev.length),
+    ]);
+  }
+
+  function createImageCard() {
+    setAddSheetVisible(false);
+    ask({
+      title: 'Нове зображення',
+      actions: [
+        { id: 'gallery', label: 'Галерея', icon: 'images-outline' },
+        { id: 'camera', label: 'Камера', icon: 'camera-outline' },
+      ],
+    }).then((answer) => {
+      if (answer === 'gallery' || answer === 'camera') pickImage(answer);
+    });
+  }
+
+  async function pickImage(source: 'gallery' | 'camera') {
+    const permission =
+      source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+    const result =
+      source === 'camera'
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 })
+        // A whole set at once - the board is where a handful of pictures
+        // are laid out beside each other, and one at a time meant opening
+        // the gallery again for every one of them.
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            quality: 1,
+            allowsMultipleSelection: true,
+          });
+    if (result.canceled) return;
+    // One after another, in the order they were picked: each is written,
+    // laid on the board, and only then the next - so two pictures cannot
+    // land on the same spot.
+    for (const asset of result.assets) await addPhotoCard(asset);
+  }
+
+  async function addPhotoCard(asset: ImagePicker.ImagePickerAsset) {
+    const imageUri = await compressPickedImage(asset.uri, asset.width, asset.height);
+    const id = generateId();
+    const now = Date.now();
+    await setDoc(
+      doc(db, 'photos', id),
+      { imageUri, imageFit: 'contain', createdAt: now, updatedAt: now, usedInDocuments: {} },
+      { merge: true }
+    );
+    backupFileToDrive(imageUri, `${id}.jpg`, 'image/jpeg', 'Photos').then((uploaded) => {
+      if (!uploaded) return;
+      updateDoc(doc(db, 'photos', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+      // The card needs it too, and this is the only moment it can be
+      // learned: the upload finishes after the card is already made. A
+      // card without it is a picture no other device can ever fetch.
+      setCards((prev) =>
+        prev.map((c) =>
+          c.id === id ? { ...c, driveFileId: uploaded.fileId, driveBytes: uploaded.bytes } : c
+        )
+      );
+    });
+    setCards((prev) => [
+      ...prev,
+      cardFromExistingBlock(blockFromPhoto({ id, imageUri, imageFit: 'contain', createdAt: now }), prev.length),
+    ]);
+  }
+
+  async function createFileCard() {
+    setAddSheetVisible(false);
+    const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: false });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    const id = generateId();
+    const fileUri = `${LegacyFileSystem.cacheDirectory}${id}-${asset.name}`;
+    await LegacyFileSystem.copyAsync({ from: asset.uri, to: fileUri });
+    const now = Date.now();
+    const data: Record<string, unknown> = {
+      fileUri,
+      fileName: asset.name,
+      createdAt: now,
+      updatedAt: now,
+      usedInDocuments: {},
+    };
+    if (asset.mimeType) data.mimeType = asset.mimeType;
+    await setDoc(doc(db, 'files', id), data, { merge: true });
+    backupFileToDrive(fileUri, asset.name, asset.mimeType ?? 'application/octet-stream', 'Files').then((uploaded) => {
+      if (!uploaded) return;
+      updateDoc(doc(db, 'files', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+      // Same as the photo above: the card learns where its copy went, or
+      // no other device can ever fetch it.
+      setCards((prev) =>
+        prev.map((c) =>
+          c.id === id ? { ...c, driveFileId: uploaded.fileId, driveBytes: uploaded.bytes } : c
+        )
+      );
+    });
+    setCards((prev) => [
+      ...prev,
+      cardFromExistingBlock(
+        blockFromFile({ id, fileUri, fileName: asset.name, mimeType: asset.mimeType, createdAt: now }),
+        prev.length
+      ),
+    ]);
+  }
+
+  function addExistingCard(block: Block) {
+    setExistingItemPickerVisible(false);
+    setCards((prev) => [...prev, cardFromExistingBlock(block, prev.length)]);
+  }
+
+  async function addDocumentCard(document: { id: string; title: string }) {
+    setExistingItemPickerVisible(false);
+    // One extra read at add-time to snapshot a preview (full text, first
+    // image) onto the card itself - AddExistingItemModal's own "Документи"
+    // tab only ever carries {id, title} for its list, not blocks, so
+    // there's nothing to preview from without this fetch. The full text is
+    // cached (capped defensively, not just 4 lines) so the card can later
+    // expand in place to show all of it without a second fetch - the
+    // collapsed view just clips the same string to 4 lines via
+    // `numberOfLines`.
+    const snapshot = await getDoc(doc(db, 'documents', document.id));
+    const data = snapshot.data();
+    const blocks: Block[] = data?.blocks ?? [];
+    const preview = {
+      text: blocksToPreviewText(blocks).slice(0, 20000),
+      // Cover image takes priority over a body image block - see
+      // refreshDocumentPreviews' identical rule.
+      imageUri: data?.coverImageUri ?? firstImageUri(blocks),
+    };
+    setCards((prev) => [...prev, newDocumentCard(document, preview, prev.length)]);
+  }
+
+  // Tapping a document card toggles it in place (see BoardCard's
+  // documentExpanded) rather than opening a separate overlay - collapsed
+  // shows a 4-line peek, expanded shows the whole cached preview text and
+  // stays that way while the user keeps working with other cards, exactly
+  // like every other card's position: it's just a field, so it persists
+  // through the normal autosave and survives reopening the board.
+  function toggleDocumentExpanded(card: BoardCard) {
+    setCards((prev) =>
+      prev.map((c) => (c.id === card.id ? { ...c, documentExpanded: !c.documentExpanded } : c))
+    );
+  }
+
+  // The other half of the live link, and the half that was missing: this
+  // screen read its cards once, at open, and wrote them back from memory
+  // ever after. A card the document made never appeared here - and worse,
+  // the next autosave overwrote it with this screen's older list, which is
+  // what had the two sides writing each other in circles.
+  //
+  // Same rule as the document's own listener: take what arrives, but only
+  // while nothing local is in flight - no pending save, no card or column
+  // under the finger - and never when it matches what's already here.
+  const applyRemote = useCallback(
+    (incomingCards: BoardCard[], incomingColumns: BoardColumn[]) => {
+      // What arrived is now what the document holds, so the next
+      // difference is measured against it - otherwise the very next save
+      // would write the other device's own changes back at it as if they
+      // were ours. Kept exactly as it arrived, unstacked.
+      const written = savedRef.current.cards;
+      savedRef.current = { ...savedRef.current, cards: incomingCards, columns: incomingColumns };
+      // Then stacked for THIS screen before it is shown. The positions in
+      // the document are deliberately not kept up to date for cards in a
+      // column - the index is what travels, because the drawn position
+      // depends on heights this device measured for itself. So a change
+      // from elsewhere has to be laid out again on arrival, or the cards
+      // stay wherever the numbers last happened to say: a column with a
+      // hole in it where a card used to be, and the ones below it hanging
+      // past its bottom edge.
+      setCards((current) => {
+        // Anything changed here since the last write is a local edit that
+        // has not been sent yet - a card just dragged into another
+        // column, with the save still on its 600ms timer. Those keep
+        // ours; everything else takes theirs. Imposing the whole arriving
+        // board instead is what made a card spring back: the drop was
+        // undone by news that left a moment before it happened.
+        const storedNow = new Map(asStored(current, written).map((card) => [card.id, card]));
+        const writtenById = new Map(written.map((card) => [card.id, card]));
+        const mine = new Set(
+          current
+            .filter((card) => {
+              const before = writtenById.get(card.id);
+              return !before || !contentEqual(before, storedNow.get(card.id));
+            })
+            .map((card) => card.id)
+        );
+        const currentById = new Map(current.map((card) => [card.id, card]));
+        const merged = incomingCards.map((card) =>
+          mine.has(card.id) ? currentById.get(card.id) ?? card : card
+        );
+        // A card made here that the other side has not heard of yet.
+        const arrived = new Set(incomingCards.map((card) => card.id));
+        current.forEach((card) => {
+          if (!arrived.has(card.id) && mine.has(card.id)) merged.push(card);
+        });
+        const stacked = reflowColumns(merged, incomingColumns, cardHeightsRef.current);
+        return contentEqual(current, stacked) ? current : stacked;
+      });
+      setColumns((current) => (contentEqual(current, incomingColumns) ? current : incomingColumns));
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    return onSnapshot(doc(db, 'boards', boardId), (snapshot) => {
+      const data = snapshot.data() as
+        | { cards?: unknown; columns?: unknown; connections?: unknown; updatedAt?: number }
+        | undefined;
+      if (!data) return;
+      // The server has spoken, so the shape is no longer in doubt.
+      if (!snapshot.metadata.fromCache) {
+        shapeRef.current =
+          Array.isArray(data.cards) || Array.isArray(data.columns) || Array.isArray(data.connections)
+            ? 'array'
+            : 'keyed';
+      }
+      // Our own write, still on its way to the server: Firestore shows it
+      // locally first, and that reflection is not news from anywhere.
+      if (snapshot.metadata.hasPendingWrites) return;
+      // And our own write coming back settled. Compared for EQUALITY, not
+      // for "older than" - the stamp is made by whichever device wrote
+      // it, and two clocks are never quite the same. Ignoring everything
+      // stamped earlier than our last write would silently ignore the
+      // other device for as long as its clock ran behind.
+      if ((data.updatedAt ?? 0) === lastWriteAtRef.current) return;
+      const incomingCards = readBoardPart<BoardCard>(data.cards);
+      const incomingColumns = readBoardPart<BoardColumn>(data.columns);
+      // A card under the finger must not be yanked out from under it, so
+      // this WAITS rather than dropping. Dropping is what the old rule
+      // did, and Firestore sends each change exactly once - so an update
+      // refused here was gone until the screen was opened again, which is
+      // exactly how it behaved: nothing, then everything on reload.
+      if (draggedCardId || draggingColumnId) {
+        pendingRemoteRef.current = { cards: incomingCards, columns: incomingColumns };
+        return;
+      }
+      applyRemote(incomingCards, incomingColumns);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, boardId, draggedCardId, draggingColumnId, applyRemote]);
+
+  // The moment the hands are free, whatever waited arrives.
+  useEffect(() => {
+    if (draggedCardId || draggingColumnId) return;
+    const pending = pendingRemoteRef.current;
+    if (!pending) return;
+    pendingRemoteRef.current = null;
+    applyRemote(pending.cards, pending.columns);
+  }, [draggedCardId, draggingColumnId, applyRemote]);
+
+  // One column read as flowing text in the right-hand half - see
+  // BoardColumnDocument. Editing there edits the cards themselves, so
+  // there is nothing to keep in step with anything.
+  const [viewerColumnId, setViewerColumnId] = useState<string | null>(null);
+  // Pulling a group onto this board without going to the groups screen
+  // first. Same two steps as there - which group, then which of its items -
+  // except the board is already known, so the second question never
+  // arises.
+  const { groups, itemsByGroup, titleForItem, labelForItemKind } = useGroupItems();
+  const [groupPickerVisible, setGroupPickerVisible] = useState(false);
+  const [importingGroup, setImportingGroup] = useState<Group | null>(null);
+
+  // Arriving from the document's own "show the board" button: the document
+  // that sent us here opens beside the board it came from.
+  useEffect(() => {
+    if (openDocumentId && isTwoPane) setPaneDocId(openDocumentId);
+  }, [openDocumentId, isTwoPane]);
+
+  function editDocumentCard(card: BoardCard) {
+    if (!card.documentId) return;
+    if (isTwoPane) {
+      setPaneDocId(card.documentId);
+      return;
+    }
+    // The modal-presented registration of the same Editor screen (see
+    // App.tsx) - slides up over the board and swipes back down to it,
+    // rather than the sideways push/pop of a regular stack screen, so
+    // editing feels like it's still happening on the board.
+    navigation.navigate('EditorModal', { documentId: card.documentId });
+  }
+
+  function handleCardTap(card: BoardCard) {
+    const type = card.type ?? 'paragraph';
+    if (type === 'paragraph') {
+      setEditingCard(card);
+      setEditingText(card.text);
+    } else if (type === 'document') {
+      toggleDocumentExpanded(card);
+    } else if (type === 'link' && card.linkUrl) {
+      // A YouTube/TikTok card plays right here; any other link opens
+      // externally, same split DocumentEditorScreen's own link blocks use.
+      if (getVideoEmbedInfo(card.linkUrl)) {
+        setPlayingVideoUrl(card.linkUrl);
+      } else {
+        Linking.openURL(card.linkUrl).catch(() => {});
+      }
+    }
+  }
+
+  function handleDragStart(id: string) {
+    hapticPickUp();
+    setDraggedCardId(id);
+  }
+
+  function measureCard(id: string, height: number) {
+    setCardHeights((prev) => {
+      const previous = prev.get(id);
+      // Returning the same Map is what stops measure -> reflow -> layout ->
+      // measure from looping once the height has settled.
+      if (previous !== undefined && Math.abs(previous - height) < 1) return prev;
+      const next = new Map(prev);
+      next.set(id, height);
+      return next;
+    });
+  }
+
+  // Where the card being carried would land right now. Reported from the
+  // drag itself (throttled - see DraggableCard's onHover), so the column
+  // lights up and answers with a tick the moment it catches, instead of
+  // the answer only arriving once the finger lifts.
+  function reportCardHover(id: string, x: number, y: number) {
+    const card = cards.find((c) => c.id === id);
+    if (!card) return;
+    const others = cards.filter((c) => c.id !== id);
+    const centreY = y + heightOf(card, cardHeights) / 2;
+    const target = columnAtPoint(
+      columns,
+      others,
+      cardHeights,
+      x + widthInColumn(card) / 2,
+      centreY,
+      card.columnId
+    );
+    const nextId = target?.id ?? null;
+    if (nextId !== hoverColumnId) {
+      setHoverColumnId(nextId);
+      if (nextId) hapticDrop();
+    }
+  }
+
+  // A picture made bigger. Only the width is kept - the height follows
+  // it, so the picture keeps its shape (cardImageHeight).
+  function commitCardResize(id: string, width: number) {
+    setCards((prev) => prev.map((c) => (c.id === id ? { ...c, width } : c)));
+  }
+
+  function commitCardDrag(id: string, x: number, y: number) {
+    setHoverColumnId(null);
+    setCards((prev) => {
+      const dropped = prev.map((c) => (c.id === id ? { ...c, x, y } : c));
+      const card = dropped.find((c) => c.id === id);
+      if (!card) return dropped;
+      // Hit-tested against the OTHER cards' membership, so a card being
+      // dragged out of a column doesn't count itself towards that column's
+      // height while deciding whether it landed back inside it.
+      const others = dropped.filter((c) => c.id !== id);
+      const centreY = y + heightOf(card, cardHeights) / 2;
+      const target = columnAtPoint(
+        columns,
+        others,
+        cardHeights,
+        x + widthInColumn(card) / 2,
+        centreY,
+        card.columnId
+      );
+      // Only a card that actually came to rest in a column gets the
+      // "landed" feedback - one dropped on open canvas has nothing to
+      // confirm, same rule the document editor's own drop follows.
+      if (target && card.columnId !== target.id) hapticDrop();
+      const assigned = dropped.map((c) => {
+        if (c.id !== id) return c;
+        if (target) return { ...c, columnId: target.id };
+        return c.columnId ? releaseFromColumn(c) : c;
+      });
+      return reflowColumns(assigned, columns, cardHeights);
+    });
+    setDraggedCardId(null);
+  }
+
+  // Dragging any one selected card moves the whole selection - see
+  // DraggableCard's isGroupDrag branch, which accumulates the shared delta
+  // instead of moving just itself. A group drag deliberately doesn't do any
+  // column assignment: several cards landing across different columns at
+  // once has no obvious right answer, and reflow would yank them apart
+  // mid-gesture.
+  function commitGroupDrag(dx: number, dy: number) {
+    setHoverColumnId(null);
+    setCards((prev) => prev.map((c) => (selectedCardIds.has(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
+    setDraggedCardId(null);
+  }
+
+  function addColumn() {
+    setColumns((prev) => {
+      const x =
+        prev.length === 0
+          ? WORLD_CENTER - COLUMN_WIDTH / 2
+          : Math.max(...prev.map((c) => c.x)) + COLUMN_WIDTH + COLUMN_SPACING;
+      const y = prev.length === 0 ? WORLD_CENTER - COLUMN_MIN_HEIGHT / 2 : prev[0].y;
+      return [...prev, { id: generateId(), title: `Стовпчик ${prev.length + 1}`, x, y }];
+    });
+    setAddSheetVisible(false);
+  }
+
+  // Both the column and its cards take the drag's own delta, so nothing
+  // has to be recomputed from the column's new origin - and the reflow
+  // effect that follows (columns changed) lands on the same positions,
+  // which is what keeps the drop from visibly nudging anything.
+  function commitColumnDrag(id: string, dx: number, dy: number) {
+    setColumns((prev) => prev.map((c) => (c.id === id ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
+    setCards((prev) => prev.map((c) => (c.columnId === id ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
+    setDraggingColumnId(null);
+  }
+
+  function renameColumn(column: BoardColumn, title: string) {
+    setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, title: title.trim() || c.title } : c)));
+    setRenamingColumn(null);
+  }
+
+  // This screen used to draw its own confirmation window, because the
+  // system's white dialog stood out against the board's dark glass. Now
+  // «Питання» looks like the board does, so there is nothing left to
+  // work around.
+  async function confirmDeleteColumn(column: BoardColumn) {
+    const yes = await confirm({
+      title: 'Видалити стовпчик?',
+      message: 'Картки з нього залишаться на дошці.',
+      confirmLabel: 'Видалити',
+    });
+    if (!yes) return;
+    // Cards keep the position the column had them in - the reflow effect
+    // below strips the now-dangling columnId when `columns` changes.
+    setColumns((prev) => prev.filter((c) => c.id !== column.id));
+  }
+
+  // Long-pressing a card selects just that one, which surfaces the same
+  // bottom action bar the marquee/select tool uses for a multi-card
+  // selection - "Редагувати" for a lone document card, "Видалити" either
+  // way - rather than jumping straight to a delete confirmation.
+  // Long-pressing a column header used to delete it outright. It now asks
+  // what to do with the column, because that header is where the reading
+  // order lives - it's the natural place to ask for the document this
+  // board would make. (Renaming is still a plain tap.)
+  async function runGroupImport(
+    group: Group,
+    selected: { id: string; kind: string; databaseId?: string; data: Record<string, unknown> }[]
+  ) {
+    setImportingGroup(null);
+    await importGroupToBoard(
+      boardId,
+      group,
+      selected.map((item) => ({
+        id: item.id,
+        kind: item.kind,
+        title: titleForItem(item as Parameters<typeof titleForItem>[0]),
+        databaseId: item.databaseId,
+        data: item.data,
+      })),
+      labelForItemKind
+    );
+    // The import writes the board document directly; this screen hears
+    // about the new cards through its own listener.
+  }
+
+  function handleCardLongPress(card: BoardCard) {
+    setSelectedCardIds(new Set([card.id]));
+  }
+
+  // Told which cards to remove rather than reading the selection: the
+  // bar hands it the selection, the right-click menu hands it the one
+  // card it was opened on - which is what lets that menu act WITHOUT
+  // selecting anything first, and so without raising the selection bar
+  // as a second menu beside itself.
+  function deleteCards(ids: Set<string>) {
+    const count = ids.size;
+    if (count === 0) return;
+    confirm({
+      title: count === 1 ? 'Видалити картку?' : `Видалити картки (${count})?`,
+      confirmLabel: 'Видалити',
+    }).then((yes) => {
+      if (!yes) return;
+      // Reflowed after the removal so a column closes the gap its
+      // deleted card left behind.
+      setCards((prev) => reflowColumns(prev.filter((c) => !ids.has(c.id)), columns, cardHeights));
+      // A connection to a card that no longer exists would render as a
+      // line into empty space, so they go with it.
+      setConnections((prev) => prev.filter((c) => !ids.has(c.fromCardId) && !ids.has(c.toCardId)));
+      setSelectedCardIds((prev) => {
+        const left = new Set(prev);
+        ids.forEach((id) => left.delete(id));
+        // Nothing left to work with means the board is not selecting any
+        // more, and the rail should stop saying that it is.
+        if (left.size === 0) setCanvasTool('move');
+        return left;
+      });
+    });
+  }
+
+  function deleteSelectedCards() {
+    deleteCards(selectedCardIds);
+  }
+
+  function disconnectSelectedCards() {
+    setConnections((prev) =>
+      prev.filter((c) => !selectedCardIds.has(c.fromCardId) && !selectedCardIds.has(c.toCardId))
+    );
+    clearSelection();
+  }
+
+  function toggleCanvasTool() {
+    setCanvasTool((prev) => (prev === 'move' ? 'select' : prev === 'select' ? 'connect' : 'move'));
+  }
+
+  function saveEditingText() {
+    if (editingCard) {
+      setCards((prev) => prev.map((c) => (c.id === editingCard.id ? { ...c, text: editingText } : c)));
+    }
+    setEditingCard(null);
+  }
+
+  function setEditingCardColor(color: string) {
+    if (!editingCard) return;
+    setEditingCard({ ...editingCard, color });
+    setCards((prev) => prev.map((c) => (c.id === editingCard.id ? { ...c, color } : c)));
+  }
+
+  const existingItemExcludeIds = new Set(
+    cards
+      .filter(
+        (c) =>
+          ((c.type ?? 'paragraph') === 'file' && c.fileUri) ||
+          ((c.type ?? 'paragraph') === 'image' && c.imageUri) ||
+          c.isSticker
+      )
+      .map((c) => c.id)
+  );
+
+  // Only offered in the selection bar when exactly one document card is
+  // selected - a lone sticky/link/file/etc. or any multi-card selection
+  // has no single "Редагувати" target.
+  const onlySelectedDocumentCard =
+    selectedCardIds.size === 1
+      ? cards.find((c) => selectedCardIds.has(c.id) && (c.type ?? 'paragraph') === 'document')
+      : undefined;
+
+  // The one selected card, whatever its kind - what the copy and read
+  // actions below work on.
+  const onlySelectedCard =
+    selectedCardIds.size === 1 ? cards.find((c) => selectedCardIds.has(c.id)) : undefined;
+
+  // A card's text as text: its own for a sticky, its document's whole body
+  // for a document card - the preview on the card is clipped, and copying
+  // half a document silently is worse than not offering it.
+  async function textOfCard(card: BoardCard): Promise<string> {
+    if ((card.type ?? 'paragraph') === 'document' && card.documentId) {
+      const snapshot = await getDoc(doc(db, 'documents', card.documentId));
+      const data = snapshot.data();
+      if (!data) return card.documentPreviewText ?? '';
+      const title = (data.title as string) ?? '';
+      const body = blocksToPreviewText((data.blocks ?? []) as Block[]);
+      return [title, body].filter((part) => part.trim() !== '').join('\n\n');
+    }
+    return card.text ?? '';
+  }
+
+  // Copying a card does both halves at once: its text goes to the system
+  // clipboard, where any other app can take it, and the card ITSELF goes
+  // to this app's own clipboard as the block it would be in a document -
+  // which is what lets a photo be pasted as that same photo rather than a
+  // second copy of it.
+  async function copyCardText(card: BoardCard) {
+    const {
+      x: _x,
+      y: _y,
+      width: _width,
+      color: _color,
+      columnId: _columnId,
+      documentExpanded: _expanded,
+      ...block
+    } = card;
+    const asBlock = { ...(block as Block), type: (card.type === 'document' ? 'paragraph' : card.type) ?? 'paragraph' };
+    copyObject({ label: card.type === 'document' ? 'текст' : labelForBlock(asBlock), block: asBlock });
+
+    const text = await textOfCard(card);
+    if (text.trim()) {
+      // A document card has no block of its own to paste (a document
+      // cannot nest in a document), so its text is what travels - and it
+      // replaces the block above for that case.
+      if (card.type === 'document') copyObject({ label: 'текст', block: { ...asBlock, text } });
+      await Clipboard.setStringAsync(text);
+    }
+    hapticSuccess();
+    clearSelection();
+  }
+
+  // Reading a card's text without opening anything that could change it -
+  // and selecting part of it by hand, which is the whole point: a plain
+  // Text on the canvas can't be selected, because a long press there means
+  // "pick this card".
+  const [readingCard, setReadingCard] = useState<{ card: BoardCard; text: string } | null>(null);
+  async function openCardText(card: BoardCard) {
+    clearSelection();
+    setReadingCard({ card, text: await textOfCard(card) });
+  }
+
+  const cardById = new Map(cards.map((c) => [c.id, c]));
+
+  // The names and pictures the reference cards show, as their records say
+  // them now - see useLiveRecords. Listened for only when this board has
+  // a card that refers to something.
+  const hasReferenceCards = cards.some((c) => recordIdFor(c) !== null);
+  const liveRecords = useLiveRecords(hasReferenceCards);
+  // A dragged card's live position lives in its own shared values, which
+  // the connection lines (drawn from React state) can't see - so rather
+  // than leave a line anchored to where the card WAS for the length of the
+  // drag, its links are hidden outright and come back correctly shaped
+  // once the drop commits the new position. A group drag moves every
+  // selected card, so all of their links go too.
+  // Which shared offsets currently apply to this card, so a live line can
+  // add exactly the same ones the card's own animated style does.
+  function liveEndpointFor(card: BoardCard): LiveEndpoint {
+    const inGroupDrag = selectedCardIds.has(card.id);
+    const inColumnDrag = !!card.columnId && card.columnId === draggingColumnId;
+    const position = positionOf(card);
+    return {
+      posX: position.x,
+      posY: position.y,
+      offsetX: inGroupDrag ? groupOffsetX : null,
+      offsetY: inGroupDrag ? groupOffsetY : null,
+      columnOffsetX: inColumnDrag ? columnOffsetX : null,
+      columnOffsetY: inColumnDrag ? columnOffsetY : null,
+      width: widthInColumn(card),
+      height: heightOf(card, cardHeights),
+    };
+  }
+
+  // Dragging a column moves every card in it, so their links go too.
+  const movingCardIds = draggingColumnId
+    ? new Set(cards.filter((c) => c.columnId === draggingColumnId).map((c) => c.id))
+    : !draggedCardId
+      ? null
+      : selectedCardIds.has(draggedCardId) && selectedCardIds.size > 1
+        ? selectedCardIds
+        : new Set([draggedCardId]);
+  const selectionHasConnections = connections.some(
+    (c) => selectedCardIds.has(c.fromCardId) || selectedCardIds.has(c.toCardId)
+  );
+
+  return (
+    <View style={styles.splitRoot}>
+      {/* The board keeps every pixel it had until a document is opened
+          beside it, and all of them again when that document goes full
+          screen - hidden rather than unmounted, so the canvas comes back
+          at the same pan and zoom. */}
+      <View
+        style={[styles.container, isTwoPane && paneDocId !== null && paneFullscreen ? styles.paneHidden : null]}
+        onLayout={(e) =>
+          setViewport({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })
+        }
+      >
+        <GestureDetector gesture={canvasGesture}>
+          <View ref={canvasRef} style={[StyleSheet.absoluteFill, styles.canvasSurface]}>
+            <Animated.View style={[styles.world, worldAnimatedStyle]}>
+              {/* Underneath everything - a column is a backdrop its cards sit
+                  on. box-none so only the header takes touches and the rest
+                  of the lane still pans the canvas. */}
+              {columns.map((column) => {
+                const members = columnMembers(cards, column.id);
+                return (
+                  <DraggableColumn
+                    key={column.id}
+                    column={column}
+                    memberCount={members.length}
+                    height={columnHeight(members, cardHeights)}
+                    isDragging={column.id === draggingColumnId}
+                    canvasScale={scale}
+                    canvasPanGesture={canvasBlockingGesture}
+                    columnOffsetX={columnOffsetX}
+                    columnOffsetY={columnOffsetY}
+                    isCatching={column.id === hoverColumnId}
+                    onDragStart={setDraggingColumnId}
+                    onDragEnd={commitColumnDrag}
+                    onRename={setRenamingColumn}
+                    onDelete={confirmDeleteColumn}
+                  />
+                );
+              })}
+
+              {/* Before the cards, so a link passes UNDER the two cards it
+                  joins rather than across their faces. Each connection gets
+                  its own small Svg sized to that pair's bounding box - one
+                  canvas the size of the whole 6000px world would be a lot to
+                  hand the renderer for a handful of thin curves. */}
+              {connections.map((connection) => {
+                const from = cardById.get(connection.fromCardId);
+                const to = cardById.get(connection.toCardId);
+                if (!from || !to) return null;
+                // While either end is in motion the line is drawn live off
+                // the cards' own shared positions instead - the resting
+                // curve below is computed from React state, which doesn't
+                // update until the drop commits.
+                if (movingCardIds && (movingCardIds.has(from.id) || movingCardIds.has(to.id))) {
+                  return (
+                    <LiveConnectionLine
+                      key={connection.id}
+                      from={liveEndpointFor(from)}
+                      to={liveEndpointFor(to)}
+                    />
+                  );
+                }
+                const { x1, y1, x2, y2 } = connectionEndpoints(from, to, cardHeights);
+                const left = Math.min(x1, x2) - CONNECTION_PADDING;
+                const top = Math.min(y1, y2) - CONNECTION_PADDING;
+                const width = Math.abs(x2 - x1) + CONNECTION_PADDING * 2;
+                const height = Math.abs(y2 - y1) + CONNECTION_PADDING * 2;
+                return (
+                  <Svg
+                    key={connection.id}
+                    style={[styles.connection, { left, top }]}
+                    width={width}
+                    height={height}
+                    pointerEvents="none"
+                  >
+                    <Path
+                      d={curvePath(x1 - left, y1 - top, x2 - left, y2 - top)}
+                      stroke={CONNECTION_COLOR}
+                      strokeWidth={2}
+                      fill="none"
+                    />
+                  </Svg>
+                );
+              })}
+
+              {cards.map((card) => {
+                const isSelected = selectedCardIds.has(card.id);
+                const position = positionOf(card);
+                return (
+                  <DraggableCard
+                    key={card.id}
+                    // Drawn from the record as it is NOW - the same
+                    // treatment a document's blocks get, and for the same
+                    // reason. A card carries the photo's name as it was
+                    // when the card was made, so renaming the photo in its
+                    // database changed it everywhere except here.
+                    //
+                    // Only what is DRAWN is swapped. `cards` is what gets
+                    // saved back to the board, and a live value must never
+                    // be written into it as though someone had moved or
+                    // edited the card.
+                    card={applyLiveRecord(card, liveRecords)}
+                    posX={position.x}
+                    posY={position.y}
+                    canvasScale={scale}
+                    canvasPanGesture={canvasBlockingGesture}
+                    isDragging={card.id === draggedCardId}
+                    isSelected={isSelected}
+                    isGroupDrag={isSelected && selectedCardIds.size > 1}
+                    groupOffsetX={groupOffsetX}
+                    groupOffsetY={groupOffsetY}
+                    followsColumnDrag={!!card.columnId && card.columnId === draggingColumnId}
+                    onHover={reportCardHover}
+                    columnOffsetX={columnOffsetX}
+                    columnOffsetY={columnOffsetY}
+                    dragEnabled={canvasTool !== 'connect'}
+                    onMeasure={measureCard}
+                    onDragStart={handleDragStart}
+                    onDragEnd={commitCardDrag}
+                    onGroupDragEnd={commitGroupDrag}
+                    onTap={handleCardTap}
+                    onLongPress={handleCardLongPress}
+                    onResize={commitCardResize}
+                    canvasHoldGesture={holdToSelectGesture}
+                  />
+                );
+              })}
+
+              {/* The rubber-band line a connect-drag trails behind the
+                  finger - live (shared values), so an animated style rather
+                  than plain React state. */}
+              <ConnectDraftLine
+                startX={connectStartX}
+                startY={connectStartY}
+                endX={connectEndX}
+                endY={connectEndY}
+                visible={connectVisible}
+              />
+              <Animated.View style={[styles.marquee, marqueeAnimatedStyle]} pointerEvents="none" />
+            </Animated.View>
+          </View>
+        </GestureDetector>
+
+        {/* Only the board's name stays up here - it needs the width. The
+            way back and the tool button stand on the rail with everything
+            else. */}
+        <View style={styles.headerRow} pointerEvents="box-none">
+          <Pressable style={styles.titleTap} onPress={() => setRenamingTitle(true)}>
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {title || 'Без назви'}
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Through the portal, where a blur is safe - drawn inside this
+            screen it would be blurring a picture it is part of, which is
+            what took this board down twice. */}
+        {boardFocused && (
+          <GlassPortal>
+            <View
+              style={[styles.railWrap, { top: boardInsets.top + CHROME_TOP + CAPSULE_DROP }]}
+              pointerEvents="box-none"
+            >
+              <View style={styles.boardCapsule}>
+                <BlurView
+                  intensity={60}
+                  tint="dark"
+                  blurMethod="dimezisBlurView"
+                  blurTarget={boardBlurTarget ?? undefined}
+                  style={StyleSheet.absoluteFill}
+                  pointerEvents="none"
+                />
+                <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
+                  <Ionicons name="arrow-back-outline" size={24} color="#fff" />
+                </Pressable>
+                <View style={styles.boardCapsuleDivider} />
+                {/* One button cycling move -> select -> connect, each with
+                    its own icon, rather than three crowding the rail. */}
+                <Pressable onPress={toggleCanvasTool} hitSlop={8}>
+                  <MaterialCommunityIcons
+                    name={
+                      canvasTool === 'select'
+                        ? 'selection-drag'
+                        : canvasTool === 'connect'
+                          ? 'vector-line'
+                          : 'cursor-move'
+                    }
+                    size={24}
+                    color={canvasTool !== 'move' ? SELECTION_COLOR : '#fff'}
+                  />
+                </Pressable>
+              </View>
+            </View>
+          </GlassPortal>
+        )}
+
+        {selectedCardIds.size > 0 ? (
+          // Compact, content-hugging, centred capsule - same look as the
+          // shared BulkActionBar component (Documents/Files/Photos/Links'
+          // own multi-select bar), kept local rather than reusing that
+          // component directly since its action set (tag/group/copy)
+          // doesn't apply to board cards.
+          <View style={[styles.selectionBarWrap, { bottom: rail.addBottom }]} pointerEvents="box-none">
+            <View style={styles.selectionBarCapsule}>
+              <Text style={styles.selectionBarCount}>{selectedCardIds.size}</Text>
+              <View style={styles.selectionBarDivider} />
+              {!!onlySelectedCard && (
+                <Pressable
+                  style={styles.selectionBarAction}
+                  hitSlop={6}
+                  onPress={() => copyCardText(onlySelectedCard)}
+                >
+                  <Ionicons name="copy-outline" size={18} color="#fff" />
+                  <Text style={styles.selectionBarActionLabel}>Копіювати</Text>
+                </Pressable>
+              )}
+              {!!onlySelectedDocumentCard && (
+                <Pressable
+                  style={styles.selectionBarAction}
+                  hitSlop={6}
+                  onPress={() => openCardText(onlySelectedDocumentCard)}
+                >
+                  <Ionicons name="reader-outline" size={18} color="#fff" />
+                  <Text style={styles.selectionBarActionLabel}>Текст</Text>
+                </Pressable>
+              )}
+              {onlySelectedDocumentCard && (
+                <Pressable
+                  style={styles.selectionBarAction}
+                  hitSlop={6}
+                  onPress={() => editDocumentCard(onlySelectedDocumentCard)}
+                >
+                  <Ionicons name="create-outline" size={18} color="#fff" />
+                  <Text style={styles.selectionBarActionLabel}>Редагувати</Text>
+                </Pressable>
+              )}
+              {selectionHasConnections && (
+                <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={disconnectSelectedCards}>
+                  <MaterialCommunityIcons name="vector-line" size={18} color="#fff" />
+                  <Text style={styles.selectionBarActionLabel}>Відʼєднати</Text>
+                </Pressable>
+              )}
+              <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={clearSelection}>
+                <Ionicons name="close" size={18} color="#fff" />
+                <Text style={styles.selectionBarActionLabel}>Скасувати</Text>
+              </Pressable>
+              <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={deleteSelectedCards}>
+                <Ionicons name="trash-outline" size={18} color="#fff" />
+                <Text style={styles.selectionBarActionLabel}>Видалити</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <Pressable style={[styles.fab, { bottom: rail.addBottom }]} onPress={() => setAddSheetVisible(true)}>
+            <Ionicons name="add" size={26} color="#fff" />
+          </Pressable>
+        )}
+
+        {/* «Меню», where the right button was pressed. Every row calls
+            exactly what the selection bar calls - the card is selected
+            first, so there is one implementation of each action, not
+            two. */}
+        <Menu
+          visible={!!cardMenu}
+          onClose={() => setCardMenu(null)}
+          style={{ position: 'absolute', left: cardMenu?.x ?? 0, top: cardMenu?.y ?? 0 }}
+          entries={
+            cardMenu
+              ? [
+                  {
+                    label: 'Копіювати',
+                    icon: 'copy-outline',
+                    onPress: () => copyCardText(cardMenu.card),
+                  },
+                  ...((cardMenu.card.type ?? 'paragraph') === 'document'
+                    ? [
+                        {
+                          label: 'Текст',
+                          icon: 'reader-outline' as const,
+                          onPress: () => openCardText(cardMenu.card),
+                        },
+                        {
+                          label: 'Редагувати',
+                          icon: 'create-outline' as const,
+                          onPress: () => editDocumentCard(cardMenu.card),
+                        },
+                      ]
+                    : []),
+                  { kind: 'rule' as const },
+                  {
+                    label: 'Видалити',
+                    icon: 'trash-outline',
+                    tone: 'danger',
+                    onPress: () => deleteCards(new Set([cardMenu.card.id])),
+                  },
+                ]
+              : []
+          }
+        />
+
+        <Modal
+          visible={groupPickerVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setGroupPickerVisible(false)}
+        >
+          <Pressable style={[styles.sheetBackdrop, { paddingBottom: keyboardHeight }]} onPress={() => setGroupPickerVisible(false)}>
+            <Pressable style={styles.sheet} onPress={() => {}}>
+              <View style={styles.sheetHandle} />
+              <Text style={styles.sheetTitle}>З якої групи</Text>
+              <ScrollView style={styles.groupList}>
+                {groups
+                  .filter((group) => !group.archived)
+                  .map((group) => {
+                    const count = itemsByGroup[group.id]?.length ?? 0;
+                    return (
+                      <Pressable
+                        key={group.id}
+                        style={styles.sheetRow}
+                        onPress={() => {
+                          setGroupPickerVisible(false);
+                          setImportingGroup(group);
+                        }}
+                      >
+                        <View style={[styles.groupDot, { backgroundColor: group.color || '#6B7280' }]} />
+                        <Text style={styles.sheetRowLabel} numberOfLines={1}>
+                          {group.name}
+                        </Text>
+                        <Text style={styles.groupCount}>{count}</Text>
+                      </Pressable>
+                    );
+                  })}
+                {groups.filter((group) => !group.archived).length === 0 && (
+                  <Text style={styles.groupEmpty}>Поки немає жодної групи.</Text>
+                )}
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        <GroupImportSheet
+          visible={importingGroup !== null}
+          groupName={importingGroup?.name ?? ''}
+          items={importingGroup ? (itemsByGroup[importingGroup.id] ?? []) : []}
+          fixedBoardId={boardId}
+          labelForKind={labelForItemKind}
+          titleForItem={(item) => titleForItem(item as Parameters<typeof titleForItem>[0])}
+          onCancel={() => setImportingGroup(null)}
+          onConfirm={(selected) => {
+            if (importingGroup) runGroupImport(importingGroup, selected as Parameters<typeof runGroupImport>[1]);
+          }}
+        />
+
+        <Modal visible={addSheetVisible} transparent animationType="fade" onRequestClose={() => setAddSheetVisible(false)}>
+          <Pressable style={[styles.sheetBackdrop, { paddingBottom: keyboardHeight }]} onPress={() => setAddSheetVisible(false)}>
+            <Pressable style={styles.sheet} onPress={() => {}}>
+              <View style={styles.sheetHandle} />
+              {/* First, because it's the one row that brings a whole
+                  theme's worth of material at once rather than one card. */}
+              <Pressable
+                style={styles.sheetRow}
+                onPress={() => {
+                  setAddSheetVisible(false);
+                  setGroupPickerVisible(true);
+                }}
+              >
+                <Ionicons name="albums-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>З групи</Text>
+              </Pressable>
+              <Pressable style={styles.sheetRow} onPress={addTextCard}>
+                <Ionicons name="text-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>Текст</Text>
+              </Pressable>
+              <Pressable style={styles.sheetRow} onPress={createDocumentCard}>
+                <Ionicons name="document-text-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>Документ</Text>
+              </Pressable>
+              <Pressable style={styles.sheetRow} onPress={() => openLinkPrompt('other')}>
+                <Ionicons name="link-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>Посилання</Text>
+              </Pressable>
+              <Pressable style={styles.sheetRow} onPress={() => openLinkPrompt('video')}>
+                <Ionicons name="videocam-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>YouTube / TikTok</Text>
+              </Pressable>
+              <Pressable style={styles.sheetRow} onPress={() => openLinkPrompt('geo')}>
+                <Ionicons name="location-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>Геоточка</Text>
+              </Pressable>
+              <Pressable style={styles.sheetRow} onPress={createImageCard}>
+                <Ionicons name="image-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>Зображення</Text>
+              </Pressable>
+              <Pressable style={styles.sheetRow} onPress={createFileCard}>
+                <Ionicons name="document-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>Файл</Text>
+              </Pressable>
+              <Pressable style={styles.sheetRow} onPress={openExistingItemPicker}>
+                <Ionicons name="search-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>З бази даних</Text>
+              </Pressable>
+              <Pressable style={styles.sheetRow} onPress={addColumn}>
+                <MaterialCommunityIcons name="view-column-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>Стовпчик</Text>
+              </Pressable>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        <AddExistingItemModal
+          visible={existingItemPickerVisible}
+          onPick={addExistingCard}
+          onClose={() => setExistingItemPickerVisible(false)}
+          excludeIds={existingItemExcludeIds}
+          includeDocuments
+          onPickDocument={addDocumentCard}
+        />
+
+        <VideoPlayerModal url={playingVideoUrl} onClose={() => setPlayingVideoUrl(null)} />
+
+        <RenamePrompt
+          visible={renamingTitle}
+          title="Назва дошки"
+          initialValue={title}
+          onCancel={() => setRenamingTitle(false)}
+          onSave={(value) => {
+            setRenamingTitle(false);
+            setTitle(value);
+          }}
+        />
+
+        {/* One dialog for both steps of adding a link - see linkPrompt's own
+            comment on why they can't be two. */}
+        <RenamePrompt
+          visible={linkPrompt !== null}
+          title={
+            linkPrompt?.step === 'title'
+              ? 'Назва посилання'
+              : linkPrompt?.kind === 'video'
+                ? 'Посилання на YouTube / TikTok'
+                : linkPrompt?.kind === 'geo'
+                  ? 'Посилання на місце'
+                  : 'Нове посилання'
+          }
+          placeholder={linkPrompt?.step === 'title' ? 'Назва' : 'https://…'}
+          initialValue=""
+          busy={linkPrompt?.step === 'url' && linkPrompt.busy}
+          onCancel={() => setLinkPrompt(null)}
+          onSave={submitLinkStep}
+        />
+
+        <RenamePrompt
+          visible={renamingColumn !== null}
+          title="Назва стовпчика"
+          initialValue={renamingColumn?.title ?? ''}
+          onCancel={() => setRenamingColumn(null)}
+          onSave={(value) => {
+            if (renamingColumn) renameColumn(renamingColumn, value);
+          }}
+        />
+
+
+        {/* A plain overlay View sibling of the gesture-driven canvas, not a
+            Modal and not a child of the canvas - same reasoning as
+            SketchEditor's own text-entry overlay: a Modal here would fight a
+            nested Modal (AddExistingItemModal) for focus, and a child of the
+            canvas would fight its Pan/Pinch gesture for touch focus. */}
+        {readingCard && (
+          <View style={styles.textEditBackdrop}>
+            <View style={styles.textEditCard}>
+              <Text style={styles.readTitle} numberOfLines={1}>
+                {readingCard.card.documentTitle?.trim() || 'Текст картки'}
+              </Text>
+              {/* A read-only input rather than a Text: it can't be edited,
+                  but it CAN be selected, which a Text on this canvas
+                  cannot. */}
+              <ScrollView style={styles.readBody}>
+                <TextInput
+                  style={styles.textEditInput}
+                  value={readingCard.text}
+                  editable={false}
+                  multiline
+                  scrollEnabled={false}
+                />
+              </ScrollView>
+              <View style={styles.textEditButtons}>
+                <Pressable style={styles.textEditCancel} onPress={() => setReadingCard(null)}>
+                  <Text style={styles.textEditCancelLabel}>Закрити</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.textEditSave}
+                  onPress={async () => {
+                    await Clipboard.setStringAsync(readingCard.text);
+                    hapticSuccess();
+                    setReadingCard(null);
+                  }}
+                >
+                  <Text style={styles.textEditSaveLabel}>Копіювати все</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {editingCard && (
+          <View style={styles.textEditBackdrop}>
+            <View style={styles.textEditCard}>
+              <TextInput
+                autoFocus
+                multiline
+                value={editingText}
+                onChangeText={setEditingText}
+                placeholder="Текст…"
+                placeholderTextColor={GLASS_TEXT_FAINT}
+                style={styles.textEditInput}
+              />
+              <View style={styles.textEditColors}>
+                {STICKY_COLORS.map((color) => (
+                  <Pressable
+                    key={color}
+                    onPress={() => setEditingCardColor(color)}
+                    style={[
+                      styles.textEditColorSwatch,
+                      { backgroundColor: color },
+                      editingCard.color === color && styles.textEditColorSwatchActive,
+                    ]}
+                  />
+                ))}
+              </View>
+              <View style={styles.textEditButtons}>
+                <Pressable style={styles.textEditCancel} onPress={() => setEditingCard(null)}>
+                  <Text style={styles.textEditCancelLabel}>Скасувати</Text>
+                </Pressable>
+                <Pressable style={styles.textEditSave} onPress={saveEditingText}>
+                  <Text style={styles.textEditSaveLabel}>Зберегти</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        )}
+      </View>
+
+      {isTwoPane && paneDocId !== null && (
+        <View style={styles.docPane}>
+          <DocumentEditorScreen
+            key={paneDocId}
+            pane
+            documentId={paneDocId}
+            // This screen's navigation carries the boards stack's own
+            // routes as well; the editor only ever pushes root-stack ones
+            // (Links/Photos/Files), which a nested navigator forwards
+            // upwards at runtime - the cast is purely about the wider
+            // param list this prop is typed against.
+            navigation={navigation as unknown as NativeStackNavigationProp<RootStackParamList>}
+            isFullscreen={paneFullscreen}
+            onToggleFullscreen={() => setPaneFullscreen((v) => !v)}
+            onClose={() => {
+              setPaneDocId(null);
+              setPaneFullscreen(false);
+              // The card that opened this pane shows a snapshot of the
+              // document (title, text, first image), so it has to be read
+              // again now that the document has been edited. Twice: the
+              // editor saves on a debounce, and the first read can land
+              // before that write is even issued.
+              refreshDocumentPreviews();
+              setTimeout(refreshDocumentPreviews, 1000);
+            }}
+          />
+        </View>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  splitRoot: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  container: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+  },
+  paneHidden: {
+    display: 'none',
+  },
+  docPane: {
+    flex: 1,
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(17,24,39,0.12)',
+    overflow: 'hidden',
+  },
+  canvasSurface: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  world: {
+    width: WORLD_SIZE,
+    height: WORLD_SIZE,
+  },
+  // left/top are pinned at 0 on purpose - a card's world position is carried
+  // entirely by its animated transform (see DraggableCard), never by layout.
+  card: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    zIndex: 0,
+  },
+  // The card currently being dragged renders above every other card - see
+  // the isDragging comment where this is applied.
+  cardDragging: {
+    zIndex: 100,
+    elevation: 12,
+  },
+  // The corner a picture is made bigger by. Hangs half off the card, the
+  // way the tile board's own grip does, so it never sits on the picture.
+  cardGrip: {
+    position: 'absolute',
+    right: -8,
+    bottom: -8,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(17,24,39,0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+    zIndex: 30,
+  },
+  cardSelected: {
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: SELECTION_COLOR,
+  },
+  stickyCard: {
+    borderRadius: 8,
+    padding: 12,
+    minHeight: 90,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  stickyText: {
+    fontSize: 14,
+    fontFamily: FONT_REGULAR,
+    color: '#111827',
+  },
+  dbRowCard: {
+    padding: 2,
+  },
+  refCard: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 8,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  refThumb: {
+    width: '100%',
+    height: 90,
+    borderRadius: 6,
+  },
+  refThumbPlaceholder: {
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  refLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
+    color: '#111827',
+  },
+  documentPreviewText: {
+    fontSize: 11,
+    fontFamily: FONT_REGULAR,
+    lineHeight: 15,
+    color: '#6B7280',
+  },
+  headerRow: {
+    position: 'absolute',
+    top: 56,
+    left: 20,
+    right: RAIL_CLEARANCE,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  titleTap: {
+    flex: 1,
+    // The app's own glass. No BlurView behind it, deliberately: this
+    // screen is INSIDE the blur target, and a blur asked to blur a
+    // picture it is itself part of recurses and takes the app down - it
+    // did exactly that here. A blurred one would have to be drawn through
+    // GlassPortal, like the rail's.
+    overflow: 'hidden',
+    backgroundColor: GLASS_ISLAND,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    fontFamily: FONT_BOLD,
+    color: '#fff',
+    textAlign: 'center',
+  },
+  // `bottom` is set inline (104 + the device's real safe-area inset) -
+  // see the component body. Board is a screen inside the "Дошки" tab, so
+  // FloatingIslandTabBar's pill (bottom: 24, ~48 tall) is always showing
+  // underneath here - 104 is the fixed clearance BulkActionBar's own
+  // aboveTabBar variant uses for the same pill.
+  fab: {
+    position: 'absolute',
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 999,
+    // Its own colour, but as glass - the same half-strength tint the
+    // documents screen's own add button takes.
+    overflow: 'hidden',
+    backgroundColor: ACCENT_GLASS,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 6,
+  },
+  marquee: {
+    position: 'absolute',
+    backgroundColor: 'rgba(37,99,235,0.15)',
+    borderWidth: 1.5,
+    borderColor: SELECTION_COLOR,
+    borderRadius: 4,
+  },
+  // left/top come from each connection's own bounding box at render time.
+  connection: {
+    position: 'absolute',
+  },
+  connectDraft: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    height: 2,
+    backgroundColor: CONNECTION_COLOR,
+  },
+  // left/top pinned at 0 on purpose - the column's world position rides
+  // entirely on its animated transform, same as a card's.
+  column: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: COLUMN_WIDTH,
+    borderRadius: 14,
+    backgroundColor: 'rgba(17,24,39,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.12)',
+  },
+  // Lit while a card is held over it.
+  columnCatching: {
+    borderColor: SELECTION_COLOR,
+    borderWidth: 2,
+    backgroundColor: 'rgba(139,92,246,0.10)',
+  },
+  columnHeader: {
+    height: COLUMN_HEADER_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingHorizontal: COLUMN_PADDING,
+  },
+  columnTitleWrap: {
+    flex: 1,
+  },
+  columnTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    fontFamily: FONT_BOLD,
+    color: '#374151',
+  },
+  columnCount: {
+    fontSize: 11,
+    fontFamily: FONT_REGULAR,
+    color: '#9CA3AF',
+  },
+  railWrap: {
+    position: 'absolute',
+    right: RAIL_RIGHT,
+    alignItems: 'center',
+  },
+  // Stood on its end, like every other screen's.
+  boardCapsule: {
+    alignItems: 'center',
+    gap: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 19,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: GLASS_ISLAND,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  boardCapsuleDivider: {
+    width: 20,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  // Same compact, content-hugging dark-glass pill as the shared
+  // BulkActionBar component (Documents/Files/Photos/Links' own
+  // multi-select bar) - kept local rather than reusing that component
+  // directly since its action set (tag/group/copy) doesn't apply to board
+  // cards. `bottom` is set inline, same as the FAB above.
+  selectionBarWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  selectionBarCapsule: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: 'rgba(20,20,20,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  selectionBarCount: {
+    fontSize: 14,
+    fontWeight: '800',
+    fontFamily: FONT_EXTRABOLD,
+    color: '#fff',
+  },
+  selectionBarDivider: {
+    width: 1,
+    height: 22,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  selectionBarAction: {
+    alignItems: 'center',
+    gap: 3,
+  },
+  selectionBarActionLabel: {
+    fontSize: 9.5,
+    fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
+    color: '#fff',
+  },
+  // Same dark-glass treatment as the selection bar's own capsule above,
+  // for the one confirmation that sits over the canvas itself rather than
+  // this app's usual native Alert.
+  sheetBackdrop: {
+    backgroundColor: 'rgba(17,24,39,0.45)',
+    ...SHEET_BACKDROP,
+  },
+  sheet: {
+    backgroundColor: '#fff',
+    ...SHEET_WINDOW,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 28,
+  },
+  sheetTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    fontFamily: FONT_BOLD,
+    color: '#111827',
+    marginBottom: 6,
+  },
+  groupList: {
+    maxHeight: 360,
+  },
+  groupDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  groupCount: {
+    fontSize: 13,
+    fontFamily: FONT_REGULAR,
+    color: '#9CA3AF',
+  },
+  groupEmpty: {
+    fontSize: 14,
+    fontFamily: FONT_REGULAR,
+    color: '#9CA3AF',
+    paddingVertical: 10,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  sheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  sheetRowLabel: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: FONT_REGULAR,
+    color: '#111827',
+  },
+  textEditBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(17,24,39,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  textEditCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    gap: 12,
+  },
+  readTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    fontFamily: FONT_BOLD,
+    color: '#111827',
+  },
+  readBody: {
+    maxHeight: 360,
+  },
+  textEditInput: {
+    minHeight: 100,
+    fontSize: 15,
+    fontFamily: FONT_REGULAR,
+    color: '#111827',
+    textAlignVertical: 'top',
+  },
+  textEditColors: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  textEditColorSwatch: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+  },
+  textEditColorSwatchActive: {
+    borderWidth: 2,
+    borderColor: '#111827',
+  },
+  textEditButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  textEditCancel: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  textEditCancelLabel: {
+    fontSize: 15,
+    fontFamily: FONT_REGULAR,
+    color: '#6B7280',
+  },
+  textEditSave: {
+    backgroundColor: ACCENT,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+  },
+  textEditSaveLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
+    color: '#fff',
+  },
+});
