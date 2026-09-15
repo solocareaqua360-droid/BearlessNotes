@@ -252,6 +252,13 @@ export default function CalendarScreen() {
   // below them. Writing lifts the sheet over both, the way it folds the
   // calendar away on a phone.
   const stackedWide = isTwoPane && windowHeight > windowWidth;
+  // Turning the screen makes every measured width a lie until the next
+  // layout pass. Dropping it to zero falls back to the window's own width
+  // for that one frame, which is wrong by a little; keeping it is wrong by
+  // a whole orientation.
+  useEffect(() => {
+    setCalendarPaneWidth(0);
+  }, [windowWidth, windowHeight]);
   const foldedAway = isWriting && (!isTwoPane || stackedWide);
   const noteFullscreen = !showCalendarPane && (!isThreePane || !showHistoryPane);
   function toggleNoteFullscreen() {
@@ -803,7 +810,6 @@ export default function CalendarScreen() {
       <View style={stackedWide ? styles.stack : isTwoPane ? styles.paneRow : styles.stack}>
         <View
           style={stackedWide ? [styles.topBand, foldedAway && styles.bandFolded] : isTwoPane ? styles.sidePane : null}
-          onLayout={stackedWide ? undefined : (e) => setCalendarPaneWidth(e.nativeEvent.layout.width)}
         >
           {/* The fold gesture lives on the plate only - never on the
               history list under it, where a drag is someone scrolling
@@ -811,9 +817,16 @@ export default function CalendarScreen() {
               beside the note there is room for it always, and in
               "only filled days" the strip is not a real week. */}
           <View style={stackedWide ? styles.topRow : styles.topStack}>
+          {/* The ONE thing that measures the calendar's width, whichever
+              way the screen is turned. It used to be measured on the band
+              in one arrangement and on this half in the other, and the
+              handler moved between them as the screen rotated - so on the
+              turn neither fired, and the plate kept the width it had
+              lying down. This view stretches to the width the plate
+              actually has in both, so one handler covers both. */}
           <View
-            style={stackedWide ? styles.topHalf : undefined}
-            onLayout={stackedWide ? (e) => setCalendarPaneWidth(e.nativeEvent.layout.width) : undefined}
+            style={stackedWide ? styles.topHalf : styles.topStack}
+            onLayout={(e) => setCalendarPaneWidth(e.nativeEvent.layout.width)}
           >
           <GestureDetector gesture={plateGesture}>
           <Animated.View style={[styles.calendarPlate, isTwoPane && styles.calendarPlatePaned, calendarPlateStyle]}>
@@ -1412,8 +1425,14 @@ const styles = StyleSheet.create({
   },
   // Standing up on the inner screen: the calendar and the history share a
   // band across the top, the sheet has the rest.
+  //
+  // The band takes the height it NEEDS, not a share of the screen. As a
+  // flex:1 it was given half the height and the calendar filled about two
+  // thirds of that, so the sheet started a hand's width below the history
+  // with nothing in between.
   topBand: {
-    flex: 1,
+    flexGrow: 0,
+    flexShrink: 0,
   },
   // Writing lifts the sheet over the band, which is the same thing that
   // happens on a phone - there the calendar folds away above the note.
@@ -1421,7 +1440,6 @@ const styles = StyleSheet.create({
     display: 'none',
   },
   topRow: {
-    flex: 1,
     flexDirection: 'row',
     gap: 12,
   },
@@ -1432,7 +1450,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   noteBelow: {
-    flex: 1.2,
+    // Whatever the band above it did not need.
+    flex: 1,
     marginLeft: 16,
     marginTop: 8,
   },
