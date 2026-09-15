@@ -147,7 +147,10 @@ export default function DatabaseChrome<T extends { id: string }>({
   const drawerRef = useRef<TagsDrawerHandle>(null);
   const drawerSwipe = useDrawerSwipe(useCallback(() => drawerRef.current?.open(), []));
   const { isTwoPane } = useResponsiveLayout();
-  const splitting = isTwoPane && !!pane;
+  // The rail on the left is the sign that this chrome stands in another
+  // screen's pane - and a pane is never split again, whatever the window
+  // is: the list would get half of a half.
+  const splitting = isTwoPane && !!pane && railSide !== 'left';
   // Where the list's own column starts, so the floating tabs begin at its
   // edge rather than at the window's - they span the window, so that a
   // long row can still be scrolled across the whole display.

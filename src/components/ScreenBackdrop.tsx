@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, { SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Pattern, RadialGradient, Rect, Stop } from 'react-native-svg';
@@ -40,7 +41,17 @@ export default function ScreenBackdrop({
   // still, and the screen is the gradient it always was.
   scrollY?: SharedValue<number>;
 }) {
-  const { width, height } = useWindowDimensions();
+  // Its OWN size, measured - not the window's. In a pane the screen is
+  // half a window, and a backdrop drawn to the window's width put the
+  // clouds where they would be on a whole screen and ran off the pane's
+  // edge: the user saw it as "the backdrop is shifted", and it was the
+  // one visible sign that the screen inside was being laid out for a
+  // width it did not have. The window's size only stands in until the
+  // first layout, so nothing flashes white.
+  const window = useWindowDimensions();
+  const [own, setOwn] = useState<{ width: number; height: number } | null>(null);
+  const width = own?.width ?? window.width;
+  const height = own?.height ?? window.height;
   const stripHeight = height + TILE * 2;
 
   const style = useAnimatedStyle(() => {
@@ -52,7 +63,14 @@ export default function ScreenBackdrop({
   });
 
   return (
-    <View style={[StyleSheet.absoluteFill, styles.frame]} pointerEvents="none">
+    <View
+      style={[StyleSheet.absoluteFill, styles.frame]}
+      pointerEvents="none"
+      onLayout={(e) => {
+        const { width: w, height: h } = e.nativeEvent.layout;
+        setOwn((prev) => (prev && prev.width === w && prev.height === h ? prev : { width: w, height: h }));
+      }}
+    >
       {/* The gradient stays where it is: it is the screen's own colour,
           top to bottom, and it must not slide with the clouds. 1px bled
           past every edge - the window size can round to a hair less than

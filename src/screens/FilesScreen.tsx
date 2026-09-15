@@ -92,7 +92,14 @@ type FileItem = {
 
 export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { isTwoPane } = useResponsiveLayout();
+  // Not two panes INSIDE a pane. Drawn in another screen's pane this
+  // screen is already half a window, and a quick look beside the list
+  // there would split that half again - which is exactly what it did:
+  // the chrome laid the list in the right half of the pane, the cards
+  // were squeezed into a strip a quarter of the window wide, and the
+  // other half stood empty. The quick look goes over the list instead,
+  // as on a phone.
+  const isTwoPane = useResponsiveLayout().isTwoPane && !inPane;
   const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
   const [files, setFiles] = useState<FileItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
