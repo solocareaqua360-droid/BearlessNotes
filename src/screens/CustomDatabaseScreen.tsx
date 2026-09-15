@@ -120,7 +120,7 @@ import {
 } from '../utils/customRowQuery';
 import { colorForDocument } from '../utils/documentColor';
 import { MONTH_FULL, WEEKDAY_SHORT, dateKey, getMonthGrid, isSameDay, parseDateKey } from '../utils/dateLocale';
-import { useRail } from '../hooks/useRail';
+import { useRail, useRailFree } from '../hooks/useRail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
@@ -128,7 +128,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
-import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CAPSULE_HEIGHT_4, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
+import {
+  CAPSULE_DROP,
+  CAPSULE_HEIGHT,
+  CAPSULE_HEIGHT_1,
+  CAPSULE_HEIGHT_3,
+  CHROME_TOP,
+  RAIL_CLEARANCE,
+  RAIL_RIGHT,
+  capsuleHeightFor,
+  railFits,
+} from '../constants/rail';
 import Menu from '../components/surfaces/Menu';
 
 const ACCENT = '#A05C7B';
@@ -219,6 +229,9 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   const [database, setDatabase] = useState<CustomDatabase | null>(null);
   const [rows, setRows] = useState<CustomDatabaseRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Why the list is empty, when it is empty for a reason other than having
+  // nothing in it - see the rows listener's error handler below.
+  const [readError, setReadError] = useState<string | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
@@ -344,7 +357,8 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
       const data = snapshot.data();
       if (!data) return;
       setDatabase({ id: databaseId, name: data.name, icon: data.icon, color: data.color, fields: data.fields ?? [], createdAt: data.createdAt, updatedAt: data.updatedAt });
-    });
+    },
+    (error) => setReadError(error.message));
   }, [databaseId]);
 
   useEffect(() => {
@@ -355,7 +369,8 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           .filter((v) => v.databaseId === databaseId)
           .sort((a, b) => a.name.localeCompare(b.name, 'uk', { sensitivity: 'base', numeric: true }))
       );
-    });
+    },
+    (error) => setReadError(error.message));
   }, [databaseId]);
 
   useEffect(() => {
@@ -380,6 +395,17 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           .filter((r) => r.databaseId === databaseId)
           .sort((a, b) => b.updatedAt - a.updatedAt)
       );
+      setReadError(null);
+      setIsLoading(false);
+    },
+    // A listener with no error handler is the shape of the worst bug this
+    // app has had: the owner-only rules REFUSE a read they do not like
+    // rather than return fewer rows, and with nothing listening for that
+    // the screen simply stands there saying "Ще немає записів". An empty
+    // database and a refused database have to look different, or the user
+    // is left reading data loss into a permissions error.
+    (error) => {
+      setReadError(error.message);
       setIsLoading(false);
     });
   }, [databaseId]);
@@ -574,11 +600,43 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   // filter button exists only where there is something to filter by, so
   // the capsule is one button shorter without it - read off the database
   // rather than off filterFields, which is computed further down.
+  //
+  // This screen is PUSHED over the tabs, so there is no navigation island
+  // at its foot and the rail must not hold room for one - that reserved
+  // height is what drove the capsules up over the top one.
+  const railFree = useRailFree(CAPSULE_HEIGHT_3, false);
+  // Sort and group always; filter only where there is something to filter
+  // by - read off the database rather than off filterFields, which is
+  // computed further down.
+  const railActionCount = 2 + (filterableFieldsOf(database).length > 0 ? 1 : 0);
+  const actionsHeightFor = (views: boolean, selectInside: boolean) =>
+    capsuleHeightFor(railActionCount + (views ? 1 : 0) + (selectInside ? 1 : 0));
+  // What the rail gives up first when the screen is too short for all of
+  // it, in the order the user ranked them: choosing keeps a capsule of its
+  // own, and saved views are a fourth button only "якщо влізе". Nothing
+  // here decides by screen NAME or a breakpoint - it asks whether the
+  // stack stands clear of the top capsule, and takes the first shape that
+  // does, so a Fold's two screens need no separate case.
+  const railPlan =
+    [
+      { views: true, selectOwn: true },
+      { views: false, selectOwn: true },
+      { views: true, selectOwn: false },
+      { views: false, selectOwn: false },
+    ].find((plan) =>
+      railFits(
+        railFree,
+        actionsHeightFor(plan.views, !plan.selectOwn),
+        CAPSULE_HEIGHT,
+        plan.selectOwn ? CAPSULE_HEIGHT_1 : 0
+      )
+    ) ?? { views: false, selectOwn: false };
   const rail = useRail(
     CAPSULE_HEIGHT_3,
-    filterableFieldsOf(database).length > 0 ? CAPSULE_HEIGHT_4 : CAPSULE_HEIGHT_3,
+    actionsHeightFor(railPlan.views, !railPlan.selectOwn),
     CAPSULE_HEIGHT,
-    CAPSULE_HEIGHT_1
+    railPlan.selectOwn ? CAPSULE_HEIGHT_1 : 0,
+    false
   );
 
   if (!database) {
@@ -1626,7 +1684,24 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           {/* Everything else left this strip for the rail: ordering,
               filtering, grouping and the saved views. The strip had five
               chips and the rail cut the last of them off. What is left is
-              the one thing that is the list's own SHAPE. */}
+              the one thing that is the list's own SHAPE.
+
+              Except the saved views, on a screen too short to give them a
+              fourth button on the rail: they come back here rather than
+              become unreachable. */}
+          {!railPlan.views && (
+            <Pressable
+              style={[styles.paramChip, !!activeView && styles.paramChipActive]}
+              onLayout={(e) => rememberChip('views', e.nativeEvent.layout)}
+              onPress={() => openParamList('views')}
+            >
+              <Ionicons name="bookmark-outline" size={13} color="rgba(255,255,255,0.85)" />
+              <Text style={styles.paramChipLabel} numberOfLines={1}>
+                {activeView ? activeView.name : 'Вигляди'}
+              </Text>
+              <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
+            </Pressable>
+          )}
         </ScrollView>
 
       {/* An open list is drawn HERE, over the whole screen, rather than
@@ -1988,11 +2063,17 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
       ) : displayedRows.length === 0 ? (
         <View style={styles.emptyState}>
           <View style={styles.emptyIcon}>
-            <Ionicons name="grid-outline" size={32} color={ACCENT} />
+            <Ionicons name={readError ? 'lock-closed-outline' : 'grid-outline'} size={32} color={ACCENT} />
           </View>
-          <Text style={styles.emptyLabel}>{needle ? 'Нічого не знайдено' : 'Ще немає записів'}</Text>
+          <Text style={styles.emptyLabel}>
+            {readError ? 'Не вдалося прочитати записи' : needle ? 'Нічого не знайдено' : 'Ще немає записів'}
+          </Text>
           <Text style={styles.emptyHint}>
-            {needle ? 'Спробуйте інше слово' : 'Натисніть "+", щоб додати перший запис'}
+            {readError
+              ? readError
+              : needle
+                ? 'Спробуйте інше слово'
+                : 'Натисніть "+", щоб додати перший запис'}
           </Text>
         </View>
       ) : viewMode === 'table' ? (
@@ -2073,16 +2154,27 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
               onPress: () => openParamList('group'),
               active: openParam === 'group' || !!groupField,
             },
-            {
-              icon: 'bookmark-outline' as const,
-              onPress: () => openParamList('views'),
-              active: openParam === 'views' || !!activeView,
-            },
+            // The fourth button, on a screen tall enough to hold it.
+            ...(railPlan.views
+              ? [
+                  {
+                    icon: 'bookmark-outline' as const,
+                    onPress: () => openParamList('views'),
+                    active: openParam === 'views' || !!activeView,
+                  },
+                ]
+              : []),
+            // And where even three capsules will not stand clear of the
+            // top one, choosing gives up its own and joins these.
+            ...(railPlan.selectOwn
+              ? []
+              : [{ icon: 'checkmark-circle-outline' as const, onPress: toggleSelectMode }]),
           ]}
         />
       )}
-      {/* Choosing several is a mode, not an action - its own capsule. */}
-      {railFocused && !isSelectMode && (
+      {/* Choosing several is a mode, not an action - its own capsule,
+          while the screen has the height for one. */}
+      {railFocused && !isSelectMode && railPlan.selectOwn && (
         <RailCapsule
           bottom={rail.historyBottom}
           buttons={[{ icon: 'checkmark-circle-outline', onPress: toggleSelectMode }]}

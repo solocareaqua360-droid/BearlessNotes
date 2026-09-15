@@ -44,24 +44,23 @@ export const TAG_ROW_PAD = 4;
 // How far in from the very top edge the group tabs start - shared with
 // DocumentsScreen's own chromeTop, so the two never drift apart.
 export const CHROME_TOP = 4;
-// 2 buttons at 24 + 18 of padding at each end + 1 divider + 2 gaps at 18
-// + the 1px border top and bottom. Keep this in step with the capsule
-// itself: when it was left saying 184 for a capsule that had grown, the
-// round buttons ended up with no room to sit clear of it.
-export const CAPSULE_HEIGHT = 123;
-// The same sum for a capsule carrying a third button: one more icon, one
-// more divider - and TWO more gaps, since the divider it brings with it
-// has a gap on each side. That last pair is what was missed first time
-// round, and 18 short was still enough to leave the folder button sitting
-// on top of the capsule. A screen with three buttons has to say so - both
-// to useRail and to TagsDrawer, which is what places that button.
-export const CAPSULE_HEIGHT_3 = CAPSULE_HEIGHT + 24 + 1 + 18 * 2;
-// And a fourth: one more icon, one more divider, two more gaps again.
-export const CAPSULE_HEIGHT_4 = CAPSULE_HEIGHT_3 + 24 + 1 + 18 * 2;
-// A capsule carrying a single button: the padding at each end and the
-// icon between them, inside the 1px border - the same sum as RAIL_WIDTH,
-// named for what it is.
-export const CAPSULE_HEIGHT_1 = 18 * 2 + 24 + 2;
+// How tall a capsule is with `n` buttons in it.
+//
+// It used to be four hand-added constants, each one a sum written out in
+// a comment, and one of them was left behind when the capsule grew - the
+// round button below it ended up sitting on top of it. One function
+// instead: 18 of padding at each end and a 24px icon, inside the 1px
+// border; every button after the first brings its own icon, the hairline
+// above it, and a gap on each side of that hairline.
+export function capsuleHeightFor(buttons: number) {
+  if (buttons <= 0) return 0;
+  return 18 * 2 + 2 + buttons * 24 + (buttons - 1) * (18 * 2 + 1);
+}
+
+export const CAPSULE_HEIGHT = capsuleHeightFor(2);
+export const CAPSULE_HEIGHT_3 = capsuleHeightFor(3);
+export const CAPSULE_HEIGHT_4 = capsuleHeightFor(4);
+export const CAPSULE_HEIGHT_1 = capsuleHeightFor(1);
 
 // How far the capsule hangs below the top of the chrome band, and how far
 // the island drops into the tag row's own band. Both rows keep the rail's
@@ -77,16 +76,48 @@ export const CAPSULE_HEIGHT_1 = 18 * 2 + 24 + 2;
 export const CAPSULE_DROP = 59;
 const ISLAND_DROP = 10;
 
+// The height the stack of capsules actually has to share, between the top
+// capsule and whatever stands at the foot.
+//
+// `hasIsland` is the piece that was missing. The navigation island belongs
+// to the four TAB screens; a screen pushed on top of them (a database,
+// files, photos) has none - and the rail was reserving its height there
+// anyway. Eighty-eight points held for a bar that is not on the screen is
+// what pushed a database's four capsules up over its own top capsule.
+export function railFreeHeight(
+  windowHeight: number,
+  insetTop: number,
+  insetBottom: number,
+  capsuleHeight: number = CAPSULE_HEIGHT,
+  hasIsland: boolean = true
+) {
+  const islandHeight = hasIsland ? NAV_BUTTON + NAV_PADDING * 2 : 0;
+  const foot = insetBottom + NAV_BOTTOM + islandHeight;
+  const head = insetTop + CHROME_TOP + CAPSULE_DROP + capsuleHeight;
+  return { free: windowHeight - head - foot, foot, islandHeight };
+}
+
+// Whether a stack of this shape stands clear of the top capsule.
+//
+// The layout has no way to refuse: with the pieces too tall for the screen
+// the gap simply clamps to its minimum and the top capsule is covered. So
+// a screen that can choose what it puts on the rail asks this FIRST, and
+// leaves out what does not fit - which is exactly the condition the user
+// put on the fourth button.
+export function railFits(free: number, actionsHeight: number, createHeight: number, historyHeight: number = 0) {
+  const gaps = historyHeight > 0 ? 4 : 3;
+  return free - (actionsHeight + createHeight + historyHeight) >= gaps * RAIL_GAP;
+}
+
 // `actionsHeight`: the slot above the add button used to be the folder
 // button (RAIL_WIDTH tall). The folder button is gone - the drawer opens
 // on a swipe - and the slot holds the ACTIONS capsule now (sort, select),
 // which is a capsule's height; a screen without one keeps the old size
-// so nothing else moves.
-// `createHeight`: the add button became a capsule that can carry a second
-// button (a new folder, in the explorer); `historyHeight`: the explorer's
-// back/forward capsule, absent (0) everywhere else. The pieces stack from
-// the foot with one equal gap between them, so a screen with more of
-// them simply spaces them a little tighter.
+// so nothing else moves. `createHeight`: the add button became a capsule
+// that can carry a second button (a new folder, in the explorer);
+// `historyHeight`: the explorer's back/forward capsule, absent (0)
+// elsewhere. The pieces stack from the foot with one equal gap between
+// them, so a screen with more of them simply spaces them a little tighter.
 export function useRailLayout(
   windowHeight: number,
   insetTop: number,
@@ -94,20 +125,12 @@ export function useRailLayout(
   capsuleHeight: number = CAPSULE_HEIGHT,
   actionsHeight: number = RAIL_WIDTH,
   createHeight: number = RAIL_WIDTH,
-  historyHeight: number = 0
+  historyHeight: number = 0,
+  hasIsland: boolean = true
 ) {
   const tagRowBottom = insetBottom + TAG_ROW_PAD;
-  // The navigation island is HORIZONTAL, at the foot of the screen in the
-  // middle (see FloatingIslandTabBar) - not on the rail. The layout kept
-  // reserving the island's old vertical height (four buttons stacked) at
-  // the rail's foot, so with a fourth capsule the stack ran up over the
-  // top one. The foot only has to clear the island's real, lying-down
-  // height now.
-  const islandHeight = NAV_BUTTON + NAV_PADDING * 2;
+  const { free, foot, islandHeight } = railFreeHeight(windowHeight, insetTop, insetBottom, capsuleHeight, hasIsland);
   const navBottom = insetBottom + NAV_BOTTOM;
-  const foot = navBottom + islandHeight;
-  const head = insetTop + CHROME_TOP + CAPSULE_DROP + capsuleHeight;
-  const free = windowHeight - head - foot;
   const pieces = actionsHeight + createHeight + historyHeight;
   const gaps = historyHeight > 0 ? 4 : 3;
   const gap = Math.max(RAIL_GAP, (free - pieces) / gaps);
