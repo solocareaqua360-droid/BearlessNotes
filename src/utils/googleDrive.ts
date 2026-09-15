@@ -87,11 +87,43 @@ export async function disconnectGoogleDrive(): Promise<void> {
   await AsyncStorage.multiRemove([FOLDER_ID_STORAGE_KEY, ...Object.values(SUBFOLDER_ID_STORAGE_KEY)]);
 }
 
+// react-native-google-signin keeps ONE promise for signInSilently and
+// OVERWRITES it when a second call arrives before the first has settled.
+// The first then never settles at all, and whatever was waiting on it
+// fails carrying the library's own warning as its message - which is how
+// "previous promise did not settle and was overwritten" ended up inside
+// a dialog telling the user their copy was left on the Drive.
+//
+// Every Drive call asks for a token, and deleting a handful of photos
+// asks several times in the same tick. So the call is shared: the first
+// one starts it and everyone else waits on the same promise.
+let silentSignIn: Promise<unknown> | null = null;
+
+function signInSilentlyOnce(): Promise<unknown> {
+  if (!silentSignIn) {
+    silentSignIn = GoogleSignin.signInSilently().finally(() => {
+      silentSignIn = null;
+    });
+  }
+  return silentSignIn;
+}
+
+// The token itself is shared the same way, and for the same reason: a
+// dozen calls at once would otherwise each mint their own.
+let tokenRequest: Promise<string> | null = null;
+
 async function getDriveAccessToken(): Promise<string> {
   ensureConfigured();
-  await GoogleSignin.signInSilently();
-  const { accessToken } = await GoogleSignin.getTokens();
-  return accessToken;
+  if (!tokenRequest) {
+    tokenRequest = (async () => {
+      await signInSilentlyOnce();
+      const { accessToken } = await GoogleSignin.getTokens();
+      return accessToken;
+    })().finally(() => {
+      tokenRequest = null;
+    });
+  }
+  return tokenRequest;
 }
 
 // Every Drive call goes through here. Play Services caches access tokens,
