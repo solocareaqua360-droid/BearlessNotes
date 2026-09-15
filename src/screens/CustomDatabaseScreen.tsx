@@ -595,46 +595,50 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
   // the render before it, and React ends the screen over it. That is what
   // crashed this screen the moment a database was opened.
   //
-  // Four pieces stand on this rail: what the list shows (order, filter,
-  // group, saved views), choosing several, and making something. The
-  // filter button exists only where there is something to filter by, so
-  // the capsule is one button shorter without it - read off the database
-  // rather than off filterFields, which is computed further down.
-  //
   // This screen is PUSHED over the tabs, so there is no navigation island
   // at its foot and the rail must not hold room for one - that reserved
   // height is what drove the capsules up over the top one.
   const railFree = useRailFree(CAPSULE_HEIGHT_3, false);
-  // Sort and group always; filter only where there is something to filter
-  // by - read off the database rather than off filterFields, which is
-  // computed further down.
-  const railActionCount = 2 + (filterableFieldsOf(database).length > 0 ? 1 : 0);
-  const actionsHeightFor = (views: boolean, selectInside: boolean) =>
-    capsuleHeightFor(railActionCount + (views ? 1 : 0) + (selectInside ? 1 : 0));
-  // What the rail gives up first when the screen is too short for all of
-  // it, in the order the user ranked them: choosing keeps a capsule of its
-  // own, and saved views are a fourth button only "якщо влізе". Nothing
-  // here decides by screen NAME or a breakpoint - it asks whether the
-  // stack stands clear of the top capsule, and takes the first shape that
-  // does, so a Fold's two screens need no separate case.
+  // The filter and group buttons exist only where there is something to
+  // filter or group BY - read off the database rather than off
+  // filterFields, which is computed further down.
+  const hasRailFilter = filterableFieldsOf(database).length > 0;
+  const hasRailGroup = groupableFieldsOf(database).length > 0;
+  // What the rail would like to carry, and the order it gives it up in
+  // when the screen is too short to hold it all. The user's own ranking:
+  // saved views are a fourth button only "якщо влізе"; choosing keeps a
+  // capsule of its own for as long as it can; grouping goes back to the
+  // strip before anything essential does; and on the shortest screens the
+  // create capsule keeps only the button that makes a record.
+  //
+  // Nothing here decides by screen NAME or a breakpoint - each shape is
+  // asked whether it stands clear of the top capsule, and the first that
+  // does is the one drawn. A Fold's two screens need no case of their own.
+  const RAIL_PLANS = [
+    { views: true, group: true, selectOwn: true, createBoth: true },
+    { views: false, group: true, selectOwn: true, createBoth: true },
+    { views: false, group: true, selectOwn: false, createBoth: true },
+    { views: false, group: false, selectOwn: false, createBoth: true },
+    { views: false, group: false, selectOwn: false, createBoth: false },
+  ];
+  type RailPlan = (typeof RAIL_PLANS)[number];
+  const railActionsHeight = (plan: RailPlan) =>
+    capsuleHeightFor(
+      1 + // ordering, which never leaves
+        (hasRailFilter ? 1 : 0) +
+        (plan.group && hasRailGroup ? 1 : 0) +
+        (plan.views ? 1 : 0) +
+        (plan.selectOwn ? 0 : 1)
+    );
+  const railCreateHeight = (plan: RailPlan) => capsuleHeightFor(plan.createBoth ? 2 : 1);
   const railPlan =
-    [
-      { views: true, selectOwn: true },
-      { views: false, selectOwn: true },
-      { views: true, selectOwn: false },
-      { views: false, selectOwn: false },
-    ].find((plan) =>
-      railFits(
-        railFree,
-        actionsHeightFor(plan.views, !plan.selectOwn),
-        CAPSULE_HEIGHT,
-        plan.selectOwn ? CAPSULE_HEIGHT_1 : 0
-      )
-    ) ?? { views: false, selectOwn: false };
+    RAIL_PLANS.find((plan) =>
+      railFits(railFree, railActionsHeight(plan), railCreateHeight(plan), plan.selectOwn ? CAPSULE_HEIGHT_1 : 0)
+    ) ?? RAIL_PLANS[RAIL_PLANS.length - 1];
   const rail = useRail(
     CAPSULE_HEIGHT_3,
-    actionsHeightFor(railPlan.views, !railPlan.selectOwn),
-    CAPSULE_HEIGHT,
+    railActionsHeight(railPlan),
+    railCreateHeight(railPlan),
     railPlan.selectOwn ? CAPSULE_HEIGHT_1 : 0,
     false
   );
@@ -1689,6 +1693,20 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
               Except the saved views, on a screen too short to give them a
               fourth button on the rail: they come back here rather than
               become unreachable. */}
+          {!railPlan.group && groupFields.length > 0 && (
+            <Pressable
+              style={[styles.paramChip, !!groupField && styles.paramChipActive]}
+              onLayout={(e) => rememberChip('group', e.nativeEvent.layout)}
+              onPress={() => openParamList('group')}
+            >
+              <Ionicons name="layers-outline" size={13} color="rgba(255,255,255,0.85)" />
+              <Text style={styles.paramChipLabel} numberOfLines={1}>
+                {groupField ? groupField.name : 'Групування'}
+              </Text>
+              <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
+            </Pressable>
+          )}
+
           {!railPlan.views && (
             <Pressable
               style={[styles.paramChip, !!activeView && styles.paramChipActive]}
@@ -2149,11 +2167,15 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
                   },
                 ]
               : []),
-            {
-              icon: 'layers-outline' as const,
-              onPress: () => openParamList('group'),
-              active: openParam === 'group' || !!groupField,
-            },
+            ...(railPlan.group && groupFields.length > 0
+              ? [
+                  {
+                    icon: 'layers-outline' as const,
+                    onPress: () => openParamList('group'),
+                    active: openParam === 'group' || !!groupField,
+                  },
+                ]
+              : []),
             // The fourth button, on a screen tall enough to hold it.
             ...(railPlan.views
               ? [
@@ -2187,7 +2209,18 @@ export default function CustomDatabaseScreen({ databaseId: databaseIdProp }: Par
           bottom={rail.addBottom}
           buttons={[
             { icon: 'albums-outline', badge: 'add-circle-outline', onPress: openNewRow },
-            { icon: 'bookmark-outline', badge: 'add-circle-outline', onPress: () => setViewPrompt({ mode: 'new' }) },
+            // The second button goes on the shortest screens, where the
+            // rail has already given up everything else it can; a new view
+            // is still reachable from the strip's own chip.
+            ...(railPlan.createBoth
+              ? [
+                  {
+                    icon: 'bookmark-outline' as const,
+                    badge: 'add-circle-outline' as const,
+                    onPress: () => setViewPrompt({ mode: 'new' }),
+                  },
+                ]
+              : []),
           ]}
         />
       )}
