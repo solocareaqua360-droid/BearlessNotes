@@ -30,7 +30,7 @@ import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
-import { FileGridCell, FileRow, gridCellWidth } from '../components/ItemCards';
+import { FileGridCell, FileRow } from '../components/ItemCards';
 import GroupSections from '../components/GroupSections';
 import TagPicker from '../components/TagPicker';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
@@ -498,10 +498,9 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     );
   }
 
-  function renderFileGridCell(item: FileItem, gridWidth?: number) {
+  function renderFileGridCell(item: FileItem) {
     return (
       <FileGridCell
-        gridWidth={gridWidth}
         key={item.id}
         file={item}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
@@ -798,7 +797,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
               onFolderMenu={openFolderMenu}
             />
             )}
-            {filesHere.map((item) => renderFileGridCell(item, gridCellWidth(listWidth)))}
+            {filesHere.map((item) => renderFileGridCell(item))}
             <GroupSections groupId={list.selectedGroupId} currentKind="file" tags={tags} />
           </ScrollView>
         ) : (

@@ -33,7 +33,7 @@ import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
-import { LinkGridCell, LinkRow, gridCellWidth } from '../components/ItemCards';
+import { LinkGridCell, LinkRow } from '../components/ItemCards';
 import GroupSections from '../components/GroupSections';
 import TagPicker from '../components/TagPicker';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
@@ -501,10 +501,9 @@ export default function LinksScreen({
     );
   }
 
-  function renderLinkGridCell(item: LinkItem, gridWidth?: number) {
+  function renderLinkGridCell(item: LinkItem) {
     return (
       <LinkGridCell
-        gridWidth={gridWidth}
         key={item.id}
         link={item}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
@@ -767,7 +766,7 @@ export default function LinksScreen({
                 onFolderMenu={openFolderMenu}
               />
             )}
-            {linksHere.map((item) => renderLinkGridCell(item, gridCellWidth(listWidth)))}
+            {linksHere.map((item) => renderLinkGridCell(item))}
             <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />
           </ScrollView>
         ) : (

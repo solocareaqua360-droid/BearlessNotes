@@ -35,7 +35,7 @@ import ZoomableImageViewer, { ViewerAction } from '../components/ZoomableImageVi
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
-import { PhotoCell, PhotoRow, gridCellWidth } from '../components/ItemCards';
+import { PhotoCell, PhotoRow } from '../components/ItemCards';
 import GroupSections from '../components/GroupSections';
 import TagPicker from '../components/TagPicker';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
@@ -788,7 +788,6 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                 tags: tags.filter((t) => photo.tagIds.includes(t.id)),
                 onPress: () => (isSelectMode ? toggleSelected(photo.id) : setViewerPhotoId(photo.id)),
                 onTagPress: () => setTagPickerForId(photo.id),
-                gridWidth: viewMode === 'list' ? undefined : gridCellWidth(listWidth),
                 isSelectMode,
                 isSelected: selectedIds.has(photo.id),
               };

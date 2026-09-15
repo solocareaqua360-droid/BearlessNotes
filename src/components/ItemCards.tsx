@@ -145,29 +145,28 @@ export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
   );
 }
 
-// Two cells to a line, in pixels, from the width the rows actually have -
-// the row's own 12pt gap taken off first. As a percentage the two could
-// never agree: the gap is pixels, and in a half-width pane the difference
-// is enough to deform the cards.
-export function gridCellWidth(listWidth: number): number | undefined {
-  if (listWidth <= 0) return undefined;
-  return Math.floor((listWidth - 12) / 2);
-}
-
 // A card's height follows its width, so a row of them is a row of the same
 // shape. Without it each card was as tall as its own title and tags, and a
 // wrapped row came out ragged - which is what the user has been calling
 // deformed.
+//
+// It is an aspectRatio, NOT a height worked out from a measured width.
+// That is the whole history of this bug: the width came from a number
+// the screen had measured, the height was that same number times the
+// ratio - and where the two disagreed (a pane whose real row is
+// narrower than the measurement said) flex shrank the width and left
+// the height where it was, which is the tall narrow strip the user kept
+// being shown. An aspectRatio is resolved from the width the card
+// ACTUALLY gets, so the two can never disagree again.
 export const GRID_CARD_RATIO = 1.3;
 
-export function LinkGridCell({ link, gridWidth, ...rest }: { link: LinkCardItem; gridWidth?: number } & Common) {
+export function LinkGridCell({ link, ...rest }: { link: LinkCardItem } & Common) {
   const info = LINK_CATEGORY_INFO[categoryFromSiteName(link.siteName)];
   const { background, text, textMuted } = colorForDocument(link.id);
   return (
     <View
       style={[
         styles.gridCard,
-        gridWidth !== undefined && { width: gridWidth, height: Math.round(gridWidth * GRID_CARD_RATIO) },
         { backgroundColor: background },
       ]}
     >
@@ -254,14 +253,13 @@ export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
   );
 }
 
-export function FileGridCell({ file, gridWidth, ...rest }: { file: FileCardItem; gridWidth?: number } & Common) {
+export function FileGridCell({ file, ...rest }: { file: FileCardItem } & Common) {
   const { background, text, textMuted } = colorForDocument(file.id);
   const preview = useFilePreview(file);
   return (
     <View
       style={[
         styles.gridCard,
-        gridWidth !== undefined && { width: gridWidth, height: Math.round(gridWidth * GRID_CARD_RATIO) },
         { backgroundColor: background },
       ]}
     >
@@ -363,7 +361,7 @@ export function PhotoRow({ photo, ...rest }: { photo: PhotoCardItem } & Common) 
   );
 }
 
-export function PhotoCell({ photo, gridWidth, ...rest }: { photo: PhotoCardItem; gridWidth?: number } & Common) {
+export function PhotoCell({ photo, ...rest }: { photo: PhotoCardItem } & Common) {
   // This device may never have had the actual bytes (a fresh install, a
   // different device than the one the photo was taken on) - quietly
   // re-pulled from the Drive backup the first time it is rendered.
@@ -371,7 +369,7 @@ export function PhotoCell({ photo, gridWidth, ...rest }: { photo: PhotoCardItem;
   const docCount = photo.documentIds.length;
   return (
     <Pressable
-      style={[styles.cell, gridWidth !== undefined && { width: gridWidth }]}
+      style={styles.cell}
       onPress={rest.onPress}
       onLongPress={rest.onLongPress}
     >
@@ -475,11 +473,14 @@ const styles = StyleSheet.create({
   },
   gridCard: {
     overflow: 'hidden',
-    // Fixed proportion, not flex:1 - a flex card stretches to fill
-    // whatever is left in its row, which breaks when a row has only one
-    // card left (a filter down to an odd count). The screens that know
-    // their real width pass it in pixels instead; this is the fallback.
-    width: '48%',
+    // Two to a line, whatever the line turns out to be. flexBasis 46 and
+    // grow 1: the pair starts under half each, so the row's own 12pt gap
+    // always fits, and then they grow to share exactly what is left. No
+    // screen has to measure anything and hand a number down - which is
+    // what every version of this card being "deformed" came from.
+    flexBasis: '46%',
+    flexGrow: 1,
+    aspectRatio: 1 / GRID_CARD_RATIO,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(176,176,176,0.5)',
@@ -528,7 +529,10 @@ const styles = StyleSheet.create({
     right: 4,
   },
   cell: {
-    width: '47%',
+    // Same rule as gridCard above: the pair fills whatever the row
+    // really is, rather than a width measured somewhere else.
+    flexBasis: '46%',
+    flexGrow: 1,
     aspectRatio: 1,
     borderRadius: 14,
     overflow: 'hidden',
