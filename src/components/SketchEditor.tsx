@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  Animated as RNAnimated,
   GestureResponderEvent,
   LayoutChangeEvent,
   Image,
   Modal,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -241,6 +243,35 @@ export default function SketchEditor({ visible, initialElements, background, onS
   // The palette hides behind one dot on the floating bar - open only
   // while it is being used.
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // The bar goes where the hand puts it.
+  //
+  // Wherever it rests it covers SOMETHING - the picture is the whole
+  // screen - so the answer is not a better place for it but letting the
+  // user move it off whatever they are drawing on. Plain PanResponder
+  // and RN's own Animated, not gesture-handler: this editor's canvas is
+  // built on responder events for the same reason (it is an isolated
+  // surface inside a Modal), and mixing the two here has caused trouble
+  // before.
+  const barPan = useRef(new RNAnimated.ValueXY({ x: 0, y: 0 })).current;
+  const barAt = useRef({ x: 0, y: 0 });
+  const barDrag = useRef(
+    PanResponder.create({
+      // Only once the finger has travelled - a tap still belongs to the
+      // button under it.
+      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6,
+      onPanResponderGrant: () => {
+        barPan.setOffset({ ...barAt.current });
+        barPan.setValue({ x: 0, y: 0 });
+      },
+      onPanResponderMove: RNAnimated.event([null, { dx: barPan.x, dy: barPan.y }], {
+        useNativeDriver: false,
+      }),
+      onPanResponderRelease: (_e, g) => {
+        barAt.current = { x: barAt.current.x + g.dx, y: barAt.current.y + g.dy };
+        barPan.flattenOffset();
+      },
+    })
+  ).current;
   // The system's own bars. Over a photograph the editor takes the whole
   // screen (no safe-area padding, or the picture loses two strips), so
   // the floating chrome keeps clear of them itself - otherwise "Готово"
@@ -575,7 +606,12 @@ export default function SketchEditor({ visible, initialElements, background, onS
           // was a quarter of the picture spent on controls.
           <>
             {paletteOpen && (
-              <View style={[styles.palettePop, { bottom: insets.bottom + 74 }]}>
+              <RNAnimated.View
+                style={[
+                  styles.palettePop,
+                  { bottom: insets.bottom + 68, transform: barPan.getTranslateTransform() },
+                ]}
+              >
                 {COLORS.map((c) => (
                   <Pressable
                     key={c}
@@ -598,9 +634,15 @@ export default function SketchEditor({ visible, initialElements, background, onS
                     <View style={[styles.widthDot, { width: w * 2, height: w * 2, borderRadius: w }]} />
                   </Pressable>
                 ))}
-              </View>
+              </RNAnimated.View>
             )}
-            <View style={[styles.toolbarFloating, { bottom: insets.bottom + 10 }]}>
+            <RNAnimated.View
+              style={[
+                styles.toolbarFloating,
+                { bottom: insets.bottom + 10, transform: barPan.getTranslateTransform() },
+              ]}
+              {...barDrag.panHandlers}
+            >
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -614,9 +656,9 @@ export default function SketchEditor({ visible, initialElements, background, onS
                     onPress={() => selectTool(t)}
                   >
                     {family === 'ion' ? (
-                      <Ionicons name={icon as never} size={19} color={tool === t ? '#111827' : '#fff'} />
+                      <Ionicons name={icon as never} size={17} color={tool === t ? '#111827' : '#fff'} />
                     ) : (
-                      <MaterialCommunityIcons name={icon as never} size={19} color={tool === t ? '#111827' : '#fff'} />
+                      <MaterialCommunityIcons name={icon as never} size={17} color={tool === t ? '#111827' : '#fff'} />
                     )}
                   </Pressable>
                 ))}
@@ -625,7 +667,7 @@ export default function SketchEditor({ visible, initialElements, background, onS
               <Pressable hitSlop={6} onPress={() => setPaletteOpen((open) => !open)} style={styles.pillColor}>
                 <View style={[styles.pillColorDot, { backgroundColor: color }]} />
               </Pressable>
-            </View>
+            </RNAnimated.View>
           </>
         ) : (
           <View style={styles.toolbar}>
@@ -732,14 +774,18 @@ const styles = StyleSheet.create({
   toolbarFloating: {
     position: 'absolute',
     alignSelf: 'center',
-    maxWidth: '94%',
+    // Not the width of the screen: the tools scroll inside the bar when
+    // they do not fit, and a bar that stops well short of both edges
+    // reads as something lying ON the picture rather than a strip of
+    // furniture across the bottom of it.
+    maxWidth: '76%',
     zIndex: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 28,
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 5,
+    borderRadius: 24,
     backgroundColor: 'rgba(28,28,30,0.94)',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.18)',
@@ -755,9 +801,9 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   pillTool: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -771,16 +817,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.25)',
   },
   pillColor: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   pillColorDot: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.85)',
   },
