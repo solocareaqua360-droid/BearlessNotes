@@ -245,7 +245,14 @@ export default function CalendarScreen() {
   // The calendar folds away under the keyboard only when the note is
   // BELOW it. Side by side, typing in the note has no reason to take the
   // calendar off the screen.
-  const foldedAway = isWriting && !isTwoPane;
+  // The Fold's inner screen STANDING UP. Side by side there gives the
+  // calendar a column half a phone wide and the note another; the user's
+  // own arrangement is better: the calendar and the day's history share
+  // the top, level with each other, and the sheet takes the whole width
+  // below them. Writing lifts the sheet over both, the way it folds the
+  // calendar away on a phone.
+  const stackedWide = isTwoPane && windowHeight > windowWidth;
+  const foldedAway = isWriting && (!isTwoPane || stackedWide);
   const noteFullscreen = !showCalendarPane && (!isThreePane || !showHistoryPane);
   function toggleNoteFullscreen() {
     const goingFull = !noteFullscreen;
@@ -601,7 +608,7 @@ export default function CalendarScreen() {
   // ref.
   function renderDayNote(key: string, primary: boolean) {
     return (
-      <View style={[styles.noteArea, isTwoPane && styles.notePane]}>
+      <View style={[styles.noteArea, isTwoPane && styles.notePane, stackedWide && styles.noteBelow]}>
         <DocumentEditorScreen
           key={`day_${key}`}
           ref={primary ? noteEditorRef : undefined}
@@ -793,16 +800,21 @@ export default function CalendarScreen() {
       {/* One column on a phone (calendar, then the note under it), two on
           a wide screen (calendar left, note right). Both halves are flex:1
           in the row, so they split the window evenly. */}
-      <View style={isTwoPane ? styles.paneRow : styles.stack}>
+      <View style={stackedWide ? styles.stack : isTwoPane ? styles.paneRow : styles.stack}>
         <View
-          style={isTwoPane ? styles.sidePane : null}
-          onLayout={(e) => setCalendarPaneWidth(e.nativeEvent.layout.width)}
+          style={stackedWide ? [styles.topBand, foldedAway && styles.bandFolded] : isTwoPane ? styles.sidePane : null}
+          onLayout={stackedWide ? undefined : (e) => setCalendarPaneWidth(e.nativeEvent.layout.width)}
         >
           {/* The fold gesture lives on the plate only - never on the
               history list under it, where a drag is someone scrolling
               their own past. Off entirely where the month cannot fold:
               beside the note there is room for it always, and in
               "only filled days" the strip is not a real week. */}
+          <View style={stackedWide ? styles.topRow : styles.topStack}>
+          <View
+            style={stackedWide ? styles.topHalf : undefined}
+            onLayout={stackedWide ? (e) => setCalendarPaneWidth(e.nativeEvent.layout.width) : undefined}
+          >
           <GestureDetector gesture={plateGesture}>
           <Animated.View style={[styles.calendarPlate, isTwoPane && styles.calendarPlatePaned, calendarPlateStyle]}>
           <Animated.View style={[styles.calendarWrap, calendarWrapStyle]}>
@@ -966,11 +978,13 @@ export default function CalendarScreen() {
           {/* Beside the note, the history has the room under the calendar
               and simply takes it: no pill to open, no column of its own.
               On a phone it stays what it was - a list behind a button. */}
+          </View>
           {isTwoPane && (
-            <View style={styles.historyUnderCalendar}>
+            <View style={[styles.historyUnderCalendar, stackedWide && styles.topHalf]}>
               <DayHistoryList items={historyByDate.get(selectedKey) ?? []} fill />
             </View>
           )}
+          </View>
 
           {!foldedAway && !isTwoPane && (
             <View style={styles.capsuleRow}>
@@ -1395,6 +1409,32 @@ const styles = StyleSheet.create({
   },
   notePane: {
     flex: 1.3,
+  },
+  // Standing up on the inner screen: the calendar and the history share a
+  // band across the top, the sheet has the rest.
+  topBand: {
+    flex: 1,
+  },
+  // Writing lifts the sheet over the band, which is the same thing that
+  // happens on a phone - there the calendar folds away above the note.
+  bandFolded: {
+    display: 'none',
+  },
+  topRow: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 12,
+  },
+  topStack: {
+    flex: 1,
+  },
+  topHalf: {
+    flex: 1,
+  },
+  noteBelow: {
+    flex: 1.2,
+    marginLeft: 16,
+    marginTop: 8,
   },
   // Under the calendar, taking whatever height is left in the column.
   historyUnderCalendar: {
