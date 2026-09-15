@@ -223,6 +223,10 @@ export default function StickersScreen({ inPane }: { inPane?: boolean } = {}) {
       accent={STICKER_YELLOW}
       accentGlass="rgba(251,233,122,0.55)"
       onBack={() => navigation.goBack()}
+      // In another screen's pane the rail stands on the window's OUTER
+      // edge, which is the left one - against the divider it would be in
+      // the way of both halves.
+      railSide={inPane ? 'left' : 'right'}
       searchPlaceholder="Пошук по тексту стікера"
       hideDrawer
       // Nothing to add while looking at what was thrown away.
