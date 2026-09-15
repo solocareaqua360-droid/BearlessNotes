@@ -538,7 +538,11 @@ export default function DocumentsScreen() {
   // With a document open beside it the list is half a screen wide, and
   // the user's call is one card to a line there, not two squeezed ones.
   const gridColumns = wideList ? (layoutWidth > layoutHeight ? 4 : 3) : 2;
-  const folderColumns = gridColumns >= 4 ? 2 : 1;
+  // Two folders to a line whenever the list has the whole inner screen,
+  // standing up as well as lying down - the user's call once the rows
+  // lined up. A folder row is an icon, a name and two small numbers, and
+  // half the inner screen is plenty for that.
+  const folderColumns = wideList ? 2 : 1;
   // What the list actually draws. With a document open beside it the list
   // is half a screen wide, and one card to a line there is the LIST row -
   // not a grid of one column: the grid card is a fixed-height tile, and a
