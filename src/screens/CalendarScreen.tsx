@@ -869,7 +869,12 @@ export default function CalendarScreen() {
               lying down. This view stretches to the width the plate
               actually has in both, so one handler covers both. */}
           <View
-            style={stackedWide ? styles.topHalf : styles.topStack}
+            // Standing up this is one half of the band, so it claims its
+            // share of the ROW. Any other way it is just the plate's
+            // wrapper and must take the plate's own height: as a flex:1 it
+            // took half the column, which left the history sitting at the
+            // bottom of the screen with its cards cut off by the edge.
+            style={stackedWide ? styles.topHalf : undefined}
             onLayout={(e) => setCalendarPaneWidth(e.nativeEvent.layout.width)}
           >
           <GestureDetector gesture={plateGesture}>
