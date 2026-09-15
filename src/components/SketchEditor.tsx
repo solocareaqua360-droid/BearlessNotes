@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   GestureResponderEvent,
   LayoutChangeEvent,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -51,6 +52,13 @@ function isShapeTool(tool: Tool): tool is ShapeTool {
 interface Props {
   visible: boolean;
   initialElements: SketchElement[];
+  // A photograph to draw ON. The canvas then takes the PICTURE's shape
+  // rather than the screen's, so a stroke laid on a corner of the photo
+  // is on that corner everywhere the two are shown together - in the
+  // note, and in a PDF export. The picture itself is never touched: the
+  // drawing is a layer beside it, which is what lets "show the original"
+  // be a switch rather than a second file.
+  background?: { uri: string; aspectRatio?: number };
   onSave: (elements: SketchElement[], width: number, height: number) => void;
   onClose: () => void;
 }
@@ -201,7 +209,7 @@ function eraseFromElement(el: SketchElement, x: number, y: number): SketchElemen
   return runs.map((r) => ({ kind: 'path', d: pointsToPath(r), color: el.color, width: el.width }));
 }
 
-export default function SketchEditor({ visible, initialElements, onSave, onClose }: Props) {
+export default function SketchEditor({ visible, initialElements, background, onSave, onClose }: Props) {
   const [elements, setElements] = useState<SketchElement[]>(initialElements);
   const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
   const [shapeStart, setShapeStart] = useState<Point | null>(null);
@@ -219,6 +227,23 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
   const [strokeWidth, setStrokeWidth] = useState(WIDTHS[0]);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [tool, setTool] = useState<Tool>('pen');
+  // The picture's shape, asked of the file itself. Until it answers the
+  // canvas is square, which is only ever seen for a frame.
+  const [aspect, setAspect] = useState(background?.aspectRatio ?? 1);
+  useEffect(() => {
+    if (!visible || !background?.uri || background.aspectRatio) return;
+    let alive = true;
+    Image.getSize(
+      background.uri,
+      (w, h) => {
+        if (alive && w > 0 && h > 0) setAspect(w / h);
+      },
+      () => {}
+    );
+    return () => {
+      alive = false;
+    };
+  }, [visible, background?.uri, background?.aspectRatio]);
 
   // Re-seed local state when the editor OPENS, since it stays mounted
   // (just hidden) between blocks otherwise and would carry over the
@@ -434,8 +459,9 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
           </Pressable>
         </View>
 
+        <View style={background ? styles.canvasStage : styles.canvasFill}>
         <View
-          style={styles.canvas}
+          style={[styles.canvas, background && { aspectRatio: aspect, flex: 0, width: '100%' }]}
           onLayout={handleCanvasLayout}
           onStartShouldSetResponder={() => true}
           onMoveShouldSetResponder={() => true}
@@ -443,6 +469,13 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
           onResponderMove={handleMove}
           onResponderRelease={handleEnd}
         >
+          {!!background && (
+            <Image
+              source={{ uri: background.uri }}
+              style={StyleSheet.absoluteFill}
+              resizeMode="cover"
+            />
+          )}
           <Svg style={StyleSheet.absoluteFill}>
             {elements.map((el, i) =>
               el.kind === 'text' ? (
@@ -497,6 +530,7 @@ export default function SketchEditor({ visible, initialElements, onSave, onClose
               <Circle key={`h${i}`} cx={h.x} cy={h.y} r={HANDLE_RADIUS} fill="#fff" stroke="#3B82F6" strokeWidth={2} />
             ))}
           </Svg>
+        </View>
         </View>
 
         <View style={styles.toolbar}>
@@ -612,6 +646,17 @@ const styles = StyleSheet.create({
   canvas: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  // Drawing on a photograph, the canvas is the PICTURE's box - centred
+  // in what is left of the screen, with the dark around it so the edges
+  // of the photo are plain to see.
+  canvasStage: {
+    flex: 1,
+    justifyContent: 'center',
+    backgroundColor: '#111',
+  },
+  canvasFill: {
+    flex: 1,
   },
   toolbar: {
     borderTopWidth: StyleSheet.hairlineWidth,

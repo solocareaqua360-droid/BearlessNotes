@@ -28,6 +28,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
 import { canScan, scanPages } from '../utils/documentScanner';
 import * as Print from 'expo-print';
+import { photoWithSketchHtml, sketchToSvg } from '../utils/sketchSvg';
 import * as Clipboard from 'expo-clipboard';
 import { dateKey, formatShortDate, parseDateKey } from '../utils/dateLocale';
 import ReminderSheet from '../components/ReminderSheet';
@@ -552,7 +553,14 @@ async function buildDocumentHtml(title: string, blocks: Block[]): Promise<string
     } else if (type === 'image' && block.imageUri) {
       try {
         const base64 = await LegacyFileSystem.readAsStringAsync(block.imageUri, { encoding: 'base64' });
-        parts.push(`<img src="data:image/jpeg;base64,${base64}" style="max-width:100%;margin:8px 0;" />`);
+        const img = `<img src="data:image/jpeg;base64,${base64}" style="max-width:100%;display:block;" />`;
+        // A photograph the user has drawn over carries its drawing as a
+        // layer of its own (never burnt into the file), so the export is
+        // where the two are finally put together - the picture, and the
+        // vectors over it in the same box.
+        parts.push(
+          photoWithSketchHtml(img, block.sketchElements, block.sketchWidth, block.sketchHeight)
+        );
       } catch {
         parts.push('<p>[Зображення]</p>');
       }
@@ -563,7 +571,14 @@ async function buildDocumentHtml(title: string, blocks: Block[]): Promise<string
         `<p><a href="${escapeHtml(block.linkUrl ?? '')}">${escapeHtml(block.linkTitle || block.linkUrl || '')}</a></p>`
       );
     } else if (type === 'sketch') {
-      parts.push('<p>[Малюнок]</p>');
+      // Vectors, not a picture of them - see sketchToSvg. This used to be
+      // the words "[Малюнок]", which is what a note full of drawings came
+      // out of an export looking like.
+      const svg = sketchToSvg(block.sketchElements, {
+        width: block.sketchWidth,
+        height: block.sketchHeight,
+      });
+      parts.push(svg || '<p>[Малюнок]</p>');
     } else if (type === 'dbRow') {
       // Only the snapshot title - an export is a flat file, so there's
       // nothing live to render here.
@@ -696,6 +711,7 @@ type BlockRowProps = {
   onSelectionChange: (id: string, start: number, end: number) => void;
   onOpenImage: (id: string) => void;
   onToggleImageFit: (id: string) => void;
+  onDrawOverImage: (id: string) => void;
   onOpenFile: (id: string) => void;
   onDownloadFile: (id: string) => void;
   onOpenFileDatabase: () => void;
@@ -927,6 +943,7 @@ function BlockRow({
   onSelectionChange,
   onOpenImage,
   onToggleImageFit,
+  onDrawOverImage,
   onOpenFile,
   onDownloadFile,
   onOpenFileDatabase,
@@ -977,6 +994,16 @@ function BlockRow({
   // that path is a file on the phone, which a page may not open, so the
   // web half fetches the Drive copy and hands back a blob the page can
   // actually show. Same hook, same call, one truth per platform.
+  // While a finger is held on the brush the drawing steps aside - the
+  // "show the original" the user asked for, which costs nothing because
+  // the picture was never drawn on in the first place.
+  const [showingOriginal, setShowingOriginal] = useState(false);
+  // The shape the drawing was made against, which is the picture's own -
+  // see SketchEditor's background canvas.
+  const drawnAspect =
+    item.sketchElements?.length && item.sketchWidth && item.sketchHeight
+      ? item.sketchWidth / item.sketchHeight
+      : null;
   const { status: imageCacheStatus, source: imageSource } = useAttachmentSource(
     type === 'image' ? item.imageUri : undefined,
     item.driveFileId
@@ -1047,13 +1074,52 @@ function BlockRow({
         <Text style={styles.attachmentStatusLabel}>Недоступно на цьому пристрої</Text>
       </View>
     ) : (
-      <View style={styles.blockImageWrap}>
+      // A picture carrying a drawing takes the PICTURE's own shape here,
+      // and is shown whole: the drawing was laid out against that shape,
+      // so a box of any other proportion (the fixed 180 every other image
+      // block stands in) would slide the two apart. Without a drawing
+      // nothing changes.
+      <View style={[styles.blockImageWrap, drawnAspect ? { height: undefined, aspectRatio: drawnAspect } : null]}>
         <Pressable
           disabled={isSelectMode}
           onPress={() => onOpenImage(item.id)}
           style={styles.blockImageTap}
         >
-          <Image source={{ uri: imageSource ?? item.imageUri }} style={styles.blockImage} resizeMode={fit} />
+          <Image
+            source={{ uri: imageSource ?? item.imageUri }}
+            style={styles.blockImage}
+            resizeMode={drawnAspect ? 'cover' : fit}
+          />
+          {/* The drawing, over the picture and never inside it - the same
+              elements the editor holds and the same box, so a stroke sits
+              where it was put, here and in a PDF. Held down, it lifts:
+              that IS "show the original", and it costs no second file. */}
+          {!!item.sketchElements?.length && !showingOriginal && (
+            <Svg
+              style={StyleSheet.absoluteFill}
+              viewBox={`0 0 ${item.sketchWidth || 1} ${item.sketchHeight || 1}`}
+              preserveAspectRatio="none"
+              pointerEvents="none"
+            >
+              {item.sketchElements.map((el, i) =>
+                el.kind === 'text' ? (
+                  <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
+                    {el.text}
+                  </SvgText>
+                ) : (
+                  <Path
+                    key={i}
+                    d={el.d}
+                    stroke={el.color}
+                    strokeWidth={el.width}
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                )
+              )}
+            </Svg>
+          )}
         </Pressable>
         {!isSelectMode && (
           <Pressable
@@ -1062,6 +1128,24 @@ function BlockRow({
             onPress={() => onToggleImageFit(item.id)}
           >
             <Ionicons name={fit === 'contain' ? 'crop-outline' : 'contract-outline'} size={16} color="#fff" />
+          </Pressable>
+        )}
+        {!isSelectMode && (
+          <Pressable
+            hitSlop={8}
+            style={styles.imageDrawButton}
+            onPress={() => onDrawOverImage(item.id)}
+            // Held: the drawing steps aside for as long as the finger
+            // stays down, and comes back when it lifts.
+            onLongPress={() => setShowingOriginal(true)}
+            onPressOut={() => setShowingOriginal(false)}
+            delayLongPress={250}
+          >
+            <Ionicons
+              name={item.sketchElements?.length ? 'eye-off-outline' : 'brush-outline'}
+              size={16}
+              color="#fff"
+            />
           </Pressable>
         )}
       </View>
@@ -1479,6 +1563,7 @@ type SortableBlockRowProps = {
   onSelectionChange: (id: string, start: number, end: number) => void;
   onOpenImage: (id: string) => void;
   onToggleImageFit: (id: string) => void;
+  onDrawOverImage: (id: string) => void;
   onOpenFile: (id: string) => void;
   onDownloadFile: (id: string) => void;
   onOpenFileDatabase: () => void;
@@ -1525,6 +1610,7 @@ function SortableBlockRow({
   onSelectionChange,
   onOpenImage,
   onToggleImageFit,
+  onDrawOverImage,
   onOpenFile,
   onDownloadFile,
   onOpenFileDatabase,
@@ -1609,6 +1695,7 @@ function SortableBlockRow({
             onSelectionChange={onSelectionChange}
             onOpenImage={onOpenImage}
             onToggleImageFit={onToggleImageFit}
+            onDrawOverImage={onDrawOverImage}
             onOpenFile={onOpenFile}
             onDownloadFile={onDownloadFile}
             onOpenFileDatabase={onOpenFileDatabase}
@@ -1648,6 +1735,7 @@ type BlockListProps = {
   onSelectionChange: (id: string, start: number, end: number) => void;
   onOpenImage: (id: string) => void;
   onToggleImageFit: (id: string) => void;
+  onDrawOverImage: (id: string) => void;
   onOpenFile: (id: string) => void;
   onDownloadFile: (id: string) => void;
   onOpenFileDatabase: () => void;
@@ -1684,6 +1772,7 @@ function BlockList({
   onSelectionChange,
   onOpenImage,
   onToggleImageFit,
+  onDrawOverImage,
   onOpenFile,
   onDownloadFile,
   onOpenFileDatabase,
@@ -1908,6 +1997,7 @@ function BlockList({
           onSelectionChange={onSelectionChange}
           onOpenImage={onOpenImage}
           onToggleImageFit={onToggleImageFit}
+          onDrawOverImage={onDrawOverImage}
           onOpenFile={onOpenFile}
           onDownloadFile={onDownloadFile}
           onOpenFileDatabase={onOpenFileDatabase}
@@ -4231,6 +4321,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     setSketchEditorBlockId(id);
   }
 
+  // The picture under the canvas, when the block being drawn on is one.
+  const sketchBlock = sketchEditorBlockId ? blocks.find((b) => b.id === sketchEditorBlockId) : undefined;
+  const sketchBackground =
+    sketchBlock && (sketchBlock.type ?? 'paragraph') === 'image' && sketchBlock.imageUri
+      ? { uri: sketchBlock.imageUri }
+      : undefined;
+
   function closeSketchEditor() {
     const id = sketchEditorBlockId;
     setSketchEditorBlockId(null);
@@ -4867,6 +4964,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           onSelectionChange={handleBlockSelectionChange}
           onOpenImage={setViewerImageId}
           onToggleImageFit={toggleImageFit}
+          onDrawOverImage={openSketchBlock}
           onOpenFile={openFileBlock}
           onDownloadFile={downloadFileBlock}
           onOpenFileDatabase={() => navigation.navigate('Files')}
@@ -5156,6 +5254,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         initialElements={
           (sketchEditorBlockId && blocks.find((b) => b.id === sketchEditorBlockId)?.sketchElements) || []
         }
+        // Opened on a PHOTOGRAPH, the same editor draws on it: the canvas
+        // takes the picture's shape, so what is drawn here lands in the
+        // same place in the note and in an export. Opened on a sketch
+        // block there is no picture, and it is the blank canvas it was.
+        background={sketchBackground}
         onSave={saveSketchElements}
         onClose={closeSketchEditor}
       />
@@ -5679,6 +5782,16 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 6,
     right: 6,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 12,
+    padding: 5,
+  },
+  // Beside it: draw on this picture, and - held down - see it without
+  // the drawing.
+  imageDrawButton: {
+    position: 'absolute',
+    top: 6,
+    right: 40,
     backgroundColor: 'rgba(0,0,0,0.45)',
     borderRadius: 12,
     padding: 5,
