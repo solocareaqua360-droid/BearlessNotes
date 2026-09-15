@@ -732,16 +732,26 @@ export default function DatabasesScreen() {
     const positions: Record<string, string> = {};
     const sections: Record<string, string | ReturnType<typeof deleteField>> = {};
     const walled: Record<string, { y: number } | ReturnType<typeof deleteField>> = {};
-    placed.forEach((p) => {
+    const mine = placed.map((p) => {
       let owner = '';
-      let start = 0;
       for (const wall of bounds) {
         if (wall.y > p.y) break;
         owner = wall.id;
-        start = wall.y;
       }
-      positions[fieldKey(p.item.key)] = formatTilePosition({ x: p.x, y: p.y - start });
-      sections[fieldKey(p.item.key)] = owner || deleteField();
+      return { key: p.item.key, x: p.x, y: p.y, owner };
+    });
+    // A section starts at its own topmost tile, not at the wall above it.
+    // Otherwise every drag of a divider left a blank row at the top of
+    // the section below - and because that row made the section taller,
+    // it pushed the tiles down again on the next drag, a row each time.
+    const top = new Map<string, number>();
+    mine.forEach((p) => {
+      const known = top.get(p.owner);
+      if (known === undefined || p.y < known) top.set(p.owner, p.y);
+    });
+    mine.forEach((p) => {
+      positions[fieldKey(p.key)] = formatTilePosition({ x: p.x, y: p.y - (top.get(p.owner) ?? p.y) });
+      sections[fieldKey(p.key)] = p.owner || deleteField();
     });
     bounds.forEach((wall) => {
       walled[wall.id] = { y: wall.y };

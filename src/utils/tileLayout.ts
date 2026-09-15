@@ -307,7 +307,9 @@ export function tilesOverlap(a: PlacedTile<unknown>, b: PlacedTile<unknown>): bo
 // laying each section out as a board of its own and stacking them: a
 // section is as tall as its tiles need, and the divider stands where the
 // next section starts. Positions inside a section are relative to it.
-// An empty section still has one row, the one a tile is dropped into.
+// An empty section still has one row, the one a tile is dropped into -
+// except the first, above the topmost divider, which may have none at
+// all: that is what lets a divider stand at the very top of the board.
 export type BoardSection<T> = { id: string; items: T[] };
 export type SectionLayout = { id: string; start: number; rows: number };
 
@@ -333,7 +335,7 @@ export function layoutSections<T>(
       first,
       settleFrom
     );
-    const rows = Math.max(sections.length > 1 ? 1 : 0, own.rows);
+    const rows = Math.max(index === 0 ? 0 : 1, own.rows);
     own.placed.forEach((p) => placed.push({ ...p, y: p.y + start }));
     laid.push({ id: section.id, start, rows });
     start += rows;
