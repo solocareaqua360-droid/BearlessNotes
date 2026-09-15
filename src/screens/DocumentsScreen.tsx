@@ -49,6 +49,7 @@ import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import DocumentEditorScreen from './DocumentEditorScreen';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from '../components/SortMenuRows';
 import RailCapsule from '../components/RailCapsule';
+import ScreenBackdrop from '../components/ScreenBackdrop';
 import Menu from '../components/surfaces/Menu';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from '../components/TagsDrawer';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
@@ -908,24 +909,7 @@ export default function DocumentsScreen() {
       {/* 1px bled past every edge - windowWidth/Height can round to a hair
           less than the actual screen, leaving a sliver of the default
           white background visible at an edge otherwise. */}
-      <Svg
-        width={windowWidth + 2}
-        height={windowHeight + 2}
-        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
-        pointerEvents="none"
-      >
-        <Defs>
-          {/* Dialed in via the gradient editor artifact - dark warm brown
-              at the top, gray-green through the middle, fading to black
-              over the bottom half. */}
-          <LinearGradient id="documentsBg" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0.03" stopColor="#705648" />
-            <Stop offset="0.52" stopColor="#69736E" />
-            <Stop offset="1" stopColor="#000000" />
-          </LinearGradient>
-        </Defs>
-        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#documentsBg)" />
-      </Svg>
+      <ScreenBackdrop id="documentsBg" colors={['#705648', '#69736E', '#000000']} scrollY={pull.scrollY} />
 
       {/* One column on a phone, two on a Fold's inner screen: the list keeps
           its own width and the open document takes the rest. Everything

@@ -15,6 +15,7 @@ import ContentColumn from './ContentColumn';
 import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
 import RailCapsule from './RailCapsule';
+import ScreenBackdrop from './ScreenBackdrop';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from './TagsDrawer';
 import BulkActionBar from './BulkActionBar';
 import { useRail } from '../hooks/useRail';
@@ -307,21 +308,7 @@ export default function DatabaseChrome<T extends { id: string }>({
       {/* The same fixed gradient every screen stands on. 1px bled past
           every edge - windowWidth/Height can round to a hair less than the
           real screen, leaving a sliver of white at an edge otherwise. */}
-      <Svg
-        width={windowWidth + 2}
-        height={windowHeight + 2}
-        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
-        pointerEvents="none"
-      >
-        <Defs>
-          <LinearGradient id="databaseBg" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0.03" stopColor="#705648" />
-            <Stop offset="0.52" stopColor="#69736E" />
-            <Stop offset="1" stopColor="#000000" />
-          </LinearGradient>
-        </Defs>
-        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#databaseBg)" />
-      </Svg>
+      <ScreenBackdrop id="databaseBg" colors={['#705648', '#69736E', '#000000']} scrollY={pull.scrollY} />
 
       {/* Through the portal, which is where a blur is safe - inside the
           screen it would be blurring a picture it is part of. */}

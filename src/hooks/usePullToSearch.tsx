@@ -62,6 +62,12 @@ export function usePullToSearch(onPull: () => void) {
     return Gesture.Simultaneous(list, pull);
   }, [onPull]);
 
+  // How far the list has been scrolled, on the UI thread - what the
+  // backdrop drifts by, so the glass over it has something moving to
+  // blur. Every list already reports its offset here for the pull; this
+  // is the same number, kept.
+  const scrollY = useSharedValue(0);
+
   const listProps = {
     // A tap on anything that is not a card, and a drag of the list itself,
     // both put the keyboard away - which is what closes an empty field
@@ -70,11 +76,13 @@ export function usePullToSearch(onPull: () => void) {
     keyboardDismissMode: 'on-drag' as const,
     scrollEventThrottle: 16,
     onScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      atTop.value = e.nativeEvent.contentOffset.y <= 2;
+      const y = e.nativeEvent.contentOffset.y;
+      atTop.value = y <= 2;
+      scrollY.value = y;
     },
   };
 
-  return { gesture, listProps };
+  return { gesture, listProps, scrollY };
 }
 
 // Opening it is a gesture; closing it is everything else.
