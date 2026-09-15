@@ -119,7 +119,7 @@ import DownloadToast from '../components/DownloadToast';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import CustomRowBlockCard from '../components/CustomRowBlockCard';
 import CustomDatabaseViewBlockCard from '../components/CustomDatabaseViewBlockCard';
-import { FONT_BOLD, FONT_EXTRABOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { FONT_BOLD, FONT_EXTRABOLD, FONT_MEDIUM, FONT_MONO, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -571,6 +571,11 @@ async function buildDocumentHtml(title: string, blocks: Block[]): Promise<string
     } else if (type === 'link') {
       parts.push(
         `<p><a href="${escapeHtml(block.linkUrl ?? '')}">${escapeHtml(block.linkTitle || block.linkUrl || '')}</a></p>`
+      );
+    } else if (type === 'code') {
+      parts.push(
+        `<pre style="background:#F3F4F6;border-radius:8px;padding:10px;overflow-x:auto;">` +
+          `<code style="font-family:monospace;font-size:12px;white-space:pre;">${escapeHtml(block.text)}</code></pre>`
       );
     } else if (type === 'heading') {
       const level = block.headingLevel === 1 ? 1 : block.headingLevel === 3 ? 3 : 2;
@@ -1431,6 +1436,7 @@ function BlockRow({
           // A heading is the same field, in its own size - so the text
           // does not jump between typing it and reading it.
           headingStyle,
+          type === 'code' && styles.codeText,
           item.checked && styles.checkedText,
           rowPaperColor && { color: rowPaperColor.text },
         ]}
@@ -1466,7 +1472,28 @@ function BlockRow({
       </Pressable>
     );
 
-    if (type === 'bulleted' || type === 'numbered') {
+    if (type === 'code') {
+      content = (
+        <View style={styles.codeBlock}>
+          {isActive && !isSelectMode ? (
+            textField
+          ) : (
+            // At rest a long line SCROLLS rather than wrapping - a wrapped
+            // line of code is a line you have to reassemble by eye. Under
+            // the caret it wraps, because an editable field that scrolls
+            // sideways on Android fights the caret.
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <Pressable onPress={(e) => (isSelectMode ? onToggleSelected(item.id) : activateAtTouch(e))}>
+                <Text style={[styles.blockDisplayText, styles.codeText]}>
+                  {item.text || <Text style={styles.blockPlaceholder}>код…</Text>}
+                </Text>
+              </Pressable>
+            </ScrollView>
+          )}
+          {!!item.codeLanguage && <Text style={styles.codeLanguage}>{item.codeLanguage}</Text>}
+        </View>
+      );
+    } else if (type === 'bulleted' || type === 'numbered') {
       content = (
         <View style={styles.prefixedRow}>
           <Text style={styles.bulletMark}>{type === 'numbered' ? `${listNumber ?? 1}.` : '•'}</Text>
@@ -3615,6 +3642,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // written as, a run of tab-separated lines becomes a table. Before
     // this, a page copied from anywhere arrived as one paragraph the
     // length of the page.
+    // A code block takes text exactly as it comes: no paste parsing, no
+    // splitting on a blank line, no link conversion. Every newline in it
+    // is the author's own, which is the whole point of the block.
+    if (currentType === 'code') {
+      setBlocks((prev) => prev.map((block) => (block.id === id ? { ...block, text } : block)));
+      return;
+    }
+
     if (!['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'link', 'divider'].includes(currentType)) {
       const inserted = insertedPiece(current?.text ?? '', text);
       if (inserted && /[\n\t]/.test(inserted.piece)) {
@@ -3723,6 +3758,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       const block = buildBlock(generateId(), piece.type, piece.text);
       if (piece.checked) block.checked = true;
       if (piece.headingLevel) block.headingLevel = piece.headingLevel;
+      if (piece.codeLanguage) block.codeLanguage = piece.codeLanguage;
       if (piece.tableRows) block.tableRows = piece.tableRows;
       return block;
     });
@@ -3741,6 +3777,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         const rebuilt = buildBlock(id, first.type, first.text);
         if (first.checked) rebuilt.checked = true;
         if (first.headingLevel) rebuilt.headingLevel = first.headingLevel;
+        if (first.codeLanguage) rebuilt.codeLanguage = first.codeLanguage;
         if (first.tableRows) rebuilt.tableRows = first.tableRows;
         next[index] = rebuilt;
       } else {
@@ -4377,6 +4414,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   function handleBlockAction(action: BlockAction, blockId: string) {
     switch (action) {
       case 'heading':
+      case 'code':
       case 'bulleted':
       case 'numbered':
       case 'checkbox':
@@ -5691,6 +5729,26 @@ const styles = StyleSheet.create({
     fontFamily: FONT_REGULAR,
     lineHeight: 22,
     includeFontPadding: false,
+  },
+  // Its own ground, so a block of code is plainly not prose.
+  codeBlock: {
+    backgroundColor: 'rgba(17,24,39,0.06)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.10)',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  codeText: {
+    fontFamily: FONT_MONO,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  codeLanguage: {
+    alignSelf: 'flex-end',
+    fontSize: 10,
+    fontFamily: FONT_REGULAR,
+    color: '#9CA3AF',
   },
   heading1: {
     fontSize: 26,

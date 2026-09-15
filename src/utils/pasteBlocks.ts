@@ -14,9 +14,12 @@ export type ParsedBlock = {
   text: string;
   checked?: boolean;
   headingLevel?: number;
+  codeLanguage?: string;
   tableRows?: TableRow[];
 };
 
+// A fence: ``` on its own line, optionally naming the language.
+const FENCE = /^\s*```\s*([A-Za-z0-9+#.-]*)\s*$/;
 // "# ", "## ", "### " - a heading, and its level is how many hashes.
 const HEADING = /^\s*(#{1,3})\s+(.*)$/;
 // A line that is only a rule.
@@ -86,6 +89,23 @@ export function parsePastedText(raw: string): ParsedBlock[] {
 
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
+    // A fenced block first: everything until the closing fence is the
+    // author's own text, including blank lines and anything that would
+    // otherwise read as a list. An unclosed fence runs to the end, which
+    // is what a half-copied block is.
+    const fence = line.match(FENCE);
+    if (fence) {
+      flush();
+      const body: string[] = [];
+      let j = i + 1;
+      for (; j < lines.length; j += 1) {
+        if (FENCE.test(lines[j])) break;
+        body.push(lines[j]);
+      }
+      out.push({ type: 'code', text: body.join('\n'), codeLanguage: fence[1] || undefined });
+      i = j;
+      continue;
+    }
     const table = tableAt(lines, i);
     if (table) {
       flush();

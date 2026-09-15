@@ -6,6 +6,10 @@ export type BlockType =
   // heading to become they stayed as the hashes themselves - which is
   // what a pasted page of notes looked like.
   | 'heading'
+  // A block of code: monospaced, on its own ground, and the one block
+  // where every newline is the author's own - nothing in it is parsed,
+  // split or formatted.
+  | 'code'
   | 'bulleted'
   | 'numbered'
   | 'checkbox'
@@ -192,6 +196,9 @@ export interface Block {
   // 'heading' blocks only: 1, 2 or 3. Absent means 2, which is what a
   // heading typed rather than pasted starts as.
   headingLevel?: number;
+  // 'code' blocks only: what was written after the opening fence of a
+  // pasted block, kept so it can be shown and, one day, coloured.
+  codeLanguage?: string;
   sketchElements?: SketchElement[];
   sketchWidth?: number;
   sketchHeight?: number;

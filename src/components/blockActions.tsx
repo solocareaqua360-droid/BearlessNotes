@@ -2,6 +2,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
 export type BlockAction =
   | 'heading'
+  | 'code'
   | 'bulleted'
   | 'numbered'
   | 'checkbox'
@@ -44,6 +45,7 @@ export const BLOCK_ACTIONS: BlockActionEntry[] = [
   { key: 'scan', family: 'ionicons', icon: 'scan-outline', label: 'Сканувати' },
   { key: 'sketch', family: 'ionicons', icon: 'brush-outline', label: 'Малюнок' },
   { key: 'table', family: 'ionicons', icon: 'grid-outline', label: 'Таблиця' },
+  { key: 'code', family: 'ionicons', icon: 'code-slash-outline', label: 'Код' },
   { key: 'existing', family: 'ionicons', icon: 'search-outline', label: 'З бази даних' },
 ];
 
