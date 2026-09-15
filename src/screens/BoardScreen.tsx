@@ -56,6 +56,8 @@ import {
   COLUMN_MIN_HEIGHT,
   COLUMN_PADDING,
   widthInColumn,
+  clampCardWidth,
+  cardImageHeight,
   COLUMN_SPACING,
   COLUMN_WIDTH,
   DEFAULT_CARD_WIDTH,
@@ -641,6 +643,7 @@ type DraggableCardProps = {
   onGroupDragEnd: (dx: number, dy: number) => void;
   onTap: (card: BoardCard) => void;
   onLongPress: (card: BoardCard) => void;
+  onResize: (id: string, width: number) => void;
 };
 
 // One card's own drag.
@@ -689,6 +692,7 @@ function DraggableCard({
   onGroupDragEnd,
   onTap,
   onLongPress,
+  onResize,
 }: DraggableCardProps) {
   // The last position this card itself put into the parent's state. Used
   // only to tell "our own drag echoing back" (ignore) apart from a real
@@ -738,6 +742,11 @@ function DraggableCard({
   // in-card button whose own gesture needed to win against this one.
   const hoverReportedX = useSharedValue(0);
   const hoverReportedY = useSharedValue(0);
+  // The width the corner grip is asking for, while it is held. Kept in
+  // the card rather than in the board's state so a resize re-renders one
+  // card per frame instead of every card on the canvas.
+  const [liveWidth, setLiveWidth] = useState<number | null>(null);
+  const resizeBase = useRef(0);
   const panGesture = Gesture.Pan()
     .enabled(dragEnabled)
     .blocksExternalGesture(canvasPanGesture)
@@ -812,6 +821,29 @@ function DraggableCard({
   }));
 
   const type = card.type ?? 'paragraph';
+  const cardWidth = liveWidth ?? widthInColumn(card);
+  // A picture is the one thing on this board that is worth making big,
+  // so it is the one thing with a grip. In a column every card takes the
+  // column's width, so there is nothing to drag there.
+  const resizable = type === 'image' && isSelected && !card.columnId;
+  // blocksExternalGesture for the same reason the card's own drag has it:
+  // nested detectors are independent, so without it the card would move
+  // while its corner is being pulled.
+  const resizeGesture = Gesture.Pan()
+    .runOnJS(true)
+    .minDistance(0)
+    .blocksExternalGesture(panGesture, canvasPanGesture)
+    .onBegin(() => {
+      resizeBase.current = widthInColumn(card);
+    })
+    // Divided by the canvas scale so the corner tracks the finger 1:1
+    // however far the board is zoomed - the same rule the drag follows.
+    .onUpdate((e) => setLiveWidth(clampCardWidth(resizeBase.current + e.translationX / canvasScale.value)))
+    .onFinalize((e) => {
+      const next = clampCardWidth(resizeBase.current + e.translationX / canvasScale.value);
+      onResize(card.id, next);
+      setLiveWidth(null);
+    });
 
   return (
     <GestureDetector gesture={gesture}>
@@ -821,7 +853,7 @@ function DraggableCard({
           styles.card,
           // A card in a column is drawn at the column's width, whatever
           // its own is - see widthInColumn.
-          { width: widthInColumn(card) },
+          { width: cardWidth },
           // A plain (non-animated) style, not part of useAnimatedStyle -
           // isDragging only flips twice per drag (start/end), not per
           // frame, so it doesn't need to live on the UI thread. Elevation
@@ -860,9 +892,13 @@ function DraggableCard({
         ) : type === 'image' ? (
           <View style={styles.refCard}>
             {imageSource ? (
-              <Image source={{ uri: imageSource }} style={styles.refThumb} resizeMode="cover" />
+              <Image
+                source={{ uri: imageSource }}
+                style={[styles.refThumb, { height: cardImageHeight(cardWidth) }]}
+                resizeMode="cover"
+              />
             ) : (
-              <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
+              <View style={[styles.refThumb, styles.refThumbPlaceholder, { height: cardImageHeight(cardWidth) }]}>
                 {imageStatus === 'restoring' ? (
                   <ActivityIndicator color="#9CA3AF" />
                 ) : (
@@ -911,6 +947,14 @@ function DraggableCard({
             />
           </View>
         ) : null}
+
+        {resizable && (
+          <GestureDetector gesture={resizeGesture}>
+            <View style={styles.cardGrip}>
+              <Ionicons name="resize-outline" size={13} color="#fff" />
+            </View>
+          </GestureDetector>
+        )}
       </Animated.View>
     </GestureDetector>
   );
@@ -2011,6 +2055,12 @@ export default function BoardScreen() {
     }
   }
 
+  // A picture made bigger. Only the width is kept - the height follows
+  // it, so the picture keeps its shape (cardImageHeight).
+  function commitCardResize(id: string, width: number) {
+    setCards((prev) => prev.map((c) => (c.id === id ? { ...c, width } : c)));
+  }
+
   function commitCardDrag(id: string, x: number, y: number) {
     setHoverColumnId(null);
     setCards((prev) => {
@@ -2434,6 +2484,7 @@ export default function BoardScreen() {
                     onGroupDragEnd={commitGroupDrag}
                     onTap={handleCardTap}
                     onLongPress={handleCardLongPress}
+                    onResize={commitCardResize}
                   />
                 );
               })}
@@ -2924,6 +2975,22 @@ const styles = StyleSheet.create({
   cardDragging: {
     zIndex: 100,
     elevation: 12,
+  },
+  // The corner a picture is made bigger by. Hangs half off the card, the
+  // way the tile board's own grip does, so it never sits on the picture.
+  cardGrip: {
+    position: 'absolute',
+    right: -8,
+    bottom: -8,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(17,24,39,0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+    zIndex: 30,
   },
   cardSelected: {
     borderRadius: 10,

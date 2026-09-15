@@ -3,6 +3,21 @@
 // cards on that same canvas without the board being open - two copies of
 // these numbers would silently drift the moment either is tuned.
 export const DEFAULT_CARD_WIDTH = 160;
+// A card can be made wider than the default - a picture on a board is
+// sometimes the point of the board, and at 160 it is a thumbnail. The
+// upper bound is a card that still leaves the canvas usable around it.
+export const MIN_CARD_WIDTH = 120;
+export const MAX_CARD_WIDTH = 900;
+export const clampCardWidth = (width: number) =>
+  Math.round(Math.max(MIN_CARD_WIDTH, Math.min(MAX_CARD_WIDTH, width)));
+// The picture on a card is drawn in the shape the small card set - 144
+// wide by 90 tall inside a 160 card - so a card made wider shows a
+// BIGGER picture rather than the same thumbnail in more white.
+export const CARD_IMAGE_PADDING = 8;
+export const CARD_IMAGE_RATIO = 90 / (DEFAULT_CARD_WIDTH - CARD_IMAGE_PADDING * 2);
+export const cardImageHeight = (cardWidth: number) =>
+  Math.round((cardWidth - CARD_IMAGE_PADDING * 2) * CARD_IMAGE_RATIO);
+
 export const WORLD_SIZE = 6000;
 export const WORLD_CENTER = WORLD_SIZE / 2;
 // Cards don't carry their own rendered height (only width) - close enough
