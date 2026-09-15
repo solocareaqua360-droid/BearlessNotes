@@ -11,7 +11,8 @@ import { RootStackParamList } from '../navigation';
 import DocumentCard from '../components/DocumentCard';
 import { documentMatchesQuery, extractPreview, findBodyMatch, hasNoteContent } from '../utils/documentPreview';
 import { formatShortDate, parseDateKey } from '../utils/dateLocale';
-import { FONT_REGULAR } from '../utils/fonts';
+import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import DocumentEditorScreen from './DocumentEditorScreen';
 import PlainScreenShell, { shellClear } from '../components/PlainScreenShell';
 import { GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
 
@@ -32,6 +33,11 @@ export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
   // In another screen's pane the rail stands on the window's outer edge -
   // the left one.
   const railSide = inPane ? ('left' as const) : ('right' as const);
+  // The sheet being read, IN THIS WINDOW. Tapping one used to jump to the
+  // Calendar tab, which threw the list away - to look at a second day you
+  // had to walk back. The sheet opens here instead and the way out in the
+  // top capsule returns to the list, where the next day is one tap away.
+  const [openDate, setOpenDate] = useState<string | null>(null);
 
   useEffect(() => {
     // "Has a calendarDate" used to be a range filter, and the sort used to
@@ -60,7 +66,41 @@ export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
 
   function openSheet(calendarDate: string | undefined) {
     if (!calendarDate) return;
-    navigation.navigate('Tabs', { screen: 'Календар', params: { jumpToDate: calendarDate } });
+    setOpenDate(calendarDate);
+  }
+
+  if (openDate) {
+    return (
+      <PlainScreenShell
+        id="diaryBg"
+        // Back means back to the LIST, not out of the diary.
+        onBack={() => setOpenDate(null)}
+        railSide={railSide}
+        hasIsland={!inPane}
+        actions={[
+          {
+            icon: 'calendar-outline',
+            onPress: () =>
+              navigation.navigate('Tabs', { screen: 'Календар', params: { jumpToDate: openDate } }),
+          },
+        ]}
+      >
+        <View style={[styles.sheetHead, shellClear(railSide, 4)]}>
+          <Text style={styles.sheetDate}>{formatShortDate(parseDateKey(openDate))}</Text>
+        </View>
+        {/* The calendar's own sheet, the same editor it draws - the
+            document is `day_<key>`, so this is that day, not a copy. */}
+        <View style={[styles.sheetBody, shellClear(railSide, 0)]}>
+          <DocumentEditorScreen
+            key={`day_${openDate}`}
+            embedded
+            documentId={`day_${openDate}`}
+            navigation={navigation}
+            extraFields={{ calendarDate: openDate }}
+          />
+        </View>
+      </PlainScreenShell>
+    );
   }
 
   return (
@@ -135,5 +175,21 @@ const styles = StyleSheet.create({
   list: {
     paddingBottom: 120,
     gap: 10,
+  },
+  sheetHead: {
+    paddingBottom: 8,
+  },
+  sheetDate: {
+    fontSize: 20,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT,
+  },
+  // The editor paints its own white paper, so it gets a rounded window
+  // of its own rather than bleeding into the backdrop.
+  sheetBody: {
+    flex: 1,
+    borderRadius: 18,
+    overflow: 'hidden',
+    marginBottom: 16,
   },
 });
