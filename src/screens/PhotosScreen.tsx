@@ -330,6 +330,8 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
       };
       if (source === 'camera') data.groupId = CAMERA_PHOTOS_GROUP_ID;
       await setDoc(doc(db, 'photos', id), data, { merge: true });
+      // Made inside a folder, it belongs to that folder - see useExplorer.
+      await explorer.assignToCurrentFolder(id);
       backupFileToDrive(imageUri, `${id}.jpg`, 'image/jpeg', 'Photos').then((uploaded) => {
         if (uploaded) updateDoc(doc(db, 'photos', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
       });

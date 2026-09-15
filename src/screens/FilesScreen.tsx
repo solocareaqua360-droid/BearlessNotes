@@ -276,6 +276,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
       backupFileToDrive(fileUri, asset.name, asset.mimeType ?? 'application/octet-stream', 'Files').then((uploaded) => {
         if (uploaded) updateDoc(doc(db, 'files', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
       });
+      await explorer.assignToCurrentFolder(id);
       added.push({ id, fileUri, fileName: asset.name, mimeType: asset.mimeType, createdAt: now });
     }
     // Lands in the base either way (unchanged, fast); "Перемістити" on the

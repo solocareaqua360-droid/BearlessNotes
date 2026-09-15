@@ -299,6 +299,20 @@ export function useExplorer<T extends { id: string }>(options: ExplorerOptions<T
     await attachTag(target, kind, item.id, collection);
   }
 
+  // A record made INSIDE a folder belongs to that folder.
+  //
+  // Nothing did this: a new note, file or board was created at the root
+  // while the user was standing in a folder, so it vanished from the
+  // list the moment it appeared - they were in the folder and it was
+  // not. A folder is a tag, so joining one is carrying its tag; a folder
+  // that was only a segment of a deeper path becomes a real tag here,
+  // exactly as it does anywhere else a record is put into one.
+  async function assignToCurrentFolder(itemId: string) {
+    if (!active || path === '') return;
+    const folder = await tagForFolder(path);
+    await attachTag(folder, kind, itemId, collection);
+  }
+
   return {
     active,
     path,
@@ -317,6 +331,7 @@ export function useExplorer<T extends { id: string }>(options: ExplorerOptions<T
     pickDestination,
     moveItem,
     tagForFolder,
+    assignToCurrentFolder,
     allFolderPaths,
   };
 }

@@ -324,6 +324,8 @@ export default function LinksScreen({
     if (preview.imageUrl) data.imageUrl = preview.imageUrl;
     if (preview.siteName) data.siteName = preview.siteName;
     await setDoc(doc(db, 'links', id), data, { merge: true });
+    // Made inside a folder, it belongs to that folder - see useExplorer.
+    await explorer.assignToCurrentFolder(id);
     // A YouTube link added while viewing "Геоточки" (say) would otherwise
     // just seem to vanish - it's really sitting in a different category's
     // list. Jump the screen to wherever it actually landed.

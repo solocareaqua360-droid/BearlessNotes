@@ -261,6 +261,8 @@ export default function BoardsListScreen({
     // for ever and saved nothing at all: everything put on it was lost
     // on the way out. Born keyed, there is nothing to doubt.
     const ref = await addDoc(boardsCollection, { title: 'Без назви', cards: {}, createdAt: now, updatedAt: now });
+    // Made inside a folder, it belongs to that folder - see useExplorer.
+    await explorer.assignToCurrentFolder(ref.id);
     openBoardById(ref.id);
   }
 

@@ -839,6 +839,17 @@ export default function DocumentsScreen({
         filterTags.map((tag) => attachTag(tag, 'document', newDoc.id, ITEMS_COLLECTION_BY_KIND.document))
       );
     }
+    // A note made INSIDE a folder belongs to that folder. Without this it
+    // was created at the root and vanished from the list the moment it
+    // appeared - the user was standing in the folder and the note was
+    // not. A folder is a tag (see tagForFolder), so joining one is
+    // carrying its tag; a folder that was only a segment of a deeper
+    // path becomes a real tag here, as it does anywhere else a record is
+    // put into it.
+    if (list.explorerMode && explorerPath !== '') {
+      const folder = await tagForFolder(explorerPath);
+      await attachTag(folder, 'document', newDoc.id, ITEMS_COLLECTION_BY_KIND.document);
+    }
     openDocument(newDoc.id, true);
   }
 
