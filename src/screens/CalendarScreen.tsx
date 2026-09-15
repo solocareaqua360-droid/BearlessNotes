@@ -1500,12 +1500,18 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   // Level with the plate, standing up: its top on the plate's top line (the
-  // column's own 8 of margin was what set it lower), and it stops short of
-  // the rail the way the plate does, rather than running under the capsule.
+  // column's own 8 of margin was what set it lower), and its right edge on
+  // the sheet's, below.
+  //
+  // It used to stop short of the rail. That was the wrong edge to line up
+  // with: the sheet under it runs the full width and PASSES under the rail
+  // the way the document cards do, so keeping the history clear of the
+  // rail left it ending short of everything around it. The cards can pass
+  // under the buttons too.
   historyBeside: {
     flex: 1,
     marginTop: 0,
-    marginRight: RAIL_CLEARANCE,
+    marginRight: 16,
   },
   noteBelow: {
     // Whatever the band above it did not need.
