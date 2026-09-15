@@ -4,6 +4,7 @@ import PlaceholderScreen from './screens/PlaceholderScreen';
 import TasksScreen from './screens/TasksScreen';
 import DocumentsScreen from './screens/DocumentsScreen';
 import BoardsListScreen from './screens/BoardsListScreen';
+import BoardScreen from './screens/BoardScreen';
 import LinksScreen from './screens/LinksScreen';
 import PhotosScreen from './screens/PhotosScreen';
 import FilesScreen from './screens/FilesScreen';
@@ -48,6 +49,7 @@ export default function RootNavigator() {
       <Stack.Screen name="Tasks" component={TasksScreen} />
       <Stack.Screen name="DocumentsCopy">{() => <DocumentsScreen standalone />}</Stack.Screen>
       <Stack.Screen name="BoardsCopy">{() => <BoardsListScreen standalone />}</Stack.Screen>
+      <Stack.Screen name="BoardCopy" component={BoardScreen} />
       <Stack.Screen name="Links" component={LinksScreen} />
       <Stack.Screen name="Photos" component={PhotosScreen} />
       <Stack.Screen name="Files" component={FilesScreen} />

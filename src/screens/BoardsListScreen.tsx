@@ -14,7 +14,7 @@ import {
 } from '../firestore';
 import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
-import { BoardsStackParamList } from '../navigation';
+import { BoardsStackParamList, RootStackParamList } from '../navigation';
 import { BoardCard, BoardColumn, BoardItem } from '../types';
 import { readBoardPart } from '../utils/boardStorage';
 import { colorForDocument } from '../utils/documentColor';
@@ -254,11 +254,22 @@ export default function BoardsListScreen({
   async function createBoard() {
     const now = Date.now();
     const ref = await addDoc(boardsCollection, { title: 'Без назви', cards: [], createdAt: now, updatedAt: now });
-    navigation.navigate('Board', { boardId: ref.id });
+    openBoardById(ref.id);
+  }
+
+  // From the tab's own list a board is a route in the tab's nested stack;
+  // from a copy pushed over the tile board it is a route on the ROOT
+  // stack, because the copy is not inside that nested stack at all.
+  function openBoardById(boardId: string) {
+    if (standalone) {
+      (navigation as unknown as NativeStackNavigationProp<RootStackParamList>).navigate('BoardCopy', { boardId });
+      return;
+    }
+    navigation.navigate('Board', { boardId });
   }
 
   function openBoard(board: BoardItem) {
-    navigation.navigate('Board', { boardId: board.id });
+    openBoardById(board.id);
   }
 
   async function renameBoard(board: BoardItem, title: string) {
