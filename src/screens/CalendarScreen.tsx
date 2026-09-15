@@ -286,6 +286,16 @@ export default function CalendarScreen() {
   useEffect(() => {
     setCalendarPaneWidth(0);
   }, [windowWidth, windowHeight]);
+  // And on every arrival. The calendar is a TAB: it stays mounted, so the
+  // width it measured the last time it was on screen outlives the visit -
+  // and if the screen changed shape while it was away (another tab in a
+  // pane, the app resized), it comes back laid out to a width it no
+  // longer has. That is the squeezed month grid the user met on tapping
+  // through from the diary, which a turn of the screen put right because
+  // a turn is the one thing that already reset this.
+  useEffect(() => {
+    if (calendarFocused) setCalendarPaneWidth(0);
+  }, [calendarFocused]);
   const foldedAway = isWriting && (!isTwoPane || stackedWide);
   const noteFullscreen = !showCalendarPane && (!isThreePane || !showHistoryPane);
   function toggleNoteFullscreen() {
