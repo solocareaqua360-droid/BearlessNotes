@@ -1220,6 +1220,7 @@ export default function DocumentsScreen() {
                     bodyMatch={bodyMatch}
                     onPress={() => openDocument(item.id)}
                     layout={viewMode}
+                    columns={gridColumns}
                   />
                 );
               }}
@@ -1473,6 +1474,7 @@ export default function DocumentsScreen() {
                   isSelected={selectedIds.has(item.id)}
                   onToggleSelect={() => toggleSelected(item.id)}
                   layout={viewMode}
+                    columns={gridColumns}
                 />
               );
             }}

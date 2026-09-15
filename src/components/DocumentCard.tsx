@@ -211,6 +211,11 @@ type Props = {
   // instead of a trailing icon (a grid card has no natural trailing edge
   // the way a full-width row does).
   layout?: 'list' | 'grid';
+  // How many cards stand across the grid. The width below was a flat 48%,
+  // which is right for two and sends the third and fourth off the edge of
+  // the screen - which is exactly what the Fold's inner screen did once
+  // the documents list started asking for three and four.
+  columns?: number;
   // A list row carries its own side margin, because the documents list it
   // was built for has none of its own. Anywhere the container already
   // provides that margin (a group's section under another database's
@@ -247,6 +252,7 @@ export default function DocumentCard({
   isSelected,
   onToggleSelect,
   layout = 'list',
+  columns = 2,
   flush,
 }: Props) {
   const { background, text, textMuted } = colorForDocument(id);
@@ -302,7 +308,19 @@ export default function DocumentCard({
 
   if (isGrid) {
     return (
-      <View style={[styles.gridCard, { backgroundColor: background }]}>
+      <View
+        style={[
+          styles.gridCard,
+          // The share of the row this card takes, worked out from how many
+          // stand across it. The slack left over is what the row's own 12pt
+          // gaps are drawn in - percentages of the padded row, so it has to
+          // be enough at a phone's width as well as the Fold's: 2.5% a
+          // card is about 9pt on a phone and 22 on the inner screen, and
+          // the gap is 12.
+          { width: `${(100 - columns * 2.5) / columns}%` },
+          { backgroundColor: background },
+        ]}
+      >
         <Image source={GRAIN} resizeMode="cover" style={styles.grain} />
         <Pressable style={styles.gridTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
           {/* Bleeds flush to the card's own top/left/right edges - no
@@ -485,11 +503,11 @@ const styles = StyleSheet.create({
   // --- grid layout ---
   gridCard: {
     // Fixed proportion, not flex:1 - a `flex` card stretches to fill
-    // whatever's left in its row, which is fine with 2 cards (~half each)
-    // but means a row with only ONE card (e.g. a filter down to a single
-    // result) stretches it across the full width instead of keeping the
-    // usual half-width tile size.
-    width: '48%',
+    // whatever's left in its row, which is fine with a full row but means
+    // a row with only ONE card (e.g. a filter down to a single result)
+    // stretches it across the full width instead of keeping the usual
+    // tile size. The proportion itself is set at the call site, from the
+    // number of columns.
     height: GRID_CARD_HEIGHT,
     marginBottom: 10,
     // No padding here - the thumbnail (when there is one) needs to reach
