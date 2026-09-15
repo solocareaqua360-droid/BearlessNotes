@@ -548,7 +548,7 @@ export default function DocumentsScreen() {
   // How far the list has to clear the bottom edge so its last card never
   // ends up sitting behind the navigation island - the island is the
   // tallest thing on the rail's foot and the closest to that edge.
-  const listBottomPad = rail.navBottom + NAV_HEIGHT + RAIL_GAP;
+  const listBottomPad = rail.navBottom + rail.islandHeight + RAIL_GAP;
   // The menu runs from the capsule's top down to the folder button under
   // it, rather than being cut to the capsule itself - at two buttons the
   // capsule is far too short to hold a menu, and the rows were clipped

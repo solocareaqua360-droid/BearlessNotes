@@ -91,17 +91,24 @@ export function useRailLayout(
   historyHeight: number = 0
 ) {
   const tagRowBottom = insetBottom + TAG_ROW_PAD;
-  const foot = tagRowBottom + TAG_ROW_HEIGHT + RAIL_GAP - ISLAND_DROP;
+  // The navigation island is HORIZONTAL, at the foot of the screen in the
+  // middle (see FloatingIslandTabBar) - not on the rail. The layout kept
+  // reserving the island's old vertical height (four buttons stacked) at
+  // the rail's foot, so with a fourth capsule the stack ran up over the
+  // top one. The foot only has to clear the island's real, lying-down
+  // height now.
+  const islandHeight = NAV_BUTTON + NAV_PADDING * 2;
+  const navBottom = insetBottom + NAV_BOTTOM;
+  const foot = navBottom + islandHeight;
   const head = insetTop + CHROME_TOP + CAPSULE_DROP + capsuleHeight;
   const free = windowHeight - head - foot;
-  const pieces = actionsHeight + createHeight + historyHeight + NAV_HEIGHT;
-  const gaps = historyHeight > 0 ? 5 : 4;
+  const pieces = actionsHeight + createHeight + historyHeight;
+  const gaps = historyHeight > 0 ? 4 : 3;
   const gap = Math.max(RAIL_GAP, (free - pieces) / gaps);
-  const navBottom = foot + gap;
-  const addBottom = navBottom + NAV_HEIGHT + gap;
+  const addBottom = foot + gap;
   const historyBottom = addBottom + createHeight + gap;
   // The bottom edge of the actions capsule. Kept under its old name too.
   const actionsBottom = historyHeight > 0 ? historyBottom + historyHeight + gap : addBottom + createHeight + gap;
   const tagBottom = actionsBottom;
-  return { tagRowBottom, navBottom, addBottom, historyBottom, tagBottom, actionsBottom };
+  return { tagRowBottom, navBottom, islandHeight, addBottom, historyBottom, tagBottom, actionsBottom };
 }
