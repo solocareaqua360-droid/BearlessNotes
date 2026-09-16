@@ -33,6 +33,7 @@ import {
 } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
+import ReferenceBlockPreview from './ReferenceBlockPreview';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#3B82F6';
@@ -401,6 +402,17 @@ export default function AddExistingItemModal({
             />
           </View>
 
+          {/* Reading a whole document means scrolling a long way from the
+              top, so the way back cannot be a row up there. */}
+          {tab === 'document' && openDocId && (
+            <Pressable style={styles.docHeader} onPress={() => setOpenDocId(null)}>
+              <Ionicons name="chevron-back" size={16} color={GLASS_TEXT_MUTED} />
+              <Text style={styles.docHeaderTitle} numberOfLines={1}>
+                {openDocTitle}
+              </Text>
+            </Pressable>
+          )}
+
           <ScrollView style={[styles.list, docked && styles.listDocked]} keyboardShouldPersistTaps="handled">
             {tab === 'file' &&
               (filteredFiles.length === 0 ? (
@@ -549,56 +561,34 @@ export default function AddExistingItemModal({
                 ))
               ))}
 
-            {/* The second level: one document's own blocks, read-only -
-                nothing here can be edited or opened into the real
-                editor. Filtered by the same search box as everything
-                else in the panel. */}
-            {tab === 'document' && openDocId && (
-              <>
-                <Pressable style={styles.row} onPress={() => setOpenDocId(null)}>
-                  <Ionicons name="chevron-back" size={16} color={GLASS_TEXT_MUTED} />
-                  <Text style={[styles.rowText, styles.backRowText]} numberOfLines={1}>
-                    {openDocTitle}
-                  </Text>
-                </Pressable>
-                {(() => {
-                  const rows = openDocBlocks.filter((b) => labelForDocBlock(b).toLowerCase().includes(needle));
-                  if (rows.length === 0) return <Text style={styles.emptyLabel}>Нічого не знайдено</Text>;
-                  return rows.map((b) => {
-                    const build = () => ({ ...b, id: generateId(), createdAt: Date.now() });
-                    const label = labelForDocBlock(b);
-                    return (
-                      <View key={b.id} ref={rowRef?.(`block-${b.id}`, build, label)} collapsable={false}>
-                        <Pressable style={styles.row} onPress={() => onPick(build())}>
-                          <View style={styles.docIcon}>
-                            <Ionicons
-                              name={
-                                b.type === 'image'
-                                  ? 'image-outline'
-                                  : b.type === 'file'
-                                    ? 'document-outline'
-                                    : b.type === 'link'
-                                      ? 'link-outline'
-                                      : b.type === 'dbRow' || b.type === 'dbView'
-                                        ? 'grid-outline'
-                                        : b.type === 'sketch'
-                                          ? 'brush-outline'
-                                          : 'text-outline'
-                              }
-                              size={18}
-                              color={ACCENT}
-                            />
-                          </View>
-                          <Text style={styles.rowText} numberOfLines={1}>
-                            {label}
-                          </Text>
-                        </Pressable>
-                      </View>
-                    );
-                  });
-                })()}
-              </>
-            )}
+            {/* The second level: one document's own blocks, read-only.
+                Drawn as the DOCUMENT - see ReferenceBlockPreview - rather
+                than as one clipped line each: what this panel is for is
+                recognising a piece and taking it, and a first line can
+                only be guessed at. Every block is still its own drag
+                source; the card around it is what says so. */}
+            {tab === 'document' && openDocId && (() => {
+              const rows = openDocBlocks.filter((b) => labelForDocBlock(b).toLowerCase().includes(needle));
+              if (rows.length === 0) return <Text style={styles.emptyLabel}>Нічого не знайдено</Text>;
+              // A numbered list counts within its own run, the way the
+              // document itself numbers it - not from the top of the note.
+              let run = 0;
+              return rows.map((b, i) => {
+                const type = b.type ?? 'paragraph';
+                run = type === 'numbered' ? (i > 0 && (rows[i - 1].type ?? 'paragraph') === 'numbered' ? run + 1 : 0) : 0;
+                const build = () => ({ ...b, id: generateId(), createdAt: Date.now() });
+                return (
+                  <View
+                    key={b.id}
+                    ref={rowRef?.(`block-${b.id}`, build, labelForDocBlock(b))}
+                    collapsable={false}
+                    style={styles.blockCard}
+                  >
+                    <ReferenceBlockPreview block={b} index={run} />
+                  </View>
+                );
+              });
+            })()}
 
             {/* Two levels: the databases themselves, then the rows of
                 whichever one was opened. The back row is what returns to
@@ -768,9 +758,16 @@ const styles = StyleSheet.create({
   // a fixed-width flex row.
   tabRow: {
     marginBottom: 10,
+    // Docked, this row stands in a column as tall as the screen, and a
+    // ScrollView with nothing said about it takes the room that is going
+    // - which stretched six tabs into six columns half a screen high.
+    // Its height is its content's, here and in the sheet alike.
+    flexGrow: 0,
+    flexShrink: 0,
   },
   tabRowContent: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   tab: {
@@ -868,5 +865,28 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
+  },
+  // One block of another document. Faint ground and a radius rather than
+  // a separator: this is a thing you pick UP, and it has to look like one
+  // piece even when it is six lines of text.
+  blockCard: {
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  docHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+  },
+  docHeaderTitle: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    fontFamily: FONT_BOLD,
+    color: GLASS_TEXT_MUTED,
   },
 });
