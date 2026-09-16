@@ -66,6 +66,7 @@ import {
 } from '../utils/boardLayout';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import RenamePrompt from '../components/RenamePrompt';
+import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import VideoPlayerModal from '../components/VideoPlayerModal';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
@@ -2589,17 +2590,9 @@ export default function BoardScreen() {
               style={[styles.railWrap, { top: boardInsets.top + CHROME_TOP + CAPSULE_DROP }]}
               pointerEvents="box-none"
             >
-              <View style={styles.boardCapsule}>
-                <BlurView
-                  intensity={60}
-                  tint="dark"
-                  blurMethod="dimezisBlurView"
-                  blurTarget={boardBlurTarget ?? undefined}
-                  style={StyleSheet.absoluteFill}
-                  pointerEvents="none"
-                />
+              <GlassDrop style={styles.boardCapsule}>
                 <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-                  <Ionicons name="arrow-back-outline" size={24} color="#fff" />
+                  <GlassIcon name="arrow-back-outline" size={24} />
                 </Pressable>
                 <View style={styles.boardCapsuleDivider} />
                 {/* One button cycling move -> select -> connect, each with
@@ -2617,7 +2610,7 @@ export default function BoardScreen() {
                     color={canvasTool !== 'move' ? SELECTION_COLOR : '#fff'}
                   />
                 </Pressable>
-              </View>
+              </GlassDrop>
             </View>
           </GlassPortal>
         )}
@@ -2695,8 +2688,10 @@ export default function BoardScreen() {
             </View>
           </View>
         ) : (
-          <Pressable style={[styles.fab, { bottom: rail.addBottom }]} onPress={() => setAddSheetVisible(true)}>
-            <Ionicons name="add" size={26} color="#fff" />
+          <Pressable style={[styles.fabHit, { bottom: rail.addBottom }]} onPress={() => setAddSheetVisible(true)}>
+            <GlassDrop style={styles.fab}>
+              <GlassIcon name="add" size={26} />
+            </GlassDrop>
           </Pressable>
         )}
 
@@ -3180,21 +3175,18 @@ const styles = StyleSheet.create({
   // FloatingIslandTabBar's pill (bottom: 24, ~48 tall) is always showing
   // underneath here - 104 is the fixed clearance BulkActionBar's own
   // aboveTabBar variant uses for the same pill.
-  fab: {
+  // Where it stands; the drop inside it is the glass. Its own colour
+  // sits UNDER the glass - see DatabaseChrome's own "+".
+  fabHit: {
     position: 'absolute',
     right: 20,
+  },
+  fab: {
     width: 56,
     height: 56,
-    borderRadius: 999,
-    // Its own colour, but as glass - the same half-strength tint the
-    // documents screen's own add button takes.
-    overflow: 'hidden',
     backgroundColor: ACCENT_GLASS,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 6,
   },
   marquee: {
     position: 'absolute',
@@ -3260,16 +3252,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   // Stood on its end, like every other screen's.
+  // The room inside the capsule; the glass is GlassDrop's.
   boardCapsule: {
     alignItems: 'center',
     gap: 18,
     paddingVertical: 18,
     paddingHorizontal: 19,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
   },
   boardCapsuleDivider: {
     width: 20,

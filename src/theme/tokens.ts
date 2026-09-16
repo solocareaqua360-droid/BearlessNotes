@@ -70,6 +70,13 @@ export type Theme = {
     // optically thicker than the middle.
     vignette: string;
     vignetteIntensity: number;
+    // The ink of a control STANDING on the glass, which is not the ink of
+    // the page. The user's reference (Apple's own glass tab bar) settles
+    // it: those glyphs are neither white nor black but a mid grey, and
+    // only the active one takes a colour. Pure white on glass glares;
+    // pure black on it looks stamped on.
+    ink: string;
+    inkMuted: string;
   };
   // Only where lift === 'glow'. TWO shadows, never one: a tight bright
   // one right at the shape (the source's own edge) and a wide soft one
@@ -106,6 +113,8 @@ const colour: Theme = {
     rimOpacity: 0.3,
     vignette: '#000000',
     vignetteIntensity: 0.32,
+    ink: '#DCDCE2',
+    inkMuted: '#9C9CA6',
   },
   glow: { near: 'rgba(255,255,255,0.25)', far: 'rgba(255,255,255,0.10)', nearRadius: 2, farRadius: 14, drop: 6 },
 };
@@ -143,6 +152,8 @@ const white: Theme = {
     rimOpacity: 0.9,
     vignette: '#111827',
     vignetteIntensity: 0.22,
+    ink: '#6E6E76',
+    inkMuted: '#9A9AA2',
   },
   glow: { near: 'rgba(17,24,39,0.12)', far: 'rgba(17,24,39,0.10)', nearRadius: 2, farRadius: 18, drop: 8 },
 };
@@ -179,6 +190,8 @@ const black: Theme = {
     rimOpacity: 0.22,
     vignette: '#000000',
     vignetteIntensity: 0.55,
+    ink: '#C9C9D1',
+    inkMuted: '#8A8A94',
   },
   // Tinted, never pure white: semi-transparent white over black reads as
   // grey fog rather than as light.

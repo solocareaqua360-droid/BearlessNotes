@@ -118,7 +118,7 @@ import { colorForDocument } from '../utils/documentColor';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
 import UndoToast from '../components/UndoToast';
-import GlassDrop from '../components/GlassDrop';
+import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import CustomRowBlockCard from '../components/CustomRowBlockCard';
 import CustomDatabaseViewBlockCard from '../components/CustomDatabaseViewBlockCard';
@@ -4917,10 +4917,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   else navigation.goBack();
                 }}
               >
-                <Ionicons
+                <GlassIcon
                   name={canvasEditing ? 'checkmark-outline' : 'arrow-back-outline'}
                   size={24}
-                  color="#fff"
                 />
               </Pressable>
               {/* Only where there are two panes to collapse into one. */}
@@ -4930,10 +4929,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                     style={[styles.headerRightDivider, railHorizontal && styles.headerRightDividerRow]}
                   />
                   <Pressable hitSlop={8} onPress={onToggleFullscreen}>
-                    <Ionicons
+                    <GlassIcon
                       name={paneFullscreen ? 'contract-outline' : 'expand-outline'}
                       size={24}
-                      color="#fff"
                     />
                   </Pressable>
                 </>
@@ -4944,7 +4942,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   narrower than it needed to be, for a button used far less
                   often than back or the menu itself. */}
               <Pressable hitSlop={8} onPress={() => setExportMenuOpen((v) => !v)}>
-                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
+                <GlassIcon name="ellipsis-horizontal-outline" size={24} />
               </Pressable>
               {/* The save indicator lives on this capsule's own outline -
                   see SaveRing. Last child, so it draws over the blur. */}

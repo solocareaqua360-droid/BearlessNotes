@@ -81,8 +81,8 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
                 <View
                   style={[
                     styles.dot,
-                    { backgroundColor: theme.ink.faint },
-                    state.index === index && [styles.dotActive, { backgroundColor: theme.ink.primary }],
+                    { backgroundColor: theme.glass.inkMuted },
+                    state.index === index && [styles.dotActive, { backgroundColor: theme.glass.ink }],
                   ]}
                 />
               </Pressable>
@@ -113,7 +113,7 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
                 {/* The tab you are on is the one solid shape here, so
                     its glyph takes the ground's own colour - which keeps
                     it legible whichever way round the theme is. */}
-                <Ionicons name={icon} size={ICON_SIZE} color={focused ? theme.ground : theme.ink.muted} />
+                <Ionicons name={icon} size={ICON_SIZE} color={focused ? theme.ground : theme.glass.ink} />
               </Pressable>
             );
           })}

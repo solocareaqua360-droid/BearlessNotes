@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { GlassPortal } from './GlassPortal';
-import GlassDrop from './GlassDrop';
+import GlassDrop, { GlassIcon } from './GlassDrop';
 import { useTheme } from '../theme/ThemeProvider';
 import { RAIL_RIGHT } from '../constants/rail';
 
@@ -80,15 +80,15 @@ export default function RailCapsule({
               disabled={button.disabled}
               style={[styles.button, button.active && styles.buttonActive, button.disabled && styles.buttonDisabled]}
             >
-              <Ionicons name={button.icon} size={button.size ?? 24} color={theme.ink.primary} />
+              <GlassIcon name={button.icon} size={button.size ?? 24} />
               {!!button.badge && (
                 <View style={styles.badge}>
-                  <Ionicons name={button.badge} size={14} color={theme.ink.primary} />
+                  <GlassIcon name={button.badge} size={14} />
                 </View>
               )}
               {!!button.count && (
                 <View style={styles.count}>
-                  <Text style={[styles.countLabel, { color: theme.ink.primary }]}>{button.count}</Text>
+                  <Text style={[styles.countLabel, { color: theme.glass.ink }]}>{button.count}</Text>
                 </View>
               )}
             </Pressable>

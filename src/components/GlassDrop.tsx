@@ -1,5 +1,6 @@
 import { useId, useState } from 'react';
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useTheme } from '../theme/ThemeProvider';
@@ -223,4 +224,34 @@ function liftStyle(
   // 'blur' (the colour theme) and 'none': the glass itself is what parts
   // it from the screen, and a shadow under it only muddies the blur.
   return {};
+}
+
+// An icon standing ON a drop of glass.
+//
+// Every control in this app is one of a few KINDS, and this is the one
+// that kept going wrong: the icons inside the capsules each named their
+// own colour - "#fff", written when the app had one dark theme - so half
+// of them turned black and half stayed white the moment a second theme
+// existed. A control on glass does not get to choose; it asks. Use this
+// anywhere an icon sits on a GlassDrop, and `tone="muted"` for the ones
+// that are deliberately quieter.
+//
+// Icons that are NOT on glass keep their own colour on purpose: white on
+// a photograph's scrim, or the ink of the card they sit on. See
+// scripts/audit-controls.sh for where each kind lives.
+export function GlassIcon({
+  name,
+  size = 24,
+  tone = 'primary',
+  style,
+}: {
+  name: React.ComponentProps<typeof Ionicons>['name'];
+  size?: number;
+  tone?: 'primary' | 'muted' | 'faint';
+  style?: StyleProp<TextStyle>;
+}) {
+  const theme = useTheme();
+  const colour =
+    tone === 'primary' ? theme.glass.ink : tone === 'muted' ? theme.glass.inkMuted : theme.ink.faint;
+  return <Ionicons name={name} size={size} color={colour} style={style} />;
 }

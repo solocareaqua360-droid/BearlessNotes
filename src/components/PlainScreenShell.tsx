@@ -7,7 +7,7 @@ import ContentColumn from './ContentColumn';
 import ScreenBackdrop from './ScreenBackdrop';
 import RailCapsule, { RailButton } from './RailCapsule';
 import { GlassPortal } from './GlassPortal';
-import GlassDrop from './GlassDrop';
+import GlassDrop, { GlassIcon } from './GlassDrop';
 import { useTheme } from '../theme/ThemeProvider';
 import { CAPSULE_DROP, CAPSULE_HEIGHT_1, CHROME_TOP, RAIL_CLEARANCE } from '../constants/rail';
 import { useRail } from '../hooks/useRail';
@@ -63,7 +63,7 @@ export default function PlainScreenShell({
           >
             <GlassDrop style={styles.topCapsule}>
               <Pressable hitSlop={8} onPress={onBack}>
-                <Ionicons name="arrow-back-outline" size={24} color={theme.ink.primary} />
+                <GlassIcon name="arrow-back-outline" size={24} />
               </Pressable>
             </GlassDrop>
           </View>

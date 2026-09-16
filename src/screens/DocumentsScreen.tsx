@@ -50,7 +50,7 @@ import DocumentEditorScreen from './DocumentEditorScreen';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from '../components/SortMenuRows';
 import RailCapsule from '../components/RailCapsule';
 import SearchField from '../components/SearchField';
-import GlassDrop from '../components/GlassDrop';
+import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import Menu from '../components/surfaces/Menu';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from '../components/TagsDrawer';
@@ -1087,18 +1087,18 @@ export default function DocumentsScreen({
                   setSearchText('');
                 }}
               >
-                <Ionicons name={searchOpen ? 'close-outline' : 'search-outline'} size={24} color="#fff" />
+                <GlassIcon name={searchOpen ? 'close-outline' : 'search-outline'} size={24} />
               </Pressable>
               <View style={styles.sideIslandDivider} />
               {/* Sort sits with the other two ways of looking at the
                   list - search and the menu - rather than alone lower
                   down. */}
               <Pressable hitSlop={8} onPress={() => setSortMenuOpen((v) => !v)}>
-                <Ionicons name="filter-outline" size={24} color="#fff" />
+                <GlassIcon name="filter-outline" size={24} />
               </Pressable>
               <View style={styles.sideIslandDivider} />
               <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
+                <GlassIcon name="ellipsis-horizontal-outline" size={24} />
               </Pressable>
               {/* The way out of a copy pushed over the tile board. The
                   tab's own list has nowhere to go back to and no button. */}
@@ -1106,7 +1106,7 @@ export default function DocumentsScreen({
                 <>
                   <View style={styles.sideIslandDivider} />
                   <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-                    <Ionicons name="arrow-back-outline" size={24} color="#fff" />
+                    <GlassIcon name="arrow-back-outline" size={24} />
                   </Pressable>
                 </>
               )}

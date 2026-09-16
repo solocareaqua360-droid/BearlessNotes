@@ -13,7 +13,7 @@ import Menu from './surfaces/Menu';
 import { useBlurTarget } from './GlassTarget';
 import ContentColumn from './ContentColumn';
 import SearchField, { searchFieldSides } from './SearchField';
-import GlassDrop from './GlassDrop';
+import GlassDrop, { GlassIcon } from './GlassDrop';
 import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
 import RailCapsule from './RailCapsule';
@@ -517,10 +517,9 @@ export default function DatabaseChrome<T extends { id: string }>({
                   list.setIsSearching((prev) => !prev);
                 }}
               >
-                <Ionicons
+                <GlassIcon
                   name={list.isSelectMode || list.isSearching ? 'close-outline' : 'search-outline'}
                   size={24}
-                  color="#fff"
                 />
               </Pressable>
               {/* Only where the screen still has rows to put in it. The
@@ -531,7 +530,7 @@ export default function DatabaseChrome<T extends { id: string }>({
                 <>
                   <View style={styles.headerButtonsDivider} />
                   <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-                    <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
+                    <GlassIcon name="ellipsis-horizontal-outline" size={24} />
                   </Pressable>
                 </>
               )}
@@ -541,7 +540,7 @@ export default function DatabaseChrome<T extends { id: string }>({
                 <>
                   <View style={styles.headerButtonsDivider} />
                   <Pressable hitSlop={8} onPress={onBack}>
-                    <Ionicons name="arrow-back-outline" size={24} color="#fff" />
+                    <GlassIcon name="arrow-back-outline" size={24} />
                   </Pressable>
                 </>
               )}
@@ -589,23 +588,18 @@ export default function DatabaseChrome<T extends { id: string }>({
       )}
       {isFocused && !list.isSelectMode && !searchingAlone && onAdd && !explorer?.active && (
         <GlassPortal>
+          {/* The one button that is not plain glass: the accent sits
+              UNDER the drop, so it is the same piece of glass as every
+              other control with this database's colour showing through
+              it - rather than the flat disc it was, which is what the
+              user spotted still standing in the old style. */}
           <Pressable
-            style={[
-              styles.fab,
-              railSide === 'left' ? styles.fabLeft : styles.fabRight,
-              { bottom: rail.addBottom, backgroundColor: accentGlass, shadowColor: accent },
-            ]}
+            style={[styles.fabHit, railSide === 'left' ? styles.fabLeft : styles.fabRight, { bottom: rail.addBottom }]}
             onPress={onAdd}
           >
-            <BlurView
-              intensity={60}
-              tint="dark"
-              blurMethod="dimezisBlurView"
-              blurTarget={blurTarget ?? undefined}
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
-            <Ionicons name="add-outline" size={28} color="#fff" />
+            <GlassDrop style={[styles.fab, { backgroundColor: accentGlass }]}>
+              <GlassIcon name="add-outline" size={28} />
+            </GlassDrop>
           </Pressable>
         </GlassPortal>
       )}
@@ -783,19 +777,14 @@ const styles = StyleSheet.create({
   fabLeft: {
     left: 20,
   },
-  fab: {
+  // Where it stands; the drop inside it is the glass.
+  fabHit: {
     position: 'absolute',
+  },
+  fab: {
     width: 56,
     height: 56,
-    borderRadius: 999,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 4,
-    shadowOpacity: 0.5,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 6,
   },
 });

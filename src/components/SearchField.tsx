@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react';
 import { Keyboard, Pressable, StyleSheet, TextInput, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import GlassDrop from './GlassDrop';
+import GlassDrop, { GlassIcon } from './GlassDrop';
 import { useTheme } from '../theme/ThemeProvider';
 import { FONT_REGULAR } from '../utils/fonts';
 import { RAIL_CLEARANCE } from '../constants/rail';
@@ -62,7 +62,7 @@ export default function SearchField({
   const theme = useTheme();
   return (
     <GlassDrop style={[styles.field, style]}>
-      {leading ?? <Ionicons name="search-outline" size={19} color={theme.ink.muted} />}
+      {leading ?? <GlassIcon name="search-outline" size={19} tone="muted" />}
       <TextInput
         autoFocus={autoFocus}
         value={value}
@@ -79,12 +79,12 @@ export default function SearchField({
             onClose();
           }}
         >
-          <Ionicons name="close-outline" size={19} color={theme.ink.muted} />
+          <GlassIcon name="close-outline" size={19} tone="muted" />
         </Pressable>
       )}
       {!!onClear && value.length > 0 && (
         <Pressable hitSlop={8} onPress={onClear}>
-          <Ionicons name="close-outline" size={19} color={theme.ink.muted} />
+          <GlassIcon name="close-outline" size={19} tone="muted" />
         </Pressable>
       )}
     </GlassDrop>

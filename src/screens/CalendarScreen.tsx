@@ -56,7 +56,7 @@ import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import SaveRing from '../components/SaveRing';
 import { GLASS_ISLAND } from '../constants/glass';
-import GlassDrop from '../components/GlassDrop';
+import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import Menu from '../components/surfaces/Menu';
 
@@ -771,11 +771,11 @@ export default function CalendarScreen() {
           >
             <GlassDrop style={styles.headerButtons}>
               <Pressable hitSlop={8} onPress={() => navigation.navigate('Diary')}>
-                <Ionicons name="search-outline" size={24} color="#fff" />
+                <GlassIcon name="search-outline" size={24} />
               </Pressable>
               <View style={styles.headerButtonsDivider} />
               <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
+                <GlassIcon name="ellipsis-horizontal-outline" size={24} />
               </Pressable>
               {/* The save indicator is the capsule's own outline now, not a
                   circle standing beside it - see SaveRing. */}

@@ -128,7 +128,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
-import GlassDrop from '../components/GlassDrop';
+import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import {
   CAPSULE_DROP,
   CAPSULE_HEIGHT,
@@ -1658,21 +1658,20 @@ export default function CustomDatabaseScreen({
                   });
                 }}
               >
-                <Ionicons
+                <GlassIcon
                   name={isSelectMode || isSearching ? 'close-outline' : 'search-outline'}
                   size={24}
-                  color="#fff"
                 />
               </Pressable>
               <View style={styles.headerButtonsDivider} />
               <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
+                <GlassIcon name="ellipsis-horizontal-outline" size={24} />
               </Pressable>
               <View style={styles.headerButtonsDivider} />
               {/* The way out of this database - the same place it is on
                   every other one. */}
               <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-                <Ionicons name="arrow-back-outline" size={24} color="#fff" />
+                <GlassIcon name="arrow-back-outline" size={24} />
               </Pressable>
             </GlassDrop>
           </View>

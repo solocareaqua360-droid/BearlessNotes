@@ -58,7 +58,7 @@ import {
   RAIL_RIGHT,
 } from '../constants/rail';
 import { GLASS_BODY_BLURRED, GLASS_CARD, GLASS_ISLAND, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
-import GlassDrop from '../components/GlassDrop';
+import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { confirm } from '../components/surfaces/Ask';
 
@@ -813,7 +813,7 @@ export default function TasksScreen() {
         <View style={[styles.railTop, { top: insets.top + CHROME_TOP + CAPSULE_DROP }]} pointerEvents="box-none">
           <GlassDrop style={styles.topCapsule}>
             <Pressable hitSlop={8} onPress={() => (kanbanMode ? setKanbanMode(false) : navigation.goBack())}>
-              <Ionicons name="arrow-back-outline" size={24} color="#fff" />
+              <GlassIcon name="arrow-back-outline" size={24} />
             </Pressable>
           </GlassDrop>
         </View>

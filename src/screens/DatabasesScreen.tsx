@@ -73,7 +73,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
-import GlassDrop from '../components/GlassDrop';
+import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import { CAPSULE_DROP, CHROME_TOP, NAV_BOTTOM, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 
 const NEW_TILE_KEY = '__new__';
@@ -1130,11 +1130,11 @@ export default function DatabasesScreen() {
           >
             <GlassDrop style={styles.headerButtons}>
               <Pressable hitSlop={8} onPress={() => navigation.navigate('Search')}>
-                <Ionicons name="search-outline" size={24} color="#fff" />
+                <GlassIcon name="search-outline" size={24} />
               </Pressable>
               <View style={styles.headerButtonsDivider} />
               <Pressable hitSlop={8} onPress={() => navigation.navigate('Settings')}>
-                <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
+                <GlassIcon name="ellipsis-horizontal-outline" size={24} />
               </Pressable>
             </GlassDrop>
           </View>
