@@ -170,12 +170,15 @@ const white: Theme = {
   // eye reads comes from the edge: a bright contour, a rim inside it,
   // and a vignette strong enough to actually be seen.
   glass: {
-    blur: 40,
-    blurTint: 'light',
-    // Milk, not tint: whitened glass close to frosted, the way the
-    // reference's windows are - not our dark matte.
+    // A lighter blur with a NEUTRAL tint: expo-blur's 'light' tint lays
+    // its own white over the picture, and with a 62% body on top the
+    // drops stood on a white backing that let none of the blue through -
+    // the user's words. The body is a third now; the edge (specular, rim,
+    // vignette) is what says "glass", and the wash shows through it.
+    blur: 28,
+    blurTint: 'default',
     body: '#FBFCFF',
-    opacity: 0.62,
+    opacity: 0.34,
     specular: '#FFFFFF',
     specularIntensity: 1,
     rim: '#FFFFFF',
