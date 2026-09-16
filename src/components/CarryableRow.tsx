@@ -12,29 +12,38 @@ const CARRY_LONG_PRESS_MS = 650;
 // of CARRY_LONG_PRESS_MS.
 const MENU_HOLD_MS = 380;
 
-// The FIRST version of this composed `Gesture.Exclusive(dragPan,
-// Gesture.Native())`, reasoning that Exclusive would keep the card's own
-// Pressable long-press from firing until the drag Pan either won the
-// touch or failed. It didn't: `Gesture.Native()` hands the touch to the
-// wrapped view's OWN Pressability, which is not a gesture-handler
-// recognizer and runs on its own independent ~500ms timer no matter what
-// a sibling gesture is doing - so the menu kept opening before the drag
-// could ever activate ("меню вискакує раніше").
+// Two versions of this got the arbitration wrong, both by putting the
+// card's own Pressable INTO the composition:
 //
-// The actual fix does not try to referee two independent timers against
-// each other. The card KEEPS its own Pressable (onPress still fires
-// natively, untouched - so does every button already inside the row: the
-// "..." menu, a tag chip, the select checkbox, each its OWN nested
-// Pressable RN already lets win over the row's outer one). The one thing
-// removed is the ROW'S OWN onLongPress - that was the entire source of
-// the race. In its place, this Pan gesture - the exact
-// `activateAfterLongPress` technique already proven here for the note
-// editor's own block reorder - times its OWN failure: if it never
-// reaches CARRY_LONG_PRESS_MS but the finger was still down past
-// MENU_HOLD_MS, that IS the short hold, and the menu opens then. A touch
-// shorter than that was a plain tap, which Pressable's own onPress
-// already handled through Gesture.Native() below - nothing further to
-// do.
+//   1. `Gesture.Exclusive(dragPan, Gesture.Native())` - the hope was that
+//      Exclusive would hold the Pressable's own long-press back until the
+//      Pan won or failed. It cannot: Gesture.Native() hands the touch to
+//      the wrapped view's own Pressability, which is not a gesture-handler
+//      recognizer at all, so RNGH has nothing to hold back. The Pressable
+//      kept firing its own ~500ms long-press and the menu opened before a
+//      drag could ever start ("меню вискакує раніше").
+//   2. `Gesture.Simultaneous(dragPan, Gesture.Native())` with the row's
+//      onLongPress removed. The menu stopped jumping the queue, but the
+//      drag STILL never activated - a hold of any length simply ended as
+//      the short one ("тримаю, відпускаючи зʼявляється меню"). Running a
+//      native-view handler alongside it is what kept the Pan from ever
+//      reaching its own long-press.
+//
+// So the Pressable is out of the composition entirely: this is the bare
+// `Gesture.Pan().activateAfterLongPress(...)`, exactly as the note
+// editor's own block reorder uses it for an ordinary row - and that
+// screen is the proof that nesting stays intact underneath it, because a
+// checkbox block's own checkbox, and a block's own tap-to-edit, are both
+// plain Pressables inside a row wrapped in nothing but this same gesture,
+// and both have worked on the device for months.
+//
+// What this gesture then owns is only the ROW'S OWN long press: the row
+// keeps its onPress (a plain tap still opens the item) and every button
+// nested in it (the "..." menu, a tag chip, the select checkbox), and
+// gives up only onLongPress - which this one times itself. Fails to
+// reach CARRY_LONG_PRESS_MS but the finger was down past MENU_HOLD_MS:
+// that IS the short hold, so the menu opens, on this gesture's own clock
+// rather than racing a second one.
 export default function CarryableRow<T extends { id: string }>({
   item,
   path,
@@ -91,7 +100,7 @@ export default function CarryableRow<T extends { id: string }>({
     .onFinalize(() => carry.cancelCarry());
 
   return (
-    <GestureDetector gesture={Gesture.Simultaneous(dragGesture, Gesture.Native())}>
+    <GestureDetector gesture={dragGesture}>
       {/* The measurable node is a PLAIN View, not the Animated one the fade
           runs on: an Animated.View's ref goes through Reanimated's own
           wrapper, which is not guaranteed to answer measureInWindow the
