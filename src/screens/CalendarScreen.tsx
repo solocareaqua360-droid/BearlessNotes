@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useStyles } from '../theme/ThemeProvider';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import {
   Keyboard,
@@ -57,6 +57,7 @@ import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import SaveRing from '../components/SaveRing';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
+import ScreenBackdrop from '../components/ScreenBackdrop';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import Menu from '../components/surfaces/Menu';
 
@@ -113,6 +114,7 @@ const FILLED_ROW_HEIGHT = ROW_HEIGHT + WEEKDAY_HEADER_HEIGHT;
 
 export default function CalendarScreen() {
   const styles = useStyles(makeStyles);
+  const theme = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   // Nested-navigator params from DiaryScreen's "open this sheet" - see
   // navigation.ts's Tabs type. Not typed through the tab navigator itself
@@ -718,28 +720,13 @@ export default function CalendarScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Same fixed gradient as DocumentsScreen. The daily-note editor
-          below (`noteArea`) stays white on its own - it's the embedded
-          DocumentEditorScreen's own opaque white background, painted over
-          this gradient, not a separate override here. */}
-      {/* 1px bled past every edge - windowWidth/Height can round to a hair
-          less than the actual screen, leaving a sliver of the default
-          white background visible at an edge otherwise. */}
-      <Svg
-        width={windowWidth + 2}
-        height={windowHeight + 2}
-        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
-        pointerEvents="none"
-      >
-        <Defs>
-          <LinearGradient id="calendarBg" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0.03" stopColor="#705648" />
-            <Stop offset="0.52" stopColor="#69736E" />
-            <Stop offset="1" stopColor="#000000" />
-          </LinearGradient>
-        </Defs>
-        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#calendarBg)" />
-      </Svg>
+      {/* The theme's own ground - drawn by hand here before, so it stood
+          on the colour theme's brown gradient whatever the setting said.
+          The daily-note editor below (`noteArea`) stays white on its own
+          regardless - it's the embedded DocumentEditorScreen's own opaque
+          white background, painted over this, not a separate override
+          here. */}
+      <ScreenBackdrop id="calendarBg" colors={['#705648', '#69736E', '#000000']} />
 
       <View style={[styles.headerRow, { paddingTop: headerPadTop }]}>
         <View
@@ -757,7 +744,7 @@ export default function CalendarScreen() {
             <Text style={styles.headerDateLabel} numberOfLines={1}>
               {WEEKDAY_SHORT[mondayIndex(selectedDate)]}, {formatBigDate(selectedDate)}
             </Text>
-            {isWriting && <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.7)" />}
+            {isWriting && <Ionicons name="chevron-down" size={12} color={theme.ink.muted} />}
           </Pressable>
         </View>
       </View>
@@ -893,13 +880,13 @@ export default function CalendarScreen() {
             <Animated.View style={[styles.monthNavWrap, monthNavStyle]}>
               <View style={styles.monthNav}>
                 <Pressable hitSlop={10} onPress={() => changeVisibleMonth(-1)}>
-                  <Ionicons name="chevron-back" size={18} color="rgba(255,255,255,0.7)" />
+                  <Ionicons name="chevron-back" size={18} color={theme.ink.muted} />
                 </Pressable>
                 <Text style={styles.monthNavLabel}>
                   {MONTH_FULL[visibleMonth.month]} {visibleMonth.year}
                 </Text>
                 <Pressable hitSlop={10} onPress={() => changeVisibleMonth(1)}>
-                  <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
+                  <Ionicons name="chevron-forward" size={18} color={theme.ink.muted} />
                 </Pressable>
               </View>
             </Animated.View>
@@ -1245,7 +1232,7 @@ const makeStyles = (t: Theme) =>
   // which only makes sense if it's there to tap regardless of where the
   // calendar currently is.
   todayButton: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: t.ink.primary,
     borderRadius: 10,
     paddingHorizontal: 11,
     paddingVertical: 6,
@@ -1254,7 +1241,7 @@ const makeStyles = (t: Theme) =>
     fontSize: 11.5,
     fontWeight: '700',
     fontFamily: FONT_SEMIBOLD,
-    color: '#171310',
+    color: t.ground,
   },
   headerDateTap: {
     flexDirection: 'row',
@@ -1266,7 +1253,7 @@ const makeStyles = (t: Theme) =>
     fontSize: 14.5,
     fontWeight: '700',
     fontFamily: FONT_SEMIBOLD,
-    color: '#fff',
+    color: t.ink.primary,
   },
   // The column the calendar's own controls stand in - same edge, same
   // width, same glass as the documents screen's rail.
@@ -1300,8 +1287,8 @@ const makeStyles = (t: Theme) =>
   },
   // Flush with the header above (square top), rounded only at the bottom.
   calendarPlate: {
-    backgroundColor: 'rgba(20,20,20,0.25)',
-    borderColor: 'rgba(255,255,255,0.25)',
+    backgroundColor: t.raised,
+    borderColor: t.edge.hairline,
     // The capsule's own radius - RAIL_WIDTH is its width, so half of that
     // is the curve its ends are drawn with. Not 999: that would pull the
     // whole plate into one long capsule, and this one keeps straight sides
@@ -1336,7 +1323,7 @@ const makeStyles = (t: Theme) =>
     fontSize: 16,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: '#fff',
+    color: t.ink.primary,
   },
   weekdayHeader: {
     height: WEEKDAY_HEADER_HEIGHT,
@@ -1347,7 +1334,7 @@ const makeStyles = (t: Theme) =>
     flex: 1,
     textAlign: 'center',
     fontSize: 12,
-    color: '#fff',
+    color: t.ink.muted,
     fontWeight: '500',
     fontFamily: FONT_MEDIUM,
   },
@@ -1412,17 +1399,19 @@ const makeStyles = (t: Theme) =>
     borderRadius: 14,
   },
   dayCircleSelected: {
-    borderColor: '#D1D5DB',
+    borderColor: t.edge.strong,
   },
+  // The one filled shape in the strip - the brightest ink, inverted, the
+  // same pairing as the "Сьогодні" chip and the dock's own selected tab.
   dayCircleToday: {
-    backgroundColor: '#fff',
-    borderColor: '#fff',
+    backgroundColor: t.ink.primary,
+    borderColor: t.ink.primary,
   },
   dayNum: {
     fontSize: 15,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: '#fff',
+    color: t.ink.primary,
   },
   dayNumCompact: {
     fontSize: 18,
@@ -1433,16 +1422,13 @@ const makeStyles = (t: Theme) =>
     fontSize: 12,
     lineHeight: 14,
     fontFamily: FONT_MEDIUM,
-    color: 'rgba(255,255,255,0.7)',
+    color: t.ink.muted,
   },
   dayNumMuted: {
-    // Was a light gray for "faint against white" - on the now-dark
-    // gradient that read backwards (brighter than the regular white
-    // dayNum), so muted is dim translucent white instead.
-    color: 'rgba(255,255,255,0.35)',
+    color: t.ink.faint,
   },
   dayNumToday: {
-    color: '#111827',
+    color: t.ground,
   },
   // A day with a real note or reminder - a small dot under its number,
   // inside the same circle (there's no spare row height to place it below
@@ -1462,10 +1448,10 @@ const makeStyles = (t: Theme) =>
     width: 3.5,
     height: 3.5,
     borderRadius: 2,
-    backgroundColor: '#fff',
+    backgroundColor: t.ink.primary,
   },
   filledDotOnToday: {
-    backgroundColor: '#111827',
+    backgroundColor: t.ground,
   },
   // A saturated blue reads clearly against both the plain dark cell and
   // today's white circle, so unlike filledDot this one never needs a
