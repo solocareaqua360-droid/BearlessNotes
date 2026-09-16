@@ -32,15 +32,17 @@ export default function CardCarryOverlay<T extends { id: string }>({
   // in the editor's own drag (see DocumentEditorScreen's handleDragUpdate).
   const lastY = useRef(0);
 
-  // Exactly two fingers: the carried one is already owned by the card's
-  // own gesture and never reaches this view (a fresh touch is hit-tested
-  // against whatever is frontmost at the moment IT starts, and this
-  // overlay only starts existing once carrying begins - the carrying
-  // finger's touch began before that and keeps going to the card). One
-  // finger alone here would fight the list's own scroll for no reason.
+  // ONE finger here, not two - the mistake the first version made. The
+  // carried finger is owned by the card's own gesture on another view and
+  // its touch began before this overlay existed, so it never reaches this
+  // one at all: from here the SECOND physical finger is the only touch
+  // there is. Asking for two meant this gesture could never satisfy its
+  // own minPointers and so never fired ("реакції на другий палець немає").
+  // Requiring one is safe precisely because the overlay is only touchable
+  // while a card is being carried - there is nothing else to fight for it.
   const secondFinger = Gesture.Pan()
-    .minPointers(2)
-    .maxPointers(2)
+    .minPointers(1)
+    .maxPointers(1)
     .runOnJS(true)
     .onStart(() => {
       lastY.current = 0;
@@ -52,8 +54,6 @@ export default function CardCarryOverlay<T extends { id: string }>({
       lastY.current = e.translationY;
     });
 
-  // Only positioned by where the card started - see ghostWrap's own note
-  // on why it is not also sized to it.
   const style = useAnimatedStyle(() =>
     ghost ? { left: ghost.x, top: ghost.y, opacity: 1 } : { left: 0, top: 0, opacity: 0 }
   );

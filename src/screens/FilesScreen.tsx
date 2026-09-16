@@ -238,12 +238,23 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
   // at whichever ScrollView (grid or list) is actually mounted right now.
   const scrollRef = useRef<ScrollView>(null);
   const scrollYRef = useRef<SharedValue<number> | null>(null);
+  const scrollTargetRef = useRef<{ y: number; at: number } | null>(null);
   const carry = useCardCarry<FileItem>({
     moveItem: (item, destination) => explorer.moveItem(item, destination),
+    // The list's own scrollY only catches up through its onScroll event,
+    // a frame or two behind - reading it every tick of a fast drag would
+    // keep computing from a stale number and stutter. So the live value
+    // only SEEDS this: once a drag is under way it accumulates its own
+    // target, and re-seeds when the finger has been still long enough for
+    // the list to have caught up.
     scrollBy: (dy) => {
-      const current = scrollYRef.current;
-      if (!current) return;
-      const next = Math.max(0, current.value - dy);
+      const live = scrollYRef.current;
+      if (!live) return;
+      const now = Date.now();
+      const carried = scrollTargetRef.current;
+      const base = carried && now - carried.at < 250 ? carried.y : live.value;
+      const next = Math.max(0, base - dy);
+      scrollTargetRef.current = { y: next, at: now };
       scrollRef.current?.scrollTo({ y: next, animated: false });
     },
     onMoved: (item, destination, origin) => {
