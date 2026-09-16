@@ -130,7 +130,12 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
                     convex
                     glassOpacity={Math.min(0.5, Math.max(0.24, theme.glass.opacity * 2.4))}
                   >
-                    <Ionicons name={icon} size={Math.round(ICON_SIZE * 1.18)} color={theme.accent} />
+                    {/* Same ink and same size as its neighbours: the lens
+                        marks the selection, the glyph does not. Drawn
+                        larger it looked bold - a scaled outline glyph
+                        thickens with it - and in the accent it looked
+                        like a different family from the other three. */}
+                    <Ionicons name={icon} size={ICON_SIZE} color={theme.glass.ink} />
                   </GlassDrop>
                 ) : (
                   <View style={styles.button}>

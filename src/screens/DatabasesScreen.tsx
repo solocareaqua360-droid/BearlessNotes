@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
+import ScreenBackdrop from '../components/ScreenBackdrop';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -1104,21 +1104,11 @@ export default function DatabasesScreen() {
           (see the -1/+2 below) - windowWidth/Height can round to a hair
           less than the actual screen, leaving a sliver of the default
           white background visible at an edge otherwise. */}
-      <Svg
-        width={windowWidth + 2}
-        height={windowHeight + 2}
-        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
-        pointerEvents="none"
-      >
-        <Defs>
-          <LinearGradient id="databasesBg" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0.03" stopColor="#705648" />
-            <Stop offset="0.52" stopColor="#69736E" />
-            <Stop offset="1" stopColor="#000000" />
-          </LinearGradient>
-        </Defs>
-        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#databasesBg)" />
-      </Svg>
+      {/* The theme's own ground - the drifting gradient in colour, the
+          bleached clouds in white, plain black in black. This screen
+          drew its own fixed gradient and stood in the colour theme
+          whatever the setting said. */}
+      <ScreenBackdrop id="databasesBg" colors={['#705648', '#69736E', '#000000']} />
       {/* The rail, as on every other screen: right edge, same width, same
           glass, hanging from the same line. Through the portal for the
           blur, so it withdraws when this screen isn't the one on show. */}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
+import ScreenBackdrop from '../components/ScreenBackdrop';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -59,21 +59,11 @@ export default function SearchScreen() {
   return (
     <View style={styles.container}>
       {/* The same fixed gradient every other screen stands on. */}
-      <Svg
-        width={windowWidth + 2}
-        height={windowHeight + 2}
-        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
-        pointerEvents="none"
-      >
-        <Defs>
-          <LinearGradient id="searchBg" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0.03" stopColor="#705648" />
-            <Stop offset="0.52" stopColor="#69736E" />
-            <Stop offset="1" stopColor="#000000" />
-          </LinearGradient>
-        </Defs>
-        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#searchBg)" />
-      </Svg>
+      {/* The theme's own ground - the drifting gradient in colour, the
+          bleached clouds in white, plain black in black. This screen
+          drew its own fixed gradient and stood in the colour theme
+          whatever the setting said. */}
+      <ScreenBackdrop id="searchBg" colors={['#705648', '#69736E', '#000000']} />
 
       <ContentColumn>
         {/* The way back sits in the search row itself: this screen is one
