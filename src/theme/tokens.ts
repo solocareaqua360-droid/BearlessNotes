@@ -137,22 +137,27 @@ const white: Theme = {
   name: 'Біла',
   scheme: 'light',
   backdrop: 'clouds',
-  // Cool and out of focus: a pale sky, a cold mint, a grey lilac. Strong
-  // enough to tint the white glass over them and no stronger - what has
-  // to stay white is everything in front.
-  clouds: ['#A7C6E0', '#BBD5D6', '#C2C9E2'],
-  cloudStrength: 0.42,
-  ground: '#FFFFFF',
+  // The reference's ground is not white with a hint of colour: it is a
+  // soft out-of-focus wash edge to edge, and the WINDOWS on it are what
+  // stay white. So the ground is a pale cool grey the blooms fully cover
+  // - a sky, a cold mint, a grey lilac at full strength - and every card
+  // and drop reads as a milk-white window standing on it.
+  clouds: ['#9FC1DD', '#B5D2D3', '#BEC5E0'],
+  cloudStrength: 1,
+  ground: '#E7EDF2',
   // A shade off the ground on purpose: in white and black the record
   // cards lose their own colours (the user's call - "білий означає
   // білий скрізь"), so the only thing left telling a card from the page
   // is this step and the shadow under it. Equal to the ground they
   // would simply disappear.
-  // Slightly see-through, which is the other half of the reference: the
-  // card is white, but the cool wash behind it comes through just enough
-  // that the surface shifts as the backdrop drifts under it.
-  surface: 'rgba(252,253,255,0.82)',
-  raised: 'rgba(255,255,255,0.9)',
+  // Opaque on purpose, after a try at letting the wash show through: on
+  // Android an elevation shadow is drawn as if the view were solid and
+  // shows THROUGH a translucent fill - a darker band inside every edge
+  // and a lighter rectangle in the middle, which is exactly what the
+  // user saw. A card takes its colour from being white on a coloured
+  // ground, not from the ground leaking into it.
+  surface: '#FBFCFE',
+  raised: '#FFFFFF',
   ink: { primary: '#111827', muted: '#6B7280', faint: '#9CA3AF' },
   // Graphite, not the warm amber: colour in this theme is for danger.
   accent: '#374151',
