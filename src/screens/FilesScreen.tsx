@@ -688,8 +688,13 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
       }}
       // Beside the list on a wide screen, over everything on a phone - the
       // same quick look either way.
+      //
+      // Only while there is actually a file to look at: the chrome splits
+      // the window the moment it is GIVEN a pane, so handing it one that
+      // renders nothing left the list squeezed into the right half with an
+      // empty half beside it. A pane is something to show, not a mode.
       pane={
-        isTwoPane ? (
+        isTwoPane && quickLook ? (
           <DocumentQuickLook
             embedded
             file={quickLook}
