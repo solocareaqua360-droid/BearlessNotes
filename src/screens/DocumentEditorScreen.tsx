@@ -105,7 +105,7 @@ import { caretIndexFromDom } from '../utils/caretAtPoint';
 import { displayIndexForTouch } from '../utils/caretFromTextLayout';
 import { applyLiveRecord, recordIdFor, useLiveRecords } from '../hooks/useLiveRecords';
 import { attachmentInfoText } from '../utils/attachmentInfo';
-import { downloadToFolder } from '../utils/downloadToFolder';
+import { downloadToFolder, showDownloadedFile } from '../utils/downloadToFolder';
 import AttachmentImage from '../components/AttachmentImage';
 import DocumentCanvas, { DocumentCanvasHandle } from '../components/DocumentCanvas';
 import { assembleWithDivider } from '../utils/canvasOrder';
@@ -4093,11 +4093,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // with" chooser directly on that file, the same mechanism this app
   // already uses for opening attachments (see openFile/Sharing.shareAsync
   // elsewhere in this file).
-  async function showDownloadedFileInFolder(uri: string, mimeType: string) {
+  function showDownloadedFileInFolder(uri: string, mimeType: string) {
     dismissDownloadToast();
-    const available = await Sharing.isAvailableAsync();
-    if (!available) return;
-    await Sharing.shareAsync(uri, { mimeType });
+    // See showDownloadedFile: a SAF destination is a content:// URI, which
+    // is not something expo-sharing can take.
+    showDownloadedFile(uri, mimeType);
   }
 
   async function exportAsPdf() {

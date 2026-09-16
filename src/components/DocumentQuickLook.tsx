@@ -89,7 +89,22 @@ function pageFor(kind: QuickLookKind, base64: string, library: string): string {
            var html = '';
            wb.SheetNames.forEach(function (name) {
              var sheet = wb.Sheets[name];
-             html += '<h2>' + name + '</h2>' + XLSX.utils.sheet_to_html(sheet, { header: '', footer: '' });
+             // A sheet with no cells at all carries no '!ref', and
+             // sheet_to_html reads that range with no guard of its own -
+             // decoding undefined is where "Cannot read properties of
+             // undefined (reading 'indexOf')" came from, and it took the
+             // WHOLE workbook's preview down, not just the empty sheet.
+             if (!sheet || !sheet['!ref']) {
+               html += '<h2>' + name + '</h2><p class="muted">Порожній аркуш</p>';
+               return;
+             }
+             try {
+               html += '<h2>' + name + '</h2>' + XLSX.utils.sheet_to_html(sheet, { header: '', footer: '' });
+             } catch (e) {
+               // One sheet the library cannot render is one sheet, not
+               // the file.
+               html += '<h2>' + name + '</h2><p class="error">Цей аркуш показати не вдалося</p>';
+             }
            });
            root.innerHTML = html || '<p class="muted">Порожня таблиця</p>';
          } catch (e) { fail(e); }`;

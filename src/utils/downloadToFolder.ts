@@ -1,5 +1,8 @@
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import { notify } from '../components/surfaces/Ask';
 
 // Save a copy where the user can find it outside this app - the folder
 // they pick once and the app remembers, through Android's own document
@@ -71,5 +74,60 @@ export async function downloadToFolder(
     if (!permission.granted) return null;
     await AsyncStorage.setItem(DOWNLOAD_DIR_STORAGE_KEY, permission.directoryUri);
     return { destUri: await writeInto(permission.directoryUri), fileName };
+  }
+}
+
+
+// Required lazily, for the same reason openFileExternally requires it
+// lazily: an APK built before the module existed has no native side for
+// it, and a top-level import there would take the app down on load
+// rather than fall back.
+function intentLauncher(): typeof import('expo-intent-launcher') | null {
+  if (Platform.OS !== 'android') return null;
+  try {
+    return require('expo-intent-launcher');
+  } catch {
+    return null;
+  }
+}
+
+// "Показати в папці" on the toast that follows a download.
+//
+// All three screens that offer it handed the SAF destination straight to
+// Sharing.shareAsync - and that is a file:// API: given a document-tree
+// content:// URI it throws, which one screen swallowed with an empty
+// catch and the other two left as an unhandled rejection. Either way the
+// button did nothing at all, on every download.
+//
+// What actually opens it is the VIEW intent - the very thing
+// openFileExternally already does for a stored file - except that this
+// URI is ALREADY a content:// one, so there is nothing to convert. The
+// share sheet stays as the fallback for a build with no intent launcher,
+// and a failure says so now instead of being silent.
+export async function showDownloadedFile(uri: string, mimeType: string) {
+  const launcher = intentLauncher();
+  if (launcher) {
+    try {
+      await launcher.startActivityAsync('android.intent.action.VIEW', {
+        data: uri,
+        // FLAG_GRANT_READ_URI_PERMISSION: without it whatever opens on the
+        // other end is handed a URI it is not allowed to read.
+        flags: 1,
+        type: mimeType || undefined,
+      });
+      return;
+    } catch {
+      // No app on the phone answers for this kind of file - the share
+      // sheet below at least offers the ones that take anything.
+    }
+  }
+  try {
+    if (!(await Sharing.isAvailableAsync())) {
+      notify('Не вдалося відкрити', 'На цьому пристрої немає застосунку, який відкриває такі файли.');
+      return;
+    }
+    await Sharing.shareAsync(uri, { mimeType });
+  } catch {
+    notify('Не вдалося відкрити', 'Файл збережено, але відкрити його звідси не вийшло.');
   }
 }

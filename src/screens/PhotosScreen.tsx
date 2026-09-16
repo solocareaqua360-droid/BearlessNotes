@@ -52,7 +52,7 @@ import { useDatabaseList } from '../hooks/useDatabaseList';
 import { useBin } from '../hooks/useBin';
 import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
 import ExplorerHead from '../components/ExplorerHead';
-import { downloadToFolder } from '../utils/downloadToFolder';
+import { downloadToFolder, showDownloadedFile } from '../utils/downloadToFolder';
 import { touchAttachment } from '../utils/attachmentCache';
 import DatabaseChrome, { menuStyles } from '../components/DatabaseChrome';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
@@ -172,11 +172,11 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     if (result) showDownloadToast(result.fileName, result.destUri, 'image/jpeg');
   }
 
-  async function showDownloadedFileInFolder(uri: string, mimeType: string) {
+  function showDownloadedFileInFolder(uri: string, mimeType: string) {
     dismissDownloadToast();
-    const available = await Sharing.isAvailableAsync();
-    if (!available) return;
-    await Sharing.shareAsync(uri, { mimeType });
+    // See showDownloadedFile: a SAF destination is a content:// URI, which
+    // is not something expo-sharing can take.
+    showDownloadedFile(uri, mimeType);
   }
 
   useEffect(() => {

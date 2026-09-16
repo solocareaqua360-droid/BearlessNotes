@@ -52,7 +52,7 @@ import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { ensureFileIsHere, openFileExternally } from '../utils/openFileExternally';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
-import { downloadToFolder } from '../utils/downloadToFolder';
+import { downloadToFolder, showDownloadedFile } from '../utils/downloadToFolder';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
@@ -826,7 +826,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
               fileName={downloadToast.fileName}
               onShowInFolder={() => {
                 dismissDownloadToast();
-                Sharing.shareAsync(downloadToast.uri, { mimeType: downloadToast.mimeType }).catch(() => {});
+                showDownloadedFile(downloadToast.uri, downloadToast.mimeType);
               }}
               onIgnore={dismissDownloadToast}
             />
