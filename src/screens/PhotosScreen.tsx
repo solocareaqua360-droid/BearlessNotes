@@ -630,6 +630,33 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     navigation.navigate('Editor', { documentId: newDocumentId });
   }
 
+  // What a photo can be told to do from the LIST - the menu a note, a
+  // file and a link have all had, and a photo had not: every one of its
+  // actions lived inside the full-screen viewer, so managing photos never
+  // felt like managing anything else in the app ("не можу управляти
+  // фотографіями, як нотатками"). Reached the two ways every other card
+  // is reached: the "..." on the card, and a short hold on it.
+  async function openPhotoMenu(photo: PhotoItem) {
+    const choice = await ask({
+      title: photo.title || 'Без назви',
+      actions: [
+        { id: 'move', label: 'Перемістити в папку', icon: 'folder-outline' },
+        { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+        { id: 'tags', label: 'Теги', icon: 'pricetag-outline' },
+        { id: 'draw', label: 'Малювати', icon: 'brush-outline' },
+        { id: 'bin', label: 'У кошик', icon: 'trash-outline', tone: 'danger' },
+      ],
+    });
+    if (choice === 'move') {
+      const destination = await explorer.pickDestination(`Перемістити «${photo.title || 'Без назви'}» в…`);
+      if (destination === 'cancel') return;
+      await explorer.moveItem(photo, destination);
+    } else if (choice === 'rename') setRenamingPhoto(photo);
+    else if (choice === 'tags') setTagPickerForId(photo.id);
+    else if (choice === 'draw') setSketchPhotoId(photo.id);
+    else if (choice === 'bin') confirmDeletePhoto(photo);
+  }
+
   function viewerActionsFor(photo: PhotoItem): ViewerAction[] {
     return [
       { key: 'rename', icon: 'pencil-outline', label: 'Назва', onPress: () => setRenamingPhoto(photo) },
@@ -1016,6 +1043,8 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                     photo,
                     tags: tags.filter((t) => photo.tagIds.includes(t.id)),
                     onPress: () => (isSelectMode ? toggleSelected(photo.id) : setViewerPhotoId(photo.id)),
+                    onMenu: () => openPhotoMenu(photo),
+                    onLongPress: explorer.active ? undefined : () => openPhotoMenu(photo),
                     onTagPress: () => setTagPickerForId(photo.id),
                     isSelectMode,
                     isSelected: selectedIds.has(photo.id),
@@ -1024,9 +1053,12 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
               // Only the explorer carries; the bin never does.
               if (trashOpen || !explorer.active) return cell;
               return (
-                // A photo has no menu of its own on a hold, so the short
-                // hold keeps doing what it always did here: nothing.
-                <CarryableRow item={photo} carry={carrying.carry} onMenu={() => {}} group={carrying.groupFor(photo)}>
+                <CarryableRow
+                  item={photo}
+                  carry={carrying.carry}
+                  onMenu={() => openPhotoMenu(photo)}
+                  group={carrying.groupFor(photo)}
+                >
                   {cell}
                 </CarryableRow>
               );
