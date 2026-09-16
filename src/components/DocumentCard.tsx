@@ -227,6 +227,15 @@ type Props = {
   // list), `flush` drops it so the card lines up with everything beside
   // it instead of sitting 20pt further in.
   flush?: boolean;
+  // The card's own node, handed to whatever needs to measure it - the
+  // carry gesture asks what is under the finger (see useCardCarry), and a
+  // card is the answer. On the card's OWN root, never a wrapper: these
+  // cards are flex items in a grid, and a wrapper takes that role for
+  // itself (see ItemCards' cardRef, where the same lesson is written).
+  cardRef?: (node: View | null) => void;
+  // Being carried right now - the card stays where it is and fades, the
+  // ghost at the finger is the thing in hand.
+  dimmed?: boolean;
 };
 
 // The card shared by Documents and Search: a thumbnail (the document's
@@ -260,6 +269,8 @@ export default function DocumentCard({
   layout = 'list',
   gridWidth,
   flush,
+  cardRef,
+  dimmed,
 }: Props) {
   const recordColour = useRecordColour();
   const { background, text, textMuted } = recordColour(id);
@@ -323,10 +334,13 @@ export default function DocumentCard({
   if (isGrid) {
     return (
       <View
+        ref={cardRef}
+        collapsable={false}
         style={[
           styles.gridCard,
           gridWidth !== undefined ? { width: gridWidth } : styles.gridCardHalf,
           { backgroundColor: background },
+          dimmed && styles.dimmed,
         ]}
       >
         <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />
@@ -371,7 +385,11 @@ export default function DocumentCard({
   }
 
   return (
-    <View style={[styles.row, flush && styles.rowFlush, { backgroundColor: background }]}>
+    <View
+      ref={cardRef}
+      collapsable={false}
+      style={[styles.row, flush && styles.rowFlush, { backgroundColor: background }, dimmed && styles.dimmed]}
+    >
       <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />
       <Pressable style={styles.tap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
         {thumbNode}
@@ -387,6 +405,10 @@ export default function DocumentCard({
 }
 
 const styles = StyleSheet.create({
+  // A card whose document is in hand right now.
+  dimmed: {
+    opacity: 0.4,
+  },
   grain: {
     position: 'absolute',
     left: 0,

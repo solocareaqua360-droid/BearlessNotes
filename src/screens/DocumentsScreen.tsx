@@ -60,6 +60,10 @@ import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
 import DocumentCard from '../components/DocumentCard';
+import { useExplorer, nameOf } from '../hooks/useExplorer';
+import UndoToast from '../components/UndoToast';
+import CardCarryOverlay from '../components/CardCarryOverlay';
+import { useExplorerCarry } from '../hooks/useExplorerCarry';
 import GroupSections from '../components/GroupSections';
 import {
   documentMatchesQuery,
@@ -228,213 +232,49 @@ export default function DocumentsScreen({
   // documents tagged with exactly this path - not with anything deeper,
   // which is what the next folder is for. At the root, the documents
   // that carry no tag at all.
-  const [explorerPath, setExplorerPathState] = useState('');
-  // Where you have been, for the rail's back/forward: a plain history like
-  // a browser's. Going somewhere new cuts off whatever was "forward";
-  // back and forward only move along what is there, and do nothing at
-  // either end - the user's rule: forward into a folder you have not
-  // been to is no action at all.
-  const historyRef = useRef<{ paths: string[]; index: number }>({ paths: [''], index: 0 });
-  const [historyState, setHistoryState] = useState({ canBack: false, canForward: false });
-  function syncHistoryState() {
-    const h = historyRef.current;
-    setHistoryState({ canBack: h.index > 0, canForward: h.index < h.paths.length - 1 });
-  }
-  function setExplorerPath(next: string | ((prev: string) => string)) {
-    const h = historyRef.current;
-    const path = typeof next === 'function' ? next(h.paths[h.index]) : next;
-    if (path === h.paths[h.index]) return;
-    h.paths = [...h.paths.slice(0, h.index + 1), path];
-    h.index = h.paths.length - 1;
-    setExplorerPathState(path);
-    syncHistoryState();
-  }
-  function explorerBack() {
-    const h = historyRef.current;
-    if (h.index === 0) return;
-    h.index -= 1;
-    setExplorerPathState(h.paths[h.index]);
-    syncHistoryState();
-  }
-  function explorerForward() {
-    const h = historyRef.current;
-    if (h.index >= h.paths.length - 1) return;
-    h.index += 1;
-    setExplorerPathState(h.paths[h.index]);
-    syncHistoryState();
-  }
-  const explorer = explorerMode && !searching;
-  // The folders the explorer knows: every document tag, including one
-  // made on purpose and still empty (Tag.keep) - which the drawer's own
-  // list leaves out, since in the ordinary mode an empty folder is not a
-  // folder. That is the user's rule for the two modes.
-  const explorerTags = tags.filter((t) => t.types.includes('document') || drawerTags.some((d) => d.id === t.id));
-  const tagByPath = new Map(explorerTags.map((t) => [t.path, t]));
-  type Folder = { name: string; fullPath: string; tag: Tag | undefined; count: number; docs: number; subfolders: number };
-  // What the two small numbers on a folder say: the documents directly in
-  // it (not in its sub-folders), and the sub-folders directly in it.
-  function directDocs(fullPath: string): number {
-    const own = tagByPath.get(fullPath);
-    return own ? documents.filter((d) => (d.tagIds ?? []).includes(own.id)).length : 0;
-  }
-  function directSubfolders(fullPath: string): number {
-    const prefix = `${fullPath}/`;
-    return new Set(explorerTags.filter((t) => t.path.startsWith(prefix)).map((t) => t.path.slice(prefix.length).split('/')[0])).size;
-  }
-  function countInside(fullPath: string): number {
-    const inside = new Set(
-      explorerTags.filter((t) => t.path === fullPath || t.path.startsWith(`${fullPath}/`)).map((t) => t.id)
-    );
-    return documents.filter((d) => (d.tagIds ?? []).some((id) => inside.has(id))).length;
-  }
-  const explorerFolders: Folder[] = (() => {
-    if (!explorerMode) return [];
-    // Searching: every folder whose name has the words, from the whole
-    // tree, shown with its path - a search that found the documents but
-    // not the folders would be half a search.
-    if (searching) {
-      return explorerTags
-        .filter((t) => t.path.toLowerCase().includes(needle.toLowerCase()))
-        .map((t) => ({
-          name: t.path.split('/').join('  /  '),
-          fullPath: t.path,
-          tag: t,
-          count: countInside(t.path),
-          docs: directDocs(t.path),
-          subfolders: directSubfolders(t.path),
-        }))
-        .sort((a, b) => a.fullPath.localeCompare(b.fullPath));
-    }
-    const prefix = explorerPath ? `${explorerPath}/` : '';
-    const seen = new Map<string, Folder>();
-    for (const tag of explorerTags) {
-      if (!tag.path.startsWith(prefix)) continue;
-      const rest = tag.path.slice(prefix.length);
-      if (!rest) continue;
-      const name = rest.split('/')[0];
-      const fullPath = prefix + name;
-      if (!seen.has(fullPath)) {
-        seen.set(fullPath, {
-          name,
-          fullPath,
-          tag: tagByPath.get(fullPath),
-          count: 0,
-          docs: directDocs(fullPath),
-          subfolders: directSubfolders(fullPath),
-        });
-      }
-    }
-    // What a folder's number says: every document anywhere under it,
-    // which is what a file manager's "items" means for a folder.
-    for (const folder of seen.values()) folder.count = countInside(folder.fullPath);
-    return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name));
-  })();
-  const explorerDocuments = !explorer
-    ? displayedDocuments
-    : explorerPath === ''
-      ? displayedDocuments.filter((d) => (d.tagIds ?? []).every((id) => !explorerTags.some((t) => t.id === id)))
-      : displayedDocuments.filter((d) => {
-          const here = tagByPath.get(explorerPath);
-          return !!here && (d.tagIds ?? []).includes(here.id);
-        });
-  // A folder made here, in the level being looked at. Held "+" does it
-  // (a tap makes a document, as always); a folder made this way is kept
-  // while empty - see createFolderTag.
-  // One prompt for every folder name: a new folder in some parent, or a
-  // folder's new name.
-  const [folderPrompt, setFolderPrompt] = useState<{ mode: 'new'; parent: string } | { mode: 'rename'; path: string } | null>(null);
+  // «Провідник» is the shared hook now, the same one every other
+  // database screen uses (see useExplorer's own file, and the memory this
+  // answers - "чому так вийшло що структура провідників різна?": this
+  // screen is where the whole idea was written, before it was lifted out
+  // for Files/Photos/Links/Boards, and it was the one copy never moved
+  // onto the result. Duplicating the rule survived exactly as long as it
+  // took to write it twice by hand and once get it wrong in only one of
+  // the two places (see project memory on the explorer's root).
+  const explorer = useExplorer<DocumentItem>({
+    kind: 'document',
+    collection: ITEMS_COLLECTION_BY_KIND.document,
+    items: documents,
+    displayed: displayedDocuments,
+    tagIdsOf: (d) => d.tagIds ?? [],
+    tags,
+    drawerTags,
+    explorerMode,
+    searching,
+    needle,
+    createFolderTag: list.createFolderTag,
+    deleteTagCompletely: list.deleteTagCompletely,
+    renameTag,
+    attachTag,
+    detachTag,
+  });
   const [folderEdit, setFolderEdit] = useState<Tag | null>(null);
   const [docRename, setDocRename] = useState<DocumentItem | null>(null);
-  const randomColor = () => TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
-  const cleanName = (name: string) => name.trim().replace(/\//g, ' ');
-  const parentOf = (path: string) => path.split('/').slice(0, -1).join('/');
-  const nameOf = (path: string) => path.split('/').pop() ?? path;
-  // Every folder path the tree has, whether or not a tag sits on it (a
-  // folder can be only a segment of a deeper tag's path).
-  const allFolderPaths = Array.from(
-    new Set(
-      explorerTags.flatMap((t) => {
-        const parts = t.path.split('/');
-        return parts.map((_, i) => parts.slice(0, i + 1).join('/'));
-      })
-    )
-  ).sort();
-  // The tag that stands for a folder, made if the folder was only a path
-  // segment until now - a document can only be put IN a folder that is a
-  // tag.
-  async function tagForFolder(path: string): Promise<Tag> {
-    const existing = tagByPath.get(path);
-    if (existing) return existing;
-    const id = await list.createFolderTag(path, 'document', randomColor());
-    return { id, path, icon: 'folder-outline', color: TAG_COLORS[0], types: ['document'], usedIn: {}, keep: true };
-  }
-  // A folder's path changes, and every path under it follows.
-  async function renameFolder(oldPath: string, newPath: string) {
-    if (oldPath === newPath || !newPath) return;
-    const affected = explorerTags.filter((t) => t.path === oldPath || t.path.startsWith(`${oldPath}/`));
-    await Promise.all(affected.map((t) => renameTag(t, newPath + t.path.slice(oldPath.length))));
-    if (explorerPath === oldPath || explorerPath.startsWith(`${oldPath}/`)) {
-      setExplorerPath(newPath + explorerPath.slice(oldPath.length));
-    }
-  }
-  async function saveFolderName(name: string) {
-    const prompt = folderPrompt;
-    setFolderPrompt(null);
-    const clean = cleanName(name);
-    if (!prompt || !clean) return;
-    if (prompt.mode === 'new') {
-      const path = prompt.parent ? `${prompt.parent}/${clean}` : clean;
-      if (tagByPath.has(path)) return;
-      await list.createFolderTag(path, 'document', randomColor());
-    } else {
-      const parent = parentOf(prompt.path);
-      await renameFolder(prompt.path, parent ? `${parent}/${clean}` : clean);
-    }
-  }
-  // Deleting a folder is unpacking it: what was inside goes up one level
-  // - documents to the parent folder (or to no folder at the root), and
-  // sub-folders lose this one segment of their path.
-  async function deleteFolder(path: string) {
-    const yes = await confirm({
-      title: `Видалити папку «${nameOf(path)}»?`,
-      message: 'Документи й підпапки з неї піднімуться на рівень вище.',
-      confirmLabel: 'Видалити',
-    });
-    if (!yes) return;
-    const parent = parentOf(path);
-    const own = tagByPath.get(path);
-    if (own) {
-      const holders = documents.filter((d) => (d.tagIds ?? []).includes(own.id));
-      if (parent) {
-        const parentTag = await tagForFolder(parent);
-        await Promise.all(holders.map((d) => attachTag(parentTag, 'document', d.id, ITEMS_COLLECTION_BY_KIND.document)));
-      }
-      await list.deleteTagCompletely(own);
-    }
-    const below = explorerTags.filter((t) => t.path.startsWith(`${path}/`));
-    await Promise.all(
-      below.map((t) => {
-        const rest = t.path.slice(path.length + 1);
-        return renameTag(t, parent ? `${parent}/${rest}` : rest);
-      })
-    );
-    if (explorerPath === path || explorerPath.startsWith(`${path}/`)) setExplorerPath(parent);
-  }
-  // Where a folder or a document could go: the root, and every folder but
-  // the one being moved and anything under it.
-  async function pickDestination(title: string, exclude?: string): Promise<string | null | 'cancel'> {
-    const choice = await ask({
-      title,
-      actions: [
-        { id: '/', label: exclude === undefined ? 'Без папки' : 'Всі (корінь)', icon: 'home-outline' },
-        ...allFolderPaths
-          .filter((p) => exclude === undefined || (p !== exclude && !p.startsWith(`${exclude}/`)))
-          .map((p) => ({ id: `p:${p}`, label: p.split('/').join(' › '), icon: 'folder-outline' as const })),
-      ],
-    });
-    if (choice === 'cancel') return 'cancel';
-    return choice === '/' ? null : choice.slice(2);
-  }
+
+  // Carrying a note into a folder - the same hook every database screen
+  // uses, now over the same explorer every database screen uses.
+  const carrying = useExplorerCarry<DocumentItem>({
+    path: explorer.path,
+    folders: explorer.folders,
+    moveItem: explorer.moveItem,
+    items: documents,
+    isSelectMode,
+    selectedIds,
+    active: explorer.active,
+    onMoved: () => {
+      if (isSelectMode) clearSelection();
+    },
+  });
+
   // Held down on a folder row.
   async function openFolderMenu(folder: { fullPath: string; tag: Tag | undefined }) {
     const path = folder.fullPath;
@@ -448,14 +288,14 @@ export default function DocumentsScreen({
         { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' },
       ],
     });
-    if (choice === 'rename') setFolderPrompt({ mode: 'rename', path });
-    else if (choice === 'look') setFolderEdit(await tagForFolder(path));
-    else if (choice === 'sub') setFolderPrompt({ mode: 'new', parent: path });
+    if (choice === 'rename') explorer.setFolderPrompt({ mode: 'rename', path });
+    else if (choice === 'look') setFolderEdit(await explorer.tagForFolder(path));
+    else if (choice === 'sub') explorer.setFolderPrompt({ mode: 'new', parent: path });
     else if (choice === 'move') {
-      const dest = await pickDestination(`Перемістити «${nameOf(path)}» в…`, path);
+      const dest = await explorer.pickDestination(`Перемістити «${nameOf(path)}» в…`, path);
       if (dest === 'cancel') return;
-      await renameFolder(path, dest ? `${dest}/${nameOf(path)}` : nameOf(path));
-    } else if (choice === 'delete') deleteFolder(path);
+      await explorer.renameFolder(path, dest ? `${dest}/${nameOf(path)}` : nameOf(path));
+    } else if (choice === 'delete') await explorer.deleteFolder(path);
   }
   // Held down on a document card, anywhere in the list.
   async function openDocumentMenu(item: DocumentItem) {
@@ -470,23 +310,16 @@ export default function DocumentsScreen({
     if (choice === 'rename') setDocRename(item);
     else if (choice === 'bin') confirmDeleteDocument(item.id);
     else if (choice === 'move') {
-      const dest = await pickDestination(`Перемістити «${item.title || 'Без назви'}» в…`);
+      const dest = await explorer.pickDestination(`Перемістити «${item.title || 'Без назви'}» в…`);
       if (dest === 'cancel') return;
-      // Moving means ONE folder from now on: the document leaves every
-      // folder it was in and enters the chosen one.
-      const current = explorerTags.filter((t) => (item.tagIds ?? []).includes(t.id));
-      await Promise.all(current.map((t) => detachTag(t, 'document', item.id, ITEMS_COLLECTION_BY_KIND.document)));
-      if (dest) {
-        const target = await tagForFolder(dest);
-        await attachTag(target, 'document', item.id, ITEMS_COLLECTION_BY_KIND.document);
-      }
+      await explorer.moveItem(item, dest);
     }
   }
   // Up one level. On Android the system's back does it too while there is
   // a level to go up to - a file manager that closed on "back" would be
   // no file manager.
   function explorerUp() {
-    setExplorerPath((p) => p.split('/').slice(0, -1).join('/'));
+    explorer.setPath((p) => p.split('/').slice(0, -1).join('/'));
   }
   // The path strip: every level between the root and here, each a
   // button. It scrolls sideways rather than wrapping, and turns to its
@@ -498,28 +331,24 @@ export default function DocumentsScreen({
     setCrumbsUnfolded(false);
     const t = setTimeout(() => crumbScrollRef.current?.scrollToEnd({ animated: true }), 50);
     return () => clearTimeout(t);
-  }, [explorerPath]);
-  const crumbSegments = explorerPath ? explorerPath.split('/') : [];
+  }, [explorer.path]);
+  const crumbSegments = explorer.crumbs;
   const crumbFolded = !crumbsUnfolded && crumbSegments.length > 3;
   useEffect(() => {
-    if (!explorer || explorerPath === '') return;
+    if (!explorer.active || explorer.path === '') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       explorerUp();
       return true;
     });
     return () => sub.remove();
-  }, [explorer, explorerPath]);
+  }, [explorer.active, explorer.path]);
   // Changing the mode puts the other modes' filters down: a group chosen
   // under "Групи" must not keep narrowing the list under "Список", where
   // nothing shows that it does. The explorer starts at its root.
   useEffect(() => {
     if (listMode !== 'groups' && groupFilter !== STICKERS_GROUP) setGroupFilter(null);
     if (listMode !== 'list') setActiveFilter(null);
-    if (listMode === 'explorer') {
-      historyRef.current = { paths: [''], index: 0 };
-      setExplorerPathState('');
-      syncHistoryState();
-    }
+    if (listMode === 'explorer') explorer.setPath('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listMode]);
   // The screen clears itself only while the search is actually being
@@ -608,11 +437,11 @@ export default function DocumentsScreen({
   // island at its foot - like every other pushed screen.
   const topCapsuleHeight = standalone ? CAPSULE_HEIGHT_4 : CAPSULE_HEIGHT_3;
   const railFree = useRailFree(topCapsuleHeight, !standalone);
-  const arrowsFit = explorer && railFits(railFree, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT, CAPSULE_HEIGHT);
+  const arrowsFit = explorer.active && railFits(railFree, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT, CAPSULE_HEIGHT);
   const rail = useRail(
     topCapsuleHeight,
     CAPSULE_HEIGHT_1,
-    explorer ? CAPSULE_HEIGHT : RAIL_WIDTH,
+    explorer.active ? CAPSULE_HEIGHT : RAIL_WIDTH,
     arrowsFit ? CAPSULE_HEIGHT : 0,
     !standalone
   );
@@ -778,6 +607,7 @@ export default function DocumentsScreen({
     pullHaptic();
     setSearchOpen(true);
   });
+  carrying.scrollYRef.current = pull.scrollY;
   useSearchDismissal({
     isSearching: searchOpen,
     query: searchText,
@@ -848,14 +678,10 @@ export default function DocumentsScreen({
     // A note made INSIDE a folder belongs to that folder. Without this it
     // was created at the root and vanished from the list the moment it
     // appeared - the user was standing in the folder and the note was
-    // not. A folder is a tag (see tagForFolder), so joining one is
-    // carrying its tag; a folder that was only a segment of a deeper
-    // path becomes a real tag here, as it does anywhere else a record is
-    // put into it.
-    if (list.explorerMode && explorerPath !== '') {
-      const folder = await tagForFolder(explorerPath);
-      await attachTag(folder, 'document', newDoc.id, ITEMS_COLLECTION_BY_KIND.document);
-    }
+    // not. A folder is a tag, so joining one is carrying its tag; a
+    // folder that was only a segment of a deeper path becomes a real tag
+    // here, as it does anywhere else a record is put into it.
+    await explorer.assignToCurrentFolder(newDoc.id);
     openDocument(newDoc.id, true);
   }
 
@@ -1330,7 +1156,7 @@ export default function DocumentsScreen({
           <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
             <ActivityIndicator color={ACCENT} />
           </View>
-        ) : !trashOpen && explorerDocuments.length === 0 && explorerFolders.length === 0 && !(explorer && explorerPath) ? (
+        ) : !trashOpen && explorer.visibleItems.length === 0 && explorer.folders.length === 0 && !(explorer.active && explorer.path) ? (
           <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
             {documents.length === 0 ? (
               <>
@@ -1350,12 +1176,14 @@ export default function DocumentsScreen({
           <GestureDetector gesture={drawerSwipe}>
             <View style={{ flex: 1 }}>
             <GestureDetector gesture={pull.gesture}>
+            <GestureDetector gesture={carrying.listGesture}>
           <FlatList
+            ref={carrying.scrollRef as React.RefObject<FlatList<DocumentItem>>}
             {...pull.listProps}
             // FlatList throws if numColumns changes on an already-mounted
             // instance - key forces a clean remount when switching views.
             key={`${drawnMode}-${gridColumns}-${trashOpen ? 'trash' : 'list'}`}
-            data={trashOpen ? trashed : explorerDocuments}
+            data={trashOpen ? trashed : explorer.visibleItems}
             // The folders of this level, and the way up, above the cards.
             ListHeaderComponent={
               trashOpen ? (
@@ -1374,9 +1202,9 @@ export default function DocumentsScreen({
                   </View>
                   <Text style={styles.trashHint}>Затисни нотатку, щоб відновити або видалити назавжди. Через 30 днів кошик очищається сам.</Text>
                 </View>
-              ) : explorerMode && (explorerFolders.length > 0 || (explorer && explorerPath !== '')) ? (
+              ) : explorerMode && (explorer.folders.length > 0 || (explorer.active && explorer.path !== '')) ? (
                 <View style={[styles.explorerHead, folderColumns > 1 && styles.explorerHeadWide]}>
-                  {explorer && explorerPath !== '' && (
+                  {explorer.active && explorer.path !== '' && (
                     <View style={[styles.explorerCrumb, folderColumns > 1 && styles.explorerCrumbWide]}>
                       <Pressable hitSlop={8} onPress={explorerUp} style={styles.crumbUp}>
                         <Ionicons name="chevron-back" size={18} color={theme.ink.primary} />
@@ -1388,9 +1216,11 @@ export default function DocumentsScreen({
                         contentContainerStyle={styles.crumbStrip}
                         keyboardShouldPersistTaps="handled"
                       >
-                        <Pressable onPress={() => setExplorerPath('')} style={styles.crumbSegment}>
-                          <Text style={styles.crumbLabel}>Всі</Text>
-                        </Pressable>
+                        <View ref={carrying.carry.registerFolder('')} collapsable={false}>
+                          <Pressable onPress={() => explorer.setPath('')} style={styles.crumbSegment}>
+                            <Text style={styles.crumbLabel}>Всі</Text>
+                          </Pressable>
+                        </View>
                         {crumbSegments.map((segment, index) => {
                           const isLast = index === crumbSegments.length - 1;
                           const target = crumbSegments.slice(0, index + 1).join('/');
@@ -1407,15 +1237,17 @@ export default function DocumentsScreen({
                                   <Text style={styles.crumbLabel}>…</Text>
                                 </Pressable>
                               ) : (
-                                <Pressable
-                                  disabled={isLast}
-                                  onPress={() => setExplorerPath(target)}
-                                  style={[styles.crumbSegment, isLast && styles.crumbSegmentCurrent]}
-                                >
-                                  <Text style={[styles.crumbLabel, isLast && styles.crumbLabelCurrent]} numberOfLines={1}>
-                                    {segment}
-                                  </Text>
-                                </Pressable>
+                                <View ref={isLast ? undefined : carrying.carry.registerFolder(target)} collapsable={false}>
+                                  <Pressable
+                                    disabled={isLast}
+                                    onPress={() => explorer.setPath(target)}
+                                    style={[styles.crumbSegment, isLast && styles.crumbSegmentCurrent]}
+                                  >
+                                    <Text style={[styles.crumbLabel, isLast && styles.crumbLabelCurrent]} numberOfLines={1}>
+                                      {segment}
+                                    </Text>
+                                  </Pressable>
+                                </View>
                               )}
                             </View>
                           );
@@ -1428,12 +1260,12 @@ export default function DocumentsScreen({
                       document shows its picture - so the two read as one
                       list. Its two small numbers: the documents directly
                       in it, and the folders directly in it. */}
-                  {explorerFolders.map((folder) => (
+                  {explorer.folders.map((folder) => (
+                    <View key={folder.fullPath} ref={carrying.carry.registerFolder(folder.fullPath)} collapsable={false}>
                     <Pressable
-                      key={folder.fullPath}
                       style={[styles.folderRow, folderRowWidth !== undefined && { width: folderRowWidth }]}
                       onPress={() => {
-                        setExplorerPath(folder.fullPath);
+                        explorer.setPath(folder.fullPath);
                         // A folder found by searching is a place to go: the
                         // search is over once it is entered.
                         if (searching) {
@@ -1463,10 +1295,11 @@ export default function DocumentsScreen({
                       </View>
                       <Ionicons name="chevron-forward" size={18} color={theme.ink.faint} />
                     </Pressable>
+                    </View>
                   ))}
                   {/* The bin, at the root of the explorer, after the
                       folders - where a file manager keeps it. */}
-                  {explorer && explorerPath === '' && trashed.length > 0 && (
+                  {explorer.active && explorer.path === '' && trashed.length > 0 && (
                     <Pressable
                       style={[styles.folderRow, styles.trashFolderRow, folderRowWidth !== undefined && { width: folderRowWidth }]}
                       onPress={() => setTrashOpen(true)}
@@ -1528,6 +1361,11 @@ export default function DocumentsScreen({
                 item.coverImageUri,
                 drawnMode === 'grid' ? EXPANDED_PREVIEW_LENGTH : undefined
               );
+              // Only in the explorer, and never in the bin - carried, the
+              // card gives up its own onLongPress, since the list's drag
+              // gesture opens the menu itself, on its own timing, rather
+              // than racing it (see useExplorerCarry).
+              const carried = !trashOpen && explorer.active;
               return (
                 <DocumentCard
                   id={item.id}
@@ -1541,20 +1379,34 @@ export default function DocumentsScreen({
                   previewText={previewText}
                   checklistItems={checklistItems}
                   onPress={() => (trashOpen ? openTrashMenu(item) : openDocument(item.id))}
-                  onLongPress={() => (trashOpen ? openTrashMenu(item) : isSelectMode ? undefined : openDocumentMenu(item))}
+                  onLongPress={
+                    carried ? undefined : () => (trashOpen ? openTrashMenu(item) : isSelectMode ? undefined : openDocumentMenu(item))
+                  }
                   isSelectMode={isSelectMode}
                   isSelected={selectedIds.has(item.id)}
                   onToggleSelect={() => toggleSelected(item.id)}
                   layout={drawnMode}
                     gridWidth={gridCardWidth}
+                  {...(carried ? carrying.cardProps(item, () => openDocumentMenu(item)) : {})}
                 />
               );
             }}
           />
           </GestureDetector>
+          </GestureDetector>
             </View>
             </GestureDetector>
         )}
+
+        {carrying.movedToast && <UndoToast message={carrying.toastMessage} onUndo={carrying.undoMove} />}
+        {/* The floating note while one is being carried into a folder -
+            see useCardCarry. Always mounted, invisible until then. */}
+        <CardCarryOverlay
+          carry={carrying.carry}
+          label={(items) => (items.length > 1 ? `${items.length} нотатки` : items[0].title || 'Без назви')}
+          icon="document-text-outline"
+          onEnterFolder={(path) => explorer.setPath(path)}
+        />
 
         {/* Through the portal, like the rest of the rail: the blur that
             fills it has to sit outside the view it blurs. */}
@@ -1610,12 +1462,12 @@ export default function DocumentsScreen({
                 onPressOut: hapticButtonUp,
                 onLongPress: openStickerComposer,
               },
-              ...(explorer
+              ...(explorer.active
                 ? [
                     {
                       icon: 'folder-outline' as const,
                       badge: 'add-circle-outline' as const,
-                      onPress: () => setFolderPrompt({ mode: 'new', parent: explorerPath }),
+                      onPress: () => explorer.setFolderPrompt({ mode: 'new', parent: explorer.path }),
                       onPressIn: hapticButtonDown,
                       onPressOut: hapticButtonUp,
                     },
@@ -1631,8 +1483,8 @@ export default function DocumentsScreen({
             side={railSide}
             bottom={rail.historyBottom}
             buttons={[
-              { icon: 'chevron-back-outline', onPress: explorerBack, disabled: !historyState.canBack },
-              { icon: 'chevron-forward-outline', onPress: explorerForward, disabled: !historyState.canForward },
+              { icon: 'chevron-back-outline', onPress: explorer.back, disabled: !explorer.historyState.canBack },
+              { icon: 'chevron-forward-outline', onPress: explorer.forward, disabled: !explorer.historyState.canForward },
             ]}
           />
         )}
@@ -1676,7 +1528,12 @@ export default function DocumentsScreen({
 
       <TagsDrawer
         ref={drawerRef}
-        tags={explorerMode ? explorerTags : drawerTags}
+        // The drawer's own tree view, in explorer mode, wants every
+        // document tag - including one kept on purpose while still empty
+        // (Tag.keep), which drawerTags itself leaves out because an empty
+        // tag is not normally shown. That is the explorer's one exception
+        // to the drawer's usual rule.
+        tags={explorerMode ? tags.filter((t) => t.types.includes('document') || drawerTags.some((d) => d.id === t.id)) : drawerTags}
         activeFilter={activeFilter}
         onSelectFilter={(filter) => {
           // With the folders in the list, a folder tapped in the drawer
@@ -1684,11 +1541,11 @@ export default function DocumentsScreen({
           if (explorerMode && filter?.type === 'tags') {
             const last = filter.tagIds[filter.tagIds.length - 1];
             const tag = drawerTags.find((t) => t.id === last);
-            if (tag) setExplorerPath(tag.path);
+            if (tag) explorer.setPath(tag.path);
             return;
           }
           if (explorerMode && filter?.type === 'untagged') {
-            setExplorerPath('');
+            explorer.setPath('');
             return;
           }
           setActiveFilter(filter);
@@ -1732,18 +1589,18 @@ export default function DocumentsScreen({
       />
 
       <RenamePrompt
-        visible={folderPrompt !== null}
+        visible={explorer.folderPrompt !== null}
         title={
-          folderPrompt?.mode === 'rename'
+          explorer.folderPrompt?.mode === 'rename'
             ? 'Назва папки'
-            : folderPrompt?.parent
-              ? `Нова папка в «${nameOf(folderPrompt.parent)}»`
+            : explorer.folderPrompt?.parent
+              ? `Нова папка в «${nameOf(explorer.folderPrompt.parent)}»`
               : 'Нова папка'
         }
-        initialValue={folderPrompt?.mode === 'rename' ? nameOf(folderPrompt.path) : ''}
+        initialValue={explorer.folderPrompt?.mode === 'rename' ? nameOf(explorer.folderPrompt.path) : ''}
         placeholder="Назва папки"
-        onCancel={() => setFolderPrompt(null)}
-        onSave={saveFolderName}
+        onCancel={() => explorer.setFolderPrompt(null)}
+        onSave={explorer.saveFolderName}
       />
 
       <RenamePrompt
@@ -1769,7 +1626,7 @@ export default function DocumentsScreen({
           if (!target) return;
           // The name is the folder's path; a changed name goes through
           // renameFolder so the folders under it follow.
-          list.updateTag(target, { path: target.path, icon, color }).then(() => renameFolder(target.path, path.trim()));
+          list.updateTag(target, { path: target.path, icon, color }).then(() => explorer.renameFolder(target.path, path.trim()));
         }}
       />
 
