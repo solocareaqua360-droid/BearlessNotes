@@ -62,7 +62,6 @@ import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT , railClear } from '../constants/rail';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
-import CarryableRow from '../components/CarryableRow';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 
 const ACCENT = '#0EA5E9';
@@ -571,9 +570,8 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
 
   function renderFileRow(item: FileItem) {
     // Only in the explorer. Carried, the row's own onLongPress is dropped
-    // - CarryableRow's drag gesture opens the menu itself, on its own
-    // timing, instead of racing it (see the file's own note on why that
-    // used to open the menu early).
+    // - the list's drag gesture opens the menu itself, on its own timing,
+    // instead of racing it (see useExplorerCarry).
     const carried = explorer.active;
     const row = (
       <FileRow
@@ -588,20 +586,10 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         isSelectMode={isSelectMode}
         isSelected={selectedIds.has(item.id)}
         onToggleSelect={() => toggleSelected(item.id)}
+        {...(carried ? carrying.cardProps(item, () => setCardMenuFileId(item.id)) : {})}
       />
     );
-    if (!carried) return row;
-    return (
-      <CarryableRow
-        key={item.id}
-        item={item}
-        carry={carrying.carry}
-        onMenu={() => setCardMenuFileId(item.id)}
-        group={carrying.groupFor(item)}
-      >
-        {row}
-      </CarryableRow>
-    );
+    return row;
   }
 
   // Three across where the column is actually wide enough to hold them -
@@ -623,20 +611,10 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         isSelectMode={isSelectMode}
         isSelected={selectedIds.has(item.id)}
         onToggleSelect={() => toggleSelected(item.id)}
+        {...(carried ? carrying.cardProps(item, () => setCardMenuFileId(item.id)) : {})}
       />
     );
-    if (!carried) return cell;
-    return (
-      <CarryableRow
-        key={item.id}
-        item={item}
-        carry={carrying.carry}
-        onMenu={() => setCardMenuFileId(item.id)}
-        group={carrying.groupFor(item)}
-      >
-        {cell}
-      </CarryableRow>
-    );
+    return cell;
   }
 
   // The bin's own rows - a tap or a hold both open the same restore/purge

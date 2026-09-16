@@ -32,7 +32,6 @@ import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
 import ExplorerHead from '../components/ExplorerHead';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
-import CarryableRow from '../components/CarryableRow';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import UndoToast from '../components/UndoToast';
 import RenamePrompt from '../components/RenamePrompt';
@@ -351,10 +350,18 @@ export default function BoardsListScreen({
     // Carried, the row gives up its own onLongPress - the drag gesture
     // opens the menu itself, on its own timing, rather than racing it.
     const carried = explorer.active;
+    const carriedProps = carried ? carrying.cardProps(item, () => askBoardActions(item)) : undefined;
     const row = (
       <Pressable
         key={item.id}
-        style={[styles.row, isTwoPane && styles.rowHalf, { backgroundColor: background }]}
+        ref={carriedProps?.cardRef}
+        collapsable={false}
+        style={[
+          styles.row,
+          isTwoPane && styles.rowHalf,
+          { backgroundColor: background },
+          carriedProps?.dimmed && styles.carried,
+        ]}
         onPress={() => openBoard(item)}
         onLongPress={carried ? undefined : () => askBoardActions(item)}
       >
@@ -385,18 +392,7 @@ export default function BoardsListScreen({
         </Pressable>
       </Pressable>
     );
-    if (!carried) return row;
-    return (
-      <CarryableRow
-        key={item.id}
-        item={item}
-        carry={carrying.carry}
-        onMenu={() => askBoardActions(item)}
-        group={carrying.groupFor(item)}
-      >
-        {row}
-      </CarryableRow>
-    );
+    return row;
   }
 
   // A board as a tile: its own miniature at a size where the cards are
@@ -405,10 +401,17 @@ export default function BoardsListScreen({
     const { background, text, textMuted } = recordColour(item.id);
     const mapHeight = Math.round(tileWidth * 0.72);
     const carried = explorer.active;
+    const carriedProps = carried ? carrying.cardProps(item, () => askBoardActions(item)) : undefined;
     const tile = (
       <Pressable
         key={item.id}
-        style={[styles.tile, { width: tileWidth, backgroundColor: background }]}
+        ref={carriedProps?.cardRef}
+        collapsable={false}
+        style={[
+          styles.tile,
+          { width: tileWidth, backgroundColor: background },
+          carriedProps?.dimmed && styles.carried,
+        ]}
         onPress={() => openBoard(item)}
         onLongPress={carried ? undefined : () => askBoardActions(item)}
       >
@@ -432,18 +435,7 @@ export default function BoardsListScreen({
         </View>
       </Pressable>
     );
-    if (!carried) return tile;
-    return (
-      <CarryableRow
-        key={item.id}
-        item={item}
-        carry={carrying.carry}
-        onMenu={() => askBoardActions(item)}
-        group={carrying.groupFor(item)}
-      >
-        {tile}
-      </CarryableRow>
-    );
+    return tile;
   }
 
   return (
@@ -635,6 +627,10 @@ const makeStyles = (t: Theme) =>
   StyleSheet.create({
   container: {
     flex: 1,
+  },
+  // A board whose card is in hand right now.
+  carried: {
+    opacity: 0.4,
   },
   // Stood on its end, like every other screen's.
   // Turned with the capsule.

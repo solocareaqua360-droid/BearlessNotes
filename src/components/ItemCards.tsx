@@ -31,6 +31,17 @@ export function gridBasis(columns: number) {
 
 type Common = {
   tags: Tag[];
+  // The card's own node, handed to whatever needs to measure it - the
+  // carry gesture asks what is under the finger (see useCardCarry), and a
+  // card is the answer. It goes on the card's OWN root and not on a
+  // wrapper around it, because these cards are flex items: a wrapper
+  // takes that role for itself, and the card inside it, now laid out in a
+  // column, reads its own flexBasis as a HEIGHT. That is what stopped the
+  // tiles being draggable and would have deformed them next.
+  cardRef?: (node: View | null) => void;
+  // Being carried right now - the card stays where it is and fades, the
+  // ghost under the finger is the thing in hand.
+  dimmed?: boolean;
   onPress: () => void;
   onLongPress?: () => void;
   onMenu?: () => void;
@@ -125,7 +136,7 @@ export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
   const info = LINK_CATEGORY_INFO[categoryFromSiteName(link.siteName)];
   const { background, text, textMuted } = recordColour(link.id);
   return (
-    <View style={[styles.row, { backgroundColor: background }]}>
+    <View ref={rest.cardRef} collapsable={false} style={[styles.row, { backgroundColor: background }, rest.dimmed && styles.dimmed]}>
       <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
         {link.imageUrl ? (
           <Image source={{ uri: link.imageUrl }} style={styles.rowThumbWide} resizeMode="cover" resizeMethod="resize" />
@@ -176,9 +187,13 @@ export function LinkGridCell({ link, columns = 2, ...rest }: { link: LinkCardIte
   const { background, text, textMuted } = recordColour(link.id);
   return (
     <View
+      ref={rest.cardRef}
+      collapsable={false}
       style={[
         styles.gridCard,
         { backgroundColor: background, flexBasis: gridBasis(columns) },
+      ,
+        rest.dimmed && styles.dimmed,
       ]}
     >
       <Pressable style={styles.gridTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
@@ -216,7 +231,7 @@ export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
   const preview = useFilePreview(file);
 
   return (
-    <View style={[styles.row, { backgroundColor: background }]}>
+    <View ref={rest.cardRef} collapsable={false} style={[styles.row, { backgroundColor: background }, rest.dimmed && styles.dimmed]}>
       <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
         {/* The page picture at a video thumbnail's size - wide enough to
             recognise the document by its shape, small enough to leave the
@@ -271,9 +286,13 @@ export function FileGridCell({ file, columns = 2, ...rest }: { file: FileCardIte
   const preview = useFilePreview(file);
   return (
     <View
+      ref={rest.cardRef}
+      collapsable={false}
       style={[
         styles.gridCard,
         { backgroundColor: background, flexBasis: gridBasis(columns) },
+      ,
+        rest.dimmed && styles.dimmed,
       ]}
     >
       <Pressable style={styles.gridTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
@@ -336,7 +355,7 @@ export function PhotoRow({ photo, ...rest }: { photo: PhotoCardItem } & Common) 
   const docCount = photo.documentIds.length;
 
   return (
-    <View style={[styles.row, { backgroundColor: background }]}>
+    <View ref={rest.cardRef} collapsable={false} style={[styles.row, { backgroundColor: background }, rest.dimmed && styles.dimmed]}>
       <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
         {status === 'ready' ? (
           <Image source={{ uri: source ?? photo.imageUri }} style={styles.rowThumbWide} resizeMode="cover" resizeMethod="resize" />
@@ -385,7 +404,9 @@ export function PhotoCell({ photo, ...rest }: { photo: PhotoCardItem } & Common)
   const docCount = photo.documentIds.length;
   return (
     <Pressable
-      style={styles.cell}
+      ref={rest.cardRef}
+      collapsable={false}
+      style={[styles.cell, rest.dimmed && styles.dimmed]}
       onPress={rest.onPress}
       onLongPress={rest.onLongPress}
     >
@@ -431,6 +452,10 @@ export function PhotoCell({ photo, ...rest }: { photo: PhotoCardItem } & Common)
 }
 
 const styles = StyleSheet.create({
+  // A card whose item is in hand right now.
+  dimmed: {
+    opacity: 0.4,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',

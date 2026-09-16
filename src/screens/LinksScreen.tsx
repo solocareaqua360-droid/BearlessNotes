@@ -47,7 +47,6 @@ import { useBin } from '../hooks/useBin';
 import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
 import ExplorerHead from '../components/ExplorerHead';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
-import CarryableRow from '../components/CarryableRow';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import { ask, confirm } from '../components/surfaces/Ask';
 import DatabaseChrome, { menuStyles } from '../components/DatabaseChrome';
@@ -532,9 +531,9 @@ export default function LinksScreen({
   }
 
   function renderLinkRow(item: LinkItem) {
-    // Carried, the row gives up its own onLongPress - CarryableRow's drag
+    // Carried, the row gives up its own onLongPress - the list's drag
     // gesture opens the menu itself, on its own timing, instead of racing
-    // it (see CarryableRow's note on why that used to open it early).
+    // it (see useExplorerCarry).
     const carried = explorer.active;
     const row = (
       <LinkRow
@@ -548,20 +547,10 @@ export default function LinksScreen({
         isSelectMode={isSelectMode}
         isSelected={selectedIds.has(item.id)}
         onToggleSelect={() => toggleSelected(item.id)}
+        {...(carried ? carrying.cardProps(item, () => setCardMenuLinkId(item.id)) : {})}
       />
     );
-    if (!carried) return row;
-    return (
-      <CarryableRow
-        key={item.id}
-        item={item}
-        carry={carrying.carry}
-        onMenu={() => setCardMenuLinkId(item.id)}
-        group={carrying.groupFor(item)}
-      >
-        {row}
-      </CarryableRow>
-    );
+    return row;
   }
 
   // Three across where the column is actually wide enough to hold them -
@@ -583,20 +572,10 @@ export default function LinksScreen({
         isSelectMode={isSelectMode}
         isSelected={selectedIds.has(item.id)}
         onToggleSelect={() => toggleSelected(item.id)}
+        {...(carried ? carrying.cardProps(item, () => setCardMenuLinkId(item.id)) : {})}
       />
     );
-    if (!carried) return cell;
-    return (
-      <CarryableRow
-        key={item.id}
-        item={item}
-        carry={carrying.carry}
-        onMenu={() => setCardMenuLinkId(item.id)}
-        group={carrying.groupFor(item)}
-      >
-        {cell}
-      </CarryableRow>
-    );
+    return cell;
   }
 
   // The bin's own rows - a tap or a hold both open the same restore/purge

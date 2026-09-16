@@ -124,6 +124,22 @@ export function useExplorerCarry<T extends { id: string }>({
   // What a row picks up: itself, or - when it is one of several ticked -
   // all of them, so a bulk move is the same gesture rather than a second
   // way of doing it.
+  function isCarrying(item: T) {
+    return !!carry.ghost?.items.some((one) => one.id === item.id);
+  }
+
+  // What a card needs to take part: its own node, so the list can tell
+  // what the finger is on, and whether it is the one in hand. Spread onto
+  // the CARD, never onto a wrapper around it - these cards are flex
+  // items, and a wrapper takes that role for itself (see ItemCards'
+  // cardRef).
+  function cardProps(item: T, onMenu: () => void) {
+    return {
+      cardRef: carry.registerCard(item.id, () => groupFor(item), onMenu),
+      dimmed: isCarrying(item),
+    };
+  }
+
   function groupFor(item: T): T[] {
     if (isSelectMode && selectedIds?.has(item.id) && selectedIds.size > 1) {
       return items.filter((one) => selectedIds.has(one.id));
@@ -145,6 +161,8 @@ export function useExplorerCarry<T extends { id: string }>({
     carry,
     listGesture,
     groupFor,
+    isCarrying,
+    cardProps,
     scrollRef,
     scrollYRef,
     movedToast,

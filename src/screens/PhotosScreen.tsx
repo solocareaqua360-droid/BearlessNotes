@@ -54,7 +54,6 @@ import { useBin } from '../hooks/useBin';
 import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
 import ExplorerHead from '../components/ExplorerHead';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
-import CarryableRow from '../components/CarryableRow';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import { downloadToFolder, showDownloadedFile } from '../utils/downloadToFolder';
 import { touchAttachment } from '../utils/attachmentCache';
@@ -1049,18 +1048,13 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                     isSelectMode,
                     isSelected: selectedIds.has(photo.id),
                   };
-              const cell = viewMode === 'list' ? <PhotoRow {...shared} /> : <PhotoCell {...shared} />;
               // Only the explorer carries; the bin never does.
-              if (trashOpen || !explorer.active) return cell;
-              return (
-                <CarryableRow
-                  item={photo}
-                  carry={carrying.carry}
-                  onMenu={() => openPhotoMenu(photo)}
-                  group={carrying.groupFor(photo)}
-                >
-                  {cell}
-                </CarryableRow>
+              const carried =
+                !trashOpen && explorer.active ? carrying.cardProps(photo, () => openPhotoMenu(photo)) : {};
+              return viewMode === 'list' ? (
+                <PhotoRow {...shared} {...carried} />
+              ) : (
+                <PhotoCell {...shared} {...carried} />
               );
             }}
           />
