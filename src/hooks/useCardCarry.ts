@@ -46,13 +46,12 @@ export type CarryGhost<T> = {
   // selection when the card picked up is part of one - the same rule the
   // note editor's own block drag uses (see dragGroupFor there).
   items: T[];
-  // Where the card started, in screen coordinates - the ghost's very
-  // first frame, so it visibly lifts FROM the card rather than popping
-  // in somewhere else.
+  // Where the ghost is, in screen coordinates - starting at the card it
+  // was lifted from, so it visibly rises out of it rather than popping in
+  // somewhere else. Its SIZE is nobody's business: the ghost is a small
+  // pill of its own, and what a drop lands on is read off the finger.
   x: number;
   y: number;
-  width: number;
-  height: number;
 };
 
 export function useCardCarry<T extends { id: string }>({
@@ -93,6 +92,12 @@ export function useCardCarry<T extends { id: string }>({
   // Where in the card the finger first touched it, so the ghost tracks
   // the finger exactly rather than re-centering under it.
   const grabRef = useRef({ x: 0, y: 0 });
+  // Where the finger actually is. A drop asks what is under THE FINGER,
+  // not under the middle of what it is holding: a list row is low enough
+  // that its centre is near the finger either way, but a grid card is
+  // tall, and picking one up by its top put the centre a hundred points
+  // below - past the folder being aimed at, every time.
+  const fingerRef = useRef({ x: 0, y: 0 });
   // Every folder row currently on screen, by path - registered by
   // ExplorerHead (or a screen's own folder rows) as they mount, cleared
   // as they unmount. A `measure`-able node, not a rect: rects go stale
@@ -158,12 +163,13 @@ export function useCardCarry<T extends { id: string }>({
 
   const beginCarry = useCallback((items: T[], path: string, node: View, touchX: number, touchY: number) => {
     if (items.length === 0) return;
-    node.measureInWindow((x, y, width, height) => {
+    node.measureInWindow((x, y) => {
       hapticPickUp();
       grabRef.current = { x: touchX, y: touchY };
+      fingerRef.current = { x: x + touchX, y: y + touchY };
       originRef.current = path;
       aliveAt.current = Date.now();
-      const next = { items, x, y, width, height };
+      const next = { items, x, y };
       ghostRef.current = next;
       setGhost(next);
     });
@@ -173,6 +179,7 @@ export function useCardCarry<T extends { id: string }>({
     const current = ghostRef.current;
     if (!current) return;
     aliveAt.current = Date.now();
+    fingerRef.current = { x: absoluteX, y: absoluteY };
     const next = { ...current, x: absoluteX - grabRef.current.x, y: absoluteY - grabRef.current.y };
     ghostRef.current = next;
     setGhost(next);
@@ -195,9 +202,8 @@ export function useCardCarry<T extends { id: string }>({
   const endCarry = useCallback(() => {
     const current = ghostRef.current;
     if (!current) return;
-    const { items, x, y, width, height } = current;
-    const cx = x + width / 2;
-    const cy = y + height / 2;
+    const { items } = current;
+    const { x: cx, y: cy } = fingerRef.current;
     let matched: string | null | undefined;
     const nodes = Array.from(folderNodes.current.entries());
     if (nodes.length === 0) {
