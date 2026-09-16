@@ -4946,17 +4946,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                 </>
               )}
               <View style={[styles.headerRightDivider, railHorizontal && styles.headerRightDividerRow]} />
-              {/* Page or canvas. An icon alone: the rail has no room for a
-                  word, and the icon shown is the one you would be going
-                  TO, the way a play/pause button works. */}
-              <Pressable hitSlop={8} onPress={() => (canvasMode ? leaveCanvas() : setCanvasMode(true))}>
-                <Ionicons
-                  name={canvasMode ? 'document-text-outline' : 'shapes-outline'}
-                  size={24}
-                  color="#fff"
-                />
-              </Pressable>
-              <View style={[styles.headerRightDivider, railHorizontal && styles.headerRightDividerRow]} />
+              {/* Page/canvas moved into the "..." menu below (see "Вигляд")
+                  - a third icon on the capsule pushed the page's own text
+                  narrower than it needed to be, for a button used far less
+                  often than back or the menu itself. */}
               <Pressable hitSlop={8} onPress={() => setExportMenuOpen((v) => !v)}>
                 <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
               </Pressable>
@@ -4988,6 +4981,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             style={StyleSheet.absoluteFill}
             pointerEvents="none"
           />
+          <Text style={styles.exportMenuLabel}>Вигляд</Text>
+          <Pressable
+            style={styles.exportMenuRow}
+            onPress={() => {
+              setExportMenuOpen(false);
+              if (canvasMode) leaveCanvas();
+              else setCanvasMode(true);
+            }}
+          >
+            <Ionicons name={canvasMode ? 'document-text-outline' : 'shapes-outline'} size={17} color={GLASS_TEXT} />
+            <Text style={styles.exportMenuRowLabel}>{canvasMode ? 'Сторінка' : 'Полотно'}</Text>
+          </Pressable>
           <Text style={styles.exportMenuLabel}>Оформлення</Text>
           <Pressable style={styles.exportMenuRow} onPress={openCoverImageOptions}>
             <Ionicons name="image-outline" size={17} color={GLASS_TEXT} />
