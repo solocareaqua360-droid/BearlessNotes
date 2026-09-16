@@ -9,6 +9,7 @@ import {
   useState,
 } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { BlurTargetBridge, useBlurTarget } from './GlassTarget';
 
 // Draws a sheet at the top of the app instead of where it is declared.
 //
@@ -71,6 +72,11 @@ let nextId = 0;
 
 export function GlassPortal({ children }: { children: ReactNode }) {
   const portal = useContext(PortalContext);
+  // Captured HERE, where the glass is written - inside the target - and
+  // carried to the host, which is outside it. Without this every
+  // portalled drop asked for the target at the host's place in the tree,
+  // found none, and drew a flat translucent rectangle instead of a blur.
+  const blurTarget = useBlurTarget();
   const idRef = useRef<string | null>(null);
   if (idRef.current === null) idRef.current = `glass-${nextId++}`;
   const id = idRef.current;
@@ -78,7 +84,7 @@ export function GlassPortal({ children }: { children: ReactNode }) {
   // Layout effect, not effect: the host should have the sheet before the
   // frame is shown, or a sheet flickers in a frame late.
   useLayoutEffect(() => {
-    portal?.mount(id, children);
+    portal?.mount(id, <BlurTargetBridge value={blurTarget}>{children}</BlurTargetBridge>);
   });
   useLayoutEffect(() => () => portal?.unmount(id), [portal, id]);
 

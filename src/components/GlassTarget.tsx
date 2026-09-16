@@ -28,6 +28,26 @@ export function useBlurTarget(): RefObject<View | null> | null {
   return useContext(BlurTargetContext);
 }
 
+// Hands the target to a piece of the tree that is drawn somewhere else.
+//
+// GlassPortal moves its children to the host in App.tsx, and a moved
+// element reads context from where it is DRAWN, not from where it was
+// written - so everything portalled found no target and quietly stopped
+// blurring. That is what "скло прозоре, без блюра" was: not a weak blur,
+// but none at all, since expo-blur's Android path falls back to a plain
+// translucent rectangle when it is not told what to blur. The portal
+// captures the target where the glass is declared and puts it back
+// around the children with this.
+export function BlurTargetBridge({
+  value,
+  children,
+}: {
+  value: RefObject<View | null> | null;
+  children: ReactNode;
+}) {
+  return <BlurTargetContext.Provider value={value}>{children}</BlurTargetContext.Provider>;
+}
+
 const styles = StyleSheet.create({
   fill: {
     flex: 1,
