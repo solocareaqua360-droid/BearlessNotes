@@ -23,9 +23,11 @@ export default function CardCarryOverlay<T extends { id: string }>({
   // Stepping into a folder - or back out of one, by tapping a crumb -
   // with the SECOND finger, while the card stays lifted under the first.
   onEnterFolder: (path: string) => void;
-  // What the ghost says - kept to a title, so this stays one component
-  // for every kind of card rather than a full clone of each one's visual.
-  label: (item: T) => string;
+  // What the ghost says - kept to a line of text, so this stays one
+  // component for every kind of card rather than a full clone of each
+  // one's visual. Given everything being carried, so it can say how many
+  // when it is more than one.
+  label: (items: T[]) => string;
   icon: keyof typeof Ionicons.glyphMap;
 }) {
   const theme = useTheme();
@@ -85,7 +87,7 @@ export default function CardCarryOverlay<T extends { id: string }>({
             <GlassDrop radius={16} lift="shadow" style={styles.ghost}>
               <GlassIcon name={icon} size={16} />
               <Text style={[styles.label, { color: theme.glass.ink }]} numberOfLines={1}>
-                {label(ghost.item)}
+                {label(ghost.items)}
               </Text>
             </GlassDrop>
           </Animated.View>

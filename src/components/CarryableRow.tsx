@@ -59,6 +59,7 @@ export default function CarryableRow<T extends { id: string }>({
   carry,
   onMenu,
   orphan,
+  group,
   children,
 }: {
   item: T;
@@ -80,10 +81,14 @@ export default function CarryableRow<T extends { id: string }>({
   // every touch on the screen - which read as the app freezing). So it
   // stays, taking no room and drawing nothing.
   orphan?: boolean;
+  // What this row actually picks up. Just its own item, normally - the
+  // whole tick-box selection when this row is part of one, so a bulk move
+  // is the same gesture rather than a second way of doing it.
+  group?: T[];
   children: React.ReactNode;
 }) {
   const nodeRef = useRef<View>(null);
-  const isCarrying = carry.ghost?.item.id === item.id;
+  const isCarrying = !!carry.ghost?.items.some((one) => one.id === item.id);
   // The row this item still occupies fades rather than disappears - the
   // floating ghost (see CardCarryOverlay) is a DETACHED visual, because
   // navigating to another folder mid-drag can unmount this row entirely;
@@ -103,7 +108,7 @@ export default function CarryableRow<T extends { id: string }>({
       downAt.current = Date.now();
     })
     .onStart((e) => {
-      if (nodeRef.current) carry.beginCarry(item, path, nodeRef.current, e.x, e.y);
+      if (nodeRef.current) carry.beginCarry(group ?? [item], path, nodeRef.current, e.x, e.y);
     })
     .onUpdate((e) => carry.updateCarry(e.absoluteX, e.absoluteY))
     .onEnd((_e, success) => {

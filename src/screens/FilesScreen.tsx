@@ -258,26 +258,29 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
       scrollTargetRef.current = { y: next, at: now };
       scrollRef.current?.scrollTo({ y: next, animated: false });
     },
-    onMoved: (item, destination, origin) => {
+    onMoved: (items, destination, origin) => {
       const folderName = explorer.folders.find((f) => f.fullPath === destination)?.name ?? nameOf(destination ?? '');
-      // The ID, not the record: moveItem reads the tags off the object it
-      // is handed, and by the time undo runs this one is a snapshot from
-      // BEFORE the move - it still carries the old folder's tags and not
-      // the new one's. Undo would then detach tags the file no longer has
-      // and, from the root, return having done nothing at all. Looked up
-      // live at the moment of undo, it carries what it actually has now.
-      setMovedToast({ id: item.id, origin, folderName });
+      // IDs, not records: moveItem reads the tags off the object it is
+      // handed, and by the time undo runs these are snapshots from BEFORE
+      // the move - they still carry the old folder's tags and not the new
+      // one's. Undo would then detach tags the files no longer have and,
+      // from the root, return having done nothing at all. Looked up live
+      // at the moment of undo, they carry what they actually have now.
+      setMovedToast({ ids: items.map((one) => one.id), origin, folderName });
+      if (isSelectMode) clearSelection();
     },
   });
-  const [movedToast, setMovedToast] = useState<{ id: string; origin: string; folderName: string } | null>(null);
+  const [movedToast, setMovedToast] = useState<{ ids: string[]; origin: string; folderName: string } | null>(null);
   // The card being carried stays in the list even after the second finger
   // has stepped into another folder where it does not belong - drawn as
   // nothing, taking no room (CarryableRow's `orphan`), purely so its row
   // - and with it the drag gesture - is never unmounted mid-carry.
-  const carriedId = carry.ghost?.item.id;
-  const carriedOrphan =
-    carriedId && !filesHere.some((f) => f.id === carriedId) ? files.find((f) => f.id === carriedId) : undefined;
-  const listedFiles = carriedOrphan ? [...filesHere, carriedOrphan] : filesHere;
+  const carriedIds = carry.ghost?.items.map((one) => one.id) ?? [];
+  const carriedOrphans = carriedIds
+    .filter((id) => !filesHere.some((f) => f.id === id))
+    .map((id) => files.find((f) => f.id === id))
+    .filter((f): f is FileItem => !!f);
+  const listedFiles = carriedOrphans.length > 0 ? [...filesHere, ...carriedOrphans] : filesHere;
 
   useEffect(() => {
     if (!movedToast) return;
@@ -604,13 +607,22 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     navigation.navigate('Editor', { documentId: newDocumentId });
   }
 
+  // What a row picks up: itself, or - when it is one of several ticked -
+  // all of them, so a bulk move is the same gesture rather than a second
+  // way of doing it. The note editor's block drag has the same rule.
+  function carryGroupFor(item: FileItem): FileItem[] {
+    if (isSelectMode && selectedIds.has(item.id) && selectedIds.size > 1) {
+      return files.filter((f) => selectedIds.has(f.id));
+    }
+    return [item];
+  }
+
   function renderFileRow(item: FileItem) {
-    // Only in the explorer, and never mid bulk-select - a long hold there
-    // already means something else (adding to the selection). Carried,
-    // the row's own onLongPress is dropped - CarryableRow's drag gesture
-    // opens the menu itself, on its own timing, instead of racing it
-    // (see the file's own note on why that used to open the menu early).
-    const carried = explorer.active && !isSelectMode;
+    // Only in the explorer. Carried, the row's own onLongPress is dropped
+    // - CarryableRow's drag gesture opens the menu itself, on its own
+    // timing, instead of racing it (see the file's own note on why that
+    // used to open the menu early).
+    const carried = explorer.active;
     const row = (
       <FileRow
         key={item.id}
@@ -634,7 +646,8 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         path={explorer.path}
         carry={carry}
         onMenu={() => setCardMenuFileId(item.id)}
-        orphan={item.id === carriedOrphan?.id}
+        orphan={carriedOrphans.some((one) => one.id === item.id)}
+        group={carryGroupFor(item)}
       >
         {row}
       </CarryableRow>
@@ -646,7 +659,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
   // off the column the chrome hands down, not the window: in a pane the
   // two are not the same number.
   function renderFileGridCell(item: FileItem, columns: number) {
-    const carried = explorer.active && !isSelectMode;
+    const carried = explorer.active;
     const cell = (
       <FileGridCell
         key={item.id}
@@ -670,7 +683,8 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         path={explorer.path}
         carry={carry}
         onMenu={() => setCardMenuFileId(item.id)}
-        orphan={item.id === carriedOrphan?.id}
+        orphan={carriedOrphans.some((one) => one.id === item.id)}
+        group={carryGroupFor(item)}
       >
         {cell}
       </CarryableRow>
@@ -840,10 +854,20 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
           )}
           {movedToast && (
             <UndoToast
-              message={`Переміщено в «${movedToast.folderName}»`}
+              message={
+                movedToast.ids.length > 1
+                  ? `Переміщено ${movedToast.ids.length} в «${movedToast.folderName}»`
+                  : `Переміщено в «${movedToast.folderName}»`
+              }
               onUndo={() => {
-                const live = files.find((f) => f.id === movedToast.id);
-                if (live) explorer.moveItem(live, movedToast.origin || null);
+                const back = movedToast.origin || null;
+                movedToast.ids
+                  .map((id) => files.find((f) => f.id === id))
+                  .filter((f): f is FileItem => !!f)
+                  .reduce<Promise<unknown>>(
+                    (run, one) => run.then(() => explorer.moveItem(one, back)),
+                    Promise.resolve()
+                  );
                 setMovedToast(null);
               }}
             />
@@ -852,7 +876,9 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
               see useCardCarry. Always mounted, invisible until then. */}
           <CardCarryOverlay
             carry={carry}
-            label={(f) => f.title || f.fileName}
+            label={(items) =>
+              items.length > 1 ? `${items.length} файли` : items[0].title || items[0].fileName
+            }
             icon="document-outline"
             onEnterFolder={(path) => explorer.setPath(path)}
           />
@@ -877,6 +903,28 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
                 >
                   <Ionicons name="pencil-outline" size={18} color="#111827" />
                   <Text style={styles.cardMenuRowLabel}>Редагувати назву</Text>
+                </Pressable>
+                {/* Where the drag-and-drop lands a card, for anyone who
+                    would rather pick the folder from a list - and the only
+                    way to reach a folder that is not on screen. */}
+                <Pressable
+                  style={styles.cardMenuRow}
+                  onPress={async () => {
+                    const file = cardMenuFile;
+                    setCardMenuFileId(null);
+                    if (!file) return;
+                    const destination = await explorer.pickDestination(
+                      `Перемістити «${file.title || file.fileName}» в…`
+                    );
+                    if (destination === 'cancel') return;
+                    await explorer.moveItem(file, destination);
+                  }}
+                >
+                  {/* The sheet under it is white in every theme (its own
+                      fixed pair with cardMenuRowLabel), so this ink is the
+                      literal its siblings use and not the theme's. */}
+                  <Ionicons name="folder-outline" size={18} color="#111827" />
+                  <Text style={styles.cardMenuRowLabel}>Перемістити в папку</Text>
                 </Pressable>
                 {/* Saved where the phone keeps everything else, into the
                   folder picked once - the app's own copy is not somewhere

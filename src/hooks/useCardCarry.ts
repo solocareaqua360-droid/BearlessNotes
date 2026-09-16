@@ -30,7 +30,10 @@ import { hapticDrop, hapticPickUp, hapticWarning } from '../utils/haptics';
 // (we only ever act at these two moments) and the more fragile thing to
 // get right without a device to feel it on.
 export type CarryGhost<T> = {
-  item: T;
+  // Everything being carried. One card usually; the whole tick-box
+  // selection when the card picked up is part of one - the same rule the
+  // note editor's own block drag uses (see dragGroupFor there).
+  items: T[];
   // Where the card started, in screen coordinates - the ghost's very
   // first frame, so it visibly lifts FROM the card rather than popping
   // in somewhere else.
@@ -60,7 +63,7 @@ export function useCardCarry<T extends { id: string }>({
   // Fires right after a real move (never for a cancelled or same-folder
   // drop) - `origin` is what the caller's own undo toast needs to put
   // the item back exactly where it was.
-  onMoved?: (item: T, destination: string | null, origin: string) => void;
+  onMoved?: (items: T[], destination: string | null, origin: string) => void;
 }) {
   const [ghost, setGhost] = useState<CarryGhost<T> | null>(null);
   // Mirrors `ghost` for code that runs inside a gesture callback (already
@@ -97,13 +100,14 @@ export function useCardCarry<T extends { id: string }>({
     };
   }
 
-  const beginCarry = useCallback((item: T, path: string, node: View, touchX: number, touchY: number) => {
+  const beginCarry = useCallback((items: T[], path: string, node: View, touchX: number, touchY: number) => {
+    if (items.length === 0) return;
     node.measureInWindow((x, y, width, height) => {
       hapticPickUp();
       grabRef.current = { x: touchX, y: touchY };
       originRef.current = path;
       aliveAt.current = Date.now();
-      const next = { item, x, y, width, height };
+      const next = { items, x, y, width, height };
       ghostRef.current = next;
       setGhost(next);
     });
@@ -135,7 +139,7 @@ export function useCardCarry<T extends { id: string }>({
   const endCarry = useCallback(() => {
     const current = ghostRef.current;
     if (!current) return;
-    const { item, x, y, width, height } = current;
+    const { items, x, y, width, height } = current;
     const cx = x + width / 2;
     const cy = y + height / 2;
     let matched: string | null | undefined;
@@ -143,7 +147,7 @@ export function useCardCarry<T extends { id: string }>({
     if (nodes.length === 0) {
       ghostRef.current = null;
       setGhost(null);
-      settle(item, undefined);
+      settle(items, undefined);
       return;
     }
     let pending = nodes.length;
@@ -158,7 +162,7 @@ export function useCardCarry<T extends { id: string }>({
         if (pending === 0) {
           ghostRef.current = null;
           setGhost(null);
-          settle(item, matched);
+          settle(items, matched);
         }
       });
     });
@@ -168,7 +172,7 @@ export function useCardCarry<T extends { id: string }>({
   // over, and otherwise the folder being SHOWN - walking there with the
   // second finger and letting go is the whole point of being able to walk
   // at all.
-  function settle(item: T, matched: string | null | undefined) {
+  function settle(items: T[], matched: string | null | undefined) {
     const target = matched === undefined ? pathRef.current : matched;
     const origin = originRef.current;
     if (target === origin) {
@@ -179,7 +183,13 @@ export function useCardCarry<T extends { id: string }>({
     // A folder path of '' - the root crumb's own key, and the root itself
     // - means "no folder at all", which moveItem spells null.
     const destination = target === '' ? null : target;
-    moveItem(item, destination).then(() => onMoved?.(item, destination, origin));
+    // One after another rather than all at once: each move writes the
+    // same tag documents, and the explorer's own moveItem creates a
+    // folder's tag on demand - several of those racing would make the
+    // same folder twice.
+    items
+      .reduce<Promise<unknown>>((run, one) => run.then(() => moveItem(one, destination)), Promise.resolve())
+      .then(() => onMoved?.(items, destination, origin));
   }
 
   const cancelCarry = useCallback(() => {
