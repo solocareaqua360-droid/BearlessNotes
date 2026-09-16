@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
 import {
   useFonts,
   Nunito_400Regular,
@@ -24,7 +23,7 @@ import { navigationRef } from './src/navigationRef';
 import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
 import { AskHost } from './src/components/surfaces/Ask';
-import { ThemeProvider } from './src/theme/ThemeProvider';
+import { ThemeProvider, ThemedStatusBar } from './src/theme/ThemeProvider';
 import CrashBoundary from './src/components/CrashBoundary';
 import AlarmRingOverlay from './src/components/AlarmRingOverlay';
 import { useStickerDeepLink } from './src/hooks/useStickerDeepLink';
@@ -113,7 +112,7 @@ export default function App() {
               picture it blurs tries to draw itself. The target wraps only
               the screens: that is what a sheet blurs. */}
           <GlassPortalHost>
-            <StatusBar style="auto" />
+            <ThemedStatusBar />
             <GlassTargetProvider>
             {/* «Питання» - every confirmation in the app, drawn once here
                 so that asking is a function call anywhere else. INSIDE the

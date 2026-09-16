@@ -1,8 +1,8 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRecordColour } from '../theme/ThemeProvider';
 import { Ionicons } from '@expo/vector-icons';
 import AttachmentImage from './AttachmentImage';
 import { PreviewChecklistItem, TextMatch, formatUpdatedAt } from '../utils/documentPreview';
-import { colorForDocument } from '../utils/documentColor';
 import { FONT_REGULAR, FONT_BOLD } from '../utils/fonts';
 
 // Fine grain laid over every card. Two things keep it reading as paper
@@ -229,7 +229,7 @@ type Props = {
 // it has none), title, a live content preview, and the last-edited
 // timestamp.
 //
-// The card's fill color comes from `colorForDocument(id)` - a fixed palette
+// The card's fill color comes from `recordColour(id)` - a fixed palette
 // picked deterministically from the document's own id (see that file for
 // why it isn't a random pick or a stored field), with the text/border/
 // delete-icon colors all derived to stay readable against whichever fill a
@@ -255,7 +255,8 @@ export default function DocumentCard({
   gridWidth,
   flush,
 }: Props) {
-  const { background, text, textMuted } = colorForDocument(id);
+  const recordColour = useRecordColour();
+  const { background, text, textMuted } = recordColour(id);
   const isGrid = layout === 'grid';
   // A list row keeps its own square placeholder regardless (a small
   // thumbnail beside text reads as "no photo yet", not as reserved cover

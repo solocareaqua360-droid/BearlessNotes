@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRecordColour } from '../theme/ThemeProvider';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import { Ionicons } from '@expo/vector-icons';
@@ -46,7 +47,7 @@ import { db } from '../firebase';
 import { RootStackParamList } from '../navigation';
 import { TAG_COLORS } from '../constants/tags';
 import { FONT_REGULAR, FONT_MEDIUM } from '../utils/fonts';
-import { colorForDocument, contrastTextColor } from '../utils/documentColor';
+import {contrastTextColor } from '../utils/documentColor';
 import RenamePrompt from '../components/RenamePrompt';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import ImportTableSheet from '../components/ImportTableSheet';
@@ -184,6 +185,7 @@ function paneTargetFor(tile: Tile): PaneTarget | null {
 }
 
 export default function DatabasesScreen() {
+  const recordColour = useRecordColour();
   const databasesBlurTarget = useBlurTarget();
   const databasesFocused = useIsFocused();
   const databasesInsets = useSafeAreaInsets();
@@ -346,7 +348,7 @@ export default function DatabasesScreen() {
   // rather than carrying whatever hue it arrived with.
   function resolveTileColor(key: string): string {
     const database = customDatabases.find((d) => d.id === key);
-    if (database) return database.color ?? colorForDocument(database.id).background;
+    if (database) return database.color ?? recordColour(database.id).background;
     const group = pinnableGroups.find((g) => groupKey(g.id) === key);
     if (group) return group.color;
     const tag = pinnableTags.find((t) => tagKey(t.id) === key);
@@ -906,7 +908,7 @@ export default function DatabasesScreen() {
                     height={spanSize(size.h)}
                     color={
                       item.kind === 'custom'
-                        ? item.database.color ?? colorForDocument(item.database.id).background
+                        ? item.database.color ?? recordColour(item.database.id).background
                         : item.kind === 'pin'
                           ? item.pin.color
                           : colorFor(item.key)

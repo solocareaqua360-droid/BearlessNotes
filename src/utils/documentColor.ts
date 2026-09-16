@@ -1,3 +1,5 @@
+import type { Theme } from '../theme/tokens';
+
 // Document card color assignment: each document gets a warm/muted palette
 // color derived from its own Firestore id, not a random pick per render
 // (which would make cards flicker between colors on every list refresh)
@@ -37,7 +39,22 @@ export function contrastTextColor(hex: string): string {
   return luminance > 140 ? '#111827' : '#FFFFFF';
 }
 
-export function colorForDocument(id: string): { background: string; text: string; textMuted: string } {
+// The palette above is the COLOUR theme's alone. White and black mean
+// white and black everywhere, databases included - the user was asked
+// directly and was explicit about it - so a record there takes the
+// theme's own surface and ink, and is told from the page by its lift and
+// its edge rather than by a hue of its own.
+//
+// The theme is an argument rather than something read from a context,
+// because this is called from inside list callbacks as often as from a
+// component body. `useRecordColour` binds it once per component.
+export function colorForDocument(
+  id: string,
+  theme?: Theme
+): { background: string; text: string; textMuted: string } {
+  if (theme && theme.key !== 'colour') {
+    return { background: theme.surface, text: theme.ink.primary, textMuted: theme.ink.muted };
+  }
   const background = DOCUMENT_PALETTE[hashString(id) % DOCUMENT_PALETTE.length];
   const text = contrastTextColor(background);
   const textMuted = text === '#FFFFFF' ? 'rgba(255,255,255,0.75)' : 'rgba(17,24,39,0.65)';

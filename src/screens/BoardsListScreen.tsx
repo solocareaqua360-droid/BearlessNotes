@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useRecordColour } from '../theme/ThemeProvider';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -17,7 +18,6 @@ import { db } from '../firebase';
 import { BoardsStackParamList, RootStackParamList } from '../navigation';
 import { BoardCard, BoardColumn, BoardItem } from '../types';
 import { readBoardPart } from '../utils/boardStorage';
-import { colorForDocument } from '../utils/documentColor';
 import BoardMiniMap from '../components/BoardMiniMap';
 import DatabaseChrome from '../components/DatabaseChrome';
 import GroupPickerSheet from '../components/GroupPickerSheet';
@@ -54,6 +54,7 @@ export default function BoardsListScreen({
   inPane,
   standalone,
 }: { inPane?: boolean; standalone?: boolean } = {}) {
+  const recordColour = useRecordColour();
   const navigation = useNavigation<NativeStackNavigationProp<BoardsStackParamList>>();
   const { width: windowWidth } = useWindowDimensions();
   // Two across where there is room for two. A board's row is a name and a
@@ -325,7 +326,7 @@ export default function BoardsListScreen({
   }
 
   function renderBoardRow(item: BoardItem) {
-    const { background, text, textMuted } = colorForDocument(item.id);
+    const { background, text, textMuted } = recordColour(item.id);
     return (
       <Pressable
         key={item.id}
@@ -361,7 +362,7 @@ export default function BoardsListScreen({
   // A board as a tile: its own miniature at a size where the cards are
   // cards, with the name under it.
   function renderBoardTile(item: BoardItem, tileWidth: number) {
-    const { background, text, textMuted } = colorForDocument(item.id);
+    const { background, text, textMuted } = recordColour(item.id);
     const mapHeight = Math.round(tileWidth * 0.72);
     return (
       <Pressable

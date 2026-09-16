@@ -1,7 +1,7 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRecordColour } from '../theme/ThemeProvider';
 import { Ionicons } from '@expo/vector-icons';
 import AttachmentImage from './AttachmentImage';
-import { colorForDocument } from '../utils/documentColor';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 type Props = {
@@ -30,7 +30,8 @@ type Props = {
 // and a fourth time for the calendar's history list - both need exactly
 // this card, and neither had a shared place to get it from before.
 export default function MediaRowCard({ id, title, caption, thumbUri, thumbDriveFileId, iconName, iconColor, onPress }: Props) {
-  const { background, text, textMuted } = colorForDocument(id);
+  const recordColour = useRecordColour();
+  const { background, text, textMuted } = recordColour(id);
   return (
     <Pressable style={[styles.row, { backgroundColor: background }]} onPress={onPress}>
       {thumbUri ? (

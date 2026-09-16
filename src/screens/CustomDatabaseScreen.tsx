@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useRecordColour } from '../theme/ThemeProvider';
 import {
   ActivityIndicator,
   Alert,
@@ -118,7 +119,6 @@ import {
   toggleFacet,
   viewMatchesState,
 } from '../utils/customRowQuery';
-import { colorForDocument } from '../utils/documentColor';
 import { MONTH_FULL, WEEKDAY_SHORT, dateKey, getMonthGrid, isSameDay, parseDateKey } from '../utils/dateLocale';
 import { useRail, useRailFree } from '../hooks/useRail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -211,6 +211,7 @@ export default function CustomDatabaseScreen({
   databaseId: databaseIdProp,
   inPane,
 }: Partial<Props> & { databaseId?: string; inPane?: boolean }) {
+  const recordColour = useRecordColour();
   const railBlurTarget = useBlurTarget();
   const railFocused = useIsFocused();
   const railInsets = useSafeAreaInsets();
@@ -1406,7 +1407,7 @@ export default function CustomDatabaseScreen({
   const backlinkPickerField = database.fields.find((f) => f.id === backlinkPickerFieldId) ?? null;
 
   function renderRowCard(item: CustomDatabaseRow) {
-    const { text, textMuted } = colorForDocument(item.id);
+    const { text, textMuted } = recordColour(item.id);
     return (
       <CustomRowCard
         key={item.id}

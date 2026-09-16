@@ -128,7 +128,12 @@ const white: Theme = {
   scheme: 'light',
   backdrop: 'clouds',
   ground: '#FFFFFF',
-  surface: '#FFFFFF',
+  // A shade off the ground on purpose: in white and black the record
+  // cards lose their own colours (the user's call - "білий означає
+  // білий скрізь"), so the only thing left telling a card from the page
+  // is this step and the shadow under it. Equal to the ground they
+  // would simply disappear.
+  surface: '#F5F6F8',
   raised: '#FFFFFF',
   ink: { primary: '#111827', muted: '#6B7280', faint: '#9CA3AF' },
   // Graphite, not the warm amber: colour in this theme is for danger.
@@ -167,8 +172,8 @@ const black: Theme = {
   scheme: 'dark',
   backdrop: 'plain',
   ground: '#000000',
-  surface: '#000000',
-  raised: '#0A0A0A',
+  surface: '#0E0F12',
+  raised: '#16171B',
   ink: { primary: '#FFFFFF', muted: 'rgba(255,255,255,0.62)', faint: 'rgba(255,255,255,0.32)' },
   accent: '#E5E7EB',
   danger: '#FB7185',

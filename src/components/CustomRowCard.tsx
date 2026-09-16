@@ -1,9 +1,9 @@
 import { ReactNode } from 'react';
+import { useRecordColour } from '../theme/ThemeProvider';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Tag } from '../types';
 import { RowDisplay } from '../utils/customRowDisplay';
-import { colorForDocument } from '../utils/documentColor';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { FIELD_TYPE_ICON } from './FieldsEditorSheet';
 import TagChips from './TagChips';
@@ -94,7 +94,8 @@ export default function CustomRowCard({
   documentCount,
   right,
 }: Props) {
-  const { background, text, textMuted } = colorForDocument(rowId);
+  const recordColour = useRecordColour();
+  const { background, text, textMuted } = recordColour(rowId);
   return (
     <View style={[styles.row, { backgroundColor: background }]}>
       <Pressable
@@ -250,7 +251,8 @@ export function CustomRowGridCard({
   // before any of them were measured.
   width?: number;
 }) {
-  const { background, text, textMuted } = colorForDocument(rowId);
+  const recordColour = useRecordColour();
+  const { background, text, textMuted } = recordColour(rowId);
   const hasCover = display.cover !== undefined;
   return (
     <Pressable

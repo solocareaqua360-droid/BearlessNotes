@@ -1,8 +1,8 @@
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRecordColour } from '../theme/ThemeProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { Tag } from '../types';
 import TagChips from './TagChips';
-import { colorForDocument } from '../utils/documentColor';
 import { formatAddedOn, formatUpdatedAt } from '../utils/documentPreview';
 import { useFilePreview } from '../hooks/useFilePreview';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
@@ -112,8 +112,9 @@ function Trailing({
 }
 
 export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
+  const recordColour = useRecordColour();
   const info = LINK_CATEGORY_INFO[categoryFromSiteName(link.siteName)];
-  const { background, text, textMuted } = colorForDocument(link.id);
+  const { background, text, textMuted } = recordColour(link.id);
   return (
     <View style={[styles.row, { backgroundColor: background }]}>
       <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
@@ -161,8 +162,9 @@ export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
 export const GRID_CARD_RATIO = 1.3;
 
 export function LinkGridCell({ link, ...rest }: { link: LinkCardItem } & Common) {
+  const recordColour = useRecordColour();
   const info = LINK_CATEGORY_INFO[categoryFromSiteName(link.siteName)];
-  const { background, text, textMuted } = colorForDocument(link.id);
+  const { background, text, textMuted } = recordColour(link.id);
   return (
     <View
       style={[
@@ -198,7 +200,8 @@ export function LinkGridCell({ link, ...rest }: { link: LinkCardItem } & Common)
 }
 
 export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
-  const { background, text, textMuted } = colorForDocument(file.id);
+  const recordColour = useRecordColour();
+  const { background, text, textMuted } = recordColour(file.id);
   // What is actually inside it - the first page of a PDF, the first lines
   // of a document. Worked out once, elsewhere (see FilePreviewWorker).
   const preview = useFilePreview(file);
@@ -254,7 +257,8 @@ export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
 }
 
 export function FileGridCell({ file, ...rest }: { file: FileCardItem } & Common) {
-  const { background, text, textMuted } = colorForDocument(file.id);
+  const recordColour = useRecordColour();
+  const { background, text, textMuted } = recordColour(file.id);
   const preview = useFilePreview(file);
   return (
     <View
@@ -313,7 +317,8 @@ export function FileGridCell({ file, ...rest }: { file: FileCardItem } & Common)
 // own: same thumbnail window, same title/caption stack, same trailing
 // control. A photo is not a different kind of thing to a file here.
 export function PhotoRow({ photo, ...rest }: { photo: PhotoCardItem } & Common) {
-  const { background, text, textMuted } = colorForDocument(photo.id);
+  const recordColour = useRecordColour();
+  const { background, text, textMuted } = recordColour(photo.id);
   // Through useAttachmentSource, not useCachedAttachment: it answers with
   // an address rather than only a verdict, which is what a browser needs
   // and what the phone gets for free. A thumbnail in a list is not

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useRecordColour } from '../theme/ThemeProvider';
 import { Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -16,7 +17,6 @@ import { applyLiveRecord, useLiveRecords } from '../hooks/useLiveRecords';
 import { refreshLinkPreviewIfExpired } from '../utils/linkPreviewRefresh';
 import { openFileExternally } from '../utils/openFileExternally';
 import { categoryFromSiteName } from '../utils/linkCategory';
-import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_LINE, GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
 
@@ -91,6 +91,7 @@ export default function GroupSections({
   // screen it just sent the user to.
   onOpen?: () => void;
 }) {
+  const recordColour = useRecordColour();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const enabled = !!groupId;
   // Every open goes through here, so the sheet above gets its chance to
@@ -296,7 +297,7 @@ export default function GroupSections({
               const values = (row.values as Record<string, unknown>) ?? {};
               const first = database.fields?.find((f) => typeof values[f.id] === 'string');
               const title = first ? (values[first.id] as string) : 'Без назви';
-              const { background, text } = colorForDocument(row.id);
+              const { background, text } = recordColour(row.id);
               return (
                 <Pressable
                   key={row.id}

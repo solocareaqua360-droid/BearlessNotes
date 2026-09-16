@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useRecordColour } from '../theme/ThemeProvider';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Sharing from 'expo-sharing';
@@ -7,7 +8,6 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { HistoryItem, HistoryItemKind } from '../hooks/useDayHistory';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
-import { colorForDocument } from '../utils/documentColor';
 import MediaRowCard from './MediaRowCard';
 import ZoomableImageViewer from './ZoomableImageViewer';
 import VideoPlayerModal from './VideoPlayerModal';
@@ -87,6 +87,7 @@ export default function DayHistoryList({
   onToggleExpanded?: () => void;
   hideHeader?: boolean;
 }) {
+  const recordColour = useRecordColour();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [expandedSelf, setExpandedSelf] = useState(false);
   const expanded = expandedProp ?? expandedSelf;
@@ -211,7 +212,7 @@ export default function DayHistoryList({
   // sticker/database row or view is just a name) - a plain icon card, same
   // family as CustomRowCard's own row, with the same time caption.
   function renderPlainCard(item: HistoryItem) {
-    const { background, text, textMuted } = colorForDocument(item.id);
+    const { background, text, textMuted } = recordColour(item.id);
     return (
       <View style={[styles.card, { backgroundColor: background }]}>
         <Pressable

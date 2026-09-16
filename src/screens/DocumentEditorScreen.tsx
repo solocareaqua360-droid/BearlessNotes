@@ -114,7 +114,8 @@ import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
-import { colorForDocument } from '../utils/documentColor';
+import { useRecordColour } from '../theme/ThemeProvider';
+import type { colorForDocument } from '../utils/documentColor';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
 import UndoToast from '../components/UndoToast';
@@ -2291,6 +2292,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // navigation.ts's own comment on this param.
   const autoFocusTitle =
     'pane' in props ? !!props.autoFocusTitle : !embedded && !('pane' in props) && !!props.route.params.autoFocusTitle;
+  const recordColour = useRecordColour();
   const [title, setTitle] = useState('');
   const [blocks, setBlocks] = useState<Block[]>([]);
   // «Полотно» - the same document as a surface rather than a page. A view,
@@ -2369,7 +2371,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // separately-picked color, so a document always has exactly one color
   // identity across the whole app.
   const [paperColorEnabled, setPaperColorEnabled] = useState(false);
-  const paperColor = paperColorEnabled ? colorForDocument(documentId) : null;
+  const paperColor = paperColorEnabled ? recordColour(documentId) : null;
   // Same `groups` collection DocumentsScreen's own group tabs/bulk-assign
   // use (kind 'document') - this is just a second place to set the same
   // field, so a document doesn't have to be re-selected from the list to
