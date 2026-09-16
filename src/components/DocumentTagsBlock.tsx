@@ -4,6 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tag } from '../types';
 import TagPicker from './TagPicker';
 import { FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 
 const ACCENT = '#3B82F6';
 
@@ -23,6 +25,8 @@ type Props = {
 // icon+color, which doesn't fit inline, so that one step opens TagPicker's
 // own create form directly (see DocumentTagBlock.dc.html).
 export default function DocumentTagsBlock({ tagIds, tags, onAttach, onDetach, onCreateAndAttach, onRenameTag }: Props) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const [query, setQuery] = useState('');
   const [createModal, setCreateModal] = useState<{ path: string } | null>(null);
 
@@ -61,12 +65,12 @@ export default function DocumentTagsBlock({ tagIds, tags, onAttach, onDetach, on
           </Pressable>
         ))}
         <View style={styles.inputWrap}>
-          <Ionicons name="add" size={13} color="#9CA3AF" />
+          <Ionicons name="add" size={13} color={theme.paper.inkFaint} />
           <TextInput
             value={query}
             onChangeText={setQuery}
             placeholder="папка"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={theme.paper.inkFaint}
             style={styles.input}
           />
         </View>
@@ -110,7 +114,7 @@ export default function DocumentTagsBlock({ tagIds, tags, onAttach, onDetach, on
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   // No boxed "zone" around the tags anymore - the "+ папка" input itself
   // is the only cue that this is where you attach one. Tags are drawn as
   // «смартпапки» in the drawer (see project_smart_folders); this inline
@@ -159,13 +163,13 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: t.paper.ink,
     padding: 0,
   },
   dropdown: {
     marginTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#EEF0F2',
+    borderTopColor: t.paper.edge,
     paddingTop: 6,
   },
   dropdownScroll: {
@@ -189,7 +193,7 @@ const styles = StyleSheet.create({
   suggestionLabel: {
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: t.paper.ink,
   },
   createRow: {
     flexDirection: 'row',
