@@ -120,6 +120,7 @@ import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
 import UndoToast from '../components/UndoToast';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
+import { COVER_GRADIENTS, CoverGradientView } from '../theme/covers';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import CustomRowBlockCard from '../components/CustomRowBlockCard';
 import CustomDatabaseViewBlockCard from '../components/CustomDatabaseViewBlockCard';
@@ -2348,6 +2349,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // skipped entirely in embedded mode (CalendarScreen's daily notes),
   // matching the header/title/tags block right above them.
   const [coverImageUri, setCoverImageUri] = useState<string | undefined>(undefined);
+  // The chosen cover gradient's id - see theme/covers. Saved beside the
+  // cover picture and synced the same way.
+  const [coverGradient, setCoverGradient] = useState<string | undefined>(undefined);
   // A note created and then left untouched shouldn't be kept. Gated on
   // autoFocusTitle, which is set only when the document was made a moment
   // ago by the "+" button - opening an existing empty note and backing out
@@ -2553,6 +2557,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     title: string;
     blocks: Block[];
     coverImageUri: string | undefined;
+    coverGradient: string | undefined;
     paperColorEnabled: boolean;
     groupId: string | null;
     canvasLinks: Record<string, CanvasLink>;
@@ -2576,6 +2581,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       title: (data?.title as string) ?? '',
       blocks: blocksNow,
       coverImageUri: (data?.coverImageUri as string | undefined) || undefined,
+      coverGradient: (data?.coverGradient as string | undefined) || undefined,
       paperColorEnabled: !!data?.paperColorEnabled,
       groupId: (data?.groupId as string | undefined) ?? null,
       canvasLinks: (data?.canvasLinks as Record<string, CanvasLink> | undefined) ?? {},
@@ -2587,6 +2593,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     return (
       server.title === shape.title &&
       server.coverImageUri === shape.coverImageUri &&
+      server.coverGradient === shape.coverGradient &&
       server.paperColorEnabled === shape.paperColorEnabled &&
       server.groupId === shape.groupId &&
       stableStringify(server.canvasLinks) === stableStringify(shape.canvasLinks) &&
@@ -2643,6 +2650,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     }
     if (server && server.title === title) setTitle(remote.title);
     if (server && server.coverImageUri === coverImageUri) setCoverImageUri(remote.coverImageUri);
+    if (server && server.coverGradient === coverGradient) setCoverGradient(remote.coverGradient);
     if (server && server.paperColorEnabled === paperColorEnabled) setPaperColorEnabled(remote.paperColorEnabled);
     if (server && server.groupId === groupId) setGroupId(remote.groupId);
     // Arrows are a keyed map, so both sides' additions survive: what
@@ -2692,6 +2700,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       setTitle(data?.title ?? '');
       setTagIds(data?.tagIds ?? []);
       setCoverImageUri(data?.coverImageUri);
+      setCoverGradient(data?.coverGradient);
       setPaperColorEnabled(!!data?.paperColorEnabled);
       setGroupId(data?.groupId ?? null);
       setSourceBoardId(data?.boardId ?? null);
@@ -3092,7 +3101,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // which is the case the moment a note has been opened, and the case
     // when another device's version has just been merged in. See
     // serverRef.
-    const shape: ServerShape = { title, blocks, coverImageUri: coverImageUri || undefined, paperColorEnabled, groupId, canvasLinks };
+    const shape: ServerShape = { title, blocks, coverImageUri: coverImageUri || undefined, coverGradient: coverGradient || undefined, paperColorEnabled, groupId, canvasLinks };
     if (sameAsServer(shape)) return;
     syncLog('will save: differs from server', {
       dirtyBlocks: blocks.filter((b) => serverBlockRef.current.get(b.id) !== stableStringify(b)).map((b) => b.id.slice(-4)).join(','),
@@ -3129,6 +3138,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // having been set has to actually clear the field, not leave the
           // old uri sitting there under merge:true.
           coverImageUri: coverImageUri || deleteField(),
+          coverGradient: coverGradient || deleteField(),
           groupId: groupId ?? deleteField(),
           // A map written under merge:true MERGES its keys - a link
           // removed here simply stayed on the server, and the other
@@ -3148,7 +3158,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         { merge: true }
       )
         .then(() => {
-          rememberServer({ title, blocks, coverImageUri: coverImageUri || undefined, paperColorEnabled, groupId, canvasLinks });
+          rememberServer({ title, blocks, coverImageUri: coverImageUri || undefined, coverGradient: coverGradient || undefined, paperColorEnabled, groupId, canvasLinks });
           setSaveStatus('saved');
           syncLog('saved', { blocks: blocks.length });
         })
@@ -3171,7 +3181,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, blocks, coverImageUri, paperColorEnabled, groupId, canvasLinks, isLoaded]);
+  }, [title, blocks, coverImageUri, coverGradient, paperColorEnabled, groupId, canvasLinks, isLoaded]);
 
   // Whoever set focusIdRef wants that block to be the live input next. A
   // block only has a TextInput while it's the active one, so this first
@@ -4334,6 +4344,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const asset = result.assets[0];
     const uri = await compressPickedImage(asset.uri, asset.width, asset.height);
     setCoverImageUri(uri);
+    // A picture is the cover now; a gradient chosen earlier lets go, or
+    // it would keep winning over the picture in the card.
+    setCoverGradient(undefined);
   }
 
   async function pickImageForBlock(id: string) {
@@ -4993,6 +5006,28 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               {coverImageUri ? 'Змінити заставку' : 'Додати заставку'}
             </Text>
           </Pressable>
+          {/* The cover's gradients, right under the row that sets a
+              picture: tap one to make it the cover (and let go of any
+              picture), tap the chosen one again to fall back to the
+              note's own default. */}
+          <View style={styles.coverSwatches}>
+            {COVER_GRADIENTS.map((g) => {
+              const on = coverGradient === g.id;
+              return (
+                <Pressable
+                  key={g.id}
+                  hitSlop={4}
+                  onPress={() => {
+                    setCoverGradient(on ? undefined : g.id);
+                    if (!on) setCoverImageUri(undefined);
+                  }}
+                  style={[styles.coverSwatch, on && styles.coverSwatchOn]}
+                >
+                  <CoverGradientView gradient={g} style={styles.coverSwatchFill} />
+                </Pressable>
+              );
+            })}
+          </View>
           <Pressable style={styles.exportMenuRow} onPress={() => setPaperColorEnabled((v) => !v)}>
             <Ionicons name="color-palette-outline" size={17} color={GLASS_TEXT} />
             <Text style={styles.exportMenuRowLabel}>Колір паперу</Text>
@@ -5765,6 +5800,28 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 10,
     zIndex: 6,
+  },
+  coverSwatches: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingBottom: 6,
+  },
+  coverSwatch: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  coverSwatchOn: {
+    borderColor: ACCENT,
+  },
+  coverSwatchFill: {
+    flex: 1,
+    borderRadius: 6,
   },
   exportMenuLabel: {
     fontSize: 11,

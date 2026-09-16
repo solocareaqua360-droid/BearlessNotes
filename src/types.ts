@@ -434,6 +434,10 @@ export interface DocumentItem {
   // priority over any image block as the document's card thumbnail (see
   // extractPreview's own coverImageUri parameter).
   coverImageUri?: string;
+  // The gradient the user chose for the cover, by id (see theme/covers).
+  // Absent = the note's own default gradient; a coverImageUri wins over
+  // either.
+  coverGradient?: string;
   // In the bin. A deleted note is not deleted: it is stamped with the
   // moment it went, every list leaves it out, and the bin shows it until
   // it is restored or thrown away for good (or thirty days pass). Its

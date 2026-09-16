@@ -1,4 +1,5 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { CoverGradientView, coverById, defaultCoverFor } from '../theme/covers';
 import { useRecordColour } from '../theme/ThemeProvider';
 import { Ionicons } from '@expo/vector-icons';
 import AttachmentImage from './AttachmentImage';
@@ -179,6 +180,10 @@ type Props = {
   title: string;
   updatedAt: number;
   imageUri: string | null;
+  // Set = the user's chosen gradient, which beats a picture found in the
+  // body; unset = the note's own default gradient, shown when there is no
+  // picture. See theme/covers.
+  coverGradient?: string;
   // The Drive copies behind imageUri and imageUris, for where the paths
   // cannot be read - see AttachmentImage. Parallel to imageUris on
   // purpose: the strip is drawn by index and that is the cheapest shape
@@ -239,6 +244,7 @@ export default function DocumentCard({
   title,
   updatedAt,
   imageUri,
+  coverGradient,
   imageDriveFileId,
   previewText,
   imageUris = [],
@@ -263,7 +269,12 @@ export default function DocumentCard({
   // space) - only the grid card's top-of-card image slot goes away
   // entirely when there's nothing to show there, reclaiming that height
   // for more preview text instead.
-  const noImage = isGrid && !imageUri;
+  // A note always has a cover now: a chosen gradient beats a picture from
+  // the body, a picture beats the default gradient, and the default is
+  // always there - so the grid card never reclaims the slot any more.
+  const chosen = coverById(coverGradient);
+  const gradient = chosen ?? (imageUri ? undefined : defaultCoverFor(id));
+  const noImage = false;
 
   const titleNode = titleMatch ? (
     <HighlightedLine
@@ -277,9 +288,11 @@ export default function DocumentCard({
     </Text>
   );
 
-  const thumbNode = imageUri ? (
+  const thumbNode = gradient ? (
+    <CoverGradientView gradient={gradient} style={isGrid ? styles.thumbGrid : styles.thumb} />
+  ) : imageUri ? (
     <AttachmentImage uri={imageUri} driveFileId={imageDriveFileId} style={isGrid ? styles.thumbGrid : styles.thumb} />
-  ) : noImage ? null : ( // list layout only past this point - a grid card with no image is null, not a placeholder
+  ) : (
     <View style={[styles.thumb, styles.thumbPlaceholder]}>
       <Ionicons name="document-text-outline" size={22} color="#D1D5DB" />
     </View>

@@ -714,6 +714,7 @@ export default function DocumentsScreen({
           groupId: docSnapshot.data().groupId,
           createdAt: docSnapshot.data().createdAt,
           coverImageUri: docSnapshot.data().coverImageUri,
+          coverGradient: docSnapshot.data().coverGradient as string | undefined,
           deletedAt: docSnapshot.data().deletedAt as number | undefined,
         }))
         .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
@@ -1280,6 +1281,7 @@ export default function DocumentsScreen({
                     title={item.title}
                     updatedAt={item.updatedAt}
                     imageUri={imageUri}
+                    coverGradient={item.coverGradient}
                     imageDriveFileId={imageDriveFileId}
                     imageUris={imageUris}
                     imageDriveFileIds={imageDriveFileIds}
@@ -1532,6 +1534,7 @@ export default function DocumentsScreen({
                   title={item.title}
                   updatedAt={item.updatedAt}
                   imageUri={imageUri}
+                  coverGradient={item.coverGradient}
                   imageDriveFileId={imageDriveFileId}
                   imageUris={imageUris}
                   imageDriveFileIds={imageDriveFileIds}
