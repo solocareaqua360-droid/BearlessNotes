@@ -7,7 +7,8 @@ import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import AttachmentImage from './AttachmentImage';
-import { onSnapshot } from '../firestore';
+import { doc, onSnapshot } from '../firestore';
+import { db } from '../firebase';
 import { ownedQuery } from '../utils/owned';
 import { Block, CustomDatabase, CustomDatabaseRow, CustomDatabaseView, SketchElement } from '../types';
 import {
@@ -19,6 +20,7 @@ import {
   blockFromSticker,
 } from '../utils/copyToNote';
 import { rowTitleOf } from '../utils/customRowDisplay';
+import { labelForBlock } from '../utils/objectClipboard';
 import {
   GLASS_BACKDROP,
   GLASS_BODY_BLURRED,
@@ -45,6 +47,18 @@ function newestFirst(a: { data(): Record<string, unknown> }, b: { data(): Record
 
 function byName(a: { name?: string }, b: { name?: string }) {
   return String(a.name ?? '').localeCompare(String(b.name ?? ''));
+}
+
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+// What a block reads as in the reference list - its own text if it has
+// one (a paragraph, a heading, a quote...), labelForBlock's word for
+// anything else (a photo, a file, a link...).
+function labelForDocBlock(b: Block): string {
+  const text = (b.text ?? '').trim();
+  return text || labelForBlock(b);
 }
 
 // Links split into video/geo/other exactly like LinksScreen's own tabs
@@ -138,6 +152,16 @@ type Props = {
   // blocks). Opt-in because the board can't render that block type yet -
   // only DocumentEditorScreen sets it.
   includeCustomDatabases?: boolean;
+  // DOCKED: the same browser without the sheet around it - no backdrop,
+  // no handle, no title, sized by whatever holds it. The reference panel
+  // beside the canvas is this one browser standing open rather than a
+  // second copy of it: there is exactly one place in the app that knows
+  // how to list every database, and this is it.
+  docked?: boolean;
+  // Hands out each row's own node, so something outside can tell what is
+  // under a finger - the reference panel's drag (see useReferenceDrag).
+  // `build` is the very block a tap on that row would have inserted.
+  rowRef?: (id: string, build: () => Block, label: string) => ((node: View | null) => void) | undefined;
 };
 
 // The reverse direction of CopyToNoteModal (Files/Photos/Links → a note) -
@@ -153,6 +177,8 @@ export default function AddExistingItemModal({
   includeDocuments,
   onPickDocument,
   includeCustomDatabases,
+  docked,
+  rowRef,
 }: Props) {
   const keyboardHeight = useKeyboardHeight();
   const [tab, setTab] = useState<Tab>('file');
@@ -169,6 +195,13 @@ export default function AddExistingItemModal({
   const [customRows, setCustomRows] = useState<CustomDatabaseRow[]>([]);
   const [customViews, setCustomViews] = useState<CustomDatabaseView[]>([]);
   const [openDatabaseId, setOpenDatabaseId] = useState<string | null>(null);
+  // The 'document' tab's own second level, docked-mode only (see the
+  // 'document' rows below): open ONE document and browse its blocks
+  // read-only, rather than picking the document as a whole
+  // (onPickDocument, BoardScreen's own use of this tab).
+  const [openDocId, setOpenDocId] = useState<string | null>(null);
+  const [openDocTitle, setOpenDocTitle] = useState('');
+  const [openDocBlocks, setOpenDocBlocks] = useState<Block[]>([]);
 
   useEffect(() => {
     if (!visible) return;
@@ -257,8 +290,25 @@ export default function AddExistingItemModal({
       setSearchQuery('');
       setTab('file');
       setOpenDatabaseId(null);
+      setOpenDocId(null);
     }
   }, [visible]);
+
+  // The document opened for its blocks - read-only, nothing here ever
+  // writes to it. A checkbox block is left out on purpose: it doubles as
+  // a Tasks record keyed by the block's OWN id, and a bare clone would
+  // either collide with it or silently fork a second, disconnected task -
+  // real handling for that is its own piece of work, not this one.
+  useEffect(() => {
+    if (!visible || !openDocId) return;
+    return onSnapshot(doc(db, 'documents', openDocId), (snapshot) => {
+      const data = snapshot.data();
+      if (!data) return;
+      setOpenDocTitle((data.title as string) || 'Без назви');
+      const blocks = ((data.blocks as Block[]) ?? []).filter((b) => (b.type ?? 'paragraph') !== 'checkbox');
+      setOpenDocBlocks(blocks);
+    });
+  }, [visible, openDocId]);
 
   const needle = searchQuery.trim().toLowerCase();
   const filteredFiles = files.filter(
@@ -291,18 +341,8 @@ export default function AddExistingItemModal({
     (v) => !excludeIds?.has(v.id) && (v.name || 'Вигляд').toLowerCase().includes(needle)
   );
 
-  return (
-    <GlassLayer visible={visible} onClose={onClose}>
-      {/* Backdrop as a SIBLING behind the sheet, not its parent - as a
-          parent it took the RN touch responder for every drag that did
-          not land on a deeper child, which is what kept the list from
-          scrolling. A tap outside still closes it. */}
-      <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
-          <Text style={styles.title}>Додати з бази даних</Text>
-
+  const body = (
+        <>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -357,6 +397,7 @@ export default function AddExistingItemModal({
                 <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
               ) : (
                 filteredFiles.map((f) => (
+                  <View ref={rowRef?.(`file-${f.id}`, () => blockFromFile(f), (f.title || f.fileName))} collapsable={false}>
                   <Pressable key={f.id} style={styles.row} onPress={() => onPick(blockFromFile(f))}>
                     <View style={styles.docIcon}>
                       <Ionicons name="document-outline" size={18} color={ACCENT} />
@@ -365,6 +406,7 @@ export default function AddExistingItemModal({
                       {f.title || f.fileName}
                     </Text>
                   </Pressable>
+                  </View>
                 ))
               ))}
 
@@ -373,12 +415,14 @@ export default function AddExistingItemModal({
                 <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
               ) : (
                 filteredPhotos.map((p) => (
+                  <View ref={rowRef?.(`photo-${p.id}`, () => blockFromPhoto(p), (p.title || 'Без назви'))} collapsable={false}>
                   <Pressable key={p.id} style={styles.row} onPress={() => onPick(blockFromPhoto(p))}>
                     <AttachmentImage uri={p.imageUri} driveFileId={p.driveFileId} style={styles.thumb} />
                     <Text style={styles.rowText} numberOfLines={1}>
                       {p.title || 'Без назви'}
                     </Text>
                   </Pressable>
+                  </View>
                 ))
               ))}
 
@@ -387,6 +431,7 @@ export default function AddExistingItemModal({
                 <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
               ) : (
                 filteredVideoLinks.map((l) => (
+                  <View ref={rowRef?.(`video-${l.id}`, () => blockFromLink(l), (l.title || hostnameOf(l.url)))} collapsable={false}>
                   <Pressable key={l.id} style={styles.row} onPress={() => onPick(blockFromLink(l))}>
                     {l.imageUrl ? (
                       <Image source={{ uri: l.imageUrl }} style={styles.thumb} resizeMode="cover" resizeMethod="resize" />
@@ -399,6 +444,7 @@ export default function AddExistingItemModal({
                       {l.title || hostnameOf(l.url)}
                     </Text>
                   </Pressable>
+                  </View>
                 ))
               ))}
 
@@ -407,6 +453,7 @@ export default function AddExistingItemModal({
                 <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
               ) : (
                 filteredGeoLinks.map((l) => (
+                  <View ref={rowRef?.(`geo-${l.id}`, () => blockFromLink(l), (l.title || hostnameOf(l.url)))} collapsable={false}>
                   <Pressable key={l.id} style={styles.row} onPress={() => onPick(blockFromLink(l))}>
                     <View style={styles.docIcon}>
                       <Ionicons name="location-outline" size={18} color={ACCENT} />
@@ -415,6 +462,7 @@ export default function AddExistingItemModal({
                       {l.title || hostnameOf(l.url)}
                     </Text>
                   </Pressable>
+                  </View>
                 ))
               ))}
 
@@ -423,6 +471,7 @@ export default function AddExistingItemModal({
                 <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
               ) : (
                 filteredOtherLinks.map((l) => (
+                  <View ref={rowRef?.(`other-${l.id}`, () => blockFromLink(l), (l.title || hostnameOf(l.url)))} collapsable={false}>
                   <Pressable key={l.id} style={styles.row} onPress={() => onPick(blockFromLink(l))}>
                     {l.imageUrl ? (
                       <Image source={{ uri: l.imageUrl }} style={styles.thumb} resizeMode="cover" resizeMethod="resize" />
@@ -435,6 +484,7 @@ export default function AddExistingItemModal({
                       {l.title || hostnameOf(l.url)}
                     </Text>
                   </Pressable>
+                  </View>
                 ))
               ))}
 
@@ -443,6 +493,7 @@ export default function AddExistingItemModal({
                 <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
               ) : (
                 filteredStickers.map((s) => (
+                  <View ref={rowRef?.(`sticker-${s.id}`, () => blockFromSticker(s), labelForSticker(s))} collapsable={false}>
                   <Pressable key={s.id} style={styles.row} onPress={() => onPick(blockFromSticker(s))}>
                     {s.type === 'image' && s.imageUri ? (
                       <AttachmentImage uri={s.imageUri} driveFileId={s.driveFileId} style={[styles.thumb, { backgroundColor: STICKER_YELLOW }]} />
@@ -459,24 +510,85 @@ export default function AddExistingItemModal({
                       {labelForSticker(s)}
                     </Text>
                   </Pressable>
+                  </View>
                 ))
               ))}
 
-            {tab === 'document' &&
+            {/* rowRef present = the reference panel, which wants blocks
+                OUT of a document, not the document itself - BoardScreen's
+                own use of this tab (onPickDocument, no rowRef) is
+                untouched. */}
+            {tab === 'document' && !openDocId &&
               (filteredDocuments.length === 0 ? (
                 <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
               ) : (
                 filteredDocuments.map((d) => (
-                  <Pressable key={d.id} style={styles.row} onPress={() => onPickDocument?.(d)}>
+                  <Pressable
+                    key={d.id}
+                    style={styles.row}
+                    onPress={() => (rowRef ? setOpenDocId(d.id) : onPickDocument?.(d))}
+                  >
                     <View style={styles.docIcon}>
                       <Ionicons name="document-text-outline" size={18} color={ACCENT} />
                     </View>
                     <Text style={styles.rowText} numberOfLines={1}>
                       {d.title}
                     </Text>
+                    {rowRef && <Ionicons name="chevron-forward" size={16} color={GLASS_TEXT_FAINT} />}
                   </Pressable>
                 ))
               ))}
+
+            {/* The second level: one document's own blocks, read-only -
+                nothing here can be edited or opened into the real
+                editor. Filtered by the same search box as everything
+                else in the panel. */}
+            {tab === 'document' && openDocId && (
+              <>
+                <Pressable style={styles.row} onPress={() => setOpenDocId(null)}>
+                  <Ionicons name="chevron-back" size={16} color={GLASS_TEXT_MUTED} />
+                  <Text style={[styles.rowText, styles.backRowText]} numberOfLines={1}>
+                    {openDocTitle}
+                  </Text>
+                </Pressable>
+                {(() => {
+                  const rows = openDocBlocks.filter((b) => labelForDocBlock(b).toLowerCase().includes(needle));
+                  if (rows.length === 0) return <Text style={styles.emptyLabel}>Нічого не знайдено</Text>;
+                  return rows.map((b) => {
+                    const build = () => ({ ...b, id: generateId(), createdAt: Date.now() });
+                    const label = labelForDocBlock(b);
+                    return (
+                      <View key={b.id} ref={rowRef?.(`block-${b.id}`, build, label)} collapsable={false}>
+                        <Pressable style={styles.row} onPress={() => onPick(build())}>
+                          <View style={styles.docIcon}>
+                            <Ionicons
+                              name={
+                                b.type === 'image'
+                                  ? 'image-outline'
+                                  : b.type === 'file'
+                                    ? 'document-outline'
+                                    : b.type === 'link'
+                                      ? 'link-outline'
+                                      : b.type === 'dbRow' || b.type === 'dbView'
+                                        ? 'grid-outline'
+                                        : b.type === 'sketch'
+                                          ? 'brush-outline'
+                                          : 'text-outline'
+                              }
+                              size={18}
+                              color={ACCENT}
+                            />
+                          </View>
+                          <Text style={styles.rowText} numberOfLines={1}>
+                            {label}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    );
+                  });
+                })()}
+              </>
+            )}
 
             {/* Two levels: the databases themselves, then the rows of
                 whichever one was opened. The back row is what returns to
@@ -516,21 +628,17 @@ export default function AddExistingItemModal({
                 {filteredCustomViews.length > 0 && (
                   <>
                     <Text style={styles.sectionLabel}>Вигляди</Text>
-                    {filteredCustomViews.map((v) => (
-                      <Pressable
-                        key={v.id}
-                        style={styles.row}
-                        onPress={() =>
-                          onPick(
-                            blockFromCustomView({
-                              id: v.id,
-                              databaseId: openDatabase.id,
-                              name: v.name || 'Вигляд',
-                              createdAt: v.createdAt,
-                            })
-                          )
-                        }
-                      >
+                    {filteredCustomViews.map((v) => {
+                      const build = () =>
+                        blockFromCustomView({
+                          id: v.id,
+                          databaseId: openDatabase.id,
+                          name: v.name || 'Вигляд',
+                          createdAt: v.createdAt,
+                        });
+                      return (
+                      <View key={v.id} ref={rowRef?.(`view-${v.id}`, build, v.name || 'Вигляд')} collapsable={false}>
+                      <Pressable style={styles.row} onPress={() => onPick(build())}>
                         <View style={styles.docIcon}>
                           <Ionicons name="bookmark-outline" size={18} color={ACCENT} />
                         </View>
@@ -538,28 +646,26 @@ export default function AddExistingItemModal({
                           {v.name || 'Вигляд'}
                         </Text>
                       </Pressable>
-                    ))}
+                      </View>
+                      );
+                    })}
                     <Text style={styles.sectionLabel}>Записи</Text>
                   </>
                 )}
                 {filteredCustomRows.length === 0 ? (
                   <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
                 ) : (
-                  filteredCustomRows.map((r) => (
-                    <Pressable
-                      key={r.id}
-                      style={styles.row}
-                      onPress={() =>
-                        onPick(
-                          blockFromCustomRow({
-                            id: r.id,
-                            databaseId: openDatabase.id,
-                            title: rowTitleOf(openDatabase, r),
-                            createdAt: r.createdAt,
-                          })
-                        )
-                      }
-                    >
+                  filteredCustomRows.map((r) => {
+                    const build = () =>
+                      blockFromCustomRow({
+                        id: r.id,
+                        databaseId: openDatabase.id,
+                        title: rowTitleOf(openDatabase, r),
+                        createdAt: r.createdAt,
+                      });
+                    return (
+                    <View key={r.id} ref={rowRef?.(`row-${r.id}`, build, rowTitleOf(openDatabase, r))} collapsable={false}>
+                    <Pressable style={styles.row} onPress={() => onPick(build())}>
                       <View style={styles.docIcon}>
                         <Ionicons name="grid-outline" size={18} color={ACCENT} />
                       </View>
@@ -567,18 +673,51 @@ export default function AddExistingItemModal({
                         {rowTitleOf(openDatabase, r)}
                       </Text>
                     </Pressable>
-                  ))
+                    </View>
+                    );
+                  })
                 )}
               </>
             )}
           </ScrollView>
+        </>
+  );
+
+  if (docked) {
+    return (
+      <View style={styles.dockedRoot}>
+        {body}
+      </View>
+    );
+  }
+
+  return (
+    <GlassLayer visible={visible} onClose={onClose}>
+      {/* Backdrop as a SIBLING behind the sheet, not its parent - as a
+          parent it took the RN touch responder for every drag that did
+          not land on a deeper child, which is what kept the list from
+          scrolling. A tap outside still closes it. */}
+      <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={styles.sheet}>
+          <View style={styles.handle} />
+          <Text style={styles.title}>Додати з бази даних</Text>
+          {body}
         </View>
       </View>
     </GlassLayer>
   );
+
 }
 
 const styles = StyleSheet.create({
+  // Docked: fills whatever holds it - the reference panel decides the
+  // actual width/height, this just gives the tab row and the list
+  // somewhere to stack in.
+  dockedRoot: {
+    flex: 1,
+    paddingTop: 8,
+  },
   backdrop: {
     ...SHEET_BACKDROP,
   },

@@ -191,7 +191,16 @@ function approximateHeight(block: Block): number {
 // exists because the way OUT of typing has to be reachable from the rail
 // as well: the back arrow there used to leave the whole document while
 // the caret was still blinking in a card.
-export type DocumentCanvasHandle = { stopEditing: () => void };
+export type DocumentCanvasHandle = {
+  stopEditing: () => void;
+  // Whether a SCREEN point (window coordinates - the same space a
+  // gesture's own absoluteX/absoluteY live in) lies over the canvas at
+  // all, and where it lands in world/surface coordinates if so. What the
+  // reference panel's drop (see useReferenceDrag, DocumentEditorScreen's
+  // own drop handler) asks, so the panel never has to know this
+  // component's own pan/zoom math.
+  screenToSurface: (screenX: number, screenY: number, then: (at: { x: number; y: number } | null) => void) => void;
+};
 
 function DocumentCanvasInner({
   blocks,
@@ -371,7 +380,25 @@ function DocumentCanvasInner({
     setLinkSourceId(null);
   }
 
-  useImperativeHandle(ref, () => ({ stopEditing }));
+  // See DocumentCanvasHandle's own comment: converts a WINDOW point to
+  // this canvas's surface space, or answers null if the point is not
+  // over the canvas at all (the reference panel's own list, say).
+  function screenToSurface(screenX: number, screenY: number, then: (at: { x: number; y: number } | null) => void) {
+    const node = canvasRef.current;
+    if (!node) {
+      then(null);
+      return;
+    }
+    node.measureInWindow((nx, ny, nw, nh) => {
+      if (screenX < nx || screenX > nx + nw || screenY < ny || screenY > ny + nh) {
+        then(null);
+        return;
+      }
+      then(toSurface(screenX - nx, screenY - ny));
+    });
+  }
+
+  useImperativeHandle(ref, () => ({ stopEditing, screenToSurface }));
 
   useEffect(() => {
     onEditingChange?.(editingId !== null);

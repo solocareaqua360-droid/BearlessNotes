@@ -108,6 +108,7 @@ import { attachmentInfoText } from '../utils/attachmentInfo';
 import { downloadToFolder, showDownloadedFile } from '../utils/downloadToFolder';
 import AttachmentImage from '../components/AttachmentImage';
 import DocumentCanvas, { DocumentCanvasHandle } from '../components/DocumentCanvas';
+import CanvasReferencePanel from '../components/CanvasReferencePanel';
 import { assembleWithDivider } from '../utils/canvasOrder';
 import { stableStringify } from '../utils/stableStringify';
 import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils/haptics';
@@ -2320,6 +2321,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // walk out of the document while the caret was still blinking; ending
   // the typing is what "back" means at that moment.
   const canvasApiRef = useRef<DocumentCanvasHandle | null>(null);
+  // «Референси» - see CanvasReferencePanel. Closed by default even while
+  // in canvas mode; the user's own workflow is to open it, drag a few
+  // things over, close it, and keep working with just the board.
+  const [referencePanelOpen, setReferencePanelOpen] = useState(false);
+  useEffect(() => {
+    if (!canvasMode) setReferencePanelOpen(false);
+  }, [canvasMode]);
   const [canvasEditing, setCanvasEditing] = useState(false);
   // The arrows between cards on the canvas - a keyed map, see
   // DocumentItem.canvasLinks. Saved with the document, like everything
@@ -4755,6 +4763,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     else if (choice === 'existing') setExistingItemPickerBlockId(created.id);
   }
 
+  // What a drop from the reference panel actually does - the same clone
+  // pattern the board/database copy-paste clipboard already uses
+  // (pasteCopiedObject, below): a fresh id so it is its own block here,
+  // never the source's, at the exact surface point it was let go over
+  // (CanvasReferencePanel's own drop handler already converted the
+  // screen point through DocumentCanvasHandle.screenToSurface).
+  function insertReferenceBlock(block: Block, at: { x: number; y: number }) {
+    snapshotBeforeChange();
+    const created: Block = { ...block, id: generateId(), createdAt: Date.now(), canvas: at };
+    setBlocks((prev) => [...prev, created]);
+  }
+
   function addBlockAtEnd() {
     snapshotBeforeChange();
     const created = newBlock();
@@ -5013,6 +5033,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             <Ionicons name={canvasMode ? 'document-text-outline' : 'shapes-outline'} size={17} color={GLASS_TEXT} />
             <Text style={styles.exportMenuRowLabel}>{canvasMode ? 'Сторінка' : 'Полотно'}</Text>
           </Pressable>
+          {canvasMode && (
+            <Pressable
+              style={styles.exportMenuRow}
+              onPress={() => {
+                setExportMenuOpen(false);
+                setReferencePanelOpen((v) => !v);
+              }}
+            >
+              <Ionicons name="albums-outline" size={17} color={GLASS_TEXT} />
+              <Text style={styles.exportMenuRowLabel}>{referencePanelOpen ? 'Сховати референси' : 'Референси'}</Text>
+            </Pressable>
+          )}
           <Text style={styles.exportMenuLabel}>Оформлення</Text>
           <Pressable style={styles.exportMenuRow} onPress={openCoverImageOptions}>
             <Ionicons name="image-outline" size={17} color={GLASS_TEXT} />
@@ -5155,6 +5187,24 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             handleActivateBlock(id);
           }}
         />
+      )}
+
+      {/* «Референси» - a drawer over the RIGHT of the canvas, never the
+          whole screen: the canvas has to stay visible and reachable on
+          the left as the drop target. Same shape on every width for now
+          - the Fold's own wide inner screen could stand a true side pane
+          instead, deliberately deferred rather than risked in the same
+          pass as this screen's own existing embedded/pane double-split
+          rule (see pane_double_split memory). */}
+      {canvasMode && !embedded && referencePanelOpen && (
+        <View style={styles.referencePanelDock} pointerEvents="box-none">
+          <CanvasReferencePanel
+            visible
+            onClose={() => setReferencePanelOpen(false)}
+            canvasRef={canvasApiRef}
+            onInsertBlock={insertReferenceBlock}
+          />
+        </View>
       )}
 
       {!(canvasMode && !embedded) && (
@@ -5730,6 +5780,17 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: t.paper.fill,
+  },
+  // The reference panel's own dock - see CanvasReferencePanel. ~45% of
+  // the screen on purpose: enough to read a row's label, not so much
+  // that the canvas underneath stops being a real drop target.
+  referencePanelDock: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    right: 0,
+    width: '45%',
+    minWidth: 260,
   },
   loadingContainer: {
     alignItems: 'center',
