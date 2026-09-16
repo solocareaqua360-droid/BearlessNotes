@@ -93,7 +93,7 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
-import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import { ask, confirm } from '../components/surfaces/Ask';
 
 const AUTOSAVE_DELAY_MS = 600;
@@ -3182,8 +3182,8 @@ const styles = StyleSheet.create({
     right: 20,
   },
   fab: {
-    width: 56,
-    height: 56,
+    width: RAIL_WIDTH,
+    height: RAIL_WIDTH,
     backgroundColor: ACCENT_GLASS,
     alignItems: 'center',
     justifyContent: 'center',

@@ -781,9 +781,11 @@ const styles = StyleSheet.create({
   fabHit: {
     position: 'absolute',
   },
+  // The rail's own width, so the "+" is the same size as the round
+  // button above it - at 56 it read as the small one of the set.
   fab: {
-    width: 56,
-    height: 56,
+    width: RAIL_WIDTH,
+    height: RAIL_WIDTH,
     alignItems: 'center',
     justifyContent: 'center',
   },
