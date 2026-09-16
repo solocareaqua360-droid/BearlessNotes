@@ -2,7 +2,7 @@ import { useId, useState } from 'react';
 import { StyleSheet, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import Svg, { Defs, LinearGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { useTheme } from '../theme/ThemeProvider';
 import { useBlurTarget, useInsideBlurTarget } from './GlassTarget';
 import type { Lift } from '../theme/tokens';
@@ -54,6 +54,12 @@ export default function GlassDrop({
   specularIntensity,
   rimOpacity,
   vignetteIntensity,
+  // A LENS rather than a pane: a round bead of highlight in the upper
+  // middle and a darker rim, so the drop reads as convex - the fisheye
+  // the user asked for on the island's current tab. Real refraction
+  // needs shaders; a bulge of light plus a slightly enlarged glyph under
+  // it is what the eye accepts as one.
+  convex,
   // Overrides the theme's own answer, for a surface that must not lift at
   // all (one already sitting on another piece of glass).
   lift,
@@ -66,6 +72,7 @@ export default function GlassDrop({
   specularIntensity?: number;
   rimOpacity?: number;
   vignetteIntensity?: number;
+  convex?: boolean;
   lift?: Lift | 'none';
 }) {
   const theme = useTheme();
@@ -92,7 +99,7 @@ export default function GlassDrop({
   const r = Math.min(radius, Math.min(w, h) / 2);
   const specular = specularIntensity ?? g.specularIntensity;
   const rim = rimOpacity ?? g.rimOpacity;
-  const vignette = vignetteIntensity ?? g.vignetteIntensity;
+  const vignette = (vignetteIntensity ?? g.vignetteIntensity) * (convex ? 1.7 : 1);
 
   return (
     <View
@@ -138,9 +145,20 @@ export default function GlassDrop({
                 <Stop offset="0.45" stopColor={g.rim} stopOpacity={rim * 0.4} />
                 <Stop offset="1" stopColor={g.rim} stopOpacity={0} />
               </LinearGradient>
+              {/* The bead: the one round highlight a convex surface has,
+                  sitting a little above the middle where a light from
+                  above would land on a bulge. */}
+              {convex && (
+                <RadialGradient id={`${uid}-bead`} cx="50%" cy="28%" r="62%">
+                  <Stop offset="0" stopColor={g.specular} stopOpacity={specular * 0.55} />
+                  <Stop offset="0.55" stopColor={g.specular} stopOpacity={specular * 0.12} />
+                  <Stop offset="1" stopColor={g.specular} stopOpacity={0} />
+                </RadialGradient>
+              )}
             </Defs>
 
             <Rect x={0} y={0} width={w} height={h} rx={r} fill={`url(#${uid}-body)`} />
+            {convex && <Rect x={0} y={0} width={w} height={h} rx={r} fill={`url(#${uid}-bead)`} />}
 
             {/* The vignette, reaching inwards. Four strokes of falling
                 opacity rather than one blurred edge: react-native-svg's

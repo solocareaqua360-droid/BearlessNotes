@@ -119,14 +119,18 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
                     No lift either - it is lying ON the glass, not above
                     the screen. */}
                 {focused ? (
+                  // A lens over the bar, not a pane: convex, a touch
+                  // opaque, and the glyph under it drawn a little larger
+                  // than its neighbours - what a lens does to what is
+                  // beneath it. The user's word was "риб'яче око".
                   <GlassDrop
-                    style={styles.button}
+                    style={[styles.button, styles.lens]}
                     lift="none"
                     blurAmount={0}
-                    glassOpacity={theme.glass.opacity * 2.4}
-                    specularIntensity={theme.glass.specularIntensity * 0.7}
+                    convex
+                    glassOpacity={Math.min(0.5, Math.max(0.24, theme.glass.opacity * 2.4))}
                   >
-                    <Ionicons name={icon} size={ICON_SIZE} color={theme.accent} />
+                    <Ionicons name={icon} size={Math.round(ICON_SIZE * 1.18)} color={theme.accent} />
                   </GlassDrop>
                 ) : (
                   <View style={styles.button}>
@@ -192,5 +196,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // The lens bulges a little past the bar's own edge, as a bead of
+  // glass sitting on a surface does.
+  lens: {
+    transform: [{ scale: 1.12 }],
   },
 });
