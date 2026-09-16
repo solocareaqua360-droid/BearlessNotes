@@ -36,6 +36,8 @@ import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#3B82F6';
+// GLASS_BODY_BLURRED without its transparency - see styles.dockedRoot.
+const GLASS_BODY_OPAQUE = '#181513';
 const STICKER_YELLOW = '#FBE97A';
 // Newest first, done here rather than by the query. Every read in this
 // file goes through ownedQuery now, which narrows by owner - and an
@@ -391,7 +393,7 @@ export default function AddExistingItemModal({
             />
           </View>
 
-          <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
+          <ScrollView style={[styles.list, docked && styles.listDocked]} keyboardShouldPersistTaps="handled">
             {tab === 'file' &&
               (filteredFiles.length === 0 ? (
                 <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
@@ -714,9 +716,18 @@ const styles = StyleSheet.create({
   // Docked: fills whatever holds it - the reference panel decides the
   // actual width/height, this just gives the tab row and the list
   // somewhere to stack in.
+  //
+  // The ground has to be the SHEET'S OWN, and OPAQUE. Every label and
+  // icon in this browser is GLASS_TEXT (white) because the sheet it was
+  // written for floats on a dark translucent body over a blurred screen.
+  // Docked, it stands on the note's own paper instead - which is white -
+  // so anything translucent here washes out to white and takes every
+  // white letter with it. That was the blank white panel.
   dockedRoot: {
     flex: 1,
     paddingTop: 8,
+    paddingHorizontal: 12,
+    backgroundColor: GLASS_BODY_OPAQUE,
   },
   backdrop: {
     ...SHEET_BACKDROP,
@@ -809,6 +820,12 @@ const styles = StyleSheet.create({
   },
   list: {
     maxHeight: 320,
+  },
+  // Docked, the panel is as tall as the screen - the sheet's own cap on
+  // how far the list may grow is the wrong rule there.
+  listDocked: {
+    flex: 1,
+    maxHeight: 10000,
   },
   row: {
     flexDirection: 'row',

@@ -4,8 +4,9 @@ import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import AddExistingItemModal from './AddExistingItemModal';
 import GlassDrop, { GlassIcon } from './GlassDrop';
-import { useTheme, useStyles } from '../theme/ThemeProvider';
+import { useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
+import { GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { useReferenceDrag } from '../hooks/useReferenceDrag';
 import type { Block } from '../types';
 import type { DocumentCanvasHandle } from './DocumentCanvas';
@@ -33,7 +34,6 @@ export default function CanvasReferencePanel({
   onInsertBlock: (block: Block, at: { x: number; y: number }) => void;
   excludeIds?: Set<string>;
 }) {
-  const theme = useTheme();
   const styles = useStyles(makeStyles);
   const drag = useReferenceDrag({
     onDrop: (block, screenX, screenY, respond) => {
@@ -54,10 +54,10 @@ export default function CanvasReferencePanel({
     <>
       <View style={styles.panel}>
         <View style={styles.header}>
-          <Ionicons name="albums-outline" size={16} color={theme.ink.muted} />
+          <Ionicons name="albums-outline" size={16} color={GLASS_TEXT_MUTED} />
           <Text style={styles.headerLabel}>Референси</Text>
           <View style={{ flex: 1 }} />
-          <Ionicons name="close" size={20} color={theme.ink.muted} onPress={onClose} />
+          <Ionicons name="close" size={20} color={GLASS_TEXT_MUTED} onPress={onClose} />
         </View>
         <Text style={styles.hint}>Затисни й перетягни на полотно</Text>
         <GestureDetector gesture={drag.gesture}>
@@ -80,7 +80,7 @@ export default function CanvasReferencePanel({
         <Animated.View style={[styles.ghostWrap, ghostStyle]} pointerEvents="none">
           <GlassDrop radius={16} lift="shadow" style={styles.ghost}>
             <GlassIcon name="albums-outline" size={16} />
-            <Text style={[styles.ghostLabel, { color: theme.glass.ink }]} numberOfLines={1}>
+            <Text style={styles.ghostLabel} numberOfLines={1}>
               {drag.ghost.label}
             </Text>
           </GlassDrop>
@@ -96,11 +96,14 @@ const makeStyles = (t: Theme) =>
     // inner screen, a narrower glass drawer over part of the canvas on a
     // phone. Either way it is never the full screen: the canvas has to
     // stay reachable as the drop target.
+    // The same dark, OPAQUE ground the docked browser inside it stands
+    // on (see AddExistingItemModal's dockedRoot) - everything in here is
+    // written in white, and the note's own paper underneath is not.
     panel: {
       flex: 1,
-      backgroundColor: t.surface,
+      backgroundColor: '#181513',
       borderLeftWidth: 1,
-      borderLeftColor: t.edge.hairline,
+      borderLeftColor: GLASS_LINE,
     },
     header: {
       flexDirection: 'row',
@@ -112,11 +115,11 @@ const makeStyles = (t: Theme) =>
     headerLabel: {
       fontSize: 13,
       fontWeight: '700',
-      color: t.ink.primary,
+      color: GLASS_TEXT,
     },
     hint: {
       fontSize: 11,
-      color: t.ink.faint,
+      color: GLASS_TEXT_FAINT,
       paddingHorizontal: 14,
       paddingTop: 2,
       paddingBottom: 8,
@@ -142,5 +145,6 @@ const makeStyles = (t: Theme) =>
       fontSize: 13,
       fontWeight: '600',
       maxWidth: 180,
+      color: GLASS_TEXT,
     },
   });
