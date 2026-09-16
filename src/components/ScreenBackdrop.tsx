@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, { SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Pattern, RadialGradient, Rect, Stop } from 'react-native-svg';
+import { useTheme } from '../theme/ThemeProvider';
 
 // What every screen stands on, and what the glass has to blur.
 //
@@ -23,6 +24,15 @@ import Svg, { Defs, LinearGradient, Pattern, RadialGradient, Rect, Stop } from '
 //
 // Still react-native-svg, not expo-linear-gradient: that would be a new
 // native module and another dev-client build.
+//
+// What the THEME decides here (slice 2 of the themes work): the colour
+// theme is everything below, unchanged, in the colours the screen asks
+// for. The white theme keeps the very same drifting clouds - the user
+// asked for them rather than a flat sheet of paper - bleached to a
+// tenth of their strength over white, so there is still something under
+// the glass for it to be glass over. The black theme has no clouds at
+// all: light on black is the glow on the drops, and a cloud behind them
+// would only grey it.
 const TILE = 360;
 // A fraction of the list's own speed. Fast enough that a normal scroll
 // carries a cloud right through a capsule, slow enough to read as depth.
@@ -48,11 +58,19 @@ export default function ScreenBackdrop({
   // one visible sign that the screen inside was being laid out for a
   // width it did not have. The window's size only stands in until the
   // first layout, so nothing flashes white.
+  const theme = useTheme();
   const window = useWindowDimensions();
   const [own, setOwn] = useState<{ width: number; height: number } | null>(null);
   const width = own?.width ?? window.width;
   const height = own?.height ?? window.height;
   const stripHeight = height + TILE * 2;
+  // White and black answer for their own ground; only the colour theme
+  // lets each screen keep the gradient it was written with.
+  const ramp: [string, string, string] =
+    theme.backdrop === 'gradient' ? colors : [theme.ground, theme.ground, theme.ground];
+  // How much of a cloud survives. Bleached almost away in white; gone in
+  // black.
+  const cloud = theme.backdrop === 'gradient' ? 1 : theme.backdrop === 'clouds' ? 0.18 : 0;
 
   const style = useAnimatedStyle(() => {
     // Modulo the tile: at one tile of travel the strip is exactly back
@@ -78,9 +96,9 @@ export default function ScreenBackdrop({
       <Svg width={width + 2} height={height + 2} style={styles.bleed} pointerEvents="none">
         <Defs>
           <LinearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0.03" stopColor={colors[0]} />
-            <Stop offset="0.52" stopColor={colors[1]} />
-            <Stop offset="1" stopColor={colors[2]} />
+            <Stop offset="0.03" stopColor={ramp[0]} />
+            <Stop offset="0.52" stopColor={ramp[1]} />
+            <Stop offset="1" stopColor={ramp[2]} />
           </LinearGradient>
         </Defs>
         <Rect width={width + 2} height={height + 2} fill={`url(#${id})`} />
@@ -93,15 +111,15 @@ export default function ScreenBackdrop({
                 no seam to hide - what meets at the join is transparent on
                 both sides. */}
             <RadialGradient id={`${id}-a`} cx="0.5" cy="0.5" r="0.5">
-              <Stop offset="0" stopColor="#D8945C" stopOpacity="0.55" />
+              <Stop offset="0" stopColor="#D8945C" stopOpacity={0.55 * cloud} />
               <Stop offset="1" stopColor="#D8945C" stopOpacity="0" />
             </RadialGradient>
             <RadialGradient id={`${id}-b`} cx="0.5" cy="0.5" r="0.5">
-              <Stop offset="0" stopColor="#7FB0A6" stopOpacity="0.5" />
+              <Stop offset="0" stopColor="#7FB0A6" stopOpacity={0.5 * cloud} />
               <Stop offset="1" stopColor="#7FB0A6" stopOpacity="0" />
             </RadialGradient>
             <RadialGradient id={`${id}-c`} cx="0.5" cy="0.5" r="0.5">
-              <Stop offset="0" stopColor="#9182C4" stopOpacity="0.45" />
+              <Stop offset="0" stopColor="#9182C4" stopOpacity={0.45 * cloud} />
               <Stop offset="1" stopColor="#9182C4" stopOpacity="0" />
             </RadialGradient>
             {/* The tile itself. Three clouds at different depths across

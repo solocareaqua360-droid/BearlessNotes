@@ -1,9 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import { GlassPortal } from './GlassPortal';
-import { useBlurTarget } from './GlassTarget';
-import { GLASS_ISLAND } from '../constants/glass';
+import GlassDrop from './GlassDrop';
+import { useTheme } from '../theme/ThemeProvider';
 import { RAIL_RIGHT } from '../constants/rail';
 
 // One capsule of the right-hand rail: a stack of icon buttons in the
@@ -15,6 +14,10 @@ import { RAIL_RIGHT } from '../constants/rail';
 //
 // Drawn through the portal like every other piece of glass: the blur
 // that fills it cannot live inside the view it blurs.
+//
+// The glass itself - blur, tint, the specular and the two edges - is
+// GlassDrop's now, so this capsule looks like every other drop in the
+// app and follows the theme with them.
 export type RailButton = {
   icon: keyof typeof Ionicons.glyphMap;
   // A small plus (or any glyph) hung off the icon's corner, for a button
@@ -54,19 +57,13 @@ export default function RailCapsule({
   bottom: number;
   side?: 'left' | 'right';
 }) {
-  const blurTarget = useBlurTarget();
+  const theme = useTheme();
   if (buttons.length === 0) return null;
   return (
     <GlassPortal>
-      <View style={[styles.capsule, side === 'left' ? styles.capsuleLeft : styles.capsuleRight, { bottom }]}>
-        <BlurView
-          intensity={60}
-          tint="dark"
-          blurMethod="dimezisBlurView"
-          blurTarget={blurTarget ?? undefined}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-        />
+      <GlassDrop
+        style={[styles.capsule, side === 'left' ? styles.capsuleLeft : styles.capsuleRight, { bottom }]}
+      >
         {/* One flat column with one gap between everything - the hairline
             is a sibling of the buttons, not part of the next one, or it
             hugs the button above it instead of standing midway. */}
@@ -83,21 +80,21 @@ export default function RailCapsule({
               disabled={button.disabled}
               style={[styles.button, button.active && styles.buttonActive, button.disabled && styles.buttonDisabled]}
             >
-              <Ionicons name={button.icon} size={button.size ?? 24} color="#fff" />
+              <Ionicons name={button.icon} size={button.size ?? 24} color={theme.ink.primary} />
               {!!button.badge && (
                 <View style={styles.badge}>
-                  <Ionicons name={button.badge} size={14} color="#fff" />
+                  <Ionicons name={button.badge} size={14} color={theme.ink.primary} />
                 </View>
               )}
               {!!button.count && (
                 <View style={styles.count}>
-                  <Text style={styles.countLabel}>{button.count}</Text>
+                  <Text style={[styles.countLabel, { color: theme.ink.primary }]}>{button.count}</Text>
                 </View>
               )}
             </Pressable>
           </View>
         ))}
-      </View>
+      </GlassDrop>
     </GlassPortal>
   );
 }
@@ -105,16 +102,12 @@ export default function RailCapsule({
 const styles = StyleSheet.create({
   // The same numbers as every screen's own top capsule: 19 + a 24px icon
   // + 19 across, inside a 1px border, 18 between buttons.
+  // The shape and where it stands; the glass is GlassDrop's.
   capsule: {
     position: 'absolute',
     alignItems: 'center',
     paddingVertical: 18,
     paddingHorizontal: 19,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
     zIndex: 20,
   },
   capsuleRight: {
@@ -168,7 +161,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 13,
     fontWeight: '700',
-    color: '#fff',
   },
   buttonDisabled: {
     opacity: 0.35,

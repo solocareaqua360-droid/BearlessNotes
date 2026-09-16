@@ -1,10 +1,9 @@
 import { type ReactNode } from 'react';
-import { Keyboard, Pressable, StyleSheet, TextInput, View, type StyleProp, type ViewStyle } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { Keyboard, Pressable, StyleSheet, TextInput, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useBlurTarget } from './GlassTarget';
+import GlassDrop from './GlassDrop';
+import { useTheme } from '../theme/ThemeProvider';
 import { FONT_REGULAR } from '../utils/fonts';
-import { GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { RAIL_CLEARANCE } from '../constants/rail';
 
 // The one search field in the app.
@@ -60,25 +59,17 @@ export default function SearchField({
   autoFocus?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
-  const blurTarget = useBlurTarget();
+  const theme = useTheme();
   return (
-    <View style={[styles.field, style]}>
-      <BlurView
-        intensity={60}
-        tint="dark"
-        blurMethod="dimezisBlurView"
-        blurTarget={blurTarget ?? undefined}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
-      {leading ?? <Ionicons name="search-outline" size={19} color={GLASS_TEXT_MUTED} />}
+    <GlassDrop style={[styles.field, style]}>
+      {leading ?? <Ionicons name="search-outline" size={19} color={theme.ink.muted} />}
       <TextInput
         autoFocus={autoFocus}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={GLASS_TEXT_FAINT}
-        style={styles.input}
+        placeholderTextColor={theme.ink.faint}
+        style={[styles.input, { color: theme.ink.primary }]}
       />
       {!!onClose && (
         <Pressable
@@ -88,36 +79,31 @@ export default function SearchField({
             onClose();
           }}
         >
-          <Ionicons name="close-outline" size={19} color={GLASS_TEXT_MUTED} />
+          <Ionicons name="close-outline" size={19} color={theme.ink.muted} />
         </Pressable>
       )}
       {!!onClear && value.length > 0 && (
         <Pressable hitSlop={8} onPress={onClear}>
-          <Ionicons name="close-outline" size={19} color={GLASS_TEXT_MUTED} />
+          <Ionicons name="close-outline" size={19} color={theme.ink.muted} />
         </Pressable>
       )}
-    </View>
+    </GlassDrop>
   );
 }
 
 const styles = StyleSheet.create({
+  // The shape; the glass is GlassDrop's.
   field: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     height: 45,
     paddingHorizontal: 16,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
   },
   input: {
     flex: 1,
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
     padding: 0,
   },
 });

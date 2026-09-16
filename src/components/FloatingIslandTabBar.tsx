@@ -5,12 +5,11 @@ import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { hapticButtonDown } from '../utils/haptics';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
+import GlassDrop from './GlassDrop';
+import { useTheme } from '../theme/ThemeProvider';
 import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { useIsFocused } from '@react-navigation/native';
 import { GlassPortal } from './GlassPortal';
-import { useBlurTarget } from './GlassTarget';
-import { GLASS_ISLAND } from '../constants/glass';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_GAP, NAV_PADDING } from '../constants/rail';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -36,7 +35,7 @@ const ICON_SIZE = 24;
 // to sit outside the view it blurs, and the screens are what the blur
 // target wraps.
 export default function FloatingIslandTabBar({ state, navigation }: MaterialTopTabBarProps) {
-  const blurTarget = useBlurTarget();
+  const theme = useTheme();
   const insets = useSafeAreaInsets();
   // Held down, the island shrinks to the row of dots a home screen uses
   // to say which page you are on: the swipe between tabs is the way
@@ -65,15 +64,8 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
     <GlassPortal>
       <View style={[styles.wrap, { bottom: NAV_BOTTOM + insets.bottom }]} pointerEvents="box-none">
         {collapsed ? (
-          <Pressable style={styles.dots} onLongPress={toggleCollapsed} delayLongPress={400}>
-            <BlurView
-              intensity={60}
-              tint="dark"
-              blurMethod="dimezisBlurView"
-              blurTarget={blurTarget ?? undefined}
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
+          <GlassDrop style={styles.dotsShell}>
+          <Pressable style={styles.dotsRow} onLongPress={toggleCollapsed} delayLongPress={400}>
             {state.routes.map((route, index) => (
               // A dot is still a way to get there: the indicator says
               // where you are, and tapping one of them takes you.
@@ -86,27 +78,27 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
                 onLongPress={toggleCollapsed}
                 delayLongPress={400}
               >
-                <View style={[styles.dot, state.index === index && styles.dotActive]} />
+                <View
+                  style={[
+                    styles.dot,
+                    { backgroundColor: theme.ink.faint },
+                    state.index === index && [styles.dotActive, { backgroundColor: theme.ink.primary }],
+                  ]}
+                />
               </Pressable>
             ))}
           </Pressable>
+          </GlassDrop>
         ) : (
-        <Pressable style={styles.island} onLongPress={toggleCollapsed} delayLongPress={400}>
-          <BlurView
-            intensity={60}
-            tint="dark"
-            blurMethod="dimezisBlurView"
-            blurTarget={blurTarget ?? undefined}
-            style={StyleSheet.absoluteFill}
-            pointerEvents="none"
-          />
+        <GlassDrop style={styles.islandShell}>
+        <Pressable style={styles.islandRow} onLongPress={toggleCollapsed} delayLongPress={400}>
           {state.routes.map((route, index) => {
             const focused = state.index === index;
             const icon = ICON_BY_ROUTE[route.name] ?? 'ellipse-outline';
             return (
               <Pressable
                 key={route.key}
-                style={[styles.button, focused && styles.buttonActive]}
+                style={[styles.button, focused && { backgroundColor: theme.ink.primary }]}
                 onPress={() => {
                   const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
                   if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
@@ -118,15 +110,15 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
                 onLongPress={toggleCollapsed}
                 delayLongPress={400}
               >
-                <Ionicons
-                  name={icon}
-                  size={ICON_SIZE}
-                  color={focused ? '#171310' : 'rgba(255,255,255,0.85)'}
-                />
+                {/* The tab you are on is the one solid shape here, so
+                    its glyph takes the ground's own colour - which keeps
+                    it legible whichever way round the theme is. */}
+                <Ionicons name={icon} size={ICON_SIZE} color={focused ? theme.ground : theme.ink.muted} />
               </Pressable>
             );
           })}
         </Pressable>
+        </GlassDrop>
         )}
       </View>
     </GlassPortal>
@@ -144,42 +136,34 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
   },
-  island: {
+  // The shell is the drop's (see GlassDrop); what is left here is the
+  // room inside it and the row of buttons within that. Two views because
+  // the whole island is also one long-press target - holding anywhere on
+  // it folds it away.
+  islandShell: {
+    padding: NAV_PADDING,
+  },
+  islandRow: {
     flexDirection: 'row',
     gap: NAV_GAP,
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-    // A capsule now, not a rounded square - and the blur is clipped to it,
-    // so its edge stays a clean line.
-    borderRadius: 999,
-    overflow: 'hidden',
-    padding: NAV_PADDING,
-    elevation: 6,
   },
-  // The collapsed island: the page dots, in the same glass capsule.
-  dots: {
+  // The collapsed island: the page dots, in the same glass.
+  dotsShell: {
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+  },
+  dotsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-    elevation: 6,
   },
   dot: {
     width: 7,
     height: 7,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.45)',
   },
   dotActive: {
-    backgroundColor: '#fff',
     width: 8,
     height: 8,
   },
@@ -189,8 +173,5 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  buttonActive: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
   },
 });
