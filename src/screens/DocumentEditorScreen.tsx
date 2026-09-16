@@ -128,7 +128,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_DANGER, GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
-import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import SaveRing from '../components/SaveRing';
 
 // The rail's capsule stood on its end is RAIL_WIDTH across; lying down on
@@ -5121,10 +5121,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         style={styles.scrollArea}
         contentContainerStyle={[
           embedded && styles.scrollAreaEmbedded,
-          // The rail stands at the right edge; the text stops short of it
-          // rather than running under it - as a mail's text does under its
-          // capsule. The blocks carry 20 of side padding of their own.
-          !embedded && railLeft === undefined && { paddingRight: RAIL_CLEARANCE - 20 },
+          // Used to stop short of the rail the way a mail's text does
+          // under its capsule - narrowing every block on the page, at
+          // every scroll position, to clear a capsule that only ever
+          // shows near the top. Dropping the capsule to two buttons (see
+          // the "..." menu's own "Вигляд" section) was the point of doing
+          // that: the field now runs the full width, with just its own
+          // 20 of side padding; the short capsule may sit over the very
+          // top of the scroll on its own translucent glass, same as any
+          // other floating header here.
           // Embedded, with the keyboard down, the floating island sits over
           // the bottom of this list - the last block (and "Додати блок")
           // has to be able to scroll clear of it.
