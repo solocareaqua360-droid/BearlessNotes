@@ -1,5 +1,5 @@
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
@@ -12,6 +12,7 @@ import { GlassPortal } from './GlassPortal';
 import Menu from './surfaces/Menu';
 import { useBlurTarget } from './GlassTarget';
 import ContentColumn from './ContentColumn';
+import SearchField, { searchFieldSides } from './SearchField';
 import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
 import RailCapsule from './RailCapsule';
@@ -427,31 +428,22 @@ export default function DatabaseChrome<T extends { id: string }>({
           // Fades down into place rather than appearing between two
           // frames - the pull that opens it is a slow movement, and the
           // field arriving instantly at the end of it read as a jolt.
-          <Animated.View
-            entering={FadeInDown.duration(220)}
-            style={[styles.searchRow, !list.tagFilter && { marginTop: chromeBottom }]}
-          >
-            <Ionicons name="search" size={14} color="#9CA3AF" />
-            <TextInput
+          <Animated.View entering={FadeInDown.duration(220)}>
+            <SearchField
               autoFocus
               value={list.searchQuery}
               onChangeText={list.setSearchQuery}
               placeholder={searchPlaceholder}
-              placeholderTextColor="#9CA3AF"
-              style={styles.searchInput}
-            />
-            {/* The way out of searching, on the field itself - while the
-                keyboard is up it is the only control on the screen. */}
-            <Pressable
-              hitSlop={10}
-              onPress={() => {
-                Keyboard.dismiss();
+              onClose={() => {
                 list.setSearchQuery('');
                 list.setIsSearching(false);
               }}
-            >
-              <Ionicons name="close-outline" size={19} color="#9CA3AF" />
-            </Pressable>
+              style={[
+                styles.searchRow,
+                searchFieldSides(railSide),
+                !list.tagFilter && { marginTop: chromeBottom },
+              ]}
+            />
           </Animated.View>
         )}
 
@@ -791,22 +783,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: FONT_SEMIBOLD,
   },
+  // Only where it sits - the pill itself is SearchField's.
   searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginHorizontal: 20,
     marginBottom: 8,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: FONT_REGULAR,
-    color: '#111827',
   },
   // Same floating "+" every screen uses, not a header icon.
   fabRight: {

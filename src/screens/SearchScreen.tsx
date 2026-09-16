@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -7,8 +7,9 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../navigation';
 import ContentColumn from '../components/ContentColumn';
+import SearchField from '../components/SearchField';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { GLASS_CARD, GLASS_INPUT, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
+import { GLASS_CARD, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { TextMatch } from '../utils/documentPreview';
 import { SearchHit, SearchTarget, groupHits, useGlobalSearch } from '../hooks/useGlobalSearch';
 
@@ -78,24 +79,19 @@ export default function SearchScreen() {
         {/* The way back sits in the search row itself: this screen is one
             field and its results, and a capsule of its own beside them
             would be three controls for a screen that has one. */}
-        <View style={[styles.searchRow, { marginTop: insets.top + 12 }]}>
-          <Pressable hitSlop={10} onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back-outline" size={22} color={GLASS_TEXT} />
-          </Pressable>
-          <TextInput
-            autoFocus
-            value={needle}
-            onChangeText={setNeedle}
-            placeholder="Пошук по всіх базах"
-            placeholderTextColor={GLASS_TEXT_FAINT}
-            style={styles.searchInput}
-          />
-          {needle.length > 0 && (
-            <Pressable hitSlop={10} onPress={() => setNeedle('')}>
-              <Ionicons name="close-outline" size={20} color={GLASS_TEXT_MUTED} />
+        <SearchField
+          autoFocus
+          value={needle}
+          onChangeText={setNeedle}
+          placeholder="Пошук по всіх базах"
+          onClear={() => setNeedle('')}
+          leading={
+            <Pressable hitSlop={10} onPress={() => navigation.goBack()}>
+              <Ionicons name="arrow-back-outline" size={22} color={GLASS_TEXT} />
             </Pressable>
-          )}
-        </View>
+          }
+          style={[styles.searchRow, { marginTop: insets.top + 12 }]}
+        />
 
         <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
           {needle.trim().length > 0 && groups.length === 0 && (
@@ -164,25 +160,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  // Only where it sits - the pill itself is SearchField's.
   searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
     marginHorizontal: 20,
     marginBottom: 12,
-    backgroundColor: GLASS_INPUT,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
-    padding: 0,
   },
   list: {
     paddingHorizontal: 20,

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { onSnapshot } from '../firestore';
@@ -11,10 +10,11 @@ import { RootStackParamList } from '../navigation';
 import DocumentCard from '../components/DocumentCard';
 import { documentMatchesQuery, extractPreview, findBodyMatch, hasNoteContent } from '../utils/documentPreview';
 import { formatShortDate, parseDateKey } from '../utils/dateLocale';
-import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { FONT_SEMIBOLD } from '../utils/fonts';
 import DocumentEditorScreen from './DocumentEditorScreen';
 import PlainScreenShell, { shellClear } from '../components/PlainScreenShell';
-import { GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
+import SearchField, { searchFieldSides } from '../components/SearchField';
+import { GLASS_TEXT } from '../constants/glass';
 
 
 // "Щоденник" - calendar sheets (CalendarScreen's daily notes) as their own
@@ -105,16 +105,12 @@ export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
 
   return (
     <PlainScreenShell id="diaryBg" onBack={() => navigation.goBack()} railSide={railSide} hasIsland={!inPane}>
-      <View style={[styles.searchRow, shellClear(railSide, 20)]}>
-        <Ionicons name="search" size={16} color={GLASS_TEXT_MUTED} />
-        <TextInput
-          value={query_}
-          onChangeText={setQuery}
-          placeholder="Пошук у щоденнику"
-          placeholderTextColor={GLASS_TEXT_MUTED}
-          style={styles.searchInput}
-        />
-      </View>
+      <SearchField
+        value={query_}
+        onChangeText={setQuery}
+        placeholder="Пошук у щоденнику"
+        style={[styles.searchRow, searchFieldSides(railSide)]}
+      />
 
       <ScrollView contentContainerStyle={[styles.list, shellClear(railSide, 0)]}>
         {visible.map((item) => {
@@ -152,25 +148,9 @@ export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
 }
 
 const styles = StyleSheet.create({
-  // Glass, like the field on every other database - it stood on white
-  // with a grey fill, which is what made this screen read as another app.
+  // Only where it sits - the pill itself is SearchField's.
   searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
     marginBottom: 14,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
   },
   list: {
     paddingBottom: 120,

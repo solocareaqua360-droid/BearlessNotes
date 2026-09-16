@@ -49,6 +49,7 @@ import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import DocumentEditorScreen from './DocumentEditorScreen';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from '../components/SortMenuRows';
 import RailCapsule from '../components/RailCapsule';
+import SearchField from '../components/SearchField';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import Menu from '../components/surfaces/Menu';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from '../components/TagsDrawer';
@@ -1138,38 +1139,22 @@ export default function DocumentsScreen({
           {searchOpen && (
             // Fades down into place: the pull that opens it is a slow
             // movement, and the field arriving instantly read as a jolt.
-            <Animated.View entering={FadeInDown.duration(220)} style={styles.searchRow}>
-              <BlurView
-                intensity={60}
-                tint="dark"
-                blurMethod="dimezisBlurView"
-                blurTarget={blurTarget ?? undefined}
-                style={StyleSheet.absoluteFill}
-                pointerEvents="none"
-              />
-              <Ionicons name="search-outline" size={19} color={GLASS_TEXT_MUTED} />
-              <TextInput
-                autoFocus
-                value={searchText}
-                onChangeText={setSearchText}
-                placeholder="Пошук документів"
-                placeholderTextColor={GLASS_TEXT_FAINT}
-                style={styles.searchInput}
-              />
+            <Animated.View entering={FadeInDown.duration(220)}>
               {/* Closes the search outright rather than only emptying it:
                   with the keyboard up this is the one control on the
                   screen, and emptying a field the user is done with only
                   leaves them somewhere they have to leave again. */}
-              <Pressable
-                hitSlop={8}
-                onPress={() => {
-                  Keyboard.dismiss();
+              <SearchField
+                autoFocus
+                value={searchText}
+                onChangeText={setSearchText}
+                placeholder="Пошук документів"
+                onClose={() => {
                   setSearchText('');
                   setSearchOpen(false);
                 }}
-              >
-                <Ionicons name="close-outline" size={19} color={GLASS_TEXT_MUTED} />
-              </Pressable>
+                style={styles.searchRow}
+              />
             </Animated.View>
           )}
           {!searchingAlone && groups.length > 0 && !groupsRowHidden && (
@@ -1984,27 +1969,11 @@ const styles = StyleSheet.create({
   },
   // The field, in the same glass as the pills under it. Stops short of the
   // rail, like they do.
+  // Only where it sits - the pill itself is SearchField's.
   searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    height: 45,
     marginLeft: 20,
     marginRight: RAIL_CLEARANCE,
     marginBottom: 8,
-    paddingHorizontal: 16,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
-    padding: 0,
   },
   // Still a row even though the capsule has left it: TabsTunnel's inner
   // `flex: 1` only means "the rest of the width" inside a row.
