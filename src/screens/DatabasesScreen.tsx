@@ -350,7 +350,7 @@ export default function DatabasesScreen() {
   // rather than carrying whatever hue it arrived with.
   function resolveTileColor(key: string): string {
     const database = customDatabases.find((d) => d.id === key);
-    if (database) return mutedForTheme(database.color ?? recordColour(database.id).background, theme);
+    if (database) return database.color ?? recordColour(database.id).background;
     const group = pinnableGroups.find((g) => groupKey(g.id) === key);
     if (group) return group.color;
     const tag = pinnableTags.find((t) => tagKey(t.id) === key);
@@ -910,7 +910,7 @@ export default function DatabasesScreen() {
                     height={spanSize(size.h)}
                     color={
                       item.kind === 'custom'
-                        ? mutedForTheme(item.database.color ?? recordColour(item.database.id).background, theme)
+                        ? item.database.color ?? recordColour(item.database.id).background
                         : item.kind === 'pin'
                           ? item.pin.color
                           : colorFor(item.key)
@@ -1544,7 +1544,12 @@ function BoardTile({
   // a tile carrying a background picture keeps its scrim and white text,
   // because what is behind the ink there is the picture, not the colour.
   const painted = !isAction && !background;
-  const ink = painted ? contrastTextColor(color) : '#fff';
+  // Every tile passes through here - custom, pinned, built-in - so this
+  // is where the paint is muted outside the colour theme; muting only
+  // the custom ones left "Групи" and "Стікери" shouting on their own.
+  const theme = useTheme();
+  const paint = mutedForTheme(color, theme);
+  const ink = painted ? contrastTextColor(paint) : '#fff';
   const inkMuted = !painted
     ? 'rgba(255,255,255,0.55)'
     : ink === '#FFFFFF'
@@ -1601,7 +1606,7 @@ function BoardTile({
       layout={carried ? undefined : LinearTransition.duration(220)}
       style={[
         styles.tile,
-        painted && { backgroundColor: color, borderColor: 'rgba(255,255,255,0.18)' },
+        painted && { backgroundColor: paint, borderColor: 'rgba(255,255,255,0.18)' },
         isAction && styles.newTile,
         { left, top, width, height },
         carried && { left: carried.x, top: carried.y, zIndex: 20, opacity: 0.95, transform: [{ scale: 1.04 }] },
@@ -1645,6 +1650,11 @@ function BoardTile({
             // 'simple' only ever breaks between words.
             textBreakStrategy="simple"
             ellipsizeMode="tail"
+            // 'simple' still splits ONE word wider than the tile; a word
+            // that cannot fit shrinks instead ("Документи" on a single
+            // cell).
+            adjustsFontSizeToFit
+            minimumFontScale={0.72}
           >
             {label}
           </Text>

@@ -1,17 +1,8 @@
-import { useContext, useEffect, useState } from 'react';
-import { NavigationContext } from '@react-navigation/native';
+import { useState } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
-import Animated, {
-  Easing,
-  SharedValue,
-  cancelAnimation,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated, { SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Pattern, RadialGradient, Rect, Stop } from 'react-native-svg';
-import { useMotion, useTheme } from '../theme/ThemeProvider';
+import { useTheme } from '../theme/ThemeProvider';
 
 // What every screen stands on, and what the glass has to blur.
 //
@@ -43,19 +34,6 @@ import { useMotion, useTheme } from '../theme/ThemeProvider';
 // all: light on black is the glow on the drops, and a cloud behind them
 // would only grey it.
 const TILE = 360;
-// The colour change. Nothing travels: two full-screen washes, each a
-// fixed arrangement of the theme's clouds in different corners, stand
-// over the tiled strip and only their OPACITY moves - up and down, each
-// on its own period, so the corner that was sky becomes lilac and then
-// mint without a single shape sliding. A first version moved blooms
-// across the screen instead and read as waves (the user's word) rather
-// than as colour; it also cost three oversized surfaces per screen.
-// Opacity on a still layer is the cheapest animation Android has - the
-// GPU blends the layer, nothing is redrawn.
-const WASHES = [
-  { period: 17000, corners: [[0.15, 0.2, 1], [0.9, 0.85, 2]] },
-  { period: 26000, corners: [[0.85, 0.15, 2], [0.1, 0.8, 0]] },
-] as const;
 // A fraction of the list's own speed. Fast enough that a normal scroll
 // carries a cloud right through a capsule, slow enough to read as depth.
 const DRIFT = 0.55;
@@ -81,7 +59,6 @@ export default function ScreenBackdrop({
   // width it did not have. The window's size only stands in until the
   // first layout, so nothing flashes white.
   const theme = useTheme();
-  const motion = useMotion();
   const window = useWindowDimensions();
   const [own, setOwn] = useState<{ width: number; height: number } | null>(null);
   const width = own?.width ?? window.width;
@@ -94,56 +71,6 @@ export default function ScreenBackdrop({
   // How much of a cloud survives. Bleached almost away in white; gone in
   // black.
   const cloud = theme.cloudStrength;
-
-  // Only the screen in front animates. The tab navigator keeps every
-  // screen mounted, and a wash fading behind a screen nobody sees is
-  // exactly the work that made switching tabs stutter. Outside a
-  // navigator (no context) the backdrop simply counts as focused.
-  const navigation = useContext(NavigationContext);
-  const [focused, setFocused] = useState(() => navigation?.isFocused() ?? true);
-  useEffect(() => {
-    if (!navigation) return;
-    setFocused(navigation.isFocused());
-    const offFocus = navigation.addListener('focus', () => setFocused(true));
-    const offBlur = navigation.addListener('blur', () => setFocused(false));
-    return () => {
-      offFocus();
-      offBlur();
-    };
-  }, [navigation]);
-
-  // One value per wash, 0 -> 1 -> 0 forever at its own pace. 'shimmer'
-  // is the same fade twice as fast and a third stronger; 'still' never
-  // starts it. A blurred screen holds whatever frame it was on.
-  const fade = [useSharedValue(0), useSharedValue(0)];
-  const moving = motion !== 'still' && cloud > 0 && focused;
-  const pace = motion === 'shimmer' ? 0.5 : 1;
-  const strength = motion === 'shimmer' ? 0.6 : 0.45;
-  useEffect(() => {
-    fade.forEach((value, i) => {
-      cancelAnimation(value);
-      if (!moving) return;
-      // Resume from wherever the fade stopped rather than snapping: finish
-      // the leg to the nearer end at the same speed, then loop the full
-      // range from there.
-      const rest = value.value;
-      const near = rest > 0.5 ? 1 : 0;
-      const period = WASHES[i].period * pace;
-      value.value = withTiming(
-        near,
-        { duration: Math.abs(near - rest) * period, easing: Easing.inOut(Easing.sin) },
-        () => {
-          value.value = withRepeat(
-            withTiming(1 - near, { duration: period, easing: Easing.inOut(Easing.sin) }),
-            -1,
-            true
-          );
-        }
-      );
-    });
-    return () => fade.forEach((value) => cancelAnimation(value));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moving, pace]);
 
   const style = useAnimatedStyle(() => {
     // Modulo the tile: at one tile of travel the strip is exactly back
@@ -206,72 +133,7 @@ export default function ScreenBackdrop({
           <Rect width={width} height={stripHeight} fill={`url(#${id}-tile)`} />
         </Svg>
       </Animated.View>
-
-      {/* The colour change: two still washes, only their opacity moves. */}
-      {cloud > 0 &&
-        motion !== 'still' &&
-        WASHES.map((wash, i) => (
-          <Wash
-            key={i}
-            id={`${id}-wash-${i}`}
-            colours={wash.corners.map(([cx, cy, c]) => [cx, cy, theme.clouds[c]] as const)}
-            opacity={strength * cloud}
-            width={width}
-            height={height}
-            fade={fade[i]}
-          />
-        ))}
     </View>
-  );
-}
-
-// One wash: two soft radial spots in the corners the arrangement names,
-// drawn once at screen size and never touched again - the only thing
-// that changes is the layer's opacity, on the UI thread.
-function Wash({
-  id,
-  colours,
-  opacity,
-  width,
-  height,
-  fade,
-}: {
-  id: string;
-  colours: (readonly [number, number, string])[];
-  opacity: number;
-  width: number;
-  height: number;
-  fade: SharedValue<number>;
-}) {
-  const style = useAnimatedStyle(() => ({ opacity: fade.value }));
-  const r = Math.max(width, height) * 0.7;
-  return (
-    <Animated.View
-      style={[StyleSheet.absoluteFill, style]}
-      pointerEvents="none"
-      renderToHardwareTextureAndroid
-    >
-      <Svg width={width} height={height}>
-        <Defs>
-          {colours.map(([cx, cy, colour], i) => (
-            <RadialGradient
-              key={i}
-              id={`${id}-${i}`}
-              cx={cx * width}
-              cy={cy * height}
-              r={r}
-              gradientUnits="userSpaceOnUse"
-            >
-              <Stop offset="0" stopColor={colour} stopOpacity={opacity} />
-              <Stop offset="1" stopColor={colour} stopOpacity="0" />
-            </RadialGradient>
-          ))}
-        </Defs>
-        {colours.map((_, i) => (
-          <Rect key={i} width={width} height={height} fill={`url(#${id}-${i})`} />
-        ))}
-      </Svg>
-    </Animated.View>
   );
 }
 
