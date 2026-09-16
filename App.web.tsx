@@ -21,6 +21,7 @@ import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
 import CrashBoundary from './src/components/CrashBoundary';
 import FatalErrorOverlay from './src/components/FatalErrorOverlay';
+import { NavDockProvider } from './src/navigation/navDock';
 import { driveTokenError, getDriveToken, hasDriveToken, subscribeToDriveToken } from './src/utils/driveToken.web';
 
 // The browser build: the whole app.
@@ -272,7 +273,9 @@ export default function App() {
                   phone mounts, from src/AppNavigator. What the browser
                   leaves out is chosen file by file (.web siblings), not
                   route by route here. */}
-              <RootNavigator />
+              <NavDockProvider>
+                <RootNavigator />
+              </NavDockProvider>
             </GlassTargetProvider>
           </GlassPortalHost>
         </ThemedNavigationContainer>

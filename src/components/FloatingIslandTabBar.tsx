@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { doc, onSnapshot } from '../firestore';
 import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
@@ -11,6 +11,8 @@ import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { useIsFocused } from '@react-navigation/native';
 import { GlassPortal } from './GlassPortal';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_GAP, NAV_PADDING } from '../constants/rail';
+import { useNavDockTrail } from '../navigation/navDock';
+import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Outline glyphs at 24, the same set and the same size as everything else
@@ -57,8 +59,24 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
   // - including screens pushed on top of the tabs. Without this it stayed
   // floating over an open note, where there is nothing to navigate to.
   const tabsFocused = useIsFocused();
+  // Where the screen underneath currently is - see navigation/navDock.tsx
+  // and «план навігації» in the project memory. While there is a path to
+  // show, the dock IS the path: the same pill in the same place, holding
+  // something else. That is the whole idea - the app does not grow a new
+  // control for every context, the one control changes shape.
+  const trail = useNavDockTrail();
+  const trailRef = useRef<ScrollView>(null);
+  const depth = trail?.crumbs.length ?? 0;
+  useEffect(() => {
+    if (!depth) return;
+    // Deeper means further right, and the deepest is where you are.
+    const id = setTimeout(() => trailRef.current?.scrollToEnd({ animated: true }), 0);
+    return () => clearTimeout(id);
+  }, [depth]);
 
   if (!tabsFocused) return null;
+  const here = state.routes[state.index];
+  const hereIcon = ICON_BY_ROUTE[here?.name] ?? 'ellipse-outline';
 
   return (
     <GlassPortal>
@@ -89,6 +107,65 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
             ))}
           </Pressable>
           </GlassDrop>
+        ) : (
+        trail ? (
+        // The path, in the dock's own shell: same height, same place,
+        // wider. A morph has to change SHAPE to be noticed at all - this
+        // project has already reverted one that only cross-faded.
+        <GlassDrop style={[styles.islandShell, styles.trailShell]}>
+        <Pressable style={styles.trailRow} onLongPress={toggleCollapsed} delayLongPress={400}>
+          {/* The desk you are on, and the way back out of every folder at
+              once. Leaving the folders and giving the dock back to the
+              desks is deliberately the SAME press: at the root there is
+              no path left to show. */}
+          <Pressable
+            hitSlop={6}
+            onPress={() => trail.onGo('')}
+            onLongPress={toggleCollapsed}
+            delayLongPress={400}
+            style={styles.trailHome}
+          >
+            <Ionicons name={hereIcon} size={20} color={theme.glass.ink} />
+          </Pressable>
+          <ScrollView
+            ref={trailRef}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.trailStrip}
+          >
+            {trail.crumbs.map((segment, index) => {
+              const isLast = index === trail.crumbs.length - 1;
+              const target = trail.crumbs.slice(0, index + 1).join('/');
+              return (
+                <View key={target} style={styles.trailPair}>
+                  <Ionicons name="chevron-forward" size={13} color={theme.glass.inkMuted} />
+                  {isLast ? (
+                    // Where you are, marked the way the dock marks the
+                    // desk you are on - the same lens, so the two shapes
+                    // of this one control speak the same language.
+                    <GlassDrop style={styles.trailCurrent} lift="none" blurAmount={0} convex>
+                      <Text style={[styles.trailLabel, styles.trailLabelCurrent, { color: theme.glass.ink }]} numberOfLines={1}>
+                        {segment}
+                      </Text>
+                    </GlassDrop>
+                  ) : (
+                    <Pressable
+                      onPress={() => trail.onGo(target)}
+                      onLongPress={toggleCollapsed}
+                      delayLongPress={400}
+                      style={styles.trailSegment}
+                    >
+                      <Text style={[styles.trailLabel, { color: theme.glass.inkMuted }]} numberOfLines={1}>
+                        {segment}
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+              );
+            })}
+          </ScrollView>
+        </Pressable>
+        </GlassDrop>
         ) : (
         <GlassDrop style={styles.islandShell}>
         <Pressable style={styles.islandRow} onLongPress={toggleCollapsed} delayLongPress={400}>
@@ -147,6 +224,7 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
           })}
         </Pressable>
         </GlassDrop>
+        )
         )}
       </View>
     </GlassPortal>
@@ -174,6 +252,52 @@ const styles = StyleSheet.create({
   islandRow: {
     flexDirection: 'row',
     gap: NAV_GAP,
+  },
+  // The dock holding a path instead of the desks. Its height is the
+  // island's own (the buttons set it), so the two shapes read as one
+  // control in two states rather than two different bars; only the width
+  // changes, and it stops well short of the screen so it still reads as
+  // a pill lying on the screen rather than a bar across it.
+  trailShell: {
+    maxWidth: '88%',
+  },
+  trailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: NAV_BUTTON,
+  },
+  trailHome: {
+    width: NAV_BUTTON - 8,
+    height: NAV_BUTTON,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trailStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 4,
+  },
+  trailPair: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  trailSegment: {
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+  },
+  trailCurrent: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  trailLabel: {
+    fontSize: 14,
+    maxWidth: 160,
+    fontFamily: FONT_REGULAR,
+  },
+  trailLabelCurrent: {
+    fontFamily: FONT_SEMIBOLD,
+    fontWeight: '600',
   },
   // The collapsed island: the page dots, in the same glass.
   dotsShell: {

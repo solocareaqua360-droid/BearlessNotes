@@ -26,6 +26,7 @@ import { AskHost } from './src/components/surfaces/Ask';
 import { ThemeProvider, ThemedStatusBar, useTheme } from './src/theme/ThemeProvider';
 import CrashBoundary from './src/components/CrashBoundary';
 import FatalErrorOverlay from './src/components/FatalErrorOverlay';
+import { NavDockProvider } from './src/navigation/navDock';
 import AlarmRingOverlay from './src/components/AlarmRingOverlay';
 import { useStickerDeepLink } from './src/hooks/useStickerDeepLink';
 
@@ -150,7 +151,12 @@ export default function App() {
                 browser build has had this since the day it went white;
                 the phone should have had it too. */}
             <CrashBoundary>
-              <RootNavigator />
+              {/* What the dock is showing - see navigation/navDock.tsx.
+                  Above the tabs AND above the screens, since one writes
+                  what the other draws. */}
+              <NavDockProvider>
+                <RootNavigator />
+              </NavDockProvider>
             </CrashBoundary>
             </GlassTargetProvider>
           </GlassPortalHost>

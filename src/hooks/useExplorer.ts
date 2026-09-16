@@ -1,5 +1,7 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useIsFocused } from '@react-navigation/native';
 import { Tag, TaggableKind } from '../types';
+import { useNavDockPublisher } from '../navigation/navDock';
 import { TAG_COLORS } from '../constants/tags';
 import { ask, confirm } from '../components/surfaces/Ask';
 
@@ -313,11 +315,33 @@ export function useExplorer<T extends { id: string }>(options: ExplorerOptions<T
     await attachTag(folder, kind, itemId, collection);
   }
 
+  // The dock is told where we are - see src/navigation/navDock.tsx and
+  // «план навігації» in the project memory. Inside folders it stops being
+  // the switch between desks and becomes the path itself; at the root it
+  // goes back to being the dock, which is what makes leaving the folders
+  // and leaving the context one and the same move.
+  //
+  // Only the FOCUSED screen speaks. Several explorers stay mounted at
+  // once (a tab navigator keeps its screens alive, and a pane holds
+  // another), and two of them publishing would leave the dock showing
+  // whichever rendered last rather than the one being looked at.
+  const crumbs = path ? path.split('/') : [];
+  const publishToDock = useNavDockPublisher();
+  const focused = useIsFocused();
+  const crumbKey = path;
+  const goToCrumb = useCallback((target: string) => setPath(target), []);
+  useEffect(() => {
+    if (!publishToDock) return;
+    if (!focused || !active || crumbKey === '') return;
+    publishToDock({ crumbs: crumbKey.split('/'), onGo: goToCrumb });
+    return () => publishToDock(null);
+  }, [publishToDock, focused, active, crumbKey, goToCrumb]);
+
   return {
     active,
     path,
     setPath,
-    crumbs: path ? path.split('/') : [],
+    crumbs,
     back,
     forward,
     historyState,
