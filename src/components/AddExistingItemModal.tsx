@@ -36,6 +36,14 @@ import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const ACCENT = '#3B82F6';
+// Every listener gets one of these. A read the rules refuse does not come
+// back as an empty snapshot - it THROWS, and it throws asynchronously,
+// where no error boundary can reach it. React Native answers a fatal by
+// taking the JS root down, which leaves Android's own empty window on the
+// screen and nothing to report but "білий екран". See
+// src/utils/fatalErrors.ts, and the standing rule in CLAUDE.md.
+const listenerFailed = (where: string) => (error: unknown) =>
+  console.warn(`AddExistingItemModal: ${where} listener failed`, error);
 // GLASS_BODY_BLURRED without its transparency - see styles.dockedRoot.
 const GLASS_BODY_OPAQUE = '#181513';
 const STICKER_YELLOW = '#FBE97A';
@@ -209,21 +217,21 @@ export default function AddExistingItemModal({
     if (!visible) return;
     return onSnapshot(ownedQuery('files'), (snapshot) => {
       setFiles([...snapshot.docs].sort(newestFirst).map((d) => ({ id: d.id, ...(d.data() as Omit<FileRow, 'id'>) })));
-    });
+    }, listenerFailed('files'));
   }, [visible]);
 
   useEffect(() => {
     if (!visible) return;
     return onSnapshot(ownedQuery('photos'), (snapshot) => {
       setPhotos([...snapshot.docs].sort(newestFirst).map((d) => ({ id: d.id, ...(d.data() as Omit<PhotoRow, 'id'>) })));
-    });
+    }, listenerFailed('photos'));
   }, [visible]);
 
   useEffect(() => {
     if (!visible) return;
     return onSnapshot(ownedQuery('links'), (snapshot) => {
       setLinks([...snapshot.docs].sort(newestFirst).map((d) => ({ id: d.id, ...(d.data() as Omit<LinkRow, 'id'>) })));
-    });
+    }, listenerFailed('links'));
   }, [visible]);
 
   useEffect(() => {
@@ -238,7 +246,7 @@ export default function AddExistingItemModal({
           .map((d) => ({ id: d.id, ...(d.data() as Omit<StickerRow, 'id'>) }))
           .filter((s) => !s.trashed)
       );
-    });
+    }, listenerFailed('stickers'));
   }, [visible]);
 
   useEffect(() => {
@@ -247,7 +255,7 @@ export default function AddExistingItemModal({
       setCustomDatabases(
         snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabase, 'id'>) })).sort(byName)
       );
-    });
+    }, listenerFailed('customDatabases'));
   }, [visible, includeCustomDatabases]);
 
   useEffect(() => {
@@ -261,7 +269,7 @@ export default function AddExistingItemModal({
           .map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabaseRow, 'id'>) }))
           .filter((r) => r.databaseId === openDatabaseId)
       );
-    });
+    }, listenerFailed('customDatabaseRows'));
   }, [visible, openDatabaseId]);
 
   useEffect(() => {
@@ -272,7 +280,7 @@ export default function AddExistingItemModal({
           .map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabaseView, 'id'>) }))
           .filter((v) => v.databaseId === openDatabaseId)
       );
-    });
+    }, listenerFailed('customDatabaseViews'));
   }, [visible, openDatabaseId]);
 
   useEffect(() => {
@@ -284,7 +292,7 @@ export default function AddExistingItemModal({
           .filter((d) => !d.data().calendarDate && !d.data().deletedAt)
           .map((d) => ({ id: d.id, title: (d.data().title as string) || 'Без назви' }))
       );
-    });
+    }, listenerFailed('documents'));
   }, [visible, includeDocuments]);
 
   useEffect(() => {
@@ -309,7 +317,7 @@ export default function AddExistingItemModal({
       setOpenDocTitle((data.title as string) || 'Без назви');
       const blocks = ((data.blocks as Block[]) ?? []).filter((b) => (b.type ?? 'paragraph') !== 'checkbox');
       setOpenDocBlocks(blocks);
-    });
+    }, listenerFailed('document blocks'));
   }, [visible, openDocId]);
 
   const needle = searchQuery.trim().toLowerCase();

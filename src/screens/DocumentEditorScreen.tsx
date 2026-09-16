@@ -109,6 +109,7 @@ import { downloadToFolder, showDownloadedFile } from '../utils/downloadToFolder'
 import AttachmentImage from '../components/AttachmentImage';
 import DocumentCanvas, { DocumentCanvasHandle } from '../components/DocumentCanvas';
 import CanvasReferencePanel from '../components/CanvasReferencePanel';
+import CrashBoundary from '../components/CrashBoundary';
 import { assembleWithDivider } from '../utils/canvasOrder';
 import { stableStringify } from '../utils/stableStringify';
 import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils/haptics';
@@ -5198,12 +5199,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           rule (see pane_double_split memory). */}
       {canvasMode && !embedded && referencePanelOpen && (
         <View style={styles.referencePanelDock} pointerEvents="box-none">
-          <CanvasReferencePanel
-            visible
-            onClose={() => setReferencePanelOpen(false)}
-            canvasRef={canvasApiRef}
-            onInsertBlock={insertReferenceBlock}
-          />
+          {/* Its own boundary: a panel that browses every database in the
+              app has more ways to fail than the note it stands beside,
+              and none of them should be able to take the note down. */}
+          <CrashBoundary>
+            <CanvasReferencePanel
+              visible
+              onClose={() => setReferencePanelOpen(false)}
+              canvasRef={canvasApiRef}
+              onInsertBlock={insertReferenceBlock}
+            />
+          </CrashBoundary>
         </View>
       )}
 
@@ -5791,6 +5797,11 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     right: 0,
     width: '45%',
     minWidth: 260,
+    // Android stacks by elevation before it stacks by order, and the
+    // canvas this lies over raises its own pieces (its "+" sits at
+    // elevation 4). Saying where this goes beats being a later sibling.
+    zIndex: 30,
+    elevation: 30,
   },
   loadingContainer: {
     alignItems: 'center',

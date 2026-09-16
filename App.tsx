@@ -25,6 +25,7 @@ import { GlassPortalHost } from './src/components/GlassPortal';
 import { AskHost } from './src/components/surfaces/Ask';
 import { ThemeProvider, ThemedStatusBar, useTheme } from './src/theme/ThemeProvider';
 import CrashBoundary from './src/components/CrashBoundary';
+import FatalErrorOverlay from './src/components/FatalErrorOverlay';
 import AlarmRingOverlay from './src/components/AlarmRingOverlay';
 import { useStickerDeepLink } from './src/hooks/useStickerDeepLink';
 
@@ -153,6 +154,10 @@ export default function App() {
             </CrashBoundary>
             </GlassTargetProvider>
           </GlassPortalHost>
+          {/* Above the portal host, and outside every boundary:
+              what it reports is the error class that leaves NOTHING
+              on the screen - see src/utils/fatalErrors.ts. */}
+          <FatalErrorOverlay />
           </ThemedNavigationContainer>
           </KeyboardProvider>
         </SafeAreaProvider>

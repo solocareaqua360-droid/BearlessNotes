@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
 import { hapticDrop, hapticPickUp, hapticWarning } from '../utils/haptics';
@@ -99,15 +99,22 @@ export function useReferenceDrag({
   // One gesture for the whole panel list, not one per row - the same
   // reason the explorer's own carry had to move off its rows: a row can
   // scroll away mid-drag, and a gesture that belongs to it dies with it.
-  const gesture = Gesture.Pan()
-    .activateAfterLongPress(LONG_PRESS_MS)
-    .runOnJS(true)
-    .onStart((e) => pickUpAt(e.absoluteX, e.absoluteY))
-    .onUpdate((e) => updateDrag(e.absoluteX, e.absoluteY))
-    .onEnd((_e, success) => {
-      if (success) endDrag();
-    })
-    .onFinalize(() => cancelDrag());
+  // Built ONCE. A fresh Gesture object on every render hands
+  // GestureDetector a new configuration mid-drag - and the ghost moving
+  // is itself a render, so that is every frame of every drag.
+  const gesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activateAfterLongPress(LONG_PRESS_MS)
+        .runOnJS(true)
+        .onStart((e) => pickUpAt(e.absoluteX, e.absoluteY))
+        .onUpdate((e) => updateDrag(e.absoluteX, e.absoluteY))
+        .onEnd((_e, success) => {
+          if (success) endDrag();
+        })
+        .onFinalize(() => cancelDrag()),
+    [pickUpAt, updateDrag, endDrag, cancelDrag]
+  );
 
   return { ghost, gesture, registerRow, dragging: ghost !== null };
 }

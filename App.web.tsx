@@ -20,6 +20,7 @@ import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
 import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
 import CrashBoundary from './src/components/CrashBoundary';
+import FatalErrorOverlay from './src/components/FatalErrorOverlay';
 import { driveTokenError, getDriveToken, hasDriveToken, subscribeToDriveToken } from './src/utils/driveToken.web';
 
 // The browser build: the whole app.
@@ -276,6 +277,8 @@ export default function App() {
           </GlassPortalHost>
         </ThemedNavigationContainer>
         </CrashBoundary>
+        {/* See App.tsx: the errors no boundary can catch. */}
+        <FatalErrorOverlay />
       </GestureHandlerRootView>
     </SafeAreaProvider>
     </ThemeProvider>
