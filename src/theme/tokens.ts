@@ -28,6 +28,14 @@ export type Theme = {
   // What stands behind everything: today's drifting gradient, the same
   // gradient bleached almost to nothing (white), or a flat fill (black).
   backdrop: 'gradient' | 'clouds' | 'plain';
+  // The three soft blooms the backdrop drifts. They were written into the
+  // backdrop itself and were warm - an amber, a sea green, a violet - and
+  // that amber is what made the white theme read as yellowish rather than
+  // clean. A theme names its own now: the reference the user brought
+  // (a milk-white window over an out-of-focus wash) is cool underneath,
+  // because blue reads as white and yellow reads as warm.
+  clouds: [string, string, string];
+  cloudStrength: number;
   // The screen itself, a panel on it, and something floating over that.
   ground: string;
   surface: string;
@@ -94,6 +102,8 @@ const colour: Theme = {
   name: 'Кольорова',
   scheme: 'dark',
   backdrop: 'gradient',
+  clouds: ['#D8945C', '#7FB0A6', '#9182C4'],
+  cloudStrength: 1,
   ground: '#2A2522',
   surface: 'rgba(255,255,255,0.07)',
   raised: 'rgba(24,21,19,0.42)',
@@ -127,14 +137,22 @@ const white: Theme = {
   name: 'Біла',
   scheme: 'light',
   backdrop: 'clouds',
+  // Cool and out of focus: a pale sky, a cold mint, a grey lilac. Strong
+  // enough to tint the white glass over them and no stronger - what has
+  // to stay white is everything in front.
+  clouds: ['#A7C6E0', '#BBD5D6', '#C2C9E2'],
+  cloudStrength: 0.42,
   ground: '#FFFFFF',
   // A shade off the ground on purpose: in white and black the record
   // cards lose their own colours (the user's call - "білий означає
   // білий скрізь"), so the only thing left telling a card from the page
   // is this step and the shadow under it. Equal to the ground they
   // would simply disappear.
-  surface: '#F5F6F8',
-  raised: '#FFFFFF',
+  // Slightly see-through, which is the other half of the reference: the
+  // card is white, but the cool wash behind it comes through just enough
+  // that the surface shifts as the backdrop drifts under it.
+  surface: 'rgba(252,253,255,0.82)',
+  raised: 'rgba(255,255,255,0.9)',
   ink: { primary: '#111827', muted: '#6B7280', faint: '#9CA3AF' },
   // Graphite, not the warm amber: colour in this theme is for danger.
   accent: '#374151',
@@ -149,8 +167,10 @@ const white: Theme = {
   glass: {
     blur: 40,
     blurTint: 'light',
-    body: '#F4F4FF',
-    opacity: 0.38,
+    // Milk, not tint: whitened glass close to frosted, the way the
+    // reference's windows are - not our dark matte.
+    body: '#FBFCFF',
+    opacity: 0.62,
     specular: '#FFFFFF',
     specularIntensity: 1,
     rim: '#FFFFFF',
@@ -171,6 +191,8 @@ const black: Theme = {
   name: 'Чорна',
   scheme: 'dark',
   backdrop: 'plain',
+  clouds: ['#000000', '#000000', '#000000'],
+  cloudStrength: 0,
   ground: '#000000',
   surface: '#0E0F12',
   raised: '#16171B',

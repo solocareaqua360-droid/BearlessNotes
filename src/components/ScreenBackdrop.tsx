@@ -70,7 +70,7 @@ export default function ScreenBackdrop({
     theme.backdrop === 'gradient' ? colors : [theme.ground, theme.ground, theme.ground];
   // How much of a cloud survives. Bleached almost away in white; gone in
   // black.
-  const cloud = theme.backdrop === 'gradient' ? 1 : theme.backdrop === 'clouds' ? 0.18 : 0;
+  const cloud = theme.cloudStrength;
 
   const style = useAnimatedStyle(() => {
     // Modulo the tile: at one tile of travel the strip is exactly back
@@ -111,16 +111,16 @@ export default function ScreenBackdrop({
                 no seam to hide - what meets at the join is transparent on
                 both sides. */}
             <RadialGradient id={`${id}-a`} cx="0.5" cy="0.5" r="0.5">
-              <Stop offset="0" stopColor="#D8945C" stopOpacity={0.55 * cloud} />
-              <Stop offset="1" stopColor="#D8945C" stopOpacity="0" />
+              <Stop offset="0" stopColor={theme.clouds[0]} stopOpacity={0.55 * cloud} />
+              <Stop offset="1" stopColor={theme.clouds[0]} stopOpacity="0" />
             </RadialGradient>
             <RadialGradient id={`${id}-b`} cx="0.5" cy="0.5" r="0.5">
-              <Stop offset="0" stopColor="#7FB0A6" stopOpacity={0.5 * cloud} />
-              <Stop offset="1" stopColor="#7FB0A6" stopOpacity="0" />
+              <Stop offset="0" stopColor={theme.clouds[1]} stopOpacity={0.5 * cloud} />
+              <Stop offset="1" stopColor={theme.clouds[1]} stopOpacity="0" />
             </RadialGradient>
             <RadialGradient id={`${id}-c`} cx="0.5" cy="0.5" r="0.5">
-              <Stop offset="0" stopColor="#9182C4" stopOpacity={0.45 * cloud} />
-              <Stop offset="1" stopColor="#9182C4" stopOpacity="0" />
+              <Stop offset="0" stopColor={theme.clouds[2]} stopOpacity={0.45 * cloud} />
+              <Stop offset="1" stopColor={theme.clouds[2]} stopOpacity="0" />
             </RadialGradient>
             {/* The tile itself. Three clouds at different depths across
                 the width, none of them touching the tile's edge. */}
