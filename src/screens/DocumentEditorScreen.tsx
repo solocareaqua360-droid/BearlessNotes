@@ -134,7 +134,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_DANGER, GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
-import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
+import { CAPSULE_DROP, CHROME_TOP, NAV_BOTTOM, NAV_BUTTON, NAV_GAP, NAV_PADDING, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import SaveRing from '../components/SaveRing';
 
 // The rail's capsule stood on its end is RAIL_WIDTH across; lying down on
@@ -5009,6 +5009,67 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         </GlassPortal>
       )}
 
+      {/* The document's own dock. «План навігації», one level deeper: the
+          island vanishes when a note opens, and the reason written into
+          it was that there is nothing to navigate to - which stopped
+          being true the moment the dock came to mean "where you are and
+          what is worth doing here". A note has plenty of that, and it was
+          all crowded onto the right edge or buried in "…".
+
+          Not a new control: the same pill, in the same place, at the same
+          height, holding this screen's context instead of the desks. It
+          costs the rail nothing - the room it stands in was empty.
+
+          Gone while the keyboard is up: the formatting toolbar owns the
+          foot of the screen then, and two things in one place is exactly
+          the confusion this is meant to remove. On the canvas there is no
+          keyboard, so the main use is untouched. */}
+      {!embedded && editorFocused && keyboardHeight <= 0 && (
+        <GlassPortal>
+          <View
+            style={[styles.docDock, { bottom: NAV_BOTTOM + editorInsets.bottom }]}
+            pointerEvents="box-none"
+          >
+            <GlassDrop style={styles.docDockShell}>
+              <View style={styles.docDockRow}>
+                {/* One button, two states - the app's own idea, already
+                    proven by the back arrow that becomes a checkmark. The
+                    label says where the press takes you, exactly as the
+                    "…" menu's row used to. */}
+                <Pressable
+                  style={styles.docDockItem}
+                  onPress={() => (canvasMode ? leaveCanvas() : setCanvasMode(true))}
+                >
+                  <GlassIcon name={canvasMode ? 'document-text-outline' : 'shapes-outline'} size={20} />
+                  <Text style={styles.docDockLabel}>{canvasMode ? 'Сторінка' : 'Полотно'}</Text>
+                </Pressable>
+                {/* Only where it means something. References have no
+                    business on the page, and a control that cannot act is
+                    a control you have to read and dismiss every time. */}
+                {canvasMode && (
+                  <Pressable onPress={() => setReferencePanelOpen((v) => !v)}>
+                    {referencePanelOpen ? (
+                      // Open, marked with the same lens the island marks
+                      // the desk you are on with: one language for every
+                      // shape of this control.
+                      <GlassDrop style={styles.docDockItem} lift="none" blurAmount={0} convex>
+                        <GlassIcon name="albums-outline" size={20} />
+                        <Text style={styles.docDockLabel}>Референси</Text>
+                      </GlassDrop>
+                    ) : (
+                      <View style={styles.docDockItem}>
+                        <GlassIcon name="albums-outline" size={20} />
+                        <Text style={styles.docDockLabel}>Референси</Text>
+                      </View>
+                    )}
+                  </Pressable>
+                )}
+              </View>
+            </GlassDrop>
+          </View>
+        </GlassPortal>
+      )}
+
       {exportMenuOpen && <Pressable style={styles.exportMenuBackdrop} onPress={() => setExportMenuOpen(false)} />}
       {exportMenuOpen && (
         <GlassPortal>
@@ -5030,29 +5091,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             pointerEvents="none"
           />
           <Text style={styles.exportMenuLabel}>Вигляд</Text>
-          <Pressable
-            style={styles.exportMenuRow}
-            onPress={() => {
-              setExportMenuOpen(false);
-              if (canvasMode) leaveCanvas();
-              else setCanvasMode(true);
-            }}
-          >
-            <Ionicons name={canvasMode ? 'document-text-outline' : 'shapes-outline'} size={17} color={GLASS_TEXT} />
-            <Text style={styles.exportMenuRowLabel}>{canvasMode ? 'Сторінка' : 'Полотно'}</Text>
-          </Pressable>
-          {canvasMode && (
-            <Pressable
-              style={styles.exportMenuRow}
-              onPress={() => {
-                setExportMenuOpen(false);
-                setReferencePanelOpen((v) => !v);
-              }}
-            >
-              <Ionicons name="albums-outline" size={17} color={GLASS_TEXT} />
-              <Text style={styles.exportMenuRowLabel}>{referencePanelOpen ? 'Сховати референси' : 'Референси'}</Text>
-            </Pressable>
-          )}
+          {/* «Полотно»/«Сторінка» and «Референси» used to stand here.
+              They are the two things you press many times in one sitting,
+              and they were lying deeper than the choice of paper colour -
+              so they moved to the dock at the foot of the screen, where
+              they are one press away. What stays in this menu is what you
+              set once. */}
           <Text style={styles.exportMenuLabel}>Оформлення</Text>
           <Pressable style={styles.exportMenuRow} onPress={openCoverImageOptions}>
             <Ionicons name="image-outline" size={17} color={GLASS_TEXT} />
@@ -5844,6 +5888,37 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   // The column the editor's own controls stand in, at the right edge -
   // the same place, width and glass as the documents screen's rail. `top`
   // comes from the safe-area inset.
+  // The document's own dock - see where it is mounted. Its geometry is
+  // the island's own (constants/rail), so the two read as one control in
+  // two places rather than two bars that happen to look alike.
+  docDock: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  docDockShell: {
+    padding: NAV_PADDING,
+    maxWidth: '88%',
+  },
+  docDockRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: NAV_GAP,
+  },
+  docDockItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    height: NAV_BUTTON,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+  },
+  docDockLabel: {
+    fontSize: 14,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT,
+  },
   editorRail: {
     position: 'absolute',
     // `right` is set inline - in two panes it is the pane's edge, not the
