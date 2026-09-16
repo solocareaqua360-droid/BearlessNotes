@@ -52,17 +52,28 @@ export default function RailCapsule({
   // left one, and a rail against the divider in the middle of the screen
   // is a rail in the way of both halves.
   side = 'right',
+  // A colour UNDER the glass - the "+" carries its database's accent.
+  // Here rather than in a hand-built button beside the rail: that button
+  // had its own width and its own distance from the edge, and drifted
+  // off the rail's axis the moment either was touched.
+  tint,
 }: {
   buttons: RailButton[];
   bottom: number;
   side?: 'left' | 'right';
+  tint?: string;
 }) {
   const theme = useTheme();
   if (buttons.length === 0) return null;
   return (
     <GlassPortal>
       <GlassDrop
-        style={[styles.capsule, side === 'left' ? styles.capsuleLeft : styles.capsuleRight, { bottom }]}
+        style={[
+          styles.capsule,
+          side === 'left' ? styles.capsuleLeft : styles.capsuleRight,
+          { bottom },
+          !!tint && { backgroundColor: tint },
+        ]}
       >
         {/* One flat column with one gap between everything - the hairline
             is a sibling of the buttons, not part of the next one, or it

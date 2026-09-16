@@ -587,21 +587,16 @@ export default function DatabaseChrome<T extends { id: string }>({
         />
       )}
       {isFocused && !list.isSelectMode && !searchingAlone && onAdd && !explorer?.active && (
-        <GlassPortal>
-          {/* The one button that is not plain glass: the accent sits
-              UNDER the drop, so it is the same piece of glass as every
-              other control with this database's colour showing through
-              it - rather than the flat disc it was, which is what the
-              user spotted still standing in the old style. */}
-          <Pressable
-            style={[styles.fabHit, railSide === 'left' ? styles.fabLeft : styles.fabRight, { bottom: rail.addBottom }]}
-            onPress={onAdd}
-          >
-            <GlassDrop style={[styles.fab, { backgroundColor: accentGlass }]}>
-              <GlassIcon name="add-outline" size={28} />
-            </GlassDrop>
-          </Pressable>
-        </GlassPortal>
+        // The same capsule as everything else on the rail, with this
+        // database's accent under its glass. It was a button of its own
+        // beside the rail, with its own width and its own distance from
+        // the edge, and it sat off the rail's axis - twice.
+        <RailCapsule
+          side={railSide}
+          bottom={rail.addBottom}
+          tint={accentGlass}
+          buttons={[{ icon: 'add-outline', size: 28, onPress: onAdd }]}
+        />
       )}
 
       {!hideDrawer && (
@@ -777,16 +772,5 @@ const styles = StyleSheet.create({
   fabLeft: {
     left: 20,
   },
-  // Where it stands; the drop inside it is the glass.
-  fabHit: {
-    position: 'absolute',
-  },
-  // The rail's own width, so the "+" is the same size as the round
-  // button above it - at 56 it read as the small one of the set.
-  fab: {
-    width: RAIL_WIDTH,
-    height: RAIL_WIDTH,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+
 });

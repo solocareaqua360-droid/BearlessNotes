@@ -67,6 +67,7 @@ import {
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import RenamePrompt from '../components/RenamePrompt';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
+import RailCapsule from '../components/RailCapsule';
 import VideoPlayerModal from '../components/VideoPlayerModal';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
@@ -93,7 +94,7 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
-import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
 import { ask, confirm } from '../components/surfaces/Ask';
 
 const AUTOSAVE_DELAY_MS = 600;
@@ -2688,11 +2689,11 @@ export default function BoardScreen() {
             </View>
           </View>
         ) : (
-          <Pressable style={[styles.fabHit, { bottom: rail.addBottom }]} onPress={() => setAddSheetVisible(true)}>
-            <GlassDrop style={styles.fab}>
-              <GlassIcon name="add" size={26} />
-            </GlassDrop>
-          </Pressable>
+          <RailCapsule
+            bottom={rail.addBottom}
+            tint={ACCENT_GLASS}
+            buttons={[{ icon: 'add-outline', size: 28, onPress: () => setAddSheetVisible(true) }]}
+          />
         )}
 
         {/* «Меню», where the right button was pressed. Every row calls
@@ -3175,19 +3176,7 @@ const styles = StyleSheet.create({
   // FloatingIslandTabBar's pill (bottom: 24, ~48 tall) is always showing
   // underneath here - 104 is the fixed clearance BulkActionBar's own
   // aboveTabBar variant uses for the same pill.
-  // Where it stands; the drop inside it is the glass. Its own colour
-  // sits UNDER the glass - see DatabaseChrome's own "+".
-  fabHit: {
-    position: 'absolute',
-    right: 20,
-  },
-  fab: {
-    width: RAIL_WIDTH,
-    height: RAIL_WIDTH,
-    backgroundColor: ACCENT_GLASS,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+
   marquee: {
     position: 'absolute',
     backgroundColor: 'rgba(37,99,235,0.15)',
