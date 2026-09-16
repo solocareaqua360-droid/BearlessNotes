@@ -114,7 +114,8 @@ import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
-import { useRecordColour } from '../theme/ThemeProvider';
+import { useRecordColour, useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import type { colorForDocument } from '../utils/documentColor';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
@@ -199,6 +200,10 @@ function formatReminderBadge(item: Block): string | null {
 
 // A generic document icon, tinted per extension so a PDF/Word/Excel
 // attachment is recognizable at a glance without needing per-brand icons.
+// The ink on a sticker: the sticker is yellow in every theme, so this
+// cannot follow the paper's ink.
+const STICKER_INK = '#111827';
+
 function fileIconFor(name?: string): 'document-text-outline' | 'document-outline' {
   return (name ?? '').toLowerCase().endsWith('.pdf') ? 'document-text-outline' : 'document-outline';
 }
@@ -841,6 +846,7 @@ function TableBlockContent({
   canEdit: boolean;
   onUpdate: (patch: Partial<Block>) => void;
 }) {
+  const styles = useStyles(makeStyles);
   const rows = block.tableRows && block.tableRows.length > 0 ? block.tableRows : [{ cells: ['', ''] }];
   const columnCount = rows[0]?.cells.length ?? 0;
   const [selected, setSelected] = useState<{ r: number; c: number } | null>(null);
@@ -1043,6 +1049,8 @@ function BlockRow({
   inputRef,
   paperColor,
 }: BlockRowProps) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   // Outside edit mode (or while selecting), the text field is completely
   // inert to touch (pointerEvents: 'none') rather than merely
   // non-editable - a TextInput that can still receive touches keeps
@@ -1522,6 +1530,9 @@ function BlockRow({
           type === 'code' && styles.codeText,
           item.checked && styles.checkedText,
           rowPaperColor && { color: rowPaperColor.text },
+          // A sticker is yellow in every theme, so its ink stays dark
+          // even where the paper's ink has gone white.
+          item.isSticker && styles.stickerInk,
         ]}
         multiline
       />
@@ -1546,7 +1557,7 @@ function BlockRow({
           {item.text ? (
             <FormattedText
               segments={parseFormattedText(item.text)}
-              defaultColor={rowPaperColor?.text ?? '#111827'}
+              defaultColor={item.isSticker ? STICKER_INK : (rowPaperColor?.text ?? theme.paper.ink)}
             />
           ) : (
             <Text style={[styles.blockPlaceholder, rowPaperColor && { color: rowPaperColor.textMuted }]}>…</Text>
@@ -1592,14 +1603,14 @@ function BlockRow({
             <Ionicons
               name={item.checked ? 'checkbox' : 'square-outline'}
               size={20}
-              color={item.checked ? ACCENT : '#9CA3AF'}
+              color={item.checked ? ACCENT : theme.paper.inkFaint}
             />
           </Pressable>
           {textField}
         </View>
         {!isSelectMode && (
           <Pressable style={styles.checkboxReminderRow} hitSlop={4} onPress={() => onOpenReminder(item.id)}>
-            <Ionicons name="alarm-outline" size={11} color={reminderLabel ? ACCENT : '#9CA3AF'} />
+            <Ionicons name="alarm-outline" size={11} color={reminderLabel ? ACCENT : theme.paper.inkFaint} />
             <Text style={[styles.checkboxReminderText, !reminderLabel && styles.checkboxReminderTextEmpty]}>
               {reminderLabel ?? 'Нагадування'}
             </Text>
@@ -1644,7 +1655,7 @@ function BlockRow({
           <Ionicons
             name={isSelectMode ? (isSelected ? 'checkmark-circle' : 'ellipse-outline') : 'reorder-two-outline'}
             size={isSelectMode ? 26 : 20}
-            color={isSelected ? ACCENT : '#9CA3AF'}
+            color={isSelected ? ACCENT : theme.paper.inkFaint}
           />
         </Pressable>
       )}
@@ -1918,6 +1929,7 @@ function BlockList({
   paperColor,
   hideHandle,
 }: BlockListProps) {
+  const styles = useStyles(makeStyles);
   const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
   // The block actually long-pressed to start the drag - the rest of a
   // multi-select group should visually collapse toward this one, not each
@@ -2215,6 +2227,8 @@ export type DocumentEditorHandle = {
 };
 
 function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHandle>) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const embedded = 'embedded' in props;
   // Puts a shared/downloaded photo together with its drawing - see
   // useFlattenPhoto. `flattenNode` mounts off-screen; it only ever
@@ -5223,7 +5237,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           }}
           onBlur={() => setTitleActive(false)}
           placeholder="Без назви"
-          placeholderTextColor={paperColor?.textMuted}
+          placeholderTextColor={paperColor?.textMuted ?? theme.paper.inkFaint}
           style={[styles.titleInput, paperColor && { color: paperColor.text }]}
           multiline
         />
@@ -5236,7 +5250,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             style={[
               styles.titleInput,
               paperColor && { color: paperColor.text },
-              !title && { color: paperColor?.textMuted ?? '#9CA3AF' },
+              !title && { color: paperColor?.textMuted ?? theme.paper.inkFaint },
             ]}
           >
             {title || 'Без назви'}
@@ -5304,7 +5318,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         {selectedIds.size === 0 && (
           <View style={styles.addBlockRow}>
             <Pressable style={styles.addBlock} onPress={addBlockAtEnd}>
-              <Ionicons name="add" size={18} color={paperColor?.text ?? '#111827'} />
+              <Ionicons name="add" size={18} color={paperColor?.text ?? theme.paper.ink} />
               <Text style={[styles.addBlockLabel, paperColor && { color: paperColor.text }]}>Додати блок</Text>
             </Pressable>
             {/* Only while there is something to paste, and it says what
@@ -5312,7 +5326,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                 worse than none. */}
             {!!copiedObject && (
               <Pressable style={styles.addBlock} onPress={pasteCopiedObject}>
-                <Ionicons name="clipboard-outline" size={18} color={paperColor?.text ?? '#111827'} />
+                <Ionicons name="clipboard-outline" size={18} color={paperColor?.text ?? theme.paper.ink} />
                 <Text style={[styles.addBlockLabel, paperColor && { color: paperColor.text }]}>
                   Вставити {copiedObject.label}
                 </Text>
@@ -5712,10 +5726,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
 
 export default forwardRef(DocumentEditorScreen);
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: t.paper.fill,
   },
   loadingContainer: {
     alignItems: 'center',
@@ -5878,7 +5892,7 @@ const styles = StyleSheet.create({
     fontSize: 48,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: '#111827',
+    color: t.paper.ink,
     paddingHorizontal: 20,
     paddingBottom: 12,
   },
@@ -5894,17 +5908,20 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: 'transparent',
-    backgroundColor: '#fff',
+    backgroundColor: t.paper.fill,
   },
   blockRowSelected: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: t.paper.selected,
   },
   blockRowBoundary: {
-    borderColor: '#E5E7EB',
+    borderColor: t.paper.edge,
   },
   // A sticker block keeps this even when selected/boundary-highlighted -
   // it's later in the style array than both, so it wins over
   // blockRowSelected's own background.
+  stickerInk: {
+    color: STICKER_INK,
+  },
   blockRowSticker: {
     backgroundColor: '#FBE97A',
   },
@@ -5942,7 +5959,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     includeFontPadding: false,
     textAlignVertical: 'top',
-    color: '#111827',
+    color: t.paper.ink,
     paddingHorizontal: 8,
     paddingVertical: 6,
     // See TEXT_SWIPE_MARGIN.
@@ -5959,10 +5976,10 @@ const styles = StyleSheet.create({
   },
   // Its own ground, so a block of code is plainly not prose.
   codeBlock: {
-    backgroundColor: 'rgba(17,24,39,0.06)',
+    backgroundColor: t.paper.tint,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.10)',
+    borderColor: t.paper.edge,
     paddingVertical: 6,
     paddingHorizontal: 8,
   },
@@ -5975,7 +5992,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     fontSize: 10,
     fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
+    color: t.paper.inkFaint,
   },
   heading1: {
     fontSize: 26,
@@ -5993,7 +6010,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT_SEMIBOLD,
   },
   blockPlaceholder: {
-    color: '#9CA3AF',
+    color: t.paper.inkFaint,
   },
   checkedText: {
     textDecorationLine: 'line-through',
@@ -6022,20 +6039,20 @@ const styles = StyleSheet.create({
     color: ACCENT,
   },
   checkboxReminderTextEmpty: {
-    color: '#9CA3AF',
+    color: t.paper.inkFaint,
     fontWeight: '500',
     fontFamily: FONT_MEDIUM,
   },
   bulletMark: {
     fontSize: 18,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: t.paper.ink,
     paddingLeft: 4,
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: t.paper.edge,
     marginVertical: 12,
     marginHorizontal: 4,
   },
@@ -6054,24 +6071,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 4,
     borderRadius: 6,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: t.paper.tint,
     alignItems: 'center',
   },
   tableFormulaRefText: {
     fontSize: 12,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: '#6B7280',
+    color: t.paper.inkMuted,
   },
   tableFormulaInput: {
     flex: 1,
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: t.paper.ink,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: t.paper.edge,
     borderRadius: 6,
   },
   tableFormulaDoneButton: {
@@ -6096,7 +6113,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: '#9CA3AF',
+    color: t.paper.inkFaint,
   },
   tableColumnHeaderCell: {
     width: 84,
@@ -6108,7 +6125,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: '#9CA3AF',
+    color: t.paper.inkFaint,
   },
   tableRow: {
     flexDirection: 'row',
@@ -6121,18 +6138,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: t.paper.edge,
     borderRadius: 6,
   },
   tableCellSelected: {
     borderColor: ACCENT,
     borderWidth: 2,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: t.paper.selected,
   },
   tableCellText: {
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: t.paper.ink,
   },
   tableRowRemove: {
     padding: 2,
@@ -6151,13 +6168,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: '#6B7280',
+    color: t.paper.inkMuted,
   },
   blockImageWrap: {
     flex: 1,
     height: 180,
     borderRadius: 10,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: t.paper.tint,
     overflow: 'hidden',
   },
   blockImage: {
@@ -6193,7 +6210,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 10,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: t.paper.tint,
   },
   fileBlockTap: {
     flex: 1,
@@ -6205,7 +6222,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: t.paper.ink,
   },
   fileDbButton: {
     padding: 2,
@@ -6224,7 +6241,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: '#F3F4F6',
+    borderColor: t.paper.edge,
   },
   fileCacheBadgeMissing: {
     backgroundColor: '#DC2626',
@@ -6240,13 +6257,13 @@ const styles = StyleSheet.create({
   attachmentStatusLabel: {
     fontSize: 11,
     fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
+    color: t.paper.inkFaint,
   },
   linkCardVideo: {
     flex: 1,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#F3F4F6',
+    borderColor: t.paper.edge,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -6285,7 +6302,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#F3F4F6',
+    borderColor: t.paper.edge,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -6306,7 +6323,7 @@ const styles = StyleSheet.create({
   linkGenericThumb: {
     width: 80,
     height: 80,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: t.paper.tint,
   },
   linkCardBody: {
     flex: 1,
@@ -6322,19 +6339,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: '#111827',
+    color: t.paper.ink,
   },
   linkCardCaption: {
     fontSize: 12,
     fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
+    color: t.paper.inkFaint,
   },
   linkCardCompact: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 12,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: t.paper.tint,
     paddingVertical: 10,
     paddingHorizontal: 8,
   },
@@ -6363,7 +6380,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: t.paper.ink,
   },
   linkPromptBackdrop: {
     flex: 1,
@@ -6457,7 +6474,7 @@ const styles = StyleSheet.create({
   addBlockLabel: {
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: t.paper.ink,
   },
   selectedActionsWrap: {
     position: 'absolute',

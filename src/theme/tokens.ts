@@ -50,6 +50,23 @@ export type Theme = {
   accent: string;
   danger: string;
   edge: { hairline: string; strong: string };
+  // The sheet a note is read on, and what is written on it. A role of
+  // its own, not `surface`: in the colour theme the note's paper is white
+  // over a dark ground (it always was), so the two cannot be one value.
+  // In the black theme the paper is a very dark grey rather than black -
+  // black paper on a black ground has no edge, and white on pure black
+  // flares at the letters' contours over a long read; the ink there is
+  // taken a shade below white for the same reason. `tint` is the small
+  // well a code block or a file row stands in, `selected` a picked block.
+  paper: {
+    fill: string;
+    ink: string;
+    inkMuted: string;
+    inkFaint: string;
+    edge: string;
+    tint: string;
+    selected: string;
+  };
   lift: Lift;
   // The glass a floating control is made of - a role in ALL THREE
   // themes, not a trick of the colour one. A white or black theme with
@@ -111,6 +128,15 @@ const colour: Theme = {
   accent: '#F5C77E',
   danger: '#FB7185',
   edge: { hairline: 'rgba(255,255,255,0.22)', strong: 'rgba(255,255,255,0.4)' },
+  paper: {
+    fill: '#FFFFFF',
+    ink: '#111827',
+    inkMuted: '#6B7280',
+    inkFaint: '#9CA3AF',
+    edge: '#E5E7EB',
+    tint: '#F3F4F6',
+    selected: '#EFF6FF',
+  },
   lift: 'blur',
   glass: {
     blur: 60,
@@ -163,6 +189,15 @@ const white: Theme = {
   accent: '#374151',
   danger: '#DC2626',
   edge: { hairline: 'rgba(17,24,39,0.10)', strong: 'rgba(17,24,39,0.18)' },
+  paper: {
+    fill: '#FFFFFF',
+    ink: '#111827',
+    inkMuted: '#6B7280',
+    inkFaint: '#9CA3AF',
+    edge: '#E5E7EB',
+    tint: '#F3F4F6',
+    selected: '#EFF6FF',
+  },
   lift: 'shadow',
   // On white almost nothing can come from the fill - white glass on a
   // white ground has no contrast to spend. So the body stays thin and
@@ -208,6 +243,15 @@ const black: Theme = {
   accent: '#E5E7EB',
   danger: '#FB7185',
   edge: { hairline: 'rgba(255,255,255,0.18)', strong: 'rgba(255,255,255,0.45)' },
+  paper: {
+    fill: '#0E0F12',
+    ink: '#ECEDEF',
+    inkMuted: 'rgba(236,237,239,0.62)',
+    inkFaint: 'rgba(236,237,239,0.38)',
+    edge: 'rgba(255,255,255,0.14)',
+    tint: 'rgba(255,255,255,0.06)',
+    selected: 'rgba(255,255,255,0.10)',
+  },
   lift: 'glow',
   // The one the user called bad, and the reason was the milky wash: a
   // bright fill and a bright ring all the way round turn a button on
