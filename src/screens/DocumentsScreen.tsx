@@ -50,6 +50,7 @@ import DocumentEditorScreen from './DocumentEditorScreen';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from '../components/SortMenuRows';
 import RailCapsule from '../components/RailCapsule';
 import SearchField from '../components/SearchField';
+import GlassDrop from '../components/GlassDrop';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import Menu from '../components/surfaces/Menu';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from '../components/TagsDrawer';
@@ -1078,15 +1079,7 @@ export default function DocumentsScreen({
                 </ScrollView>
               </View>
             )}
-            <View style={styles.sideIsland}>
-              <BlurView
-                intensity={60}
-                tint="dark"
-                blurMethod="dimezisBlurView"
-                blurTarget={blurTarget ?? undefined}
-                style={StyleSheet.absoluteFill}
-                pointerEvents="none"
-              />
+            <GlassDrop style={styles.sideIsland}>
               <Pressable
                 hitSlop={8}
                 onPress={() => {
@@ -1117,7 +1110,7 @@ export default function DocumentsScreen({
                   </Pressable>
                 </>
               )}
-            </View>
+            </GlassDrop>
           </View>
         </View>
         </GlassPortal>
@@ -1891,14 +1884,6 @@ const styles = StyleSheet.create({
     // As wide as the navigation island is thick: 19 + a 24px icon + 19,
     // inside a 1px border on each side.
     paddingHorizontal: 19,
-    borderRadius: 999,
-    // The blur fills this view; overflow keeps it inside the rounded
-    // shape, so the edge stays a clean line instead of being smeared out
-    // with everything else.
-    overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
   },
   // The divider turns with the capsule: a short rule across it, not down it.
   sideIslandDivider: {

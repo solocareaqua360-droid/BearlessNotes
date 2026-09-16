@@ -13,6 +13,7 @@ import Menu from './surfaces/Menu';
 import { useBlurTarget } from './GlassTarget';
 import ContentColumn from './ContentColumn';
 import SearchField, { searchFieldSides } from './SearchField';
+import GlassDrop from './GlassDrop';
 import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
 import RailCapsule from './RailCapsule';
@@ -501,15 +502,7 @@ export default function DatabaseChrome<T extends { id: string }>({
             ]}
             pointerEvents="box-none"
           >
-            <View style={styles.headerButtons}>
-              <BlurView
-                intensity={60}
-                tint="dark"
-                blurMethod="dimezisBlurView"
-                blurTarget={blurTarget ?? undefined}
-                style={StyleSheet.absoluteFill}
-                pointerEvents="none"
-              />
+            <GlassDrop style={styles.headerButtons}>
               {/* While selecting, the top button is the way OUT of it.
                   It was only a row inside the "..." menu - two taps and
                   invisible, on the one screen state you most need to be
@@ -552,7 +545,7 @@ export default function DatabaseChrome<T extends { id: string }>({
                   </Pressable>
                 </>
               )}
-            </View>
+            </GlassDrop>
           </View>
         </GlassPortal>
       )}
@@ -717,17 +710,13 @@ const styles = StyleSheet.create({
   railWrapLeft: {
     left: RAIL_RIGHT,
   },
-  // Stood on its end, like every other screen's.
+  // Stood on its end, like every other screen's. The glass itself is
+  // GlassDrop's - this is only the room inside it.
   headerButtons: {
     alignItems: 'center',
     gap: 18,
     paddingVertical: 18,
     paddingHorizontal: 19,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
   },
   // Turned with the capsule.
   headerButtonsDivider: {

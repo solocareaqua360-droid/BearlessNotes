@@ -1,17 +1,16 @@
 import { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ContentColumn from './ContentColumn';
 import ScreenBackdrop from './ScreenBackdrop';
 import RailCapsule, { RailButton } from './RailCapsule';
 import { GlassPortal } from './GlassPortal';
-import { useBlurTarget } from './GlassTarget';
+import GlassDrop from './GlassDrop';
+import { useTheme } from '../theme/ThemeProvider';
 import { CAPSULE_DROP, CAPSULE_HEIGHT_1, CHROME_TOP, RAIL_CLEARANCE } from '../constants/rail';
 import { useRail } from '../hooks/useRail';
-import { GLASS_ISLAND } from '../constants/glass';
 
 // The frame the three registry screens share - the diary, the groups and
 // the tags.
@@ -43,7 +42,7 @@ export default function PlainScreenShell({
 }) {
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
-  const blurTarget = useBlurTarget();
+  const theme = useTheme();
   const rail = useRail(CAPSULE_HEIGHT_1, actions?.length ? CAPSULE_HEIGHT_1 : 0, 0, 0, hasIsland);
 
   return (
@@ -62,19 +61,11 @@ export default function PlainScreenShell({
             ]}
             pointerEvents="box-none"
           >
-            <View style={styles.topCapsule}>
-              <BlurView
-                intensity={60}
-                tint="dark"
-                blurMethod="dimezisBlurView"
-                blurTarget={blurTarget ?? undefined}
-                style={StyleSheet.absoluteFill}
-                pointerEvents="none"
-              />
+            <GlassDrop style={styles.topCapsule}>
               <Pressable hitSlop={8} onPress={onBack}>
-                <Ionicons name="arrow-back-outline" size={24} color="#fff" />
+                <Ionicons name="arrow-back-outline" size={24} color={theme.ink.primary} />
               </Pressable>
-            </View>
+            </GlassDrop>
           </View>
         </GlassPortal>
       )}
@@ -119,10 +110,5 @@ const styles = StyleSheet.create({
     gap: 18,
     paddingVertical: 18,
     paddingHorizontal: 19,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
   },
 });

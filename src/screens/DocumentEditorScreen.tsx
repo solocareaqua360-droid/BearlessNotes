@@ -118,6 +118,7 @@ import { colorForDocument } from '../utils/documentColor';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
 import UndoToast from '../components/UndoToast';
+import GlassDrop from '../components/GlassDrop';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import CustomRowBlockCard from '../components/CustomRowBlockCard';
 import CustomDatabaseViewBlockCard from '../components/CustomDatabaseViewBlockCard';
@@ -4899,15 +4900,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             ]}
             pointerEvents="box-none"
           >
-            <View style={[styles.headerRight, railHorizontal && styles.headerRightRow]}>
-              <BlurView
-                intensity={60}
-                tint="dark"
-                blurMethod="dimezisBlurView"
-                blurTarget={editorBlurTarget ?? undefined}
-                style={StyleSheet.absoluteFill}
-                pointerEvents="none"
-              />
+            <GlassDrop style={[styles.headerRight, railHorizontal && styles.headerRightRow]}>
               {/* The way out first, full screen in the middle, the menu
                   last - reading order on a capsule lying down, and the
                   one you reach for most at the end nearest the text. */}
@@ -4956,7 +4949,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               {/* The save indicator lives on this capsule's own outline -
                   see SaveRing. Last child, so it draws over the blur. */}
               <SaveRing saving={saveStatus === 'saving'} />
-            </View>
+            </GlassDrop>
           </View>
         </GlassPortal>
       )}
@@ -5736,16 +5729,12 @@ const styles = StyleSheet.create({
     width: 1,
     height: 20,
   },
+  // The room inside the capsule; the glass is GlassDrop's.
   headerRight: {
     alignItems: 'center',
     gap: 18,
     paddingVertical: 18,
     paddingHorizontal: 19,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
   },
   // Turned with the capsule: a rule across it, not down it.
   headerRightDivider: {

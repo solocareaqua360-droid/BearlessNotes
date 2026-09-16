@@ -73,6 +73,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
+import GlassDrop from '../components/GlassDrop';
 import { CAPSULE_DROP, CHROME_TOP, NAV_BOTTOM, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 
 const NEW_TILE_KEY = '__new__';
@@ -1127,15 +1128,7 @@ export default function DatabasesScreen() {
             style={[styles.railWrap, { top: databasesInsets.top + CHROME_TOP + CAPSULE_DROP }]}
             pointerEvents="box-none"
           >
-            <View style={styles.headerButtons}>
-              <BlurView
-                intensity={60}
-                tint="dark"
-                blurMethod="dimezisBlurView"
-                blurTarget={databasesBlurTarget ?? undefined}
-                style={StyleSheet.absoluteFill}
-                pointerEvents="none"
-              />
+            <GlassDrop style={styles.headerButtons}>
               <Pressable hitSlop={8} onPress={() => navigation.navigate('Search')}>
                 <Ionicons name="search-outline" size={24} color="#fff" />
               </Pressable>
@@ -1143,7 +1136,7 @@ export default function DatabasesScreen() {
               <Pressable hitSlop={8} onPress={() => navigation.navigate('Settings')}>
                 <Ionicons name="ellipsis-horizontal-outline" size={24} color="#fff" />
               </Pressable>
-            </View>
+            </GlassDrop>
           </View>
         </GlassPortal>
       )}
@@ -1699,11 +1692,6 @@ const styles = StyleSheet.create({
     gap: 18,
     paddingVertical: 18,
     paddingHorizontal: 19,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
   },
   // Turned with the capsule.
   headerButtonsDivider: {

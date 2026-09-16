@@ -56,6 +56,7 @@ import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import SaveRing from '../components/SaveRing';
 import { GLASS_ISLAND } from '../constants/glass';
+import GlassDrop from '../components/GlassDrop';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import Menu from '../components/surfaces/Menu';
 
@@ -768,15 +769,7 @@ export default function CalendarScreen() {
             style={[styles.calendarRail, { top: calendarInsets.top + CHROME_TOP + CAPSULE_DROP }]}
             pointerEvents="box-none"
           >
-            <View style={styles.headerButtons}>
-              <BlurView
-                intensity={60}
-                tint="dark"
-                blurMethod="dimezisBlurView"
-                blurTarget={calendarBlurTarget ?? undefined}
-                style={StyleSheet.absoluteFill}
-                pointerEvents="none"
-              />
+            <GlassDrop style={styles.headerButtons}>
               <Pressable hitSlop={8} onPress={() => navigation.navigate('Diary')}>
                 <Ionicons name="search-outline" size={24} color="#fff" />
               </Pressable>
@@ -787,7 +780,7 @@ export default function CalendarScreen() {
               {/* The save indicator is the capsule's own outline now, not a
                   circle standing beside it - see SaveRing. */}
               <SaveRing saving={noteSaveStatus === 'saving'} />
-            </View>
+            </GlassDrop>
 
           </View>
         </GlassPortal>
@@ -1287,11 +1280,6 @@ const styles = StyleSheet.create({
     gap: 18,
     paddingVertical: 18,
     paddingHorizontal: 19,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
   },
   // Turned with the capsule: a rule across it, not down it.
   headerButtonsDivider: {

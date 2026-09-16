@@ -1,97 +1,198 @@
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
-import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useTheme } from '../theme/ThemeProvider';
 import { useBlurTarget } from './GlassTarget';
 import type { Lift } from '../theme/tokens';
 
-// A drop of glass, in whatever shape it is asked for.
+// A drop of liquid glass, in whatever shape it is asked for.
 //
 // Not a button: a SURFACE. The round buttons, the two- and three-button
 // capsules on the rail, the navigation island and the search pill are all
-// the same thing at different sizes, and the user was explicit that the
-// capsules take the gloss too - so this takes a size and a radius from
-// whoever wraps it and draws the same four things at any of them:
+// the same thing at different sizes - the user was explicit that the
+// capsules take the gloss too, not only the round buttons.
 //
-//   the blur, the theme's tint over it, a specular laid top-left, and
-//   two edges - light where the light catches, dark where it turns away.
+// The FIRST version of this was a translucent fill, one uniform white
+// hairline and a box shadow, and the user's verdict was right: on white
+// it was only tolerable because the ground was white, and on black it
+// looked bad. Uniform edges are why. Real glass is lit from somewhere,
+// so what is drawn here is lit from somewhere:
 //
-// It matters most where there is least: a white or black theme with no
-// gloss is flat however many shadows it has (the user's own words), and
-// these drops are what carries those two themes. So `glass` is a role in
-// all three (see tokens.ts), not a trick of the colour one.
+//   1. the body - translucent, blurred, the screen still visible through
+//      it, lighter at the top than at the foot;
+//   2. an OUTER specular that follows the contour and is strongest at
+//      the TOP-LEFT, fading to nothing by the opposite corner - a
+//      gradient along a stroked outline, never a border;
+//   3. an INNER rim a little way inside the edge, strongest at the
+//      BOTTOM-RIGHT, which is what gives the glass thickness;
+//   4. an inner vignette that reaches INTO the glass from the rim, drawn
+//      as several strokes of falling opacity because that is how you get
+//      a soft edge without a blur filter - so the edge reads optically
+//      thicker than the middle, and the middle stays clean.
 //
-// The structure is two views on purpose. Android clips a child's shadow
-// to a parent with `overflow: 'hidden'`, and the blur needs exactly that
-// clipping to keep the radius - so the OUTER view carries the lift and
+// Skia would do this in fewer layers and the brief asked for it, but it
+// is not in this project and cannot be: a new native module changes the
+// runtime fingerprint, and the phone would stop receiving updates until
+// it was given a new APK. react-native-svg is already here and does all
+// four - the brief's own instruction was not to add a graphics library
+// if the project already has one.
+//
+// The structure is two views on purpose: Android clips a child's shadow
+// to a parent with `overflow: 'hidden'`, and the glass needs exactly that
+// clipping to keep its radius - so the OUTER view carries the lift and
 // does not clip, and an inner one carries the glass and does.
 export default function GlassDrop({
   children,
   style,
   radius = 999,
-  // Overrides the theme's own answer, for the rare surface that must not
-  // lift at all (one already sitting on another piece of glass).
+  // Every visual parameter is the theme's by default and the caller's
+  // when it has a reason - see tokens.ts for what each one is.
+  glassOpacity,
+  blurAmount,
+  specularIntensity,
+  rimOpacity,
+  vignetteIntensity,
+  // Overrides the theme's own answer, for a surface that must not lift at
+  // all (one already sitting on another piece of glass).
   lift,
 }: {
   children?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   radius?: number;
+  glassOpacity?: number;
+  blurAmount?: number;
+  specularIntensity?: number;
+  rimOpacity?: number;
+  vignetteIntensity?: number;
   lift?: Lift | 'none';
 }) {
   const theme = useTheme();
   const blurTarget = useBlurTarget();
   const how = lift ?? theme.lift;
+  const g = theme.glass;
   // Unique per instance: in the browser every <Svg> shares one document,
-  // so a fixed id would have the first drop on screen colouring all of
-  // them.
-  const glossId = `drop-gloss-${useId()}`;
+  // so fixed ids would have the first drop on screen colouring them all.
+  const uid = useId();
+  // Strokes are drawn in real coordinates - a percentage cannot be inset
+  // by half a stroke width - so the drop measures itself. One extra
+  // render on mount, and nothing flashes: the glass simply arrives with
+  // the blur that is already under it.
+  const [box, setBox] = useState<{ width: number; height: number } | null>(null);
+  const w = box?.width ?? 0;
+  const h = box?.height ?? 0;
+  // A capsule asks for 999; what it actually means is "half of me".
+  const r = Math.min(radius, Math.min(w, h) / 2);
+  const specular = specularIntensity ?? g.specularIntensity;
+  const rim = rimOpacity ?? g.rimOpacity;
+  const vignette = vignetteIntensity ?? g.vignetteIntensity;
 
   return (
-    <View style={[{ borderRadius: radius }, liftStyle(how, theme.glow), style]}>
+    <View
+      style={[{ borderRadius: radius }, liftStyle(how, theme.glow), style]}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        setBox((prev) => (prev && prev.width === width && prev.height === height ? prev : { width, height }));
+      }}
+    >
       <View style={[StyleSheet.absoluteFill, { borderRadius: radius, overflow: 'hidden' }]} pointerEvents="none">
         <BlurView
-          intensity={theme.glass.blur}
-          tint={theme.glass.blurTint}
+          intensity={blurAmount ?? g.blur}
+          tint={g.blurTint}
           blurMethod="dimezisBlurView"
           blurTarget={blurTarget ?? undefined}
           style={StyleSheet.absoluteFill}
           pointerEvents="none"
         />
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.glass.tint }]} />
-        {/* The specular. Laid top-left and fading to nothing, so the drop
-            reads as a rounded thing under a light rather than as a
-            rectangle someone tinted. */}
-        <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} pointerEvents="none">
-          <Defs>
-            <RadialGradient id={glossId} cx="28%" cy="0%" r="80%">
-              <Stop offset="0" stopColor={theme.glass.gloss} stopOpacity="1" />
-              <Stop offset="1" stopColor={theme.glass.gloss} stopOpacity="0" />
-            </RadialGradient>
-          </Defs>
-          <Rect width="100%" height="100%" fill={`url(#${glossId})`} />
-        </Svg>
+        {w > 0 && h > 0 && (
+          <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
+            <Defs>
+              {/* The body. Lighter where the light comes from, so even the
+                  clean middle is not a flat wash of one colour. */}
+              <LinearGradient id={`${uid}-body`} x1="0" y1="0" x2="0.35" y2="1">
+                <Stop offset="0" stopColor={g.body} stopOpacity={(glassOpacity ?? g.opacity) * 1.15} />
+                <Stop offset="1" stopColor={g.body} stopOpacity={(glassOpacity ?? g.opacity) * 0.85} />
+              </LinearGradient>
+              {/* The outer specular: brightest at the top-left corner and
+                  gone by the middle of the run, which is what stops it
+                  reading as a border. */}
+              <LinearGradient id={`${uid}-spec`} x1="0" y1="0" x2="1" y2="1">
+                <Stop offset="0" stopColor={g.specular} stopOpacity={specular} />
+                <Stop offset="0.35" stopColor={g.specular} stopOpacity={specular * 0.35} />
+                <Stop offset="0.7" stopColor={g.specular} stopOpacity={0} />
+              </LinearGradient>
+              {/* The inner rim, the other way round: the far edge of a
+                  thick transparent thing catches the light that went
+                  through it. */}
+              <LinearGradient id={`${uid}-rim`} x1="1" y1="1" x2="0.2" y2="0.1">
+                <Stop offset="0" stopColor={g.rim} stopOpacity={rim} />
+                <Stop offset="0.45" stopColor={g.rim} stopOpacity={rim * 0.4} />
+                <Stop offset="1" stopColor={g.rim} stopOpacity={0} />
+              </LinearGradient>
+            </Defs>
+
+            <Rect x={0} y={0} width={w} height={h} rx={r} fill={`url(#${uid}-body)`} />
+
+            {/* The vignette, reaching inwards. Four strokes of falling
+                opacity rather than one blurred edge: react-native-svg's
+                filters are not to be relied on across both platforms, and
+                four cheap rings are indistinguishable from a soft one at
+                this size. */}
+            {VIGNETTE_RINGS.map((ring, index) => (
+              <Rect
+                key={index}
+                x={ring.inset}
+                y={ring.inset}
+                width={Math.max(0, w - ring.inset * 2)}
+                height={Math.max(0, h - ring.inset * 2)}
+                rx={Math.max(0, r - ring.inset)}
+                fill="none"
+                stroke={g.vignette}
+                strokeOpacity={vignette * ring.opacity}
+                strokeWidth={ring.width}
+              />
+            ))}
+
+            {/* The rim, a little way in - the thickness of the glass. */}
+            <Rect
+              x={2.5}
+              y={2.5}
+              width={Math.max(0, w - 5)}
+              height={Math.max(0, h - 5)}
+              rx={Math.max(0, r - 2.5)}
+              fill="none"
+              stroke={`url(#${uid}-rim)`}
+              strokeWidth={1.2}
+            />
+
+            {/* The outer contour, last, so the brightest thing on the
+                drop is its lit edge. */}
+            <Rect
+              x={0.6}
+              y={0.6}
+              width={Math.max(0, w - 1.2)}
+              height={Math.max(0, h - 1.2)}
+              rx={Math.max(0, r - 0.6)}
+              fill="none"
+              stroke={`url(#${uid}-spec)`}
+              strokeWidth={1.2}
+            />
+          </Svg>
+        )}
       </View>
-      {/* The edges, as their own layer: a border on the clipping view
-          above would be drawn under the blur it clips. */}
-      <View
-        style={[
-          StyleSheet.absoluteFill,
-          {
-            borderRadius: radius,
-            borderWidth: 1,
-            borderTopColor: theme.glass.edgeTop,
-            borderBottomColor: theme.glass.edgeBottom,
-            borderLeftColor: theme.edge.hairline,
-            borderRightColor: theme.edge.hairline,
-          },
-        ]}
-        pointerEvents="none"
-      />
       {children}
     </View>
   );
 }
+
+// Inset, width and strength of each ring of the inner vignette. Tight and
+// strong at the edge, wide and faint as it reaches the middle.
+const VIGNETTE_RINGS = [
+  { inset: 0.5, width: 1, opacity: 1 },
+  { inset: 2, width: 2, opacity: 0.55 },
+  { inset: 4.5, width: 3, opacity: 0.28 },
+  { inset: 8, width: 4, opacity: 0.12 },
+];
 
 // How the drop parts from its ground.
 //
@@ -100,9 +201,7 @@ export default function GlassDrop({
 // light lands. An even halo all round reads as "something blurred and
 // unclear" rather than as light; giving the blur a direction is what
 // makes the eye call it light. The user's own observation, and it is how
-// light actually behaves. Written as `boxShadow` because that is the one
-// form that takes two of them; RN 0.86 on the new architecture supports
-// it, and slice 1's device check is what confirms it on this phone.
+// light actually behaves.
 function liftStyle(
   how: Lift | 'none',
   glow: { near: string; far: string; nearRadius: number; farRadius: number; drop: number }
@@ -115,9 +214,9 @@ function liftStyle(
   if (how === 'shadow') {
     return {
       shadowColor: '#111827',
-      shadowOpacity: 0.16,
-      shadowRadius: 12,
-      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.18,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 8 },
       elevation: 6,
     };
   }

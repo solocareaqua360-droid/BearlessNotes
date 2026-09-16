@@ -47,16 +47,29 @@ export type Theme = {
   // themes, not a trick of the colour one. A white or black theme with
   // no gloss is flat however many shadows it has (the user's own note),
   // and the drops of glass are what carries those two.
+  //
+  // Every value here is one layer of GlassDrop, and they are separate
+  // because the light has to be ASYMMETRIC: the first attempt was a fill
+  // plus one uniform hairline, and that is exactly what made it look
+  // like a translucent rounded rectangle instead of glass.
   glass: {
-    tint: string;
     blur: number;
     blurTint: 'light' | 'dark' | 'default';
-    // The specular, laid top-left, and the two edges that make a drop
-    // read as a raised thing: light where it catches, dark where it
-    // turns away.
-    gloss: string;
-    edgeTop: string;
-    edgeBottom: string;
+    // The body: the colour of the glass itself, and how much of it there
+    // is. The screen must still be visible through it.
+    body: string;
+    opacity: number;
+    // The lit contour, strongest at the top-left.
+    specular: string;
+    specularIntensity: number;
+    // The rim inside the edge, strongest at the bottom-right - the far
+    // wall of a thing with thickness.
+    rim: string;
+    rimOpacity: number;
+    // The shadow that reaches in from the rim, so the edge reads
+    // optically thicker than the middle.
+    vignette: string;
+    vignetteIntensity: number;
   };
   // Only where lift === 'glow'. TWO shadows, never one: a tight bright
   // one right at the shape (the source's own edge) and a wide soft one
@@ -83,12 +96,16 @@ const colour: Theme = {
   edge: { hairline: 'rgba(255,255,255,0.22)', strong: 'rgba(255,255,255,0.4)' },
   lift: 'blur',
   glass: {
-    tint: 'rgba(24,21,19,0.42)',
     blur: 60,
     blurTint: 'dark',
-    gloss: 'rgba(255,255,255,0.28)',
-    edgeTop: 'rgba(255,255,255,0.45)',
-    edgeBottom: 'rgba(0,0,0,0.25)',
+    body: '#181513',
+    opacity: 0.42,
+    specular: '#FFFFFF',
+    specularIntensity: 0.8,
+    rim: '#FFFFFF',
+    rimOpacity: 0.3,
+    vignette: '#000000',
+    vignetteIntensity: 0.32,
   },
   glow: { near: 'rgba(255,255,255,0.25)', far: 'rgba(255,255,255,0.10)', nearRadius: 2, farRadius: 14, drop: 6 },
 };
@@ -110,15 +127,22 @@ const white: Theme = {
   danger: '#DC2626',
   edge: { hairline: 'rgba(17,24,39,0.10)', strong: 'rgba(17,24,39,0.18)' },
   lift: 'shadow',
+  // On white almost nothing can come from the fill - white glass on a
+  // white ground has no contrast to spend. So the body stays thin and
+  // faintly cool (the reference's "white/lavender"), and everything the
+  // eye reads comes from the edge: a bright contour, a rim inside it,
+  // and a vignette strong enough to actually be seen.
   glass: {
-    tint: 'rgba(255,255,255,0.62)',
     blur: 40,
     blurTint: 'light',
-    // Stronger than it would be on a dark ground: a drop has to read as
-    // raised against white, and the specular is the only thing saying so.
-    gloss: 'rgba(255,255,255,0.95)',
-    edgeTop: 'rgba(255,255,255,0.95)',
-    edgeBottom: 'rgba(17,24,39,0.12)',
+    body: '#F4F4FF',
+    opacity: 0.38,
+    specular: '#FFFFFF',
+    specularIntensity: 1,
+    rim: '#FFFFFF',
+    rimOpacity: 0.9,
+    vignette: '#111827',
+    vignetteIntensity: 0.22,
   },
   glow: { near: 'rgba(17,24,39,0.12)', far: 'rgba(17,24,39,0.10)', nearRadius: 2, farRadius: 18, drop: 8 },
 };
@@ -139,13 +163,22 @@ const black: Theme = {
   danger: '#FB7185',
   edge: { hairline: 'rgba(255,255,255,0.18)', strong: 'rgba(255,255,255,0.45)' },
   lift: 'glow',
+  // The one the user called bad, and the reason was the milky wash: a
+  // bright fill and a bright ring all the way round turn a button on
+  // black into a grey blob. So the body is barely there, and the light
+  // is a thin bright arc at the top-left with a faint rim opposite it -
+  // most of the drop is simply the screen behind it.
   glass: {
-    tint: 'rgba(255,255,255,0.06)',
     blur: 50,
     blurTint: 'dark',
-    gloss: 'rgba(255,255,255,0.38)',
-    edgeTop: 'rgba(255,255,255,0.5)',
-    edgeBottom: 'rgba(0,0,0,0.7)',
+    body: '#FFFFFF',
+    opacity: 0.05,
+    specular: '#FFFFFF',
+    specularIntensity: 0.9,
+    rim: '#DBEAFE',
+    rimOpacity: 0.22,
+    vignette: '#000000',
+    vignetteIntensity: 0.55,
   },
   // Tinted, never pure white: semi-transparent white over black reads as
   // grey fog rather than as light.

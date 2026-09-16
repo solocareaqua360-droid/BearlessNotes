@@ -58,6 +58,7 @@ import {
   RAIL_RIGHT,
 } from '../constants/rail';
 import { GLASS_BODY_BLURRED, GLASS_CARD, GLASS_ISLAND, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
+import GlassDrop from '../components/GlassDrop';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { confirm } from '../components/surfaces/Ask';
 
@@ -810,19 +811,11 @@ export default function TasksScreen() {
       {isFocused && (
       <GlassPortal>
         <View style={[styles.railTop, { top: insets.top + CHROME_TOP + CAPSULE_DROP }]} pointerEvents="box-none">
-          <View style={styles.topCapsule}>
-            <BlurView
-              intensity={60}
-              tint="dark"
-              blurMethod="dimezisBlurView"
-              blurTarget={railBlurTarget ?? undefined}
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
+          <GlassDrop style={styles.topCapsule}>
             <Pressable hitSlop={8} onPress={() => (kanbanMode ? setKanbanMode(false) : navigation.goBack())}>
               <Ionicons name="arrow-back-outline" size={24} color="#fff" />
             </Pressable>
-          </View>
+          </GlassDrop>
         </View>
       </GlassPortal>
       )}
@@ -1016,11 +1009,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 18,
     paddingHorizontal: 19,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
   },
   menuBackdrop: {
     position: 'absolute',
