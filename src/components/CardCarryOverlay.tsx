@@ -32,10 +32,11 @@ export default function CardCarryOverlay<T extends { id: string }>({
 }) {
   const theme = useTheme();
   const ghost = carry.ghost;
-  // translationY is CUMULATIVE since the second finger touched down, so
+  // translationX/Y are CUMULATIVE since the second finger touched down, so
   // only the change since the last frame is a scroll amount - the same
   // "diff a running total" the app already does for the drop-line spring
   // in the editor's own drag (see DocumentEditorScreen's handleDragUpdate).
+  const lastX = useRef(0);
   const lastY = useRef(0);
 
   // ONE finger here, not two - the mistake the first version made. The
@@ -51,12 +52,14 @@ export default function CardCarryOverlay<T extends { id: string }>({
     .maxPointers(1)
     .runOnJS(true)
     .onStart(() => {
+      lastX.current = 0;
       lastY.current = 0;
     })
     .onUpdate((e) => {
-      // How far DOWN the finger moved since the last frame - the screen
-      // wiring decides what that means for its own ScrollView.
-      carry.scrollBy(e.translationY - lastY.current);
+      // How far the finger moved on each axis since the last frame - the
+      // screen wiring decides what that means for its own ScrollView(s).
+      carry.scrollBy(e.translationX - lastX.current, e.translationY - lastY.current);
+      lastX.current = e.translationX;
       lastY.current = e.translationY;
     });
 

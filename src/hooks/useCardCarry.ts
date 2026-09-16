@@ -64,6 +64,7 @@ export function useCardCarry<T extends { id: string }>({
   moveItem,
   scrollBy,
   onMoved,
+  onPickUp,
   currentPath,
 }: {
   moveItem: (item: T, destination: string | null) => Promise<void>;
@@ -72,15 +73,22 @@ export function useCardCarry<T extends { id: string }>({
   // way: you walk to the folder you want and let go, and dropping
   // straight onto a folder row is the shortcut, not the only way.
   currentPath: string;
-  // One call per second-finger drag tick, dy = how far DOWN that finger
-  // moved since the last tick (negative = moved up). A normal drag-down
-  // scroll gesture reveals content ABOVE, so the caller wants to move its
-  // list's offset by -dy.
-  scrollBy: (dy: number) => void;
+  // One call per second-finger drag tick: how far the finger moved on
+  // each axis since the last one (negative = up/left). A vertical list
+  // only ever cares about dy; a board that also scrolls sideways (the
+  // kanban one) reads dx too. A normal drag-down scroll gesture reveals
+  // content ABOVE, so a caller using dy moves its list's offset by -dy.
+  scrollBy: (dx: number, dy: number) => void;
   // Fires right after a real move (never for a cancelled or same-folder
   // drop) - `origin` is what the caller's own undo toast needs to put
   // the item back exactly where it was.
   onMoved?: (items: T[], destination: string | null, origin: string) => void;
+  // Fires the instant a carry begins, with what was picked up. Exists for
+  // a caller whose own "drop on nothing" fallback (currentPath) has no
+  // single fixed answer - the kanban board, where it has to be THIS
+  // card's own column, not some notion of "the folder you're standing
+  // in" that a board of status columns does not have.
+  onPickUp?: (items: T[]) => void;
 }) {
   const [ghost, setGhost] = useState<CarryGhost<T> | null>(null);
   // Mirrors `ghost` for code that runs inside a gesture callback (already
@@ -185,8 +193,9 @@ export function useCardCarry<T extends { id: string }>({
       const next = { items, x: finger.x + GHOST_NUDGE_X, y: finger.y + GHOST_NUDGE_Y };
       ghostRef.current = next;
       setGhost(next);
+      onPickUp?.(items);
     });
-  }, []);
+  }, [onPickUp]);
 
   const updateCarry = useCallback((absoluteX: number, absoluteY: number) => {
     const current = ghostRef.current;
@@ -293,9 +302,9 @@ export function useCardCarry<T extends { id: string }>({
     updateCarry,
     endCarry,
     cancelCarry,
-    scrollBy: (dy: number) => {
+    scrollBy: (dx: number, dy: number) => {
       aliveAt.current = Date.now();
-      scrollBy(dy);
+      scrollBy(dx, dy);
     },
   };
 }

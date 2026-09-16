@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
@@ -15,6 +15,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
@@ -37,6 +38,9 @@ import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import ReminderSheet from '../components/ReminderSheet';
 import SortMenuRows from '../components/SortMenuRows';
 import { useMultiSelect } from '../hooks/useMultiSelect';
+import { useCardCarry } from '../hooks/useCardCarry';
+import CardCarryOverlay from '../components/CardCarryOverlay';
+import UndoToast from '../components/UndoToast';
 import { useSortPref } from '../hooks/useSortPref';
 import { cancelReminder, scheduleReminder, type ReminderKind } from '../utils/reminders';
 import { formatShortDate, parseDateKey } from '../utils/dateLocale';
@@ -422,18 +426,14 @@ export default function TasksScreen() {
     updateDoc(documentRef, { blocks: updatedBlocks });
   }
 
-  // Steps a task one column left/right (the card's two arrow buttons -
-  // no drag-and-drop, decided against as its own multi-column drop-target
-  // problem on top of everything already fought to get a working
-  // drag-to-reorder in the editor). Crossing the "Готово" boundary either
-  // way carries the checkbox with it: entering it checks the task,
-  // leaving it unchecks - the checkbox and the column stay in sync with
-  // each other for that one boundary, in both directions.
-  async function moveTaskColumn(task: Task, delta: number) {
-    const currentIndex = KANBAN_COLUMNS.findIndex((c) => c.key === (task.kanbanStatus ?? 'inbox'));
-    const newIndex = currentIndex + delta;
-    if (newIndex < 0 || newIndex >= KANBAN_COLUMNS.length) return;
-    const newStatus = KANBAN_COLUMNS[newIndex].key;
+  // What crossing INTO or OUT OF a column actually does - shared by the
+  // card's two arrow buttons and, now, dragging it (useCardCarry). The
+  // "Готово" boundary carries the checkbox with it either way: entering it
+  // checks the task, leaving it unchecks - the checkbox and the column
+  // stay in sync with each other for that one boundary, in both
+  // directions.
+  async function setTaskStatus(task: Task, newStatus: KanbanStatus) {
+    if (newStatus === (task.kanbanStatus ?? 'inbox')) return;
     const wasDone = task.kanbanStatus === 'done';
     const willBeDone = newStatus === 'done';
     const checkedChange = willBeDone && !wasDone ? true : !willBeDone && wasDone ? false : undefined;
@@ -451,6 +451,98 @@ export default function TasksScreen() {
       return { ...b, kanbanStatus: newStatus, ...(checkedChange !== undefined ? { checked: checkedChange } : {}) };
     });
     updateDoc(documentRef, { blocks: updatedBlocks });
+  }
+  // Steps a task one column left/right - the card's two arrow buttons,
+  // the way in before dragging (below) existed and still the way for
+  // anyone who would rather tap than carry.
+  function moveTaskColumn(task: Task, delta: number) {
+    const currentIndex = KANBAN_COLUMNS.findIndex((c) => c.key === (task.kanbanStatus ?? 'inbox'));
+    const newIndex = currentIndex + delta;
+    if (newIndex < 0 || newIndex >= KANBAN_COLUMNS.length) return;
+    setTaskStatus(task, KANBAN_COLUMNS[newIndex].key);
+  }
+
+  // Dragging a card between columns. The explorer's own carry (see
+  // useCardCarry) was built around a SECOND finger doing the navigating -
+  // right for walking a folder tree, but a kanban board is four columns
+  // wide and the user was explicit that plain edge auto-scroll is fine
+  // here, so that is what this uses instead: no second finger, the board
+  // scrolls itself while the carried finger sits near either edge.
+  const EDGE_ZONE = 56;
+  const EDGE_STEP = 16;
+  const boardScrollRef = useRef<ScrollView>(null);
+  const boardScrollXRef = useRef(0);
+  const fingerXRef = useRef(0);
+  const autoScrollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  // What a card picked up carries back to, if let go somewhere that is
+  // not a column - useCardCarry's own "drop on nothing" fallback is
+  // built for a file manager's "the folder you're standing in"; a kanban
+  // board has no such place, so this is set to the CARD'S OWN column the
+  // instant it is picked up (onPickUp below), which is exactly what makes
+  // that fallback read as "no real move" and cancel quietly instead of
+  // moving it somewhere arbitrary.
+  const dragOriginRef = useRef<KanbanStatus>('inbox');
+  const [kanbanToast, setKanbanToast] = useState<{ taskId: string; from: KanbanStatus; to: KanbanStatus } | null>(
+    null
+  );
+  useEffect(() => {
+    if (!kanbanToast) return;
+    const id = setTimeout(() => setKanbanToast(null), 4000);
+    return () => clearTimeout(id);
+  }, [kanbanToast]);
+  const kanbanCarry = useCardCarry<Task>({
+    currentPath: dragOriginRef.current,
+    onPickUp: (items) => {
+      dragOriginRef.current = items[0]?.kanbanStatus ?? 'inbox';
+    },
+    moveItem: async (task, destination) => {
+      if (!destination) return;
+      await setTaskStatus(task, destination as KanbanStatus);
+    },
+    onMoved: (items, destination, origin) => {
+      if (!destination || !items[0]) return;
+      setKanbanToast({ taskId: items[0].id, from: origin as KanbanStatus, to: destination as KanbanStatus });
+    },
+    // Edge auto-scroll runs off the carried finger's own position
+    // (below), not a second one - nothing to do with this axis.
+    scrollBy: () => {},
+  });
+  function startBoardAutoScroll() {
+    if (autoScrollTimer.current) return;
+    autoScrollTimer.current = setInterval(() => {
+      const x = fingerXRef.current;
+      const dir = x < EDGE_ZONE ? -1 : x > windowWidth - EDGE_ZONE ? 1 : 0;
+      if (dir === 0) return;
+      const next = Math.max(0, boardScrollXRef.current + dir * EDGE_STEP);
+      boardScrollRef.current?.scrollTo({ x: next, animated: false });
+    }, 16);
+  }
+  function stopBoardAutoScroll() {
+    if (autoScrollTimer.current) {
+      clearInterval(autoScrollTimer.current);
+      autoScrollTimer.current = null;
+    }
+  }
+  const kanbanBoardGesture = Gesture.Pan()
+    .activateAfterLongPress(650)
+    .runOnJS(true)
+    .onStart((e) => {
+      kanbanCarry.pickUpAt(e.absoluteX, e.absoluteY);
+      startBoardAutoScroll();
+    })
+    .onUpdate((e) => {
+      fingerXRef.current = e.absoluteX;
+      kanbanCarry.updateCarry(e.absoluteX, e.absoluteY);
+    })
+    .onEnd((_e, success) => {
+      if (success) kanbanCarry.endCarry();
+    })
+    .onFinalize(() => {
+      stopBoardAutoScroll();
+      kanbanCarry.cancelCarry();
+    });
+  function kanbanToastLabel(status: KanbanStatus) {
+    return KANBAN_COLUMNS.find((c) => c.key === status)?.title ?? status;
   }
 
   function openProjectPicker(taskId: string) {
@@ -681,8 +773,14 @@ export default function TasksScreen() {
   function renderKanbanCard(task: Task, columnIndex: number) {
     const project = task.projectId ? projectsById[task.projectId] : undefined;
     const reminderLabel = formatReminderBadge(task);
+    const isCarrying = !!kanbanCarry.ghost?.items.some((one) => one.id === task.id);
     return (
-      <View key={task.id} style={styles.kanbanCard}>
+      <View
+        key={task.id}
+        ref={kanbanCarry.registerCard(task.id, () => [task], () => {})}
+        collapsable={false}
+        style={[styles.kanbanCard, isCarrying && styles.kanbanCardDimmed]}
+      >
         <View style={styles.kanbanCardTop}>
           <Pressable hitSlop={8} onPress={() => toggleTask(task)}>
             <Ionicons
@@ -755,7 +853,9 @@ export default function TasksScreen() {
   // both without needing separate paging UI.
   function renderKanbanBoard() {
     return (
+      <GestureDetector gesture={kanbanBoardGesture}>
       <ScrollView
+        ref={boardScrollRef}
         horizontal
         style={styles.kanbanBoardScroll}
         pagingEnabled={false}
@@ -763,11 +863,20 @@ export default function TasksScreen() {
         decelerationRate="fast"
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.kanbanBoard}
+        onScroll={(e) => {
+          boardScrollXRef.current = e.nativeEvent.contentOffset.x;
+        }}
+        scrollEventThrottle={16}
       >
         {KANBAN_COLUMNS.map((column, columnIndex) => {
           const columnTasks = todayTasks.filter((t) => (t.kanbanStatus ?? 'inbox') === column.key);
           return (
-            <View key={column.key} style={{ width: kanbanColumnWidth }}>
+            <View
+              key={column.key}
+              ref={kanbanCarry.registerFolder(column.key)}
+              collapsable={false}
+              style={{ width: kanbanColumnWidth }}
+            >
               <View style={styles.kanbanColumnHead}>
                 <Text style={styles.kanbanColumnTitle}>{column.title}</Text>
                 <Text style={styles.kanbanColumnCount}>{columnTasks.length}</Text>
@@ -779,6 +888,7 @@ export default function TasksScreen() {
           );
         })}
       </ScrollView>
+      </GestureDetector>
     );
   }
 
@@ -881,7 +991,28 @@ export default function TasksScreen() {
         )}
 
         {kanbanMode ? (
-          renderKanbanBoard()
+          <>
+            {renderKanbanBoard()}
+            {kanbanToast && (
+              <UndoToast
+                message={`Перенесено в «${kanbanToastLabel(kanbanToast.to)}»`}
+                onUndo={() => {
+                  const task = tasks.find((t) => t.id === kanbanToast.taskId);
+                  if (task) setTaskStatus(task, kanbanToast.from);
+                  setKanbanToast(null);
+                }}
+              />
+            )}
+            {/* The floating task while one is being carried between
+                columns - see useCardCarry. Always mounted, invisible
+                until then. */}
+            <CardCarryOverlay
+              carry={kanbanCarry}
+              label={(items) => items[0]?.text ?? 'Справа'}
+              icon="checkbox-outline"
+              onEnterFolder={() => {}}
+            />
+          </>
         ) : (
         <ScrollView contentContainerStyle={styles.list}>
           {todayTasks.length > 0 &&
@@ -1356,6 +1487,10 @@ const makeStyles = (t: Theme) =>
     gap: 6,
     shadowColor: '#000',
     shadowOpacity: 0.06,
+  },
+  // A card whose task is in hand right now.
+  kanbanCardDimmed: {
+    opacity: 0.4,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,

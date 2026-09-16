@@ -62,7 +62,8 @@ export function useExplorerCarry<T extends { id: string }>({
     // only SEEDS this: once a drag is under way it accumulates its own
     // target, and re-seeds when the finger has been still long enough
     // for the list to have caught up.
-    scrollBy: (dy) => {
+    // Only vertical: every explorer list scrolls one way.
+    scrollBy: (_dx, dy) => {
       const live = scrollYRef.current;
       if (!live) return;
       const now = Date.now();
