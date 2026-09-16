@@ -14,17 +14,23 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 // own picture (coverImageUri), which wins over any gradient.
 export type CoverGradient = { id: string; stops: [string, string, string] };
 
+// Built from the app's OWN palette - the seven colours the tile board
+// and the record cards already speak (see DOCUMENT_PALETTE), not a set
+// invented for this. Seven are one hue each, a shade below it to a tint
+// above it, which is what makes a flat colour read as light on a
+// surface; three are the blends between neighbours, for variety without
+// leaving the family.
 export const COVER_GRADIENTS: CoverGradient[] = [
-  { id: 'slate', stops: ['#5B6B78', '#96A7A2', '#D8CFC4'] },
-  { id: 'dusk', stops: ['#2F2A27', '#7A6355', '#C9A184'] },
-  { id: 'sky', stops: ['#7FA6C9', '#B7D3E6', '#EAF2F8'] },
-  { id: 'mint', stops: ['#6E9E97', '#A9CFC9', '#E2F0EC'] },
-  { id: 'lilac', stops: ['#8B8FB8', '#C0C4E0', '#EEF0F8'] },
-  { id: 'amber', stops: ['#B4713F', '#DAA587', '#F3E2D3'] },
-  { id: 'moss', stops: ['#4E6B58', '#84B799', '#D6E8DC'] },
-  { id: 'terracotta', stops: ['#8F4E3A', '#BE7657', '#EBC9B4'] },
-  { id: 'graphite', stops: ['#2B2F36', '#69736E', '#B9C0BC'] },
-  { id: 'rose', stops: ['#9C6B7C', '#D0A3B1', '#F4E3E9'] },
+  { id: 'beige', stops: ['#B8845F', '#DAA587', '#F1DCC9'] },
+  { id: 'green', stops: ['#5E937A', '#84B799', '#CFE5D6'] },
+  { id: 'terracotta', stops: ['#8F4E3A', '#BE7657', '#E6BBA6'] },
+  { id: 'greygreen', stops: ['#454E4A', '#69736E', '#B7C0BB'] },
+  { id: 'mint', stops: ['#7C918C', '#A0B4AF', '#DDE6E3'] },
+  { id: 'slate', stops: ['#3A4F58', '#556E78', '#A8BBC3'] },
+  { id: 'pale', stops: ['#56645F', '#788782', '#C2CBC7'] },
+  { id: 'clay', stops: ['#BE7657', '#DAA587', '#F1DCC9'] },
+  { id: 'lagoon', stops: ['#556E78', '#84B799', '#CFE5D6'] },
+  { id: 'fog', stops: ['#69736E', '#A0B4AF', '#E6EBE6'] },
 ];
 
 function hashString(value: string): number {
