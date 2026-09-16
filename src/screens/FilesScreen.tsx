@@ -240,6 +240,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
   const scrollYRef = useRef<SharedValue<number> | null>(null);
   const scrollTargetRef = useRef<{ y: number; at: number } | null>(null);
   const carry = useCardCarry<FileItem>({
+    currentPath: explorer.path,
     moveItem: (item, destination) => explorer.moveItem(item, destination),
     // The list's own scrollY only catches up through its onScroll event,
     // a frame or two behind - reading it every tick of a fast drag would

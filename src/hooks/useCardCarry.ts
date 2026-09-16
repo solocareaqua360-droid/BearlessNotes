@@ -44,8 +44,14 @@ export function useCardCarry<T extends { id: string }>({
   moveItem,
   scrollBy,
   onMoved,
+  currentPath,
 }: {
   moveItem: (item: T, destination: string | null) => Promise<void>;
+  // Where the explorer is standing RIGHT NOW - which is where a card
+  // dropped on nothing in particular lands. A file manager works that
+  // way: you walk to the folder you want and let go, and dropping
+  // straight onto a folder row is the shortcut, not the only way.
+  currentPath: string;
   // One call per second-finger drag tick, dy = how far DOWN that finger
   // moved since the last tick (negative = moved up). A normal drag-down
   // scroll gesture reveals content ABOVE, so the caller wants to move its
@@ -65,6 +71,10 @@ export function useCardCarry<T extends { id: string }>({
   // explorer path it was showing under, which is exactly what "undo"
   // needs to put it back.
   const originRef = useRef<string>('');
+  // Read at drop time, not captured when the carry began - the second
+  // finger may have walked several folders since.
+  const pathRef = useRef(currentPath);
+  pathRef.current = currentPath;
   // Where in the card the finger first touched it, so the ghost tracks
   // the finger exactly rather than re-centering under it.
   const grabRef = useRef({ x: 0, y: 0 });
@@ -131,9 +141,9 @@ export function useCardCarry<T extends { id: string }>({
     let matched: string | null | undefined;
     const nodes = Array.from(folderNodes.current.entries());
     if (nodes.length === 0) {
-      hapticWarning();
       ghostRef.current = null;
       setGhost(null);
+      settle(item, undefined);
       return;
     }
     let pending = nodes.length;
@@ -148,20 +158,29 @@ export function useCardCarry<T extends { id: string }>({
         if (pending === 0) {
           ghostRef.current = null;
           setGhost(null);
-          if (matched !== undefined && matched !== originRef.current) {
-            hapticDrop();
-            const origin = originRef.current;
-            // The root crumb registers itself under '' - as a folder path
-            // that means "no folder at all", which moveItem spells null.
-            const destination = matched === '' ? null : matched;
-            moveItem(item, destination).then(() => onMoved?.(item, destination, origin));
-          } else {
-            hapticWarning();
-          }
+          settle(item, matched);
         }
       });
     });
   }, [moveItem, onMoved]);
+
+  // Where the card actually landed: the folder row or crumb it was let go
+  // over, and otherwise the folder being SHOWN - walking there with the
+  // second finger and letting go is the whole point of being able to walk
+  // at all.
+  function settle(item: T, matched: string | null | undefined) {
+    const target = matched === undefined ? pathRef.current : matched;
+    const origin = originRef.current;
+    if (target === origin) {
+      hapticWarning();
+      return;
+    }
+    hapticDrop();
+    // A folder path of '' - the root crumb's own key, and the root itself
+    // - means "no folder at all", which moveItem spells null.
+    const destination = target === '' ? null : target;
+    moveItem(item, destination).then(() => onMoved?.(item, destination, origin));
+  }
 
   const cancelCarry = useCallback(() => {
     ghostRef.current = null;
