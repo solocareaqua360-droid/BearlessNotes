@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import {
@@ -39,8 +39,10 @@ import { useDayHistory } from '../hooks/useDayHistory';
 import DayHistoryList from '../components/DayHistoryList';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { useNavDockPublisher } from '../navigation/navDock';
 import {
   MONTH_FULL,
+  MONTH_SHORT,
   WEEKDAY_SHORT,
   addDays,
   dateKey,
@@ -475,6 +477,42 @@ export default function CalendarScreen() {
   // after they've been paged away with a swipe - selectDay already resets
   // both weekStart (recentres the week strip) and, via the effect watching
   // selectedDate, visibleMonth too.
+  // The dock becomes the days - «план навігації», the shape the user
+  // asked for in their own words: "зайшов у календар, тобі треба
+  // прокрутити якесь число - ти по доку клацаєш". The week strip at the
+  // top SHOWS the week; this is for MOVING through the days, under the
+  // thumb, which is a different job and belongs at a different end of the
+  // screen.
+  //
+  // The selected month, with a week of each neighbour on either side - so
+  // the ends of a month are not a wall, and stepping over one simply
+  // brings that month's own run.
+  const stripMonth = `${selectedDate.getFullYear()}-${selectedDate.getMonth()}`;
+  const stripItems = useMemo(() => {
+    const [year, month] = stripMonth.split('-').map(Number);
+    const first = new Date(year, month, 1);
+    const days: { key: string; label: string; sub?: string }[] = [];
+    for (let offset = -7; ; offset += 1) {
+      const day = addDays(first, offset);
+      if (day.getMonth() !== month && offset > 0 && day.getDate() > 7) break;
+      days.push({
+        key: dateKey(day),
+        label: String(day.getDate()),
+        // Only where the day belongs to the month next door: that is the
+        // one place a bare number would lie.
+        sub: day.getMonth() === month ? undefined : MONTH_SHORT[day.getMonth()],
+      });
+    }
+    return days;
+  }, [stripMonth]);
+  const publishToDock = useNavDockPublisher();
+  const pickDay = useCallback((key: string) => selectDay(parseDateKey(key)), []);
+  useEffect(() => {
+    if (!publishToDock || !calendarFocused) return;
+    publishToDock({ kind: 'strip', items: stripItems, selected: dateKey(selectedDate), onPick: pickDay });
+    return () => publishToDock(null);
+  }, [publishToDock, calendarFocused, stripItems, selectedDate, pickDay]);
+
   function jumpToToday() {
     selectDay(new Date());
   }

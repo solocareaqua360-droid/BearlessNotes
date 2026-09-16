@@ -333,7 +333,7 @@ export function useExplorer<T extends { id: string }>(options: ExplorerOptions<T
   useEffect(() => {
     if (!publishToDock) return;
     if (!focused || !active || crumbKey === '') return;
-    publishToDock({ crumbs: crumbKey.split('/'), onGo: goToCrumb });
+    publishToDock({ kind: 'path', crumbs: crumbKey.split('/'), onGo: goToCrumb });
     return () => publishToDock(null);
   }, [publishToDock, focused, active, crumbKey, goToCrumb]);
 

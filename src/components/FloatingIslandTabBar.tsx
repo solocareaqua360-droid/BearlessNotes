@@ -11,7 +11,7 @@ import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { useIsFocused } from '@react-navigation/native';
 import { GlassPortal } from './GlassPortal';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_GAP, NAV_PADDING } from '../constants/rail';
-import { useNavDockTrail } from '../navigation/navDock';
+import { useNavDockContext } from '../navigation/navDock';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -28,6 +28,9 @@ const ICON_BY_ROUTE: Record<string, keyof typeof Ionicons.glyphMap> = {
 };
 
 const ICON_SIZE = 24;
+// Every day the same width, so the dock can put the selected one under
+// the thumb without measuring anything.
+const STRIP_ITEM = 44;
 
 // The navigation island. It used to lie across the bottom of the screen;
 // it now stands on its end at the right edge, at the foot of the rail
@@ -64,8 +67,12 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
   // show, the dock IS the path: the same pill in the same place, holding
   // something else. That is the whole idea - the app does not grow a new
   // control for every context, the one control changes shape.
-  const trail = useNavDockTrail();
+  const dock = useNavDockContext();
+  const trail = dock?.kind === 'path' ? dock : null;
+  const strip = dock?.kind === 'strip' ? dock : null;
   const trailRef = useRef<ScrollView>(null);
+  const stripRef = useRef<ScrollView>(null);
+  const [stripViewport, setStripViewport] = useState(0);
   const depth = trail?.crumbs.length ?? 0;
   useEffect(() => {
     if (!depth) return;
@@ -73,6 +80,15 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
     const id = setTimeout(() => trailRef.current?.scrollToEnd({ animated: true }), 0);
     return () => clearTimeout(id);
   }, [depth]);
+  // The day you are on sits under your thumb, in the middle - a scrubber
+  // you have to hunt along is not a scrubber.
+  const stripIndex = strip ? strip.items.findIndex((item) => item.key === strip.selected) : -1;
+  useEffect(() => {
+    if (stripIndex < 0 || !stripViewport) return;
+    const x = Math.max(0, stripIndex * STRIP_ITEM + STRIP_ITEM / 2 - stripViewport / 2);
+    const id = setTimeout(() => stripRef.current?.scrollTo({ x, animated: true }), 0);
+    return () => clearTimeout(id);
+  }, [stripIndex, stripViewport]);
 
   if (!tabsFocused) return null;
   const here = state.routes[state.index];
@@ -108,7 +124,57 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
           </Pressable>
           </GlassDrop>
         ) : (
-        trail ? (
+        strip ? (
+        // A run of days under the thumb. Same shell, same height: the
+        // dock holding time instead of places.
+        <GlassDrop style={[styles.islandShell, styles.trailShell]}>
+        <Pressable onLongPress={toggleCollapsed} delayLongPress={400}>
+          <ScrollView
+            ref={stripRef}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            onLayout={(e) => setStripViewport(e.nativeEvent.layout.width)}
+          >
+            {strip.items.map((item) => {
+              const current = item.key === strip.selected;
+              const body = (
+                <>
+                  <Text
+                    style={[
+                      styles.stripLabel,
+                      { color: current ? theme.glass.ink : theme.glass.inkMuted },
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                  {!!item.sub && (
+                    <Text style={[styles.stripSub, { color: theme.glass.inkMuted }]}>{item.sub}</Text>
+                  )}
+                </>
+              );
+              return (
+                <Pressable
+                  key={item.key}
+                  onPress={() => strip.onPick(item.key)}
+                  onLongPress={toggleCollapsed}
+                  delayLongPress={400}
+                >
+                  {current ? (
+                    // The day you are on, in the lens the dock marks the
+                    // desk you are on with.
+                    <GlassDrop style={styles.stripItem} lift="none" blurAmount={0} convex>
+                      {body}
+                    </GlassDrop>
+                  ) : (
+                    <View style={styles.stripItem}>{body}</View>
+                  )}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </Pressable>
+        </GlassDrop>
+        ) : trail ? (
         // The path, in the dock's own shell: same height, same place,
         // wider. A morph has to change SHAPE to be noticed at all - this
         // project has already reverted one that only cross-faded.
@@ -293,6 +359,23 @@ const styles = StyleSheet.create({
   trailLabel: {
     fontSize: 14,
     maxWidth: 160,
+    fontFamily: FONT_REGULAR,
+  },
+  stripItem: {
+    width: STRIP_ITEM,
+    height: NAV_BUTTON,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+  },
+  stripLabel: {
+    fontSize: 16,
+    fontFamily: FONT_SEMIBOLD,
+    fontWeight: '600',
+  },
+  stripSub: {
+    fontSize: 9,
+    marginTop: 1,
     fontFamily: FONT_REGULAR,
   },
   trailLabelCurrent: {
