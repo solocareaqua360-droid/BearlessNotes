@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { useTheme } from '../theme/ThemeProvider';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ExplorerFolder } from '../hooks/useExplorer';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
 
 // What stands above a database's records while it is in explorer mode:
 // where you are, and the folders at this level.
@@ -47,6 +47,7 @@ export default function ExplorerHead({
   columns?: number;
 }) {
   const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const crumbScrollRef = useRef<ScrollView>(null);
   // Many levels fold the middle ones into one "…" that a tap unfolds; a
   // new path folds again.
@@ -166,7 +167,8 @@ export default function ExplorerHead({
 
 const FOLDER_GAP = 10;
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
   head: {
     gap: 8,
     marginBottom: 8,
@@ -211,10 +213,10 @@ const styles = StyleSheet.create({
   crumbLabel: {
     fontSize: 15,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   crumbLabelCurrent: {
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   // Glass, like every row of the app's own lists, in the record row's
   // size - the user's words: the glass stays, only the size grows.
@@ -248,7 +250,7 @@ const styles = StyleSheet.create({
   folderName: {
     fontSize: 18,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   folderMeta: {
     flexDirection: 'row',
@@ -261,6 +263,6 @@ const styles = StyleSheet.create({
   folderCount: {
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
-});
+  });
