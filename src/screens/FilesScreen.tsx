@@ -578,6 +578,12 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
   }
 
   function renderFileRow(item: FileItem) {
+    // Only in the explorer, and never mid bulk-select - a long hold there
+    // already means something else (adding to the selection). Carried,
+    // the row's own onLongPress is dropped - CarryableRow's drag gesture
+    // opens the menu itself, on its own timing, instead of racing it
+    // (see the file's own note on why that used to open the menu early).
+    const carried = explorer.active && !isSelectMode;
     const row = (
       <FileRow
         key={item.id}
@@ -585,7 +591,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         // The card says when it arrived - see FileCardItem.createdAt.
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
         onPress={() => (isSelectMode ? toggleSelected(item.id) : openFile(item))}
-        onLongPress={() => setCardMenuFileId(item.id)}
+        onLongPress={carried ? undefined : () => setCardMenuFileId(item.id)}
         onMenu={() => setCardMenuFileId(item.id)}
         onTagPress={() => setTagPickerForId(item.id)}
         isSelectMode={isSelectMode}
@@ -593,11 +599,15 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         onToggleSelect={() => toggleSelected(item.id)}
       />
     );
-    // Only in the explorer, and never mid bulk-select - a long hold there
-    // already means something else (adding to the selection).
-    if (!explorer.active || isSelectMode) return row;
+    if (!carried) return row;
     return (
-      <CarryableRow key={item.id} item={item} path={explorer.path} carry={carry}>
+      <CarryableRow
+        key={item.id}
+        item={item}
+        path={explorer.path}
+        carry={carry}
+        onMenu={() => setCardMenuFileId(item.id)}
+      >
         {row}
       </CarryableRow>
     );
@@ -608,6 +618,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
   // off the column the chrome hands down, not the window: in a pane the
   // two are not the same number.
   function renderFileGridCell(item: FileItem, columns: number) {
+    const carried = explorer.active && !isSelectMode;
     const cell = (
       <FileGridCell
         key={item.id}
@@ -615,7 +626,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         file={item}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
         onPress={() => (isSelectMode ? toggleSelected(item.id) : openFile(item))}
-        onLongPress={() => setCardMenuFileId(item.id)}
+        onLongPress={carried ? undefined : () => setCardMenuFileId(item.id)}
         onMenu={() => setCardMenuFileId(item.id)}
         onTagPress={() => setTagPickerForId(item.id)}
         isSelectMode={isSelectMode}
@@ -623,9 +634,15 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         onToggleSelect={() => toggleSelected(item.id)}
       />
     );
-    if (!explorer.active || isSelectMode) return cell;
+    if (!carried) return cell;
     return (
-      <CarryableRow key={item.id} item={item} path={explorer.path} carry={carry}>
+      <CarryableRow
+        key={item.id}
+        item={item}
+        path={explorer.path}
+        carry={carry}
+        onMenu={() => setCardMenuFileId(item.id)}
+      >
         {cell}
       </CarryableRow>
     );
