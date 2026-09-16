@@ -29,6 +29,7 @@ export default function ExplorerHead({
   trash,
   showCrumbs,
   columns,
+  folderRef,
 }: {
   crumbs: string[];
   path: string;
@@ -45,6 +46,11 @@ export default function ExplorerHead({
   // width. The rows are sized from this component's OWN measured width,
   // so it is right whatever list it stands in.
   columns?: number;
+  // A card being carried (see useCardCarry) needs to measure a folder
+  // row at drop time to know whether it landed inside one - this hands
+  // each row's own node out for that, and nothing else. Absent on a
+  // screen that has not joined drag-and-drop yet.
+  folderRef?: (path: string) => (node: View | null) => void;
 }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
@@ -114,32 +120,33 @@ export default function ExplorerHead({
 
       <View style={cols > 1 ? styles.folderGrid : styles.folderStack}>
       {folders.map((folder) => (
-        <Pressable
-          key={folder.fullPath}
-          style={[styles.folderRow, rowWidth !== undefined && { width: rowWidth }]}
-          onPress={() => onGo(folder.fullPath)}
-          onLongPress={() => onFolderMenu(folder)}
-        >
-          <View style={[styles.folderThumb, { borderColor: folder.tag?.color ?? theme.ink.faint }]}>
-            <Ionicons
-              name={(folder.tag?.icon as keyof typeof Ionicons.glyphMap) || 'folder-outline'}
-              size={26}
-              color={folder.tag?.color ?? theme.ink.muted}
-            />
-          </View>
-          <View style={styles.folderBody}>
-            <Text style={styles.folderName} numberOfLines={1}>
-              {folder.name}
-            </Text>
-            <View style={styles.folderMeta}>
-              <Ionicons name={itemIcon} size={14} color={theme.ink.muted} />
-              <Text style={styles.folderCount}>{folder.docs}</Text>
-              <Ionicons name="folder-outline" size={14} color={theme.ink.muted} style={styles.folderMetaGap} />
-              <Text style={styles.folderCount}>{folder.subfolders}</Text>
+        <View key={folder.fullPath} ref={folderRef?.(folder.fullPath)} collapsable={false}>
+          <Pressable
+            style={[styles.folderRow, rowWidth !== undefined && { width: rowWidth }]}
+            onPress={() => onGo(folder.fullPath)}
+            onLongPress={() => onFolderMenu(folder)}
+          >
+            <View style={[styles.folderThumb, { borderColor: folder.tag?.color ?? theme.ink.faint }]}>
+              <Ionicons
+                name={(folder.tag?.icon as keyof typeof Ionicons.glyphMap) || 'folder-outline'}
+                size={26}
+                color={folder.tag?.color ?? theme.ink.muted}
+              />
             </View>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={theme.ink.faint} />
-        </Pressable>
+            <View style={styles.folderBody}>
+              <Text style={styles.folderName} numberOfLines={1}>
+                {folder.name}
+              </Text>
+              <View style={styles.folderMeta}>
+                <Ionicons name={itemIcon} size={14} color={theme.ink.muted} />
+                <Text style={styles.folderCount}>{folder.docs}</Text>
+                <Ionicons name="folder-outline" size={14} color={theme.ink.muted} style={styles.folderMetaGap} />
+                <Text style={styles.folderCount}>{folder.subfolders}</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={theme.ink.faint} />
+          </Pressable>
+        </View>
       ))}
 
       {!!trash && trash.count > 0 && path === '' && (

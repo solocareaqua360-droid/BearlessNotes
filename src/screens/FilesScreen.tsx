@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import {
@@ -60,6 +60,10 @@ import FilePreviewWorker from '../components/FilePreviewWorker';
 import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT , railClear } from '../constants/rail';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
+import type { SharedValue } from 'react-native-reanimated';
+import { useCardCarry } from '../hooks/useCardCarry';
+import CarryableRow from '../components/CarryableRow';
+import CardCarryOverlay from '../components/CardCarryOverlay';
 
 const ACCENT = '#0EA5E9';
 // The same half-strength tint the documents screen's add button takes -
@@ -227,6 +231,32 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     detachTag: list.detachTag,
   });
   const filesHere = explorer.visibleItems;
+
+  // Drag a card into a folder - see useCardCarry for the mechanism and
+  // its own long comment on why a second finger scrolls the list rather
+  // than fighting it for the same touch. `scrollRef`/`scrollYRef` point
+  // at whichever ScrollView (grid or list) is actually mounted right now.
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollYRef = useRef<SharedValue<number> | null>(null);
+  const carry = useCardCarry<FileItem>({
+    moveItem: (item, destination) => explorer.moveItem(item, destination),
+    scrollBy: (dy) => {
+      const current = scrollYRef.current;
+      if (!current) return;
+      const next = Math.max(0, current.value - dy);
+      scrollRef.current?.scrollTo({ y: next, animated: false });
+    },
+    onMoved: (item, destination, origin) => {
+      const folderName = explorer.folders.find((f) => f.fullPath === destination)?.name ?? nameOf(destination ?? '');
+      setMovedToast({ item, origin, folderName });
+    },
+  });
+  const [movedToast, setMovedToast] = useState<{ item: FileItem; origin: string; folderName: string } | null>(null);
+  useEffect(() => {
+    if (!movedToast) return;
+    const id = setTimeout(() => setMovedToast(null), 4000);
+    return () => clearTimeout(id);
+  }, [movedToast]);
 
   function openFolderMenu(folder: ExplorerFolder) {
     ask({
@@ -548,7 +578,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
   }
 
   function renderFileRow(item: FileItem) {
-    return (
+    const row = (
       <FileRow
         key={item.id}
         file={item}
@@ -563,6 +593,14 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         onToggleSelect={() => toggleSelected(item.id)}
       />
     );
+    // Only in the explorer, and never mid bulk-select - a long hold there
+    // already means something else (adding to the selection).
+    if (!explorer.active || isSelectMode) return row;
+    return (
+      <CarryableRow key={item.id} item={item} path={explorer.path} carry={carry}>
+        {row}
+      </CarryableRow>
+    );
   }
 
   // Three across where the column is actually wide enough to hold them -
@@ -570,7 +608,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
   // off the column the chrome hands down, not the window: in a pane the
   // two are not the same number.
   function renderFileGridCell(item: FileItem, columns: number) {
-    return (
+    const cell = (
       <FileGridCell
         key={item.id}
         columns={columns}
@@ -584,6 +622,12 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         isSelected={selectedIds.has(item.id)}
         onToggleSelect={() => toggleSelected(item.id)}
       />
+    );
+    if (!explorer.active || isSelectMode) return cell;
+    return (
+      <CarryableRow key={item.id} item={item} path={explorer.path} carry={carry}>
+        {cell}
+      </CarryableRow>
     );
   }
 
@@ -656,6 +700,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
         onFolderMenu={openFolderMenu}
         trash={{ count: trashedFiles.length, onOpen: () => setTrashOpen(true) }}
+        folderRef={carry.registerFolder}
       />
     );
   }
@@ -747,6 +792,18 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
               onUndo={() => setSaveDestinationVisible(true)}
             />
           )}
+          {movedToast && (
+            <UndoToast
+              message={`Переміщено в «${movedToast.folderName}»`}
+              onUndo={() => {
+                explorer.moveItem(movedToast.item, movedToast.origin || null);
+                setMovedToast(null);
+              }}
+            />
+          )}
+          {/* The floating card while one is being carried into a folder -
+              see useCardCarry. Always mounted, invisible until then. */}
+          <CardCarryOverlay carry={carry} label={(f) => f.title || f.fileName} icon="document-outline" />
 
           {/* The per-card "..." - rename, and the documents this file sits
               in when it sits in any. */}
@@ -901,8 +958,9 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         </>
       }
     >
-      {(listTopPad, listProps, listWidth) =>
-        isLoading ? (
+      {(listTopPad, listProps, listWidth, scrollY) => {
+        scrollYRef.current = scrollY;
+        return isLoading ? (
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
           </View>
@@ -920,6 +978,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
           </View>
         ) : viewMode === 'grid' ? (
           <ScrollView
+            ref={scrollRef}
             {...listProps}
             contentContainerStyle={[
               styles.gridPage,
@@ -940,6 +999,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
           </ScrollView>
         ) : (
           <ScrollView
+            ref={scrollRef}
             {...listProps}
             contentContainerStyle={[
               styles.list,
@@ -955,8 +1015,8 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
             {/* What else is in this group - see GroupSections. */}
             {!trashOpen && <GroupSections groupId={list.selectedGroupId} currentKind="file" tags={tags} />}
           </ScrollView>
-        )
-      }
+        );
+      }}
     </DatabaseChrome>
   );
 }

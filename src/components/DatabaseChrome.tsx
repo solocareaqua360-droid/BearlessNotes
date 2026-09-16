@@ -8,7 +8,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeInDown, SharedValue } from 'react-native-reanimated';
 import { DatabaseList } from '../hooks/useDatabaseList';
 import { GlassPortal } from './GlassPortal';
 import Menu from './surfaces/Menu';
@@ -114,7 +114,11 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   children: (
     listTopPad: number,
     listProps: ReturnType<typeof usePullToSearch>['listProps'],
-    listWidth: number
+    listWidth: number,
+    // The list's own live scroll offset - a screen that carries a card
+    // (see useCardCarry) needs it to scroll programmatically by a second
+    // finger's movement rather than the user's own touch.
+    scrollY: SharedValue<number>
   ) => ReactNode;
   // Anything that must reach the whole window rather than the content
   // column: toasts, viewers, the sheets a database opens. Drawn outside
@@ -479,7 +483,8 @@ export default function DatabaseChrome<T extends { id: string }>({
             {children(
               list.tagFilter || list.isSearching ? 0 : chromeBottom,
               pull.listProps,
-              Math.max(0, columnWidth - RAIL_CLEARANCE - 20)
+              Math.max(0, columnWidth - RAIL_CLEARANCE - 20),
+              pull.scrollY
             )}
           </GestureDetector>
         )}
