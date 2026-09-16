@@ -16,32 +16,53 @@ import { colorForDocument } from '../utils/documentColor';
 // memory). Firestore is the other half, so the phone and the browser
 // agree without either being told twice.
 const CACHE_KEY = 'appearance:theme';
+const MOTION_CACHE_KEY = 'appearance:motion';
 const PREFS_DOC = 'appearance';
+
+// How much the backdrop moves on its own. The user's reference was
+// Gemini, where the ground stirs while it answers - lovely for three
+// seconds, and a question for an hour of reading, which is why it is a
+// setting rather than a decision.
+export type Motion = 'still' | 'breathe' | 'shimmer';
 
 type ThemeContextValue = {
   theme: Theme;
   themeKey: ThemeKey;
   setThemeKey: (next: ThemeKey) => void;
+  motion: Motion;
+  setMotion: (next: Motion) => void;
 };
 
 const ThemeContext = createContext<ThemeContextValue>({
   theme: THEMES[DEFAULT_THEME_KEY],
   themeKey: DEFAULT_THEME_KEY,
   setThemeKey: () => {},
+  motion: 'breathe',
+  setMotion: () => {},
 });
 
 function isThemeKey(value: unknown): value is ThemeKey {
   return value === 'colour' || value === 'white' || value === 'black';
 }
 
+function isMotion(value: unknown): value is Motion {
+  return value === 'still' || value === 'breathe' || value === 'shimmer';
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [themeKey, setKey] = useState<ThemeKey>(DEFAULT_THEME_KEY);
+  const [motion, setMotionState] = useState<Motion>('breathe');
 
   // The cache first, so the first frame is already right.
   useEffect(() => {
     AsyncStorage.getItem(CACHE_KEY)
       .then((stored) => {
         if (isThemeKey(stored)) setKey(stored);
+      })
+      .catch(() => undefined);
+    AsyncStorage.getItem(MOTION_CACHE_KEY)
+      .then((stored) => {
+        if (isMotion(stored)) setMotionState(stored);
       })
       .catch(() => undefined);
   }, []);
@@ -60,6 +81,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
             setKey(stored);
             AsyncStorage.setItem(CACHE_KEY, stored).catch(() => undefined);
           }
+          const storedMotion = snapshot.data()?.motion;
+          if (isMotion(storedMotion)) {
+            setMotionState(storedMotion);
+            AsyncStorage.setItem(MOTION_CACHE_KEY, storedMotion).catch(() => undefined);
+          }
         },
         () => undefined
       ),
@@ -70,6 +96,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     () => ({
       theme: THEMES[themeKey],
       themeKey,
+      motion,
+      setMotion: (next: Motion) => {
+        setMotionState(next);
+        AsyncStorage.setItem(MOTION_CACHE_KEY, next).catch(() => undefined);
+        setDoc(doc(db, 'settings', PREFS_DOC), { motion: next }, { merge: true }).catch(() => undefined);
+      },
       setThemeKey: (next: ThemeKey) => {
         // On screen at once, remembered locally, and only then sent -
         // a theme switch that waited for the network would feel broken.
@@ -78,7 +110,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         setDoc(doc(db, 'settings', PREFS_DOC), { theme: next }, { merge: true }).catch(() => undefined);
       },
     }),
-    [themeKey]
+    [themeKey, motion]
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
@@ -91,6 +123,15 @@ export function useTheme(): Theme {
 export function useThemeChoice() {
   const { themeKey, setThemeKey } = useContext(ThemeContext);
   return { themeKey, setThemeKey };
+}
+
+export function useMotionChoice() {
+  const { motion, setMotion } = useContext(ThemeContext);
+  return { motion, setMotion };
+}
+
+export function useMotion(): Motion {
+  return useContext(ThemeContext).motion;
 }
 
 // What makes converting a file mechanical: the same StyleSheet.create a

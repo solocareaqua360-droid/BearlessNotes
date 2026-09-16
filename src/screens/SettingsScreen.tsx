@@ -39,7 +39,7 @@ import { backfillDriveCopies } from '../utils/backfillDrive';
 import { STALE_AFTER_DAYS, localAttachmentUsage } from '../utils/attachmentCache';
 import { chooseDownloadFolder, currentDownloadFolder } from '../utils/downloadToFolder';
 import { getPexelsKey, setPexelsKey } from '../utils/pexelsKey';
-import { useThemeChoice } from '../theme/ThemeProvider';
+import { useMotionChoice, useThemeChoice } from '../theme/ThemeProvider';
 import { THEMES, THEME_ORDER } from '../theme/tokens';
 import { confirm, notify } from '../components/surfaces/Ask';
 import RenamePrompt from '../components/RenamePrompt';
@@ -69,11 +69,21 @@ function formatUpdateTime(date: Date | null): string {
   return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}, ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+// The backdrop's three speeds. «Дихання» is the default: the blooms
+// move, but slowly enough that nothing behind a page you are reading
+// ever asks for attention.
+const MOTION_ORDER = [
+  { key: 'still' as const, label: 'Спокій' },
+  { key: 'breathe' as const, label: 'Дихання' },
+  { key: 'shimmer' as const, label: 'Перелив' },
+];
+
 export default function SettingsScreen() {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { themeKey, setThemeKey } = useThemeChoice();
+  const { motion, setMotion } = useMotionChoice();
   const [accountEmail, setAccountEmail] = useState<string | null>(auth.currentUser?.email ?? null);
   const [authBusy, setAuthBusy] = useState(false);
   const [claimStatus, setClaimStatus] = useState('');
@@ -328,6 +338,34 @@ export default function SettingsScreen() {
           <Text style={styles.cardHint}>
             Кольорова - сьогоднішній вигляд. Біла й чорна поки що тільки вибираються: екрани
             переводяться на них зрізами, і кожен зріз я показую окремо.
+          </Text>
+        </View>
+
+        {/* The backdrop's movement, separate from the theme: the same
+            three speeds work under all three palettes. */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="pulse-outline" size={22} color={ACCENT} />
+            <Text style={styles.cardTitle}>Рух фону</Text>
+          </View>
+          <View style={styles.themeRow}>
+            {MOTION_ORDER.map((item) => (
+              <Pressable
+                key={item.key}
+                style={[styles.themeChip, motion === item.key && styles.themeChipOn]}
+                onPress={() => setMotion(item.key)}
+              >
+                <Text
+                  style={[styles.themeChipLabel, motion === item.key && styles.themeChipLabelOn]}
+                >
+                  {item.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.cardHint}>
+            Спокій - фон нерухомий. Дихання - плями дуже повільно розходяться. Перелив - те саме,
+            але вдвічі швидше й ширше.
           </Text>
         </View>
 

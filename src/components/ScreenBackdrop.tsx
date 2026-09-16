@@ -1,8 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
-import Animated, { SharedValue, useAnimatedStyle } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  SharedValue,
+  cancelAnimation,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Pattern, RadialGradient, Rect, Stop } from 'react-native-svg';
-import { useTheme } from '../theme/ThemeProvider';
+import { useMotion, useTheme } from '../theme/ThemeProvider';
 
 // What every screen stands on, and what the glass has to blur.
 //
@@ -34,6 +42,16 @@ import { useTheme } from '../theme/ThemeProvider';
 // all: light on black is the glow on the drops, and a cloud behind them
 // would only grey it.
 const TILE = 360;
+// The slow ones. Three blooms, each on its own period so they never come
+// back to the same arrangement twice - which is what makes a drift read
+// as weather rather than as a loop. Periods are deliberately coprime-ish
+// and long: the user's reference (Gemini's answering screen) stirs, it
+// does not pulse.
+const BLOOMS = [
+  { period: 23000, dx: 0.16, dy: 0.10, from: 0.9, to: 1.18 },
+  { period: 31000, dx: -0.13, dy: 0.14, from: 1.12, to: 0.92 },
+  { period: 19000, dx: 0.09, dy: -0.12, from: 0.96, to: 1.22 },
+];
 // A fraction of the list's own speed. Fast enough that a normal scroll
 // carries a cloud right through a capsule, slow enough to read as depth.
 const DRIFT = 0.55;
@@ -59,6 +77,7 @@ export default function ScreenBackdrop({
   // width it did not have. The window's size only stands in until the
   // first layout, so nothing flashes white.
   const theme = useTheme();
+  const motion = useMotion();
   const window = useWindowDimensions();
   const [own, setOwn] = useState<{ width: number; height: number } | null>(null);
   const width = own?.width ?? window.width;
@@ -71,6 +90,29 @@ export default function ScreenBackdrop({
   // How much of a cloud survives. Bleached almost away in white; gone in
   // black.
   const cloud = theme.cloudStrength;
+
+  // One value per bloom, each running 0 -> 1 -> 0 forever at its own
+  // pace. 'shimmer' is the same movement at twice the speed and half
+  // again the distance; 'still' never starts them, so nothing is
+  // animating behind a screen someone is reading.
+  const drift = [useSharedValue(0), useSharedValue(0), useSharedValue(0)];
+  const moving = motion !== 'still' && cloud > 0;
+  const pace = motion === 'shimmer' ? 0.5 : 1;
+  const reach = motion === 'shimmer' ? 1.5 : 1;
+  useEffect(() => {
+    drift.forEach((value, i) => {
+      cancelAnimation(value);
+      value.value = 0;
+      if (!moving) return;
+      value.value = withRepeat(
+        withTiming(1, { duration: BLOOMS[i].period * pace, easing: Easing.inOut(Easing.sin) }),
+        -1,
+        true
+      );
+    });
+    return () => drift.forEach((value) => cancelAnimation(value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moving, pace]);
 
   const style = useAnimatedStyle(() => {
     // Modulo the tile: at one tile of travel the strip is exactly back
@@ -133,11 +175,92 @@ export default function ScreenBackdrop({
           <Rect width={width} height={stripHeight} fill={`url(#${id}-tile)`} />
         </Svg>
       </Animated.View>
+
+      {/* The drift. Each bloom is one radial gradient in its own layer,
+          moved by a transform - so the colours cross and mix where they
+          overlap without a single pixel being redrawn: the whole effect
+          runs on the UI thread as three transforms, which is what makes
+          it affordable behind a scrolling list. */}
+      {moving &&
+        BLOOMS.map((bloom, i) => (
+          <Bloom
+            key={i}
+            id={`${id}-bloom-${i}`}
+            colour={theme.clouds[i]}
+            opacity={0.35 * cloud}
+            width={width}
+            height={height}
+            drift={drift[i]}
+            dx={bloom.dx * reach}
+            dy={bloom.dy * reach}
+            from={bloom.from}
+            to={bloom.to}
+          />
+        ))}
     </View>
   );
 }
 
+// One drifting bloom: a soft radial gradient twice the screen across, so
+// that even at the end of its travel no edge of it can reach the screen's
+// own edge and show as a circle.
+function Bloom({
+  id,
+  colour,
+  opacity,
+  width,
+  height,
+  drift,
+  dx,
+  dy,
+  from,
+  to,
+}: {
+  id: string;
+  colour: string;
+  opacity: number;
+  width: number;
+  height: number;
+  drift: SharedValue<number>;
+  dx: number;
+  dy: number;
+  from: number;
+  to: number;
+}) {
+  const size = Math.max(width, height) * 1.6;
+  const style = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: drift.value * dx * width },
+      { translateY: drift.value * dy * height },
+      { scale: from + (to - from) * drift.value },
+    ],
+  }));
+  return (
+    <Animated.View
+      style={[
+        styles.bloom,
+        { width: size, height: size, left: (width - size) / 2, top: (height - size) / 2 },
+        style,
+      ]}
+      pointerEvents="none"
+    >
+      <Svg width={size} height={size}>
+        <Defs>
+          <RadialGradient id={id} cx="50%" cy="50%" r="50%">
+            <Stop offset="0" stopColor={colour} stopOpacity={opacity} />
+            <Stop offset="1" stopColor={colour} stopOpacity="0" />
+          </RadialGradient>
+        </Defs>
+        <Rect width={size} height={size} fill={`url(#${id})`} />
+      </Svg>
+    </Animated.View>
+  );
+}
+
 const styles = StyleSheet.create({
+  bloom: {
+    position: 'absolute',
+  },
   frame: {
     overflow: 'hidden',
   },
