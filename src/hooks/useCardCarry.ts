@@ -41,15 +41,21 @@ import { hapticDrop, hapticPickUp, hapticWarning } from '../utils/haptics';
 // nodes, exactly as the folders do. Which card was picked up is then a
 // question of what was under the finger, answered the same way a drop
 // is: by measuring.
+// Where the ghost sits relative to the fingertip. Just above and a
+// little left of it: the point a drop is read from is the FINGER, so the
+// ghost has to say where that is - and a ghost drawn under the fingertip
+// is a ghost hidden by the hand holding it.
+const GHOST_NUDGE_X = -18;
+const GHOST_NUDGE_Y = -58;
+
 export type CarryGhost<T> = {
   // Everything being carried. One card usually; the whole tick-box
   // selection when the card picked up is part of one - the same rule the
   // note editor's own block drag uses (see dragGroupFor there).
   items: T[];
-  // Where the ghost is, in screen coordinates - starting at the card it
-  // was lifted from, so it visibly rises out of it rather than popping in
-  // somewhere else. Its SIZE is nobody's business: the ghost is a small
-  // pill of its own, and what a drop lands on is read off the finger.
+  // Where the ghost is, in screen coordinates - pinned to the finger (see
+  // GHOST_NUDGE_*), because the finger is what a drop is read from and
+  // the ghost is what says so.
   x: number;
   y: number;
 };
@@ -89,9 +95,16 @@ export function useCardCarry<T extends { id: string }>({
   // finger may have walked several folders since.
   const pathRef = useRef(currentPath);
   pathRef.current = currentPath;
-  // Where in the card the finger first touched it, so the ghost tracks
-  // the finger exactly rather than re-centering under it.
-  const grabRef = useRef({ x: 0, y: 0 });
+  // The ghost used to be positioned by the offset of the finger WITHIN
+  // the card it was lifted from, so that it kept the grip it was picked
+  // up by. That works only while the thing being carried is the card
+  // itself - and it is not: it is a small pill. Applying a grip measured
+  // on a tall grid card (a hundred points down its face, easily) to a
+  // pill forty points tall threw the pill that far from the finger, and
+  // the bigger the card the worse it got. Since the drop is read off the
+  // FINGER, the pill has to be drawn at the finger too, or the screen
+  // says one thing and the drop does another - which is exactly how it
+  // read: "якщо знати приблизну відстань зміщення, то ти можеш попасти".
   // Where the finger actually is. A drop asks what is under THE FINGER,
   // not under the middle of what it is holding: a list row is low enough
   // that its centre is near the finger either way, but a grid card is
@@ -165,11 +178,11 @@ export function useCardCarry<T extends { id: string }>({
     if (items.length === 0) return;
     node.measureInWindow((x, y) => {
       hapticPickUp();
-      grabRef.current = { x: touchX, y: touchY };
-      fingerRef.current = { x: x + touchX, y: y + touchY };
+      const finger = { x: x + touchX, y: y + touchY };
+      fingerRef.current = finger;
       originRef.current = path;
       aliveAt.current = Date.now();
-      const next = { items, x, y };
+      const next = { items, x: finger.x + GHOST_NUDGE_X, y: finger.y + GHOST_NUDGE_Y };
       ghostRef.current = next;
       setGhost(next);
     });
@@ -180,7 +193,7 @@ export function useCardCarry<T extends { id: string }>({
     if (!current) return;
     aliveAt.current = Date.now();
     fingerRef.current = { x: absoluteX, y: absoluteY };
-    const next = { ...current, x: absoluteX - grabRef.current.x, y: absoluteY - grabRef.current.y };
+    const next = { ...current, x: absoluteX + GHOST_NUDGE_X, y: absoluteY + GHOST_NUDGE_Y };
     ghostRef.current = next;
     setGhost(next);
   }, []);
