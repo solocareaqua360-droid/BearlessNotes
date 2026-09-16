@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
-import type { Theme } from '../theme/tokens';
+import { mutedForTheme, type Theme } from '../theme/tokens';
 import { useRecordColour } from '../theme/ThemeProvider';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import ScreenBackdrop from '../components/ScreenBackdrop';
@@ -350,7 +350,7 @@ export default function DatabasesScreen() {
   // rather than carrying whatever hue it arrived with.
   function resolveTileColor(key: string): string {
     const database = customDatabases.find((d) => d.id === key);
-    if (database) return database.color ?? recordColour(database.id).background;
+    if (database) return mutedForTheme(database.color ?? recordColour(database.id).background, theme);
     const group = pinnableGroups.find((g) => groupKey(g.id) === key);
     if (group) return group.color;
     const tag = pinnableTags.find((t) => tagKey(t.id) === key);
@@ -910,7 +910,7 @@ export default function DatabasesScreen() {
                     height={spanSize(size.h)}
                     color={
                       item.kind === 'custom'
-                        ? item.database.color ?? recordColour(item.database.id).background
+                        ? mutedForTheme(item.database.color ?? recordColour(item.database.id).background, theme)
                         : item.kind === 'pin'
                           ? item.pin.color
                           : colorFor(item.key)
@@ -1640,6 +1640,11 @@ function BoardTile({
           <Text
             style={[styles.tileLabel, { color: isAction ? 'rgba(255,255,255,0.6)' : ink }]}
             numberOfLines={2}
+            // Android breaks a long word mid-syllable by default -
+            // "Докум/енти", which reads as a fault rather than as a fit.
+            // 'simple' only ever breaks between words.
+            textBreakStrategy="simple"
+            ellipsizeMode="tail"
           >
             {label}
           </Text>

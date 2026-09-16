@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { CoverGradientView, defaultCoverFor } from '../theme/covers';
 import { useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { useRecordColour } from '../theme/ThemeProvider';
@@ -338,7 +339,11 @@ export default function BoardsListScreen({
         {/* The board's own layout in miniature, drawn from its cards -
             always current, because it is the cards. Falls back to the
             plain icon while there is nothing on the canvas to draw. */}
+        {/* The board's own cover under its miniature - the same gradient
+            a note gets, by the board's id. The map used to sit on a flat
+            grey square, where its cards read as grey dots on grey. */}
         <View style={styles.rowIcon}>
+          <CoverGradientView gradient={defaultCoverFor(item.id)} style={StyleSheet.absoluteFill} />
           {item.cards.length > 0 || (item.columns?.length ?? 0) > 0 ? (
             <BoardMiniMap cards={item.cards} columns={item.columns} width={48} height={48} />
           ) : (
@@ -373,6 +378,7 @@ export default function BoardsListScreen({
         onLongPress={() => askBoardActions(item)}
       >
         <View style={[styles.tileMap, { height: mapHeight }]}>
+          <CoverGradientView gradient={defaultCoverFor(item.id)} style={StyleSheet.absoluteFill} />
           {item.cards.length > 0 || (item.columns?.length ?? 0) > 0 ? (
             <BoardMiniMap cards={item.cards} columns={item.columns} width={tileWidth} height={mapHeight} showText />
           ) : (
@@ -618,7 +624,7 @@ const makeStyles = (t: Theme) =>
   },
   tileMap: {
     width: '100%',
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    overflow: 'hidden',
   },
   tileEmpty: {
     flex: 1,
@@ -665,13 +671,15 @@ const makeStyles = (t: Theme) =>
     shadowOffset: { width: 0, height: 3 },
     elevation: 4,
   },
+  // The cover fills it, so the old grey wash goes - and it has to clip,
+  // or the gradient squares off the rounded corner.
   rowIcon: {
     width: 52,
     height: 52,
     borderRadius: 10,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.08)',
   },
   rowBody: {
     flex: 1,

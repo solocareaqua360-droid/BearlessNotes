@@ -16,21 +16,23 @@ export type CoverGradient = { id: string; stops: [string, string, string] };
 
 // Built from the app's OWN palette - the seven colours the tile board
 // and the record cards already speak (see DOCUMENT_PALETTE), not a set
-// invented for this. Seven are one hue each, a shade below it to a tint
-// above it, which is what makes a flat colour read as light on a
-// surface; three are the blends between neighbours, for variety without
-// leaving the family.
+// invented for this.
+//
+// Each runs from the colour ITSELF up to nearly white, rather than from
+// a shade below it: the first cut started dark and the covers read as
+// black holes in a very light layout - the eye caught them before the
+// titles. A cover is a patch of colour, not a weight.
 export const COVER_GRADIENTS: CoverGradient[] = [
-  { id: 'beige', stops: ['#B8845F', '#DAA587', '#F1DCC9'] },
-  { id: 'green', stops: ['#5E937A', '#84B799', '#CFE5D6'] },
-  { id: 'terracotta', stops: ['#8F4E3A', '#BE7657', '#E6BBA6'] },
-  { id: 'greygreen', stops: ['#454E4A', '#69736E', '#B7C0BB'] },
-  { id: 'mint', stops: ['#7C918C', '#A0B4AF', '#DDE6E3'] },
-  { id: 'slate', stops: ['#3A4F58', '#556E78', '#A8BBC3'] },
-  { id: 'pale', stops: ['#56645F', '#788782', '#C2CBC7'] },
-  { id: 'clay', stops: ['#BE7657', '#DAA587', '#F1DCC9'] },
-  { id: 'lagoon', stops: ['#556E78', '#84B799', '#CFE5D6'] },
-  { id: 'fog', stops: ['#69736E', '#A0B4AF', '#E6EBE6'] },
+  { id: 'beige', stops: ['#DAA587', '#EAC6AF', '#F8EEE5'] },
+  { id: 'green', stops: ['#84B799', '#AFD3BE', '#E7F3EC'] },
+  { id: 'terracotta', stops: ['#BE7657', '#D8A489', '#F4E1D4'] },
+  { id: 'greygreen', stops: ['#69736E', '#9AA49F', '#E1E6E3'] },
+  { id: 'mint', stops: ['#A0B4AF', '#C3D2CE', '#EDF3F1'] },
+  { id: 'slate', stops: ['#556E78', '#8FA6AE', '#E0E8EB'] },
+  { id: 'pale', stops: ['#788782', '#A7B3AF', '#E6EBE9'] },
+  { id: 'clay', stops: ['#C98C6B', '#E0B296', '#F7E9DE'] },
+  { id: 'lagoon', stops: ['#6E93A0', '#A3C4BE', '#E6F1EE'] },
+  { id: 'fog', stops: ['#8C9A95', '#BFCCC7', '#EFF4F1'] },
 ];
 
 function hashString(value: string): number {

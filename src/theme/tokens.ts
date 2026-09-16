@@ -236,3 +236,23 @@ const black: Theme = {
 export const THEMES: Record<ThemeKey, Theme> = { colour, white, black };
 export const THEME_ORDER: ThemeKey[] = ['colour', 'white', 'black'];
 export const DEFAULT_THEME_KEY: ThemeKey = 'colour';
+
+// A record's or a tile's own colour, carried into a theme that does not
+// speak in colour. White and black mean white and black everywhere, so a
+// tile that keeps a saturated fill is the one object left shouting - the
+// user's read of the databases screen, and it was right. Blended most of
+// the way into the theme's surface it stays recognisable and stops
+// competing.
+export function mutedForTheme(colour: string, theme: Theme, amount = 0.62): string {
+  if (theme.key === 'colour') return colour;
+  const hex = (c: string) => {
+    const v = c.replace('#', '');
+    const full = v.length === 3 ? v.split('').map((d) => d + d).join('') : v;
+    return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
+  };
+  if (!colour.startsWith('#')) return colour;
+  const [r, g, b] = hex(colour);
+  const [sr, sg, sb] = hex(theme.surface.startsWith('#') ? theme.surface : '#FFFFFF');
+  const mix = (a: number, b2: number) => Math.round(a + (b2 - a) * amount);
+  return `#${[mix(r, sr), mix(g, sg), mix(b, sb)].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}

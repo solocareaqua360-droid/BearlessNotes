@@ -1231,9 +1231,14 @@ const makeStyles = (t: Theme) =>
   // pulling the week strip/month grid back after paging away with a swipe,
   // which only makes sense if it's there to tap regardless of where the
   // calendar currently is.
+  // Outlined, not filled. Filled it was the heaviest thing on the
+  // screen and stood right beside today's own circle, which is also
+  // filled - two black blobs competing, and the louder one was the
+  // button rather than the state it points at.
   todayButton: {
-    backgroundColor: t.ink.primary,
     borderRadius: 10,
+    borderWidth: 1,
+    borderColor: t.edge.strong,
     paddingHorizontal: 11,
     paddingVertical: 6,
   },
@@ -1241,7 +1246,7 @@ const makeStyles = (t: Theme) =>
     fontSize: 11.5,
     fontWeight: '700',
     fontFamily: FONT_SEMIBOLD,
-    color: t.ground,
+    color: t.ink.primary,
   },
   headerDateTap: {
     flexDirection: 'row',
@@ -1288,7 +1293,10 @@ const makeStyles = (t: Theme) =>
   // Flush with the header above (square top), rounded only at the bottom.
   calendarPlate: {
     backgroundColor: t.raised,
-    borderColor: t.edge.hairline,
+    // The strong edge, not the hairline: on an almost-white ground the
+    // plate was held up by its shadow alone and read as unfinished
+    // beside the rail capsule's own crisp rim.
+    borderColor: t.edge.strong,
     // The capsule's own radius - RAIL_WIDTH is its width, so half of that
     // is the curve its ends are drawn with. Not 999: that would pull the
     // whole plate into one long capsule, and this one keeps straight sides
