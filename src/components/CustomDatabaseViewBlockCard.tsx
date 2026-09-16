@@ -6,6 +6,8 @@ import { useCustomDatabaseViewData } from '../hooks/useCustomDatabaseViewData';
 import { buildRowDisplay } from '../utils/customRowDisplay';
 import CustomRowCard from './CustomRowCard';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 
 // How many rows show before the block asks the reader to tap for more,
 // rather than a hard cap - the row count itself never changes, just how
@@ -37,6 +39,8 @@ export default function CustomDatabaseViewBlockCard({
   onOpenRow,
   onOpenView,
 }: Props) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const { database, view, rows, context } = useCustomDatabaseViewData(databaseId, viewId);
   const [expanded, setExpanded] = useState(false);
 
@@ -48,7 +52,7 @@ export default function CustomDatabaseViewBlockCard({
   if (databaseId && database && !view) {
     return (
       <View style={styles.missing}>
-        <Ionicons name="alert-circle-outline" size={18} color="#9CA3AF" />
+        <Ionicons name="alert-circle-outline" size={18} color={theme.paper.inkFaint} />
         <Text style={styles.missingLabel} numberOfLines={1}>
           {fallbackTitle ? `Вигляд видалено: ${fallbackTitle}` : 'Вигляд видалено'}
         </Text>
@@ -66,12 +70,12 @@ export default function CustomDatabaseViewBlockCard({
         style={styles.header}
         onPress={() => databaseId && view && onOpenView(databaseId, view.id)}
       >
-        <Ionicons name="bookmark" size={14} color="#6B7280" />
+        <Ionicons name="bookmark" size={14} color={theme.paper.inkMuted} />
         <Text style={styles.headerTitle} numberOfLines={1}>
           {title}
         </Text>
         <Text style={styles.headerCount}>{rows.length}</Text>
-        <Ionicons name="chevron-forward" size={14} color="#9CA3AF" />
+        <Ionicons name="chevron-forward" size={14} color={theme.paper.inkFaint} />
       </Pressable>
 
       {view && rows.length === 0 && (
@@ -97,7 +101,7 @@ export default function CustomDatabaseViewBlockCard({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   wrap: {
     flex: 1,
     gap: 6,
@@ -114,17 +118,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: '#111827',
+    color: t.paper.ink,
   },
   headerCount: {
     fontSize: 12,
     fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
+    color: t.paper.inkFaint,
   },
   emptyLabel: {
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
+    color: t.paper.inkFaint,
     paddingVertical: 6,
   },
   more: {
@@ -146,7 +150,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: '#E5E7EB',
+    borderColor: t.paper.edge,
     paddingHorizontal: 12,
     paddingVertical: 14,
     marginVertical: 4,
@@ -155,6 +159,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
+    color: t.paper.inkFaint,
   },
 });

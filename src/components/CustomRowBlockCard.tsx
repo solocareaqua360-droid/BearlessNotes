@@ -5,6 +5,8 @@ import { useCustomRowData } from '../hooks/useCustomRowData';
 import { buildRowDisplay } from '../utils/customRowDisplay';
 import CustomRowCard from './CustomRowCard';
 import { FONT_REGULAR } from '../utils/fonts';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 
 type Props = {
   databaseId: string | undefined;
@@ -22,6 +24,8 @@ type Props = {
 // its own database list uses, so the two can never drift apart, and an edit
 // made in the database shows up here without touching the document.
 export default function CustomRowBlockCard({ databaseId, rowId, fallbackTitle, tags, onOpen }: Props) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const { database, row, context } = useCustomRowData(databaseId, rowId);
 
   // Deleted from its database (or never resolvable) - the block stays, so
@@ -30,7 +34,7 @@ export default function CustomRowBlockCard({ databaseId, rowId, fallbackTitle, t
   if (databaseId && database && !row) {
     return (
       <View style={styles.missing}>
-        <Ionicons name="alert-circle-outline" size={18} color="#9CA3AF" />
+        <Ionicons name="alert-circle-outline" size={18} color={theme.paper.inkFaint} />
         <Text style={styles.missingLabel} numberOfLines={1}>
           {fallbackTitle ? `Запис видалено: ${fallbackTitle}` : 'Запис видалено'}
         </Text>
@@ -63,7 +67,7 @@ export default function CustomRowBlockCard({ databaseId, rowId, fallbackTitle, t
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   wrap: {
     flex: 1,
     paddingVertical: 4,
@@ -79,7 +83,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: '#E5E7EB',
+    borderColor: t.paper.edge,
     paddingHorizontal: 12,
     paddingVertical: 14,
     marginVertical: 4,
@@ -88,6 +92,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
+    color: t.paper.inkFaint,
   },
 });
