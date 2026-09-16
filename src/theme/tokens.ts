@@ -244,7 +244,9 @@ export const DEFAULT_THEME_KEY: ThemeKey = 'colour';
 // the way into the theme's surface it stays recognisable and stops
 // competing.
 export function mutedForTheme(colour: string, theme: Theme, amount = 0.62): string {
-  if (theme.key === 'colour') return colour;
+  // The action tile carries no colour at all - it must pass through
+  // untouched, not crash the screen (it did, once).
+  if (!colour || theme.key === 'colour') return colour;
   const hex = (c: string) => {
     const v = c.replace('#', '');
     const full = v.length === 3 ? v.split('').map((d) => d + d).join('') : v;
