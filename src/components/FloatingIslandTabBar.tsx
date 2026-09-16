@@ -148,7 +148,17 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
                     {item.label}
                   </Text>
                   {!!item.sub && (
-                    <Text style={[styles.stripSub, { color: theme.glass.inkMuted }]}>{item.sub}</Text>
+                    <Text
+                      style={[
+                        styles.stripSub,
+                        // The day you are on reads as ONE thing, number
+                        // and weekday together, not a number with a
+                        // footnote under it.
+                        { color: current ? theme.glass.ink : theme.glass.inkMuted },
+                      ]}
+                    >
+                      {item.sub}
+                    </Text>
                   )}
                 </>
               );
@@ -374,7 +384,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   stripSub: {
-    fontSize: 9,
+    fontSize: 10,
     marginTop: 1,
     fontFamily: FONT_REGULAR,
   },

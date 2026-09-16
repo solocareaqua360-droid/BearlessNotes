@@ -42,7 +42,6 @@ import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fo
 import { useNavDockPublisher } from '../navigation/navDock';
 import {
   MONTH_FULL,
-  MONTH_SHORT,
   WEEKDAY_SHORT,
   addDays,
   dateKey,
@@ -484,34 +483,35 @@ export default function CalendarScreen() {
   // thumb, which is a different job and belongs at a different end of the
   // screen.
   //
-  // The selected month, with a week of each neighbour on either side - so
-  // the ends of a month are not a wall, and stepping over one simply
-  // brings that month's own run.
-  const stripMonth = `${selectedDate.getFullYear()}-${selectedDate.getMonth()}`;
+  // SEVEN days, and the one you are on always the middle one - three
+  // either side. The user's own correction, and it is the better shape
+  // twice over: the dock stays small and symmetrical instead of being a
+  // month-long ribbon you have to hunt along, and seven is the number a
+  // week already is. Stepping onto an edge day re-centres on it, so the
+  // window slides with you and nothing ever scrolls.
+  //
+  // The weekday under the number is not decoration - it is what the user
+  // actually navigates by ("орієнтуюся якраз по днях тижня"), so a bare
+  // number would be the wrong half of the information.
+  const selectedKeyForDock = dateKey(selectedDate);
   const stripItems = useMemo(() => {
-    const [year, month] = stripMonth.split('-').map(Number);
-    const first = new Date(year, month, 1);
-    const days: { key: string; label: string; sub?: string }[] = [];
-    for (let offset = -7; ; offset += 1) {
-      const day = addDays(first, offset);
-      if (day.getMonth() !== month && offset > 0 && day.getDate() > 7) break;
-      days.push({
+    const middle = parseDateKey(selectedKeyForDock);
+    return [-3, -2, -1, 0, 1, 2, 3].map((offset) => {
+      const day = addDays(middle, offset);
+      return {
         key: dateKey(day),
         label: String(day.getDate()),
-        // Only where the day belongs to the month next door: that is the
-        // one place a bare number would lie.
-        sub: day.getMonth() === month ? undefined : MONTH_SHORT[day.getMonth()],
-      });
-    }
-    return days;
-  }, [stripMonth]);
+        sub: WEEKDAY_SHORT[mondayIndex(day)],
+      };
+    });
+  }, [selectedKeyForDock]);
   const publishToDock = useNavDockPublisher();
   const pickDay = useCallback((key: string) => selectDay(parseDateKey(key)), []);
   useEffect(() => {
     if (!publishToDock || !calendarFocused) return;
-    publishToDock({ kind: 'strip', items: stripItems, selected: dateKey(selectedDate), onPick: pickDay });
+    publishToDock({ kind: 'strip', items: stripItems, selected: selectedKeyForDock, onPick: pickDay });
     return () => publishToDock(null);
-  }, [publishToDock, calendarFocused, stripItems, selectedDate, pickDay]);
+  }, [publishToDock, calendarFocused, stripItems, selectedKeyForDock, pickDay]);
 
   function jumpToToday() {
     selectDay(new Date());
