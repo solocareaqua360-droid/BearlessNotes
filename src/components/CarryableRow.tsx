@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import type { CardCarry } from '../hooks/useCardCarry';
@@ -44,11 +44,21 @@ const MENU_HOLD_MS = 380;
 // reach CARRY_LONG_PRESS_MS but the finger was down past MENU_HOLD_MS:
 // that IS the short hold, so the menu opens, on this gesture's own clock
 // rather than racing a second one.
+const styles = StyleSheet.create({
+  // Kept in the tree, kept out of the layout - see `orphan`.
+  orphan: {
+    height: 0,
+    opacity: 0,
+    overflow: 'hidden',
+  },
+});
+
 export default function CarryableRow<T extends { id: string }>({
   item,
   path,
   carry,
   onMenu,
+  orphan,
   children,
 }: {
   item: T;
@@ -62,6 +72,14 @@ export default function CarryableRow<T extends { id: string }>({
   // callback the row's onLongPress had, and drop onLongPress from the
   // row itself (see this file's own note on why).
   onMenu: () => void;
+  // This row's item is no longer part of the list being shown - the
+  // second finger stepped into another folder while the card was up. It
+  // has to stay MOUNTED anyway: the drag gesture belongs to this view, and
+  // unmounting it mid-carry orphans the whole gesture (no release ever
+  // arrives, the ghost sticks, and the carry overlay goes on swallowing
+  // every touch on the screen - which read as the app freezing). So it
+  // stays, taking no room and drawing nothing.
+  orphan?: boolean;
   children: React.ReactNode;
 }) {
   const nodeRef = useRef<View>(null);
@@ -106,7 +124,7 @@ export default function CarryableRow<T extends { id: string }>({
           wrapper, which is not guaranteed to answer measureInWindow the
           way a real native view does - this one is only ever asked to
           measure itself, nothing about it animates. */}
-      <View ref={nodeRef} collapsable={false}>
+      <View ref={nodeRef} collapsable={false} style={orphan ? styles.orphan : undefined}>
         <Animated.View style={style}>{children}</Animated.View>
       </View>
     </GestureDetector>

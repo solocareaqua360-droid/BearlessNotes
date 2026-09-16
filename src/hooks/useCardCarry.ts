@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { hapticDrop, hapticPickUp, hapticWarning } from '../utils/haptics';
 
@@ -73,6 +73,12 @@ export function useCardCarry<T extends { id: string }>({
   // as they unmount. A `measure`-able node, not a rect: rects go stale
   // the moment the list scrolls, nodes don't.
   const folderNodes = useRef(new Map<string, View>());
+  // Last sign of life from the carry - a move, a scroll, a step into a
+  // folder. The watchdog below is a last resort, not a mechanism: a carry
+  // whose own gesture died with its row (see CarryableRow's `orphan`)
+  // would otherwise leave the overlay up forever, and an overlay that is
+  // up is an overlay that takes every touch on the screen.
+  const aliveAt = useRef(0);
 
   function registerFolder(path: string) {
     return (node: View | null) => {
@@ -86,6 +92,7 @@ export function useCardCarry<T extends { id: string }>({
       hapticPickUp();
       grabRef.current = { x: touchX, y: touchY };
       originRef.current = path;
+      aliveAt.current = Date.now();
       const next = { item, x, y, width, height };
       ghostRef.current = next;
       setGhost(next);
@@ -95,6 +102,7 @@ export function useCardCarry<T extends { id: string }>({
   const updateCarry = useCallback((absoluteX: number, absoluteY: number) => {
     const current = ghostRef.current;
     if (!current) return;
+    aliveAt.current = Date.now();
     const next = { ...current, x: absoluteX - grabRef.current.x, y: absoluteY - grabRef.current.y };
     ghostRef.current = next;
     setGhost(next);
@@ -106,6 +114,7 @@ export function useCardCarry<T extends { id: string }>({
   // second finger's own tap, so a folder can be stepped into without
   // letting go of the card.
   const hitTargetAt = useCallback((x: number, y: number, onHit: (path: string) => void) => {
+    aliveAt.current = Date.now();
     folderNodes.current.forEach((node, path) => {
       node.measureInWindow((nx, ny, nw, nh) => {
         if (x >= nx && x <= nx + nw && y >= ny && y <= ny + nh) onHit(path);
@@ -159,6 +168,16 @@ export function useCardCarry<T extends { id: string }>({
     setGhost(null);
   }, []);
 
+  // A carry with nothing happening in it for this long is a carry whose
+  // finger is no longer there to end it.
+  useEffect(() => {
+    if (!ghost) return;
+    const id = setInterval(() => {
+      if (Date.now() - aliveAt.current > 8000) cancelCarry();
+    }, 2000);
+    return () => clearInterval(id);
+  }, [ghost, cancelCarry]);
+
   return {
     ghost,
     registerFolder,
@@ -167,7 +186,10 @@ export function useCardCarry<T extends { id: string }>({
     updateCarry,
     endCarry,
     cancelCarry,
-    scrollBy,
+    scrollBy: (dy: number) => {
+      aliveAt.current = Date.now();
+      scrollBy(dy);
+    },
   };
 }
 

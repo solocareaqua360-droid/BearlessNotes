@@ -269,6 +269,15 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     },
   });
   const [movedToast, setMovedToast] = useState<{ id: string; origin: string; folderName: string } | null>(null);
+  // The card being carried stays in the list even after the second finger
+  // has stepped into another folder where it does not belong - drawn as
+  // nothing, taking no room (CarryableRow's `orphan`), purely so its row
+  // - and with it the drag gesture - is never unmounted mid-carry.
+  const carriedId = carry.ghost?.item.id;
+  const carriedOrphan =
+    carriedId && !filesHere.some((f) => f.id === carriedId) ? files.find((f) => f.id === carriedId) : undefined;
+  const listedFiles = carriedOrphan ? [...filesHere, carriedOrphan] : filesHere;
+
   useEffect(() => {
     if (!movedToast) return;
     const id = setTimeout(() => setMovedToast(null), 4000);
@@ -624,6 +633,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         path={explorer.path}
         carry={carry}
         onMenu={() => setCardMenuFileId(item.id)}
+        orphan={item.id === carriedOrphan?.id}
       >
         {row}
       </CarryableRow>
@@ -659,6 +669,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         path={explorer.path}
         carry={carry}
         onMenu={() => setCardMenuFileId(item.id)}
+        orphan={item.id === carriedOrphan?.id}
       >
         {cell}
       </CarryableRow>
@@ -1004,7 +1015,11 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
           </View>
-        ) : !trashOpen && filesHere.length === 0 && explorer.folders.length === 0 ? (
+        ) : // listedFiles, not filesHere: stepping into an empty folder while
+        // carrying would otherwise swap the whole list for the empty state
+        // and unmount the carried row with it - the very thing `orphan`
+        // exists to prevent.
+        !trashOpen && listedFiles.length === 0 && explorer.folders.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
               <Ionicons name="document-outline" size={32} color={ACCENT} />
@@ -1029,7 +1044,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
           >
 {explorerOrTrashHead()}
             <View style={styles.gridRows}>
-              {(trashOpen ? trashedFiles : filesHere).map((item) =>
+              {(trashOpen ? trashedFiles : listedFiles).map((item) =>
                 trashOpen
                   ? renderFileTrashGridCell(item, listWidth >= 640 ? 3 : 2)
                   : renderFileGridCell(item, listWidth >= 640 ? 3 : 2)
@@ -1049,7 +1064,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
             ]}
           >
 {explorerOrTrashHead()}
-            {(trashOpen ? trashedFiles : filesHere).map((item) =>
+            {(trashOpen ? trashedFiles : listedFiles).map((item) =>
               trashOpen ? renderFileTrashRow(item) : renderFileRow(item)
             )}
             {/* What else is in this group - see GroupSections. */}
