@@ -11,14 +11,23 @@ import { BlurTargetView } from 'expo-blur';
 // So the whole app is wrapped once, here, and every sheet reaches this ref
 // through the context rather than each screen having to arrange its own.
 const BlurTargetContext = createContext<RefObject<View | null> | null>(null);
+// Whether the thing asking is standing INSIDE the target. A blur drawn
+// inside the very view it blurs recurses natively and takes the app down
+// - not a red screen, not something an error boundary sees, the process
+// simply ends. That is what "щоденник вилітає" was: the diary's search
+// field was the one drop not drawn through the portal, so it sat inside
+// the target and blurred itself. Everything that blurs asks this first.
+const InsideTargetContext = createContext(false);
 
 export function GlassTargetProvider({ children }: { children: ReactNode }) {
   const ref = useRef<View>(null);
   return (
     <BlurTargetContext.Provider value={ref}>
-      <BlurTargetView ref={ref} style={styles.fill}>
-        {children}
-      </BlurTargetView>
+      <InsideTargetContext.Provider value={true}>
+        <BlurTargetView ref={ref} style={styles.fill}>
+          {children}
+        </BlurTargetView>
+      </InsideTargetContext.Provider>
     </BlurTargetContext.Provider>
   );
 }
@@ -26,6 +35,11 @@ export function GlassTargetProvider({ children }: { children: ReactNode }) {
 // null when nothing has been wrapped - a caller then simply doesn't blur.
 export function useBlurTarget(): RefObject<View | null> | null {
   return useContext(BlurTargetContext);
+}
+
+// true where a blur MUST NOT be drawn against the target - see above.
+export function useInsideBlurTarget(): boolean {
+  return useContext(InsideTargetContext);
 }
 
 // Hands the target to a piece of the tree that is drawn somewhere else.
@@ -45,7 +59,13 @@ export function BlurTargetBridge({
   value: RefObject<View | null> | null;
   children: ReactNode;
 }) {
-  return <BlurTargetContext.Provider value={value}>{children}</BlurTargetContext.Provider>;
+  // The host is outside the target - that is the whole reason the portal
+  // exists - so what it draws may blur again.
+  return (
+    <BlurTargetContext.Provider value={value}>
+      <InsideTargetContext.Provider value={false}>{children}</InsideTargetContext.Provider>
+    </BlurTargetContext.Provider>
+  );
 }
 
 const styles = StyleSheet.create({

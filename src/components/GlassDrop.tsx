@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useTheme } from '../theme/ThemeProvider';
-import { useBlurTarget } from './GlassTarget';
+import { useBlurTarget, useInsideBlurTarget } from './GlassTarget';
 import type { Lift } from '../theme/tokens';
 
 // A drop of liquid glass, in whatever shape it is asked for.
@@ -70,6 +70,12 @@ export default function GlassDrop({
 }) {
   const theme = useTheme();
   const blurTarget = useBlurTarget();
+  // A drop standing inside the blur target must not blur: on Android a
+  // blur inside the view it blurs recurses natively and kills the app
+  // outright - no red screen, nothing an error boundary can catch. That
+  // was the diary. Such a drop keeps every other layer and simply has no
+  // blur; a screen that wants the blur draws the drop through GlassPortal.
+  const insideTarget = useInsideBlurTarget();
   const how = lift ?? theme.lift;
   const g = theme.glass;
   // Unique per instance: in the browser every <Svg> shares one document,
@@ -97,14 +103,16 @@ export default function GlassDrop({
       }}
     >
       <View style={[StyleSheet.absoluteFill, { borderRadius: radius, overflow: 'hidden' }]} pointerEvents="none">
-        <BlurView
-          intensity={blurAmount ?? g.blur}
-          tint={g.blurTint}
-          blurMethod="dimezisBlurView"
-          blurTarget={blurTarget ?? undefined}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-        />
+        {!insideTarget && (
+          <BlurView
+            intensity={blurAmount ?? g.blur}
+            tint={g.blurTint}
+            blurMethod="dimezisBlurView"
+            blurTarget={blurTarget ?? undefined}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+        )}
         {w > 0 && h > 0 && (
           <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
             <Defs>
