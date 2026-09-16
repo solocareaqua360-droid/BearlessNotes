@@ -188,10 +188,24 @@ export function useExplorer<T extends { id: string }>(options: ExplorerOptions<T
     return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name));
   })();
 
+  // The root shows EVERYTHING, and the folders stand above it as ways of
+  // narrowing it down.
+  //
+  // It used to show only what carried no tag at all - a real file
+  // manager's rule, and the right one where a tag IS a folder. In these
+  // databases it is not: a link, a photo or a file is tagged to be found
+  // again, not to be filed, so turning the explorer on made most of the
+  // list vanish into folders ("зникають всі посилання, відео"). Nothing
+  // should disappear because of a switch in the drawer.
+  //
+  // Documents carries the only other copy of this rule (it is still not
+  // on this hook) and carries THIS one, changed in the same breath: the
+  // explorer cannot mean one thing in notes and another in links - the
+  // user's own objection, and the right one.
   const visibleItems = !active
     ? displayed
     : path === ''
-      ? displayed.filter((item) => tagIdsOf(item).every((id) => !explorerTags.some((t) => t.id === id)))
+      ? displayed
       : displayed.filter((item) => {
           const here = tagByPath.get(path);
           return !!here && tagIdsOf(item).includes(here.id);

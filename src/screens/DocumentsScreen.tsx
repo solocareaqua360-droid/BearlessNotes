@@ -329,10 +329,19 @@ export default function DocumentsScreen({
     for (const folder of seen.values()) folder.count = countInside(folder.fullPath);
     return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name));
   })();
+  // The root shows EVERYTHING, and the folders stand above it as ways of
+  // narrowing it down - the same rule useExplorer uses, because the
+  // explorer must not mean one thing in notes and another in links. It
+  // used to show only what carried no tag at all, and that is what made
+  // most of a list vanish the moment the switch was thrown.
+  //
+  // This screen is still the one copy of the explorer that is not the
+  // shared hook; until it moves onto it, the two have to be changed
+  // together, and this rule is the one they share.
   const explorerDocuments = !explorer
     ? displayedDocuments
     : explorerPath === ''
-      ? displayedDocuments.filter((d) => (d.tagIds ?? []).every((id) => !explorerTags.some((t) => t.id === id)))
+      ? displayedDocuments
       : displayedDocuments.filter((d) => {
           const here = tagByPath.get(explorerPath);
           return !!here && (d.tagIds ?? []).includes(here.id);
