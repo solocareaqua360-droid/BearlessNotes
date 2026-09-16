@@ -98,7 +98,6 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
             return (
               <Pressable
                 key={route.key}
-                style={[styles.button, focused && { backgroundColor: theme.ink.primary }]}
                 onPress={() => {
                   const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
                   if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
@@ -110,10 +109,30 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
                 onLongPress={toggleCollapsed}
                 delayLongPress={400}
               >
-                {/* The tab you are on is the one solid shape here, so
-                    its glyph takes the ground's own colour - which keeps
-                    it legible whichever way round the theme is. */}
-                <Ionicons name={icon} size={ICON_SIZE} color={focused ? theme.ground : theme.glass.ink} />
+                {/* The tab you are on is GLASS ON GLASS - a second, denser
+                    drop laid over the bar, with its glyph in the accent -
+                    which is what the user's reference does and what the
+                    solid disc here was not. It carries no blur of its own
+                    (blurAmount 0): the bar underneath is already blurring
+                    the screen, and a blur inside a blur costs a great
+                    deal on Android for something the eye cannot separate.
+                    No lift either - it is lying ON the glass, not above
+                    the screen. */}
+                {focused ? (
+                  <GlassDrop
+                    style={styles.button}
+                    lift="none"
+                    blurAmount={0}
+                    glassOpacity={theme.glass.opacity * 2.4}
+                    specularIntensity={theme.glass.specularIntensity * 0.7}
+                  >
+                    <Ionicons name={icon} size={ICON_SIZE} color={theme.accent} />
+                  </GlassDrop>
+                ) : (
+                  <View style={styles.button}>
+                    <Ionicons name={icon} size={ICON_SIZE} color={theme.glass.ink} />
+                  </View>
+                )}
               </Pressable>
             );
           })}

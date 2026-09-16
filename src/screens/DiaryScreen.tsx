@@ -58,7 +58,11 @@ export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
           .filter((d) => !!d.calendarDate && hasNoteContent(d.title ?? '', d.blocks))
           .sort((a, b) => (b.calendarDate ?? '').localeCompare(a.calendarDate ?? ''))
       );
-    });
+    },
+    // Never optional here: under the owner-only rules a refused read
+    // THROWS, and an unhandled one takes the screen down with it - which
+    // is exactly what "the app quits when I open the diary" looks like.
+    () => setSheets([]));
   }, []);
 
   const needle = query_.trim();

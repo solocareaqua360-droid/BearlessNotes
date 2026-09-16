@@ -25,6 +25,7 @@ import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
 import { AskHost } from './src/components/surfaces/Ask';
 import { ThemeProvider } from './src/theme/ThemeProvider';
+import CrashBoundary from './src/components/CrashBoundary';
 import AlarmRingOverlay from './src/components/AlarmRingOverlay';
 import { useStickerDeepLink } from './src/hooks/useStickerDeepLink';
 
@@ -124,7 +125,14 @@ export default function App() {
             <AlarmRingOverlay />
             {/* Inside the target too: it raises the naming dialog. */}
             <ShareIntentHandler />
-            <RootNavigator />
+            {/* A render that throws used to take the whole app down on the
+                phone - "вилітає" is the only report anyone can make, and
+                it is the same report for every possible cause. The
+                browser build has had this since the day it went white;
+                the phone should have had it too. */}
+            <CrashBoundary>
+              <RootNavigator />
+            </CrashBoundary>
             </GlassTargetProvider>
           </GlassPortalHost>
           </NavigationContainer>
