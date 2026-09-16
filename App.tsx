@@ -12,7 +12,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { ShareIntentProvider } from 'expo-share-intent';
-import { NavigationContainer } from '@react-navigation/native';
+import { DefaultTheme, NavigationContainer, Theme as NavTheme } from '@react-navigation/native';
 import { ensureSignedIn } from './src/firebase';
 import RootNavigator from './src/AppNavigator';
 import ShareIntentHandler from './src/components/ShareIntentHandler';
@@ -23,7 +23,7 @@ import { navigationRef } from './src/navigationRef';
 import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
 import { AskHost } from './src/components/surfaces/Ask';
-import { ThemeProvider, ThemedStatusBar } from './src/theme/ThemeProvider';
+import { ThemeProvider, ThemedStatusBar, useTheme } from './src/theme/ThemeProvider';
 import CrashBoundary from './src/components/CrashBoundary';
 import AlarmRingOverlay from './src/components/AlarmRingOverlay';
 import { useStickerDeepLink } from './src/hooks/useStickerDeepLink';
@@ -39,6 +39,25 @@ import { useStickerDeepLink } from './src/hooks/useStickerDeepLink';
 // instead, and let go below once the fonts and the sign-in have resolved,
 // which is when there is really something to show.
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+// The navigator paints its own card behind every screen, and its default
+// theme's is WHITE - which is what showed through as small white patches
+// while the screens re-measured themselves on a rotation. It has to be
+// the app's own ground instead, and from inside ThemeProvider so it
+// follows the theme like everything else.
+function ThemedNavigationContainer({ children }: { children: React.ReactNode }) {
+  const theme = useTheme();
+  const navTheme: NavTheme = {
+    ...DefaultTheme,
+    dark: theme.scheme === 'dark',
+    colors: { ...DefaultTheme.colors, background: theme.ground, card: theme.surface, text: theme.ink.primary },
+  };
+  return (
+    <NavigationContainer ref={navigationRef} theme={navTheme}>
+      {children}
+    </NavigationContainer>
+  );
+}
 
 export default function App() {
   // A tap on the sticker widget opens straight into that sticker - see
@@ -104,7 +123,7 @@ export default function App() {
               edited can ride up in the same motion as the keyboard instead of
               jumping after it has finished. */}
           <KeyboardProvider>
-          <NavigationContainer ref={navigationRef}>
+          <ThemedNavigationContainer>
           {/* The glass, in two halves that must stay in this order. The
               portal host is where every sheet is actually drawn - inside
               NavigationContainer, so a sheet that navigates still can, and
@@ -134,7 +153,7 @@ export default function App() {
             </CrashBoundary>
             </GlassTargetProvider>
           </GlassPortalHost>
-          </NavigationContainer>
+          </ThemedNavigationContainer>
           </KeyboardProvider>
         </SafeAreaProvider>
         </GestureHandlerRootView>

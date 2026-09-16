@@ -45,6 +45,9 @@ import { useDatabaseList } from '../hooks/useDatabaseList';
 import { useBin } from '../hooks/useBin';
 import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
 import ExplorerHead from '../components/ExplorerHead';
+import { useExplorerCarry } from '../hooks/useExplorerCarry';
+import CarryableRow from '../components/CarryableRow';
+import CardCarryOverlay from '../components/CardCarryOverlay';
 import { ask, confirm } from '../components/surfaces/Ask';
 import DatabaseChrome, { menuStyles } from '../components/DatabaseChrome';
 import { detachTagFromDeletedItem, isTagAllowedForKind } from '../hooks/useTags';
@@ -264,6 +267,22 @@ export default function LinksScreen({
     detachTag: list.detachTag,
   });
   const linksHere = explorer.visibleItems;
+
+  // Carrying a card into a folder - see useExplorerCarry, which is all of
+  // it: the gesture, the undo toast, and keeping a carried card alive
+  // when the second finger walks into a folder it does not belong to.
+  const carrying = useExplorerCarry<LinkItem>({
+    path: explorer.path,
+    folders: explorer.folders,
+    moveItem: (item, destination) => explorer.moveItem(item, destination),
+    items: links,
+    visibleItems: linksHere,
+    isSelectMode,
+    selectedIds,
+    onMoved: () => {
+      if (isSelectMode) clearSelection();
+    },
+  });
 
   function openFolderMenu(folder: ExplorerFolder) {
     ask({
@@ -512,19 +531,37 @@ export default function LinksScreen({
   }
 
   function renderLinkRow(item: LinkItem) {
-    return (
+    // Carried, the row gives up its own onLongPress - CarryableRow's drag
+    // gesture opens the menu itself, on its own timing, instead of racing
+    // it (see CarryableRow's note on why that used to open it early).
+    const carried = explorer.active;
+    const row = (
       <LinkRow
         key={item.id}
         link={item}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
         onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkUrl(item.url))}
-        onLongPress={() => setCardMenuLinkId(item.id)}
+        onLongPress={carried ? undefined : () => setCardMenuLinkId(item.id)}
         onMenu={() => setCardMenuLinkId(item.id)}
         onTagPress={() => setTagPickerForId(item.id)}
         isSelectMode={isSelectMode}
         isSelected={selectedIds.has(item.id)}
         onToggleSelect={() => toggleSelected(item.id)}
       />
+    );
+    if (!carried) return row;
+    return (
+      <CarryableRow
+        key={item.id}
+        item={item}
+        path={explorer.path}
+        carry={carrying.carry}
+        onMenu={() => setCardMenuLinkId(item.id)}
+        orphan={carrying.isOrphan(item)}
+        group={carrying.groupFor(item)}
+      >
+        {row}
+      </CarryableRow>
     );
   }
 
@@ -533,20 +570,35 @@ export default function LinksScreen({
   // off the column the chrome hands down, not the window: in a pane the
   // two are not the same number.
   function renderLinkGridCell(item: LinkItem, columns: number) {
-    return (
+    const carried = explorer.active;
+    const cell = (
       <LinkGridCell
         key={item.id}
         columns={columns}
         link={item}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
         onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkUrl(item.url))}
-        onLongPress={() => setCardMenuLinkId(item.id)}
+        onLongPress={carried ? undefined : () => setCardMenuLinkId(item.id)}
         onMenu={() => setCardMenuLinkId(item.id)}
         onTagPress={() => setTagPickerForId(item.id)}
         isSelectMode={isSelectMode}
         isSelected={selectedIds.has(item.id)}
         onToggleSelect={() => toggleSelected(item.id)}
       />
+    );
+    if (!carried) return cell;
+    return (
+      <CarryableRow
+        key={item.id}
+        item={item}
+        path={explorer.path}
+        carry={carrying.carry}
+        onMenu={() => setCardMenuLinkId(item.id)}
+        orphan={carrying.isOrphan(item)}
+        group={carrying.groupFor(item)}
+      >
+        {cell}
+      </CarryableRow>
     );
   }
 
@@ -604,6 +656,7 @@ export default function LinksScreen({
     if (!list.explorerMode) return null;
     return (
       <ExplorerHead
+        folderRef={carrying.carry.registerFolder}
         crumbs={explorer.crumbs}
         path={explorer.path}
         folders={explorer.folders}
@@ -657,6 +710,15 @@ export default function LinksScreen({
       }}
       overlay={
         <>
+          {carrying.movedToast && <UndoToast message={carrying.toastMessage} onUndo={carrying.undoMove} />}
+          {/* The floating card while one is being carried into a folder -
+              see useCardCarry. Always mounted, invisible until then. */}
+          <CardCarryOverlay
+            carry={carrying.carry}
+            label={(items) => (items.length > 1 ? `${items.length} посилання` : items[0].title || items[0].url)}
+            icon="link-outline"
+            onEnterFolder={(path) => explorer.setPath(path)}
+          />
           {justAddedLink && (
             <UndoToast
               message={`Додано у ${CATEGORY_INFO[category].title}`}
@@ -691,6 +753,25 @@ export default function LinksScreen({
                 >
                   <Ionicons name="pencil-outline" size={18} color="#111827" />
                   <Text style={styles.cardMenuRowLabel}>Редагувати назву</Text>
+                </Pressable>
+                {/* Where the drag-and-drop lands a card, for anyone who
+                    would rather pick the folder from a list - and the only
+                    way to reach a folder that is nowhere near the screen. */}
+                <Pressable
+                  style={styles.cardMenuRow}
+                  onPress={async () => {
+                    const link = cardMenuLink;
+                    setCardMenuLinkId(null);
+                    if (!link) return;
+                    const destination = await explorer.pickDestination(
+                      `Перемістити «${link.title || link.url}» в…`
+                    );
+                    if (destination === 'cancel') return;
+                    await explorer.moveItem(link, destination);
+                  }}
+                >
+                  <Ionicons name="folder-outline" size={18} color="#111827" />
+                  <Text style={styles.cardMenuRowLabel}>Перемістити в папку</Text>
                 </Pressable>
                 {cardMenuLink && cardMenuLink.documentIds.length > 0 && (
                   <Pressable
@@ -829,12 +910,17 @@ export default function LinksScreen({
         </>
       }
     >
-      {(listTopPad, listProps, listWidth) =>
+      {(listTopPad, listProps, listWidth, scrollY) => {
+        carrying.scrollYRef.current = scrollY;
+        return (
         isLoading ? (
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
           </View>
-        ) : !trashOpen && linksHere.length === 0 && explorer.folders.length === 0 ? (
+        ) : // carrying.listed, not linksHere: stepping into an empty folder
+        // mid-carry would otherwise swap the list for the empty state and
+        // unmount the carried row with it.
+        !trashOpen && carrying.listed.length === 0 && explorer.folders.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={[styles.emptyIcon, { backgroundColor: `${info.color}1A` }]}>
               <Ionicons name={info.icon} size={32} color={info.color} />
@@ -844,6 +930,7 @@ export default function LinksScreen({
           </View>
         ) : viewMode === 'grid' ? (
           <ScrollView
+            ref={carrying.scrollRef as React.RefObject<ScrollView>}
             {...listProps}
             contentContainerStyle={[
               styles.gridPage,
@@ -854,7 +941,7 @@ export default function LinksScreen({
           >
             {explorerOrTrashHead()}
             <View style={styles.gridRows}>
-              {(trashOpen ? trashedLinks : linksHere).map((item) =>
+              {(trashOpen ? trashedLinks : carrying.listed).map((item) =>
                 trashOpen
                   ? renderLinkTrashGridCell(item, listWidth >= 640 ? 3 : 2)
                   : renderLinkGridCell(item, listWidth >= 640 ? 3 : 2)
@@ -864,6 +951,7 @@ export default function LinksScreen({
           </ScrollView>
         ) : (
           <ScrollView
+            ref={carrying.scrollRef as React.RefObject<ScrollView>}
             {...listProps}
             contentContainerStyle={[
               styles.list,
@@ -873,14 +961,15 @@ export default function LinksScreen({
             ]}
           >
             {explorerOrTrashHead()}
-            {(trashOpen ? trashedLinks : linksHere).map((item) =>
+            {(trashOpen ? trashedLinks : carrying.listed).map((item) =>
               trashOpen ? renderLinkTrashRow(item) : renderLinkRow(item)
             )}
             {/* What else is in this group - see GroupSections. */}
             {!trashOpen && <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />}
           </ScrollView>
         )
-      }
+        );
+      }}
     </DatabaseChrome>
   );
 }

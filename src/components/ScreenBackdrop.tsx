@@ -82,7 +82,10 @@ export default function ScreenBackdrop({
 
   return (
     <View
-      style={[StyleSheet.absoluteFill, styles.frame]}
+      // The ground under everything it draws: an SVG re-measures a frame
+      // or two behind its own view, and on a rotation that gap showed as
+      // white patches until whatever is behind this was painted.
+      style={[StyleSheet.absoluteFill, styles.frame, { backgroundColor: theme.ground }]}
       pointerEvents="none"
       onLayout={(e) => {
         const { width: w, height: h } = e.nativeEvent.layout;

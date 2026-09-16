@@ -10,13 +10,13 @@ import {
 } from '@expo-google-fonts/nunito';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { NavigationContainer } from '@react-navigation/native';
+import { DefaultTheme, NavigationContainer, Theme as NavTheme } from '@react-navigation/native';
 import { auth, ensureSignedIn, signInWithGoogleAccount, signOutEverywhere } from './src/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import RootNavigator from './src/AppNavigator';
 import { navigationRef } from './src/navigationRef';
 import { AskHost } from './src/components/surfaces/Ask';
-import { ThemeProvider } from './src/theme/ThemeProvider';
+import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
 import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
 import CrashBoundary from './src/components/CrashBoundary';
@@ -114,6 +114,23 @@ const styles = StyleSheet.create({
     color: '#171310',
   },
 });
+
+// The navigator paints its own card behind every screen, and its default
+// theme's is WHITE - see App.tsx, where the same patches showed through
+// on a rotation.
+function ThemedNavigationContainer({ children }: { children: React.ReactNode }) {
+  const theme = useTheme();
+  const navTheme: NavTheme = {
+    ...DefaultTheme,
+    dark: theme.scheme === 'dark',
+    colors: { ...DefaultTheme.colors, background: theme.ground, card: theme.surface, text: theme.ink.primary },
+  };
+  return (
+    <NavigationContainer ref={navigationRef} theme={navTheme}>
+      {children}
+    </NavigationContainer>
+  );
+}
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -246,7 +263,7 @@ export default function App() {
             or the editor must still leave a way to change account or sign
             out, and the bar is that way. */}
         <CrashBoundary>
-        <NavigationContainer ref={navigationRef}>
+        <ThemedNavigationContainer>
           <GlassPortalHost>
             <GlassTargetProvider>
               <AskHost />
@@ -257,7 +274,7 @@ export default function App() {
               <RootNavigator />
             </GlassTargetProvider>
           </GlassPortalHost>
-        </NavigationContainer>
+        </ThemedNavigationContainer>
         </CrashBoundary>
       </GestureHandlerRootView>
     </SafeAreaProvider>

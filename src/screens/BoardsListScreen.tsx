@@ -30,6 +30,10 @@ import { useDatabaseList } from '../hooks/useDatabaseList';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
 import ExplorerHead from '../components/ExplorerHead';
+import { useExplorerCarry } from '../hooks/useExplorerCarry';
+import CarryableRow from '../components/CarryableRow';
+import CardCarryOverlay from '../components/CardCarryOverlay';
+import UndoToast from '../components/UndoToast';
 import RenamePrompt from '../components/RenamePrompt';
 import { MAX_CONTENT_WIDTH } from '../components/ContentColumn';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -190,6 +194,20 @@ export default function BoardsListScreen({
   // it is everything the filters left.
   const boardsHere = explorer.visibleItems;
 
+  // Carrying a board into a folder - see useExplorerCarry.
+  const carrying = useExplorerCarry<BoardItem>({
+    path: explorer.path,
+    folders: explorer.folders,
+    moveItem: (item, destination) => explorer.moveItem(item, destination),
+    items: boards,
+    visibleItems: boardsHere,
+    isSelectMode,
+    selectedIds,
+    onMoved: () => {
+      if (isSelectMode) clearSelection();
+    },
+  });
+
   function confirmDeleteSelected() {
     const toDelete = selectedBoards;
     requestDeleteMany(toDelete, `Видалено дощок: ${toDelete.length}`, () => {
@@ -329,12 +347,15 @@ export default function BoardsListScreen({
 
   function renderBoardRow(item: BoardItem) {
     const { background, text, textMuted } = recordColour(item.id);
-    return (
+    // Carried, the row gives up its own onLongPress - the drag gesture
+    // opens the menu itself, on its own timing, rather than racing it.
+    const carried = explorer.active;
+    const row = (
       <Pressable
         key={item.id}
         style={[styles.row, isTwoPane && styles.rowHalf, { backgroundColor: background }]}
         onPress={() => openBoard(item)}
-        onLongPress={() => askBoardActions(item)}
+        onLongPress={carried ? undefined : () => askBoardActions(item)}
       >
         {/* The board's own layout in miniature, drawn from its cards -
             always current, because it is the cards. Falls back to the
@@ -363,6 +384,20 @@ export default function BoardsListScreen({
         </Pressable>
       </Pressable>
     );
+    if (!carried) return row;
+    return (
+      <CarryableRow
+        key={item.id}
+        item={item}
+        path={explorer.path}
+        carry={carrying.carry}
+        onMenu={() => askBoardActions(item)}
+        orphan={carrying.isOrphan(item)}
+        group={carrying.groupFor(item)}
+      >
+        {row}
+      </CarryableRow>
+    );
   }
 
   // A board as a tile: its own miniature at a size where the cards are
@@ -370,12 +405,13 @@ export default function BoardsListScreen({
   function renderBoardTile(item: BoardItem, tileWidth: number) {
     const { background, text, textMuted } = recordColour(item.id);
     const mapHeight = Math.round(tileWidth * 0.72);
-    return (
+    const carried = explorer.active;
+    const tile = (
       <Pressable
         key={item.id}
         style={[styles.tile, { width: tileWidth, backgroundColor: background }]}
         onPress={() => openBoard(item)}
-        onLongPress={() => askBoardActions(item)}
+        onLongPress={carried ? undefined : () => askBoardActions(item)}
       >
         <View style={[styles.tileMap, { height: mapHeight }]}>
           <CoverGradientView gradient={defaultCoverFor(item.id)} style={StyleSheet.absoluteFill} />
@@ -396,6 +432,20 @@ export default function BoardsListScreen({
           </Text>
         </View>
       </Pressable>
+    );
+    if (!carried) return tile;
+    return (
+      <CarryableRow
+        key={item.id}
+        item={item}
+        path={explorer.path}
+        carry={carrying.carry}
+        onMenu={() => askBoardActions(item)}
+        orphan={carrying.isOrphan(item)}
+        group={carrying.groupFor(item)}
+      >
+        {tile}
+      </CarryableRow>
     );
   }
 
@@ -437,6 +487,15 @@ export default function BoardsListScreen({
       }}
       overlay={
         <>
+          {carrying.movedToast && <UndoToast message={carrying.toastMessage} onUndo={carrying.undoMove} />}
+          {/* The floating board while one is being carried into a folder -
+              see useCardCarry. Always mounted, invisible until then. */}
+          <CardCarryOverlay
+            carry={carrying.carry}
+            label={(items) => (items.length > 1 ? `${items.length} дошки` : items[0].title || 'Без назви')}
+            icon="apps-outline"
+            onEnterFolder={(path) => explorer.setPath(path)}
+          />
           <TagPicker
             visible={tagPickerBoardId !== null}
             kind="board"
@@ -491,8 +550,9 @@ export default function BoardsListScreen({
         </>
       }
     >
-      {(listTopPad, listProps) =>
-        isLoading ? (
+      {(listTopPad, listProps, _listWidth, scrollY) => {
+        carrying.scrollYRef.current = scrollY;
+        return isLoading ? (
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
           </View>
@@ -504,7 +564,10 @@ export default function BoardsListScreen({
             <Text style={styles.emptyLabel}>Не вдалося прочитати дошки</Text>
             <Text style={styles.emptyHint}>{loadError}</Text>
           </View>
-        ) : boardsHere.length === 0 && explorer.folders.length === 0 ? (
+        ) : // carrying.listed, not boardsHere: stepping into an empty folder
+        // mid-carry would otherwise swap the list for the empty state and
+        // unmount the carried row with it.
+        carrying.listed.length === 0 && explorer.folders.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
               <Ionicons name="apps-outline" size={32} color={ACCENT} />
@@ -518,6 +581,7 @@ export default function BoardsListScreen({
           </View>
         ) : (
           <ScrollView
+            ref={carrying.scrollRef as React.RefObject<ScrollView>}
             {...listProps}
             contentContainerStyle={[
               viewMode === 'cards' ? styles.tileGrid : styles.list,
@@ -535,6 +599,7 @@ export default function BoardsListScreen({
             {list.explorerMode && (
               <View style={styles.headSpan}>
               <ExplorerHead
+                folderRef={carrying.carry.registerFolder}
                 crumbs={explorer.crumbs}
                 path={explorer.path}
                 folders={explorer.folders}
@@ -556,13 +621,13 @@ export default function BoardsListScreen({
               </View>
             )}
             {viewMode === 'cards'
-              ? boardsHere.map((board) => renderBoardTile(board, tileWidth))
-              : boardsHere.map(renderBoardRow)}
+              ? carrying.listed.map((board) => renderBoardTile(board, tileWidth))
+              : carrying.listed.map(renderBoardRow)}
             {/* What else is in this group - see GroupSections. */}
             <GroupSections groupId={list.selectedGroupId} currentKind="board" tags={tags} />
           </ScrollView>
-        )
-      }
+        );
+      }}
     </DatabaseChrome>
   );
 }

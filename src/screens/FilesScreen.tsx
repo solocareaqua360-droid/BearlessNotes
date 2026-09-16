@@ -60,8 +60,7 @@ import FilePreviewWorker from '../components/FilePreviewWorker';
 import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT , railClear } from '../constants/rail';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
-import type { SharedValue } from 'react-native-reanimated';
-import { useCardCarry } from '../hooks/useCardCarry';
+import { useExplorerCarry } from '../hooks/useExplorerCarry';
 import CarryableRow from '../components/CarryableRow';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 
@@ -232,61 +231,23 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
   });
   const filesHere = explorer.visibleItems;
 
-  // Drag a card into a folder - see useCardCarry for the mechanism and
-  // its own long comment on why a second finger scrolls the list rather
-  // than fighting it for the same touch. `scrollRef`/`scrollYRef` point
-  // at whichever ScrollView (grid or list) is actually mounted right now.
-  const scrollRef = useRef<ScrollView>(null);
-  const scrollYRef = useRef<SharedValue<number> | null>(null);
-  const scrollTargetRef = useRef<{ y: number; at: number } | null>(null);
-  const carry = useCardCarry<FileItem>({
-    currentPath: explorer.path,
+  // Carrying a card into a folder - the whole of it (gesture state, the
+  // undo toast, the carried card's survival across a folder change) in
+  // useExplorerCarry, shared with every other database screen.
+  const carrying = useExplorerCarry<FileItem>({
+    path: explorer.path,
+    folders: explorer.folders,
     moveItem: (item, destination) => explorer.moveItem(item, destination),
-    // The list's own scrollY only catches up through its onScroll event,
-    // a frame or two behind - reading it every tick of a fast drag would
-    // keep computing from a stale number and stutter. So the live value
-    // only SEEDS this: once a drag is under way it accumulates its own
-    // target, and re-seeds when the finger has been still long enough for
-    // the list to have caught up.
-    scrollBy: (dy) => {
-      const live = scrollYRef.current;
-      if (!live) return;
-      const now = Date.now();
-      const carried = scrollTargetRef.current;
-      const base = carried && now - carried.at < 250 ? carried.y : live.value;
-      const next = Math.max(0, base - dy);
-      scrollTargetRef.current = { y: next, at: now };
-      scrollRef.current?.scrollTo({ y: next, animated: false });
-    },
-    onMoved: (items, destination, origin) => {
-      const folderName = explorer.folders.find((f) => f.fullPath === destination)?.name ?? nameOf(destination ?? '');
-      // IDs, not records: moveItem reads the tags off the object it is
-      // handed, and by the time undo runs these are snapshots from BEFORE
-      // the move - they still carry the old folder's tags and not the new
-      // one's. Undo would then detach tags the files no longer have and,
-      // from the root, return having done nothing at all. Looked up live
-      // at the moment of undo, they carry what they actually have now.
-      setMovedToast({ ids: items.map((one) => one.id), origin, folderName });
+    items: files,
+    visibleItems: filesHere,
+    isSelectMode,
+    selectedIds,
+    onMoved: () => {
       if (isSelectMode) clearSelection();
     },
   });
-  const [movedToast, setMovedToast] = useState<{ ids: string[]; origin: string; folderName: string } | null>(null);
-  // The card being carried stays in the list even after the second finger
-  // has stepped into another folder where it does not belong - drawn as
-  // nothing, taking no room (CarryableRow's `orphan`), purely so its row
-  // - and with it the drag gesture - is never unmounted mid-carry.
-  const carriedIds = carry.ghost?.items.map((one) => one.id) ?? [];
-  const carriedOrphans = carriedIds
-    .filter((id) => !filesHere.some((f) => f.id === id))
-    .map((id) => files.find((f) => f.id === id))
-    .filter((f): f is FileItem => !!f);
-  const listedFiles = carriedOrphans.length > 0 ? [...filesHere, ...carriedOrphans] : filesHere;
+  const listedFiles = carrying.listed;
 
-  useEffect(() => {
-    if (!movedToast) return;
-    const id = setTimeout(() => setMovedToast(null), 4000);
-    return () => clearTimeout(id);
-  }, [movedToast]);
 
   function openFolderMenu(folder: ExplorerFolder) {
     ask({
@@ -607,16 +568,6 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     navigation.navigate('Editor', { documentId: newDocumentId });
   }
 
-  // What a row picks up: itself, or - when it is one of several ticked -
-  // all of them, so a bulk move is the same gesture rather than a second
-  // way of doing it. The note editor's block drag has the same rule.
-  function carryGroupFor(item: FileItem): FileItem[] {
-    if (isSelectMode && selectedIds.has(item.id) && selectedIds.size > 1) {
-      return files.filter((f) => selectedIds.has(f.id));
-    }
-    return [item];
-  }
-
   function renderFileRow(item: FileItem) {
     // Only in the explorer. Carried, the row's own onLongPress is dropped
     // - CarryableRow's drag gesture opens the menu itself, on its own
@@ -644,10 +595,10 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         key={item.id}
         item={item}
         path={explorer.path}
-        carry={carry}
+        carry={carrying.carry}
         onMenu={() => setCardMenuFileId(item.id)}
-        orphan={carriedOrphans.some((one) => one.id === item.id)}
-        group={carryGroupFor(item)}
+        orphan={carrying.isOrphan(item)}
+        group={carrying.groupFor(item)}
       >
         {row}
       </CarryableRow>
@@ -681,10 +632,10 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         key={item.id}
         item={item}
         path={explorer.path}
-        carry={carry}
+        carry={carrying.carry}
         onMenu={() => setCardMenuFileId(item.id)}
-        orphan={carriedOrphans.some((one) => one.id === item.id)}
-        group={carryGroupFor(item)}
+        orphan={carrying.isOrphan(item)}
+        group={carrying.groupFor(item)}
       >
         {cell}
       </CarryableRow>
@@ -760,7 +711,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
         onFolderMenu={openFolderMenu}
         trash={{ count: trashedFiles.length, onOpen: () => setTrashOpen(true) }}
-        folderRef={carry.registerFolder}
+        folderRef={carrying.carry.registerFolder}
       />
     );
   }
@@ -852,30 +803,11 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
               onUndo={() => setSaveDestinationVisible(true)}
             />
           )}
-          {movedToast && (
-            <UndoToast
-              message={
-                movedToast.ids.length > 1
-                  ? `Переміщено ${movedToast.ids.length} в «${movedToast.folderName}»`
-                  : `Переміщено в «${movedToast.folderName}»`
-              }
-              onUndo={() => {
-                const back = movedToast.origin || null;
-                movedToast.ids
-                  .map((id) => files.find((f) => f.id === id))
-                  .filter((f): f is FileItem => !!f)
-                  .reduce<Promise<unknown>>(
-                    (run, one) => run.then(() => explorer.moveItem(one, back)),
-                    Promise.resolve()
-                  );
-                setMovedToast(null);
-              }}
-            />
-          )}
+          {carrying.movedToast && <UndoToast message={carrying.toastMessage} onUndo={carrying.undoMove} />}
           {/* The floating card while one is being carried into a folder -
               see useCardCarry. Always mounted, invisible until then. */}
           <CardCarryOverlay
-            carry={carry}
+            carry={carrying.carry}
             label={(items) =>
               items.length > 1 ? `${items.length} файли` : items[0].title || items[0].fileName
             }
@@ -1059,7 +991,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
       }
     >
       {(listTopPad, listProps, listWidth, scrollY) => {
-        scrollYRef.current = scrollY;
+        carrying.scrollYRef.current = scrollY;
         return isLoading ? (
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
@@ -1082,7 +1014,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
           </View>
         ) : viewMode === 'grid' ? (
           <ScrollView
-            ref={scrollRef}
+            ref={carrying.scrollRef as React.RefObject<ScrollView>}
             {...listProps}
             contentContainerStyle={[
               styles.gridPage,
@@ -1103,7 +1035,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
           </ScrollView>
         ) : (
           <ScrollView
-            ref={scrollRef}
+            ref={carrying.scrollRef as React.RefObject<ScrollView>}
             {...listProps}
             contentContainerStyle={[
               styles.list,
