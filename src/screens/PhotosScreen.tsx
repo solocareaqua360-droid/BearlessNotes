@@ -14,6 +14,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { GestureDetector } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -52,6 +53,9 @@ import { useDatabaseList } from '../hooks/useDatabaseList';
 import { useBin } from '../hooks/useBin';
 import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
 import ExplorerHead from '../components/ExplorerHead';
+import { useExplorerCarry } from '../hooks/useExplorerCarry';
+import CarryableRow from '../components/CarryableRow';
+import CardCarryOverlay from '../components/CardCarryOverlay';
 import { downloadToFolder, showDownloadedFile } from '../utils/downloadToFolder';
 import { touchAttachment } from '../utils/attachmentCache';
 import DatabaseChrome, { menuStyles } from '../components/DatabaseChrome';
@@ -244,6 +248,23 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     detachTag: list.detachTag,
   });
   const itemsHere = explorer.visibleItems;
+
+  // Carrying a photo into a folder - see useExplorerCarry. This screen is
+  // why the gesture had to leave the rows: its grid is virtualized, so a
+  // row that scrolls off is unmounted, and a gesture that belongs to one
+  // dies with it.
+  const carrying = useExplorerCarry<PhotoItem>({
+    path: explorer.path,
+    folders: explorer.folders,
+    moveItem: (item, destination) => explorer.moveItem(item, destination),
+    items: photos,
+    isSelectMode,
+    selectedIds,
+    active: explorer.active,
+    onMoved: () => {
+      if (isSelectMode) clearSelection();
+    },
+  });
   // The pictures either side of the open one, in the order this screen is
   // actually showing - the folder you are in, the filter you set, the
   // search you typed. Not the whole database: what the viewer pages
@@ -729,6 +750,14 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
       }}
       overlay={
         <>
+          {carrying.movedToast && <UndoToast message={carrying.toastMessage} onUndo={carrying.undoMove} />}
+          {/* The floating photo while one is being carried into a folder. */}
+          <CardCarryOverlay
+            carry={carrying.carry}
+            label={(items) => (items.length > 1 ? `${items.length} фото` : items[0].title || 'Фото')}
+            icon="image-outline"
+            onEnterFolder={(path) => explorer.setPath(path)}
+          />
           {justAddedPhoto && (
             <UndoToast
               message="Додано у Фото"
@@ -875,7 +904,9 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
         </>
       }
     >
-      {(listTopPad, listProps, listWidth) =>
+      {(listTopPad, listProps, listWidth, scrollY) => {
+        carrying.scrollYRef.current = scrollY;
+        return (
         isLoading ? (
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
@@ -893,7 +924,9 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
             )}
           </View>
         ) : (
+          <GestureDetector gesture={carrying.listGesture}>
           <FlatList
+            ref={carrying.scrollRef as React.RefObject<FlatList<PhotoItem>>}
             {...listProps}
             // Remounted when the shape changes: FlatList cannot be told a
             // new column count in place, and it refuses columnWrapperStyle
@@ -948,6 +981,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                 </View>
               ) : list.explorerMode ? (
                 <ExplorerHead
+                  folderRef={carrying.carry.registerFolder}
                   crumbs={explorer.crumbs}
                   path={explorer.path}
                   folders={explorer.folders}
@@ -986,11 +1020,22 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                     isSelectMode,
                     isSelected: selectedIds.has(photo.id),
                   };
-              return viewMode === 'list' ? <PhotoRow {...shared} /> : <PhotoCell {...shared} />;
+              const cell = viewMode === 'list' ? <PhotoRow {...shared} /> : <PhotoCell {...shared} />;
+              // Only the explorer carries; the bin never does.
+              if (trashOpen || !explorer.active) return cell;
+              return (
+                // A photo has no menu of its own on a hold, so the short
+                // hold keeps doing what it always did here: nothing.
+                <CarryableRow item={photo} carry={carrying.carry} onMenu={() => {}} group={carrying.groupFor(photo)}>
+                  {cell}
+                </CarryableRow>
+              );
             }}
           />
+          </GestureDetector>
         )
-      }
+        );
+      }}
     </DatabaseChrome>
   );
 }

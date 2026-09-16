@@ -5,6 +5,7 @@ import type { Theme } from '../theme/tokens';
 import { useRecordColour } from '../theme/ThemeProvider';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { GestureDetector } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
@@ -200,9 +201,9 @@ export default function BoardsListScreen({
     folders: explorer.folders,
     moveItem: (item, destination) => explorer.moveItem(item, destination),
     items: boards,
-    visibleItems: boardsHere,
     isSelectMode,
     selectedIds,
+    active: explorer.active,
     onMoved: () => {
       if (isSelectMode) clearSelection();
     },
@@ -389,10 +390,8 @@ export default function BoardsListScreen({
       <CarryableRow
         key={item.id}
         item={item}
-        path={explorer.path}
         carry={carrying.carry}
         onMenu={() => askBoardActions(item)}
-        orphan={carrying.isOrphan(item)}
         group={carrying.groupFor(item)}
       >
         {row}
@@ -438,10 +437,8 @@ export default function BoardsListScreen({
       <CarryableRow
         key={item.id}
         item={item}
-        path={explorer.path}
         carry={carrying.carry}
         onMenu={() => askBoardActions(item)}
-        orphan={carrying.isOrphan(item)}
         group={carrying.groupFor(item)}
       >
         {tile}
@@ -564,10 +561,10 @@ export default function BoardsListScreen({
             <Text style={styles.emptyLabel}>Не вдалося прочитати дошки</Text>
             <Text style={styles.emptyHint}>{loadError}</Text>
           </View>
-        ) : // carrying.listed, not boardsHere: stepping into an empty folder
+        ) : // boardsHere, not boardsHere: stepping into an empty folder
         // mid-carry would otherwise swap the list for the empty state and
         // unmount the carried row with it.
-        carrying.listed.length === 0 && explorer.folders.length === 0 ? (
+        boardsHere.length === 0 && explorer.folders.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
               <Ionicons name="apps-outline" size={32} color={ACCENT} />
@@ -580,6 +577,7 @@ export default function BoardsListScreen({
             </Text>
           </View>
         ) : (
+          <GestureDetector gesture={carrying.listGesture}>
           <ScrollView
             ref={carrying.scrollRef as React.RefObject<ScrollView>}
             {...listProps}
@@ -621,11 +619,12 @@ export default function BoardsListScreen({
               </View>
             )}
             {viewMode === 'cards'
-              ? carrying.listed.map((board) => renderBoardTile(board, tileWidth))
-              : carrying.listed.map(renderBoardRow)}
+              ? boardsHere.map((board) => renderBoardTile(board, tileWidth))
+              : boardsHere.map(renderBoardRow)}
             {/* What else is in this group - see GroupSections. */}
             <GroupSections groupId={list.selectedGroupId} currentKind="board" tags={tags} />
           </ScrollView>
+          </GestureDetector>
         );
       }}
     </DatabaseChrome>

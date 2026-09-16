@@ -29,6 +29,18 @@ import { hapticDrop, hapticPickUp, hapticWarning } from '../utils/haptics';
 // as the list scrolls, and re-measuring continuously is both unnecessary
 // (we only ever act at these two moments) and the more fragile thing to
 // get right without a device to feel it on.
+//
+// WHERE THE GESTURE LIVES, and why it moved. The first version put the
+// long-press-then-drag on each ROW. That works right up until the row
+// stops existing mid-carry: stepping into another folder takes it out of
+// the list, and a virtualized list (Photos, Documents) unmounts it the
+// moment it scrolls off screen. An unmounted gesture never reports a
+// release - the ghost stuck, and the overlay went on swallowing every
+// touch on the screen, which read as the app freezing. It lives on the
+// LIST now, which nothing unmounts, and the rows only register their own
+// nodes, exactly as the folders do. Which card was picked up is then a
+// question of what was under the finger, answered the same way a drop
+// is: by measuring.
 export type CarryGhost<T> = {
   // Everything being carried. One card usually; the whole tick-box
   // selection when the card picked up is part of one - the same rule the
@@ -86,6 +98,9 @@ export function useCardCarry<T extends { id: string }>({
   // as they unmount. A `measure`-able node, not a rect: rects go stale
   // the moment the list scrolls, nodes don't.
   const folderNodes = useRef(new Map<string, View>());
+  // Every card row on screen: its node, what it would carry, and what its
+  // own short hold opens.
+  const cardNodes = useRef(new Map<string, { node: View; group: () => T[]; onMenu: () => void }>());
   // Last sign of life from the carry - a move, a scroll, a step into a
   // folder. The watchdog below is a last resort, not a mechanism: a carry
   // whose own gesture died with its row (see CarryableRow's `orphan`)
@@ -99,6 +114,47 @@ export function useCardCarry<T extends { id: string }>({
       else folderNodes.current.delete(path);
     };
   }
+
+  // Registered by every card row as it mounts, cleared as it unmounts -
+  // the descriptor is re-set on every render, so what a row would carry
+  // and what its menu does are never a render behind.
+  function registerCard(id: string, group: () => T[], onMenu: () => void) {
+    return (node: View | null) => {
+      if (node) cardNodes.current.set(id, { node, group, onMenu });
+      else cardNodes.current.delete(id);
+    };
+  }
+
+  // What the finger is actually on - measured, because a row's place on
+  // screen moves with every scroll. Answers with the nearest match rather
+  // than the first: rows do not overlap, so the first hit IS the answer.
+  function cardAt(x: number, y: number, then: (hit: { node: View; group: () => T[]; onMenu: () => void }) => void) {
+    const entries = Array.from(cardNodes.current.values());
+    let pending = entries.length;
+    let found: { node: View; group: () => T[]; onMenu: () => void } | null = null;
+    if (pending === 0) return;
+    entries.forEach((entry) => {
+      entry.node.measureInWindow((nx, ny, nw, nh) => {
+        pending--;
+        if (!found && x >= nx && x <= nx + nw && y >= ny && y <= ny + nh) found = entry;
+        if (pending === 0 && found) then(found);
+      });
+    });
+  }
+
+  // The long press landed: pick up whatever was under it.
+  const pickUpAt = useCallback((x: number, y: number) => {
+    cardAt(x, y, (hit) => {
+      hit.node.measureInWindow((nx, ny) => {
+        beginCarry(hit.group(), pathRef.current, hit.node, x - nx, y - ny);
+      });
+    });
+  }, []);
+
+  // The long press did NOT land - a shorter hold, which is the menu.
+  const menuAt = useCallback((x: number, y: number) => {
+    cardAt(x, y, (hit) => hit.onMenu());
+  }, []);
 
   const beginCarry = useCallback((items: T[], path: string, node: View, touchX: number, touchY: number) => {
     if (items.length === 0) return;
@@ -210,6 +266,9 @@ export function useCardCarry<T extends { id: string }>({
   return {
     ghost,
     registerFolder,
+    registerCard,
+    pickUpAt,
+    menuAt,
     hitTargetAt,
     beginCarry,
     updateCarry,

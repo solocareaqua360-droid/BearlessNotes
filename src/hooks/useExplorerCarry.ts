@@ -1,8 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { ScrollView } from 'react-native';
 import type { FlatList } from 'react-native';
+import { Gesture } from 'react-native-gesture-handler';
 import type { SharedValue } from 'react-native-reanimated';
 import { useCardCarry } from './useCardCarry';
+
+// Longer than a plain short hold - the user's own two-hold-length rule:
+// a short one opens the card's menu, a longer one lifts it.
+const CARRY_LONG_PRESS_MS = 650;
+// What "short" means for the menu - long enough that a tap or a quick
+// scroll flick never reaches it, short enough to stay clear of the one
+// above.
+const MENU_HOLD_MS = 380;
 
 // Everything a screen needs to let its cards be carried into folders,
 // in one piece - because the wiring is the same on every one of them and
@@ -17,25 +26,27 @@ export function useExplorerCarry<T extends { id: string }>({
   folders,
   moveItem,
   items,
-  visibleItems,
   isSelectMode,
   selectedIds,
   onMoved,
+  active,
 }: {
   // Where the explorer is standing - where a card let go over nothing in
   // particular lands.
   path: string;
   folders: { fullPath: string; name: string }[];
   moveItem: (item: T, destination: string | null) => Promise<void>;
-  // Everything in the database, and what this level is showing. The
-  // first is how a carried card is found again once the second finger
-  // has walked somewhere it does not belong.
+  // Everything in the database - what a bulk group is drawn from, and
+  // what undo looks a moved record up in.
   items: T[];
-  visibleItems: T[];
   isSelectMode?: boolean;
   selectedIds?: Set<string>;
   // After a real move - to clear a selection, say.
   onMoved?: () => void;
+  // Only the explorer carries cards into folders: everywhere else there
+  // are no folders to carry them to, and a long hold should stay what it
+  // always was.
+  active: boolean;
 }) {
   const scrollRef = useRef<ScrollView | FlatList<T>>(null);
   const scrollYRef = useRef<SharedValue<number> | null>(null);
@@ -83,16 +94,32 @@ export function useExplorerCarry<T extends { id: string }>({
     return () => clearTimeout(id);
   }, [movedToast]);
 
-  // A carried card stays in the list even after the second finger has
-  // stepped into a folder where it does not belong - drawn as nothing,
-  // taking no room (CarryableRow's `orphan`), purely so its row - and
-  // with it the drag gesture - is never unmounted mid-carry.
-  const carriedIds = carry.ghost?.items.map((one) => one.id) ?? [];
-  const orphans = carriedIds
-    .filter((id) => !visibleItems.some((one) => one.id === id))
-    .map((id) => items.find((one) => one.id === id))
-    .filter((one): one is T => !!one);
-  const listed = orphans.length > 0 ? [...visibleItems, ...orphans] : visibleItems;
+  // The one gesture, on the LIST rather than on a row - see useCardCarry.
+  // A quick swipe fails it before the long press elapses, so the list
+  // goes on scrolling exactly as it did; a hold that outlasts the menu
+  // lifts whatever is under the finger.
+  const downAt = useRef({ at: 0, x: 0, y: 0 });
+  const listGesture = Gesture.Pan()
+    .enabled(active)
+    .activateAfterLongPress(CARRY_LONG_PRESS_MS)
+    .runOnJS(true)
+    .onBegin((e) => {
+      downAt.current = { at: Date.now(), x: e.absoluteX, y: e.absoluteY };
+    })
+    .onStart((e) => carry.pickUpAt(e.absoluteX, e.absoluteY))
+    .onUpdate((e) => carry.updateCarry(e.absoluteX, e.absoluteY))
+    .onEnd((_e, success) => {
+      if (success) {
+        carry.endCarry();
+      } else if (Date.now() - downAt.current.at >= MENU_HOLD_MS) {
+        // Not long enough to lift, longer than a tap: the short hold,
+        // which is the card's own menu - opened on this gesture's clock
+        // rather than racing a second one.
+        carry.menuAt(downAt.current.x, downAt.current.y);
+      }
+    })
+    // A safety net, not the usual path.
+    .onFinalize(() => carry.cancelCarry());
 
   // What a row picks up: itself, or - when it is one of several ticked -
   // all of them, so a bulk move is the same gesture rather than a second
@@ -102,10 +129,6 @@ export function useExplorerCarry<T extends { id: string }>({
       return items.filter((one) => selectedIds.has(one.id));
     }
     return [item];
-  }
-
-  function isOrphan(item: T) {
-    return orphans.some((one) => one.id === item.id);
   }
 
   function undoMove() {
@@ -120,9 +143,8 @@ export function useExplorerCarry<T extends { id: string }>({
 
   return {
     carry,
-    listed,
+    listGesture,
     groupFor,
-    isOrphan,
     scrollRef,
     scrollYRef,
     movedToast,

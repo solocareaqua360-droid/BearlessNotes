@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { GestureDetector } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Sharing from 'expo-sharing';
@@ -239,14 +240,14 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     folders: explorer.folders,
     moveItem: (item, destination) => explorer.moveItem(item, destination),
     items: files,
-    visibleItems: filesHere,
     isSelectMode,
     selectedIds,
+    active: explorer.active,
     onMoved: () => {
       if (isSelectMode) clearSelection();
     },
   });
-  const listedFiles = carrying.listed;
+  const listedFiles = filesHere;
 
 
   function openFolderMenu(folder: ExplorerFolder) {
@@ -594,10 +595,8 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
       <CarryableRow
         key={item.id}
         item={item}
-        path={explorer.path}
         carry={carrying.carry}
         onMenu={() => setCardMenuFileId(item.id)}
-        orphan={carrying.isOrphan(item)}
         group={carrying.groupFor(item)}
       >
         {row}
@@ -631,10 +630,8 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
       <CarryableRow
         key={item.id}
         item={item}
-        path={explorer.path}
         carry={carrying.carry}
         onMenu={() => setCardMenuFileId(item.id)}
-        orphan={carrying.isOrphan(item)}
         group={carrying.groupFor(item)}
       >
         {cell}
@@ -1013,6 +1010,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
             )}
           </View>
         ) : viewMode === 'grid' ? (
+          <GestureDetector gesture={carrying.listGesture}>
           <ScrollView
             ref={carrying.scrollRef as React.RefObject<ScrollView>}
             {...listProps}
@@ -1033,7 +1031,9 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
             </View>
             {!trashOpen && <GroupSections groupId={list.selectedGroupId} currentKind="file" tags={tags} />}
           </ScrollView>
+          </GestureDetector>
         ) : (
+          <GestureDetector gesture={carrying.listGesture}>
           <ScrollView
             ref={carrying.scrollRef as React.RefObject<ScrollView>}
             {...listProps}
@@ -1051,6 +1051,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
             {/* What else is in this group - see GroupSections. */}
             {!trashOpen && <GroupSections groupId={list.selectedGroupId} currentKind="file" tags={tags} />}
           </ScrollView>
+          </GestureDetector>
         );
       }}
     </DatabaseChrome>

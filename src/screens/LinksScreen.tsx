@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { GestureDetector } from 'react-native-gesture-handler';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import {
@@ -276,9 +277,9 @@ export default function LinksScreen({
     folders: explorer.folders,
     moveItem: (item, destination) => explorer.moveItem(item, destination),
     items: links,
-    visibleItems: linksHere,
     isSelectMode,
     selectedIds,
+    active: explorer.active,
     onMoved: () => {
       if (isSelectMode) clearSelection();
     },
@@ -554,10 +555,8 @@ export default function LinksScreen({
       <CarryableRow
         key={item.id}
         item={item}
-        path={explorer.path}
         carry={carrying.carry}
         onMenu={() => setCardMenuLinkId(item.id)}
-        orphan={carrying.isOrphan(item)}
         group={carrying.groupFor(item)}
       >
         {row}
@@ -591,10 +590,8 @@ export default function LinksScreen({
       <CarryableRow
         key={item.id}
         item={item}
-        path={explorer.path}
         carry={carrying.carry}
         onMenu={() => setCardMenuLinkId(item.id)}
-        orphan={carrying.isOrphan(item)}
         group={carrying.groupFor(item)}
       >
         {cell}
@@ -917,10 +914,10 @@ export default function LinksScreen({
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
           </View>
-        ) : // carrying.listed, not linksHere: stepping into an empty folder
+        ) : // linksHere, not linksHere: stepping into an empty folder
         // mid-carry would otherwise swap the list for the empty state and
         // unmount the carried row with it.
-        !trashOpen && carrying.listed.length === 0 && explorer.folders.length === 0 ? (
+        !trashOpen && linksHere.length === 0 && explorer.folders.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={[styles.emptyIcon, { backgroundColor: `${info.color}1A` }]}>
               <Ionicons name={info.icon} size={32} color={info.color} />
@@ -929,6 +926,7 @@ export default function LinksScreen({
             {!needle && <Text style={styles.emptyHint}>{info.emptyHint}</Text>}
           </View>
         ) : viewMode === 'grid' ? (
+          <GestureDetector gesture={carrying.listGesture}>
           <ScrollView
             ref={carrying.scrollRef as React.RefObject<ScrollView>}
             {...listProps}
@@ -941,7 +939,7 @@ export default function LinksScreen({
           >
             {explorerOrTrashHead()}
             <View style={styles.gridRows}>
-              {(trashOpen ? trashedLinks : carrying.listed).map((item) =>
+              {(trashOpen ? trashedLinks : linksHere).map((item) =>
                 trashOpen
                   ? renderLinkTrashGridCell(item, listWidth >= 640 ? 3 : 2)
                   : renderLinkGridCell(item, listWidth >= 640 ? 3 : 2)
@@ -949,7 +947,9 @@ export default function LinksScreen({
             </View>
             {!trashOpen && <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />}
           </ScrollView>
+          </GestureDetector>
         ) : (
+          <GestureDetector gesture={carrying.listGesture}>
           <ScrollView
             ref={carrying.scrollRef as React.RefObject<ScrollView>}
             {...listProps}
@@ -961,12 +961,13 @@ export default function LinksScreen({
             ]}
           >
             {explorerOrTrashHead()}
-            {(trashOpen ? trashedLinks : carrying.listed).map((item) =>
+            {(trashOpen ? trashedLinks : linksHere).map((item) =>
               trashOpen ? renderLinkTrashRow(item) : renderLinkRow(item)
             )}
             {/* What else is in this group - see GroupSections. */}
             {!trashOpen && <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />}
           </ScrollView>
+          </GestureDetector>
         )
         );
       }}
