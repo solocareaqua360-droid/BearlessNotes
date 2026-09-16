@@ -65,7 +65,7 @@ export default function DocumentTagsBlock({ tagIds, tags, onAttach, onDetach, on
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="тег"
+            placeholder="папка"
             placeholderTextColor="#9CA3AF"
             style={styles.input}
           />
@@ -86,7 +86,7 @@ export default function DocumentTagsBlock({ tagIds, tags, onAttach, onDetach, on
             {canCreate && (
               <Pressable style={styles.createRow} onPress={startCreate}>
                 <Ionicons name="add" size={14} color={ACCENT} />
-                <Text style={styles.createLabel}>створити тег "{query.trim()}"</Text>
+                <Text style={styles.createLabel}>створити папку "{query.trim()}"</Text>
               </Pressable>
             )}
           </ScrollView>
@@ -111,8 +111,10 @@ export default function DocumentTagsBlock({ tagIds, tags, onAttach, onDetach, on
 }
 
 const styles = StyleSheet.create({
-  // No boxed "zone" around the tags anymore - the "+ тег" input itself is
-  // the only cue that this is where you attach one.
+  // No boxed "zone" around the tags anymore - the "+ папка" input itself
+  // is the only cue that this is where you attach one. Tags are drawn as
+  // «смартпапки» in the drawer (see project_smart_folders); this inline
+  // input speaks the same word.
   container: {
     marginHorizontal: 20,
     marginTop: 8,
