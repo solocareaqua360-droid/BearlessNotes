@@ -565,10 +565,15 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     );
   }
 
-  function renderFileGridCell(item: FileItem) {
+  // Three across where the column is actually wide enough to hold them -
+  // the fold open, a tablet, the browser - and two on a phone. Measured
+  // off the column the chrome hands down, not the window: in a pane the
+  // two are not the same number.
+  function renderFileGridCell(item: FileItem, columns: number) {
     return (
       <FileGridCell
         key={item.id}
+        columns={columns}
         file={item}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
         onPress={() => (isSelectMode ? toggleSelected(item.id) : openFile(item))}
@@ -596,11 +601,12 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     );
   }
 
-  function renderFileTrashGridCell(item: FileItem) {
+  function renderFileTrashGridCell(item: FileItem, columns: number) {
     return (
       <FileGridCell
         key={item.id}
         file={item}
+        columns={columns}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
         onPress={() => openFileTrashMenu(item)}
         onLongPress={() => openFileTrashMenu(item)}
@@ -925,7 +931,9 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
 {explorerOrTrashHead()}
             <View style={styles.gridRows}>
               {(trashOpen ? trashedFiles : filesHere).map((item) =>
-                trashOpen ? renderFileTrashGridCell(item) : renderFileGridCell(item)
+                trashOpen
+                  ? renderFileTrashGridCell(item, listWidth >= 640 ? 3 : 2)
+                  : renderFileGridCell(item, listWidth >= 640 ? 3 : 2)
               )}
             </View>
             {!trashOpen && <GroupSections groupId={list.selectedGroupId} currentKind="file" tags={tags} />}

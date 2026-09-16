@@ -528,10 +528,15 @@ export default function LinksScreen({
     );
   }
 
-  function renderLinkGridCell(item: LinkItem) {
+  // Three across where the column is actually wide enough to hold them -
+  // the fold open, a tablet, the browser - and two on a phone. Measured
+  // off the column the chrome hands down, not the window: in a pane the
+  // two are not the same number.
+  function renderLinkGridCell(item: LinkItem, columns: number) {
     return (
       <LinkGridCell
         key={item.id}
+        columns={columns}
         link={item}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
         onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkUrl(item.url))}
@@ -559,10 +564,11 @@ export default function LinksScreen({
     );
   }
 
-  function renderLinkTrashGridCell(item: LinkItem) {
+  function renderLinkTrashGridCell(item: LinkItem, columns: number) {
     return (
       <LinkGridCell
         key={item.id}
+        columns={columns}
         link={item}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
         onPress={() => bin.openTrashMenu(item, item.title || item.url)}
@@ -849,7 +855,9 @@ export default function LinksScreen({
             {explorerOrTrashHead()}
             <View style={styles.gridRows}>
               {(trashOpen ? trashedLinks : linksHere).map((item) =>
-                trashOpen ? renderLinkTrashGridCell(item) : renderLinkGridCell(item)
+                trashOpen
+                  ? renderLinkTrashGridCell(item, listWidth >= 640 ? 3 : 2)
+                  : renderLinkGridCell(item, listWidth >= 640 ? 3 : 2)
               )}
             </View>
             {!trashOpen && <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />}

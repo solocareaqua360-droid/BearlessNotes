@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -99,6 +100,7 @@ type PhotoItem = {
 };
 
 export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
+  const { width: windowWidth } = useWindowDimensions();
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -683,6 +685,12 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     );
   }
 
+  // Three across on a wide column - the fold open, a tablet, the browser.
+  // Off the window here rather than the measured column: the photo grid is
+  // a FlatList, whose column count is fixed at mount, and the chrome's
+  // width arrives one render later than that.
+  const photoColumns = windowWidth >= 640 ? 3 : 2;
+
   return (
     <DatabaseChrome
       list={list}
@@ -890,10 +898,12 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
             // Remounted when the shape changes: FlatList cannot be told a
             // new column count in place, and it refuses columnWrapperStyle
             // on a single column outright.
-            key={`${viewMode}-${trashOpen ? 'trash' : 'list'}`}
+            // The column count is part of the key: FlatList cannot be
+            // told a new one in place.
+            key={`${viewMode}-${photoColumns}-${trashOpen ? 'trash' : 'list'}`}
             data={trashOpen ? trashedPhotos : itemsHere}
             keyExtractor={(photo) => photo.id}
-            numColumns={viewMode === 'list' ? 1 : 2}
+            numColumns={viewMode === 'list' ? 1 : photoColumns}
             columnWrapperStyle={viewMode === 'list' ? undefined : styles.gridRow}
             // Only what is on screen, and a screen either side of it.
             //

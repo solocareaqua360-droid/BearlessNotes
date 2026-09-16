@@ -20,6 +20,15 @@ import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 // pickers or navigation. Leave onMenu and onTagPress out and it draws
 // itself read-only, which is what a group's section wants.
 
+// How many cells stand across one row. The width is still FLEX - a
+// percentage basis, never a measured number, which is the rule that cost
+// four attempts at the deformed cards - so this only chooses which basis.
+// Two on a phone; three where the column is wide enough to hold them (the
+// fold open, a tablet, the browser).
+export function gridBasis(columns: number) {
+  return columns >= 3 ? ('30%' as const) : ('46%' as const);
+}
+
 type Common = {
   tags: Tag[];
   onPress: () => void;
@@ -161,7 +170,7 @@ export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
 // ACTUALLY gets, so the two can never disagree again.
 export const GRID_CARD_RATIO = 1.3;
 
-export function LinkGridCell({ link, ...rest }: { link: LinkCardItem } & Common) {
+export function LinkGridCell({ link, columns = 2, ...rest }: { link: LinkCardItem } & Common & { columns?: number }) {
   const recordColour = useRecordColour();
   const info = LINK_CATEGORY_INFO[categoryFromSiteName(link.siteName)];
   const { background, text, textMuted } = recordColour(link.id);
@@ -169,7 +178,7 @@ export function LinkGridCell({ link, ...rest }: { link: LinkCardItem } & Common)
     <View
       style={[
         styles.gridCard,
-        { backgroundColor: background },
+        { backgroundColor: background, flexBasis: gridBasis(columns) },
       ]}
     >
       <Pressable style={styles.gridTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
@@ -256,7 +265,7 @@ export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
   );
 }
 
-export function FileGridCell({ file, ...rest }: { file: FileCardItem } & Common) {
+export function FileGridCell({ file, columns = 2, ...rest }: { file: FileCardItem } & Common & { columns?: number }) {
   const recordColour = useRecordColour();
   const { background, text, textMuted } = recordColour(file.id);
   const preview = useFilePreview(file);
@@ -264,7 +273,7 @@ export function FileGridCell({ file, ...rest }: { file: FileCardItem } & Common)
     <View
       style={[
         styles.gridCard,
-        { backgroundColor: background },
+        { backgroundColor: background, flexBasis: gridBasis(columns) },
       ]}
     >
       <Pressable style={styles.gridTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
