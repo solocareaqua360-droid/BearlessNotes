@@ -16,6 +16,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import RootNavigator from './src/AppNavigator';
 import { navigationRef } from './src/navigationRef';
 import { AskHost } from './src/components/surfaces/Ask';
+import { ThemeProvider } from './src/theme/ThemeProvider';
 import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
 import CrashBoundary from './src/components/CrashBoundary';
@@ -192,6 +193,8 @@ export default function App() {
   }
 
   return (
+    // Same place the phone mounts it - see App.tsx.
+    <ThemeProvider>
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
         {/* Whose data this is, said out loud. It has to be: every read is
@@ -258,5 +261,6 @@ export default function App() {
         </CrashBoundary>
       </GestureHandlerRootView>
     </SafeAreaProvider>
+    </ThemeProvider>
   );
 }

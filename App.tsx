@@ -24,6 +24,7 @@ import { navigationRef } from './src/navigationRef';
 import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
 import { AskHost } from './src/components/surfaces/Ask';
+import { ThemeProvider } from './src/theme/ThemeProvider';
 import AlarmRingOverlay from './src/components/AlarmRingOverlay';
 import { useStickerDeepLink } from './src/hooks/useStickerDeepLink';
 
@@ -81,6 +82,10 @@ export default function App() {
   // (which only renders once signedIn, since it writes to Firestore)
   // would otherwise need to read it.
   return (
+    // Outside everything that draws: the theme is read from the local
+    // cache on the first frame, so the app opens already in the right
+    // one rather than repainting itself a moment later.
+    <ThemeProvider>
     <ShareIntentProvider>
       {!ready ? (
         // The splash's own colour, not white and no longer the gradient's
@@ -128,5 +133,6 @@ export default function App() {
         </GestureHandlerRootView>
       )}
     </ShareIntentProvider>
+    </ThemeProvider>
   );
 }

@@ -38,6 +38,8 @@ import { backfillDriveCopies } from '../utils/backfillDrive';
 import { STALE_AFTER_DAYS, localAttachmentUsage } from '../utils/attachmentCache';
 import { chooseDownloadFolder, currentDownloadFolder } from '../utils/downloadToFolder';
 import { getPexelsKey, setPexelsKey } from '../utils/pexelsKey';
+import { useThemeChoice } from '../theme/ThemeProvider';
+import { THEMES, THEME_ORDER } from '../theme/tokens';
 import { confirm, notify } from '../components/surfaces/Ask';
 import RenamePrompt from '../components/RenamePrompt';
 
@@ -68,6 +70,7 @@ function formatUpdateTime(date: Date | null): string {
 
 export default function SettingsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { themeKey, setThemeKey } = useThemeChoice();
   const [accountEmail, setAccountEmail] = useState<string | null>(auth.currentUser?.email ?? null);
   const [authBusy, setAuthBusy] = useState(false);
   const [claimStatus, setClaimStatus] = useState('');
@@ -296,6 +299,35 @@ export default function SettingsScreen() {
 
             First here deliberately: it is the one thing that decides what
             the app can see at all. */}
+        {/* The theme. Three, and the choice follows the account rather
+            than the device - see ThemeProvider. Slice 1 of the
+            conversion: the switch works and is remembered; the screens
+            themselves are converted to the contract after it, one weight
+            at a time. */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="color-filter-outline" size={22} color={ACCENT} />
+            <Text style={styles.cardTitle}>Тема</Text>
+          </View>
+          <View style={styles.themeRow}>
+            {THEME_ORDER.map((key) => (
+              <Pressable
+                key={key}
+                style={[styles.themeChip, themeKey === key && styles.themeChipOn]}
+                onPress={() => setThemeKey(key)}
+              >
+                <Text style={[styles.themeChipLabel, themeKey === key && styles.themeChipLabelOn]}>
+                  {THEMES[key].name}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.cardHint}>
+            Кольорова - сьогоднішній вигляд. Біла й чорна поки що тільки вибираються: екрани
+            переводяться на них зрізами, і кожен зріз я показую окремо.
+          </Text>
+        </View>
+
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Ionicons name="person-circle-outline" size={22} color={ACCENT} />
@@ -615,6 +647,30 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
     fontSize: 15,
+  },
+  themeRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  themeChip: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  themeChipOn: {
+    borderColor: ACCENT,
+    backgroundColor: 'rgba(245,199,126,0.16)',
+  },
+  themeChipLabel: {
+    fontSize: 14,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT_MUTED,
+  },
+  themeChipLabelOn: {
+    color: GLASS_TEXT,
   },
   checkButton: {
     borderWidth: 1,
