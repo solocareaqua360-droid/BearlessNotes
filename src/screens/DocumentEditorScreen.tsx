@@ -117,6 +117,7 @@ import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { colorForDocument } from '../utils/documentColor';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
+import UndoToast from '../components/UndoToast';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import CustomRowBlockCard from '../components/CustomRowBlockCard';
 import CustomDatabaseViewBlockCard from '../components/CustomDatabaseViewBlockCard';
@@ -2312,6 +2313,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // rule. Here and not while arrows are being drawn, so the page never
   // reshuffles under a reader who has not asked to see it; and through
   // handleReorderBlocks, so it is one undo away like any other reorder.
+  // Shown after leaving the canvas, only when the arrows actually changed
+  // something - a silent reorder read as the page shuffling itself.
+  // Auto-dismisses like every other toast in the app; "Скасувати" is the
+  // editor's own undo, since handleReorderBlocks already snapshots before
+  // applying the new order.
+  const [canvasReorderToast, setCanvasReorderToast] = useState(false);
+  useEffect(() => {
+    if (!canvasReorderToast) return;
+    const timeoutId = setTimeout(() => setCanvasReorderToast(false), 4000);
+    return () => clearTimeout(timeoutId);
+  }, [canvasReorderToast]);
+
   function leaveCanvas() {
     // What the arrows assembled, a line, then the leftovers - see
     // assembleWithDivider. The line is an ordinary divider block of this
@@ -2319,7 +2332,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const reordered = assembleWithDivider(blocks, canvasLinks, () =>
       buildBlock(generateId(), 'divider', '')
     );
-    if (reordered !== blocks) handleReorderBlocks(reordered);
+    if (reordered !== blocks) {
+      handleReorderBlocks(reordered);
+      setCanvasReorderToast(true);
+    }
     setCanvasMode(false);
   }
   const [tagIds, setTagIds] = useState<string[]>([]);
@@ -5612,6 +5628,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           fileName={downloadToast.fileName}
           onShowInFolder={() => showDownloadedFileInFolder(downloadToast.uri, downloadToast.mimeType)}
           onIgnore={dismissDownloadToast}
+        />
+      )}
+      {!downloadToast && canvasReorderToast && (
+        <UndoToast
+          message="Порядок сторінки змінено за стрілками"
+          onUndo={() => {
+            undo();
+            setCanvasReorderToast(false);
+          }}
         />
       )}
       <AddExistingItemModal
