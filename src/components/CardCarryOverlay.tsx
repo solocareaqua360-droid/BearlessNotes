@@ -17,8 +17,12 @@ export default function CardCarryOverlay<T extends { id: string }>({
   carry,
   label,
   icon,
+  onEnterFolder,
 }: {
   carry: CardCarry<T>;
+  // Stepping into a folder - or back out of one, by tapping a crumb -
+  // with the SECOND finger, while the card stays lifted under the first.
+  onEnterFolder: (path: string) => void;
   // What the ghost says - kept to a title, so this stays one component
   // for every kind of card rather than a full clone of each one's visual.
   label: (item: T) => string;
@@ -54,12 +58,27 @@ export default function CardCarryOverlay<T extends { id: string }>({
       lastY.current = e.translationY;
     });
 
+  // The same finger, standing still: a TAP on a folder row steps into it,
+  // a tap on a crumb steps back out - without the carried card being put
+  // down. Composed Simultaneous rather than raced: a Pan needs real
+  // movement before it activates, so the two never both fire for one
+  // touch, and both are gesture-handler recognizers on this same view -
+  // the composition that arbitrates properly (unlike one holding a native
+  // Pressable, which is what went wrong on the card itself).
+  const secondFingerTap = Gesture.Tap()
+    .maxDuration(400)
+    .maxDistance(12)
+    .runOnJS(true)
+    .onEnd((e, success) => {
+      if (success) carry.hitTargetAt(e.absoluteX, e.absoluteY, onEnterFolder);
+    });
+
   const style = useAnimatedStyle(() =>
     ghost ? { left: ghost.x, top: ghost.y, opacity: 1 } : { left: 0, top: 0, opacity: 0 }
   );
 
   return (
-    <GestureDetector gesture={secondFinger}>
+    <GestureDetector gesture={Gesture.Simultaneous(secondFinger, secondFingerTap)}>
       <Animated.View style={StyleSheet.absoluteFill} pointerEvents={ghost ? 'auto' : 'none'}>
         {ghost && (
           <Animated.View style={[styles.ghostWrap, style]} pointerEvents="none">

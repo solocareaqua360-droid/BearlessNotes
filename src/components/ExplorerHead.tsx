@@ -46,10 +46,13 @@ export default function ExplorerHead({
   // width. The rows are sized from this component's OWN measured width,
   // so it is right whatever list it stands in.
   columns?: number;
-  // A card being carried (see useCardCarry) needs to measure a folder
-  // row at drop time to know whether it landed inside one - this hands
-  // each row's own node out for that, and nothing else. Absent on a
-  // screen that has not joined drag-and-drop yet.
+  // A card being carried (see useCardCarry) needs to measure a target at
+  // drop time to know whether it landed on one - this hands each one's
+  // node out for that, and nothing else. Folder rows register under their
+  // own path; the crumbs register under the path they lead to, which is
+  // what lets the second finger step back OUT of a folder mid-carry (and
+  // a card be dropped straight onto a parent). Absent on a screen that
+  // has not joined drag-and-drop yet.
   folderRef?: (path: string) => (node: View | null) => void;
 }) {
   const theme = useTheme();
@@ -74,6 +77,11 @@ export default function ExplorerHead({
     <View style={styles.head} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
       {showCrumbs && path !== '' && (
         <View style={styles.crumbRow}>
+          {/* Deliberately NOT a carry target: it leads to the same path as
+              the crumb beside it, and the registry keeps one node per
+              path - registering both would leave whichever lost the race
+              silently dead. The crumbs are the targets; this stays a
+              plain tap. */}
           <Pressable hitSlop={8} onPress={onUp} style={styles.crumbUp}>
             <Ionicons name="chevron-back" size={18} color={theme.ink.primary} />
           </Pressable>
@@ -84,9 +92,11 @@ export default function ExplorerHead({
             contentContainerStyle={styles.crumbStrip}
             keyboardShouldPersistTaps="handled"
           >
-            <Pressable onPress={() => onGo('')} style={styles.crumbSegment}>
-              <Text style={styles.crumbLabel}>Всі</Text>
-            </Pressable>
+            <View ref={folderRef?.('')} collapsable={false}>
+              <Pressable onPress={() => onGo('')} style={styles.crumbSegment}>
+                <Text style={styles.crumbLabel}>Всі</Text>
+              </Pressable>
+            </View>
             {crumbs.map((segment, index) => {
               const isLast = index === crumbs.length - 1;
               const target = crumbs.slice(0, index + 1).join('/');
@@ -101,15 +111,17 @@ export default function ExplorerHead({
                       <Text style={styles.crumbLabel}>…</Text>
                     </Pressable>
                   ) : (
-                    <Pressable
-                      disabled={isLast}
-                      onPress={() => onGo(target)}
-                      style={[styles.crumbSegment, isLast && styles.crumbSegmentCurrent]}
-                    >
-                      <Text style={[styles.crumbLabel, isLast && styles.crumbLabelCurrent]} numberOfLines={1}>
-                        {segment}
-                      </Text>
-                    </Pressable>
+                    <View ref={isLast ? undefined : folderRef?.(target)} collapsable={false}>
+                      <Pressable
+                        disabled={isLast}
+                        onPress={() => onGo(target)}
+                        style={[styles.crumbSegment, isLast && styles.crumbSegmentCurrent]}
+                      >
+                        <Text style={[styles.crumbLabel, isLast && styles.crumbLabelCurrent]} numberOfLines={1}>
+                          {segment}
+                        </Text>
+                      </Pressable>
+                    </View>
                   )}
                 </View>
               );

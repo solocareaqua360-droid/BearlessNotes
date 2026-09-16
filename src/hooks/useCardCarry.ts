@@ -100,6 +100,19 @@ export function useCardCarry<T extends { id: string }>({
     setGhost(next);
   }, []);
 
+  // Which registered target, if any, lies under a point - measured on
+  // demand, for the same reason the drop does (a row's place on screen
+  // changes with every scroll, a node's identity does not). Used by the
+  // second finger's own tap, so a folder can be stepped into without
+  // letting go of the card.
+  const hitTargetAt = useCallback((x: number, y: number, onHit: (path: string) => void) => {
+    folderNodes.current.forEach((node, path) => {
+      node.measureInWindow((nx, ny, nw, nh) => {
+        if (x >= nx && x <= nx + nw && y >= ny && y <= ny + nh) onHit(path);
+      });
+    });
+  }, []);
+
   const endCarry = useCallback(() => {
     const current = ghostRef.current;
     if (!current) return;
@@ -129,7 +142,9 @@ export function useCardCarry<T extends { id: string }>({
           if (matched !== undefined && matched !== originRef.current) {
             hapticDrop();
             const origin = originRef.current;
-            const destination = matched;
+            // The root crumb registers itself under '' - as a folder path
+            // that means "no folder at all", which moveItem spells null.
+            const destination = matched === '' ? null : matched;
             moveItem(item, destination).then(() => onMoved?.(item, destination, origin));
           } else {
             hapticWarning();
@@ -147,6 +162,7 @@ export function useCardCarry<T extends { id: string }>({
   return {
     ghost,
     registerFolder,
+    hitTargetAt,
     beginCarry,
     updateCarry,
     endCarry,

@@ -838,7 +838,12 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
           )}
           {/* The floating card while one is being carried into a folder -
               see useCardCarry. Always mounted, invisible until then. */}
-          <CardCarryOverlay carry={carry} label={(f) => f.title || f.fileName} icon="document-outline" />
+          <CardCarryOverlay
+            carry={carry}
+            label={(f) => f.title || f.fileName}
+            icon="document-outline"
+            onEnterFolder={(path) => explorer.setPath(path)}
+          />
 
           {/* The per-card "..." - rename, and the documents this file sits
               in when it sits in any. */}
