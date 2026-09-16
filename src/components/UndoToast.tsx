@@ -1,4 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { toastClear } from '../constants/rail';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 
 // `actionLabel` defaults to "Скасувати" (its original, only job) - Files/
@@ -8,13 +10,18 @@ export default function UndoToast({
   message,
   actionLabel,
   onUndo,
+  // Which side the rail stands on, so the action never sits under it -
+  // see toastClear. Right on a phone; a screen drawn in a pane says so.
+  railSide = 'right',
 }: {
   message: string;
   actionLabel?: string;
   onUndo: () => void;
+  railSide?: 'left' | 'right';
 }) {
+  const insets = useSafeAreaInsets();
   return (
-    <View style={styles.toast}>
+    <View style={[styles.toast, toastClear(railSide, insets.bottom)]}>
       <Text style={styles.message} numberOfLines={1}>
         {message}
       </Text>
@@ -26,11 +33,10 @@ export default function UndoToast({
 }
 
 const styles = StyleSheet.create({
+  // Where it stands is toastClear's (see constants/rail) - it has to
+  // clear the island and the rail, both of which are drawn ABOVE it.
   toast: {
     position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 24,
     backgroundColor: '#111827',
     borderRadius: 14,
     paddingVertical: 14,

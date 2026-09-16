@@ -44,6 +44,29 @@ export function railClear(railSide: 'left' | 'right', base: number) {
     : { paddingLeft: base, paddingRight: RAIL_CLEARANCE };
 }
 
+// Where a toast at the foot of the screen may actually stand.
+//
+// A toast used to be `left: 16, right: 16, bottom: 24` - which put it
+// squarely UNDER two things that float above every screen: the navigation
+// island (bottom-centred, from insetBottom + NAV_BOTTOM up by one
+// RAIL_WIDTH) and the rail's own lowest capsule, whose column runs down
+// the right edge. Both are drawn through GlassPortal, i.e. ABOVE the
+// screen that owns the toast, so they did not merely cover it - they took
+// its taps. The action sits at the toast's right END, exactly in the
+// rail's column, which is why "Скасувати" did nothing on any screen.
+//
+// So a toast clears the island in height and the rail in width. On a
+// screen with no island (a pushed one - see railFreeHeight) it simply
+// stands a little higher than it needs to, which is harmless and keeps
+// every toast in the app on one line.
+export function toastClear(railSide: 'left' | 'right', insetBottom: number) {
+  return {
+    bottom: insetBottom + NAV_BOTTOM + RAIL_WIDTH + 12,
+    left: railSide === 'left' ? RAIL_CLEARANCE : 16,
+    right: railSide === 'left' ? 16 : RAIL_CLEARANCE,
+  };
+}
+
 // The band at the foot of the screen the island stops short of. It was
 // the row of smart folders that used to scroll along there; that row is
 // gone (they live in the drawer now), but the numbers stay as they are -

@@ -1,17 +1,22 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { toastClear } from '../constants/rail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 export default function DownloadToast({
   fileName,
   onShowInFolder,
   onIgnore,
+  railSide = 'right',
 }: {
   fileName: string;
   onShowInFolder: () => void;
   onIgnore: () => void;
+  railSide?: 'left' | 'right';
 }) {
+  const insets = useSafeAreaInsets();
   return (
-    <View style={styles.toast}>
+    <View style={[styles.toast, toastClear(railSide, insets.bottom)]}>
       <Text style={styles.message} numberOfLines={1}>
         Завантажено: {fileName}
       </Text>
@@ -28,11 +33,9 @@ export default function DownloadToast({
 }
 
 const styles = StyleSheet.create({
+  // Same footing as every other toast - see toastClear.
   toast: {
     position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 24,
     backgroundColor: '#111827',
     borderRadius: 14,
     paddingVertical: 14,
