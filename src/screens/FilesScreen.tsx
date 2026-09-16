@@ -37,6 +37,7 @@ import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import CopyToNoteModal from '../components/CopyToNoteModal';
 import { useDatabaseList } from '../hooks/useDatabaseList';
+import { useBin } from '../hooks/useBin';
 import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
 import ExplorerHead from '../components/ExplorerHead';
 import DatabaseChrome, { menuStyles } from '../components/DatabaseChrome';
@@ -54,7 +55,7 @@ import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import FilePreviewWorker from '../components/FilePreviewWorker';
-import { GLASS_ISLAND, GLASS_TEXT, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import { GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_MUTED, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT , railClear } from '../constants/rail';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 
@@ -84,6 +85,9 @@ type FileItem = {
   driveBytes?: number;
   updatedAt: number;
   createdAt?: number;
+  // Set while the file sits in the bin (see useBin) - hidden from every
+  // list, tags/group/references untouched, purged for good after 30 days.
+  deletedAt?: number;
 };
 
 // Same tinting-by-extension used on the file block itself in
@@ -102,6 +106,8 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
   const isTwoPane = useResponsiveLayout().isTwoPane && !inPane;
   const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
   const [files, setFiles] = useState<FileItem[]>([]);
+  const [trashedFiles, setTrashedFiles] = useState<FileItem[]>([]);
+  const [trashOpen, setTrashOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [renamingFile, setRenamingFile] = useState<FileItem | null>(null);
   const [documentPicker, setDocumentPicker] = useState<{ file: FileItem; documents: PickableDocument[] } | null>(
@@ -158,38 +164,40 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     selectedIds,
     toggle: toggleSelected,
     clear: clearSelection,
-    requestDeleteMany,
-    undo,
-    toast,
     selected: selectedFiles,
     needle,
     viewMode,
     changeViewMode,
   } = list;
+  // The bin - see useBin. Auto-purge always keeps the Drive copy; a
+  // human-initiated purge (openFileTrashMenu/emptyFileBin below) is the
+  // only path that ever asks about deleting it too.
+  const bin = useBin<FileItem>('files', trashedFiles, (file) => purgeFile(file, false));
 
   useEffect(() => {
     return onSnapshot(ownedQuery('files'), (snapshot) => {
-      setFiles(
-        snapshot.docs
-          .map((docSnapshot) => {
-            const data = docSnapshot.data();
-            return {
-              id: docSnapshot.id,
-              fileUri: data.fileUri,
-              fileName: data.fileName,
-              mimeType: data.mimeType,
-              title: data.title,
-              documentIds: Object.keys(data.usedInDocuments ?? {}),
-              tagIds: data.tagIds ?? [],
-              groupId: data.groupId,
-              driveFileId: data.driveFileId,
-              driveBytes: data.driveBytes,
-              updatedAt: data.updatedAt ?? 0,
-              createdAt: data.createdAt,
-            };
-          })
-          .sort((a, b) => b.updatedAt - a.updatedAt)
-      );
+      const all = snapshot.docs
+        .map((docSnapshot) => {
+          const data = docSnapshot.data();
+          return {
+            id: docSnapshot.id,
+            fileUri: data.fileUri,
+            fileName: data.fileName,
+            mimeType: data.mimeType,
+            title: data.title,
+            documentIds: Object.keys(data.usedInDocuments ?? {}),
+            tagIds: data.tagIds ?? [],
+            groupId: data.groupId,
+            driveFileId: data.driveFileId,
+            driveBytes: data.driveBytes,
+            updatedAt: data.updatedAt ?? 0,
+            createdAt: data.createdAt,
+            deletedAt: data.deletedAt,
+          };
+        })
+        .sort((a, b) => b.updatedAt - a.updatedAt);
+      setFiles(all.filter((f) => !f.deletedAt));
+      setTrashedFiles(all.filter((f) => !!f.deletedAt).sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0)));
       setIsLoading(false);
     });
   }, []);
@@ -386,7 +394,11 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     );
   }
 
-  async function deleteFile(file: FileItem, alsoDeleteFromDrive: boolean) {
+  // Gone for good: what deleting used to be, now only reached by purging
+  // from the bin - see useBin. Detaches every tag, drops the file out of
+  // any note that still references it, and optionally takes its Drive
+  // backup with it.
+  async function purgeFile(file: FileItem, alsoDeleteFromDrive: boolean) {
     deleteDoc(doc(db, 'files', file.id));
     if (alsoDeleteFromDrive && file.driveFileId) {
       deleteFileFromDrive(file.driveFileId, file.driveBytes).then((error) => {
@@ -416,29 +428,72 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     );
   }
 
-  function confirmDeleteSelected() {
-    const filesToDelete = selectedFiles;
-    const anyOnDrive = filesToDelete.some((f) => f.driveFileId);
-    if (!anyOnDrive) {
-      requestDeleteMany(filesToDelete, `Видалено файлів: ${filesToDelete.length}`, () => {
-        filesToDelete.forEach((f) => deleteFile(f, false));
-      });
-      clearSelection();
+  // Held down in the bin: back, or away for good - the drive question
+  // only comes up on the "away for good" branch, and only when there is
+  // a Drive copy to ask about.
+  async function openFileTrashMenu(file: FileItem) {
+    const choice = await ask({
+      title: file.title || file.fileName,
+      actions: [
+        { id: 'restore', label: 'Відновити', icon: 'arrow-undo-outline', tone: 'primary' },
+        { id: 'purge', label: 'Видалити назавжди', icon: 'trash-outline', tone: 'danger' },
+      ],
+    });
+    if (choice === 'restore') {
+      await bin.restore(file.id);
       return;
     }
-    // Two real answers, neither of them a confirmation - so it is asked,
-    // not confirmed.
-    ask({
+    if (choice !== 'purge') return;
+    if (!file.driveFileId) {
+      await purgeFile(file, false);
+      return;
+    }
+    const driveAnswer = await ask({
+      title: 'Видалити копію з Google Диску?',
+      actions: [
+        { id: 'keep', label: 'Залишити на Диску', icon: 'cloud-done-outline' },
+        { id: 'drive', label: 'Видалити з Диску', tone: 'danger', icon: 'cloud-offline-outline' },
+      ],
+    });
+    if (driveAnswer === 'cancel') return;
+    await purgeFile(file, driveAnswer === 'drive');
+  }
+
+  async function emptyFileBin() {
+    if (trashedFiles.length === 0) return;
+    const yes = await confirm({
+      title: `Очистити кошик (${trashedFiles.length})?`,
+      message: 'Ці файли буде видалено назавжди.',
+      confirmLabel: 'Очистити',
+    });
+    if (!yes) return;
+    const anyOnDrive = trashedFiles.some((f) => f.driveFileId);
+    if (!anyOnDrive) {
+      await Promise.all(trashedFiles.map((f) => purgeFile(f, false)));
+      return;
+    }
+    const driveAnswer = await ask({
       title: 'Видалити копії з Google Диску?',
       actions: [
         { id: 'keep', label: 'Залишити на Диску', icon: 'cloud-done-outline' },
         { id: 'drive', label: 'Видалити з Диску', tone: 'danger', icon: 'cloud-offline-outline' },
       ],
-    }).then((answer) => {
-      if (answer === 'cancel') return;
-      requestDeleteMany(filesToDelete, `Видалено файлів: ${filesToDelete.length}`, () => {
-        filesToDelete.forEach((f) => deleteFile(f, answer === 'drive'));
-      });
+    });
+    if (driveAnswer === 'cancel') return;
+    await Promise.all(trashedFiles.map((f) => purgeFile(f, driveAnswer === 'drive')));
+  }
+
+  // "Delete" puts a file in the bin (see useBin) - the record, its tags
+  // and every note that references it stay exactly as they were.
+  function confirmDeleteSelected() {
+    const filesToDelete = selectedFiles;
+    confirm({
+      title: filesToDelete.length === 1 ? 'У кошик?' : `У кошик (${filesToDelete.length})?`,
+      message: 'Можна буде повернути з кошика протягом 30 днів.',
+      confirmLabel: 'У кошик',
+    }).then((yes) => {
+      if (!yes) return;
+      Promise.all(filesToDelete.map((f) => bin.moveToBin(f.id)));
       clearSelection();
     });
   }
@@ -523,6 +578,78 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     );
   }
 
+  // The bin's own rows - a tap or a hold both open the same restore/purge
+  // menu, same as Documents' own bin.
+  function renderFileTrashRow(item: FileItem) {
+    return (
+      <FileRow
+        key={item.id}
+        file={item}
+        tags={tags.filter((t) => item.tagIds.includes(t.id))}
+        onPress={() => openFileTrashMenu(item)}
+        onLongPress={() => openFileTrashMenu(item)}
+      />
+    );
+  }
+
+  function renderFileTrashGridCell(item: FileItem) {
+    return (
+      <FileGridCell
+        key={item.id}
+        file={item}
+        tags={tags.filter((t) => item.tagIds.includes(t.id))}
+        onPress={() => openFileTrashMenu(item)}
+        onLongPress={() => openFileTrashMenu(item)}
+      />
+    );
+  }
+
+  // Shared by both the grid and the list body below - the explorer's own
+  // head (crumbs/folders/bin entry), or the bin's own head when open.
+  function explorerOrTrashHead() {
+    if (trashOpen) {
+      return (
+        <View style={styles.trashHead}>
+          <View style={styles.trashHeadRow}>
+            <Pressable hitSlop={8} onPress={() => setTrashOpen(false)} style={styles.trashBack}>
+              <Ionicons name="chevron-back" size={18} color={GLASS_TEXT} />
+            </Pressable>
+            <Text style={styles.trashTitle}>Кошик · {trashedFiles.length}</Text>
+            <View style={{ flex: 1 }} />
+            {trashedFiles.length > 0 && (
+              <Pressable hitSlop={8} onPress={emptyFileBin}>
+                <Text style={styles.trashClear}>Очистити</Text>
+              </Pressable>
+            )}
+          </View>
+          <Text style={styles.trashHint}>
+            Затисни файл, щоб відновити або видалити назавжди. Через 30 днів кошик очищається сам.
+          </Text>
+        </View>
+      );
+    }
+    if (!list.explorerMode) return null;
+    return (
+      <ExplorerHead
+        crumbs={explorer.crumbs}
+        path={explorer.path}
+        folders={explorer.folders}
+        showCrumbs={explorer.active}
+        itemIcon="document-outline"
+        onGo={(next) => {
+          explorer.setPath(next);
+          if (needle !== '') {
+            list.setSearchQuery('');
+            list.setIsSearching(false);
+          }
+        }}
+        onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
+        onFolderMenu={openFolderMenu}
+        trash={{ count: trashedFiles.length, onOpen: () => setTrashOpen(true) }}
+      />
+    );
+  }
+
   return (
     <DatabaseChrome
       list={list}
@@ -598,8 +725,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
               onIgnore={dismissDownloadToast}
             />
           )}
-          {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
-          {!toast && justAddedFile && (
+          {justAddedFile && (
             <UndoToast
               message={`Додано у Файли: ${justAddedFile.fileName}`}
               actionLabel="Перемістити"
@@ -765,7 +891,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
           </View>
-        ) : filesHere.length === 0 && explorer.folders.length === 0 ? (
+        ) : !trashOpen && filesHere.length === 0 && explorer.folders.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
               <Ionicons name="document-outline" size={32} color={ACCENT} />
@@ -787,26 +913,13 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
               isSelectMode && styles.listWithBulkBar,
             ]}
           >
-{list.explorerMode && (
-            <ExplorerHead
-              crumbs={explorer.crumbs}
-              path={explorer.path}
-              folders={explorer.folders}
-              showCrumbs={explorer.active}
-              itemIcon="document-outline"
-              onGo={(next) => {
-                explorer.setPath(next);
-                if (needle !== '') {
-                  list.setSearchQuery('');
-                  list.setIsSearching(false);
-                }
-              }}
-              onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
-              onFolderMenu={openFolderMenu}
-            />
-            )}
-            <View style={styles.gridRows}>{filesHere.map((item) => renderFileGridCell(item))}</View>
-            <GroupSections groupId={list.selectedGroupId} currentKind="file" tags={tags} />
+{explorerOrTrashHead()}
+            <View style={styles.gridRows}>
+              {(trashOpen ? trashedFiles : filesHere).map((item) =>
+                trashOpen ? renderFileTrashGridCell(item) : renderFileGridCell(item)
+              )}
+            </View>
+            {!trashOpen && <GroupSections groupId={list.selectedGroupId} currentKind="file" tags={tags} />}
           </ScrollView>
         ) : (
           <ScrollView
@@ -818,27 +931,12 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
               isSelectMode && styles.listWithBulkBar,
             ]}
           >
-{list.explorerMode && (
-            <ExplorerHead
-              crumbs={explorer.crumbs}
-              path={explorer.path}
-              folders={explorer.folders}
-              showCrumbs={explorer.active}
-              itemIcon="document-outline"
-              onGo={(next) => {
-                explorer.setPath(next);
-                if (needle !== '') {
-                  list.setSearchQuery('');
-                  list.setIsSearching(false);
-                }
-              }}
-              onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
-              onFolderMenu={openFolderMenu}
-            />
+{explorerOrTrashHead()}
+            {(trashOpen ? trashedFiles : filesHere).map((item) =>
+              trashOpen ? renderFileTrashRow(item) : renderFileRow(item)
             )}
-            {filesHere.map(renderFileRow)}
             {/* What else is in this group - see GroupSections. */}
-            <GroupSections groupId={list.selectedGroupId} currentKind="file" tags={tags} />
+            {!trashOpen && <GroupSections groupId={list.selectedGroupId} currentKind="file" tags={tags} />}
           </ScrollView>
         )
       }
@@ -847,6 +945,35 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
 }
 
 const styles = StyleSheet.create({
+  trashHead: {
+    gap: 8,
+    marginBottom: 8,
+  },
+  trashHeadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  trashBack: {
+    padding: 4,
+  },
+  trashTitle: {
+    fontSize: 15,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT,
+  },
+  trashClear: {
+    fontSize: 15,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT_MUTED,
+  },
+  trashHint: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT_MUTED,
+    paddingHorizontal: 4,
+  },
   emptyState: {
     flex: 1,
     alignItems: 'center',

@@ -40,9 +40,10 @@ import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import GroupPickerSheet, { GroupKind } from '../components/GroupPickerSheet';
 import CopyToNoteModal from '../components/CopyToNoteModal';
 import { useDatabaseList } from '../hooks/useDatabaseList';
+import { useBin } from '../hooks/useBin';
 import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
 import ExplorerHead from '../components/ExplorerHead';
-import { ask } from '../components/surfaces/Ask';
+import { ask, confirm } from '../components/surfaces/Ask';
 import DatabaseChrome, { menuStyles } from '../components/DatabaseChrome';
 import { detachTagFromDeletedItem, isTagAllowedForKind } from '../hooks/useTags';
 import { appendBlocksToToday, blockFromLink, copyObjectsToNote } from '../utils/copyToNote';
@@ -52,7 +53,7 @@ import { linkDocId } from '../utils/linkId';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { GLASS_TEXT, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import { GLASS_TEXT, GLASS_TEXT_MUTED, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 
 const ACCENT = '#14B8A6';
 // The same half-strength tint the documents screen's add button takes -
@@ -83,6 +84,9 @@ type LinkItem = {
   groupId?: string;
   updatedAt: number;
   createdAt?: number;
+  // Set while the link sits in the bin (see useBin) - hidden from every
+  // list, tags/group/references untouched, purged for good after 30 days.
+  deletedAt?: number;
 };
 
 function categoryOf(link: LinkItem): LinkCategory {
@@ -137,6 +141,8 @@ export default function LinksScreen({
   const tagKind = TAG_KIND_BY_CATEGORY[category];
   const groupKind = GROUP_KIND_BY_CATEGORY[category];
   const [links, setLinks] = useState<LinkItem[]>([]);
+  const [trashedLinks, setTrashedLinks] = useState<LinkItem[]>([]);
+  const [trashOpen, setTrashOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [renamingLink, setRenamingLink] = useState<LinkItem | null>(null);
   const [documentPicker, setDocumentPicker] = useState<{ link: LinkItem; documents: PickableDocument[] } | null>(
@@ -191,26 +197,28 @@ export default function LinksScreen({
     selectedIds,
     toggle: toggleSelected,
     clear: clearSelection,
-    requestDeleteMany,
-    undo,
-    toast,
     selected: selectedLinks,
     needle,
     viewMode,
     changeViewMode,
   } = list;
+  // The bin - see useBin.
+  const bin = useBin<LinkItem>('links', trashedLinks, (link) => purgeLink(link));
 
   useEffect(() => {
     return onSnapshot(ownedQuery('links'), (snapshot) => {
-      setLinks(
-        [...snapshot.docs]
-          .sort((a, b) => ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0))
-          .map((docSnapshot) => {
+      const all = [...snapshot.docs]
+        .sort((a, b) => ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0))
+        .map((docSnapshot) => {
           const data = docSnapshot.data();
-          // A TikTok cover past its deadline is fetched again and written
-          // back; this same listener then delivers the live one. See
-          // linkPreviewRefresh.
-          refreshLinkPreviewIfExpired({ id: docSnapshot.id, url: data.url, imageUrl: data.imageUrl });
+          // A trashed link is not being looked at - no point refreshing a
+          // cover for something on its way to being purged.
+          if (!data.deletedAt) {
+            // A TikTok cover past its deadline is fetched again and written
+            // back; this same listener then delivers the live one. See
+            // linkPreviewRefresh.
+            refreshLinkPreviewIfExpired({ id: docSnapshot.id, url: data.url, imageUrl: data.imageUrl });
+          }
           return {
             id: docSnapshot.id,
             url: data.url,
@@ -222,9 +230,11 @@ export default function LinksScreen({
             groupId: data.groupId,
             updatedAt: data.updatedAt ?? 0,
             createdAt: data.createdAt,
+            deletedAt: data.deletedAt,
           };
-        })
-      );
+        });
+      setLinks(all.filter((l) => !l.deletedAt));
+      setTrashedLinks(all.filter((l) => !!l.deletedAt).sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0)));
       setIsLoading(false);
     });
   }, []);
@@ -409,7 +419,10 @@ export default function LinksScreen({
     );
   }
 
-  async function deleteLink(link: LinkItem) {
+  // Gone for good: what deleting used to be, now only reached by purging
+  // from the bin - see useBin. Detaches every tag and drops the link out
+  // of any note that still references it.
+  async function purgeLink(link: LinkItem) {
     deleteDoc(doc(db, 'links', link.id));
     await Promise.all(
       link.tagIds.map((tagId) => {
@@ -434,11 +447,19 @@ export default function LinksScreen({
     );
   }
 
+  // "Delete" puts a link in the bin (see useBin) - the record, its tags
+  // and every note that references it stay exactly as they were.
   function confirmDeleteSelected() {
-    requestDeleteMany(selectedLinks, `Видалено посилань: ${selectedLinks.length}`, () => {
-      selectedLinks.forEach(deleteLink);
+    const linksToDelete = selectedLinks;
+    confirm({
+      title: linksToDelete.length === 1 ? 'У кошик?' : `У кошик (${linksToDelete.length})?`,
+      message: 'Можна буде повернути з кошика протягом 30 днів.',
+      confirmLabel: 'У кошик',
+    }).then((yes) => {
+      if (!yes) return;
+      Promise.all(linksToDelete.map((l) => bin.moveToBin(l.id)));
+      clearSelection();
     });
-    clearSelection();
   }
 
   async function bulkAttachTag(tag: Parameters<typeof attachTag>[0]) {
@@ -520,6 +541,78 @@ export default function LinksScreen({
     );
   }
 
+  // The bin's own rows - a tap or a hold both open the same restore/purge
+  // menu, same as Documents' own bin.
+  function renderLinkTrashRow(item: LinkItem) {
+    return (
+      <LinkRow
+        key={item.id}
+        link={item}
+        tags={tags.filter((t) => item.tagIds.includes(t.id))}
+        onPress={() => bin.openTrashMenu(item, item.title || item.url)}
+        onLongPress={() => bin.openTrashMenu(item, item.title || item.url)}
+      />
+    );
+  }
+
+  function renderLinkTrashGridCell(item: LinkItem) {
+    return (
+      <LinkGridCell
+        key={item.id}
+        link={item}
+        tags={tags.filter((t) => item.tagIds.includes(t.id))}
+        onPress={() => bin.openTrashMenu(item, item.title || item.url)}
+        onLongPress={() => bin.openTrashMenu(item, item.title || item.url)}
+      />
+    );
+  }
+
+  // Shared by both the grid and the list body below - the explorer's own
+  // head (crumbs/folders/bin entry), or the bin's own head when open.
+  function explorerOrTrashHead() {
+    if (trashOpen) {
+      return (
+        <View style={styles.trashHead}>
+          <View style={styles.trashHeadRow}>
+            <Pressable hitSlop={8} onPress={() => setTrashOpen(false)} style={styles.trashBack}>
+              <Ionicons name="chevron-back" size={18} color={GLASS_TEXT} />
+            </Pressable>
+            <Text style={styles.trashTitle}>Кошик · {trashedLinks.length}</Text>
+            <View style={{ flex: 1 }} />
+            {trashedLinks.length > 0 && (
+              <Pressable hitSlop={8} onPress={() => bin.emptyBin('посилання')}>
+                <Text style={styles.trashClear}>Очистити</Text>
+              </Pressable>
+            )}
+          </View>
+          <Text style={styles.trashHint}>
+            Затисни посилання, щоб відновити або видалити назавжди. Через 30 днів кошик очищається сам.
+          </Text>
+        </View>
+      );
+    }
+    if (!list.explorerMode) return null;
+    return (
+      <ExplorerHead
+        crumbs={explorer.crumbs}
+        path={explorer.path}
+        folders={explorer.folders}
+        showCrumbs={explorer.active}
+        itemIcon="link-outline"
+        onGo={(next) => {
+          explorer.setPath(next);
+          if (needle !== '') {
+            list.setSearchQuery('');
+            list.setIsSearching(false);
+          }
+        }}
+        onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
+        onFolderMenu={openFolderMenu}
+        trash={{ count: trashedLinks.length, onOpen: () => setTrashOpen(true) }}
+      />
+    );
+  }
+
   return (
     <DatabaseChrome
       list={list}
@@ -554,8 +647,7 @@ export default function LinksScreen({
       }}
       overlay={
         <>
-          {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
-          {!toast && justAddedLink && (
+          {justAddedLink && (
             <UndoToast
               message={`Додано у ${CATEGORY_INFO[category].title}`}
               actionLabel="Перемістити"
@@ -732,7 +824,7 @@ export default function LinksScreen({
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
           </View>
-        ) : linksHere.length === 0 && explorer.folders.length === 0 ? (
+        ) : !trashOpen && linksHere.length === 0 && explorer.folders.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={[styles.emptyIcon, { backgroundColor: `${info.color}1A` }]}>
               <Ionicons name={info.icon} size={32} color={info.color} />
@@ -750,26 +842,13 @@ export default function LinksScreen({
               isSelectMode && styles.listWithBulkBar,
             ]}
           >
-            {list.explorerMode && (
-              <ExplorerHead
-                crumbs={explorer.crumbs}
-                path={explorer.path}
-                folders={explorer.folders}
-                showCrumbs={explorer.active}
-                itemIcon="link-outline"
-                onGo={(next) => {
-                  explorer.setPath(next);
-                  if (needle !== '') {
-                    list.setSearchQuery('');
-                    list.setIsSearching(false);
-                  }
-                }}
-                onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
-                onFolderMenu={openFolderMenu}
-              />
-            )}
-            <View style={styles.gridRows}>{linksHere.map((item) => renderLinkGridCell(item))}</View>
-            <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />
+            {explorerOrTrashHead()}
+            <View style={styles.gridRows}>
+              {(trashOpen ? trashedLinks : linksHere).map((item) =>
+                trashOpen ? renderLinkTrashGridCell(item) : renderLinkGridCell(item)
+              )}
+            </View>
+            {!trashOpen && <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />}
           </ScrollView>
         ) : (
           <ScrollView
@@ -781,27 +860,12 @@ export default function LinksScreen({
               isSelectMode && styles.listWithBulkBar,
             ]}
           >
-            {list.explorerMode && (
-              <ExplorerHead
-                crumbs={explorer.crumbs}
-                path={explorer.path}
-                folders={explorer.folders}
-                showCrumbs={explorer.active}
-                itemIcon="link-outline"
-                onGo={(next) => {
-                  explorer.setPath(next);
-                  if (needle !== '') {
-                    list.setSearchQuery('');
-                    list.setIsSearching(false);
-                  }
-                }}
-                onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
-                onFolderMenu={openFolderMenu}
-              />
+            {explorerOrTrashHead()}
+            {(trashOpen ? trashedLinks : linksHere).map((item) =>
+              trashOpen ? renderLinkTrashRow(item) : renderLinkRow(item)
             )}
-            {linksHere.map(renderLinkRow)}
             {/* What else is in this group - see GroupSections. */}
-            <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />
+            {!trashOpen && <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />}
           </ScrollView>
         )
       }
@@ -810,6 +874,35 @@ export default function LinksScreen({
 }
 
 const styles = StyleSheet.create({
+  trashHead: {
+    gap: 8,
+    marginBottom: 8,
+  },
+  trashHeadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  trashBack: {
+    padding: 4,
+  },
+  trashTitle: {
+    fontSize: 15,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT,
+  },
+  trashClear: {
+    fontSize: 15,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT_MUTED,
+  },
+  trashHint: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT_MUTED,
+    paddingHorizontal: 4,
+  },
   addLinkLoading: {
     position: 'absolute',
     top: 0,

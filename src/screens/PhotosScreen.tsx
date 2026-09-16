@@ -46,6 +46,7 @@ import CopyToNoteModal from '../components/CopyToNoteModal';
 import { detachTagFromDeletedItem } from '../hooks/useTags';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import { useDatabaseList } from '../hooks/useDatabaseList';
+import { useBin } from '../hooks/useBin';
 import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
 import ExplorerHead from '../components/ExplorerHead';
 import { downloadToFolder } from '../utils/downloadToFolder';
@@ -58,7 +59,7 @@ import SaveDestinationSheet from '../components/SaveDestinationSheet';
 import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
 import DownloadToast from '../components/DownloadToast';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { GLASS_TEXT } from '../constants/glass';
+import { GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 
 const ACCENT = '#EC4899';
@@ -91,11 +92,16 @@ type PhotoItem = {
   sketchElements?: SketchElement[];
   sketchWidth?: number;
   sketchHeight?: number;
+  // Set while the photo sits in the bin (see useBin) - hidden from every
+  // list, tags/group/references untouched, purged for good after 30 days.
+  deletedAt?: number;
 };
 
 export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  const [trashedPhotos, setTrashedPhotos] = useState<PhotoItem[]>([]);
+  const [trashOpen, setTrashOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [viewerPhotoId, setViewerPhotoId] = useState<string | null>(null);
   const [renamingPhoto, setRenamingPhoto] = useState<PhotoItem | null>(null);
@@ -142,10 +148,6 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     selectedIds,
     toggle: toggleSelected,
     clear: clearSelection,
-    requestDelete,
-    requestDeleteMany,
-    undo,
-    toast,
     selected: selectedPhotos,
     needle,
     viewMode,
@@ -154,6 +156,10 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
   const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
   const { flatten: flattenPhoto, node: flattenPhotoNode } = useFlattenPhoto();
   const [sketchPhotoId, setSketchPhotoId] = useState<string | null>(null);
+  // The bin - see useBin. Auto-purge always keeps the Drive copy; a
+  // human-initiated purge (openPhotoTrashMenu/emptyPhotoBin below) is the
+  // only path that ever asks about deleting it too.
+  const bin = useBin<PhotoItem>('photos', trashedPhotos, (photo) => purgePhoto(photo, false));
 
   async function handleDownloadPhoto(photo: PhotoItem) {
     const uri = await flattenPhoto(photo.imageUri, photo.driveFileId, photo.sketchElements, photo.sketchWidth, photo.sketchHeight);
@@ -170,28 +176,29 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
 
   useEffect(() => {
     return onSnapshot(ownedQuery('photos'), (snapshot) => {
-      setPhotos(
-        snapshot.docs
-          .map((docSnapshot) => {
-            const data = docSnapshot.data();
-            return {
-              id: docSnapshot.id,
-              imageUri: data.imageUri,
-              title: data.title,
-              documentIds: Object.keys(data.usedInDocuments ?? {}),
-              tagIds: data.tagIds ?? [],
-              groupId: data.groupId,
-              driveFileId: data.driveFileId,
-              driveBytes: data.driveBytes,
-              updatedAt: data.updatedAt ?? 0,
-              createdAt: data.createdAt,
-              sketchElements: data.sketchElements,
-              sketchWidth: data.sketchWidth,
-              sketchHeight: data.sketchHeight,
-            };
-          })
-          .sort((a, b) => b.updatedAt - a.updatedAt)
-      );
+      const all = snapshot.docs
+        .map((docSnapshot) => {
+          const data = docSnapshot.data();
+          return {
+            id: docSnapshot.id,
+            imageUri: data.imageUri,
+            title: data.title,
+            documentIds: Object.keys(data.usedInDocuments ?? {}),
+            tagIds: data.tagIds ?? [],
+            groupId: data.groupId,
+            driveFileId: data.driveFileId,
+            driveBytes: data.driveBytes,
+            updatedAt: data.updatedAt ?? 0,
+            createdAt: data.createdAt,
+            sketchElements: data.sketchElements,
+            sketchWidth: data.sketchWidth,
+            sketchHeight: data.sketchHeight,
+            deletedAt: data.deletedAt,
+          };
+        })
+        .sort((a, b) => b.updatedAt - a.updatedAt);
+      setPhotos(all.filter((p) => !p.deletedAt));
+      setTrashedPhotos(all.filter((p) => !!p.deletedAt).sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0)));
       setIsLoading(false);
     });
   }, []);
@@ -441,25 +448,20 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     );
   }
 
+  // "Delete" puts a photo in the bin (see useBin) - the record, its tags
+  // and every note that references it stay exactly as they were. Nothing
+  // real happens until it is purged, by hand or by time.
   function confirmDeletePhoto(photo: PhotoItem) {
     setViewerPhotoId(null);
-    if (!photo.driveFileId) {
-      requestDelete(photo, 'Фото видалено', () => deletePhoto(photo, false));
-      return;
-    }
-    ask({
-      title: 'Видалити копію з Google Диску?',
-      actions: [
-        { id: 'keep', label: 'Залишити на Диску', icon: 'cloud-done-outline' },
-        { id: 'drive', label: 'Видалити з Диску', tone: 'danger', icon: 'cloud-offline-outline' },
-      ],
-    }).then((answer) => {
-      if (answer === 'cancel') return;
-      requestDelete(photo, 'Фото видалено', () => deletePhoto(photo, answer === 'drive'));
-    });
+    bin.moveToBin(photo.id);
   }
 
-  async function deletePhoto(photo: PhotoItem, alsoDeleteFromDrive: boolean) {
+  // Gone for good: what deleting used to be, now only reached by purging
+  // from the bin. Detaches every tag, drops the photo out of any note
+  // that still references it, and optionally takes its Drive backup with
+  // it - asked here rather than at bin time, since the whole point of the
+  // bin is that nothing irreversible happens until this.
+  async function purgePhoto(photo: PhotoItem, alsoDeleteFromDrive: boolean) {
     deleteDoc(doc(db, 'photos', photo.id));
     if (alsoDeleteFromDrive && photo.driveFileId) {
       deleteFileFromDrive(photo.driveFileId, photo.driveBytes).then((error) => {
@@ -489,27 +491,70 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     );
   }
 
-  function confirmDeleteSelected() {
-    const photosToDelete = selectedPhotos;
-    const anyOnDrive = photosToDelete.some((p) => p.driveFileId);
-    if (!anyOnDrive) {
-      requestDeleteMany(photosToDelete, `Видалено фото: ${photosToDelete.length}`, () => {
-        photosToDelete.forEach((p) => deletePhoto(p, false));
-      });
-      clearSelection();
+  // Held down in the bin: back, or away for good - the drive question
+  // only comes up on the "away for good" branch, and only when there is
+  // a Drive copy to ask about.
+  async function openPhotoTrashMenu(photo: PhotoItem) {
+    const choice = await ask({
+      title: photo.title || 'Без назви',
+      actions: [
+        { id: 'restore', label: 'Відновити', icon: 'arrow-undo-outline', tone: 'primary' },
+        { id: 'purge', label: 'Видалити назавжди', icon: 'trash-outline', tone: 'danger' },
+      ],
+    });
+    if (choice === 'restore') {
+      await bin.restore(photo.id);
       return;
     }
-    ask({
+    if (choice !== 'purge') return;
+    if (!photo.driveFileId) {
+      await purgePhoto(photo, false);
+      return;
+    }
+    const driveAnswer = await ask({
+      title: 'Видалити копію з Google Диску?',
+      actions: [
+        { id: 'keep', label: 'Залишити на Диску', icon: 'cloud-done-outline' },
+        { id: 'drive', label: 'Видалити з Диску', tone: 'danger', icon: 'cloud-offline-outline' },
+      ],
+    });
+    if (driveAnswer === 'cancel') return;
+    await purgePhoto(photo, driveAnswer === 'drive');
+  }
+
+  async function emptyPhotoBin() {
+    if (trashedPhotos.length === 0) return;
+    const yes = await confirm({
+      title: `Очистити кошик (${trashedPhotos.length})?`,
+      message: 'Ці фото буде видалено назавжди.',
+      confirmLabel: 'Очистити',
+    });
+    if (!yes) return;
+    const anyOnDrive = trashedPhotos.some((p) => p.driveFileId);
+    if (!anyOnDrive) {
+      await Promise.all(trashedPhotos.map((p) => purgePhoto(p, false)));
+      return;
+    }
+    const driveAnswer = await ask({
       title: 'Видалити копії з Google Диску?',
       actions: [
         { id: 'keep', label: 'Залишити на Диску', icon: 'cloud-done-outline' },
         { id: 'drive', label: 'Видалити з Диску', tone: 'danger', icon: 'cloud-offline-outline' },
       ],
-    }).then((answer) => {
-      if (answer === 'cancel') return;
-      requestDeleteMany(photosToDelete, `Видалено фото: ${photosToDelete.length}`, () => {
-        photosToDelete.forEach((p) => deletePhoto(p, answer === 'drive'));
-      });
+    });
+    if (driveAnswer === 'cancel') return;
+    await Promise.all(trashedPhotos.map((p) => purgePhoto(p, driveAnswer === 'drive')));
+  }
+
+  function confirmDeleteSelected() {
+    const photosToDelete = selectedPhotos;
+    confirm({
+      title: photosToDelete.length === 1 ? 'У кошик?' : `У кошик (${photosToDelete.length})?`,
+      message: 'Можна буде повернути з кошика протягом 30 днів.',
+      confirmLabel: 'У кошик',
+    }).then((yes) => {
+      if (!yes) return;
+      Promise.all(photosToDelete.map((p) => bin.moveToBin(p.id)));
       clearSelection();
     });
   }
@@ -673,8 +718,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
       }}
       overlay={
         <>
-          {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
-          {!toast && justAddedPhoto && (
+          {justAddedPhoto && (
             <UndoToast
               message="Додано у Фото"
               actionLabel="Перемістити"
@@ -825,7 +869,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
           </View>
-        ) : itemsHere.length === 0 && explorer.folders.length === 0 ? (
+        ) : !trashOpen && itemsHere.length === 0 && explorer.folders.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
               <Ionicons name="image-outline" size={32} color={ACCENT} />
@@ -843,8 +887,8 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
             // Remounted when the shape changes: FlatList cannot be told a
             // new column count in place, and it refuses columnWrapperStyle
             // on a single column outright.
-            key={viewMode}
-            data={itemsHere}
+            key={`${viewMode}-${trashOpen ? 'trash' : 'list'}`}
+            data={trashOpen ? trashedPhotos : itemsHere}
             keyExtractor={(photo) => photo.id}
             numColumns={viewMode === 'list' ? 1 : 2}
             columnWrapperStyle={viewMode === 'list' ? undefined : styles.gridRow}
@@ -871,7 +915,25 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
               isSelectMode && styles.gridWithBulkBar,
             ]}
             ListHeaderComponent={
-              list.explorerMode ? (
+              trashOpen ? (
+                <View style={styles.trashHead}>
+                  <View style={styles.trashHeadRow}>
+                    <Pressable hitSlop={8} onPress={() => setTrashOpen(false)} style={styles.trashBack}>
+                      <Ionicons name="chevron-back" size={18} color={GLASS_TEXT} />
+                    </Pressable>
+                    <Text style={styles.trashTitle}>Кошик · {trashedPhotos.length}</Text>
+                    <View style={{ flex: 1 }} />
+                    {trashedPhotos.length > 0 && (
+                      <Pressable hitSlop={8} onPress={emptyPhotoBin}>
+                        <Text style={styles.trashClear}>Очистити</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                  <Text style={styles.trashHint}>
+                    Затисни фото, щоб відновити або видалити назавжди. Через 30 днів кошик очищається сам.
+                  </Text>
+                </View>
+              ) : list.explorerMode ? (
                 <ExplorerHead
                   crumbs={explorer.crumbs}
                   path={explorer.path}
@@ -887,22 +949,30 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                   }}
                   onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
                   onFolderMenu={openFolderMenu}
+                  trash={{ count: trashedPhotos.length, onOpen: () => setTrashOpen(true) }}
                 />
               ) : null
             }
             // What else is in this group - see GroupSections.
             ListFooterComponent={
-              <GroupSections groupId={list.selectedGroupId} currentKind="photo" tags={tags} />
+              trashOpen ? null : <GroupSections groupId={list.selectedGroupId} currentKind="photo" tags={tags} />
             }
             renderItem={({ item: photo }) => {
-              const shared = {
-                photo,
-                tags: tags.filter((t) => photo.tagIds.includes(t.id)),
-                onPress: () => (isSelectMode ? toggleSelected(photo.id) : setViewerPhotoId(photo.id)),
-                onTagPress: () => setTagPickerForId(photo.id),
-                isSelectMode,
-                isSelected: selectedIds.has(photo.id),
-              };
+              const shared = trashOpen
+                ? {
+                    photo,
+                    tags: tags.filter((t) => photo.tagIds.includes(t.id)),
+                    onPress: () => openPhotoTrashMenu(photo),
+                    onLongPress: () => openPhotoTrashMenu(photo),
+                  }
+                : {
+                    photo,
+                    tags: tags.filter((t) => photo.tagIds.includes(t.id)),
+                    onPress: () => (isSelectMode ? toggleSelected(photo.id) : setViewerPhotoId(photo.id)),
+                    onTagPress: () => setTagPickerForId(photo.id),
+                    isSelectMode,
+                    isSelected: selectedIds.has(photo.id),
+                  };
               return viewMode === 'list' ? <PhotoRow {...shared} /> : <PhotoCell {...shared} />;
             }}
           />
@@ -913,6 +983,35 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
 }
 
 const styles = StyleSheet.create({
+  trashHead: {
+    gap: 8,
+    marginBottom: 8,
+  },
+  trashHeadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  trashBack: {
+    padding: 4,
+  },
+  trashTitle: {
+    fontSize: 15,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT,
+  },
+  trashClear: {
+    fontSize: 15,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT_MUTED,
+  },
+  trashHint: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT_MUTED,
+    paddingHorizontal: 4,
+  },
     menuRule: {
     height: 1,
     backgroundColor: '#E5E7EB',
