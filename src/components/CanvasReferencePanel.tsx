@@ -114,8 +114,10 @@ const makeStyles = (t: Theme) =>
     panel: {
       flex: 1,
       backgroundColor: '#181513',
-      borderLeftWidth: 1,
-      borderLeftColor: GLASS_LINE,
+      // The edge faces the canvas, and the canvas is to the RIGHT of
+      // this panel now - see referencePanelDock.
+      borderRightWidth: 1,
+      borderRightColor: GLASS_LINE,
     },
     header: {
       flexDirection: 'row',

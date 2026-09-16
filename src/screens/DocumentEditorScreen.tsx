@@ -4957,10 +4957,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               <Pressable
                 hitSlop={8}
                 onPress={() => {
-                  // One step at a time: put the text down first, leave
-                  // the document on the next press.
+                  // One step at a time: put the text down, then shut
+                  // the drawer, and leave the document only once there
+                  // is nothing left open. Back walking straight out of
+                  // the note while the reference drawer stood open is
+                  // what left it with no way to close at all.
                   if (canvasEditing) {
                     canvasApiRef.current?.stopEditing();
+                    return;
+                  }
+                  if (referencePanelOpen) {
+                    setReferencePanelOpen(false);
                     return;
                   }
                   if (closePane) closePane();
@@ -5190,9 +5197,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         />
       )}
 
-      {/* «Референси» - a drawer over the RIGHT of the canvas, never the
+      {/* «Референси» - a drawer over the LEFT of the canvas, never the
           whole screen: the canvas has to stay visible and reachable on
-          the left as the drop target. Same shape on every width for now
+          the right as the drop target, and the right edge is the rail's. Same shape on every width for now
           - the Fold's own wide inner screen could stand a true side pane
           instead, deliberately deferred rather than risked in the same
           pass as this screen's own existing embedded/pane double-split
@@ -5794,7 +5801,13 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     position: 'absolute',
     top: 0,
     bottom: 0,
-    right: 0,
+    // The LEFT edge, mirrored from where it started. The rail stands on
+    // the right, so a drawer there put the app's own buttons on top of
+    // the panel's - including the one that closes it, which is how the
+    // drawer ended up with no way out. The user's own call: move the
+    // drawer rather than move a button, "прибрати, перенести кнопку буде
+    // плутанина".
+    left: 0,
     width: '45%',
     minWidth: 260,
     // Android stacks by elevation before it stacks by order, and the
