@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
+import { NavigationContext } from '@react-navigation/native';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing,
@@ -42,16 +43,19 @@ import { useMotion, useTheme } from '../theme/ThemeProvider';
 // all: light on black is the glow on the drops, and a cloud behind them
 // would only grey it.
 const TILE = 360;
-// The slow ones. Three blooms, each on its own period so they never come
-// back to the same arrangement twice - which is what makes a drift read
-// as weather rather than as a loop. Periods are deliberately coprime-ish
-// and long: the user's reference (Gemini's answering screen) stirs, it
-// does not pulse.
-const BLOOMS = [
-  { period: 23000, dx: 0.16, dy: 0.10, from: 0.9, to: 1.18 },
-  { period: 31000, dx: -0.13, dy: 0.14, from: 1.12, to: 0.92 },
-  { period: 19000, dx: 0.09, dy: -0.12, from: 0.96, to: 1.22 },
-];
+// The colour change. Nothing travels: two full-screen washes, each a
+// fixed arrangement of the theme's clouds in different corners, stand
+// over the tiled strip and only their OPACITY moves - up and down, each
+// on its own period, so the corner that was sky becomes lilac and then
+// mint without a single shape sliding. A first version moved blooms
+// across the screen instead and read as waves (the user's word) rather
+// than as colour; it also cost three oversized surfaces per screen.
+// Opacity on a still layer is the cheapest animation Android has - the
+// GPU blends the layer, nothing is redrawn.
+const WASHES = [
+  { period: 17000, corners: [[0.15, 0.2, 1], [0.9, 0.85, 2]] },
+  { period: 26000, corners: [[0.85, 0.15, 2], [0.1, 0.8, 0]] },
+] as const;
 // A fraction of the list's own speed. Fast enough that a normal scroll
 // carries a cloud right through a capsule, slow enough to read as depth.
 const DRIFT = 0.55;
@@ -91,26 +95,53 @@ export default function ScreenBackdrop({
   // black.
   const cloud = theme.cloudStrength;
 
-  // One value per bloom, each running 0 -> 1 -> 0 forever at its own
-  // pace. 'shimmer' is the same movement at twice the speed and half
-  // again the distance; 'still' never starts them, so nothing is
-  // animating behind a screen someone is reading.
-  const drift = [useSharedValue(0), useSharedValue(0), useSharedValue(0)];
-  const moving = motion !== 'still' && cloud > 0;
-  const pace = motion === 'shimmer' ? 0.5 : 1;
-  const reach = motion === 'shimmer' ? 1.5 : 1;
+  // Only the screen in front animates. The tab navigator keeps every
+  // screen mounted, and a wash fading behind a screen nobody sees is
+  // exactly the work that made switching tabs stutter. Outside a
+  // navigator (no context) the backdrop simply counts as focused.
+  const navigation = useContext(NavigationContext);
+  const [focused, setFocused] = useState(() => navigation?.isFocused() ?? true);
   useEffect(() => {
-    drift.forEach((value, i) => {
+    if (!navigation) return;
+    setFocused(navigation.isFocused());
+    const offFocus = navigation.addListener('focus', () => setFocused(true));
+    const offBlur = navigation.addListener('blur', () => setFocused(false));
+    return () => {
+      offFocus();
+      offBlur();
+    };
+  }, [navigation]);
+
+  // One value per wash, 0 -> 1 -> 0 forever at its own pace. 'shimmer'
+  // is the same fade twice as fast and a third stronger; 'still' never
+  // starts it. A blurred screen holds whatever frame it was on.
+  const fade = [useSharedValue(0), useSharedValue(0)];
+  const moving = motion !== 'still' && cloud > 0 && focused;
+  const pace = motion === 'shimmer' ? 0.5 : 1;
+  const strength = motion === 'shimmer' ? 0.6 : 0.45;
+  useEffect(() => {
+    fade.forEach((value, i) => {
       cancelAnimation(value);
-      value.value = 0;
       if (!moving) return;
-      value.value = withRepeat(
-        withTiming(1, { duration: BLOOMS[i].period * pace, easing: Easing.inOut(Easing.sin) }),
-        -1,
-        true
+      // Resume from wherever the fade stopped rather than snapping: finish
+      // the leg to the nearer end at the same speed, then loop the full
+      // range from there.
+      const rest = value.value;
+      const near = rest > 0.5 ? 1 : 0;
+      const period = WASHES[i].period * pace;
+      value.value = withTiming(
+        near,
+        { duration: Math.abs(near - rest) * period, easing: Easing.inOut(Easing.sin) },
+        () => {
+          value.value = withRepeat(
+            withTiming(1 - near, { duration: period, easing: Easing.inOut(Easing.sin) }),
+            -1,
+            true
+          );
+        }
       );
     });
-    return () => drift.forEach((value) => cancelAnimation(value));
+    return () => fade.forEach((value) => cancelAnimation(value));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moving, pace]);
 
@@ -176,91 +207,75 @@ export default function ScreenBackdrop({
         </Svg>
       </Animated.View>
 
-      {/* The drift. Each bloom is one radial gradient in its own layer,
-          moved by a transform - so the colours cross and mix where they
-          overlap without a single pixel being redrawn: the whole effect
-          runs on the UI thread as three transforms, which is what makes
-          it affordable behind a scrolling list. */}
-      {moving &&
-        BLOOMS.map((bloom, i) => (
-          <Bloom
+      {/* The colour change: two still washes, only their opacity moves. */}
+      {cloud > 0 &&
+        motion !== 'still' &&
+        WASHES.map((wash, i) => (
+          <Wash
             key={i}
-            id={`${id}-bloom-${i}`}
-            colour={theme.clouds[i]}
-            opacity={0.35 * cloud}
+            id={`${id}-wash-${i}`}
+            colours={wash.corners.map(([cx, cy, c]) => [cx, cy, theme.clouds[c]] as const)}
+            opacity={strength * cloud}
             width={width}
             height={height}
-            drift={drift[i]}
-            dx={bloom.dx * reach}
-            dy={bloom.dy * reach}
-            from={bloom.from}
-            to={bloom.to}
+            fade={fade[i]}
           />
         ))}
     </View>
   );
 }
 
-// One drifting bloom: a soft radial gradient twice the screen across, so
-// that even at the end of its travel no edge of it can reach the screen's
-// own edge and show as a circle.
-function Bloom({
+// One wash: two soft radial spots in the corners the arrangement names,
+// drawn once at screen size and never touched again - the only thing
+// that changes is the layer's opacity, on the UI thread.
+function Wash({
   id,
-  colour,
+  colours,
   opacity,
   width,
   height,
-  drift,
-  dx,
-  dy,
-  from,
-  to,
+  fade,
 }: {
   id: string;
-  colour: string;
+  colours: (readonly [number, number, string])[];
   opacity: number;
   width: number;
   height: number;
-  drift: SharedValue<number>;
-  dx: number;
-  dy: number;
-  from: number;
-  to: number;
+  fade: SharedValue<number>;
 }) {
-  const size = Math.max(width, height) * 1.6;
-  const style = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: drift.value * dx * width },
-      { translateY: drift.value * dy * height },
-      { scale: from + (to - from) * drift.value },
-    ],
-  }));
+  const style = useAnimatedStyle(() => ({ opacity: fade.value }));
+  const r = Math.max(width, height) * 0.7;
   return (
     <Animated.View
-      style={[
-        styles.bloom,
-        { width: size, height: size, left: (width - size) / 2, top: (height - size) / 2 },
-        style,
-      ]}
+      style={[StyleSheet.absoluteFill, style]}
       pointerEvents="none"
+      renderToHardwareTextureAndroid
     >
-      <Svg width={size} height={size}>
+      <Svg width={width} height={height}>
         <Defs>
-          <RadialGradient id={id} cx="50%" cy="50%" r="50%">
-            <Stop offset="0" stopColor={colour} stopOpacity={opacity} />
-            <Stop offset="1" stopColor={colour} stopOpacity="0" />
-          </RadialGradient>
+          {colours.map(([cx, cy, colour], i) => (
+            <RadialGradient
+              key={i}
+              id={`${id}-${i}`}
+              cx={cx * width}
+              cy={cy * height}
+              r={r}
+              gradientUnits="userSpaceOnUse"
+            >
+              <Stop offset="0" stopColor={colour} stopOpacity={opacity} />
+              <Stop offset="1" stopColor={colour} stopOpacity="0" />
+            </RadialGradient>
+          ))}
         </Defs>
-        <Rect width={size} height={size} fill={`url(#${id})`} />
+        {colours.map((_, i) => (
+          <Rect key={i} width={width} height={height} fill={`url(#${id}-${i})`} />
+        ))}
       </Svg>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  bloom: {
-    position: 'absolute',
-  },
   frame: {
     overflow: 'hidden',
   },
