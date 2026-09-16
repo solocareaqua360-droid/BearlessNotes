@@ -259,10 +259,16 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     },
     onMoved: (item, destination, origin) => {
       const folderName = explorer.folders.find((f) => f.fullPath === destination)?.name ?? nameOf(destination ?? '');
-      setMovedToast({ item, origin, folderName });
+      // The ID, not the record: moveItem reads the tags off the object it
+      // is handed, and by the time undo runs this one is a snapshot from
+      // BEFORE the move - it still carries the old folder's tags and not
+      // the new one's. Undo would then detach tags the file no longer has
+      // and, from the root, return having done nothing at all. Looked up
+      // live at the moment of undo, it carries what it actually has now.
+      setMovedToast({ id: item.id, origin, folderName });
     },
   });
-  const [movedToast, setMovedToast] = useState<{ item: FileItem; origin: string; folderName: string } | null>(null);
+  const [movedToast, setMovedToast] = useState<{ id: string; origin: string; folderName: string } | null>(null);
   useEffect(() => {
     if (!movedToast) return;
     const id = setTimeout(() => setMovedToast(null), 4000);
@@ -824,7 +830,8 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
             <UndoToast
               message={`Переміщено в «${movedToast.folderName}»`}
               onUndo={() => {
-                explorer.moveItem(movedToast.item, movedToast.origin || null);
+                const live = files.find((f) => f.id === movedToast.id);
+                if (live) explorer.moveItem(live, movedToast.origin || null);
                 setMovedToast(null);
               }}
             />
