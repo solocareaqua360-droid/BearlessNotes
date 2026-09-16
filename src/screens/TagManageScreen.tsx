@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useTheme, useStyles } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -9,7 +11,6 @@ import { useTags } from '../hooks/useTags';
 import TagEditSheet from '../components/TagEditSheet';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import PlainScreenShell, { shellClear } from '../components/PlainScreenShell';
-import { GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { confirm } from '../components/surfaces/Ask';
 
 const DANGER = '#EF4444';
@@ -31,6 +32,8 @@ const KIND_LABELS: Record<string, string> = {
 // into a visual tree - the tree view belongs to Search's browsing mode, not
 // duplicated here.
 export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { tags, isLoading, updateTag, deleteTagCompletely } = useTags();
   const railSide = inPane ? ('left' as const) : ('right' as const);
@@ -111,7 +114,7 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
                     <Ionicons
                       name={folded.has(tag.path) ? 'chevron-forward' : 'chevron-down'}
                       size={14}
-                      color={GLASS_TEXT_MUTED}
+                      color={theme.ink.muted}
                     />
                   )}
                 </Pressable>
@@ -135,7 +138,7 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
                   </View>
                 </Pressable>
                 <Pressable hitSlop={8} style={styles.rowAction} onPress={() => setEditingTag(tag)}>
-                  <Ionicons name="pencil-outline" size={15} color={GLASS_TEXT_MUTED} />
+                  <Ionicons name="pencil-outline" size={15} color={theme.ink.muted} />
                 </Pressable>
                 <Pressable hitSlop={8} style={styles.rowAction} onPress={() => confirmDelete(tag)}>
                   <Ionicons name="trash-outline" size={15} color={DANGER} />
@@ -158,7 +161,8 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
   // The twist that folds a branch; a leaf keeps the space so every
   // row's icon starts on the same line.
   twist: {
@@ -168,7 +172,7 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 12,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
     paddingTop: 4,
     paddingBottom: 12,
   },
@@ -190,14 +194,14 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     textAlign: 'center',
   },
   emptyHint: {
     marginTop: 6,
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
     textAlign: 'center',
   },
   list: {
@@ -238,15 +242,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   rowMeta: {
     fontSize: 11,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
     marginTop: 1,
   },
   rowAction: {
     padding: 6,
   },
-});
+  });

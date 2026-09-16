@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTheme, useStyles } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { useRecordColour } from '../theme/ThemeProvider';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import ScreenBackdrop from '../components/ScreenBackdrop';
@@ -67,13 +69,11 @@ import TagManageScreen from './TagManageScreen';
 import GroupsScreen from './GroupsScreen';
 import DiaryScreen from './DiaryScreen';
 import TasksScreen from './TasksScreen';
-import { GLASS_BODY, GLASS_DANGER, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
-import { GLASS_ISLAND } from '../constants/glass';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import { CAPSULE_DROP, CHROME_TOP, NAV_BOTTOM, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 
@@ -93,7 +93,7 @@ const TILE_GAP_EDITING = 16;
 // "this one is on", and the danger red for the one row that destroys
 // something.
 const ACCENT = '#14B8A6';
-const DANGER = GLASS_DANGER;
+const DANGER = '#FB7185';
 const tileSizesDoc = doc(db, 'settings', 'databaseTileSizes');
 const tileOrderDoc = doc(db, 'settings', 'databaseTileOrder');
 // The board has THREE views - the phone, the inner screen standing up, and
@@ -185,6 +185,8 @@ function paneTargetFor(tile: Tile): PaneTarget | null {
 }
 
 export default function DatabasesScreen() {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const recordColour = useRecordColour();
   const databasesBlurTarget = useBlurTarget();
   const databasesFocused = useIsFocused();
@@ -1026,20 +1028,20 @@ export default function DatabasesScreen() {
                   });
                 }}
               >
-                <Ionicons name="image-outline" size={17} color={GLASS_TEXT} />
+                <Ionicons name="image-outline" size={17} color={theme.ink.primary} />
                 <Text style={styles.sheetRowLabel}>
                   {colorMenuKey && tileBackgrounds[colorMenuKey] ? 'Змінити фон' : 'Фонове зображення'}
                 </Text>
               </Pressable>
               {colorMenuKey && tileBackgrounds[colorMenuKey] && (
                 <Pressable style={styles.sheetRow} onPress={() => clearBackground(colorMenuKey)}>
-                  <Ionicons name="image-outline" size={17} color={GLASS_TEXT} />
+                  <Ionicons name="image-outline" size={17} color={theme.ink.primary} />
                   <Text style={styles.sheetRowLabel}>Прибрати фон</Text>
                 </Pressable>
               )}
               {colorMenuKey && (
                 <Pressable style={styles.sheetRow} onPress={() => resetSize(colorMenuKey)}>
-                  <Ionicons name="resize-outline" size={17} color={GLASS_TEXT} />
+                  <Ionicons name="resize-outline" size={17} color={theme.ink.primary} />
                   <Text style={styles.sheetRowLabel}>Стандартний розмір</Text>
                 </Pressable>
               )}
@@ -1053,7 +1055,7 @@ export default function DatabasesScreen() {
                     setColorMenuKey(null);
                   }}
                 >
-                  <Ionicons name="remove-circle-outline" size={17} color={GLASS_TEXT} />
+                  <Ionicons name="remove-circle-outline" size={17} color={theme.ink.primary} />
                   <Text style={styles.sheetRowLabel}>Відкріпити з дошки</Text>
                 </Pressable>
               )}
@@ -1076,7 +1078,7 @@ export default function DatabasesScreen() {
                   act - the whole board at once, not this one tile - and
                   this is where the board's own actions already live. */}
               <Pressable style={styles.sheetRow} onPress={resetColors}>
-                <Ionicons name="color-palette-outline" size={17} color={GLASS_TEXT} />
+                <Ionicons name="color-palette-outline" size={17} color={theme.ink.primary} />
                 <Text style={styles.sheetRowLabel}>Скинути кольори</Text>
               </Pressable>
               {/* Every tile given the widest size that still fits the gap
@@ -1084,7 +1086,7 @@ export default function DatabasesScreen() {
                   instead of pitted with the holes a hand-picked one fills
                   up with. */}
               <Pressable style={styles.sheetRow} onPress={fillBoard}>
-                <Ionicons name="grid-outline" size={17} color={GLASS_TEXT} />
+                <Ionicons name="grid-outline" size={17} color={theme.ink.primary} />
                 <Text style={styles.sheetRowLabel}>Заповнити без дірок</Text>
               </Pressable>
               <Pressable
@@ -1094,7 +1096,7 @@ export default function DatabasesScreen() {
                   resetBoard();
                 }}
               >
-                <Ionicons name="refresh-outline" size={17} color={GLASS_TEXT} />
+                <Ionicons name="refresh-outline" size={17} color={theme.ink.primary} />
                 <Text style={styles.sheetRowLabel}>Скинути дошку</Text>
               </Pressable>
     </>
@@ -1194,7 +1196,7 @@ export default function DatabasesScreen() {
               // the row unmounting - with nothing open the row is not drawn
               // at all now.
               <View style={styles.menuPaneEmpty}>
-                <Ionicons name="apps-outline" size={26} color={GLASS_TEXT_FAINT} />
+                <Ionicons name="apps-outline" size={26} color={theme.ink.faint} />
                 <Text style={styles.menuPaneHint}>
                   Торкнись плитки, щоб відкрити базу тут. Затисни - щоб налаштувати плитку.
                 </Text>
@@ -1419,6 +1421,8 @@ function BoardDivider({
   onCarryMove: (dy: number) => void;
   onCarryEnd: () => void;
 }) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const carry = Gesture.Pan()
     .runOnJS(true)
     .activateAfterLongPress(220)
@@ -1440,7 +1444,7 @@ function BoardDivider({
             </Text>
           )}
           <View style={styles.dividerLine} />
-          {editing && <Ionicons name="reorder-two-outline" size={16} color={GLASS_TEXT_FAINT} />}
+          {editing && <Ionicons name="reorder-two-outline" size={16} color={theme.ink.faint} />}
         </Pressable>
       </GestureDetector>
     </Animated.View>
@@ -1498,6 +1502,7 @@ function BoardTile({
   onCarryMove: (dx: number, dy: number) => void;
   onCarryEnd: () => void;
 }) {
+  const styles = useStyles(makeStyles);
   const label =
     item.kind === 'builtin'
       ? item.tile.label
@@ -1669,7 +1674,8 @@ function BoardTile({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -1763,7 +1769,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 8,
   },
   pinCard: {
-    backgroundColor: GLASS_BODY,
+    backgroundColor: t.surface,
     borderRadius: 18,
     padding: 16,
     width: '100%',
@@ -1830,7 +1836,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: 'uppercase',
     fontFamily: FONT_MEDIUM,
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
     maxWidth: '60%',
   },
   doneButton: {
@@ -1894,7 +1900,7 @@ const styles = StyleSheet.create({
   menuPane: {
     flex: 1,
     borderRightWidth: 1,
-    borderRightColor: GLASS_LINE,
+    borderRightColor: t.edge.hairline,
     padding: 16,
     justifyContent: 'center',
   },
@@ -1907,7 +1913,7 @@ const styles = StyleSheet.create({
   databasePane: {
     flex: 1,
     borderRightWidth: 1,
-    borderRightColor: GLASS_LINE,
+    borderRightColor: t.edge.hairline,
   },
   menuPaneCard: {
     gap: 10,
@@ -1920,7 +1926,7 @@ const styles = StyleSheet.create({
   menuPaneHint: {
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
     textAlign: 'center',
   },
   colorMenuBackdrop: {
@@ -1931,7 +1937,7 @@ const styles = StyleSheet.create({
     padding: 32,
   },
   colorMenuCard: {
-    backgroundColor: GLASS_BODY,
+    backgroundColor: t.surface,
     borderRadius: 16,
     padding: 20,
     width: '100%',
@@ -1941,7 +1947,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     marginBottom: 14,
   },
   colorMenuRow: {
@@ -1959,11 +1965,11 @@ const styles = StyleSheet.create({
   sheetRowLabel: {
     fontSize: 14,
     fontFamily: FONT_MEDIUM,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   colorSwatch: {
     width: 36,
     height: 36,
     borderRadius: 18,
   },
-});
+  });

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useStyles } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -14,7 +16,6 @@ import { FONT_SEMIBOLD } from '../utils/fonts';
 import DocumentEditorScreen from './DocumentEditorScreen';
 import PlainScreenShell, { shellClear } from '../components/PlainScreenShell';
 import SearchField, { searchFieldSides } from '../components/SearchField';
-import { GLASS_TEXT } from '../constants/glass';
 
 
 // "Щоденник" - calendar sheets (CalendarScreen's daily notes) as their own
@@ -25,6 +26,7 @@ import { GLASS_TEXT } from '../constants/glass';
 // was explicit: keeps the day-flipping simple), so unlike every other
 // database screen there's no TagsDrawer/filter row.
 export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
+  const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [sheets, setSheets] = useState<DocumentItem[]>([]);
   // Records as they are now - see DocumentsScreen's same line.
@@ -151,7 +153,8 @@ export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
   // Only where it sits - the pill itself is SearchField's.
   searchRow: {
     marginBottom: 14,
@@ -166,7 +169,7 @@ const styles = StyleSheet.create({
   sheetDate: {
     fontSize: 20,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   // The editor paints its own white paper, so it gets a rounded window
   // of its own rather than bleeding into the backdrop.
@@ -176,4 +179,4 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: 16,
   },
-});
+  });

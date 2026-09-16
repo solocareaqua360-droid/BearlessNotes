@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useTheme, useStyles } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import {
   ActivityIndicator,
   Modal,
@@ -55,7 +57,7 @@ import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import FilePreviewWorker from '../components/FilePreviewWorker';
-import { GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_MUTED, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT , railClear } from '../constants/rail';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 
@@ -95,6 +97,8 @@ type FileItem = {
 // since the two versions have nothing else in common.
 
 export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   // Not two panes INSIDE a pane. Drawn in another screen's pane this
   // screen is already half a window, and a quick look beside the list
@@ -612,7 +616,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         <View style={styles.trashHead}>
           <View style={styles.trashHeadRow}>
             <Pressable hitSlop={8} onPress={() => setTrashOpen(false)} style={styles.trashBack}>
-              <Ionicons name="chevron-back" size={18} color={GLASS_TEXT} />
+              <Ionicons name="chevron-back" size={18} color={theme.ink.primary} />
             </Pressable>
             <Text style={styles.trashTitle}>Кошик · {trashedFiles.length}</Text>
             <View style={{ flex: 1 }} />
@@ -944,7 +948,8 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
   trashHead: {
     gap: 8,
     marginBottom: 8,
@@ -960,18 +965,18 @@ const styles = StyleSheet.create({
   trashTitle: {
     fontSize: 15,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   trashClear: {
     fontSize: 15,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   trashHint: {
     fontSize: 13,
     lineHeight: 18,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
     paddingHorizontal: 4,
   },
   emptyState: {
@@ -1063,4 +1068,4 @@ const styles = StyleSheet.create({
     fontFamily: FONT_REGULAR,
     color: '#111827',
   },
-});
+  });

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useTheme, useStyles } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import PlainScreenShell, { shellClear } from '../components/PlainScreenShell';
 import {
   ActivityIndicator,
@@ -15,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc } from '../firestore';
-import { GLASS_BODY, GLASS_CARD, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import { db } from '../firebase';
 import { CustomDatabase, CustomDatabaseRow, Group } from '../types';
 import { RootStackParamList } from '../navigation';
@@ -41,6 +43,8 @@ const DANGER = '#EF4444';
 // seen whole - every item it holds, across every database at once - which
 // no single database screen can show.
 export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   // Gathering a group's contents is shared with the board, which can pull
@@ -208,22 +212,22 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
 
                   <View style={styles.actionRow}>
                     <Pressable style={styles.action} onPress={() => setRenamingGroup(openGroup)}>
-                      <Ionicons name="pencil-outline" size={16} color={GLASS_TEXT} />
+                      <Ionicons name="pencil-outline" size={16} color={theme.ink.primary} />
                       <Text style={styles.actionLabel}>Перейменувати</Text>
                     </Pressable>
                     <Pressable style={styles.action} onPress={() => setImportingGroup(openGroup)}>
-                      <Ionicons name="apps-outline" size={16} color={GLASS_TEXT} />
+                      <Ionicons name="apps-outline" size={16} color={theme.ink.primary} />
                       <Text style={styles.actionLabel}>На дошку</Text>
                     </Pressable>
                     <Pressable style={styles.action} onPress={() => setKindsEditorGroup(openGroup)}>
-                      <Ionicons name="albums-outline" size={16} color={GLASS_TEXT} />
+                      <Ionicons name="albums-outline" size={16} color={theme.ink.primary} />
                       <Text style={styles.actionLabel}>Бази</Text>
                     </Pressable>
                     <Pressable style={styles.action} onPress={() => setArchived(openGroup, !openGroup.archived)}>
                       <Ionicons
                         name={openGroup.archived ? 'arrow-undo-outline' : 'archive-outline'}
                         size={16}
-                        color={GLASS_TEXT}
+                        color={theme.ink.primary}
                       />
                       <Text style={styles.actionLabel}>{openGroup.archived ? 'Повернути' : 'Архівувати'}</Text>
                     </Pressable>
@@ -289,7 +293,7 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
                       <Ionicons
                         name={on ? 'checkbox' : 'square-outline'}
                         size={18}
-                        color={on ? ACCENT : GLASS_TEXT_FAINT}
+                        color={on ? ACCENT : theme.ink.faint}
                       />
                       <Text style={styles.itemTitle}>{labelForKind(kind, customDatabaseNames)}</Text>
                     </Pressable>
@@ -325,7 +329,8 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -410,7 +415,7 @@ const styles = StyleSheet.create({
     ...SHEET_BACKDROP,
   },
   sheet: {
-    backgroundColor: GLASS_BODY,
+    backgroundColor: t.surface,
     ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
@@ -434,7 +439,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     flexShrink: 1,
   },
   actionRow: {
@@ -448,7 +453,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: GLASS_CARD,
+    backgroundColor: t.surface,
     borderRadius: 10,
     paddingVertical: 8,
     paddingHorizontal: 12,
@@ -456,7 +461,7 @@ const styles = StyleSheet.create({
   actionLabel: {
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   itemList: {
     flexShrink: 1,
@@ -465,7 +470,7 @@ const styles = StyleSheet.create({
   sheetEmpty: {
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
     paddingVertical: 16,
   },
   itemRow: {
@@ -477,7 +482,7 @@ const styles = StyleSheet.create({
   itemTitle: {
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     flexShrink: 1,
   },
-});
+  });

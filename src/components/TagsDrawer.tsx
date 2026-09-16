@@ -1,4 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react';
+import { useTheme, useStyles } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
@@ -13,16 +15,6 @@ import { Tag } from '../types';
 import type { ListMode } from '../hooks/useDatabaseList';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { RAIL_RIGHT } from '../constants/rail';
-import { GLASS_ISLAND } from '../constants/glass';
-import {
-  GLASS_BODY,
-  GLASS_BODY_BLURRED,
-  GLASS_CARD,
-  GLASS_LINE,
-  GLASS_TEXT,
-  GLASS_TEXT_FAINT,
-  GLASS_TEXT_MUTED,
-} from '../constants/glass';
 import { BlurView } from 'expo-blur';
 import { useBlurTarget } from './GlassTarget';
 import { GlassPortal } from './GlassPortal';
@@ -195,12 +187,14 @@ function SectionHeader({
   collapsed: boolean;
   onPress: () => void;
 }) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   return (
     <Pressable style={styles.sectionHeader} onPress={onPress}>
       <Ionicons
         name={collapsed ? 'chevron-forward' : 'chevron-down'}
         size={15}
-        color={GLASS_TEXT_FAINT}
+        color={theme.ink.faint}
       />
       <Text style={styles.sectionLabel}>{label}</Text>
     </Pressable>
@@ -228,6 +222,8 @@ function TreeRow({
   onToggleExpand: (path: string) => void;
   onToggleTag: (tag: Tag) => void;
 }) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const hasChildren = node.children.size > 0;
   const isExpanded = expanded.has(node.fullPath);
   const isSelected = !!node.tag && selectedIds.has(node.tag.id);
@@ -236,7 +232,7 @@ function TreeRow({
   // A branch-only node (a path segment with no tag of its own, just
   // grouping children) has no color to draw from, so it - and the
   // chevron/icon/text that go with it - stay neutral gray instead.
-  const tint = node.tag ? node.tag.color : GLASS_TEXT_FAINT;
+  const tint = node.tag ? node.tag.color : theme.ink.faint;
 
   // What the children draw in their own gutters: everything this row had,
   // then a line in this row's own cell if - and only if - the branch
@@ -274,7 +270,7 @@ function TreeRow({
             <Ionicons
               name={isExpanded ? 'chevron-down' : 'chevron-forward'}
               size={17}
-              color={GLASS_TEXT_MUTED}
+              color={theme.ink.muted}
             />
           </Pressable>
         ) : (
@@ -286,7 +282,7 @@ function TreeRow({
           color={tint}
         />
         <Text
-          style={[styles.treeLabel, { color: node.tag ? GLASS_TEXT : GLASS_TEXT_MUTED }]}
+          style={[styles.treeLabel, { color: node.tag ? theme.ink.primary : theme.ink.muted }]}
           numberOfLines={1}
         >
           {node.name}
@@ -388,6 +384,8 @@ function TagsDrawerInner({
   trash,
   groupSection,
 }: Props, ref: React.Ref<TagsDrawerHandle>) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const showGroups = !mode || mode.value === 'groups';
   const showTree = !mode || mode.value !== 'groups';
   const showFilterMode = !mode || mode.value === 'list';
@@ -543,7 +541,7 @@ function TagsDrawerInner({
                     style={[styles.segmentButton, active && styles.segmentButtonActive]}
                     onPress={() => mode.onChange(option.value)}
                   >
-                    <Ionicons name={option.icon} size={16} color={active ? GLASS_TEXT : GLASS_TEXT_MUTED} />
+                    <Ionicons name={option.icon} size={16} color={active ? theme.ink.primary : theme.ink.muted} />
                     <Text style={[styles.segmentLabel, styles.modeLabel, active && styles.segmentLabelActive]}>
                       {option.label}
                     </Text>
@@ -592,7 +590,7 @@ function TagsDrawerInner({
                         {active && <View style={[styles.treeRowMark, { backgroundColor: item.color }]} />}
                         <View style={{ width: 17 }} />
                         <Ionicons name="albums-outline" size={19} color={item.color} />
-                        <Text style={[styles.treeLabel, { color: GLASS_TEXT }]} numberOfLines={1}>
+                        <Text style={[styles.treeLabel, { color: theme.ink.primary }]} numberOfLines={1}>
                           {item.name}
                         </Text>
                         <Text style={styles.rowCount}>{item.count}</Text>
@@ -625,15 +623,15 @@ function TagsDrawerInner({
                 onPress={toggleUntagged}
               >
                 {activeFilter?.type === 'untagged' && (
-                  <View style={[styles.treeRowMark, { backgroundColor: GLASS_TEXT_MUTED }]} />
+                  <View style={[styles.treeRowMark, { backgroundColor: theme.ink.muted }]} />
                 )}
                 <View style={{ width: 17 }} />
-                <Ionicons name="pricetag-outline" size={19} color={GLASS_TEXT_MUTED} />
+                <Ionicons name="pricetag-outline" size={19} color={theme.ink.muted} />
                 <Text style={styles.untaggedLabel}>Без тегів</Text>
                 <Text style={styles.rowCount}>{counts?.untagged ?? 0}</Text>
                 <View style={styles.treeCheckSlot}>
                   {activeFilter?.type === 'untagged' && (
-                    <Ionicons name="checkmark-outline" size={17} color={GLASS_TEXT_MUTED} />
+                    <Ionicons name="checkmark-outline" size={17} color={theme.ink.muted} />
                   )}
                 </View>
               </Pressable>
@@ -673,7 +671,7 @@ function TagsDrawerInner({
             {trash && (
               <Pressable style={[styles.treeRow, styles.trashRow, !stickers && undefined]} onPress={trash.onOpen}>
                 <View style={{ width: 17 }} />
-                <Ionicons name="trash-outline" size={19} color={GLASS_TEXT_MUTED} />
+                <Ionicons name="trash-outline" size={19} color={theme.ink.muted} />
                 <Text style={styles.untaggedLabel}>Кошик</Text>
                 <Text style={styles.rowCount}>{trash.count}</Text>
                 <View style={styles.treeCheckSlot} />
@@ -703,7 +701,7 @@ function TagsDrawerInner({
                 Акаунт, версія, оновлення
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={16} color={GLASS_TEXT_FAINT} />
+            <Ionicons name="chevron-forward" size={16} color={theme.ink.faint} />
           </Pressable>
         </Animated.View>
       </View>
@@ -715,7 +713,8 @@ function TagsDrawerInner({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
   backdrop: {
     position: 'absolute',
     left: 0,
@@ -753,13 +752,13 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   panelTint: {
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: t.surface,
   },
   title: {
     fontSize: 22,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     marginBottom: 12,
   },
   // A track with the chosen half lifted out of it - the same soft panel a
@@ -788,10 +787,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   explorerLabelOn: {
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   explorerKnob: {
     width: 36,
@@ -839,10 +838,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   segmentLabelActive: {
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   // The three-way mode: an icon over a short word, because three words
   // in one row do not fit a phone.
@@ -869,7 +868,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -885,7 +884,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT_BOLD,
     letterSpacing: 0.06,
     textTransform: 'uppercase',
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
   },
   accountRow: {
     flexDirection: 'row',
@@ -895,7 +894,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 8,
     borderRadius: 999,
-    backgroundColor: GLASS_CARD,
+    backgroundColor: t.surface,
   },
   accountAvatar: {
     width: 30,
@@ -908,7 +907,7 @@ const styles = StyleSheet.create({
   accountInitial: {
     fontSize: 13,
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   accountText: {
     flex: 1,
@@ -916,16 +915,16 @@ const styles = StyleSheet.create({
   accountLabel: {
     fontSize: 13,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   accountHint: {
     fontSize: 11,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   sectionRule: {
     height: 1,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
     marginTop: 8,
     marginBottom: 10,
   },
@@ -949,7 +948,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: 1,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
   },
   // The elbow: down to the row's middle...
   guideStem: {
@@ -958,7 +957,7 @@ const styles = StyleSheet.create({
     top: 0,
     height: '50%',
     width: 1,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
   },
   // ...and on down, when this isn't the last child.
   guideStemFull: {
@@ -972,7 +971,7 @@ const styles = StyleSheet.create({
     right: 0,
     top: '50%',
     height: 1,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
   },
   // A plain line, not a capsule: only the selected row is drawn, and it is
   // drawn the way Explorer draws one - a soft rounded panel running the
@@ -1008,7 +1007,7 @@ const styles = StyleSheet.create({
   rowCount: {
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
     marginLeft: 4,
   },
   treeCheckSlot: {
@@ -1035,14 +1034,14 @@ const styles = StyleSheet.create({
     // Glass, like everything else on the rail: the blur separates it from
     // the cards under it, so the fill only tints.
     overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
+    backgroundColor: t.raised,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 6,
   },
-});
+  });
 
 // forwardRef, so the screen can open the drawer from its swipe - see
 // useDrawerSwipe.

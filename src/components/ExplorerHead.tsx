@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTheme } from '../theme/ThemeProvider';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ExplorerFolder } from '../hooks/useExplorer';
@@ -45,6 +46,7 @@ export default function ExplorerHead({
   // so it is right whatever list it stands in.
   columns?: number;
 }) {
+  const theme = useTheme();
   const crumbScrollRef = useRef<ScrollView>(null);
   // Many levels fold the middle ones into one "…" that a tap unfolds; a
   // new path folds again.
@@ -66,7 +68,7 @@ export default function ExplorerHead({
       {showCrumbs && path !== '' && (
         <View style={styles.crumbRow}>
           <Pressable hitSlop={8} onPress={onUp} style={styles.crumbUp}>
-            <Ionicons name="chevron-back" size={18} color={GLASS_TEXT} />
+            <Ionicons name="chevron-back" size={18} color={theme.ink.primary} />
           </Pressable>
           <ScrollView
             ref={crumbScrollRef}
@@ -86,7 +88,7 @@ export default function ExplorerHead({
               if (hidden && !isFoldMark) return null;
               return (
                 <View key={target} style={styles.crumbPair}>
-                  <Ionicons name="chevron-forward" size={14} color={GLASS_TEXT_FAINT} />
+                  <Ionicons name="chevron-forward" size={14} color={theme.ink.faint} />
                   {isFoldMark ? (
                     <Pressable onPress={() => setUnfolded(true)} style={styles.crumbSegment}>
                       <Text style={styles.crumbLabel}>…</Text>
@@ -117,11 +119,11 @@ export default function ExplorerHead({
           onPress={() => onGo(folder.fullPath)}
           onLongPress={() => onFolderMenu(folder)}
         >
-          <View style={[styles.folderThumb, { borderColor: folder.tag?.color ?? GLASS_TEXT_FAINT }]}>
+          <View style={[styles.folderThumb, { borderColor: folder.tag?.color ?? theme.ink.faint }]}>
             <Ionicons
               name={(folder.tag?.icon as keyof typeof Ionicons.glyphMap) || 'folder-outline'}
               size={26}
-              color={folder.tag?.color ?? GLASS_TEXT_MUTED}
+              color={folder.tag?.color ?? theme.ink.muted}
             />
           </View>
           <View style={styles.folderBody}>
@@ -129,13 +131,13 @@ export default function ExplorerHead({
               {folder.name}
             </Text>
             <View style={styles.folderMeta}>
-              <Ionicons name={itemIcon} size={14} color={GLASS_TEXT_MUTED} />
+              <Ionicons name={itemIcon} size={14} color={theme.ink.muted} />
               <Text style={styles.folderCount}>{folder.docs}</Text>
-              <Ionicons name="folder-outline" size={14} color={GLASS_TEXT_MUTED} style={styles.folderMetaGap} />
+              <Ionicons name="folder-outline" size={14} color={theme.ink.muted} style={styles.folderMetaGap} />
               <Text style={styles.folderCount}>{folder.subfolders}</Text>
             </View>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={GLASS_TEXT_FAINT} />
+          <Ionicons name="chevron-forward" size={18} color={theme.ink.faint} />
         </Pressable>
       ))}
 
@@ -144,17 +146,17 @@ export default function ExplorerHead({
           style={[styles.folderRow, styles.trashRow, rowWidth !== undefined && { width: rowWidth }]}
           onPress={trash.onOpen}
         >
-          <View style={[styles.folderThumb, { borderColor: GLASS_TEXT_FAINT }]}>
-            <Ionicons name="trash-outline" size={26} color={GLASS_TEXT_MUTED} />
+          <View style={[styles.folderThumb, { borderColor: theme.ink.faint }]}>
+            <Ionicons name="trash-outline" size={26} color={theme.ink.muted} />
           </View>
           <View style={styles.folderBody}>
-            <Text style={[styles.folderName, { color: GLASS_TEXT_MUTED }]}>Кошик</Text>
+            <Text style={[styles.folderName, { color: theme.ink.muted }]}>Кошик</Text>
             <View style={styles.folderMeta}>
-              <Ionicons name={itemIcon} size={14} color={GLASS_TEXT_MUTED} />
+              <Ionicons name={itemIcon} size={14} color={theme.ink.muted} />
               <Text style={styles.folderCount}>{trash.count}</Text>
             </View>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={GLASS_TEXT_FAINT} />
+          <Ionicons name="chevron-forward" size={18} color={theme.ink.faint} />
         </Pressable>
       )}
       </View>

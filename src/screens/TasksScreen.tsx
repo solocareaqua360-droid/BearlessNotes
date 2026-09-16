@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { GLASS_TEXT_FAINT, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import { useTheme, useStyles } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
+import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import {
   ActivityIndicator,
   Keyboard,
@@ -57,7 +59,6 @@ import {
   RAIL_CLEARANCE,
   RAIL_RIGHT,
 } from '../constants/rail';
-import { GLASS_BODY_BLURRED, GLASS_CARD, GLASS_ISLAND, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { confirm } from '../components/surfaces/Ask';
@@ -141,6 +142,8 @@ function kanbanColumnWidthFor(screenWidth: number): number {
 }
 
 export default function TasksScreen() {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -725,7 +728,7 @@ export default function TasksScreen() {
               disabled={columnIndex === 0}
               onPress={() => moveTaskColumn(task, -1)}
             >
-              <Ionicons name="chevron-back" size={16} color={columnIndex === 0 ? 'rgba(255,255,255,0.25)' : GLASS_TEXT_MUTED} />
+              <Ionicons name="chevron-back" size={16} color={columnIndex === 0 ? 'rgba(255,255,255,0.25)' : theme.ink.muted} />
             </Pressable>
             <Pressable
               style={styles.kanbanArrowButton}
@@ -735,7 +738,7 @@ export default function TasksScreen() {
               <Ionicons
                 name="chevron-forward"
                 size={16}
-                color={columnIndex === KANBAN_COLUMNS.length - 1 ? 'rgba(255,255,255,0.25)' : GLASS_TEXT_MUTED}
+                color={columnIndex === KANBAN_COLUMNS.length - 1 ? 'rgba(255,255,255,0.25)' : theme.ink.muted}
               />
             </Pressable>
           </View>
@@ -966,7 +969,7 @@ export default function TasksScreen() {
                   value={newProjectName}
                   onChangeText={setNewProjectName}
                   placeholder="Новий проект"
-                  placeholderTextColor={GLASS_TEXT_FAINT}
+                  placeholderTextColor={theme.ink.faint}
                   onSubmitEditing={addProject}
                   returnKeyType="done"
                 />
@@ -993,7 +996,8 @@ export default function TasksScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -1024,7 +1028,7 @@ const styles = StyleSheet.create({
     // `bottom` comes from the rail at the call site.
     right: RAIL_CLEARANCE,
     width: 200,
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: t.surface,
     borderRadius: 14,
     padding: 6,
     shadowColor: '#000',
@@ -1039,7 +1043,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: t.surface,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.08)',
     paddingHorizontal: 20,
@@ -1058,7 +1062,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   selectionDeleteBtn: {
     flexDirection: 'row',
@@ -1089,7 +1093,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   emptyFilterLabel: {
     textAlign: 'center',
@@ -1119,7 +1123,7 @@ const styles = StyleSheet.create({
   },
   todayDivider: {
     height: 1,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
     marginVertical: 4,
   },
   groupHeader: {
@@ -1178,7 +1182,7 @@ const styles = StyleSheet.create({
   rowText: {
     fontSize: 16,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   rowTextChecked: {
     textDecorationLine: 'line-through',
@@ -1230,7 +1234,7 @@ const styles = StyleSheet.create({
     ...SHEET_BACKDROP,
   },
   modalSheet: {
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: t.surface,
     ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
@@ -1239,7 +1243,7 @@ const styles = StyleSheet.create({
   modalHandle: {
     width: 36,
     height: 4,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -1248,7 +1252,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     marginBottom: 4,
   },
   modalRow: {
@@ -1271,7 +1275,7 @@ const styles = StyleSheet.create({
   modalRowText: {
     fontSize: 16,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     flexGrow: 1,
   },
   modalDivider: {
@@ -1289,14 +1293,14 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     paddingVertical: 6,
   },
   modalRenameInput: {
     flex: 1,
     fontSize: 16,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     paddingVertical: 2,
     borderBottomWidth: 1,
     borderBottomColor: ACCENT,
@@ -1324,7 +1328,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT_BOLD,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   kanbanColumnCount: {
     fontSize: 11,
@@ -1346,7 +1350,7 @@ const styles = StyleSheet.create({
     minHeight: 200,
   },
   kanbanCard: {
-    backgroundColor: GLASS_CARD,
+    backgroundColor: t.surface,
     borderRadius: 12,
     padding: 10,
     gap: 6,
@@ -1367,7 +1371,7 @@ const styles = StyleSheet.create({
   kanbanCardText: {
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     lineHeight: 19,
   },
   kanbanCardBottom: {
@@ -1388,4 +1392,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-});
+  });

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTheme, useStyles } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { railClear } from '../constants/rail';
 import {
   ActivityIndicator,
@@ -29,7 +31,6 @@ import DatabaseChrome, { menuStyles } from '../components/DatabaseChrome';
 import { useDatabaseList } from '../hooks/useDatabaseList';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR } from '../utils/fonts';
 import { notify } from '../components/surfaces/Ask';
-import { GLASS_TEXT } from '../constants/glass';
 
 const STICKER_YELLOW = '#FBE97A';
 const STICKER_DARK = '#4a3f05';
@@ -58,6 +59,8 @@ export default function StickersScreen({
   route,
   inPane,
 }: Partial<Props> & { inPane?: boolean } = {}) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   // Opened straight from the sticker widget on the home screen - see
   // App.tsx's deep-link handling. Read once: the param does not change
@@ -263,7 +266,7 @@ export default function StickersScreen({
             setViewingTrash((v) => !v);
           }}
         >
-          <Ionicons name={viewingTrash ? 'reader-outline' : 'trash-outline'} size={17} color={GLASS_TEXT} />
+          <Ionicons name={viewingTrash ? 'reader-outline' : 'trash-outline'} size={17} color={theme.ink.primary} />
           <Text style={menuStyles.menuRowLabel}>{viewingTrash ? 'Стікери' : 'Смітник'}</Text>
         </Pressable>
       )}
@@ -335,7 +338,8 @@ export default function StickersScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
   emptyState: {
     flex: 1,
     alignItems: 'center',
@@ -420,4 +424,4 @@ const styles = StyleSheet.create({
     color: STICKER_DARK,
     opacity: 0.75,
   },
-});
+  });

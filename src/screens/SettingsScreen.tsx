@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useTheme, useStyles } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import {
   ActivityIndicator,
   PixelRatio,
@@ -31,7 +33,6 @@ import {
 } from '../utils/googleDrive';
 import ContentColumn from '../components/ContentColumn';
 import { RootStackParamList } from '../navigation';
-import { GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { claimExistingData } from '../utils/claimOwnership';
 import { backfillDriveCopies } from '../utils/backfillDrive';
@@ -69,6 +70,8 @@ function formatUpdateTime(date: Date | null): string {
 }
 
 export default function SettingsScreen() {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { themeKey, setThemeKey } = useThemeChoice();
   const [accountEmail, setAccountEmail] = useState<string | null>(auth.currentUser?.email ?? null);
@@ -565,7 +568,8 @@ export default function SettingsScreen() {
 // chevron beside it, and cards that are dark glass with a hairline
 // edge. Settings was the last screen still wearing the default white
 // card and system blue, which is why it read as a different app.
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -607,17 +611,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   cardBody: {
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   cardHint: {
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   trafficRow: {
     flexDirection: 'row',
@@ -633,7 +637,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   connectButton: {
     backgroundColor: ACCENT,
@@ -667,10 +671,10 @@ const styles = StyleSheet.create({
   themeChipLabel: {
     fontSize: 14,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   themeChipLabelOn: {
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   checkButton: {
     borderWidth: 1,
@@ -681,7 +685,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   checkLabel: {
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
     fontSize: 15,
@@ -700,4 +704,4 @@ const styles = StyleSheet.create({
     fontFamily: FONT_SEMIBOLD,
     fontSize: 15,
   },
-});
+  });

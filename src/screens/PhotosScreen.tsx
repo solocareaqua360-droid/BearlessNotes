@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useTheme, useStyles } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { RAIL_CLEARANCE , railClear } from '../constants/rail';
 import {
   ActivityIndicator,
@@ -59,7 +61,6 @@ import SaveDestinationSheet from '../components/SaveDestinationSheet';
 import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
 import DownloadToast from '../components/DownloadToast';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 
 const ACCENT = '#EC4899';
@@ -98,6 +99,8 @@ type PhotoItem = {
 };
 
 export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [trashedPhotos, setTrashedPhotos] = useState<PhotoItem[]>([]);
@@ -919,7 +922,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                 <View style={styles.trashHead}>
                   <View style={styles.trashHeadRow}>
                     <Pressable hitSlop={8} onPress={() => setTrashOpen(false)} style={styles.trashBack}>
-                      <Ionicons name="chevron-back" size={18} color={GLASS_TEXT} />
+                      <Ionicons name="chevron-back" size={18} color={theme.ink.primary} />
                     </Pressable>
                     <Text style={styles.trashTitle}>Кошик · {trashedPhotos.length}</Text>
                     <View style={{ flex: 1 }} />
@@ -982,7 +985,8 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
   trashHead: {
     gap: 8,
     marginBottom: 8,
@@ -998,18 +1002,18 @@ const styles = StyleSheet.create({
   trashTitle: {
     fontSize: 15,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   trashClear: {
     fontSize: 15,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   trashHint: {
     fontSize: 13,
     lineHeight: 18,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
     paddingHorizontal: 4,
   },
     menuRule: {
@@ -1072,4 +1076,4 @@ const styles = StyleSheet.create({
   gridWithBulkBar: {
     paddingBottom: 90,
   },
-});
+  });

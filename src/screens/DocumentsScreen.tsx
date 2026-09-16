@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTheme, useStyles } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import {
   ActivityIndicator,
   FlatList,
@@ -33,7 +35,6 @@ import {
   writeBatch,
 } from '../firestore';
 import { addDoc, ownedQuery, setDoc } from '../utils/owned';
-import { GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { BackHandler } from 'react-native';
 import { db } from '../firebase';
 import { DocumentItem, SketchElement, Tag } from '../types';
@@ -121,6 +122,8 @@ export default function DocumentsScreen({
   // A copy pushed over the tile board: it has a way back and no island.
   standalone,
 }: { inPane?: boolean; standalone?: boolean } = {}) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   // react-native-svg's own "100%" width/height on the root <Svg> doesn't
   // reliably re-measure when the window itself resizes at runtime (seen on
@@ -1061,7 +1064,7 @@ export default function DocumentsScreen({
                       changeViewMode('list');
                     }}
                   >
-                    <Ionicons name="reorder-four-outline" size={17} color={GLASS_TEXT} />
+                    <Ionicons name="reorder-four-outline" size={17} color={theme.ink.primary} />
                     <Text style={styles.menuRowLabel}>Список</Text>
                     {viewMode === 'list' && <Ionicons name="checkmark-outline" size={18} color={ACCENT} />}
                   </Pressable>
@@ -1072,7 +1075,7 @@ export default function DocumentsScreen({
                       changeViewMode('grid');
                     }}
                   >
-                    <Ionicons name="grid-outline" size={17} color={GLASS_TEXT} />
+                    <Ionicons name="grid-outline" size={17} color={theme.ink.primary} />
                     <Text style={styles.menuRowLabel}>Сітка</Text>
                     {viewMode === 'grid' && <Ionicons name="checkmark-outline" size={18} color={ACCENT} />}
                   </Pressable>
@@ -1357,7 +1360,7 @@ export default function DocumentsScreen({
                 <View style={[styles.explorerHead, folderColumns > 1 && styles.explorerHeadWide]}>
                   <View style={styles.explorerCrumb}>
                     <Pressable hitSlop={8} onPress={() => setTrashOpen(false)} style={styles.crumbUp}>
-                      <Ionicons name="chevron-back" size={18} color={GLASS_TEXT} />
+                      <Ionicons name="chevron-back" size={18} color={theme.ink.primary} />
                     </Pressable>
                     <Text style={[styles.crumbLabel, styles.crumbLabelCurrent]}>Кошик · {trashed.length}</Text>
                     <View style={{ flex: 1 }} />
@@ -1374,7 +1377,7 @@ export default function DocumentsScreen({
                   {explorer && explorerPath !== '' && (
                     <View style={[styles.explorerCrumb, folderColumns > 1 && styles.explorerCrumbWide]}>
                       <Pressable hitSlop={8} onPress={explorerUp} style={styles.crumbUp}>
-                        <Ionicons name="chevron-back" size={18} color={GLASS_TEXT} />
+                        <Ionicons name="chevron-back" size={18} color={theme.ink.primary} />
                       </Pressable>
                       <ScrollView
                         ref={crumbScrollRef}
@@ -1396,7 +1399,7 @@ export default function DocumentsScreen({
                           if (hidden && !isFoldMark) return null;
                           return (
                             <View key={target} style={styles.crumbPair}>
-                              <Ionicons name="chevron-forward" size={14} color={GLASS_TEXT_FAINT} />
+                              <Ionicons name="chevron-forward" size={14} color={theme.ink.faint} />
                               {isFoldMark ? (
                                 <Pressable onPress={() => setCrumbsUnfolded(true)} style={styles.crumbSegment}>
                                   <Text style={styles.crumbLabel}>…</Text>
@@ -1438,11 +1441,11 @@ export default function DocumentsScreen({
                       }}
                       onLongPress={() => openFolderMenu(folder)}
                     >
-                      <View style={[styles.folderThumb, { borderColor: folder.tag?.color ?? GLASS_TEXT_FAINT }]}>
+                      <View style={[styles.folderThumb, { borderColor: folder.tag?.color ?? theme.ink.faint }]}>
                         <Ionicons
                           name={(folder.tag?.icon as keyof typeof Ionicons.glyphMap) || 'folder-outline'}
                           size={26}
-                          color={folder.tag?.color ?? GLASS_TEXT_MUTED}
+                          color={folder.tag?.color ?? theme.ink.muted}
                         />
                       </View>
                       <View style={styles.folderBody}>
@@ -1450,13 +1453,13 @@ export default function DocumentsScreen({
                           {folder.name}
                         </Text>
                         <View style={styles.folderMeta}>
-                          <Ionicons name="document-text-outline" size={14} color={GLASS_TEXT_MUTED} />
+                          <Ionicons name="document-text-outline" size={14} color={theme.ink.muted} />
                           <Text style={styles.folderCount}>{folder.docs}</Text>
-                          <Ionicons name="folder-outline" size={14} color={GLASS_TEXT_MUTED} style={styles.folderMetaGap} />
+                          <Ionicons name="folder-outline" size={14} color={theme.ink.muted} style={styles.folderMetaGap} />
                           <Text style={styles.folderCount}>{folder.subfolders}</Text>
                         </View>
                       </View>
-                      <Ionicons name="chevron-forward" size={18} color={GLASS_TEXT_FAINT} />
+                      <Ionicons name="chevron-forward" size={18} color={theme.ink.faint} />
                     </Pressable>
                   ))}
                   {/* The bin, at the root of the explorer, after the
@@ -1466,17 +1469,17 @@ export default function DocumentsScreen({
                       style={[styles.folderRow, styles.trashFolderRow, folderRowWidth !== undefined && { width: folderRowWidth }]}
                       onPress={() => setTrashOpen(true)}
                     >
-                      <View style={[styles.folderThumb, { borderColor: GLASS_TEXT_FAINT }]}>
-                        <Ionicons name="trash-outline" size={26} color={GLASS_TEXT_MUTED} />
+                      <View style={[styles.folderThumb, { borderColor: theme.ink.faint }]}>
+                        <Ionicons name="trash-outline" size={26} color={theme.ink.muted} />
                       </View>
                       <View style={styles.folderBody}>
-                        <Text style={[styles.folderName, { color: GLASS_TEXT_MUTED }]}>Кошик</Text>
+                        <Text style={[styles.folderName, { color: theme.ink.muted }]}>Кошик</Text>
                         <View style={styles.folderMeta}>
-                          <Ionicons name="document-text-outline" size={14} color={GLASS_TEXT_MUTED} />
+                          <Ionicons name="document-text-outline" size={14} color={theme.ink.muted} />
                           <Text style={styles.folderCount}>{trashed.length}</Text>
                         </View>
                       </View>
-                      <Ionicons name="chevron-forward" size={18} color={GLASS_TEXT_FAINT} />
+                      <Ionicons name="chevron-forward" size={18} color={theme.ink.faint} />
                     </Pressable>
                   )}
                 </View>
@@ -1700,7 +1703,7 @@ export default function DocumentsScreen({
           // The same list the tabs show, sentinels and all, so the two
           // never disagree about what there is to pick.
           items: [
-            { id: null, name: 'Всі', color: GLASS_TEXT_MUTED, count: documents.length },
+            { id: null, name: 'Всі', color: theme.ink.muted, count: documents.length },
             ...groups.map((g) => ({
               id: g.id,
               name: g.name,
@@ -1710,7 +1713,7 @@ export default function DocumentsScreen({
             {
               id: UNASSIGNED_ID,
               name: 'Без групи',
-              color: GLASS_TEXT_MUTED,
+              color: theme.ink.muted,
               count: groupCounts.ungrouped,
             },
             {
@@ -1798,7 +1801,8 @@ export default function DocumentsScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -1905,7 +1909,7 @@ const styles = StyleSheet.create({
   // blur behind it, that darkness isn't needed to stay readable.
   menuPanel: {
     width: 200,
-    backgroundColor: GLASS_ISLAND,
+    backgroundColor: t.raised,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
     borderRadius: 20,
@@ -1930,7 +1934,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT_BOLD,
     letterSpacing: 0.04,
     textTransform: 'uppercase',
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
     paddingHorizontal: 8,
     paddingTop: 4,
     paddingBottom: 2,
@@ -1946,7 +1950,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   gridRow: {
     gap: 12,
@@ -2114,10 +2118,10 @@ const styles = StyleSheet.create({
   crumbLabel: {
     fontSize: 15,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   crumbLabelCurrent: {
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   // Glass, like every row of the app's own lists, in the document row's
   // size - the user's words: the glass stays, only the size grows.
@@ -2164,7 +2168,7 @@ const styles = StyleSheet.create({
   folderName: {
     fontSize: 18,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   folderMeta: {
     flexDirection: 'row',
@@ -2177,13 +2181,13 @@ const styles = StyleSheet.create({
   folderCount: {
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   trashHint: {
     fontSize: 13,
     lineHeight: 18,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
     paddingHorizontal: 4,
   },
   list: {
@@ -2221,4 +2225,4 @@ const styles = StyleSheet.create({
   fabSticker: {
     backgroundColor: STICKER_GLASS,
   },
-});
+  });

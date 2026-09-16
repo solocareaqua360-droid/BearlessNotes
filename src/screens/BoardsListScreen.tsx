@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useStyles } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { useRecordColour } from '../theme/ThemeProvider';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,12 +31,10 @@ import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
 import ExplorerHead from '../components/ExplorerHead';
 import RenamePrompt from '../components/RenamePrompt';
 import { MAX_CONTENT_WIDTH } from '../components/ContentColumn';
-import { GLASS_BODY, GLASS_TEXT } from '../constants/glass';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { BlurView } from 'expo-blur';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
-import { GLASS_ISLAND } from '../constants/glass';
 import { RAIL_CLEARANCE , railClear } from '../constants/rail';
 import { ask, confirm } from '../components/surfaces/Ask';
 
@@ -54,6 +54,7 @@ export default function BoardsListScreen({
   inPane,
   standalone,
 }: { inPane?: boolean; standalone?: boolean } = {}) {
+  const styles = useStyles(makeStyles);
   const recordColour = useRecordColour();
   const navigation = useNavigation<NativeStackNavigationProp<BoardsStackParamList>>();
   const { width: windowWidth } = useWindowDimensions();
@@ -560,7 +561,8 @@ export default function BoardsListScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -688,4 +690,4 @@ const styles = StyleSheet.create({
   rowActionButton: {
     padding: 6,
   },
-});
+  });

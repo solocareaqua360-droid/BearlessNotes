@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
+import { useStyles } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { StyleSheet, View } from 'react-native';
-import { GLASS_ISLAND } from '../constants/glass';
 
 // A capsule squeezed to a line at the point where a scrolling row of pills
 // runs out of room - the "tunnel" they slide into rather than being cut
@@ -20,6 +21,7 @@ import { GLASS_ISLAND } from '../constants/glass';
 const TUNNEL_WIDTH = 10;
 
 export default function TabsTunnel({ children }: { children: ReactNode }) {
+  const styles = useStyles(makeStyles);
   return (
     <View style={styles.wrap}>
       <View style={styles.near} pointerEvents="none">
@@ -33,7 +35,8 @@ export default function TabsTunnel({ children }: { children: ReactNode }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
   // Takes whatever width the row's other children leave, and lets the
   // tabs scroll within it - minWidth: 0 is what lets a flex child shrink
   // below its content instead of pushing its siblings off the row.
@@ -73,7 +76,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: TUNNEL_WIDTH,
     borderRadius: 999,
-    backgroundColor: GLASS_ISLAND,
+    backgroundColor: t.raised,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
   },
@@ -81,4 +84,4 @@ const styles = StyleSheet.create({
   // too, so at full strength the line still showed through them.
   ovalNear: { left: 0, borderColor: 'rgba(255,255,255,0.18)' },
   ovalFar: { right: 0 },
-});
+  });

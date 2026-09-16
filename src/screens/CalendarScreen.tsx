@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useStyles } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import {
   Keyboard,
   NativeScrollEvent,
@@ -28,7 +30,6 @@ import {
   where,
 } from '../firestore';
 import { ownedQuery, setDoc } from '../utils/owned';
-import { GLASS_BODY, GLASS_TEXT } from '../constants/glass';
 import { db } from '../firebase';
 import { Block } from '../types';
 import { RootStackParamList } from '../navigation';
@@ -55,7 +56,6 @@ import { BlurView } from 'expo-blur';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import SaveRing from '../components/SaveRing';
-import { GLASS_ISLAND } from '../constants/glass';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import Menu from '../components/surfaces/Menu';
@@ -112,6 +112,7 @@ const HEADER_GAP = 8;
 const FILLED_ROW_HEIGHT = ROW_HEIGHT + WEEKDAY_HEADER_HEIGHT;
 
 export default function CalendarScreen() {
+  const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   // Nested-navigator params from DiaryScreen's "open this sheet" - see
   // navigation.ts's Tabs type. Not typed through the tab navigator itself
@@ -1174,6 +1175,7 @@ function DayCell({
   height?: number;
   onPress: () => void;
 }) {
+  const styles = useStyles(makeStyles);
   const numColor = isToday ? styles.dayNumToday : muted ? styles.dayNumMuted : null;
   return (
     <Pressable
@@ -1214,7 +1216,8 @@ function DayCell({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -1646,4 +1649,4 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     opacity: 0.5,
   },
-});
+  });

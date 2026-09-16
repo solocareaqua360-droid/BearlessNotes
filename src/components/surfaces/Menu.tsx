@@ -1,4 +1,5 @@
 import { ReactNode } from 'react';
+import { useTheme } from '../../theme/ThemeProvider';
 import { Pressable, ScrollView, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -67,6 +68,7 @@ export default function Menu({
   // Anything the rows cannot express (a row of colours, a slider).
   children?: ReactNode;
 }) {
+  const theme = useTheme();
   const blurTarget = useBlurTarget();
   // Read at render, never captured at module scope - a stale window size
   // is what broke the calendar's week strip twice before.
@@ -114,13 +116,13 @@ export default function Menu({
                 }}
               >
                 {!!entry.icon && (
-                  <Ionicons name={entry.icon} size={17} color={danger ? GLASS_DANGER : GLASS_TEXT} />
+                  <Ionicons name={entry.icon} size={17} color={danger ? GLASS_DANGER : theme.ink.primary} />
                 )}
                 <Text style={[styles.rowLabel, danger && styles.rowLabelDanger]} numberOfLines={1}>
                   {entry.label}
                 </Text>
                 {entry.checked && (
-                  <Ionicons name="checkmark-outline" size={18} color={accent ?? GLASS_TEXT} />
+                  <Ionicons name="checkmark-outline" size={18} color={accent ?? theme.ink.primary} />
                 )}
               </Pressable>
             );

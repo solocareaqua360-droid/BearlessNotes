@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useTheme, useStyles } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,7 +11,6 @@ import { RootStackParamList } from '../navigation';
 import ContentColumn from '../components/ContentColumn';
 import SearchField from '../components/SearchField';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { GLASS_CARD, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { TextMatch } from '../utils/documentPreview';
 import { SearchHit, SearchTarget, groupHits, useGlobalSearch } from '../hooks/useGlobalSearch';
 
@@ -17,6 +18,8 @@ import { SearchHit, SearchTarget, groupHits, useGlobalSearch } from '../hooks/us
 // capsule on the databases screen. Results come back grouped by the
 // database they live in, in the same order the menu lists them.
 export default function SearchScreen() {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -77,7 +80,7 @@ export default function SearchScreen() {
           onClear={() => setNeedle('')}
           leading={
             <Pressable hitSlop={10} onPress={() => navigation.goBack()}>
-              <Ionicons name="arrow-back-outline" size={22} color={GLASS_TEXT} />
+              <Ionicons name="arrow-back-outline" size={22} color={theme.ink.primary} />
             </Pressable>
           }
           style={[styles.searchRow, { marginTop: insets.top + 12 }]}
@@ -95,7 +98,7 @@ export default function SearchScreen() {
               <Ionicons
                 name={othersOpen ? 'chevron-down' : 'chevron-forward'}
                 size={16}
-                color={GLASS_TEXT_MUTED}
+                color={theme.ink.muted}
               />
               <Text style={styles.otherToggleLabel}>
                 {othersOpen ? 'Інші бази' : `Ще ${otherCount} в інших базах`}
@@ -137,6 +140,7 @@ export default function SearchScreen() {
 
 // The matched fragment, lit up inside the line it was found in.
 function Highlighted({ match }: { match: TextMatch }) {
+  const styles = useStyles(makeStyles);
   return (
     <Text style={styles.rowSnippet} numberOfLines={1}>
       {match.before}
@@ -146,7 +150,8 @@ function Highlighted({ match }: { match: TextMatch }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -164,7 +169,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   group: {
     marginBottom: 18,
@@ -181,7 +186,7 @@ const styles = StyleSheet.create({
   otherToggleLabel: {
     fontSize: 13,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   groupHeader: {
     flexDirection: 'row',
@@ -199,7 +204,7 @@ const styles = StyleSheet.create({
   groupCount: {
     fontSize: 12,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
   },
   row: {
     flexDirection: 'row',
@@ -208,7 +213,7 @@ const styles = StyleSheet.create({
     padding: 10,
     marginBottom: 6,
     borderRadius: 14,
-    backgroundColor: GLASS_CARD,
+    backgroundColor: t.surface,
   },
   rowIcon: {
     width: 34,
@@ -224,15 +229,15 @@ const styles = StyleSheet.create({
   rowTitle: {
     fontSize: 14,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   rowSnippet: {
     fontSize: 12,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   rowHighlight: {
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     fontFamily: FONT_SEMIBOLD,
   },
-});
+  });

@@ -1,4 +1,6 @@
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTheme, useStyles } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,7 +26,6 @@ import { useRail, useRailFree } from '../hooks/useRail';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { GLASS_ISLAND, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH, capsuleHeightFor, railFits } from '../constants/rail';
 
 // Everything a database screen puts AROUND its records: the gradient it
@@ -146,6 +147,8 @@ export default function DatabaseChrome<T extends { id: string }>({
   overlay,
   pane,
 }: DatabaseChromeProps<T>) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const drawerRef = useRef<TagsDrawerHandle>(null);
   const drawerSwipe = useDrawerSwipe(useCallback(() => drawerRef.current?.open(), []));
   const { isTwoPane } = useResponsiveLayout();
@@ -634,11 +637,15 @@ export default function DatabaseChrome<T extends { id: string }>({
 // The rows a database adds to the "..." menu are drawn in the menu's own
 // styles, so a screen's extra rows can never sit a little differently
 // from the ones the chrome puts there itself.
+// Still literals, and the one sheet in the app that is: it is EXPORTED
+// and spread into rows by six screens, so making it a hook would ripple
+// through all of them. The menu WINDOW itself follows the theme (see
+// surfaces/Menu); these are the extra rows a screen adds inside one.
 export const menuStyles = StyleSheet.create({
   menuSectionLabel: {
     fontSize: 11,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_FAINT,
+    color: 'rgba(255,255,255,0.3)',
     textTransform: 'uppercase',
     letterSpacing: 0.06,
     paddingHorizontal: 8,
@@ -657,16 +664,17 @@ export const menuStyles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: '#fff',
   },
   menuRule: {
     height: 1,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: 'rgba(255,255,255,0.14)',
     marginVertical: 6,
   },
 });
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -773,4 +781,4 @@ const styles = StyleSheet.create({
     left: 20,
   },
 
-});
+  });

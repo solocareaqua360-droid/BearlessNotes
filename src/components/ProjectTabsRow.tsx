@@ -1,7 +1,8 @@
 import { RefObject } from 'react';
+import { useStyles } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { GLASS_ISLAND } from '../constants/glass';
 import { FONT_SEMIBOLD } from '../utils/fonts';
 
 // Sentinel for "no group/project assigned" - an id string, since a real
@@ -61,6 +62,7 @@ export default function ProjectTabsRow({
   endPadding,
   startPadding,
 }: Props) {
+  const styles = useStyles(makeStyles);
   return (
     <ScrollView
       horizontal
@@ -134,6 +136,7 @@ function Tab({
   dark?: boolean;
   blurTarget?: RefObject<View | null> | null;
 }) {
+  const styles = useStyles(makeStyles);
   // On the dark gradient, an active tab inverts to a solid white pill with
   // dark text (matching CalendarScreen's own "Сьогодні" button) rather than
   // just swapping to a barely-brighter glass tint - the light-glass screens
@@ -171,7 +174,8 @@ function Tab({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
   scroll: {
     flexGrow: 0,
     // Without this, a screen with more stacked siblings above the list
@@ -215,7 +219,7 @@ const styles = StyleSheet.create({
     // stays a clean line.
     overflow: 'hidden',
     paddingHorizontal: 16,
-    backgroundColor: GLASS_ISLAND,
+    backgroundColor: t.raised,
     borderColor: 'rgba(255,255,255,0.4)',
   },
   // The selected pill is solid white, which reads perfectly against the
@@ -242,4 +246,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
   },
-});
+  });

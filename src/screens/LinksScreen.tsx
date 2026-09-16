@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useTheme, useStyles } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { RAIL_CLEARANCE , railClear } from '../constants/rail';
 import {
   ActivityIndicator,
@@ -53,7 +55,7 @@ import { linkDocId } from '../utils/linkId';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { GLASS_TEXT, GLASS_TEXT_MUTED, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 
 const ACCENT = '#14B8A6';
 // The same half-strength tint the documents screen's add button takes -
@@ -129,6 +131,8 @@ export default function LinksScreen({
   category: categoryProp,
   inPane,
 }: Partial<Props> & { category?: 'video' | 'geo' | 'other'; inPane?: boolean }) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const category = categoryProp ?? route?.params.category ?? 'other';
   const info = CATEGORY_INFO[category];
@@ -575,7 +579,7 @@ export default function LinksScreen({
         <View style={styles.trashHead}>
           <View style={styles.trashHeadRow}>
             <Pressable hitSlop={8} onPress={() => setTrashOpen(false)} style={styles.trashBack}>
-              <Ionicons name="chevron-back" size={18} color={GLASS_TEXT} />
+              <Ionicons name="chevron-back" size={18} color={theme.ink.primary} />
             </Pressable>
             <Text style={styles.trashTitle}>Кошик · {trashedLinks.length}</Text>
             <View style={{ flex: 1 }} />
@@ -873,7 +877,8 @@ export default function LinksScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
   trashHead: {
     gap: 8,
     marginBottom: 8,
@@ -889,18 +894,18 @@ const styles = StyleSheet.create({
   trashTitle: {
     fontSize: 15,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   trashClear: {
     fontSize: 15,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   trashHint: {
     fontSize: 13,
     lineHeight: 18,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
     paddingHorizontal: 4,
   },
   addLinkLoading: {
@@ -992,4 +997,4 @@ const styles = StyleSheet.create({
     fontFamily: FONT_REGULAR,
     color: '#111827',
   },
-});
+  });
