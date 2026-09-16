@@ -1,6 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import AddExistingItemModal from './AddExistingItemModal';
 import GlassDrop, { GlassIcon } from './GlassDrop';
@@ -44,9 +43,22 @@ export default function CanvasReferencePanel({
     },
   });
 
-  const ghostStyle = useAnimatedStyle(() =>
-    drag.ghost ? { left: drag.ghost.x, top: drag.ghost.y, opacity: 1 } : { left: 0, top: 0, opacity: 0 }
-  );
+  // Plainly positioned, NOT through useAnimatedStyle - and that is the
+  // whole of the white screen this panel opened with.
+  //
+  // Reanimated collects a worklet's closure by IDENTIFIER: a body that
+  // says `drag.ghost` captures `drag`, the whole object this hook
+  // returns, and tries to copy every property of it onto the UI thread.
+  // One of them is the Pan itself - "[Worklets] Cannot copy value of
+  // type `PanGesture`" - thrown asynchronously, so no error boundary saw
+  // it and the JS root simply went away, leaving Android's own empty
+  // white window and nothing to report. (CardCarryOverlay does the same
+  // thing safely because its ghost arrives as a plain prop.)
+  //
+  // There was nothing to animate here anyway: the ghost's position is JS
+  // state that re-renders on every finger move, so a worklet only ever
+  // repeated what React had already done.
+  const ghost = drag.ghost;
 
   if (!visible) return null;
 
@@ -76,15 +88,15 @@ export default function CanvasReferencePanel({
         </GestureDetector>
       </View>
 
-      {drag.ghost && (
-        <Animated.View style={[styles.ghostWrap, ghostStyle]} pointerEvents="none">
+      {ghost && (
+        <View style={[styles.ghostWrap, { left: ghost.x, top: ghost.y }]} pointerEvents="none">
           <GlassDrop radius={16} lift="shadow" style={styles.ghost}>
             <GlassIcon name="albums-outline" size={16} />
             <Text style={styles.ghostLabel} numberOfLines={1}>
-              {drag.ghost.label}
+              {ghost.label}
             </Text>
           </GlassDrop>
-        </Animated.View>
+        </View>
       )}
     </>
   );
