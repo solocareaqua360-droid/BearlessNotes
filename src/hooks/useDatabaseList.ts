@@ -198,9 +198,26 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
       ? groupFilter
       : null;
 
+  // What the drawer's numbers say - totals over everything, not over what
+  // the current filter leaves standing, so a count does not move as you
+  // filter by it. The documents screen worked these out for itself and
+  // every database left the drawer without any, which is why every folder
+  // there read "0" however much was in it.
+  const drawerCounts = (() => {
+    const byTag: Record<string, number> = {};
+    let untagged = 0;
+    for (const item of items) {
+      const ids = tagIdsOf(item);
+      if (ids.length === 0) untagged += 1;
+      for (const id of ids) byTag[id] = (byTag[id] ?? 0) + 1;
+    }
+    return { byTag, untagged };
+  })();
+
   return {
     displayed,
     present,
+    drawerCounts,
     groups,
     groupFilter,
     setGroupFilter,

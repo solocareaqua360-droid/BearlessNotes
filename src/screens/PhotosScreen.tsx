@@ -641,7 +641,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
       actions: [
         { id: 'move', label: 'Перемістити в папку', icon: 'folder-outline' },
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
-        { id: 'tags', label: 'Теги', icon: 'pricetag-outline' },
+        { id: 'tags', label: 'Папки', icon: 'pricetag-outline' },
         { id: 'draw', label: 'Малювати', icon: 'brush-outline' },
         { id: 'bin', label: 'У кошик', icon: 'trash-outline', tone: 'danger' },
       ],

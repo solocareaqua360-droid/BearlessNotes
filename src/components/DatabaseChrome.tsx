@@ -609,6 +609,7 @@ export default function DatabaseChrome<T extends { id: string }>({
 
       {!hideDrawer && (
       <TagsDrawer
+        counts={list.drawerCounts}
         ref={drawerRef}
         tags={list.drawerTags}
         activeFilter={list.tagFilter}

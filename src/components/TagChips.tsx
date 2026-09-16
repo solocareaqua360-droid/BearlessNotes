@@ -20,7 +20,10 @@ type Props = {
 };
 
 // Shared row of tag chips for Files/Photos/Links rows - each existing tag
-// as its own icon+color+name chip, plus a dashed "+ Тег" chip always last.
+// as its own icon+color+name chip, plus a dashed "+ папка" chip always
+// last. «Папка», not «Тег»: the two are one thing here and the app calls
+// it a folder everywhere else - the drawer, the explorer, a note's own
+// row. These cards were the last place still saying the old word.
 // Every chip (existing or the dashed one) opens the same TagPicker sheet;
 // there's no separate "remove" tap target on a chip itself, matching the
 // mockup (TagChipsRow.dc.html).
@@ -48,7 +51,7 @@ export default function TagChips({ tags, onPress, glass, max }: Props) {
       )}
       <Pressable style={[styles.addChip, glass && styles.addChipGlass]} onPress={onPress}>
         <Ionicons name="add" size={12} color={glass ? 'rgba(255,255,255,0.75)' : '#9CA3AF'} />
-        <Text style={[styles.addChipLabel, glass && styles.addChipLabelGlass]}>Тег</Text>
+        <Text style={[styles.addChipLabel, glass && styles.addChipLabelGlass]}>папка</Text>
       </Pressable>
     </View>
   );
