@@ -28,6 +28,17 @@ export default function Tabs() {
         // A swipe that has to travel a little before it takes over, so a
         // list scrolled with a slightly crooked finger still scrolls.
         swipeEnabled: true,
+        // The island JUMPS between tabs; only a finger slides them.
+        //
+        // These are pages of one pager, so tapping a tab two or three
+        // along used to scroll through the ones in between - and they are
+        // real screens, drawing themselves as they went past, which is the
+        // lag felt going from notes to a database ("додатку треба швидко
+        // пройти через дошки та календар"). Off, the pager is told
+        // setPageWithoutAnimation and lands on the tab directly. The
+        // swipe is a separate prop (above) and keeps its own animation:
+        // dragging a page is the finger's own movement, not this.
+        animationEnabled: false,
       }}
     >
       {TAB_SCREENS.map(({ name, component }) => (
