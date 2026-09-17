@@ -1047,6 +1047,9 @@ export default function BoardScreen() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [addSheetVisible, setAddSheetVisible] = useState(false);
   const [existingItemPickerVisible, setExistingItemPickerVisible] = useState(false);
+  // Set when the pane's document was just made out of another one's
+  // blocks - the offer to put it on a board rides in with it.
+  const [paneOfferBoard, setPaneOfferBoard] = useState(false);
   const [editingCard, setEditingCard] = useState<BoardCard | null>(null);
   const [editingText, setEditingText] = useState('');
   const [renamingTitle, setRenamingTitle] = useState(false);
@@ -2985,7 +2988,16 @@ export default function BoardScreen() {
             navigation={navigation as unknown as NativeStackNavigationProp<RootStackParamList>}
             isFullscreen={paneFullscreen}
             onToggleFullscreen={() => setPaneFullscreen((v) => !v)}
+            offerBoard={paneOfferBoard}
+            // A clipping made in this pane STAYS in this pane: the board
+            // keeps the left half, and the new note opens on the right,
+            // so adding it to the board happens in front of the board.
+            onOpenInPane={(documentId, options) => {
+              setPaneOfferBoard(!!options?.offerBoard);
+              setPaneDocId(documentId);
+            }}
             onClose={() => {
+              setPaneOfferBoard(false);
               setPaneDocId(null);
               setPaneFullscreen(false);
               // The card that opened this pane shows a snapshot of the

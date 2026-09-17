@@ -164,7 +164,9 @@ export default function DocumentsScreen({
   const [paneFullscreen, setPaneFullscreen] = useState(false);
   // Which document the right-hand pane holds. Only ever read in two-pane
   // mode; on a phone a document is a pushed screen, as before.
-  const [openDoc, setOpenDoc] = useState<{ id: string; autoFocusTitle?: boolean } | null>(null);
+  const [openDoc, setOpenDoc] = useState<{ id: string; autoFocusTitle?: boolean; offerBoard?: boolean } | null>(
+    null
+  );
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const liveRecords = useLiveRecords(documents.length > 0);
   const [isLoading, setIsLoading] = useState(true);
@@ -1398,6 +1400,12 @@ export default function DocumentsScreen({
                 documentId={openDoc.id}
                 autoFocusTitle={openDoc.autoFocusTitle}
                 navigation={navigation}
+                offerBoard={openDoc.offerBoard}
+                // A clipping made in this pane stays in it - the list on
+                // the other half is what it was made next to.
+                onOpenInPane={(documentId, options) =>
+                  setOpenDoc({ id: documentId, offerBoard: !!options?.offerBoard })
+                }
                 onClose={() => {
                   setOpenDoc(null);
                   setPaneFullscreen(false);

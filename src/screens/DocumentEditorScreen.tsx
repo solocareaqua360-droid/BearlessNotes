@@ -2221,6 +2221,15 @@ type Props =
       // capsule sits on that line, over the cover.
       railTop?: number;
       onToggleFullscreen?: () => void;
+      // A note made out of THIS one's blocks takes the pane this one is
+      // in, instead of being pushed over the whole window: the board or
+      // the list on the other half stays where it is, and the clipping
+      // opens beside it ready to edit. Without this the clipping covered
+      // the very thing it was being made next to.
+      onOpenInPane?: (documentId: string, options?: { offerBoard?: boolean }) => void;
+      // The pane's own way of carrying what the route param carries for a
+      // pushed screen - see navigation.ts's offerBoard.
+      offerBoard?: boolean;
       // Mirrored out so the screen around this pane can hold off writing
       // the same document while there are keystrokes here that haven't
       // been saved yet - see BoardScreen's live rebuild.
@@ -2316,8 +2325,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // a board came in with it - see clipSelectedToNote. Shown once: state,
   // not the param itself, so dismissing it actually dismisses it.
   const [boardOffer, setBoardOffer] = useState(
-    !embedded && !('pane' in props) && !!props.route.params.offerBoard
+    'pane' in props
+      ? !!props.offerBoard
+      : !embedded && !!props.route.params.offerBoard
   );
+  // In a pane the clipping replaces THIS pane's document rather than
+  // being pushed over the screen beside it.
+  const openInPane = 'pane' in props ? props.onOpenInPane : undefined;
   const [boardPicker, setBoardPicker] = useState(false);
   const recordColour = useRecordColour();
   const [title, setTitle] = useState('');
@@ -4758,7 +4772,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     }
     setSelectedIds(new Set());
     setIsSelectMode(false);
-    navigation.navigate('Editor', { documentId: clippedId, offerBoard: true });
+    if (openInPane) openInPane(clippedId, { offerBoard: true });
+    else navigation.navigate('Editor', { documentId: clippedId, offerBoard: true });
   }
 
   // Accepting the offer above. The note already exists in Firestore - the
