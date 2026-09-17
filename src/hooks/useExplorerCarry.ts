@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView } from 'react-native';
 import type { FlatList } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
@@ -171,12 +171,25 @@ export function useExplorerCarry<T extends { id: string }>({
   // "hold a card, walk down the dock, drop it where you arrive" possible.
   const carryFocused = useIsFocused();
   const publishDockTargets = useNavDockTargetPublisher();
+  // Published through a wrapper that never changes, reading the live
+  // registrar out of a ref.
+  //
+  // `carry.registerFolder` is a plain function declaration, so it is a
+  // NEW function on every render. Publishing it directly put the effect
+  // back in the queue on every render, and publishing is a setState on a
+  // provider above the whole app - so every render caused a render:
+  // "Maximum update depth exceeded", on the device, within a second of
+  // opening the explorer. A published value has to be stable by
+  // construction; it cannot depend on a caller remembering to memoise.
+  const registrarRef = useRef(carry.registerFolder);
+  registrarRef.current = carry.registerFolder;
+  const dockRegistrar = useCallback((path: string) => registrarRef.current(path), []);
   useEffect(() => {
     if (!publishDockTargets) return;
     if (!carryFocused || !active) return;
-    publishDockTargets(carry.registerFolder);
+    publishDockTargets(dockRegistrar);
     return () => publishDockTargets(null);
-  }, [publishDockTargets, carryFocused, active, carry.registerFolder]);
+  }, [publishDockTargets, carryFocused, active, dockRegistrar]);
 
   return {
     carry,

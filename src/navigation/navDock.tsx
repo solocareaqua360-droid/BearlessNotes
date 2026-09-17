@@ -97,10 +97,19 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       return next;
     });
   }, []);
-  const [targets, setTargets] = useState<DockTargets | null>(null);
-  // Stored through a setter function, or React would call the registrar
-  // itself as a state updater.
-  const publishTargets = useCallback((next: DockTargets | null) => setTargets(() => next), []);
+  // Held inside a box, not as the state itself: DockTargets IS a
+  // function, and useState cannot tell a function it is meant to STORE
+  // from a function it is meant to CALL as an updater.
+  const [targetBox, setTargetBox] = useState<{ fn: DockTargets | null }>({ fn: null });
+  const targets = targetBox.fn;
+  // The same value never becomes a new render: this provider sits above
+  // the entire app, so a needless setState here costs a pass over
+  // everything - and a publisher handing over a fresh function each time
+  // would loop, which is exactly what happened.
+  const publishTargets = useCallback(
+    (next: DockTargets | null) => setTargetBox((prev) => (prev.fn === next ? prev : { fn: next })),
+    []
+  );
   const value = useMemo(
     () => ({ context, publish, targets, publishTargets }),
     [context, publish, targets, publishTargets]
