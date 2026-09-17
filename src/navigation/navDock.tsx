@@ -138,8 +138,18 @@ export function useNavDockContext(): DockContext | null {
   return value.context;
 }
 
-// Whether there IS a context, hidden or not - what the desks ask before
-// deciding to stand aside.
+// Whether a context is actually ON SCREEN. This is what the desks ask
+// before standing aside - and asking the other question instead is what
+// made the dock vanish entirely when a calendar was put away: the
+// context still EXISTED, so the desks kept hiding from something nobody
+// could see.
+export function useNavDockShowing(): boolean {
+  const value = useContext(NavDockContext);
+  return !!value?.context && !value.hidden;
+}
+
+// Whether there IS a context at all, shown or put away - what the desk
+// you are standing on asks before offering to bring it back.
 export function useNavDockHasContext(): boolean {
   return !!useContext(NavDockContext)?.context;
 }

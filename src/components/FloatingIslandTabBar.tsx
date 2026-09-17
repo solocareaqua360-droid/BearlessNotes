@@ -11,7 +11,7 @@ import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { useIsFocused } from '@react-navigation/native';
 import { GlassPortal } from './GlassPortal';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_GAP, NAV_PADDING } from '../constants/rail';
-import { useNavDockHasContext, useNavDockHidden } from '../navigation/navDock';
+import { useNavDockHasContext, useNavDockHidden, useNavDockShowing } from '../navigation/navDock';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Outline glyphs at 24, the same set and the same size as everything else
@@ -79,10 +79,14 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
   // And the desks stand aside while a context is showing. The user's own
   // question, and the right one: what would four desk buttons be FOR at
   // that depth? Nothing - so they are not there.
+  // Two different questions, and asking the wrong one emptied the dock:
+  // the desks stand aside for a context that is SHOWING, and offer to
+  // bring back one that merely exists.
+  const contextShowing = useNavDockShowing();
   const hasContext = useNavDockHasContext();
   const [, setDockHidden] = useNavDockHidden();
 
-  if (!tabsFocused || hasContext) return null;
+  if (!tabsFocused || contextShowing) return null;
 
   return (
     <GlassPortal>
