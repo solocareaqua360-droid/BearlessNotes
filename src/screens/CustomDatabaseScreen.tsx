@@ -54,7 +54,6 @@ import { TAG_COLORS } from '../constants/tags';
 import { LINK_CATEGORY_INFO, LinkCategory, categoryFromSiteName } from '../utils/linkCategory';
 import { refreshLinkPreviewIfExpired } from '../utils/linkPreviewRefresh';
 import GlassLayer from '../components/GlassLayer';
-import RailCapsule from '../components/RailCapsule';
 import { db } from '../firebase';
 import { deleteCustomDatabase } from '../utils/deleteCustomDatabase';
 import {
@@ -120,31 +119,18 @@ import {
   viewMatchesState,
 } from '../utils/customRowQuery';
 import { MONTH_FULL, WEEKDAY_SHORT, dateKey, getMonthGrid, isSameDay, parseDateKey } from '../utils/dateLocale';
-import { useRail, useRailFree } from '../hooks/useRail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { GlassPortal } from '../components/GlassPortal';
-import { useDockLeave } from '../navigation/navDock';
-import { useBlurTarget } from '../components/GlassTarget';
+import { useDockActions, useDockBeads, useDockLeave, useDockShowContext } from '../navigation/navDock';
 import { GLASS_ISLAND } from '../constants/glass';
-import GlassDrop, { GlassIcon } from '../components/GlassDrop';
-import {
-  CAPSULE_DROP,
-  CAPSULE_HEIGHT,
-  CAPSULE_HEIGHT_1,
-  CAPSULE_HEIGHT_3,
-  CHROME_TOP,
-  RAIL_CLEARANCE,
-  railClear,
-  RAIL_RIGHT,
-  capsuleHeightFor,
-  railFits,
-} from '../constants/rail';
+import { CHROME_TOP, NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
 import Menu from '../components/surfaces/Menu';
 
 const ACCENT = '#A05C7B';
+// The foot the lists keep clear for the dock - DatabaseChrome's reckoning.
+const DOCK_CLEAR = NAV_BOTTOM + NAV_BUTTON + NAV_PADDING * 2 + 12;
 // The same half-strength tint the documents screen's add button takes.
 const ACCENT_GLASS = 'rgba(160,92,123,0.55)';
 const DANGER = '#EF4444';
@@ -187,12 +173,11 @@ function titleColumnWidth(titles: string[], windowWidth: number): number {
 const TABLE_ROW_HEIGHT = 46;
 
 type ViewMode = 'list' | 'table' | 'cards';
-type ChipLayout = { x: number; y: number; width: number };
 // The three tabs of the parameters window. They were three buttons on the
 // rail and three anchored lists; the user's own call was that they are one
 // window with three tabs, "як менше основного екрану по центру" - the
 // sheet shape this app already uses everywhere else.
-type ParamsTab = 'sort' | 'filter' | 'group';
+type ParamsTab = 'sort' | 'filter' | 'group' | 'views';
 type RowEditorState = { mode: 'new'; id: string } | { mode: 'edit'; row: CustomDatabaseRow };
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CustomDatabase'>;
@@ -213,16 +198,9 @@ export default function CustomDatabaseScreen({
   inPane,
 }: Partial<Props> & { databaseId?: string; inPane?: boolean }) {
   const recordColour = useRecordColour();
-  const railBlurTarget = useBlurTarget();
-  const railFocused = useIsFocused();
-  const railInsets = useSafeAreaInsets();
-  // Three buttons in the capsule here, so the rail spaces what is under
-  // it against the taller one.
-  // The rail carries an actions capsule here too - see RailCapsule. The
-  // strip over the list is where a database says what it is SHOWING
-  // (a saved view, list/cards/table, grouping); what it can DO to that
-  // list - order it, filter it, choose in it - belongs on the rail, with
-  // the same two or three buttons as every other screen.
+  const isFocused = useIsFocused();
+  const insets = useSafeAreaInsets();
+  const showContext = useDockShowContext();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   // The way out of this database lives in the dock now, under the thumb,
   // the same as every other database (see DatabaseChrome).
@@ -269,19 +247,6 @@ export default function CustomDatabaseScreen({
   // Which field's values the filter dropdown is currently showing. null is
   // its top level, the list of fields.
   const [filterFieldId, setFilterFieldId] = useState<string | null>(null);
-  // Where each capsule sits, so the list can be drawn over the screen at
-  // that exact spot instead of inside the capsule's own one-pill-tall row.
-  const [stripY, setStripY] = useState(0);
-  const [chipLayouts, setChipLayouts] = useState<Record<string, ChipLayout>>({});
-  // The capsule strip scrolls horizontally now (see paramsScroll below);
-  // a chip's onLayout position is relative to that scrolling content, not
-  // the screen, so placing the overlay under it needs the strip's own
-  // screen x and the current scroll offset too. Refs, not state - both are
-  // read once, at the moment a list opens, and stay correct afterward
-  // because opening one freezes the scroll (scrollEnabled below) until it
-  // closes.
-  const stripXRef = useRef(0);
-  const scrollXRef = useRef(0);
   const [savedViews, setSavedViews] = useState<CustomDatabaseView[]>([]);
   // { mode: 'new' } asks for a name for the current state; { mode: 'rename' }
   // carries the view being renamed.
@@ -623,52 +588,73 @@ export default function CustomDatabaseScreen({
   // the render before it, and React ends the screen over it. That is what
   // crashed this screen the moment a database was opened.
   //
-  // This screen is PUSHED over the tabs, so there is no navigation island
-  // at its foot and the rail must not hold room for one - that reserved
-  // height is what drove the capsules up over the top one.
-  const railFree = useRailFree(CAPSULE_HEIGHT_3, false);
-  // Inside another screen's LEFT pane the window's outer edge is the left
-  // one, so the whole rail stands there instead of against the divider.
-  const railSide = inPane ? ('left' as const) : ('right' as const);
-  // What the rail would like to carry, and the order it gives it up in
-  // when the screen is too short to hold it all.
-  //
-  // Four things, not six: ordering, narrowing and grouping became one
-  // button opening one window with three tabs, so the rail carries the
-  // shape of the list, that one parameters button, the saved views, and
-  // choosing - with making a record in its own capsule below.
-  //
-  // The strip over the list is the OVERFLOW, not a place of its own:
-  // whatever the rail cannot hold appears there as a chip, and on a screen
-  // tall enough for everything the strip is not drawn at all.
-  //
-  // Nothing here decides by screen NAME or a breakpoint - each shape is
-  // asked whether it stands clear of the top capsule, and the first that
-  // does is the one drawn. A Fold's two screens need no case of their own.
-  const RAIL_PLANS = [
-    { shape: true, views: true, selectOwn: true },
-    { shape: true, views: false, selectOwn: true },
-    { shape: true, views: false, selectOwn: false },
-    { shape: false, views: false, selectOwn: false },
-  ];
-  type RailPlan = (typeof RAIL_PLANS)[number];
-  const railActionsHeight = (plan: RailPlan) =>
-    capsuleHeightFor(
-      1 + // the parameters button, which never leaves the rail
-        (plan.shape ? 1 : 0) +
-        (plan.views ? 1 : 0) +
-        (plan.selectOwn ? 0 : 1)
-    );
-  const railPlan =
-    RAIL_PLANS.find((plan) =>
-      railFits(railFree, railActionsHeight(plan), CAPSULE_HEIGHT_1, plan.selectOwn ? CAPSULE_HEIGHT_1 : 0)
-    ) ?? RAIL_PLANS[RAIL_PLANS.length - 1];
-  const rail = useRail(
-    CAPSULE_HEIGHT_3,
-    railActionsHeight(railPlan),
-    CAPSULE_HEIGHT_1,
-    railPlan.selectOwn ? CAPSULE_HEIGHT_1 : 0,
-    false
+  const activeView = savedViews.find((v) => viewMatchesState(v, viewMode, sortPref, filters)) ?? null;
+  // What the one parameters button has to say without words: how many of
+  // the three are doing something. A sort is always in force, so it only
+  // counts when it is not the default one this database opens with.
+  const activeParamCount =
+    filters.length +
+    (groupFieldId ? 1 : 0) +
+    (sortPref.field === DEFAULT_ROW_SORT.field && sortPref.dir === DEFAULT_ROW_SORT.dir ? 0 : 1);
+
+  // Everything this screen offered on the rail goes to the DOCK, as on
+  // every database. Search on the left, a record on the right; and the
+  // same four actions the shared chrome carries - the shape of the list,
+  // its parameters, choosing, and the rare housekeeping. The saved views
+  // are a fourth tab of the parameters window rather than a fifth
+  // button: a view IS a saved set of those parameters.
+  useDockBeads(
+    isFocused
+      ? {
+          icon: isSelectMode || isSearching ? 'close-outline' : 'search-outline',
+          active: isSearching,
+          onPress: () => {
+            // While selecting, this is the way out of it.
+            if (isSelectMode) {
+              toggleSelectMode();
+              return;
+            }
+            // Closing the search clears it too - leaving a filter
+            // applied behind a hidden input is how a database looks
+            // half-empty for no visible reason.
+            setIsSearching((prev) => {
+              if (prev) setSearchQuery('');
+              return !prev;
+            });
+          },
+        }
+      : null,
+    isFocused && !isSelectMode
+      ? { icon: 'albums-outline', badge: 'add-circle-outline', onPress: openNewRow }
+      : null
+  );
+  useDockActions(
+    isFocused
+      ? [
+          // The shape of the list - its icon IS the shape, so the button
+          // says which one is in force with no label at all.
+          { key: 'shape', icon: VIEW_ICONS[viewMode], active: openParam === 'view', onPress: () => openParamList('view') },
+          // Ordering, narrowing, grouping and the saved views, in one
+          // window with four tabs. Lit while any of them is in force or
+          // a saved view is on, since with one button nothing else says so.
+          {
+            key: 'params',
+            icon: 'options-outline',
+            active: openParam === 'params' || activeParamCount > 0 || !!activeView,
+            onPress: () => openParamList('params'),
+          },
+          {
+            key: 'select',
+            icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
+            active: isSelectMode,
+            onPress: () => {
+              if (isSelectMode) showContext();
+              toggleSelectMode();
+            },
+          },
+          { key: 'menu', icon: 'ellipsis-horizontal-outline', active: menuOpen, onPress: () => setMenuOpen((v) => !v) },
+        ]
+      : null
   );
 
   if (!database) {
@@ -688,7 +674,7 @@ export default function CustomDatabaseScreen({
   // The rail's clearance comes off the right, as it does on every other
   // grid in the app - the tiles are an exact pixel width, so the number
   // they are worked out from has to be the width actually left over.
-  const gridUsable = windowWidth - CARD_GRID_PADDING - RAIL_CLEARANCE;
+  const gridUsable = windowWidth - CARD_GRID_PADDING * 2;
   const gridColumns = Math.max(2, Math.min(4, Math.floor(gridUsable / 300)));
   const gridTileWidth = Math.floor(
     (gridUsable - CARD_GRID_GAP * (gridColumns - 1)) / gridColumns
@@ -753,51 +739,6 @@ export default function CustomDatabaseScreen({
   const groupFields = groupableFieldsOf(database);
   const groupField = groupFieldId ? (groupFields.find((f) => f.id === groupFieldId) ?? null) : null;
   const rowGroups = groupField ? groupRows(displayedRows, groupField, displayContext) : [];
-  const activeView = savedViews.find((v) => viewMatchesState(v, viewMode, sortPref, filters)) ?? null;
-  // What the one parameters button has to say without words: how many of
-  // the three are doing something. A sort is always in force, so it only
-  // counts when it is not the default one this database opens with.
-  const activeParamCount =
-    filters.length +
-    (groupField ? 1 : 0) +
-    (sortPref.field === DEFAULT_ROW_SORT.field && sortPref.dir === DEFAULT_ROW_SORT.dir ? 0 : 1);
-
-  // The overflow chips, in the order the rail gives their buttons up. An
-  // empty list means the rail holds everything, and then the header row
-  // above the list is not drawn at all.
-  const stripChips: {
-    key: 'view' | 'views';
-    icon: keyof typeof Ionicons.glyphMap;
-    label: string;
-    active: boolean;
-  }[] = [
-    ...(railPlan.shape
-      ? []
-      : [{ key: 'view' as const, icon: VIEW_ICONS[viewMode], label: VIEW_LABELS[viewMode], active: false }]),
-    ...(railPlan.views
-      ? []
-      : [
-          {
-            key: 'views' as const,
-            icon: 'bookmark-outline' as const,
-            label: activeView ? activeView.name : 'Вигляди',
-            active: !!activeView,
-          },
-        ]),
-  ];
-
-  // Only while that chip is actually on the screen. A layout remembered
-  // from the last time a button was in the strip would otherwise anchor
-  // the list to where a chip no longer is, once the same button moved on
-  // to the rail.
-  const openChipLayout =
-    openParam && stripChips.some((chip) => chip.key === openParam)
-      ? chipLayouts[openParam] ?? null
-      : null;
-  // A chip's onLayout position is relative to the scrolling strip's
-  // content, not the screen - undo the current scroll offset to place the
-  // overlay under where the chip actually sits right now.
-  const openChipScreenX = openChipLayout ? stripXRef.current + openChipLayout.x - scrollXRef.current : 0;
   const selectedRows = rows.filter((r) => selectedIds.has(r.id));
   const rowMenuRow = rowMenuId ? rows.find((r) => r.id === rowMenuId) ?? null : null;
   const rowPageRow = rowPageId ? rows.find((r) => r.id === rowPageId) ?? null : null;
@@ -823,14 +764,6 @@ export default function CustomDatabaseScreen({
     // Deliberately does NOT close: grouping is one tab of a window whose
     // other two tabs stay open after a choice, and closing on this one
     // alone would read as the window falling over.
-  }
-
-  function rememberChip(key: string, layout: ChipLayout) {
-    setChipLayouts((prev) =>
-      prev[key] && prev[key].x === layout.x && prev[key].y === layout.y && prev[key].width === layout.width
-        ? prev
-        : { ...prev, [key]: { x: layout.x, y: layout.y, width: layout.width } }
-    );
   }
 
   function applySavedView(view: CustomDatabaseView) {
@@ -1635,47 +1568,7 @@ export default function CustomDatabaseScreen({
           the tile the user came from said the name, and the row cost the
           records a screenful. What is left of the header is the line the
           tabs start on - the same one as every other database. */}
-      <View style={{ height: railInsets.top + CHROME_TOP + 8 }} />
-
-      {/* The rail, as on every other screen. */}
-      {railFocused && (
-        <GlassPortal>
-          <View
-            style={[styles.railWrap, { top: railInsets.top + CHROME_TOP + CAPSULE_DROP }]}
-            pointerEvents="box-none"
-          >
-            <GlassDrop style={styles.headerButtons}>
-              <Pressable
-                hitSlop={8}
-                onPress={() => {
-                  // While selecting, this is the way out of it - see the
-                  // same button on the shared chrome.
-                  if (isSelectMode) {
-                    toggleSelectMode();
-                    return;
-                  }
-                  // Closing the search clears it too - leaving a filter
-                  // applied behind a hidden input is how a database looks
-                  // half-empty for no visible reason.
-                  setIsSearching((prev) => {
-                    if (prev) setSearchQuery('');
-                    return !prev;
-                  });
-                }}
-              >
-                <GlassIcon
-                  name={isSelectMode || isSearching ? 'close-outline' : 'search-outline'}
-                  size={24}
-                />
-              </Pressable>
-              <View style={styles.headerButtonsDivider} />
-              <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-                <GlassIcon name="ellipsis-horizontal-outline" size={24} />
-              </Pressable>
-            </GlassDrop>
-          </View>
-        </GlassPortal>
-      )}
+      <View style={{ height: insets.top + CHROME_TOP + 8 }} />
 
       {/* The tabs have this row to themselves now that the capsule stands
           on the rail. */}
@@ -1687,7 +1580,7 @@ export default function CustomDatabaseScreen({
             onSelect={setGroupFilter}
             unassignedLabel="Без групи"
             dark
-            endPadding={RAIL_CLEARANCE}
+            endPadding={20}
           />
         ) : (
           <View style={styles.controlsSpacer} />
@@ -1697,65 +1590,20 @@ export default function CustomDatabaseScreen({
       <Menu
         visible={menuOpen}
         onClose={() => setMenuOpen(false)}
-        style={{ position: 'absolute', top: 96, right: 20 }}
+        // Above the dock, where the button that opens it lives.
+        style={{ position: 'absolute', right: 16, bottom: DOCK_CLEAR + insets.bottom }}
         entries={[
-          // View and sort live in the capsule strip below the header, not
-          // here: they're changed constantly while working, and a menu
-          // can't show which one is active without being opened. What's
-          // left is the rare, per-database housekeeping.
+          // What the list shows and how it is ordered live on the dock,
+          // not here: they're changed constantly while working, and a
+          // menu can't show which one is active without being opened.
+          // What's left is the rare, per-database housekeeping. Choosing
+          // is on the dock too now - "дві кнопки одна функція це невірно".
           { label: 'Перейменувати базу', icon: 'pencil-outline', onPress: () => setRenamingDatabase(true) },
           { label: 'Поля', icon: 'options-outline', onPress: () => setEditingFields(true) },
           { label: 'Імпортувати таблицю', icon: 'download-outline', onPress: () => setImporting(true) },
           { label: 'Видалити базу', icon: 'trash-outline', tone: 'danger', onPress: askToDeleteDatabase },
-          { kind: 'rule' },
-          {
-            label: isSelectMode ? 'Скасувати вибір' : 'Вибрати',
-            icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
-            onPress: toggleSelectMode,
-          },
         ]}
       />
-
-      {/* What the rail could not hold. Every chip here is a button that
-          did not fit on it, in the same order the ladder above gives them
-          up - and when the rail holds everything this row is not drawn at
-          all, which is the header the user asked to get back. */}
-      {stripChips.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          // Frozen while a list is open: a horizontal drag meant to scroll
-          // an open dropdown's own vertical list would otherwise also
-          // carry the strip sideways underneath it, and the list's anchor
-          // is only ever recomputed at the moment it opens.
-          scrollEnabled={openParam === null}
-          onScroll={(e) => {
-            scrollXRef.current = e.nativeEvent.contentOffset.x;
-          }}
-          scrollEventThrottle={16}
-          style={styles.paramsScroll}
-          contentContainerStyle={[styles.paramsStrip, railClear(railSide, 20)]}
-          onLayout={(e) => {
-            setStripY(e.nativeEvent.layout.y);
-            stripXRef.current = e.nativeEvent.layout.x;
-          }}
-        >
-          {stripChips.map((chip) => (
-            <Pressable
-              key={chip.key}
-              style={[styles.paramChip, chip.active && styles.paramChipActive]}
-              onLayout={(e) => rememberChip(chip.key, e.nativeEvent.layout)}
-              onPress={() => openParamList(chip.key)}
-            >
-              <Ionicons name={chip.icon} size={13} color="rgba(255,255,255,0.85)" />
-              <Text style={styles.paramChipLabel} numberOfLines={1}>
-                {chip.label}
-              </Text>
-              <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
-            </Pressable>
-          ))}
-        </ScrollView>
-      )}
 
       {/* An open list is drawn HERE, over the whole screen, rather than
           inside the capsule it belongs to - even though it's positioned to
@@ -1769,91 +1617,16 @@ export default function CustomDatabaseScreen({
           against its own tree instead of Android's bounds. Anchored to the
           capsule's measured position, so it still reads as the capsule
           stretching downward. */}
-      {(openParam === 'view' || openParam === 'views') && (
+      {openParam === 'view' && (
         <View style={styles.paramOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={closeParamList} />
           <View
             style={[
               styles.paramExpanded,
-              // Opened from a chip in the strip: under that chip. Opened
-              // from the rail, where these two have no chip: beside the
-              // button that opened it.
-              openChipLayout
-                ? [
-                    { top: stripY + openChipLayout.y, minWidth: openChipLayout.width, left: openChipScreenX },
-                  ]
-                : { bottom: rail.actionsBottom, right: RAIL_CLEARANCE, minWidth: 220 },
+              // Above the dock, where the button that opened it lives.
+              { bottom: DOCK_CLEAR + insets.bottom, right: 16, minWidth: 220 },
             ]}
           >
-            {openParam === 'views' && (
-              <>
-                <Pressable style={styles.paramExpandedHead} onPress={closeParamList}>
-                  <Ionicons name="bookmark-outline" size={13} color="#fff" />
-                  <Text style={styles.paramChipLabel} numberOfLines={1}>
-                    {activeView ? activeView.name : 'Вигляди'}
-                  </Text>
-                  <Ionicons name="chevron-up" size={12} color="rgba(255,255,255,0.6)" />
-                </Pressable>
-                <View style={styles.paramScrollWrap}>
-                  <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
-                    {savedViews.map((view) => {
-                      const active = activeView?.id === view.id;
-                      return (
-                        <Pressable
-                          key={view.id}
-                          style={styles.paramOption}
-                          onPress={() => applySavedView(view)}
-                          onLongPress={() => openSavedViewMenu(view)}
-                        >
-                          <Ionicons
-                            name={VIEW_ICONS[view.viewMode]}
-                            size={14}
-                            color={active ? '#fff' : 'rgba(255,255,255,0.7)'}
-                          />
-                          <Text
-                            style={[styles.paramOptionLabel, active && styles.paramOptionLabelActive]}
-                            numberOfLines={1}
-                          >
-                            {view.name}
-                          </Text>
-                          {(view.filters?.length ?? 0) > 0 && (
-                            <Ionicons name="funnel" size={11} color="rgba(255,255,255,0.45)" />
-                          )}
-                          {active && <Ionicons name="checkmark" size={14} color="#fff" />}
-                        </Pressable>
-                      );
-                    })}
-                    {savedViews.length > 0 && <View style={styles.paramDivider} />}
-                    {/* Saving is disabled while a view already matches -
-                        there would be nothing new to save, and two views
-                        with the same contents can't be told apart. */}
-                    <Pressable
-                      style={styles.paramOption}
-                      disabled={!!activeView}
-                      onPress={() => {
-                        closeParamList();
-                        setViewPrompt({ mode: 'new' });
-                      }}
-                    >
-                      <Ionicons
-                        name="add-circle-outline"
-                        size={15}
-                        color={activeView ? 'rgba(255,255,255,0.3)' : ACCENT}
-                      />
-                      <Text
-                        style={[
-                          styles.paramOptionLabel,
-                          { color: activeView ? 'rgba(255,255,255,0.3)' : ACCENT },
-                        ]}
-                      >
-                        Зберегти поточний
-                      </Text>
-                    </Pressable>
-                  </ScrollView>
-                </View>
-              </>
-            )}
-
             {openParam === 'view' && (
               <>
                 <Pressable style={styles.paramExpandedHead} onPress={closeParamList}>
@@ -1914,6 +1687,9 @@ export default function CustomDatabaseScreen({
                   { key: 'sort' as const, icon: 'swap-vertical-outline' as const, label: 'Сортування' },
                   { key: 'filter' as const, icon: 'funnel-outline' as const, label: 'Фільтр' },
                   { key: 'group' as const, icon: 'layers-outline' as const, label: 'Групування' },
+                  // A saved view is a saved set of the three above - it
+                  // belongs in their window, not on a button of its own.
+                  { key: 'views' as const, icon: 'bookmark-outline' as const, label: 'Вигляди' },
                 ] as const
               )
                 // A tab for something this database cannot do would be a
@@ -2093,6 +1869,63 @@ export default function CustomDatabaseScreen({
                   )}
                 </>
               )}
+              {paramsTab === 'views' && (
+                <>
+                  {savedViews.map((view) => {
+                    const active = activeView?.id === view.id;
+                    return (
+                      <Pressable
+                        key={view.id}
+                        style={styles.paramOption}
+                        onPress={() => applySavedView(view)}
+                        onLongPress={() => openSavedViewMenu(view)}
+                      >
+                        <Ionicons
+                          name={VIEW_ICONS[view.viewMode]}
+                          size={14}
+                          color={active ? '#fff' : 'rgba(255,255,255,0.7)'}
+                        />
+                        <Text
+                          style={[styles.paramOptionLabel, active && styles.paramOptionLabelActive]}
+                          numberOfLines={1}
+                        >
+                          {view.name}
+                        </Text>
+                        {(view.filters?.length ?? 0) > 0 && (
+                          <Ionicons name="funnel" size={11} color="rgba(255,255,255,0.45)" />
+                        )}
+                        {active && <Ionicons name="checkmark" size={14} color="#fff" />}
+                      </Pressable>
+                    );
+                  })}
+                  {savedViews.length > 0 && <View style={styles.paramDivider} />}
+                  {/* Saving is disabled while a view already matches -
+                      there would be nothing new to save, and two views
+                      with the same contents can't be told apart. */}
+                  <Pressable
+                    style={styles.paramOption}
+                    disabled={!!activeView}
+                    onPress={() => {
+                      closeParamList();
+                      setViewPrompt({ mode: 'new' });
+                    }}
+                  >
+                    <Ionicons
+                      name="add-circle-outline"
+                      size={15}
+                      color={activeView ? 'rgba(255,255,255,0.3)' : ACCENT}
+                    />
+                    <Text
+                      style={[
+                        styles.paramOptionLabel,
+                        { color: activeView ? 'rgba(255,255,255,0.3)' : ACCENT },
+                      ]}
+                    >
+                      Зберегти поточний
+                    </Text>
+                  </Pressable>
+                </>
+              )}
             </ScrollView>
           </View>
         </View>
@@ -2136,7 +1969,7 @@ export default function CustomDatabaseScreen({
         renderTable()
       ) : viewMode === 'cards' ? (
         <ScrollView
-          contentContainerStyle={[styles.cardGrid, railClear(railSide, CARD_GRID_PADDING), isSelectMode && styles.listWithBulkBar]}
+          contentContainerStyle={[styles.cardGrid, { paddingHorizontal: CARD_GRID_PADDING, paddingBottom: DOCK_CLEAR + insets.bottom }, isSelectMode && styles.listWithBulkBar]}
         >
           {displayedRows.map((row) => (
             <CustomRowGridCard
@@ -2167,7 +2000,7 @@ export default function CustomDatabaseScreen({
         // Grouped by one field: a header per value with its own count, and
         // the total under the last group - the "how many working, how many
         // in for repair, how many altogether" read.
-        <ScrollView contentContainerStyle={[styles.list, railClear(railSide, 20), isSelectMode && styles.listWithBulkBar]}>
+        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: DOCK_CLEAR + insets.bottom }, isSelectMode && styles.listWithBulkBar]}>
           {rowGroups.map((group) => (
             <View key={group.key || '__empty__'} style={styles.groupSection}>
               <View style={styles.groupHeader}>
@@ -2185,79 +2018,10 @@ export default function CustomDatabaseScreen({
           </View>
         </ScrollView>
       ) : (
-        <ScrollView contentContainerStyle={[styles.list, railClear(railSide, 20), isSelectMode && styles.listWithBulkBar]}>
+        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: DOCK_CLEAR + insets.bottom }, isSelectMode && styles.listWithBulkBar]}>
           {displayedRows.map(renderRowCard)}
         </ScrollView>
       )}
-
-      {/* Order it, narrow it, group it, and the saved slices of it - the
-          four things that decide WHAT this list shows. RailCapsule draws
-          its own glass through the portal, so these need no wrapper. */}
-      {railFocused && !isSelectMode && (
-        <RailCapsule
-          side={railSide}
-          bottom={rail.actionsBottom}
-          buttons={[
-            // The shape of the list, which used to be the header's own
-            // chip - its icon IS the shape, so the button says which one
-            // is in force with no label at all.
-            ...(railPlan.shape
-              ? [
-                  {
-                    icon: VIEW_ICONS[viewMode],
-                    onPress: () => openParamList('view'),
-                    active: openParam === 'view',
-                  },
-                ]
-              : []),
-            // Ordering, narrowing and grouping, in one button: they are
-            // one family (all three change the same list) and they open
-            // one window with three tabs. The numeral says how many of
-            // them are in force, because with three buttons the lit one
-            // said that by itself and with one button nothing would.
-            {
-              icon: 'options-outline' as const,
-              onPress: () => openParamList('params'),
-              active: openParam === 'params',
-              count: activeParamCount,
-            },
-            ...(railPlan.views
-              ? [
-                  {
-                    icon: 'bookmark-outline' as const,
-                    onPress: () => openParamList('views'),
-                    active: openParam === 'views' || !!activeView,
-                  },
-                ]
-              : []),
-            // And where the stack will not stand clear of the top
-            // capsule, choosing gives up its own and joins these.
-            ...(railPlan.selectOwn
-              ? []
-              : [{ icon: 'checkmark-circle-outline' as const, onPress: toggleSelectMode }]),
-          ]}
-        />
-      )}
-      {/* Choosing several is a mode, not an action - its own capsule,
-          while the screen has the height for one. */}
-      {railFocused && !isSelectMode && railPlan.selectOwn && (
-        <RailCapsule
-          side={railSide}
-          bottom={rail.historyBottom}
-          buttons={[{ icon: 'checkmark-circle-outline', onPress: toggleSelectMode }]}
-        />
-      )}
-      {/* A record. The plus is drawn on the thing it adds. Making a view
-          is not here: it is the last entry of the views list, which the
-          bookmark button already opens. */}
-      {railFocused && !isSelectMode && (
-        <RailCapsule
-          side={railSide}
-          bottom={rail.addBottom}
-          buttons={[{ icon: 'albums-outline', badge: 'add-circle-outline', onPress: openNewRow }]}
-        />
-      )}
-
 
       {/* The second half of adding a field from the form: the type is
           picked, this asks what it is called. */}
@@ -2801,6 +2565,7 @@ export default function CustomDatabaseScreen({
       />
 
       <BulkActionBar
+        aboveTabBar
         count={selectedIds.size}
         onTag={() => setBulkTagPickerVisible(true)}
         onGroup={() => setBulkGroupPickerVisible(true)}
@@ -3431,12 +3196,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     shadowRadius: 6,
   },
-  railWrap: {
-    position: 'absolute',
-    right: RAIL_RIGHT,
-    alignItems: 'center',
-  },
-  // Stood on its end, like every other screen's.
   headerButtons: {
     alignItems: 'center',
     gap: 18,
@@ -3511,14 +3270,8 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingVertical: 8,
-    paddingLeft: 20,
-    // The rail stands at the right edge; the rows stop short of it rather
-    // than running under it - the same clearance the calendar keeps.
-    paddingRight: RAIL_CLEARANCE,
+    paddingHorizontal: 20,
     gap: 10,
-    // Clears the floating "+" (bottom: 100, 56 tall) so the last row can be
-    // scrolled out from under it.
-    paddingBottom: 170,
   },
   controlsRow: {
     flexDirection: 'row',
@@ -3763,8 +3516,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    paddingLeft: 20,
-    paddingRight: RAIL_CLEARANCE,
+    paddingHorizontal: 20,
     paddingBottom: 10,
   },
   // Holds a capsule and the list it opens. The list is positioned against
@@ -3891,13 +3643,11 @@ const styles = StyleSheet.create({
     // already account for the gap, so spreading them would double it and
     // leave a short last row strung across the screen.
     justifyContent: 'flex-start',
-    paddingLeft: CARD_GRID_PADDING,
-    // Clear of the rail - the same number gridUsable above is worked out
-    // against.
-    paddingRight: RAIL_CLEARANCE,
+    // The same padding either side that gridUsable above is worked out
+    // against - the dock stands under the grid now, not beside it.
+    paddingHorizontal: CARD_GRID_PADDING,
     paddingVertical: 8,
     gap: CARD_GRID_GAP,
-    paddingBottom: 170,
   },
   listWithBulkBar: {
     paddingBottom: 170,
