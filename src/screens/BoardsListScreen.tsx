@@ -448,6 +448,7 @@ export default function BoardsListScreen({
       // island, like every other pushed screen.
       hasIsland={!standalone}
       onBack={standalone ? () => navigation.goBack() : undefined}
+      leaveIcon="easel-outline"
       // In another screen's pane the rail stands on the window's OUTER
       // edge, which is the left one - against the divider it would be in
       // the way of both halves.

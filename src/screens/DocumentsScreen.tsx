@@ -61,6 +61,7 @@ import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
 import DocumentCard from '../components/DocumentCard';
 import { useExplorer, nameOf } from '../hooks/useExplorer';
+import { useDockLeave } from '../navigation/navDock';
 import UndoToast from '../components/UndoToast';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
@@ -78,7 +79,7 @@ import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import SketchEditor from '../components/SketchEditor';
 import { BlurView } from 'expo-blur';
 import { GlassPortal } from '../components/GlassPortal';
-import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CAPSULE_HEIGHT_4, CHROME_TOP, NAV_HEIGHT, RAIL_CLEARANCE, RAIL_GAP, RAIL_RIGHT, RAIL_WIDTH, railFits } from '../constants/rail';
+import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CHROME_TOP, NAV_HEIGHT, RAIL_CLEARANCE, RAIL_GAP, RAIL_RIGHT, RAIL_WIDTH, railFits } from '../constants/rail';
 import { useRail, useRailFree } from '../hooks/useRail';
 import { useBlurTarget } from '../components/GlassTarget';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
@@ -422,8 +423,14 @@ export default function DocumentsScreen({
   // the arrows do, so they are what goes.
   // A pushed copy carries the way back as a fourth button, and has no
   // island at its foot - like every other pushed screen.
-  const topCapsuleHeight = standalone ? CAPSULE_HEIGHT_4 : CAPSULE_HEIGHT_3;
+  // The way out went to the dock (below), so the top capsule is the same
+  // three buttons whether this list was pushed or is a tab's own.
+  const topCapsuleHeight = CAPSULE_HEIGHT_3;
   const railFree = useRailFree(topCapsuleHeight, !standalone);
+  // Pushed over the databases screen, this list is a database like any
+  // other, and leaving it belongs under the thumb with the rest - see
+  // ContextDock. The tab's own copy has nowhere to go back to.
+  useDockLeave('document-text-outline', () => navigation.goBack(), !!standalone);
   const arrowsFit = explorer.active && railFits(railFree, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT, CAPSULE_HEIGHT);
   const rail = useRail(
     topCapsuleHeight,
@@ -917,16 +924,6 @@ export default function DocumentsScreen({
               <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
                 <GlassIcon name="ellipsis-horizontal-outline" size={24} />
               </Pressable>
-              {/* The way out of a copy pushed over the tile board. The
-                  tab's own list has nowhere to go back to and no button. */}
-              {standalone && (
-                <>
-                  <View style={styles.sideIslandDivider} />
-                  <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-                    <GlassIcon name="arrow-back-outline" size={24} />
-                  </Pressable>
-                </>
-              )}
             </GlassDrop>
           </View>
         </View>
