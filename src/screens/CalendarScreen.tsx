@@ -39,7 +39,7 @@ import { useDayHistory } from '../hooks/useDayHistory';
 import DayHistoryList from '../components/DayHistoryList';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { useNavDockPublisher } from '../navigation/navDock';
+import { DockMark, useNavDockPublisher } from '../navigation/navDock';
 import {
   MONTH_FULL,
   WEEKDAY_SHORT,
@@ -483,28 +483,50 @@ export default function CalendarScreen() {
   // thumb, which is a different job and belongs at a different end of the
   // screen.
   //
-  // SEVEN days, and the one you are on always the middle one - three
-  // either side. The user's own correction, and it is the better shape
-  // twice over: the dock stays small and symmetrical instead of being a
-  // month-long ribbon you have to hunt along, and seven is the number a
-  // week already is. Stepping onto an edge day re-centres on it, so the
-  // window slides with you and nothing ever scrolls.
-  //
-  // The weekday under the number is not decoration - it is what the user
-  // actually navigates by ("орієнтуюся якраз по днях тижня"), so a bare
-  // number would be the wrong half of the information.
+  // SEVEN days are VISIBLE - the user's own correction, and the dock is
+  // sized to exactly that. The run itself is the whole month with a week
+  // either side, mounted and waiting off the edge, which is what lets the
+  // strip SLIDE by a day instead of flicking from one set of seven to the
+  // next. It is also exactly the range the two dot queries below already
+  // cover, so no day in it can be missing its marks.
+  const stripMonth = `${selectedDate.getFullYear()}-${selectedDate.getMonth()}`;
+  const stripDays = useMemo(() => {
+    const [year, month] = stripMonth.split('-').map(Number);
+    const from = addDays(new Date(year, month, 1), -7);
+    const to = addDays(new Date(year, month + 1, 0), 7);
+    const days: Date[] = [];
+    for (let day = from; day <= to; day = addDays(day, 1)) days.push(day);
+    return days;
+  }, [stripMonth]);
+  const todayKey = dateKey(new Date());
   const selectedKeyForDock = dateKey(selectedDate);
-  const stripItems = useMemo(() => {
-    const middle = parseDateKey(selectedKeyForDock);
-    return [-3, -2, -1, 0, 1, 2, 3].map((offset) => {
-      const day = addDays(middle, offset);
-      return {
-        key: dateKey(day),
-        label: String(day.getDate()),
-        sub: WEEKDAY_SHORT[mondayIndex(day)],
-      };
-    });
-  }, [selectedKeyForDock]);
+  const stripItems = useMemo(
+    () =>
+      stripDays.map((day) => {
+        const key = dateKey(day);
+        // The user's own two dots, carried over from the calendar cells
+        // with the same meanings and the same colours: ink for a day that
+        // holds a note or a reminder, blue for a day something was added
+        // on. They are how the user finds their way back to a day worth
+        // returning to, so they belong in the navigation dock as much as
+        // anywhere.
+        const marks: DockMark[] = [];
+        if (filledDates.has(key)) marks.push('ink');
+        if (historyDates.has(key)) marks.push('accent');
+        return {
+          key,
+          label: String(day.getDate()),
+          // Not decoration: "орієнтуюся якраз по днях тижня".
+          sub: WEEKDAY_SHORT[mondayIndex(day)],
+          // TODAY is what the strip is oriented by - not the day you have
+          // scrolled to, which is already in the middle. "Я хочу знати,
+          // який справді день, а не до якого я домотав."
+          anchor: key === todayKey,
+          marks: marks.length ? marks : undefined,
+        };
+      }),
+    [stripDays, todayKey, filledDates, historyDates]
+  );
   const publishToDock = useNavDockPublisher();
   const pickDay = useCallback((key: string) => selectDay(parseDateKey(key)), []);
   useEffect(() => {

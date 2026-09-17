@@ -30,7 +30,16 @@ const ICON_BY_ROUTE: Record<string, keyof typeof Ionicons.glyphMap> = {
 const ICON_SIZE = 24;
 // Every day the same width, so the dock can put the selected one under
 // the thumb without measuring anything.
-const STRIP_ITEM = 44;
+const STRIP_ITEM = 42;
+// Seven of them, and no more - the user's own correction. The dock stays
+// a pill rather than a ribbon, and seven is the number a week already is.
+// The days BEYOND those seven are still there, just off the edge: that is
+// what lets the strip slide instead of flicking from one set to the next.
+const STRIP_VISIBLE = 7;
+const STRIP_WIDTH = STRIP_ITEM * STRIP_VISIBLE;
+// The same blue the calendar's own history dot uses - the mark has to
+// mean the same thing in both places or it means nothing in either.
+const STRIP_MARK_ACCENT = '#60A5FA';
 
 // The navigation island. It used to lie across the bottom of the screen;
 // it now stands on its end at the right edge, at the foot of the rail
@@ -72,7 +81,6 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
   const strip = dock?.kind === 'strip' ? dock : null;
   const trailRef = useRef<ScrollView>(null);
   const stripRef = useRef<ScrollView>(null);
-  const [stripViewport, setStripViewport] = useState(0);
   const depth = trail?.crumbs.length ?? 0;
   useEffect(() => {
     if (!depth) return;
@@ -81,14 +89,27 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
     return () => clearTimeout(id);
   }, [depth]);
   // The day you are on sits under your thumb, in the middle - a scrubber
-  // you have to hunt along is not a scrubber.
+  // you have to hunt along is not a scrubber. It SLIDES there: the days
+  // either side stay mounted just off the edge, so moving a day scrolls
+  // the run by one instead of swapping seven numbers for seven others.
+  // The user noticed the difference before it was deliberate ("було
+  // непогано, що воно трішки прокручувалося, а не отак точково
+  // перелистувалося") - so now it is.
   const stripIndex = strip ? strip.items.findIndex((item) => item.key === strip.selected) : -1;
+  const stripSettled = useRef(false);
   useEffect(() => {
-    if (stripIndex < 0 || !stripViewport) return;
-    const x = Math.max(0, stripIndex * STRIP_ITEM + STRIP_ITEM / 2 - stripViewport / 2);
-    const id = setTimeout(() => stripRef.current?.scrollTo({ x, animated: true }), 0);
+    if (stripIndex < 0) {
+      stripSettled.current = false;
+      return;
+    }
+    const x = Math.max(0, stripIndex * STRIP_ITEM + STRIP_ITEM / 2 - STRIP_WIDTH / 2);
+    // The first placement is not a journey - opening the calendar should
+    // not show the strip travelling in from the first of the month.
+    const animated = stripSettled.current;
+    stripSettled.current = true;
+    const id = setTimeout(() => stripRef.current?.scrollTo({ x, animated }), 0);
     return () => clearTimeout(id);
-  }, [stripIndex, stripViewport]);
+  }, [stripIndex]);
 
   if (!tabsFocused) return null;
   const here = state.routes[state.index];
@@ -127,13 +148,13 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
         strip ? (
         // A run of days under the thumb. Same shell, same height: the
         // dock holding time instead of places.
-        <GlassDrop style={[styles.islandShell, styles.trailShell]}>
+        <GlassDrop style={styles.islandShell}>
         <Pressable onLongPress={toggleCollapsed} delayLongPress={400}>
           <ScrollView
             ref={stripRef}
             horizontal
             showsHorizontalScrollIndicator={false}
-            onLayout={(e) => setStripViewport(e.nativeEvent.layout.width)}
+            style={styles.stripViewport}
           >
             {strip.items.map((item) => {
               const current = item.key === strip.selected;
@@ -142,7 +163,7 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
                   <Text
                     style={[
                       styles.stripLabel,
-                      { color: current ? theme.glass.ink : theme.glass.inkMuted },
+                      { color: item.anchor || current ? theme.glass.ink : theme.glass.inkMuted },
                     ]}
                   >
                     {item.label}
@@ -151,14 +172,30 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
                     <Text
                       style={[
                         styles.stripSub,
-                        // The day you are on reads as ONE thing, number
-                        // and weekday together, not a number with a
-                        // footnote under it.
-                        { color: current ? theme.glass.ink : theme.glass.inkMuted },
+                        // A day reads as ONE thing, number and weekday
+                        // together, not a number with a footnote under it.
+                        { color: item.anchor || current ? theme.glass.ink : theme.glass.inkMuted },
                       ]}
                     >
                       {item.sub}
                     </Text>
+                  )}
+                  {/* The user's own invention, and their own words for why
+                      it earns the room: "оці дві крапочки дуже маленькі,
+                      але вони мене дуже рятують. Це теж про навігацію." So
+                      they come with the days into the dock. */}
+                  {!!item.marks?.length && (
+                    <View style={styles.stripMarks}>
+                      {item.marks.map((mark, i) => (
+                        <View
+                          key={`${mark}-${i}`}
+                          style={[
+                            styles.stripMark,
+                            { backgroundColor: mark === 'accent' ? STRIP_MARK_ACCENT : theme.glass.ink },
+                          ]}
+                        />
+                      ))}
+                    </View>
                   )}
                 </>
               );
@@ -169,14 +206,23 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
                   onLongPress={toggleCollapsed}
                   delayLongPress={400}
                 >
-                  {current ? (
-                    // The day you are on, in the lens the dock marks the
-                    // desk you are on with.
+                  {item.anchor ? (
+                    // The lens marks TODAY, not the day you are looking
+                    // at. The day you are looking at is already in the
+                    // middle; what the middle cannot tell you is how far
+                    // you have wandered from now.
                     <GlassDrop style={styles.stripItem} lift="none" blurAmount={0} convex>
                       {body}
                     </GlassDrop>
                   ) : (
-                    <View style={styles.stripItem}>{body}</View>
+                    <View
+                      style={[
+                        styles.stripItem,
+                        current && [styles.stripItemSelected, { borderColor: theme.glass.ink }],
+                      ]}
+                    >
+                      {body}
+                    </View>
                   )}
                 </Pressable>
               );
@@ -371,6 +417,11 @@ const styles = StyleSheet.create({
     maxWidth: 160,
     fontFamily: FONT_REGULAR,
   },
+  // Exactly seven days wide. What is outside it is mounted, not gone -
+  // that is what the sliding is made of.
+  stripViewport: {
+    width: STRIP_WIDTH,
+  },
   stripItem: {
     width: STRIP_ITEM,
     height: NAV_BUTTON,
@@ -383,10 +434,27 @@ const styles = StyleSheet.create({
     fontFamily: FONT_SEMIBOLD,
     fontWeight: '600',
   },
+  // The day you have scrolled to. A hairline, not a fill: the lens is
+  // spoken for - it belongs to today - and two lit-up days in one strip
+  // would leave neither meaning anything.
+  stripItemSelected: {
+    borderWidth: 1,
+  },
   stripSub: {
     fontSize: 10,
     marginTop: 1,
     fontFamily: FONT_REGULAR,
+  },
+  stripMarks: {
+    position: 'absolute',
+    bottom: 3,
+    flexDirection: 'row',
+    gap: 3,
+  },
+  stripMark: {
+    width: 3.5,
+    height: 3.5,
+    borderRadius: 2,
   },
   trailLabelCurrent: {
     fontFamily: FONT_SEMIBOLD,
