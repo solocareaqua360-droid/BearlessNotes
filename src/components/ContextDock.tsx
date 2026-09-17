@@ -89,23 +89,34 @@ export default function ContextDock() {
   // note's back arrow walks. Inside folders it walks to the root; at the
   // root it leaves the database altogether; a calendar, which has no
   // root, is simply put away.
+  // The bead only appears where it has a job NOBODY ELSE has. Inside
+  // folders it had none: it walked to the root, and so does the first
+  // crumb - "дві кнопки одна функція це невірно", and the user was
+  // right. There the path stands alone, and its first crumb is the
+  // database's own icon rather than the word "Всі", so one press still
+  // means one thing and the dock still says WHICH database you are
+  // walking in. At the root there is no path to show and the bead is the
+  // way out of the database. A calendar has neither, so the bead puts it
+  // away.
   const stepOut = () => {
-    if (trail) return trail.onGo('');
     if (strip) return setHidden(true);
     leave?.onLeave();
   };
+  const showBead = !!strip || (!dock && !!leave);
   const icon = ((dock?.icon ?? leave?.icon) as keyof typeof Ionicons.glyphMap) ?? 'ellipse-outline';
 
   return (
     <GlassPortal>
       <View style={[styles.wrap, { bottom: NAV_BOTTOM + insets.bottom }]} pointerEvents="box-none">
         <View style={styles.row}>
-          <Pressable onPress={stepOut}>
-            <GlassDrop style={styles.exitBead}>
-              <Ionicons name="chevron-back" size={11} color={theme.glass.inkMuted} />
-              <Ionicons name={icon} size={20} color={theme.glass.ink} />
-            </GlassDrop>
-          </Pressable>
+          {showBead && (
+            <Pressable onPress={stepOut}>
+              <GlassDrop style={styles.exitBead}>
+                <Ionicons name="chevron-back" size={11} color={theme.glass.inkMuted} />
+                <Ionicons name={icon} size={20} color={theme.glass.ink} />
+              </GlassDrop>
+            </Pressable>
+          )}
 
           {strip && (
             <GlassDrop style={styles.shell}>
@@ -174,9 +185,12 @@ export default function ContextDock() {
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.trailStrip}
                 >
+                  {/* The root, as the database's own icon: one press,
+                      one meaning, and it still says which database these
+                      folders belong to now that the bead has gone. */}
                   <View ref={targets?.('')} collapsable={false}>
-                    <Pressable onPress={() => trail.onGo('')} style={styles.trailSegment}>
-                      <Text style={[styles.trailLabel, { color: theme.glass.inkMuted }]}>Всі</Text>
+                    <Pressable onPress={() => trail.onGo('')} style={styles.trailRoot}>
+                      <Ionicons name={icon} size={19} color={theme.glass.ink} />
                     </Pressable>
                   </View>
                   {trail.crumbs.map((segment, index) => {
@@ -301,6 +315,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
+  },
+  trailRoot: {
+    paddingHorizontal: 8,
+    paddingVertical: 8,
   },
   trailSegment: {
     paddingHorizontal: 8,
