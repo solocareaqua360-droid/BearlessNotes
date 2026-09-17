@@ -18,7 +18,7 @@ export type Tile = {
   // "Скоро" placeholder.
   linkCategory?: 'video' | 'geo' | 'other';
   // Set for tiles with their own dedicated (paramless) screen.
-  route?: 'Photos' | 'Files' | 'Tags' | 'Groups' | 'Diary' | 'Stickers' | 'Tasks';
+  route?: 'Photos' | 'Files' | 'Tags' | 'Groups' | 'Diary' | 'Stickers' | 'Tasks' | 'Chat';
   // The documents tile - documents are a TAB, not a root-stack screen, so
   // it goes through `navigation.navigate('Tabs', { screen: 'Документи' })`.
   opensDocumentsTab?: boolean;
@@ -64,6 +64,7 @@ export const GRID_TILES: Tile[] = [
   { key: 'tags', label: 'Теги', icon: 'pricetag-outline', route: 'Tags' },
   { key: 'groups', label: 'Групи', icon: 'albums-outline', route: 'Groups' },
   { key: 'diary', label: 'Щоденник', icon: 'book-outline', route: 'Diary' },
+  { key: 'chat', label: 'Чат', icon: 'chatbubbles-outline', route: 'Chat' },
 ];
 
 export const tileColorsDoc = doc(db, 'settings', 'databaseTileColors');

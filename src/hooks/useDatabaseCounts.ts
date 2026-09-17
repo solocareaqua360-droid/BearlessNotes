@@ -66,6 +66,7 @@ export function useDatabaseContents(): DatabaseContents {
   const boards = useCollection('boards');
   const tags = useCollection('tags');
   const groups = useCollection('groups');
+  const chat = useCollection('chat');
   const customRows = useCollection('customDatabaseRows');
 
   // Daily notes live in the documents collection but are the diary, not
@@ -90,6 +91,7 @@ export function useDatabaseContents(): DatabaseContents {
     board: boards.length,
     tags: tags.length,
     groups: groups.length,
+    chat: chat.length,
   };
   for (const row of customRows) {
     const id = row.databaseId as string | undefined;
@@ -108,6 +110,7 @@ export function useDatabaseContents(): DatabaseContents {
       (s) => s.text as string | undefined
     ),
     board: newest(boards, (b) => b.title as string | undefined),
+    chat: newest(chat, (m) => m.text as string | undefined),
   };
 
   // A group crosses databases, so its count does too.
