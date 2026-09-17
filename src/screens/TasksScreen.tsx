@@ -29,7 +29,7 @@ import {
   query,
   updateDoc,
 } from '../firestore';
-import { addDoc, ownedQuery } from '../utils/owned';
+import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { Block, Project } from '../types';
 import { hapticToggle } from '../utils/haptics';
@@ -43,7 +43,7 @@ import CardCarryOverlay from '../components/CardCarryOverlay';
 import UndoToast from '../components/UndoToast';
 import { useSortPref } from '../hooks/useSortPref';
 import { cancelReminder, scheduleReminder, type ReminderKind } from '../utils/reminders';
-import { formatShortDate, parseDateKey } from '../utils/dateLocale';
+import { dateKey, formatShortDate, parseDateKey } from '../utils/dateLocale';
 import { sortItems } from '../utils/sortItems';
 import ContentColumn from '../components/ContentColumn';
 import { BlurView } from 'expo-blur';
@@ -52,11 +52,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import Menu from '../components/surfaces/Menu';
 import { CHROME_TOP, NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
-import { useDockActions, useDockLeave, useDockShowContext } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockLeave, useDockShowContext } from '../navigation/navDock';
+import SearchField from '../components/SearchField';
+import RenamePrompt from '../components/RenamePrompt';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { confirm } from '../components/surfaces/Ask';
+import { confirm, notify } from '../components/surfaces/Ask';
 
 const ACCENT = '#4E9A6B';
+
+// The same id every block gets in the editor - see its generateId.
+function newBlockId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 // The foot the list keeps clear for the dock - the same reckoning
 // DatabaseChrome makes.
 const DOCK_CLEAR = NAV_BOTTOM + NAV_BUTTON + NAV_PADDING * 2 + 12;
@@ -159,7 +166,34 @@ export default function TasksScreen() {
     clear: clearSelection,
   } = useMultiSelect();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [creatingBusy, setCreatingBusy] = useState(false);
   const isFocused = useIsFocused();
+  // Search on the left and making a task on the right, the way every
+  // database has them. Neither existed on this screen: tasks are
+  // one-liners scattered over every note, and finding one meant scrolling.
+  useDockBeads(
+    isFocused
+      ? {
+          icon: isSelectMode || isSearching ? 'close-outline' : 'search-outline',
+          active: isSearching,
+          onPress: () => {
+            // While selecting, this is the way OUT of selecting.
+            if (isSelectMode) {
+              toggleSelectMode();
+              return;
+            }
+            if (isSearching) setSearchQuery('');
+            setIsSearching((prev) => !prev);
+          },
+        }
+      : null,
+    isFocused && !isSelectMode
+      ? { icon: 'checkbox-outline', badge: 'add-circle-outline', onPress: () => setCreating(true) }
+      : null
+  );
   useDockActions(
     isFocused
       ? [
@@ -266,6 +300,11 @@ export default function TasksScreen() {
       loaded.sort((a, b) => Number(a.checked) - Number(b.checked));
       setTasks(loaded);
       setIsLoading(false);
+    }, (e) => {
+      // A refused read with no handler used to take the screen down; with
+      // one, it says what happened. See firestore_silent_empty.
+      setIsLoading(false);
+      notify('Справи не завантажилися', e.message);
     });
   }, []);
 
@@ -280,7 +319,7 @@ export default function TasksScreen() {
           }))
           .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
       );
-    });
+    }, (e) => notify('Проєкти не завантажилися', e.message));
   }, []);
 
   const projectsById = useMemo(() => {
@@ -302,21 +341,66 @@ export default function TasksScreen() {
         : projectFilter === UNASSIGNED_ID
           ? tasks.filter((t) => !t.projectId)
           : tasks.filter((t) => t.projectId === projectFilter);
+    const needle = searchQuery.trim().toLowerCase();
+    const found = needle ? byProject.filter((t) => t.text.toLowerCase().includes(needle)) : byProject;
     // Sorted once here rather than per-section below - every downstream
     // .filter() (today/unfinished/completed/kanban column) preserves
     // relative order, so this one sort is what all of them end up showing.
     return sortItems(
-      byProject,
+      found,
       sortPref,
       (t) => t.text || 'Без назви',
       (t) => t.createdAt,
       (t) => t.updatedAt
     );
-  }, [tasks, projectFilter, sortPref]);
+  }, [tasks, projectFilter, sortPref, searchQuery]);
 
   // The task doc is a mirror (see DocumentEditorScreen's syncTasksForDocument) -
   // the block inside the source document's own `blocks` array field is the
   // real record, so every change here has to update both, not just this mirror.
+  // A task made HERE is a checkbox block in today's daily note - the note
+  // the calendar shows for today (`day_<key>`, created with the same
+  // `calendarDate` field the calendar's own editor writes, or the day
+  // would not count as filled). No new kind of record: for the rest of the
+  // app it is a task in a note like every other, so the eight writers
+  // below, which all reach for the block through its document, need no
+  // second path. The mirror is written here too, the same shape
+  // DocumentEditorScreen's syncTasksForDocument writes, so the list shows
+  // the task at once rather than after the note is next opened.
+  async function createTask(value: string) {
+    const text = value.trim();
+    if (!text) {
+      setCreating(false);
+      return;
+    }
+    setCreatingBusy(true);
+    try {
+      const key = dateKey(new Date());
+      const documentId = `day_${key}`;
+      const documentRef = doc(db, 'documents', documentId);
+      const data = (await getDoc(documentRef)).data();
+      const now = Date.now();
+      const block: Block = { id: newBlockId(), type: 'checkbox', text, checked: false, createdAt: now };
+      const blocks: Block[] = [...((data?.blocks as Block[] | undefined) ?? []), block];
+      await setDoc(
+        documentRef,
+        {
+          blocks,
+          updatedAt: now,
+          calendarDate: key,
+          ...(data ? {} : { title: '', createdAt: now }),
+        },
+        { merge: true }
+      );
+      await setDoc(doc(db, 'tasks', block.id), { text, checked: false, documentId, updatedAt: now, createdAt: now });
+      setCreating(false);
+    } catch (e) {
+      notify('Не збереглося', (e as Error).message);
+    } finally {
+      setCreatingBusy(false);
+    }
+  }
+
   async function toggleTask(task: Task) {
     const newChecked = !task.checked;
     hapticToggle(newChecked);
@@ -698,7 +782,7 @@ export default function TasksScreen() {
                 ]}
               >
                 <Text style={[styles.chipText, { color: project ? project.color : 'rgba(255,255,255,0.45)' }]}>
-                  {project ? project.name : 'Без проекту'}
+                  {project ? project.name : 'Вхідні'}
                 </Text>
               </View>
             </Pressable>
@@ -821,7 +905,7 @@ export default function TasksScreen() {
             <Pressable onPress={() => openProjectPicker(task.id)}>
               <View style={[styles.chip, project ? { backgroundColor: `${project.color}1A` } : styles.chipEmpty]}>
                 <Text style={[styles.chipText, { color: project ? project.color : 'rgba(255,255,255,0.45)' }]}>
-                  {project ? project.name : 'Без проекту'}
+                  {project ? project.name : 'Вхідні'}
                 </Text>
               </View>
             </Pressable>
@@ -930,6 +1014,17 @@ export default function TasksScreen() {
             Впишіть текст у чекбокс у будь-якому документі - справа з'явиться тут сама
           </Text>
         </View>
+        {/* The first task of all is made from HERE - the "+" bead is on
+            the dock whether the list is empty or not. */}
+        <RenamePrompt
+          visible={creating}
+          title="Нова справа"
+          initialValue=""
+          placeholder="Що зробити?"
+          busy={creatingBusy}
+          onCancel={() => setCreating(false)}
+          onSave={createTask}
+        />
       </View>
     );
   }
@@ -957,8 +1052,28 @@ export default function TasksScreen() {
           </>
         )}
 
+        {isSearching && (
+          <SearchField
+            autoFocus
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Пошук справ"
+            onClose={() => {
+              setSearchQuery('');
+              setIsSearching(false);
+            }}
+            style={styles.searchRow}
+          />
+        )}
+
         {!kanbanMode && projects.length > 0 && (
-          <ProjectTabsRow items={projects} selected={projectFilter} onSelect={setProjectFilter} />
+          <ProjectTabsRow
+            items={projects}
+            selected={projectFilter}
+            onSelect={setProjectFilter}
+            // Not assigned to a project = in the inbox; the user's own rule.
+            unassignedLabel="Вхідні"
+          />
         )}
 
         {kanbanMode ? (
@@ -1030,7 +1145,7 @@ export default function TasksScreen() {
 
               <Pressable style={styles.modalRow} onPress={() => assignProject(null)}>
                 <View style={[styles.modalDot, { backgroundColor: 'rgba(255,255,255,0.45)' }]} />
-                <Text style={styles.modalRowText}>Без проекту</Text>
+                <Text style={styles.modalRowText}>Вхідні</Text>
               </Pressable>
 
               {projects.map((p) =>
@@ -1083,7 +1198,16 @@ export default function TasksScreen() {
           </Pressable>
         </Modal>
 
-        <ReminderSheet
+        <RenamePrompt
+        visible={creating}
+        title="Нова справа"
+        initialValue=""
+        placeholder="Що зробити?"
+        busy={creatingBusy}
+        onCancel={() => setCreating(false)}
+        onSave={createTask}
+      />
+      <ReminderSheet
           visible={reminderTaskId !== null}
           initialDate={reminderTaskId ? tasks.find((t) => t.id === reminderTaskId)?.reminderDate : undefined}
           initialTime={reminderTaskId ? tasks.find((t) => t.id === reminderTaskId)?.reminderTime : undefined}
@@ -1102,6 +1226,10 @@ const makeStyles = (t: Theme) =>
   StyleSheet.create({
   container: {
     flex: 1,
+  },
+  searchRow: {
+    marginHorizontal: 20,
+    marginBottom: 8,
   },
   menuBackdrop: {
     position: 'absolute',
