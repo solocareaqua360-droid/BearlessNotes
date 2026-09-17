@@ -590,7 +590,6 @@ export default function BoardsListScreen({
               <View style={styles.headSpan}>
               <ExplorerHead
                 folderRef={carrying.carry.registerFolder}
-                crumbs={explorer.crumbs}
                 path={explorer.path}
                 folders={explorer.folders}
                 showCrumbs={explorer.active}

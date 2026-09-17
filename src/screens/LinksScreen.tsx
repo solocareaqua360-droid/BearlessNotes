@@ -633,7 +633,6 @@ export default function LinksScreen({
     return (
       <ExplorerHead
         folderRef={carrying.carry.registerFolder}
-        crumbs={explorer.crumbs}
         path={explorer.path}
         folders={explorer.folders}
         showCrumbs={explorer.active}

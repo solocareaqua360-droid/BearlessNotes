@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { ExplorerFolder } from '../hooks/useExplorer';
+import { ExplorerFolder, parentOf } from '../hooks/useExplorer';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 // What stands above a database's records while it is in explorer mode:
@@ -15,7 +15,6 @@ import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 // picture - so the two read as one list rather than two.
 
 export default function ExplorerHead({
-  crumbs,
   path,
   folders,
   onGo,
@@ -31,7 +30,6 @@ export default function ExplorerHead({
   columns,
   folderRef,
 }: {
-  crumbs: string[];
   path: string;
   folders: ExplorerFolder[];
   onGo: (path: string) => void;
@@ -57,16 +55,6 @@ export default function ExplorerHead({
 }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
-  const crumbScrollRef = useRef<ScrollView>(null);
-  // Many levels fold the middle ones into one "…" that a tap unfolds; a
-  // new path folds again.
-  const [unfolded, setUnfolded] = useState(false);
-  useEffect(() => {
-    setUnfolded(false);
-    const id = setTimeout(() => crumbScrollRef.current?.scrollToEnd({ animated: true }), 0);
-    return () => clearTimeout(id);
-  }, [path]);
-  const folded = !unfolded && crumbs.length > 3;
   const [width, setWidth] = useState(0);
   const cols = Math.max(1, columns ?? 1);
   const rowWidth = cols > 1 && width > 0 ? Math.floor((width - FOLDER_GAP * (cols - 1)) / cols) : undefined;
@@ -76,57 +64,23 @@ export default function ExplorerHead({
   return (
     <View style={styles.head} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
       {showCrumbs && path !== '' && (
+        // The path itself is gone from here: the dock carries it now, and
+        // reading the same thing twice on one screen was the deliberate,
+        // temporary duplication while the user got used to the new place.
+        //
+        // What is left is the step UP, and it stays for a reason the
+        // crumbs were quietly doing all along: a card being carried has
+        // to have somewhere to be dropped that means "out of this
+        // folder". The crumbs were those targets. The arrow is now the
+        // one target, registered under the parent's own path - which it
+        // could not be before, because a crumb beside it already claimed
+        // that path and the registry keeps one node per path.
         <View style={styles.crumbRow}>
-          {/* Deliberately NOT a carry target: it leads to the same path as
-              the crumb beside it, and the registry keeps one node per
-              path - registering both would leave whichever lost the race
-              silently dead. The crumbs are the targets; this stays a
-              plain tap. */}
-          <Pressable hitSlop={8} onPress={onUp} style={styles.crumbUp}>
-            <Ionicons name="chevron-back" size={18} color={theme.ink.primary} />
-          </Pressable>
-          <ScrollView
-            ref={crumbScrollRef}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.crumbStrip}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View ref={folderRef?.('')} collapsable={false}>
-              <Pressable onPress={() => onGo('')} style={styles.crumbSegment}>
-                <Text style={styles.crumbLabel}>Всі</Text>
-              </Pressable>
-            </View>
-            {crumbs.map((segment, index) => {
-              const isLast = index === crumbs.length - 1;
-              const target = crumbs.slice(0, index + 1).join('/');
-              const hidden = folded && index > 0 && index < crumbs.length - 2;
-              const isFoldMark = folded && index === 1;
-              if (hidden && !isFoldMark) return null;
-              return (
-                <View key={target} style={styles.crumbPair}>
-                  <Ionicons name="chevron-forward" size={14} color={theme.ink.faint} />
-                  {isFoldMark ? (
-                    <Pressable onPress={() => setUnfolded(true)} style={styles.crumbSegment}>
-                      <Text style={styles.crumbLabel}>…</Text>
-                    </Pressable>
-                  ) : (
-                    <View ref={isLast ? undefined : folderRef?.(target)} collapsable={false}>
-                      <Pressable
-                        disabled={isLast}
-                        onPress={() => onGo(target)}
-                        style={[styles.crumbSegment, isLast && styles.crumbSegmentCurrent]}
-                      >
-                        <Text style={[styles.crumbLabel, isLast && styles.crumbLabelCurrent]} numberOfLines={1}>
-                          {segment}
-                        </Text>
-                      </Pressable>
-                    </View>
-                  )}
-                </View>
-              );
-            })}
-          </ScrollView>
+          <View ref={folderRef?.(parentOf(path))} collapsable={false}>
+            <Pressable hitSlop={8} onPress={onUp} style={styles.crumbUp}>
+              <Ionicons name="chevron-back" size={18} color={theme.ink.primary} />
+            </Pressable>
+          </View>
         </View>
       )}
 

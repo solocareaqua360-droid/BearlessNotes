@@ -1008,7 +1008,6 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
               ) : list.explorerMode ? (
                 <ExplorerHead
                   folderRef={carrying.carry.registerFolder}
-                  crumbs={explorer.crumbs}
                   path={explorer.path}
                   folders={explorer.folders}
                   showCrumbs={explorer.active}

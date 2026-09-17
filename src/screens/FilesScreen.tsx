@@ -671,7 +671,6 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     if (!list.explorerMode) return null;
     return (
       <ExplorerHead
-        crumbs={explorer.crumbs}
         path={explorer.path}
         folders={explorer.folders}
         showCrumbs={explorer.active}

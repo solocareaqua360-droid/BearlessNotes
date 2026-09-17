@@ -60,7 +60,7 @@ import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
 import DocumentCard from '../components/DocumentCard';
-import { useExplorer, nameOf } from '../hooks/useExplorer';
+import { useExplorer, nameOf, parentOf } from '../hooks/useExplorer';
 import UndoToast from '../components/UndoToast';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
@@ -321,19 +321,6 @@ export default function DocumentsScreen({
   function explorerUp() {
     explorer.setPath((p) => p.split('/').slice(0, -1).join('/'));
   }
-  // The path strip: every level between the root and here, each a
-  // button. It scrolls sideways rather than wrapping, and turns to its
-  // end whenever the level changes, so where you are is always in view;
-  // past four levels the middle folds into "…", which a tap unfolds.
-  const crumbScrollRef = useRef<ScrollView | null>(null);
-  const [crumbsUnfolded, setCrumbsUnfolded] = useState(false);
-  useEffect(() => {
-    setCrumbsUnfolded(false);
-    const t = setTimeout(() => crumbScrollRef.current?.scrollToEnd({ animated: true }), 50);
-    return () => clearTimeout(t);
-  }, [explorer.path]);
-  const crumbSegments = explorer.crumbs;
-  const crumbFolded = !crumbsUnfolded && crumbSegments.length > 3;
   useEffect(() => {
     if (!explorer.active || explorer.path === '') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -1205,54 +1192,25 @@ export default function DocumentsScreen({
               ) : explorerMode && (explorer.folders.length > 0 || (explorer.active && explorer.path !== '')) ? (
                 <View style={[styles.explorerHead, folderColumns > 1 && styles.explorerHeadWide]}>
                   {explorer.active && explorer.path !== '' && (
+                    // The path is gone from here - the dock carries it
+                    // now, and reading the same thing twice on one screen
+                    // was the temporary duplication while the user got
+                    // used to the new place. Same change as
+                    // ExplorerHead's, which every other database uses.
+                    //
+                    // The step UP stays, and not only out of habit: the
+                    // crumbs were quietly the drop targets that meant
+                    // "out of this folder" for a card being carried. The
+                    // arrow is that target now, under the parent's own
+                    // path - which it could not be while a crumb beside
+                    // it claimed the same path, since the registry keeps
+                    // one node per path.
                     <View style={[styles.explorerCrumb, folderColumns > 1 && styles.explorerCrumbWide]}>
-                      <Pressable hitSlop={8} onPress={explorerUp} style={styles.crumbUp}>
-                        <Ionicons name="chevron-back" size={18} color={theme.ink.primary} />
-                      </Pressable>
-                      <ScrollView
-                        ref={crumbScrollRef}
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={styles.crumbStrip}
-                        keyboardShouldPersistTaps="handled"
-                      >
-                        <View ref={carrying.carry.registerFolder('')} collapsable={false}>
-                          <Pressable onPress={() => explorer.setPath('')} style={styles.crumbSegment}>
-                            <Text style={styles.crumbLabel}>Всі</Text>
-                          </Pressable>
-                        </View>
-                        {crumbSegments.map((segment, index) => {
-                          const isLast = index === crumbSegments.length - 1;
-                          const target = crumbSegments.slice(0, index + 1).join('/');
-                          // The fold: with many levels the middle ones
-                          // become one "…" that a tap unfolds.
-                          const hidden = crumbFolded && index > 0 && index < crumbSegments.length - 2;
-                          const isFoldMark = crumbFolded && index === 1;
-                          if (hidden && !isFoldMark) return null;
-                          return (
-                            <View key={target} style={styles.crumbPair}>
-                              <Ionicons name="chevron-forward" size={14} color={theme.ink.faint} />
-                              {isFoldMark ? (
-                                <Pressable onPress={() => setCrumbsUnfolded(true)} style={styles.crumbSegment}>
-                                  <Text style={styles.crumbLabel}>…</Text>
-                                </Pressable>
-                              ) : (
-                                <View ref={isLast ? undefined : carrying.carry.registerFolder(target)} collapsable={false}>
-                                  <Pressable
-                                    disabled={isLast}
-                                    onPress={() => explorer.setPath(target)}
-                                    style={[styles.crumbSegment, isLast && styles.crumbSegmentCurrent]}
-                                  >
-                                    <Text style={[styles.crumbLabel, isLast && styles.crumbLabelCurrent]} numberOfLines={1}>
-                                      {segment}
-                                    </Text>
-                                  </Pressable>
-                                </View>
-                              )}
-                            </View>
-                          );
-                        })}
-                      </ScrollView>
+                      <View ref={carrying.carry.registerFolder(parentOf(explorer.path))} collapsable={false}>
+                        <Pressable hitSlop={8} onPress={explorerUp} style={styles.crumbUp}>
+                          <Ionicons name="chevron-back" size={18} color={theme.ink.primary} />
+                        </Pressable>
+                      </View>
                     </View>
                   )}
                   {/* A folder row wears the document row's clothes - the
