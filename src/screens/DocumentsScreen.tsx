@@ -346,7 +346,6 @@ export default function DocumentsScreen({
   const searchingAlone = searchOpen && keyboardUp;
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [freeStickers, setFreeStickers] = useState<StripSticker[]>([]);
   const [stickerComposerVisible, setStickerComposerVisible] = useState(false);
   const [editingTextSticker, setEditingTextSticker] = useState<{ id: string; text: string } | null>(null);
@@ -425,7 +424,12 @@ export default function DocumentsScreen({
   // island at its foot - like every other pushed screen.
   // The way out went to the dock (below), so the top capsule is the same
   // three buttons whether this list was pushed or is a tab's own.
-  const topCapsuleHeight = CAPSULE_HEIGHT_3;
+  // Search alone now. Sort went down to the rail to stand beside the
+  // view switch - they are two halves of one question, "how am I looking
+  // at this list" - and the "…" menu held nothing BUT that view switch,
+  // so it left with it. A menu with one section in it is a second press
+  // for nothing.
+  const topCapsuleHeight = CAPSULE_HEIGHT_1;
   const railFree = useRailFree(topCapsuleHeight, !standalone);
   // Pushed over the databases screen, this list is a database like any
   // other, and leaving it belongs under the thumb with the rest - see
@@ -435,12 +439,18 @@ export default function DocumentsScreen({
   // carries the path now, and every level of it is one press away. The
   // slot they used to need is simply not asked for.
   const arrowsFit = false;
+  // The same slots, in the same order, as every other database's rail
+  // (see DatabaseChrome): choosing, then creating, then the pair that
+  // says how the list is drawn. The point is not fewer buttons - it is
+  // that the rail means the same thing on every screen, so the hand
+  // learns it once.
   const rail = useRail(
     topCapsuleHeight,
     CAPSULE_HEIGHT_1,
     explorer.active ? CAPSULE_HEIGHT : RAIL_WIDTH,
-    arrowsFit ? CAPSULE_HEIGHT : 0,
-    !standalone
+    CAPSULE_HEIGHT_1,
+    !standalone,
+    CAPSULE_HEIGHT
   );
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   // Opening the search takes the screen, so anything hanging off the rail
@@ -448,7 +458,6 @@ export default function DocumentsScreen({
   useEffect(() => {
     if (searchOpen || isSelectMode) {
       setSortMenuOpen(false);
-      setMenuOpen(false);
     }
   }, [searchOpen, isSelectMode]);
   // How far the list has to clear the bottom edge so its last card never
@@ -460,10 +469,6 @@ export default function DocumentsScreen({
   // capsule is far too short to hold a menu, and the rows were clipped
   // mid-word. It is the rail's own free stretch, which is the shape the
   // menu should have anyway.
-  const menuHeight = Math.max(
-    180,
-    windowHeight - rail.tagBottom - RAIL_WIDTH - RAIL_GAP - (chromeTop + CAPSULE_DROP)
-  );
 
 
   useEffect(() => {
@@ -839,7 +844,6 @@ export default function DocumentsScreen({
           onLayout={(e) => setPaneRect({ x: e.nativeEvent.layout.x, width: e.nativeEvent.layout.width })}
         >
 
-        {menuOpen && <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />}
 
         {/* The control capsule stands on its edge at the right of the
             screen instead of sharing a line with the group tabs - it was
@@ -867,45 +871,6 @@ export default function DocumentsScreen({
           pointerEvents="box-none"
         >
           <View style={styles.sideIslandRow}>
-            {menuOpen && (
-              <View style={[styles.menuPanel, { height: menuHeight }]}>
-                <BlurView
-                  intensity={60}
-                  tint="dark"
-                  blurMethod="dimezisBlurView"
-                  blurTarget={blurTarget ?? undefined}
-                  style={StyleSheet.absoluteFill}
-                  pointerEvents="none"
-                />
-                {/* Cut to the island's height, so the rows scroll inside
-                    rather than the panel growing past it. */}
-                <ScrollView contentContainerStyle={styles.menuScroll} showsVerticalScrollIndicator={false}>
-                  <Text style={styles.menuSectionLabel}>Вигляд</Text>
-                  <Pressable
-                    style={styles.menuRow}
-                    onPress={() => {
-                      setMenuOpen(false);
-                      changeViewMode('list');
-                    }}
-                  >
-                    <Ionicons name="reorder-four-outline" size={17} color={theme.ink.primary} />
-                    <Text style={styles.menuRowLabel}>Список</Text>
-                    {viewMode === 'list' && <Ionicons name="checkmark-outline" size={18} color={ACCENT} />}
-                  </Pressable>
-                  <Pressable
-                    style={styles.menuRow}
-                    onPress={() => {
-                      setMenuOpen(false);
-                      changeViewMode('grid');
-                    }}
-                  >
-                    <Ionicons name="grid-outline" size={17} color={theme.ink.primary} />
-                    <Text style={styles.menuRowLabel}>Сітка</Text>
-                    {viewMode === 'grid' && <Ionicons name="checkmark-outline" size={18} color={ACCENT} />}
-                  </Pressable>
-                </ScrollView>
-              </View>
-            )}
             <GlassDrop style={styles.sideIsland}>
               <Pressable
                 hitSlop={8}
@@ -915,17 +880,6 @@ export default function DocumentsScreen({
                 }}
               >
                 <GlassIcon name={searchOpen ? 'close-outline' : 'search-outline'} size={24} />
-              </Pressable>
-              <View style={styles.sideIslandDivider} />
-              {/* Sort sits with the other two ways of looking at the
-                  list - search and the menu - rather than alone lower
-                  down. */}
-              <Pressable hitSlop={8} onPress={() => setSortMenuOpen((v) => !v)}>
-                <GlassIcon name="filter-outline" size={24} />
-              </Pressable>
-              <View style={styles.sideIslandDivider} />
-              <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-                <GlassIcon name="ellipsis-horizontal-outline" size={24} />
               </Pressable>
             </GlassDrop>
           </View>
@@ -1353,13 +1307,31 @@ export default function DocumentsScreen({
         {isFocused && !searchingAlone && !(isTwoPane && !!openDoc && paneFullscreen) && (
           <RailCapsule
             side={railSide}
-            bottom={rail.actionsBottom}
+            bottom={rail.historyBottom}
             buttons={[
               {
                 icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
                 onPress: toggleSelectMode,
                 active: isSelectMode,
               },
+            ]}
+          />
+        )}
+        {/* How this list is DRAWN: its shape, and its order. One question
+            in two halves, so they stand together - and in the same place
+            they stand on every other database. The view switch was a
+            section of a menu; a shape you change while looking at the
+            result belongs where you can see the result change. */}
+        {isFocused && !searchingAlone && !(isTwoPane && !!openDoc && paneFullscreen) && (
+          <RailCapsule
+            side={railSide}
+            bottom={rail.extraBottom}
+            buttons={[
+              {
+                icon: viewMode === 'grid' ? 'grid-outline' : 'reorder-four-outline',
+                onPress: () => changeViewMode(viewMode === 'grid' ? 'list' : 'grid'),
+              },
+              { icon: 'filter-outline', onPress: () => setSortMenuOpen((v) => !v), active: sortMenuOpen },
             ]}
           />
         )}
@@ -1379,7 +1351,8 @@ export default function DocumentsScreen({
               },
             })),
           ]}
-          style={{ position: 'absolute', right: RAIL_CLEARANCE, top: chromeTop + CAPSULE_DROP }}
+          // Beside the button that opens it, which is on the rail now.
+          style={{ position: 'absolute', right: RAIL_CLEARANCE, bottom: rail.extraBottom }}
         />
         {/* The create capsule: a new note, and in the explorer a new folder
             beside it - each glyph shows the plus ON the thing it adds, the
