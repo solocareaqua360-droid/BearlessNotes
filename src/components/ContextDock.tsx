@@ -67,10 +67,12 @@ export default function ContextDock() {
   // have no path (or both have a path) never changed it, so the stack
   // stayed on whichever card it had been left on. That is the
   // randomness the user reported - "ніколи не знаєш, як воно буде".
-  const hasContext = !!dock;
-  useEffect(() => {
-    if (hasContext) setFace('context');
-  }, [hasContext]);
+  // Back to where-you-are when the SCREEN changes - which desk, which
+  // database, which shape - rather than only when a context appears.
+  // Now that the desks are a context too, "a context arrived" is almost
+  // always true and would never have reset anything.
+  const contextKey = dock ? `${dock.kind}:${dock.icon}` : '';
+  useEffect(() => setFace('context'), [contextKey]);
   // What is actually drawn. A context always wins the front unless the
   // swipe asked otherwise; with no context there is only one card to
   // show, so there is nothing to be uncertain about.
@@ -118,6 +120,7 @@ export default function ContextDock() {
 
   const trail = dock?.kind === 'path' ? dock : null;
   const strip = dock?.kind === 'strip' ? dock : null;
+  const desks = dock?.kind === 'desks' ? dock : null;
   const trailRef = useRef<ScrollView>(null);
   const stripRef = useRef<ScrollView>(null);
 
@@ -175,8 +178,14 @@ export default function ContextDock() {
     if (strip) return setHidden(true);
     leave?.onLeave();
   };
-  const showBead = !!strip || (!dock && !!leave);
-  const icon = ((dock?.icon ?? leave?.icon) as keyof typeof Ionicons.glyphMap) ?? 'ellipse-outline';
+  // The bead shows only where it has a job nobody else has: at a
+  // database's root, where it leaves the database, and on the calendar,
+  // which has no root to walk to and is simply put away. Inside folders
+  // the first crumb already goes to the root, and two buttons for one
+  // job is what the user rightly refused.
+  const showBead = !!strip || (!trail && !!leave);
+  // What the bead carries: the thing it is LEAVING, when there is one.
+  const icon = ((leave?.icon ?? dock?.icon) as keyof typeof Ionicons.glyphMap) ?? 'ellipse-outline';
 
   return (
     <GlassPortal>
@@ -203,6 +212,77 @@ export default function ContextDock() {
                 style={[styles.behind, showing === 'context' ? styles.faceActions : styles.faceContext]}
               />
             )}
+
+          {showing === 'context' && desks && (
+            desks.collapsed ? (
+              // The dots a home screen uses to say which page you are on
+              // - still a way to get there, and still what "collapsed"
+              // has meant here since the user first asked for it.
+              <GlassDrop style={styles.dotsShell}>
+                <Pressable
+                  style={styles.dotsRow}
+                  onLongPress={desks.onToggleCollapsed}
+                  delayLongPress={400}
+                >
+                  {desks.desks.map((desk) => (
+                    <Pressable
+                      key={desk.key}
+                      hitSlop={6}
+                      onPress={desk.onPress}
+                      onLongPress={desks.onToggleCollapsed}
+                      delayLongPress={400}
+                    >
+                      <View
+                        style={[
+                          styles.dot,
+                          { backgroundColor: desk.active ? theme.glass.ink : theme.glass.inkMuted },
+                          desk.active && styles.dotActive,
+                        ]}
+                      />
+                    </Pressable>
+                  ))}
+                </Pressable>
+              </GlassDrop>
+            ) : (
+              <GlassDrop style={[styles.shell, styles.faceContext]}>
+                <Pressable
+                  style={styles.actionRow}
+                  onLongPress={desks.onToggleCollapsed}
+                  delayLongPress={400}
+                >
+                  {desks.desks.map((desk) => (
+                    <Pressable
+                      key={desk.key}
+                      onPress={desk.onPress}
+                      onLongPress={desks.onToggleCollapsed}
+                      delayLongPress={400}
+                    >
+                      {desk.active ? (
+                        // A lens over the bar, not a pane: the tab you
+                        // are on, marked the way this dock marks
+                        // everything you are on.
+                        <GlassDrop style={styles.actionButton} lift="none" blurAmount={0} convex>
+                          <Ionicons
+                            name={desk.icon as keyof typeof Ionicons.glyphMap}
+                            size={24}
+                            color={theme.glass.ink}
+                          />
+                        </GlassDrop>
+                      ) : (
+                        <View style={styles.actionButton}>
+                          <Ionicons
+                            name={desk.icon as keyof typeof Ionicons.glyphMap}
+                            size={24}
+                            color={theme.glass.ink}
+                          />
+                        </View>
+                      )}
+                    </Pressable>
+                  ))}
+                </Pressable>
+              </GlassDrop>
+            )
+          )}
 
           {showing === 'context' && strip && (
             <GlassDrop style={[styles.shell, styles.faceContext]}>
@@ -441,6 +521,25 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  dotsShell: {
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+  },
+  dotActive: {
+    width: 8,
+    height: 8,
   },
   actionButtonActive: {
     backgroundColor: 'rgba(255,255,255,0.10)',

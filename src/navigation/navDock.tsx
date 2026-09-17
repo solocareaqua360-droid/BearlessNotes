@@ -34,9 +34,24 @@ export type DockStripItem = {
   marks?: DockMark[];
 };
 
+// The desks themselves, as a shape of the dock rather than a separate
+// bar. They used to be drawn by the tab bar, which meant that at a
+// database's ROOT - where there is no path - the dock was two different
+// components stacked on one another: the tab bar's desks and this one's
+// actions, neither aware of the other, and nothing to swipe between.
+// The desks are a card like any other now.
+export type DockDesk = { key: string; icon: string; active: boolean; onPress: () => void };
+
 // The shapes the dock can take. A new context adds a case here and a
 // publisher on its own screen; nothing else in the app has to know.
 export type DockContext =
+  | {
+      kind: 'desks';
+      icon: string;
+      desks: DockDesk[];
+      collapsed: boolean;
+      onToggleCollapsed: () => void;
+    }
   | {
       kind: 'path';
       // What this database IS - drawn in the bead that leads out of the
@@ -105,6 +120,11 @@ export type DockBead = {
 };
 
 type Value = {
+  // What the dock falls back to when no screen has anything more
+  // specific to say: the desks. A path or a calendar takes the front
+  // while it exists; putting one away lands here rather than nowhere.
+  base: DockContext | null;
+  publishBase: (base: DockContext | null) => void;
   context: DockContext | null;
   actions: DockAction[] | null;
   publishActions: (actions: DockAction[] | null) => void;
@@ -198,6 +218,18 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
   const publishBeads = useCallback((next: { left: DockBead | null; right: DockBead | null }) => {
     setBeads((prev) => (beadSignature(prev) === beadSignature(next) ? prev : next));
   }, []);
+  const [base, setBase] = useState<DockContext | null>(null);
+  const publishBase = useCallback((next: DockContext | null) => {
+    setBase((prev) => {
+      if (prev === next) return prev;
+      if (!prev || !next || prev.kind !== 'desks' || next.kind !== 'desks') return next;
+      const same =
+        prev.collapsed === next.collapsed &&
+        prev.desks.length === next.desks.length &&
+        prev.desks.every((d, i) => d.key === next.desks[i].key && d.active === next.desks[i].active);
+      return same && prev.onToggleCollapsed === next.onToggleCollapsed ? prev : next;
+    });
+  }, []);
   const [hidden, setHidden] = useState(false);
   // A new context is a new question, so a context stepped out of does not
   // stay stepped out of once you have gone somewhere else.
@@ -205,6 +237,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
   useEffect(() => setHidden(false), [contextKey]);
   const value = useMemo(
     () => ({
+      base,
+      publishBase,
       context,
       publish,
       actions,
@@ -219,6 +253,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       setHidden,
     }),
     [
+      base,
+      publishBase,
       context,
       publish,
       actions,
@@ -238,8 +274,11 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
 // What the dock reads. Null where nothing has been wrapped.
 export function useNavDockContext(): DockContext | null {
   const value = useContext(NavDockContext);
-  if (!value || value.hidden) return null;
-  return value.context;
+  if (!value) return null;
+  // Putting a context away does not empty the dock - it falls back to
+  // the desks, which is what "away" meant all along.
+  if (value.hidden) return value.base;
+  return value.context ?? value.base;
 }
 
 // Whether a context is actually ON SCREEN. This is what the desks ask
@@ -333,4 +372,20 @@ export function useDockBeads(left: DockBead | null, right: DockBead | null) {
 
 export function useNavDockBeads() {
   return useContext(NavDockContext)?.beads ?? { left: null, right: null };
+}
+
+// The desks, published by the tab bar - see DockDesk.
+export function useDockBase(base: DockContext | null) {
+  const publish = useContext(NavDockContext)?.publishBase;
+  const ref = useRef(base);
+  ref.current = base;
+  const signature =
+    base?.kind === 'desks'
+      ? `${base.collapsed}|${base.desks.map((d) => `${d.key}:${d.active ? 1 : 0}`).join(',')}`
+      : '';
+  useEffect(() => {
+    if (!publish) return;
+    publish(ref.current);
+    return () => publish(null);
+  }, [publish, signature]);
 }
