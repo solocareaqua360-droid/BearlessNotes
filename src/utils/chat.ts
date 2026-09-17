@@ -1,5 +1,6 @@
 import { collection, deleteDoc, doc, onSnapshot, updateDoc } from '../firestore';
 import { addDoc, ownedQuery } from './owned';
+import { ChatAttachment } from './chatAttach';
 import { db } from '../firebase';
 
 // «Загальний чат» - the capture inbox. Its whole reason is the cost of
@@ -23,14 +24,27 @@ export type ChatMessage = {
   // note, see createTaskInToday). Same idea as usedIn: the message says
   // what it became and can take you there.
   tasks?: Record<string, string>;
+  // A photo, a video, a link or a geo point. Whatever it is, it is
+  // ALREADY a record in its own database (see chatAttach) - this is a
+  // pointer to it, so the chat and «Зображення» show one picture.
+  attachment?: ChatAttachment;
 };
 
 const chatCollection = collection(db, 'chat');
 
-export async function sendChatMessage(text: string): Promise<string | null> {
+export async function sendChatMessage(
+  text: string,
+  attachment?: ChatAttachment | null
+): Promise<string | null> {
   const trimmed = text.trim();
-  if (!trimmed) return null;
-  const ref = await addDoc(chatCollection, { text: trimmed, createdAt: Date.now() });
+  // An attachment is a whole message on its own - a photo with nothing
+  // said about it is still a thought caught.
+  if (!trimmed && !attachment) return null;
+  const ref = await addDoc(chatCollection, {
+    text: trimmed,
+    createdAt: Date.now(),
+    ...(attachment ? { attachment } : {}),
+  });
   return ref.id;
 }
 
@@ -51,6 +65,7 @@ export function watchChat(
           createdAt: (d.data().createdAt as number) ?? 0,
           usedIn: d.data().usedIn as Record<string, string> | undefined,
           tasks: d.data().tasks as Record<string, string> | undefined,
+          attachment: d.data().attachment as ChatAttachment | undefined,
         }))
         .sort((a, b) => a.createdAt - b.createdAt);
       onMessages(messages);

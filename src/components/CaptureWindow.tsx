@@ -10,6 +10,9 @@ import GlassLayer from './GlassLayer';
 import { GLASS_BODY_BLURRED, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED, SHEET_WINDOW } from '../constants/glass';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 import { sendChatMessage } from '../utils/chat';
+import { ChatAttachment, attachLinkToChat, pickMediaForChat } from '../utils/chatAttach';
+import * as Clipboard from 'expo-clipboard';
+import { Image } from 'react-native';
 import { hapticButtonDown } from '../utils/haptics';
 import { useTheme } from '../theme/ThemeProvider';
 
@@ -35,6 +38,12 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
   const [listening, setListening] = useState(false);
   const [typing, setTyping] = useState(false);
   const [trouble, setTrouble] = useState<string | null>(null);
+  // One thing at a time: a message carries a photo, a video or a link -
+  // and the record for it is already written by the time it is shown here
+  // (see chatAttach), so the picture in the chat IS the one in its
+  // database.
+  const [attachment, setAttachment] = useState<ChatAttachment | null>(null);
+  const [attaching, setAttaching] = useState(false);
   const inputRef = useRef<TextInput>(null);
   // What the recogniser has heard so far in THIS run. Kept apart from
   // `text` so that a second run appends rather than replacing what the
@@ -47,6 +56,7 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
       if (!open) return;
       setText('');
       committed.current = '';
+      setAttachment(null);
       setTrouble(null);
       setTyping(false);
       setVisible(true);
@@ -121,8 +131,41 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
 
   async function send() {
     const toSend = text;
+    const withIt = attachment;
     close();
-    await sendChatMessage(toSend);
+    await sendChatMessage(toSend, withIt);
+  }
+
+  async function attachMedia() {
+    setAttaching(true);
+    try {
+      const picked = await pickMediaForChat();
+      if (picked) setAttachment(picked);
+    } catch (e) {
+      setTrouble((e as Error).message);
+    } finally {
+      setAttaching(false);
+    }
+  }
+
+  // A link comes off the clipboard, because that is where a link always
+  // is at the moment you want to keep it. Which of the three databases it
+  // lands in - посилання, геоточка or відео - the URL decides by itself.
+  async function attachLink() {
+    setAttaching(true);
+    try {
+      const fromClipboard = (await Clipboard.getStringAsync()).trim();
+      if (!/^https?:\/\//i.test(fromClipboard)) {
+        setTrouble('У буфері немає посилання - скопіюйте його спершу');
+        return;
+      }
+      const link = await attachLinkToChat(fromClipboard);
+      if (link) setAttachment(link);
+    } catch (e) {
+      setTrouble((e as Error).message);
+    } finally {
+      setAttaching(false);
+    }
   }
 
   // The button breathes while it is listening, so there is never a doubt
@@ -166,7 +209,48 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
             showSoftInputOnFocus={typing}
           />
 
+          {!!attachment && (
+            <View style={styles.attached}>
+              {attachment.kind === 'photo' ? (
+                <Image source={{ uri: attachment.uri }} style={styles.attachedThumb} />
+              ) : (
+                <View style={[styles.attachedThumb, styles.attachedIcon]}>
+                  <Ionicons
+                    name={
+                      attachment.kind === 'file'
+                        ? 'videocam-outline'
+                        : attachment.siteName === 'Геоточка'
+                          ? 'location-outline'
+                          : 'link-outline'
+                    }
+                    size={20}
+                    color={GLASS_TEXT_MUTED}
+                  />
+                </View>
+              )}
+              <Text style={styles.attachedLabel} numberOfLines={2}>
+                {attachment.kind === 'link'
+                  ? attachment.title || attachment.url
+                  : attachment.kind === 'file'
+                    ? attachment.name
+                    : 'Зображення'}
+              </Text>
+              <Pressable hitSlop={8} onPress={() => setAttachment(null)}>
+                <Ionicons name="close" size={18} color={GLASS_TEXT_MUTED} />
+              </Pressable>
+            </View>
+          )}
+
           {!!trouble && <Text style={styles.trouble}>{trouble}</Text>}
+
+          <View style={styles.attachRow}>
+            <Pressable hitSlop={8} style={styles.attachButton} disabled={attaching} onPress={attachMedia}>
+              <Ionicons name="image-outline" size={20} color={GLASS_TEXT_MUTED} />
+            </Pressable>
+            <Pressable hitSlop={8} style={styles.attachButton} disabled={attaching} onPress={attachLink}>
+              <Ionicons name="link-outline" size={20} color={GLASS_TEXT_MUTED} />
+            </Pressable>
+          </View>
 
           <View style={styles.row}>
             <Pressable
@@ -201,14 +285,14 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
 
             <Pressable
               hitSlop={8}
-              disabled={!text.trim()}
-              style={[styles.sideButton, !text.trim() && styles.sideButtonOff]}
+              disabled={!text.trim() && !attachment}
+              style={[styles.sideButton, !text.trim() && !attachment && styles.sideButtonOff]}
               onPress={send}
             >
               <Ionicons
                 name="arrow-up"
                 size={22}
-                color={text.trim() ? theme.accent : GLASS_TEXT_FAINT}
+                color={text.trim() || attachment ? theme.accent : GLASS_TEXT_FAINT}
               />
             </Pressable>
           </View>
@@ -263,6 +347,45 @@ const styles = StyleSheet.create({
     fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_MUTED,
     marginTop: 6,
+  },
+  attached: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 8,
+    padding: 8,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+  },
+  attachedThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  attachedIcon: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachedLabel: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 13,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT_MUTED,
+  },
+  attachRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 10,
+  },
+  attachButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.07)',
   },
   row: {
     flexDirection: 'row',
