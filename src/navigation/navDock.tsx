@@ -85,13 +85,31 @@ export type DockAction = {
   key: string;
   icon: string;
   onPress: () => void;
+  onLongPress?: () => void;
   active?: boolean;
+  // A small glyph over the icon's corner - "the plus ON the thing it
+  // adds", which is how this app has drawn creation since the user asked
+  // for it.
+  badge?: string;
+};
+
+// The two things that stay OUT of the stack, as beads either side of it.
+// Samsung's lock screen keeps its torch and its camera exactly so: what
+// never changes does not belong in a pile of cards that does.
+export type DockBead = {
+  icon: string;
+  onPress: () => void;
+  onLongPress?: () => void;
+  active?: boolean;
+  badge?: string;
 };
 
 type Value = {
   context: DockContext | null;
   actions: DockAction[] | null;
   publishActions: (actions: DockAction[] | null) => void;
+  beads: { left: DockBead | null; right: DockBead | null };
+  publishBeads: (beads: { left: DockBead | null; right: DockBead | null }) => void;
   leave: DockLeave | null;
   publishLeave: (leave: DockLeave | null) => void;
   publish: (context: DockContext | null) => void;
@@ -107,7 +125,12 @@ type Value = {
 const NavDockContext = createContext<Value | null>(null);
 
 function actionSignature(list: DockAction[] | null): string {
-  return list ? list.map((a) => `${a.key}:${a.icon}:${a.active ? 1 : 0}`).join('|') : '';
+  return list ? list.map((a) => `${a.key}:${a.icon}:${a.badge ?? ''}:${a.active ? 1 : 0}`).join('|') : '';
+}
+
+function beadSignature(beads: { left: DockBead | null; right: DockBead | null }): string {
+  const one = (b: DockBead | null) => (b ? `${b.icon}:${b.badge ?? ''}:${b.active ? 1 : 0}` : '-');
+  return `${one(beads.left)}/${one(beads.right)}`;
 }
 
 export function NavDockProvider({ children }: { children: ReactNode }) {
@@ -168,6 +191,13 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
   const publishActions = useCallback((next: DockAction[] | null) => {
     setActions((prev) => (actionSignature(prev) === actionSignature(next) ? prev : next));
   }, []);
+  const [beads, setBeads] = useState<{ left: DockBead | null; right: DockBead | null }>({
+    left: null,
+    right: null,
+  });
+  const publishBeads = useCallback((next: { left: DockBead | null; right: DockBead | null }) => {
+    setBeads((prev) => (beadSignature(prev) === beadSignature(next) ? prev : next));
+  }, []);
   const [hidden, setHidden] = useState(false);
   // A new context is a new question, so a context stepped out of does not
   // stay stepped out of once you have gone somewhere else.
@@ -179,6 +209,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       publish,
       actions,
       publishActions,
+      beads,
+      publishBeads,
       leave,
       publishLeave,
       targets,
@@ -186,7 +218,19 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       hidden,
       setHidden,
     }),
-    [context, publish, actions, publishActions, leave, publishLeave, targets, publishTargets, hidden]
+    [
+      context,
+      publish,
+      actions,
+      publishActions,
+      beads,
+      publishBeads,
+      leave,
+      publishLeave,
+      targets,
+      publishTargets,
+      hidden,
+    ]
   );
   return <NavDockContext.Provider value={value}>{children}</NavDockContext.Provider>;
 }
@@ -271,4 +315,22 @@ export function useDockActions(actions: DockAction[] | null) {
 
 export function useNavDockActions(): DockAction[] | null {
   return useContext(NavDockContext)?.actions ?? null;
+}
+
+// The two fixed beads either side of the stack - see DockBead.
+export function useDockBeads(left: DockBead | null, right: DockBead | null) {
+  const publish = useContext(NavDockContext)?.publishBeads;
+  const focused = useIsFocused();
+  const ref = useRef({ left, right });
+  ref.current = { left, right };
+  const signature = beadSignature({ left, right });
+  useEffect(() => {
+    if (!publish || !focused) return;
+    publish(ref.current);
+    return () => publish({ left: null, right: null });
+  }, [publish, focused, signature]);
+}
+
+export function useNavDockBeads() {
+  return useContext(NavDockContext)?.beads ?? { left: null, right: null };
 }

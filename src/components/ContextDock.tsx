@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useMemo, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,7 +9,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { hapticButtonDown } from '../utils/haptics';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { useNavDockActions, useNavDockContext, useNavDockHidden, useNavDockLeave, useNavDockTargets } from '../navigation/navDock';
+import { DockBead, useNavDockActions, useNavDockBeads, useNavDockContext, useNavDockHidden, useNavDockLeave, useNavDockTargets } from '../navigation/navDock';
 
 // The dock, when it is holding a CONTEXT rather than the four desks.
 //
@@ -33,6 +33,13 @@ const STRIP_MARK_ACCENT = '#60A5FA';
 // How much of the card behind is visible. Enough to know it is there,
 // not enough to argue with the one in front.
 const BEHIND_EDGE = 7;
+// TEMPORARY, FOR TESTING ONLY - the user's own request, and a fair one:
+// glass on glass on a dark screen is "каша", and a stack cannot be
+// judged when its two cards look identical. Blue is where-you-are, red
+// is what-you-can-do, both opaque. Replace with the real treatment once
+// the shape itself is settled.
+const FACE_CONTEXT = '#1D4ED8';
+const FACE_ACTIONS = '#B91C1C';
 
 export default function ContextDock() {
   const theme = useTheme();
@@ -49,25 +56,53 @@ export default function ContextDock() {
   // one shows only an EDGE, both are the same size in the same place,
   // and whatever stands beside the stack does not move at all.
   const actions = useNavDockActions();
+  // What never changes stands beside the stack and does not move: search
+  // on the left, creating on the right. The user's own arrangement, and
+  // Samsung's own reasoning - a pile of cards is for what changes.
+  const beads = useNavDockBeads();
   const [face, setFace] = useState<'context' | 'actions'>('context');
-  // A new screen is a new question: always open on where you are.
-  const contextKind = dock?.kind ?? '';
-  useEffect(() => setFace('context'), [contextKind]);
+  // Back to where-you-are whenever a context arrives - changing screen,
+  // or stepping into folders from a root that had none. Watching the
+  // context's KIND was not enough: moving between two screens that both
+  // have no path (or both have a path) never changed it, so the stack
+  // stayed on whichever card it had been left on. That is the
+  // randomness the user reported - "ніколи не знаєш, як воно буде".
+  const hasContext = !!dock;
+  useEffect(() => {
+    if (hasContext) setFace('context');
+  }, [hasContext]);
+  // What is actually drawn. A context always wins the front unless the
+  // swipe asked otherwise; with no context there is only one card to
+  // show, so there is nothing to be uncertain about.
+  const showing: 'context' | 'actions' = dock ? face : 'actions';
   const stacked = !!dock && !!actions?.length;
-  const showing = stacked ? face : dock ? 'context' : 'actions';
-  const flip = Gesture.Pan()
-    .enabled(stacked)
-    // Strictly vertical, and it gives up the moment it reads as
-    // sideways: the capsule under it scrolls horizontally (the days, the
-    // path), and that has to keep working.
-    .activeOffsetY([-12, 12])
-    .failOffsetX([-16, 16])
-    .runOnJS(true)
-    .onEnd((e) => {
-      if (Math.abs(e.translationY) < 12) return;
-      hapticButtonDown();
-      setFace(e.translationY < 0 ? 'actions' : 'context');
-    });
+  // ONE gesture, not a new one per render. A fresh Gesture object hands
+  // GestureDetector a new configuration on every render, and a gesture
+  // being reconfigured is a gesture that never activates - the same
+  // thing that stopped the reference drag dead two days ago. It was
+  // being rebuilt here on every render of a dock that re-renders
+  // constantly, which is why the swipe did not exist at all.
+  const swipe = useMemo(
+    () =>
+      Gesture.Pan()
+        // Strictly vertical, and it gives up the moment it reads as
+        // sideways: the capsule under it scrolls horizontally (the days,
+        // the path), and that has to keep working.
+        .activeOffsetY([-10, 10])
+        .failOffsetX([-16, 16])
+        .runOnJS(true)
+        .onEnd((e) => {
+          if (Math.abs(e.translationY) < 10) return;
+          const next = e.translationY < 0 ? 'actions' : 'context';
+          setFace((prev) => {
+            if (prev === next) return prev;
+            hapticButtonDown();
+            return next;
+          });
+        }),
+    []
+  );
+
   const [, setHidden] = useNavDockHidden();
   // A card being carried can step onto a crumb - the same registry the
   // folder rows use, handed up by whichever screen is carrying.
@@ -105,7 +140,7 @@ export default function ContextDock() {
     return () => clearTimeout(id);
   }, [stripIndex]);
 
-  if (!dock && !leave && !actions?.length) return null;
+  if (!dock && !leave && !actions?.length && !beads.left && !beads.right) return null;
 
   // The way out, as a bead of its own beside the pill rather than a
   // button inside it - the user's own call: inside, it read as an eighth
@@ -139,6 +174,7 @@ export default function ContextDock() {
     <GlassPortal>
       <View style={[styles.wrap, { bottom: NAV_BOTTOM + insets.bottom }]} pointerEvents="box-none">
         <View style={styles.row}>
+          {!!beads.left && <Bead bead={beads.left} theme={theme} />}
           {showBead && (
             <Pressable onPress={stepOut}>
               <GlassDrop style={styles.exitBead}>
@@ -148,16 +184,20 @@ export default function ContextDock() {
             </Pressable>
           )}
 
-          <GestureDetector gesture={flip}>
+          <GestureDetector gesture={swipe}>
           <View style={styles.stack}>
             {/* The card behind, seen as an EDGE and nothing more - a few
                 points of the same glass, a little narrower, so it reads
                 as BEHIND rather than beside. Empty on purpose: what a
                 stack's back card shows is that it is there. */}
-            {stacked && <GlassDrop style={styles.behind} />}
+            {stacked && (
+              <GlassDrop
+                style={[styles.behind, showing === 'context' ? styles.faceActions : styles.faceContext]}
+              />
+            )}
 
           {showing === 'context' && strip && (
-            <GlassDrop style={styles.shell}>
+            <GlassDrop style={[styles.shell, styles.faceContext]}>
               <ScrollView
                 ref={stripRef}
                 horizontal
@@ -215,7 +255,7 @@ export default function ContextDock() {
           )}
 
           {showing === 'context' && trail && (
-            <GlassDrop style={[styles.shell, styles.trailShell]}>
+            <GlassDrop style={[styles.shell, styles.trailShell, styles.faceContext]}>
               <View style={styles.trailRow}>
                 <ScrollView
                   ref={trailRef}
@@ -270,12 +310,13 @@ export default function ContextDock() {
           )}
 
           {showing === 'actions' && !!actions?.length && (
-            <GlassDrop style={styles.shell}>
+            <GlassDrop style={[styles.shell, styles.faceActions]}>
               <View style={styles.actionRow}>
                 {actions.map((action) => (
                   <Pressable
                     key={action.key}
                     onPress={action.onPress}
+                    onLongPress={action.onLongPress}
                     style={[styles.actionButton, action.active && styles.actionButtonActive]}
                   >
                     <Ionicons
@@ -283,6 +324,14 @@ export default function ContextDock() {
                       size={22}
                       color={action.active ? theme.accent : theme.glass.ink}
                     />
+                    {!!action.badge && (
+                      <Ionicons
+                        name={action.badge as keyof typeof Ionicons.glyphMap}
+                        size={12}
+                        color={theme.glass.ink}
+                        style={styles.badge}
+                      />
+                    )}
                   </Pressable>
                 ))}
               </View>
@@ -290,9 +339,34 @@ export default function ContextDock() {
           )}
           </View>
           </GestureDetector>
+          {!!beads.right && <Bead bead={beads.right} theme={theme} />}
         </View>
       </View>
     </GlassPortal>
+  );
+}
+
+// A bead: the same glass, the same height as a capsule, standing on its
+// own beside the stack.
+function Bead({ bead, theme }: { bead: DockBead; theme: ReturnType<typeof useTheme> }) {
+  return (
+    <Pressable onPress={bead.onPress} onLongPress={bead.onLongPress}>
+      <GlassDrop style={styles.bead}>
+        <Ionicons
+          name={bead.icon as keyof typeof Ionicons.glyphMap}
+          size={22}
+          color={bead.active ? theme.accent : theme.glass.ink}
+        />
+        {!!bead.badge && (
+          <Ionicons
+            name={bead.badge as keyof typeof Ionicons.glyphMap}
+            size={12}
+            color={theme.glass.ink}
+            style={styles.badge}
+          />
+        )}
+      </GlassDrop>
+    </Pressable>
   );
 }
 
@@ -331,9 +405,27 @@ const styles = StyleSheet.create({
   shell: {
     padding: NAV_PADDING,
   },
+  // TEMPORARY - see FACE_CONTEXT/FACE_ACTIONS.
+  faceContext: {
+    backgroundColor: FACE_CONTEXT,
+  },
+  faceActions: {
+    backgroundColor: FACE_ACTIONS,
+  },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  bead: {
+    width: NAV_BUTTON + NAV_PADDING * 2,
+    height: NAV_BUTTON + NAV_PADDING * 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badge: {
+    position: 'absolute',
+    right: 8,
+    bottom: 8,
   },
   actionButton: {
     width: NAV_BUTTON,
