@@ -238,8 +238,17 @@ export default function DatabaseChrome<T extends { id: string }>({
         )
       ) ?? RUNGS[RUNGS.length - 1]
     : { arrows: 'none' as const, selectOwn: true };
-  const ownHistory = rung.arrows === 'own';
-  const showArrows = rung.arrows !== 'none';
+  // Back and forward through the folders you have been in are GONE from
+  // the rail. Their own comment said what they were for - "so the hand
+  // need not reach for the path strip at the top" - and there is no strip
+  // at the top any more: the path is in the dock, under the thumb, and
+  // every level of it is one press away. A control kept for a reach
+  // nobody makes is a control to delete.
+  //
+  // The rung system still counts a slot for them where a tall screen
+  // would have had one; that only makes it more generous than it needs to
+  // be, never less.
+  const ownHistory = false;
   const actionsHeight = rungActions(rung);
   const rail = useRail(
     topHeight,
@@ -309,22 +318,6 @@ export default function DatabaseChrome<T extends { id: string }>({
             side={railSide}
             bottom={ownHistory || rung.selectOwn ? rail.extraBottom : rail.actionsBottom}
             buttons={[
-              // Only when they could not have a capsule of their own, and
-              // only while this rung still carries them at all.
-              ...(showArrows && !ownHistory && explorer
-                ? [
-                    {
-                      icon: 'chevron-back-outline' as const,
-                      onPress: explorer.onBack,
-                      disabled: !explorer.canBack,
-                    },
-                    {
-                      icon: 'chevron-forward-outline' as const,
-                      onPress: explorer.onForward,
-                      disabled: !explorer.canForward,
-                    },
-                  ]
-                : []),
               ...(shape
                 ? [
                     {
@@ -334,18 +327,6 @@ export default function DatabaseChrome<T extends { id: string }>({
                   ]
                 : []),
               { icon: 'filter-outline', onPress: () => setSortMenuOpen((v) => !v), active: sortMenuOpen },
-            ]}
-          />
-        )}
-        {/* Back and forward through the folders you have been in, so the
-            hand need not reach for the path strip at the top. */}
-        {isFocused && !searchingAlone && ownHistory && !!explorer && (
-          <RailCapsule
-            side={railSide}
-            bottom={rail.historyBottom}
-            buttons={[
-              { icon: 'chevron-back-outline', onPress: explorer.onBack, disabled: !explorer.canBack },
-              { icon: 'chevron-forward-outline', onPress: explorer.onForward, disabled: !explorer.canForward },
             ]}
           />
         )}

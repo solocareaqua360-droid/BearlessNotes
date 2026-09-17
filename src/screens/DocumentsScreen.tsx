@@ -431,7 +431,10 @@ export default function DocumentsScreen({
   // other, and leaving it belongs under the thumb with the rest - see
   // ContextDock. The tab's own copy has nowhere to go back to.
   useDockLeave('document-text-outline', () => navigation.goBack(), !!standalone);
-  const arrowsFit = explorer.active && railFits(railFree, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT, CAPSULE_HEIGHT);
+  // The folder back/forward arrows are gone from the rail - the dock
+  // carries the path now, and every level of it is one press away. The
+  // slot they used to need is simply not asked for.
+  const arrowsFit = false;
   const rail = useRail(
     topCapsuleHeight,
     CAPSULE_HEIGHT_1,
@@ -1406,18 +1409,6 @@ export default function DocumentsScreen({
                     },
                   ]
                 : []),
-            ]}
-          />
-        )}
-        {/* Back and forward through the folders you have been in - so the
-            hand need not reach for the path strip at the top. */}
-        {arrowsFit && isFocused && !isSelectMode && !searchingAlone && !(isTwoPane && !!openDoc && paneFullscreen) && (
-          <RailCapsule
-            side={railSide}
-            bottom={rail.historyBottom}
-            buttons={[
-              { icon: 'chevron-back-outline', onPress: explorer.back, disabled: !explorer.historyState.canBack },
-              { icon: 'chevron-forward-outline', onPress: explorer.forward, disabled: !explorer.historyState.canForward },
             ]}
           />
         )}
