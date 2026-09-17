@@ -103,6 +103,7 @@ export type DockLeave = { icon: string; onLeave: () => void };
 // its cards.
 export type DockAction = {
   key: string;
+  // An Ionicons name, or "mc:<name>" for a MaterialCommunityIcons one.
   icon: string;
   onPress: () => void;
   // Done in one press, so the stack goes back to where-you-are by

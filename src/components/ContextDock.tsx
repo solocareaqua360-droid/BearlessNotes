@@ -1,7 +1,7 @@
 import { ReactNode, useMemo, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleProp, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import Svg, { Circle } from 'react-native-svg';
@@ -625,11 +625,23 @@ export default function ContextDock() {
                     onLongPress={action.onLongPress}
                     style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: DESK / 2 }, action.active && styles.actionButtonActive]}
                   >
-                    <Ionicons
-                      name={action.icon as keyof typeof Ionicons.glyphMap}
-                      size={21}
-                      color={action.active ? theme.accent : theme.glass.ink}
-                    />
+                    {/* An "mc:" prefix names a MaterialCommunityIcons
+                        glyph instead - the board's three canvas tools are
+                        drawn there and nowhere else, and their icons are
+                        what the user already knows them by. */}
+                    {action.icon.startsWith('mc:') ? (
+                      <MaterialCommunityIcons
+                        name={action.icon.slice(3) as keyof typeof MaterialCommunityIcons.glyphMap}
+                        size={21}
+                        color={action.active ? theme.accent : theme.glass.ink}
+                      />
+                    ) : (
+                      <Ionicons
+                        name={action.icon as keyof typeof Ionicons.glyphMap}
+                        size={21}
+                        color={action.active ? theme.accent : theme.glass.ink}
+                      />
+                    )}
                     {!!action.badge && (
                       <Ionicons
                         name={action.badge as keyof typeof Ionicons.glyphMap}

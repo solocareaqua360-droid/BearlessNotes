@@ -66,8 +66,6 @@ import {
 } from '../utils/boardLayout';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import RenamePrompt from '../components/RenamePrompt';
-import GlassDrop, { GlassIcon } from '../components/GlassDrop';
-import RailCapsule from '../components/RailCapsule';
 import VideoPlayerModal from '../components/VideoPlayerModal';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
@@ -82,7 +80,6 @@ import { useGroupItems } from '../hooks/useGroupItems';
 import { importGroupToBoard } from '../utils/importGroupToBoard';
 import { Group } from '../types';
 import DocumentEditorScreen from './DocumentEditorScreen';
-import { useRail } from '../hooks/useRail';
 import { useCanvasWheel } from '../hooks/useCanvasWheel';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { useContextMenu } from '../hooks/useContextMenu';
@@ -92,9 +89,9 @@ import { GLASS_ISLAND, GLASS_TEXT_FAINT, SHEET_BACKDROP, SHEET_WINDOW } from '..
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
-import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
-import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT } from '../constants/rail';
+import { NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
+import { useDockActions, useDockBeads, useDockLeave } from '../navigation/navDock';
 import { ask, confirm } from '../components/surfaces/Ask';
 
 const AUTOSAVE_DELAY_MS = 600;
@@ -109,6 +106,9 @@ const STICKY_COLORS = ['#FEF3C7', '#DBEAFE', '#DCFCE7', '#FCE7F3', '#EDE9FE', '#
 // for hit-testing the marquee-selection rectangle against, not meant to be
 // pixel-exact.
 const SELECTION_COLOR = '#2563EB';
+// The foot the selection bar keeps clear for the dock - the same
+// reckoning DatabaseChrome makes.
+const DOCK_CLEAR = NAV_BOTTOM + NAV_BUTTON + NAV_PADDING * 2 + 12;
 // Kanban columns. A column is exactly wide enough for a default card plus
 // its own padding on both sides, so a card dropped in sits flush.
 // A column with nothing in it still has to be a visible drop target.
@@ -1040,7 +1040,6 @@ export default function BoardScreen() {
   // than that fixed number to keep either from sitting partly behind it.
   // Same fix as BulkActionBar's own bottom offset.
   const bottomInset = useSafeAreaInsets().bottom;
-  const rail = useRail();
   const boardBlurTarget = useBlurTarget();
 
   const [title, setTitle] = useState('');
@@ -2428,6 +2427,38 @@ export default function BoardScreen() {
     (c) => selectedCardIds.has(c.fromCardId) || selectedCardIds.has(c.toCardId)
   );
 
+  // The board's own chrome goes on the DOCK, as on every other screen:
+  // the way out, a card on the right, and the canvas tool on the stack's
+  // second card. The top capsule and the floating "+" are what that
+  // replaces - and the rail's width comes back to a screen that is
+  // nothing BUT width.
+  useDockLeave('easel-outline', () => navigation.goBack());
+  useDockBeads(
+    null,
+    boardFocused && selectedCardIds.size === 0
+      ? { icon: 'add-outline', onPress: () => setAddSheetVisible(true) }
+      : null
+  );
+  useDockActions(
+    boardFocused
+      ? [
+          {
+            // One button cycling move -> select -> connect, each with its
+            // own icon, as it was in the capsule.
+            key: 'tool',
+            icon:
+              canvasTool === 'select'
+                ? 'mc:selection-drag'
+                : canvasTool === 'connect'
+                  ? 'mc:vector-line'
+                  : 'mc:cursor-move',
+            active: canvasTool !== 'move',
+            onPress: toggleCanvasTool,
+          },
+        ]
+      : null
+  );
+
   return (
     <View style={styles.splitRoot}>
       {/* The board keeps every pixel it had until a document is opened
@@ -2572,7 +2603,7 @@ export default function BoardScreen() {
         </GestureDetector>
 
         {/* Only the board's name stays up here - it needs the width. The
-            way back and the tool button stand on the rail with everything
+            way back and the tool button stand on the dock with everything
             else. */}
         <View style={styles.headerRow} pointerEvents="box-none">
           <Pressable style={styles.titleTap} onPress={() => setRenamingTitle(true)}>
@@ -2582,47 +2613,13 @@ export default function BoardScreen() {
           </Pressable>
         </View>
 
-        {/* Through the portal, where a blur is safe - drawn inside this
-            screen it would be blurring a picture it is part of, which is
-            what took this board down twice. */}
-        {boardFocused && (
-          <GlassPortal>
-            <View
-              style={[styles.railWrap, { top: boardInsets.top + CHROME_TOP + CAPSULE_DROP }]}
-              pointerEvents="box-none"
-            >
-              <GlassDrop style={styles.boardCapsule}>
-                <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-                  <GlassIcon name="arrow-back-outline" size={24} />
-                </Pressable>
-                <View style={styles.boardCapsuleDivider} />
-                {/* One button cycling move -> select -> connect, each with
-                    its own icon, rather than three crowding the rail. */}
-                <Pressable onPress={toggleCanvasTool} hitSlop={8}>
-                  <MaterialCommunityIcons
-                    name={
-                      canvasTool === 'select'
-                        ? 'selection-drag'
-                        : canvasTool === 'connect'
-                          ? 'vector-line'
-                          : 'cursor-move'
-                    }
-                    size={24}
-                    color={canvasTool !== 'move' ? SELECTION_COLOR : '#fff'}
-                  />
-                </Pressable>
-              </GlassDrop>
-            </View>
-          </GlassPortal>
-        )}
-
         {selectedCardIds.size > 0 ? (
           // Compact, content-hugging, centred capsule - same look as the
           // shared BulkActionBar component (Documents/Files/Photos/Links'
           // own multi-select bar), kept local rather than reusing that
           // component directly since its action set (tag/group/copy)
           // doesn't apply to board cards.
-          <View style={[styles.selectionBarWrap, { bottom: rail.addBottom }]} pointerEvents="box-none">
+          <View style={[styles.selectionBarWrap, { bottom: DOCK_CLEAR + bottomInset }]} pointerEvents="box-none">
             <View style={styles.selectionBarCapsule}>
               <Text style={styles.selectionBarCount}>{selectedCardIds.size}</Text>
               <View style={styles.selectionBarDivider} />
@@ -2688,13 +2685,7 @@ export default function BoardScreen() {
               </Pressable>
             </View>
           </View>
-        ) : (
-          <RailCapsule
-            bottom={rail.addBottom}
-            tint={ACCENT_GLASS}
-            buttons={[{ icon: 'add-outline', size: 28, onPress: () => setAddSheetVisible(true) }]}
-          />
-        )}
+        ) : null}
 
         {/* «Меню», where the right button was pressed. Every row calls
             exactly what the selection bar calls - the card is selected
@@ -3143,7 +3134,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 56,
     left: 20,
-    right: RAIL_CLEARANCE,
+    right: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -3234,24 +3225,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: FONT_REGULAR,
     color: '#9CA3AF',
-  },
-  railWrap: {
-    position: 'absolute',
-    right: RAIL_RIGHT,
-    alignItems: 'center',
-  },
-  // Stood on its end, like every other screen's.
-  // The room inside the capsule; the glass is GlassDrop's.
-  boardCapsule: {
-    alignItems: 'center',
-    gap: 18,
-    paddingVertical: 18,
-    paddingHorizontal: 19,
-  },
-  boardCapsuleDivider: {
-    width: 20,
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.3)',
   },
   // Same compact, content-hugging dark-glass pill as the shared
   // BulkActionBar component (Documents/Files/Photos/Links' own
