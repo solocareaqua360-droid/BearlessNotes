@@ -106,11 +106,17 @@ export default function ContextDock() {
   // The row's width is SAID, not left to flex: it was settling at
   // three-quarters of the screen and nobody could tell why.
   const rowWidth = screenW - EDGE_INSET * 2;
+  // Every radius is SAID as half the size, never left as 999. Android
+  // works a "999" out from the size it knows at the moment it draws the
+  // background, and on the first frame that size was not there yet -
+  // the "you are here" disc came up a square with rounded corners and
+  // stayed one until the next render happened to redraw it (the first
+  // swipe). Half of a number the view already has cannot be early.
   const dims = {
-    bead: { width: BEAD, height: BEAD },
-    card: { height: CARD_H },
-    button: { width: CARD_BUTTON, height: CARD_BUTTON },
-    rowHeight: { height: CARD_BUTTON },
+    bead: { width: BEAD, height: BEAD, borderRadius: BEAD / 2 },
+    card: { height: CARD_H, borderRadius: CARD_H / 2 },
+    button: { width: CARD_BUTTON, height: CARD_BUTTON, borderRadius: CARD_BUTTON / 2 },
+    rowHeight: { height: CARD_BUTTON, borderRadius: CARD_BUTTON / 2 },
   };
   const insets = useSafeAreaInsets();
   // Three cards, and they are three because of the one thing a
@@ -310,7 +316,7 @@ export default function ContextDock() {
           {beads.left ? <Bead bead={beads.left} theme={theme} size={BEAD} /> : <View style={[styles.beadSlot, dims.bead]} />}
           {showBead && (
             <Pressable onPress={stepOut}>
-              <GlassDrop style={[styles.exitBead, { height: BEAD }]} {...FLAT} glassBody={glassBody}>
+              <GlassDrop style={[styles.exitBead, { height: BEAD }]} radius={BEAD / 2} {...FLAT} glassBody={glassBody}>
                 <Ionicons name="chevron-back" size={11} color={theme.glass.inkMuted} />
                 <Ionicons name={icon} size={20} color={theme.glass.ink} />
               </GlassDrop>
@@ -343,6 +349,7 @@ export default function ContextDock() {
                         styles.behind,
                         {
                           height: CARD_H,
+                          borderRadius: CARD_H / 2,
                           top: -(CARD_H - BEHIND_EDGE * (i + 1)),
                           left: BEHIND_INSET * (i + 1),
                           right: BEHIND_INSET * (i + 1),
@@ -360,7 +367,7 @@ export default function ContextDock() {
               // The dots a home screen uses to say which page you are on
               // - still a way to get there, and still what "collapsed"
               // has meant here since the user first asked for it.
-              <GlassDrop style={[styles.dotsShell, dims.card]} {...FLAT} glassBody={glassBody}>
+              <GlassDrop style={[styles.dotsShell, dims.card]} radius={CARD_H / 2} {...FLAT} glassBody={glassBody}>
                 <Pressable
                   style={styles.dotsRow}
                   onLongPress={desks.onToggleCollapsed}
@@ -386,7 +393,7 @@ export default function ContextDock() {
                 </Pressable>
               </GlassDrop>
             ) : (
-              <GlassDrop style={[styles.shell, dims.card]} {...FLAT} glassBody={glassBody}>
+              <GlassDrop style={[styles.shell, dims.card]} radius={CARD_H / 2} {...FLAT} glassBody={glassBody}>
                 <Pressable
                   style={[styles.actionRow, styles.spread]}
                   onLongPress={desks.onToggleCollapsed}
@@ -427,7 +434,7 @@ export default function ContextDock() {
           )}
 
           {showing === 'context' && strip && (
-            <GlassDrop style={[styles.shell, dims.card]} {...FLAT} glassBody={glassBody}>
+            <GlassDrop style={[styles.shell, dims.card]} radius={CARD_H / 2} {...FLAT} glassBody={glassBody}>
               <ScrollView
                 ref={stripRef}
                 horizontal
@@ -484,7 +491,7 @@ export default function ContextDock() {
           )}
 
           {showing === 'context' && trail && (
-            <GlassDrop style={[styles.shell, styles.trailShell, dims.card]} {...FLAT} glassBody={glassBody}>
+            <GlassDrop style={[styles.shell, styles.trailShell, dims.card]} radius={CARD_H / 2} {...FLAT} glassBody={glassBody}>
               <View style={[styles.trailRow, dims.rowHeight]}>
                 <ScrollView
                   ref={trailRef}
@@ -510,7 +517,7 @@ export default function ContextDock() {
                           // Where you are, in the lens the dock marks the
                           // desk you are on with. No target: a card is
                           // already here.
-                          <View style={[styles.trailCurrent, styles.here]}>
+                          <View style={[styles.trailCurrent, { borderRadius: CARD_BUTTON / 2 }, styles.here]}>
                             <Text
                               style={[styles.trailLabel, styles.trailLabelCurrent, { color: theme.glass.ink }]}
                               numberOfLines={1}
@@ -539,7 +546,7 @@ export default function ContextDock() {
           )}
 
           {showing === 'actions' && !!actions?.length && (
-            <GlassDrop style={[styles.shell, styles.actionsShell, dims.card]} {...FLAT} glassBody={glassBody}>
+            <GlassDrop style={[styles.shell, styles.actionsShell, dims.card]} radius={CARD_H / 2} {...FLAT} glassBody={glassBody}>
               {/* Scrolls, like the path does. A screen with five things
                   its list can be done TO is not a screen with a design
                   problem - the card simply holds what fits and the rest
@@ -592,7 +599,7 @@ export default function ContextDock() {
 function Bead({ bead, theme, size }: { bead: DockBead; theme: ReturnType<typeof useTheme>; size: number }) {
   return (
     <Pressable onPress={bead.onPress} onLongPress={bead.onLongPress}>
-      <GlassDrop style={[styles.bead, { width: size, height: size }]} {...FLAT} glassBody={frostFor(theme.key)}>
+      <GlassDrop style={[styles.bead, { width: size, height: size }]} radius={size / 2} {...FLAT} glassBody={frostFor(theme.key)}>
         <Ionicons
           name={bead.icon as keyof typeof Ionicons.glyphMap}
           size={21}
