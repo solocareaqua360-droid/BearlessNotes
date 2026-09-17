@@ -41,9 +41,15 @@ const STRIP_WIDTH = STRIP_ITEM * STRIP_VISIBLE;
 // The same blue the calendar's own history dot uses - a mark has to mean
 // the same thing in both places or it means nothing in either.
 const STRIP_MARK_ACCENT = '#60A5FA';
-// How much of the card behind is visible. Enough to know it is there,
-// not enough to argue with the one in front.
-const BEHIND_EDGE = 7;
+// How much of the card behind is visible. Samsung's own measure, read
+// off the user's screenshots: a HINT, two or three points, not a band.
+// At seven it read as a second capsule parked under the first rather
+// than as the same object with more of itself behind.
+const BEHIND_EDGE = 3;
+// How far each card behind is drawn in from the sides. Barely: the
+// edges nearly line up, which is what makes it one stack instead of
+// three pills of decreasing size.
+const BEHIND_INSET = 5;
 // TEMPORARY, FOR TESTING ONLY - the user's own request, and a fair one:
 // glass on glass on a dark screen is "каша", and a stack cannot be
 // judged when its two cards look identical. Blue is where-you-are, red
@@ -236,7 +242,7 @@ export default function ContextDock() {
           )}
 
           <GestureDetector gesture={swipe}>
-          <View style={styles.stack}>
+          <View style={[styles.stack, { paddingBottom: BEHIND_EDGE * behind }]}>
             {/* The card behind, seen as an EDGE and nothing more - a few
                 points of the same glass, a little narrower, so it reads
                 as BEHIND rather than beside. Empty on purpose: what a
@@ -248,7 +254,11 @@ export default function ContextDock() {
                 key={i}
                 style={[
                   styles.behind,
-                  { bottom: -(BEHIND_EDGE * i), left: 10 + i * 6, right: 10 + i * 6 },
+                  {
+                    bottom: -(BEHIND_EDGE * i),
+                    left: BEHIND_INSET * (i + 1),
+                    right: BEHIND_INSET * (i + 1),
+                  },
                   i === 0 ? styles.faceActions : styles.faceContext,
                 ]}
               />
@@ -540,8 +550,8 @@ const styles = StyleSheet.create({
     height: NAV_BUTTON + NAV_PADDING * 2,
   },
   stack: {
-    // Room under the front capsule for the cards behind it.
-    paddingBottom: BEHIND_EDGE * 2,
+    // Room under the front capsule for the cards behind it - exactly as
+    // many edges as there are, no more (set inline).
     // The one thing in the row allowed to shrink: the beads either side
     // keep their size, and the card between them takes what is left.
     // minWidth 0 because a flex child will not shrink below its content
