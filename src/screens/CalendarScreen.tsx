@@ -620,14 +620,24 @@ export default function CalendarScreen() {
   // animated down to 0 while writing, this border+padding stayed put as a
   // thin visible bar. Animating them down to 0 too here is what actually
   // makes the whole plate disappear.
-  const calendarPlateStyle = useAnimatedStyle(() => ({
-    opacity: visibleAmount.value,
-    // Padded out to the capsule's own height: 27 + the weekday header
-    // (22) + a row (40) + 32 + the border comes to the same 123.
-    paddingTop: 27 * visibleAmount.value,
-    paddingBottom: 32 * visibleAmount.value,
-    borderWidth: visibleAmount.value,
-  }));
+  // Closed, the calendar is NOT a thin tray with a month's name in it -
+  // it is nothing at all. The name lives in the day's own title above,
+  // which already said the month and the year; keeping a second row to
+  // repeat them was the same duplication this plan keeps removing, and
+  // it was still charging most of the height the week strip used to.
+  // ("Тільки заповнені дні" is the exception - its strip is the content,
+  // not a month, so the plate stands for it.)
+  const calendarPlateStyle = useAnimatedStyle(() => {
+    const open = onlyFilledDays ? 1 : expandAmount.value;
+    return {
+      opacity: visibleAmount.value * open,
+      // Padded out to the capsule's own height: 27 + the weekday header
+      // (22) + a row (40) + 32 + the border comes to the same 123.
+      paddingTop: 27 * visibleAmount.value * open,
+      paddingBottom: 32 * visibleAmount.value * open,
+      borderWidth: visibleAmount.value * open,
+    };
+  }, [onlyFilledDays]);
   // Folded no longer means "a week" - it means the month's NAME, and
   // nothing else. The week strip's job (moving from day to day) went to
   // the dock, where it is under the thumb; what is left up here is the
@@ -641,12 +651,19 @@ export default function CalendarScreen() {
     // looking at" when it is closed.
     const gridHeight = onlyFilledDays ? weekRowHeight : monthAreaHeight * expandAmount.value;
     const weekdayHeight = onlyFilledDays ? 0 : WEEKDAY_HEADER_HEIGHT * expandAmount.value;
+    // The month's own bar - its name and the arrows either side - belongs
+    // to the GRID: it is how you walk from month to month, and there is
+    // nothing to walk while the grid is shut.
+    const navHeight = MONTH_NAV_HEIGHT * (onlyFilledDays ? 1 : expandAmount.value);
     return {
-      height: (MONTH_NAV_HEIGHT + weekdayHeight + gridHeight) * visibleAmount.value,
+      height: (navHeight + weekdayHeight + gridHeight) * visibleAmount.value,
       opacity: visibleAmount.value,
     };
   }, [weekRowHeight, monthAreaHeight, onlyFilledDays]);
-  const monthNavStyle = useAnimatedStyle(() => ({ height: MONTH_NAV_HEIGHT }));
+  const monthNavStyle = useAnimatedStyle(() => {
+    const open = onlyFilledDays ? 1 : expandAmount.value;
+    return { height: MONTH_NAV_HEIGHT * open, opacity: open };
+  }, [onlyFilledDays]);
   const weekdayHeaderStyle = useAnimatedStyle(() => ({
     height: WEEKDAY_HEADER_HEIGHT * expandAmount.value,
     opacity: expandAmount.value,
@@ -810,15 +827,32 @@ export default function CalendarScreen() {
           <Pressable style={styles.todayButton} onPress={jumpToToday}>
             <Text style={styles.todayButtonLabel}>Сьогодні</Text>
           </Pressable>
+          {/* The day's own title is where the month opens from. It
+              already says the month and the year - a second row below to
+              repeat them was a heading and its own echo. While writing it
+              keeps its older job (putting the keyboard away), because a
+              calendar unfolding under the caret is not what that press
+              means then. */}
           <Pressable
             style={styles.headerDateTap}
-            disabled={!isWriting}
-            onPress={() => Keyboard.dismiss()}
+            disabled={isTwoPane || onlyFilledDays}
+            onPress={() => (isWriting ? Keyboard.dismiss() : setIsMonthExpanded((prev) => !prev))}
           >
             <Text style={styles.headerDateLabel} numberOfLines={1}>
               {WEEKDAY_SHORT[mondayIndex(selectedDate)]}, {formatBigDate(selectedDate)}
             </Text>
-            {isWriting && <Ionicons name="chevron-down" size={12} color={theme.ink.muted} />}
+            {isWriting ? (
+              <Ionicons name="chevron-down" size={12} color={theme.ink.muted} />
+            ) : (
+              !isTwoPane &&
+              !onlyFilledDays && (
+                <Ionicons
+                  name={monthOpen ? 'chevron-up' : 'chevron-down'}
+                  size={13}
+                  color={theme.ink.faint}
+                />
+              )
+            )}
           </Pressable>
         </View>
       </View>
@@ -956,26 +990,9 @@ export default function CalendarScreen() {
                 <Pressable hitSlop={10} onPress={() => changeVisibleMonth(-1)}>
                   <Ionicons name="chevron-back" size={18} color={theme.ink.muted} />
                 </Pressable>
-                {/* The name IS the switch. Nothing new to learn and
-                    nothing new on the screen: the row that says which
-                    month you are looking at is the row that opens it. */}
-                <Pressable
-                  hitSlop={10}
-                  disabled={isTwoPane || onlyFilledDays}
-                  onPress={() => setIsMonthExpanded((prev) => !prev)}
-                  style={styles.monthNavHandle}
-                >
-                  <Text style={styles.monthNavLabel}>
-                    {MONTH_FULL[visibleMonth.month]} {visibleMonth.year}
-                  </Text>
-                  {!isTwoPane && !onlyFilledDays && (
-                    <Ionicons
-                      name={monthOpen ? 'chevron-up' : 'chevron-down'}
-                      size={14}
-                      color={theme.ink.faint}
-                    />
-                  )}
-                </Pressable>
+                <Text style={styles.monthNavLabel}>
+                  {MONTH_FULL[visibleMonth.month]} {visibleMonth.year}
+                </Text>
                 <Pressable hitSlop={10} onPress={() => changeVisibleMonth(1)}>
                   <Ionicons name="chevron-forward" size={18} color={theme.ink.muted} />
                 </Pressable>

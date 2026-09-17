@@ -30,7 +30,7 @@ const ICON_BY_ROUTE: Record<string, keyof typeof Ionicons.glyphMap> = {
 const ICON_SIZE = 24;
 // Every day the same width, so the dock can put the selected one under
 // the thumb without measuring anything.
-const STRIP_ITEM = 42;
+const STRIP_ITEM = 40;
 // Seven of them, and no more - the user's own correction. The dock stays
 // a pill rather than a ribbon, and seven is the number a week already is.
 // The days BEYOND those seven are still there, just off the edge: that is
@@ -163,9 +163,13 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
         <GlassDrop style={styles.islandShell}>
         <Pressable onLongPress={toggleCollapsed} delayLongPress={400}>
         <View style={styles.stripRow}>
-          {/* The way back to the desks. Deliberately at the left edge and
-              deliberately a chevron: it is the same "out of here" this
-              phone draws everywhere else, so nobody has to learn it. */}
+          {/* The way back to the desks. It was a bare chevron pressed
+              against the edge, and the user's objection was simply true:
+              small, cornered, awkward to hit. It is a proper button now,
+              the size of the desks' own, carrying the icon of the desk
+              you are standing on with a chevron leading out of it - so it
+              says WHERE it takes you, not only that it takes you
+              somewhere. */}
           <Pressable
             hitSlop={6}
             onPress={() => setContextHidden(true)}
@@ -173,7 +177,8 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
             delayLongPress={400}
             style={styles.stripOut}
           >
-            <Ionicons name="chevron-back" size={18} color={theme.glass.inkMuted} />
+            <Ionicons name="chevron-back" size={11} color={theme.glass.inkMuted} />
+            <Ionicons name={hereIcon} size={20} color={theme.glass.ink} />
           </Pressable>
           <ScrollView
             ref={stripRef}
@@ -262,18 +267,19 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
         // wider. A morph has to change SHAPE to be noticed at all - this
         // project has already reverted one that only cross-faded.
         <GlassDrop style={[styles.islandShell, styles.trailShell]}>
-        <Pressable style={styles.trailRow} onLongPress={toggleCollapsed} delayLongPress={400}>
-          {/* The desk you are on, and the way back out of every folder at
-              once. Leaving the folders and giving the dock back to the
-              desks is deliberately the SAME press: at the root there is
-              no path left to show. */}
+        <Pressable style={styles.stripRow} onLongPress={toggleCollapsed} delayLongPress={400}>
+          {/* The same way out as the days have, and it means the same
+              thing in both: back to the desks. Getting to the ROOT of the
+              folders is a different move and now says so - it is the
+              first crumb in the strip, where a file manager puts it. */}
           <Pressable
             hitSlop={6}
-            onPress={() => trail.onGo('')}
+            onPress={() => setContextHidden(true)}
             onLongPress={toggleCollapsed}
             delayLongPress={400}
-            style={styles.trailHome}
+            style={styles.stripOut}
           >
+            <Ionicons name="chevron-back" size={11} color={theme.glass.inkMuted} />
             <Ionicons name={hereIcon} size={20} color={theme.glass.ink} />
           </Pressable>
           <ScrollView
@@ -282,6 +288,14 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.trailStrip}
           >
+            <Pressable
+              onPress={() => trail.onGo('')}
+              onLongPress={toggleCollapsed}
+              delayLongPress={400}
+              style={styles.trailSegment}
+            >
+              <Text style={[styles.trailLabel, { color: theme.glass.inkMuted }]}>Всі</Text>
+            </Pressable>
             {trail.crumbs.map((segment, index) => {
               const isLast = index === trail.crumbs.length - 1;
               const target = trail.crumbs.slice(0, index + 1).join('/');
@@ -459,10 +473,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   stripOut: {
-    width: 26,
-    height: NAV_BUTTON,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 1,
+    paddingLeft: 2,
+    paddingRight: 6,
+    height: NAV_BUTTON,
   },
   stripViewport: {
     width: STRIP_WIDTH,
