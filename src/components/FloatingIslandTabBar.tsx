@@ -12,7 +12,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { GlassPortal } from './GlassPortal';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_GAP, NAV_PADDING } from '../constants/rail';
 import { useNavDockContext } from '../navigation/navDock';
-import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Outline glyphs at 24, the same set and the same size as everything else
@@ -76,7 +76,19 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
   // show, the dock IS the path: the same pill in the same place, holding
   // something else. That is the whole idea - the app does not grow a new
   // control for every context, the one control changes shape.
-  const dock = useNavDockContext();
+  // The way OUT of a context, which the dock did not have. Holding it
+  // folds it to the dots, and the system back gesture works - but both
+  // are invisible, and a control you have to be told about is a trap:
+  // the user got stuck "в колесі календаря" with no way back to the
+  // desks that could be seen. So the context carries a visible way out,
+  // and stepping out is only ever hiding - the context itself stays, so
+  // one press brings it back.
+  const [contextHidden, setContextHidden] = useState(false);
+  const published = useNavDockContext();
+  // Changing desk answers the question by itself: the new screen's own
+  // context is the one worth showing.
+  useEffect(() => setContextHidden(false), [state.index]);
+  const dock = contextHidden ? null : published;
   const trail = dock?.kind === 'path' ? dock : null;
   const strip = dock?.kind === 'strip' ? dock : null;
   const trailRef = useRef<ScrollView>(null);
@@ -150,6 +162,19 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
         // dock holding time instead of places.
         <GlassDrop style={styles.islandShell}>
         <Pressable onLongPress={toggleCollapsed} delayLongPress={400}>
+        <View style={styles.stripRow}>
+          {/* The way back to the desks. Deliberately at the left edge and
+              deliberately a chevron: it is the same "out of here" this
+              phone draws everywhere else, so nobody has to learn it. */}
+          <Pressable
+            hitSlop={6}
+            onPress={() => setContextHidden(true)}
+            onLongPress={toggleCollapsed}
+            delayLongPress={400}
+            style={styles.stripOut}
+          >
+            <Ionicons name="chevron-back" size={18} color={theme.glass.inkMuted} />
+          </Pressable>
           <ScrollView
             ref={stripRef}
             horizontal
@@ -163,7 +188,8 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
                   <Text
                     style={[
                       styles.stripLabel,
-                      { color: item.anchor || current ? theme.glass.ink : theme.glass.inkMuted },
+                      item.anchor && styles.stripLabelToday,
+                      { color: item.anchor ? theme.accent : current ? theme.glass.ink : theme.glass.inkMuted },
                     ]}
                   >
                     {item.label}
@@ -174,7 +200,7 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
                         styles.stripSub,
                         // A day reads as ONE thing, number and weekday
                         // together, not a number with a footnote under it.
-                        { color: item.anchor || current ? theme.glass.ink : theme.glass.inkMuted },
+                        { color: item.anchor ? theme.accent : current ? theme.glass.ink : theme.glass.inkMuted },
                       ]}
                     >
                       {item.sub}
@@ -206,28 +232,29 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
                   onLongPress={toggleCollapsed}
                   delayLongPress={400}
                 >
-                  {item.anchor ? (
-                    // The lens marks TODAY, not the day you are looking
-                    // at. The day you are looking at is already in the
-                    // middle; what the middle cannot tell you is how far
-                    // you have wandered from now.
+                  {current ? (
+                    // The lens is the day you PICKED, riding in the
+                    // middle - the user's own correction, and they were
+                    // right: the lens is what the dock has always meant
+                    // by "the one you are on", and the strip must not
+                    // speak two dialects.
+                    //
+                    // Today is said in COLOUR instead, which is a
+                    // different sentence rather than a competing one:
+                    // the lens says where you are, the colour says where
+                    // now is, and both can be read at a glance without
+                    // either dimming the other.
                     <GlassDrop style={styles.stripItem} lift="none" blurAmount={0} convex>
                       {body}
                     </GlassDrop>
                   ) : (
-                    <View
-                      style={[
-                        styles.stripItem,
-                        current && [styles.stripItemSelected, { borderColor: theme.glass.ink }],
-                      ]}
-                    >
-                      {body}
-                    </View>
+                    <View style={styles.stripItem}>{body}</View>
                   )}
                 </Pressable>
               );
             })}
           </ScrollView>
+        </View>
         </Pressable>
         </GlassDrop>
         ) : trail ? (
@@ -298,6 +325,14 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
               <Pressable
                 key={route.key}
                 onPress={() => {
+                  // Pressing the desk you are already on used to do
+                  // nothing at all. It is now the way back INTO this
+                  // screen's own context - a gesture that was going
+                  // spare, doing the one job the dock was missing.
+                  if (focused && published) {
+                    setContextHidden(false);
+                    return;
+                  }
                   const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
                   if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
                 }}
@@ -419,6 +454,16 @@ const styles = StyleSheet.create({
   },
   // Exactly seven days wide. What is outside it is mounted, not gone -
   // that is what the sliding is made of.
+  stripRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stripOut: {
+    width: 26,
+    height: NAV_BUTTON,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   stripViewport: {
     width: STRIP_WIDTH,
   },
@@ -434,11 +479,12 @@ const styles = StyleSheet.create({
     fontFamily: FONT_SEMIBOLD,
     fontWeight: '600',
   },
-  // The day you have scrolled to. A hairline, not a fill: the lens is
-  // spoken for - it belongs to today - and two lit-up days in one strip
-  // would leave neither meaning anything.
-  stripItemSelected: {
-    borderWidth: 1,
+  // Today is heavier as well as coloured: on a dark ground a tint alone
+  // is a weak signal, and this is the one day that has to be findable
+  // without looking for it.
+  stripLabelToday: {
+    fontFamily: FONT_BOLD,
+    fontWeight: '700',
   },
   stripSub: {
     fontSize: 10,
