@@ -437,9 +437,6 @@ export default function DocumentsScreen({
   // ContextDock. The tab's own copy has nowhere to go back to.
   useDockLeave('document-text-outline', () => navigation.goBack(), !!standalone);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
-  // What this LIST can do, as the dock's second card - see DockAction.
-  // The rail keeps what is left: search, and creating. These three are
-  // the ones that were costing the screen its width for the least use.
   // Search on the left, creating a note on the right: the two things
   // that never change, standing beside the stack and not moving with it.
   // The user's own arrangement, and Samsung's own reasoning - a pile of
@@ -464,6 +461,9 @@ export default function DocumentsScreen({
         }
       : null
   );
+  // What this LIST can do, as the dock's second card - see DockAction.
+  // The rail keeps what is left: search, and creating. These three are
+  // the ones that were costing the screen its width for the least use.
   useDockActions(
     isFocused && !searchingAlone
       ? [
@@ -510,12 +510,15 @@ export default function DocumentsScreen({
   // says how the list is drawn. The point is not fewer buttons - it is
   // that the rail means the same thing on every screen, so the hand
   // learns it once.
-  // Nothing is left on the rail. Search and creating became the dock's
-  // two fixed beads; view, sort, select and the new folder became its
-  // second card. What that buys is not fewer buttons - it is the 90
-  // points of WIDTH the rail reserved whether it held four capsules or
-  // one, which on a phone is about a quarter of the screen.
-  const rail = useRail(topCapsuleHeight, 0, 0, 0, !standalone);
+  // Only creating is left on the rail now - choosing, sorting and the
+  // view switch went to the dock's second card.
+  const rail = useRail(
+    topCapsuleHeight,
+    0,
+    explorer.active ? CAPSULE_HEIGHT : RAIL_WIDTH,
+    0,
+    !standalone
+  );
   // Opening the search takes the screen, so anything hanging off the rail
   // goes with it - the sort menu stayed up over the keyboard otherwise.
   useEffect(() => {
@@ -917,6 +920,443 @@ export default function DocumentsScreen({
             the blur has to sit OUTSIDE the view it blurs, and the screens
             are what the blur target wraps. That also puts it in window
             coordinates rather than the pane's. */}
+
+        {/* The tabs and the filter chips float over the list rather than
+            standing above it, so a card slides under them and off the top
+            of the screen instead of being cut short by a bar - which is
+            also what finally gives the pills something to blur. Through
+            the portal for the same reason as the island: a blur cannot
+            live inside the view it blurs. */}
+        {isFocused && !(isTwoPane && !!openDoc && paneFullscreen) && (
+        <GlassPortal>
+        <View
+          style={[styles.topChrome, { top: chromeTop }]}
+          pointerEvents="box-none"
+          onLayout={(e) => setChromeHeight(e.nativeEvent.layout.height)}
+        >
+          {searchOpen && (
+            // Fades down into place: the pull that opens it is a slow
+            // movement, and the field arriving instantly read as a jolt.
+            <Animated.View entering={FadeInDown.duration(220)}>
+              {/* Closes the search outright rather than only emptying it:
+                  with the keyboard up this is the one control on the
+                  screen, and emptying a field the user is done with only
+                  leaves them somewhere they have to leave again. */}
+              <SearchField
+                autoFocus
+                value={searchText}
+                onChangeText={setSearchText}
+                placeholder="Пошук документів"
+                onClose={() => {
+                  setSearchText('');
+                  setSearchOpen(false);
+                }}
+                style={styles.searchRow}
+              />
+            </Animated.View>
+          )}
+          {!searchingAlone && groups.length > 0 && !groupsRowHidden && (
+            // No TabsTunnel here any more: it drew a capsule blending
+            // scrolled-off pills into whatever sat beside them in the row
+            // - the control capsule, before it moved to the rail. Alone in
+            // its own row now, the tunnel was just a stray oval floating
+            // at the row's right edge with nothing to blend into.
+            <View style={styles.groupsRow}>
+              <ProjectTabsRow
+                items={groups}
+                selected={groupFilter}
+                onSelect={setGroupFilter}
+                unassignedLabel="Без групи"
+                pinnedTab={{ id: STICKERS_GROUP, label: 'Стікери' }}
+                dark
+                blurTarget={blurTarget}
+                startPadding={paneRect.x + 20}
+                endPadding={20}
+              />
+            </View>
+          )}
+          {!searchingAlone && activeFilter && (
+            <View style={[styles.filterRow, { paddingLeft: paneRect.x + 20 }]}>
+              {activeFilter.type === 'untagged' ? (
+                <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
+                  <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
+                  <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без тегів</Text>
+                  <Pressable hitSlop={8} onPress={() => setActiveFilter(null)}>
+                    <Ionicons name="close-outline" size={14} color="#6B7280" />
+                  </Pressable>
+                </View>
+              ) : (
+                activeFilter.tagIds.map((tagId) => {
+                  const tag = tags.find((t) => t.id === tagId);
+                  if (!tag) return null;
+                  return (
+                    <View key={tagId} style={[styles.filterChip, { borderColor: tag.color }]}>
+                      <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tag.color} />
+                      <Text style={[styles.filterChipLabel, { color: tag.color }]}>{tag.path}</Text>
+                      <Pressable hitSlop={8} onPress={() => setActiveFilter(removeTagFromFilter(activeFilter, tagId))}>
+                        <Ionicons name="close-outline" size={14} color={tag.color} />
+                      </Pressable>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          )}
+        </View>
+        </GlassPortal>
+        )}
+
+        <StickerComposer
+          visible={stickerComposerVisible}
+          editingTextSticker={editingTextSticker}
+          onClose={() => {
+            setStickerComposerVisible(false);
+            setEditingTextSticker(null);
+          }}
+        />
+
+        {viewerImageUri && (
+          // Modal (its own native window on Android) rather than a plain
+          // absolute-positioned overlay - without it this rendered inside the
+          // Documents tab's own layout and left the real status bar showing
+          // as a solid black strip above it, instead of the immersive
+          // full-screen viewer this needs (see the same pattern's own
+          // comment in DocumentEditorScreen). GestureHandlerRootView has to
+          // be re-declared inside the Modal for its own separate native
+          // window - the app-level one in App.tsx doesn't reach in here.
+          <Modal visible transparent animationType="fade" onRequestClose={() => setViewerImageUri(null)}>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+              <ZoomableImageViewer uri={viewerImageUri.uri} driveFileId={viewerImageUri.driveFileId} onClose={() => setViewerImageUri(null)} />
+            </GestureHandlerRootView>
+          </Modal>
+        )}
+
+        <SketchEditor
+          visible={sketchEditing !== null}
+          initialElements={sketchEditing?.sketchElements ?? []}
+          onSave={saveSketchEdit}
+          onClose={() => setSketchEditing(null)}
+        />
+
+        {/* An empty search is a question, not a list: the screen stays
+            bare until something is typed for, and everything comes back
+            when the keyboard goes (see useSearchDismissal). */}
+        {searchOpen && needle.length === 0 ? (
+          <View style={styles.emptySearch} />
+        ) : searching ? (
+          searchMatches.length === 0 ? (
+            <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
+              <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
+            </View>
+          ) : (
+            <GestureDetector gesture={drawerSwipe}>
+            <View style={{ flex: 1 }}>
+            <GestureDetector gesture={pull.gesture}>
+            <FlatList
+              {...pull.listProps}
+              key={`search-${drawnMode}-${gridColumns}`}
+              data={searchMatches}
+              keyExtractor={(item) => item.id}
+              numColumns={drawnMode === 'grid' ? gridColumns : 1}
+              columnWrapperStyle={drawnMode === 'grid' ? styles.gridRow : undefined}
+              contentContainerStyle={[styles.list, listClear, { paddingTop: chromeBottom, paddingBottom: listBottomPad }]}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => {
+                // The title's match wins; only when the hit is in the body
+                // does the card show the snippet around it instead.
+                const titleMatch = findTitleMatch(item.title ?? '', needle);
+                const bodyMatch = titleMatch ? null : findBodyMatch(item.blocks, needle);
+                const { imageUri, imageDriveFileId, imageUris, imageDriveFileIds, previewText, checklistItems } = extractPreview(
+                  // Through the records as they are NOW - a block inserted before the
+                  // Drive backup existed carries no driveFileId of its own; the record
+                  // does. The editor overlays the same way, and the Photos database reads
+                  // the record directly, which is why a picture showed there and here
+                  // stayed blank. See useLiveRecords.
+                  (item.blocks ?? []).map((b) => applyLiveRecord(b, liveRecords)),
+                  item.coverImageUri,
+                  drawnMode === 'grid' ? EXPANDED_PREVIEW_LENGTH : undefined
+                );
+                return (
+                  <DocumentCard
+                    id={item.id}
+                    title={item.title}
+                    updatedAt={item.updatedAt}
+                    imageUri={imageUri}
+                    coverGradient={item.coverGradient}
+                    imageDriveFileId={imageDriveFileId}
+                    imageUris={imageUris}
+                    imageDriveFileIds={imageDriveFileIds}
+                    previewText={previewText}
+                    checklistItems={checklistItems}
+                    titleMatch={titleMatch}
+                    bodyMatch={bodyMatch}
+                    onPress={() => openDocument(item.id)}
+                    layout={drawnMode}
+                    gridWidth={gridCardWidth}
+                  />
+                );
+              }}
+            />
+            </GestureDetector>
+            </View>
+            </GestureDetector>
+          )
+        ) : showingStickers ? (
+          freeStickers.length === 0 ? (
+            <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
+              <Text style={styles.emptyLabel}>Немає вільних стікерів</Text>
+            </View>
+          ) : (
+            <FlatList
+              key={`stickers-${drawnMode}-${gridColumns}`}
+              data={freeStickers}
+              keyExtractor={(item) => item.id}
+              numColumns={drawnMode === 'grid' ? gridColumns : 1}
+              columnWrapperStyle={drawnMode === 'grid' ? styles.gridRow : undefined}
+              contentContainerStyle={[styles.list, listClear, { paddingTop: chromeBottom, paddingBottom: listBottomPad }]}
+              renderItem={({ item }) => (
+                <Pressable
+                  style={[
+                    styles.stickerCard,
+                    drawnMode === 'grid' ? styles.stickerCardGrid : styles.stickerCardRow,
+                  ]}
+                  onPress={() => openFreeSticker(item)}
+                >
+                  {stickerFace(item)}
+                </Pressable>
+              )}
+            />
+          )
+        ) : isLoading ? (
+          <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
+            <ActivityIndicator color={ACCENT} />
+          </View>
+        ) : !trashOpen && explorer.visibleItems.length === 0 && explorer.folders.length === 0 && !(explorer.active && explorer.path) ? (
+          <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
+            {documents.length === 0 ? (
+              <>
+                <Pressable style={styles.emptyIcon} onPress={createDocument}>
+                  <Ionicons name="document-text-outline" size={32} color={ACCENT} />
+                  <View style={styles.emptyBadge}>
+                    <Ionicons name="add-outline" size={14} color="#fff" />
+                  </View>
+                </Pressable>
+                <Text style={styles.emptyLabel}>Створити новий документ</Text>
+              </>
+            ) : (
+              <Text style={styles.emptyLabel}>Немає документів із цим фільтром</Text>
+            )}
+          </View>
+        ) : (
+          <GestureDetector gesture={drawerSwipe}>
+            <View style={{ flex: 1 }}>
+            <GestureDetector gesture={pull.gesture}>
+            <GestureDetector gesture={carrying.listGesture}>
+          <FlatList
+            ref={carrying.scrollRef as React.RefObject<FlatList<DocumentItem>>}
+            {...pull.listProps}
+            // FlatList throws if numColumns changes on an already-mounted
+            // instance - key forces a clean remount when switching views.
+            key={`${drawnMode}-${gridColumns}-${trashOpen ? 'trash' : 'list'}`}
+            data={trashOpen ? trashed : explorer.visibleItems}
+            // The folders of this level, and the way up, above the cards.
+            ListHeaderComponent={
+              trashOpen ? (
+                <View style={[styles.explorerHead, folderColumns > 1 && styles.explorerHeadWide]}>
+                  <View style={styles.explorerCrumb}>
+                    <Pressable hitSlop={8} onPress={() => setTrashOpen(false)} style={styles.crumbUp}>
+                      <Ionicons name="chevron-back" size={18} color={theme.ink.primary} />
+                    </Pressable>
+                    <Text style={[styles.crumbLabel, styles.crumbLabelCurrent]}>Кошик · {trashed.length}</Text>
+                    <View style={{ flex: 1 }} />
+                    {trashed.length > 0 && (
+                      <Pressable hitSlop={8} onPress={emptyTrash} style={styles.crumbSegment}>
+                        <Text style={styles.crumbLabel}>Очистити</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                  <Text style={styles.trashHint}>Затисни нотатку, щоб відновити або видалити назавжди. Через 30 днів кошик очищається сам.</Text>
+                </View>
+              ) : explorerMode && (explorer.folders.length > 0 || (explorer.active && explorer.path !== '')) ? (
+                <View style={[styles.explorerHead, folderColumns > 1 && styles.explorerHeadWide]}>
+                  {/* A folder row wears the document row's clothes - the
+                      same card, with the tag's icon in a frame where a
+                      document shows its picture - so the two read as one
+                      list. Its two small numbers: the documents directly
+                      in it, and the folders directly in it. */}
+                  {explorer.folders.map((folder) => (
+                    <View key={folder.fullPath} ref={carrying.carry.registerFolder(folder.fullPath)} collapsable={false}>
+                    <Pressable
+                      style={[styles.folderRow, folderRowWidth !== undefined && { width: folderRowWidth }]}
+                      onPress={() => {
+                        explorer.setPath(folder.fullPath);
+                        // A folder found by searching is a place to go: the
+                        // search is over once it is entered.
+                        if (searching) {
+                          setSearchText('');
+                          setSearchOpen(false);
+                        }
+                      }}
+                      onLongPress={() => openFolderMenu(folder)}
+                    >
+                      <View style={[styles.folderThumb, { borderColor: folder.tag?.color ?? theme.ink.faint }]}>
+                        <Ionicons
+                          name={(folder.tag?.icon as keyof typeof Ionicons.glyphMap) || 'folder-outline'}
+                          size={26}
+                          color={folder.tag?.color ?? theme.ink.muted}
+                        />
+                      </View>
+                      <View style={styles.folderBody}>
+                        <Text style={styles.folderName} numberOfLines={1}>
+                          {folder.name}
+                        </Text>
+                        <View style={styles.folderMeta}>
+                          <Ionicons name="document-text-outline" size={14} color={theme.ink.muted} />
+                          <Text style={styles.folderCount}>{folder.docs}</Text>
+                          <Ionicons name="folder-outline" size={14} color={theme.ink.muted} style={styles.folderMetaGap} />
+                          <Text style={styles.folderCount}>{folder.subfolders}</Text>
+                        </View>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={theme.ink.faint} />
+                    </Pressable>
+                    </View>
+                  ))}
+                  {/* The bin, at the root of the explorer, after the
+                      folders - where a file manager keeps it. */}
+                  {explorer.active && explorer.path === '' && trashed.length > 0 && (
+                    <Pressable
+                      style={[styles.folderRow, styles.trashFolderRow, folderRowWidth !== undefined && { width: folderRowWidth }]}
+                      onPress={() => setTrashOpen(true)}
+                    >
+                      <View style={[styles.folderThumb, { borderColor: theme.ink.faint }]}>
+                        <Ionicons name="trash-outline" size={26} color={theme.ink.muted} />
+                      </View>
+                      <View style={styles.folderBody}>
+                        <Text style={[styles.folderName, { color: theme.ink.muted }]}>Кошик</Text>
+                        <View style={styles.folderMeta}>
+                          <Ionicons name="document-text-outline" size={14} color={theme.ink.muted} />
+                          <Text style={styles.folderCount}>{trashed.length}</Text>
+                        </View>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={theme.ink.faint} />
+                    </Pressable>
+                  )}
+                </View>
+              ) : null
+            }
+            keyExtractor={(item) => item.id}
+            // FlatList only re-renders an already-mounted row when `data` or
+            // `extraData` changes - isSelectMode/selectedIds live outside
+            // `data`, so without this a card kept showing its pre-select-mode
+            // props (tapping it still navigated instead of toggling a
+            // checkbox) even though renderItem's own closure had the fresh
+            // values.
+            extraData={[isSelectMode, selectedIds]}
+            // What else is in this group - see GroupSections. Only under
+            // the real list: a search or the stickers tab is not a group's
+            // view of itself.
+            ListFooterComponent={
+              <GroupSections
+                groupId={list.selectedGroupId}
+                currentKind="document"
+                tags={tags}
+                // This list pads nothing: its own cards carry their side
+                // margin, so the sections have to bring the same one.
+                sidePadding={20}
+              />
+            }
+            numColumns={drawnMode === 'grid' ? gridColumns : 1}
+            columnWrapperStyle={drawnMode === 'grid' ? styles.gridRow : undefined}
+            // The cards start below the floating tabs and scroll up under
+            // them from there.
+            contentContainerStyle={[styles.list, listClear, { paddingTop: chromeBottom, paddingBottom: listBottomPad }]}
+            renderItem={({ item }) => {
+              // Grid cards reclaim the thumbnail's space for text when a
+              // document has no image (see DocumentCard's own noImage
+              // handling) - list rows are unaffected, so they keep the
+              // short default length.
+              const { imageUri, imageDriveFileId, imageUris, imageDriveFileIds, previewText, checklistItems } = extractPreview(
+                // Through the records as they are NOW - a block inserted before the
+                // Drive backup existed carries no driveFileId of its own; the record
+                // does. The editor overlays the same way, and the Photos database reads
+                // the record directly, which is why a picture showed there and here
+                // stayed blank. See useLiveRecords.
+                (item.blocks ?? []).map((b) => applyLiveRecord(b, liveRecords)),
+                item.coverImageUri,
+                drawnMode === 'grid' ? EXPANDED_PREVIEW_LENGTH : undefined
+              );
+              // Only in the explorer, and never in the bin - carried, the
+              // card gives up its own onLongPress, since the list's drag
+              // gesture opens the menu itself, on its own timing, rather
+              // than racing it (see useExplorerCarry).
+              const carried = !trashOpen && explorer.active;
+              return (
+                <DocumentCard
+                  id={item.id}
+                  title={item.title}
+                  updatedAt={item.updatedAt}
+                  imageUri={imageUri}
+                  coverGradient={item.coverGradient}
+                  imageDriveFileId={imageDriveFileId}
+                  imageUris={imageUris}
+                  imageDriveFileIds={imageDriveFileIds}
+                  previewText={previewText}
+                  checklistItems={checklistItems}
+                  onPress={() => (trashOpen ? openTrashMenu(item) : openDocument(item.id))}
+                  onLongPress={
+                    carried ? undefined : () => (trashOpen ? openTrashMenu(item) : isSelectMode ? undefined : openDocumentMenu(item))
+                  }
+                  isSelectMode={isSelectMode}
+                  isSelected={selectedIds.has(item.id)}
+                  onToggleSelect={() => toggleSelected(item.id)}
+                  layout={drawnMode}
+                    gridWidth={gridCardWidth}
+                  {...(carried ? carrying.cardProps(item, () => openDocumentMenu(item)) : {})}
+                />
+              );
+            }}
+          />
+          </GestureDetector>
+          </GestureDetector>
+            </View>
+            </GestureDetector>
+        )}
+
+        {carrying.movedToast && <UndoToast message={carrying.toastMessage} onUndo={carrying.undoMove} />}
+        {/* The floating note while one is being carried into a folder -
+            see useCardCarry. Always mounted, invisible until then. */}
+        <CardCarryOverlay
+          carry={carrying.carry}
+          label={(items) => (items.length > 1 ? `${items.length} нотатки` : items[0].title || 'Без назви')}
+          icon="document-text-outline"
+          onEnterFolder={(path) => explorer.setPath(path)}
+        />
+
+        {/* Through the portal, like the rest of the rail: the blur that
+            fills it has to sit outside the view it blurs. */}
+        {/* The actions capsule: what can be done to the list - sort it,
+            choose in it. They were rows of the "..." menu, two taps away;
+            the user asked for exactly these two on the rail and no more,
+            grouped, so the rail does not turn into a wall of options. */}
+        <Menu
+          visible={sortMenuOpen}
+          onClose={() => setSortMenuOpen(false)}
+          accent={ACCENT}
+          entries={[
+            { kind: 'section', label: 'Сортування' },
+            ...FIELD_ORDER.map((field) => ({
+              label: FIELD_LABELS[field],
+              icon: FIELD_ICONS[field],
+              checked: sortPref.field === field,
+              onPress: () => {
+                selectSortField(field);
+                setSortMenuOpen(false);
+              },
+            })),
+          ]}
+          // Above the dock, where the button that opens it now lives.
+          style={{ position: 'absolute', right: 16, bottom: NAV_BOTTOM + insets.bottom + NAV_HEIGHT_ONE + 12 }}
+        />
         </View>
 
         {/* Only where there IS a document. An empty half saying "pick
@@ -1480,7 +1920,10 @@ const makeStyles = (t: Theme) =>
   },
   list: {
     paddingVertical: 8,
-    // The rail is gone from this screen, so the cards have the width.
+    // The rail stands at the right edge; the cards stop short of it rather
+    // than running under it. The cards carry 20 of side margin of their
+    // own, so this is what is left of the clearance. In a pane the rail is
+    // on the LEFT, and listClear below swaps the two.
     paddingRight: 0,
     // paddingBottom comes from listBottomPad - it depends on the window
     // size and the tag/add buttons' own spread, not a fixed number.
