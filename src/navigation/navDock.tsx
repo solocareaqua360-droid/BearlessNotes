@@ -40,6 +40,11 @@ export type DockStripItem = {
 // components stacked on one another: the tab bar's desks and this one's
 // actions, neither aware of the other, and nothing to swipe between.
 // The desks are a card like any other now.
+// Which card of the stack is in front. Three, in the order they are
+// wanted: what you are in, what you can do in it, and where else you
+// could be.
+export type DockFace = 'context' | 'actions' | 'desks';
+
 export type DockDesk = { key: string; icon: string; active: boolean; onPress: () => void };
 
 // The shapes the dock can take. A new context adds a case here and a
@@ -124,8 +129,8 @@ export type DockBead = {
 };
 
 type Value = {
-  face: 'context' | 'actions';
-  setFace: (face: 'context' | 'actions') => void;
+  face: DockFace;
+  setFace: (face: DockFace) => void;
   // What the dock falls back to when no screen has anything more
   // specific to say: the desks. A path or a calendar takes the front
   // while it exists; putting one away lands here rather than nowhere.
@@ -240,7 +245,7 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
   // the dock because screens have to be able to ask for it back - an
   // action that finishes somewhere else (a sort chosen in a menu, a
   // select mode left) should put the path in front again.
-  const [face, setFace] = useState<'context' | 'actions'>('context');
+  const [face, setFace] = useState<DockFace>('context');
   const [hidden, setHidden] = useState(false);
   // A new context is a new question, so a context stepped out of does not
   // stay stepped out of once you have gone somewhere else.
@@ -289,10 +294,20 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
 export function useNavDockContext(): DockContext | null {
   const value = useContext(NavDockContext);
   if (!value) return null;
-  // Putting a context away does not empty the dock - it falls back to
-  // the desks, which is what "away" meant all along.
   if (value.hidden) return value.base;
   return value.context ?? value.base;
+}
+
+// The screen's OWN context - a path, a run of days - with no fallback to
+// the desks. The stack needs them apart: they are two different cards
+// now, because the desks vanishing the moment you step into a folder is
+// the one thing a navigation dock must never do.
+export function useNavDockOwnContext(): DockContext | null {
+  return useContext(NavDockContext)?.context ?? null;
+}
+
+export function useNavDockDesks(): DockContext | null {
+  return useContext(NavDockContext)?.base ?? null;
 }
 
 // Whether a context is actually ON SCREEN. This is what the desks ask
@@ -405,7 +420,7 @@ export function useDockBase(base: DockContext | null) {
 }
 
 // Which card of the stack is in front, and how to change it.
-export function useNavDockFace(): ['context' | 'actions', (face: 'context' | 'actions') => void] {
+export function useNavDockFace(): [DockFace, (face: DockFace) => void] {
   const value = useContext(NavDockContext);
   return [value?.face ?? 'context', value?.setFace ?? (() => {})];
 }

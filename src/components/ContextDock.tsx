@@ -9,7 +9,18 @@ import { useTheme } from '../theme/ThemeProvider';
 import { hapticButtonDown } from '../utils/haptics';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { DockBead, useNavDockActions, useNavDockFace, useNavDockBeads, useNavDockContext, useNavDockHidden, useNavDockLeave, useNavDockTargets } from '../navigation/navDock';
+import {
+  DockBead,
+  DockFace,
+  useNavDockActions,
+  useNavDockBeads,
+  useNavDockDesks,
+  useNavDockFace,
+  useNavDockHidden,
+  useNavDockLeave,
+  useNavDockOwnContext,
+  useNavDockTargets,
+} from '../navigation/navDock';
 
 // The dock, when it is holding a CONTEXT rather than the four desks.
 //
@@ -44,7 +55,15 @@ const FACE_ACTIONS = '#B91C1C';
 export default function ContextDock() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const dock = useNavDockContext();
+  // Three cards, and they are three because of the one thing a
+  // navigation dock must never do: the desks used to vanish the moment
+  // you stepped into a folder or opened the calendar - "навігація між
+  // столами пропадає зовсім". They are a card of their own now, so
+  // wherever you are, where else you could be is one swipe away.
+  const own = useNavDockOwnContext();
+  const desksCard = useNavDockDesks();
+  const [hidden] = useNavDockHidden();
+  const dock = hidden ? desksCard : (own ?? desksCard);
   // The way out of the SCREEN, which is true even at a database's root,
   // where there is no path to show. The user's own ask: standing in a
   // database, the way back to the databases was the small arrow in the
@@ -75,18 +94,20 @@ export default function ContextDock() {
   // always true and would never have reset anything.
   const contextKey = dock ? `${dock.kind}:${dock.icon}` : '';
   useEffect(() => setFace('context'), [contextKey, setFace]);
-  // What is actually drawn. A context always wins the front unless the
-  // swipe asked otherwise; with no context there is only one card to
-  // show, so there is nothing to be uncertain about.
-  // A card with nothing on it is not a card: with no actions published
-  // there is only the context to show, whatever the swipe last asked
-  // for, and with no context only the actions.
-  const showing: 'context' | 'actions' = !dock
-    ? 'actions'
-    : actions?.length && face === 'actions'
-      ? 'actions'
-      : 'context';
-  const stacked = !!dock && !!actions?.length;
+  // The cards this screen actually has, in the order they are wanted:
+  // what you are in, what you can do in it, where else you could be. A
+  // card with nothing on it is not a card and is simply not in the ring.
+  const faces: DockFace[] = [
+    ...(own ? (['context'] as DockFace[]) : []),
+    ...(actions?.length ? (['actions'] as DockFace[]) : []),
+    ...(desksCard ? (['desks'] as DockFace[]) : []),
+  ];
+  const showing: DockFace = faces.includes(face) ? face : (faces[0] ?? 'context');
+  const stacked = faces.length > 1;
+  // How many cards are BEHIND the one in front, drawn as that many
+  // edges - the stack says its own depth instead of leaving you to
+  // guess how far round the ring you are.
+  const behind = Math.max(0, faces.length - 1);
   // ONE gesture, not a new one per render. A fresh Gesture object hands
   // GestureDetector a new configuration on every render, and a gesture
   // being reconfigured is a gesture that never activates - the same
@@ -98,6 +119,8 @@ export default function ContextDock() {
   // activating (the whole reason the swipe did not exist at first).
   const faceRef = useRef(face);
   faceRef.current = face;
+  const facesRef = useRef(faces);
+  facesRef.current = faces;
   const swipe = useMemo(
     () =>
       Gesture.Pan()
@@ -114,20 +137,24 @@ export default function ContextDock() {
         // system itself uses just below here.
         .onEnd((e) => {
           if (e.translationY > -10) return;
+          // One card on per swipe, round the ring - a stack of three
+          // walks with one direction just as a stack of two did.
+          const ring = facesRef.current;
+          if (ring.length < 2) return;
           hapticButtonDown();
-          setFace(faceRef.current === 'context' ? 'actions' : 'context');
+          const at = ring.indexOf(faceRef.current);
+          setFace(ring[(at + 1) % ring.length] ?? ring[0]);
         }),
     []
   );
 
-  const [, setHidden] = useNavDockHidden();
   // A card being carried can step onto a crumb - the same registry the
   // folder rows use, handed up by whichever screen is carrying.
   const targets = useNavDockTargets();
 
-  const trail = dock?.kind === 'path' ? dock : null;
-  const strip = dock?.kind === 'strip' ? dock : null;
-  const desks = dock?.kind === 'desks' ? dock : null;
+  const trail = own?.kind === 'path' ? own : null;
+  const strip = own?.kind === 'strip' ? own : null;
+  const desks = desksCard?.kind === 'desks' ? desksCard : null;
   const trailRef = useRef<ScrollView>(null);
   const stripRef = useRef<ScrollView>(null);
 
@@ -181,16 +208,16 @@ export default function ContextDock() {
   // walking in. At the root there is no path to show and the bead is the
   // way out of the database. A calendar has neither, so the bead puts it
   // away.
-  const stepOut = () => {
-    if (strip) return setHidden(true);
-    leave?.onLeave();
-  };
+  // Leaving a DATABASE, and nothing else now: the desks are a card, so
+  // the calendar has no need of a button meaning "put this away and
+  // show me where else I could be" - a swipe does that.
+  const stepOut = () => leave?.onLeave();
   // The bead shows only where it has a job nobody else has: at a
   // database's root, where it leaves the database, and on the calendar,
   // which has no root to walk to and is simply put away. Inside folders
   // the first crumb already goes to the root, and two buttons for one
   // job is what the user rightly refused.
-  const showBead = !!strip || (!trail && !!leave);
+  const showBead = !trail && !!leave;
   // What the bead carries: the thing it is LEAVING, when there is one.
   const icon = ((leave?.icon ?? dock?.icon) as keyof typeof Ionicons.glyphMap) ?? 'ellipse-outline';
 
@@ -214,13 +241,20 @@ export default function ContextDock() {
                 points of the same glass, a little narrower, so it reads
                 as BEHIND rather than beside. Empty on purpose: what a
                 stack's back card shows is that it is there. */}
-            {stacked && (
+            {/* One edge per card behind, so the stack says its own depth
+                rather than leaving you to guess how far round you are. */}
+            {Array.from({ length: behind }).map((_, i) => (
               <GlassDrop
-                style={[styles.behind, showing === 'context' ? styles.faceActions : styles.faceContext]}
+                key={i}
+                style={[
+                  styles.behind,
+                  { bottom: -(BEHIND_EDGE * i), left: 10 + i * 6, right: 10 + i * 6 },
+                  i === 0 ? styles.faceActions : styles.faceContext,
+                ]}
               />
-            )}
+            ))}
 
-          {showing === 'context' && desks && (
+          {showing === 'desks' && desks && (
             desks.collapsed ? (
               // The dots a home screen uses to say which page you are on
               // - still a way to get there, and still what "collapsed"
@@ -506,8 +540,8 @@ const styles = StyleSheet.create({
     height: NAV_BUTTON + NAV_PADDING * 2,
   },
   stack: {
-    // Room under the front capsule for the back one's edge to show in.
-    paddingBottom: BEHIND_EDGE,
+    // Room under the front capsule for the cards behind it.
+    paddingBottom: BEHIND_EDGE * 2,
     // The one thing in the row allowed to shrink: the beads either side
     // keep their size, and the card between them takes what is left.
     // minWidth 0 because a flex child will not shrink below its content
