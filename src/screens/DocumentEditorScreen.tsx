@@ -2335,6 +2335,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const [boardPicker, setBoardPicker] = useState(false);
   const recordColour = useRecordColour();
   const [title, setTitle] = useState('');
+  // Set on a daily note - the calendar writes it (see extraFields), and
+  // so does a task made from outside one. A day's name is its DATE: the
+  // diary list has always called it that, the calendar draws it in its
+  // own header, and only this screen, opening a day raw, called it «Без
+  // назви» - "враження складається, що це якась нотатка... не повинно
+  // бути плутанини".
+  const [calendarDate, setCalendarDate] = useState<string | null>(null);
   const [blocks, setBlocks] = useState<Block[]>([]);
   // «Полотно» - the same document as a surface rather than a page. A view,
   // not a second copy: what moves on it is the block itself (see
@@ -2523,6 +2530,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // The title's own field, kept only so it can be grown to its text as it
   // is typed - see autoGrowInput.
   const titleInputRef = useRef<TextInput | null>(null);
+  const dayName = calendarDate ? formatShortDate(parseDateKey(calendarDate)) : null;
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // An animated ref (not a plain useRef) so the keyboard-synced scroll below
   // can drive it from the UI thread; `.current` still works for the plain
@@ -2745,6 +2753,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       const data = snapshot.data();
       isNewDocumentRef.current = !snapshot.exists();
       setTitle(data?.title ?? '');
+      setCalendarDate((data?.calendarDate as string | undefined) ?? null);
       setTagIds(data?.tagIds ?? []);
       setCoverImageUri(data?.coverImageUri);
       setCoverGradient(data?.coverGradient);
@@ -5423,7 +5432,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             setFocusedBlockId(null);
           }}
           onBlur={() => setTitleActive(false)}
-          placeholder="Без назви"
+          placeholder={dayName ?? 'Без назви'}
           placeholderTextColor={paperColor?.textMuted ?? theme.paper.inkFaint}
           style={[styles.titleInput, paperColor && { color: paperColor.text }]}
           multiline
@@ -5437,10 +5446,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             style={[
               styles.titleInput,
               paperColor && { color: paperColor.text },
-              !title && { color: paperColor?.textMuted ?? theme.paper.inkFaint },
+              // A day's date is its NAME, not a placeholder standing in
+              // for one - so it is not drawn in the faint colour an
+              // unnamed note's is.
+              !title && !dayName && { color: paperColor?.textMuted ?? theme.paper.inkFaint },
             ]}
           >
-            {title || 'Без назви'}
+            {title || dayName || 'Без назви'}
           </Text>
         </Pressable>
         )}
