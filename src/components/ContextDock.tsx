@@ -74,7 +74,14 @@ export default function ContextDock() {
   // What is actually drawn. A context always wins the front unless the
   // swipe asked otherwise; with no context there is only one card to
   // show, so there is nothing to be uncertain about.
-  const showing: 'context' | 'actions' = dock ? face : 'actions';
+  // A card with nothing on it is not a card: with no actions published
+  // there is only the context to show, whatever the swipe last asked
+  // for, and with no context only the actions.
+  const showing: 'context' | 'actions' = !dock
+    ? 'actions'
+    : actions?.length && face === 'actions'
+      ? 'actions'
+      : 'context';
   const stacked = !!dock && !!actions?.length;
   // ONE gesture, not a new one per render. A fresh Gesture object hands
   // GestureDetector a new configuration on every render, and a gesture
@@ -91,14 +98,15 @@ export default function ContextDock() {
         .activeOffsetY([-10, 10])
         .failOffsetX([-16, 16])
         .runOnJS(true)
+        // UP only, and every swipe swaps them - the user's own
+        // correction, and Samsung's own behaviour: a stack of two is a
+        // cycle, so there is nothing to remember about which way is
+        // which. Down does nothing on purpose; it is the direction the
+        // system itself uses just below here.
         .onEnd((e) => {
-          if (Math.abs(e.translationY) < 10) return;
-          const next = e.translationY < 0 ? 'actions' : 'context';
-          setFace((prev) => {
-            if (prev === next) return prev;
-            hapticButtonDown();
-            return next;
-          });
+          if (e.translationY > -10) return;
+          hapticButtonDown();
+          setFace((prev) => (prev === 'context' ? 'actions' : 'context'));
         }),
     []
   );
