@@ -10,6 +10,10 @@ import ScreenBackdrop from '../components/ScreenBackdrop';
 import ContentColumn from '../components/ContentColumn';
 import RenamePrompt from '../components/RenamePrompt';
 import SaveDestinationSheet from '../components/SaveDestinationSheet';
+import SearchField from '../components/SearchField';
+import Menu from '../components/surfaces/Menu';
+import { ChatAttachment } from '../utils/chatAttach';
+import { categoryFromSiteName } from '../utils/linkCategory';
 import * as Clipboard from 'expo-clipboard';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { openCapture } from '../components/CaptureWindow';
@@ -48,6 +52,40 @@ type Row =
   | { kind: 'day'; key: string; label: string }
   | { kind: 'message'; key: string; message: ChatMessage };
 
+// The groups the filter offers - the user's own words: "фото, youtube,
+// геоточка, посилання", plus files, which the capture window can attach
+// too. A video sits under a 'file' record (see chatAttach), so telling
+// it apart from a real file needs its mime type.
+type AttachmentGroup = 'photo' | 'video' | 'geo' | 'link' | 'file';
+
+function attachmentGroup(item: ChatAttachment): AttachmentGroup {
+  if (item.kind === 'photo') return 'photo';
+  if (item.kind === 'file') return (item.mimeType ?? '').startsWith('video/') ? 'video' : 'file';
+  const category = categoryFromSiteName(item.siteName);
+  return category === 'geo' ? 'geo' : category === 'video' ? 'video' : 'link';
+}
+
+function attachmentLabel(item: ChatAttachment): string {
+  if (item.kind === 'photo') return 'Зображення';
+  if (item.kind === 'file') return item.name;
+  return item.title || item.url;
+}
+
+const FILTER_LABELS: Record<AttachmentGroup, string> = {
+  photo: 'Фото',
+  video: 'Відео',
+  geo: 'Геоточки',
+  link: 'Посилання',
+  file: 'Файли',
+};
+const FILTER_ICONS: Record<AttachmentGroup, keyof typeof Ionicons.glyphMap> = {
+  photo: 'image-outline',
+  video: 'videocam-outline',
+  geo: 'location-outline',
+  link: 'link-outline',
+  file: 'document-outline',
+};
+
 function newBlockId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
@@ -72,6 +110,13 @@ export default function ChatScreen() {
   const [naming, setNaming] = useState(false);
   const [editing, setEditing] = useState<ChatMessage | null>(null);
   const [busy, setBusy] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  // null = every message; 'any' = only ones carrying something;
+  // otherwise one of the groups the user asked for - "фільтр по
+  // вкладеннях (з групуванням фото, youtube, геоточка, посилання)".
+  const [filterKind, setFilterKind] = useState<AttachmentGroup | 'any' | null>(null);
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
 
   useEffect(
     () =>
@@ -79,12 +124,28 @@ export default function ChatScreen() {
     []
   );
 
+  const needle = searchQuery.trim().toLowerCase();
+  function messageMatchesFilter(message: ChatMessage): boolean {
+    if (!filterKind) return true;
+    const groups = (message.attachments ?? []).map(attachmentGroup);
+    return filterKind === 'any' ? groups.length > 0 : groups.includes(filterKind);
+  }
+  function messageMatchesSearch(message: ChatMessage): boolean {
+    if (!needle) return true;
+    if (message.text.toLowerCase().includes(needle)) return true;
+    return (message.attachments ?? []).some((a) => attachmentLabel(a).toLowerCase().includes(needle));
+  }
+  const visibleMessages = useMemo(
+    () => messages.filter((m) => messageMatchesFilter(m) && messageMatchesSearch(m)),
+    [messages, filterKind, needle]
+  );
+
   // Day headings, in the order a chat is read: oldest at the top, today
   // at the bottom, where the newest thing said always is.
   const rows = useMemo(() => {
     const out: Row[] = [];
     let lastDay = '';
-    messages.forEach((message) => {
+    visibleMessages.forEach((message) => {
       const date = new Date(message.createdAt);
       const day = date.toDateString();
       if (day !== lastDay) {
@@ -94,7 +155,7 @@ export default function ChatScreen() {
       out.push({ kind: 'message', key: message.id, message });
     });
     return out;
-  }, [messages]);
+  }, [visibleMessages]);
 
   useDockLeave('chatbubbles-outline', () => navigation.goBack());
   useDockBeads(
@@ -112,22 +173,42 @@ export default function ChatScreen() {
     isFocused ? { icon: 'mic-outline', onPress: openCapture } : null
   );
   useDockActions(
-    isFocused && isSelectMode && selected.size > 0
-      ? [
-          {
-            key: 'note',
-            icon: 'document-text-outline',
-            onPress: () => setSending([...selected]),
-            closesStack: true,
-          },
-          {
-            key: 'delete',
-            icon: 'trash-outline',
-            onPress: () => deleteChosen(),
-            closesStack: true,
-          },
-        ]
-      : null
+    !isFocused
+      ? null
+      : isSelectMode
+        ? selected.size > 0
+          ? [
+              {
+                key: 'note',
+                icon: 'document-text-outline',
+                onPress: () => setSending([...selected]),
+                closesStack: true,
+              },
+              {
+                key: 'delete',
+                icon: 'trash-outline',
+                onPress: () => deleteChosen(),
+                closesStack: true,
+              },
+            ]
+          : null
+        : [
+            {
+              key: 'search',
+              icon: isSearching ? 'close-outline' : 'search-outline',
+              active: isSearching,
+              onPress: () => {
+                if (isSearching) setSearchQuery('');
+                setIsSearching((v) => !v);
+              },
+            },
+            {
+              key: 'filter',
+              icon: 'funnel-outline',
+              active: filterKind !== null,
+              onPress: () => setFilterMenuOpen((v) => !v),
+            },
+          ]
   );
 
   // Straight to the newest, every time - a chat is read from its end.
@@ -282,13 +363,37 @@ export default function ChatScreen() {
       <ScreenBackdrop id="chatBg" colors={['#705648', '#69736E', '#000000']} />
       <ContentColumn>
         <View style={{ height: insets.top + CHROME_TOP + 8 }} />
-        {rows.length === 0 ? (
+        {isSearching && (
+          <SearchField
+            autoFocus
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Пошук у чаті"
+            onClose={() => {
+              setSearchQuery('');
+              setIsSearching(false);
+            }}
+            style={styles.searchRow}
+          />
+        )}
+
+        {messages.length === 0 ? (
           <View style={styles.empty}>
             <Ionicons name="chatbubbles-outline" size={32} color={theme.ink.faint} />
             <Text style={styles.emptyLabel}>Поки порожньо</Text>
             <Text style={styles.emptyHint}>
               Затисніть док будь-де в застосунку і скажіть, що думаєте
             </Text>
+          </View>
+        ) : rows.length === 0 ? (
+          <View style={styles.empty}>
+            <Ionicons name="search-outline" size={32} color={theme.ink.faint} />
+            <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
+            {filterKind !== null && (
+              <Pressable onPress={() => setFilterKind(null)}>
+                <Text style={[styles.emptyHint, { color: theme.accent }]}>Скинути фільтр</Text>
+              </Pressable>
+            )}
           </View>
         ) : (
           <FlatList
@@ -407,6 +512,38 @@ export default function ChatScreen() {
         )}
       </ContentColumn>
 
+      {/* Above the dock, where the button that opens it lives - the same
+          spot every other database's own menus stand in. */}
+      <Menu
+        visible={filterMenuOpen}
+        onClose={() => setFilterMenuOpen(false)}
+        style={{ position: 'absolute', right: 16, bottom: dockClear + insets.bottom }}
+        entries={[
+          ...(filterKind !== null
+            ? [
+                {
+                  label: 'Скинути фільтр',
+                  icon: 'close-outline' as const,
+                  onPress: () => setFilterKind(null),
+                },
+                { kind: 'rule' as const },
+              ]
+            : []),
+          {
+            label: 'Усі вкладення',
+            icon: 'attach-outline' as const,
+            checked: filterKind === 'any',
+            onPress: () => setFilterKind('any'),
+          },
+          ...(['photo', 'video', 'geo', 'link', 'file'] as AttachmentGroup[]).map((kind) => ({
+            label: FILTER_LABELS[kind],
+            icon: FILTER_ICONS[kind],
+            checked: filterKind === kind,
+            onPress: () => setFilterKind(kind),
+          })),
+        ]}
+      />
+
       {/* Where the chosen messages go. Notes only: a message is text, and
           what it becomes is a note - putting it straight on a board is
           what the note's own offer is for. */}
@@ -455,6 +592,10 @@ const makeStyles = (t: Theme) =>
       paddingHorizontal: 20,
       paddingTop: 8,
       gap: 8,
+    },
+    searchRow: {
+      marginHorizontal: 20,
+      marginBottom: 8,
     },
     dayRow: {
       alignItems: 'center',
