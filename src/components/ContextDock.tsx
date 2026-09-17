@@ -155,7 +155,14 @@ export default function ContextDock() {
   // it says where in the database you are standing. A calendar's days
   // are not: the calendar itself is already on the screen above, so the
   // dock is better spent saying where else you could go.
-  const opensOn: DockFace = own?.kind === 'strip' ? 'desks' : 'context';
+  //
+  // With no context of its own - a database's root, the boards list -
+  // the screen opens on the DESKS. It used to ask for 'context', which
+  // was not in the ring there, and the fallback was the first card in
+  // the ring: the actions. So swiping from the calendar to documents
+  // landed on the options card every time - "автоматично вмикається док
+  // опцій".
+  const opensOn: DockFace = !own ? 'desks' : own.kind === 'strip' ? 'desks' : 'context';
   useEffect(() => setFace(opensOn), [contextKey, opensOn, setFace]);
   // The cards this screen actually has, in the order they are wanted:
   // what you are in, what you can do in it, where else you could be. A
@@ -165,7 +172,14 @@ export default function ContextDock() {
     ...(actions?.length ? (['actions'] as DockFace[]) : []),
     ...(desksCard ? (['desks'] as DockFace[]) : []),
   ];
-  const showing: DockFace = faces.includes(face) ? face : (faces[0] ?? 'context');
+  // When the card asked for is not in this screen's ring, fall back to
+  // where you could go before what you could do - never land someone on
+  // the options by accident.
+  const showing: DockFace = faces.includes(face)
+    ? face
+    : faces.includes('desks')
+      ? 'desks'
+      : (faces[0] ?? 'context');
   const stacked = faces.length > 1;
   // How many cards are BEHIND the one in front, drawn as that many
   // edges - the stack says its own depth instead of leaving you to
