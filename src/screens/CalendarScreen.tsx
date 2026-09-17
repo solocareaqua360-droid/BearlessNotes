@@ -39,7 +39,7 @@ import { useDayHistory } from '../hooks/useDayHistory';
 import DayHistoryList from '../components/DayHistoryList';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { DockMark, useDockActions, useDockBeads, useDockShowContext, useNavDockPublisher } from '../navigation/navDock';
+import { DockMark, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useNavDockPublisher } from '../navigation/navDock';
 import {
   MONTH_FULL,
   WEEKDAY_SHORT,
@@ -533,9 +533,26 @@ export default function CalendarScreen() {
   // were rows in a sheet because they are switches - but a switch with
   // its state ON THE ICON is a better switch than a row with a tick, and
   // it costs a press less.
+  // Right bead: "today". Away from today it takes you back - the one
+  // move the strip cannot make, since it walks a day at a time. ON today
+  // there is nowhere to jump, so the same press turns the dock to the
+  // desks instead, which is what the user asked for and keeps the two
+  // beads symmetrical on every day of the year.
   useDockBeads(
     calendarFocused ? { icon: 'search-outline', onPress: () => navigation.navigate('Diary') } : null,
-    null
+    calendarFocused
+      ? {
+          icon: 'today-outline',
+          active: selectedKeyForDock !== todayKey,
+          onPress: () => {
+            if (selectedKeyForDock !== todayKey) {
+              jumpToToday();
+              return;
+            }
+            setDockFace('desks');
+          },
+        }
+      : null
   );
   useDockActions(
     calendarFocused
@@ -589,6 +606,7 @@ export default function CalendarScreen() {
       : null
   );
   const showContext = useDockShowContext();
+  const [, setDockFace] = useNavDockFace();
   const publishToDock = useNavDockPublisher();
   const pickDay = useCallback((key: string) => selectDay(parseDateKey(key)), []);
   useEffect(() => {

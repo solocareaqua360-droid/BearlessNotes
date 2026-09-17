@@ -50,14 +50,13 @@ const BEHIND_EDGE = 3;
 // edges nearly line up, which is what makes it one stack instead of
 // three pills of decreasing size.
 const BEHIND_INSET = 5;
-// TEMPORARY, FOR TESTING ONLY - the user's own request, and a fair one:
-// glass on glass on a dark screen is "каша", and a stack cannot be
-// judged when its two cards look identical. Blue is where-you-are, red
-// is what-you-can-do, both opaque. Replace with the real treatment once
-// the shape itself is settled.
-const FACE_CONTEXT = '#1D4ED8';
-const FACE_ACTIONS = '#B91C1C';
-const FACE_DESKS = '#15803D';
+// The test colours are gone. What replaces them is the reference the
+// user has been pointing at all along: FROSTED glass - it does not show
+// the picture behind it, it blurs that picture hard and keeps only its
+// averaged tint. Which also means a card behind does NOT tint the one in
+// front, so an edge is an edge and not a colour sample.
+const CARD_BLUR = 40;
+const CARD_GLASS = 0.30;
 
 export default function ContextDock() {
   const theme = useTheme();
@@ -100,7 +99,12 @@ export default function ContextDock() {
   // Now that the desks are a context too, "a context arrived" is almost
   // always true and would never have reset anything.
   const contextKey = dock ? `${dock.kind}:${dock.icon}` : '';
-  useEffect(() => setFace('context'), [contextKey, setFace]);
+  // Which card a screen OPENS on. A path is worth seeing straight away -
+  // it says where in the database you are standing. A calendar's days
+  // are not: the calendar itself is already on the screen above, so the
+  // dock is better spent saying where else you could go.
+  const opensOn: DockFace = own?.kind === 'strip' ? 'desks' : 'context';
+  useEffect(() => setFace(opensOn), [contextKey, opensOn, setFace]);
   // The cards this screen actually has, in the order they are wanted:
   // what you are in, what you can do in it, where else you could be. A
   // card with nothing on it is not a card and is simply not in the ring.
@@ -232,10 +236,14 @@ export default function ContextDock() {
     <GlassPortal>
       <View style={[styles.wrap, { bottom: NAV_BOTTOM + insets.bottom }]} pointerEvents="box-none">
         <View style={styles.row}>
-          {!!beads.left && <Bead bead={beads.left} theme={theme} />}
+          {/* A missing bead keeps its place. Without this the stack
+              drifted: two beads on documents, one on the calendar, and
+              the same control sat in a different spot on each - "док
+              зміщений відносно того що є на екрані документів". */}
+          {beads.left ? <Bead bead={beads.left} theme={theme} /> : <View style={styles.beadSlot} />}
           {showBead && (
             <Pressable onPress={stepOut}>
-              <GlassDrop style={styles.exitBead}>
+              <GlassDrop style={styles.exitBead} blurAmount={CARD_BLUR} glassOpacity={CARD_GLASS}>
                 <Ionicons name="chevron-back" size={11} color={theme.glass.inkMuted} />
                 <Ionicons name={icon} size={20} color={theme.glass.ink} />
               </GlassDrop>
@@ -250,38 +258,28 @@ export default function ContextDock() {
                 stack's back card shows is that it is there. */}
             {/* One edge per card behind, so the stack says its own depth
                 rather than leaving you to guess how far round you are. */}
-            {Array.from({ length: behind }).map((_, i) => {
-              // The edge shows the colour of the card it actually IS, in
-              // the order the swipe will reach it - so the stack says
-              // not only how deep it goes but what is coming next.
-              const at = faces.indexOf(showing);
-              const next = faces[(at + 1 + i) % faces.length];
-              return (
-                <GlassDrop
-                  key={i}
-                  style={[
-                    styles.behind,
-                    {
-                      bottom: -(BEHIND_EDGE * i),
-                      left: BEHIND_INSET * (i + 1),
-                      right: BEHIND_INSET * (i + 1),
-                    },
-                    next === 'actions'
-                      ? styles.faceActions
-                      : next === 'desks'
-                        ? styles.faceDesks
-                        : styles.faceContext,
-                  ]}
-                />
-              );
-            })}
+            {Array.from({ length: behind }).map((_, i) => (
+              <GlassDrop
+                key={i}
+                style={[
+                  styles.behind,
+                  {
+                    bottom: -(BEHIND_EDGE * i),
+                    left: BEHIND_INSET * (i + 1),
+                    right: BEHIND_INSET * (i + 1),
+                  },
+                ]}
+                blurAmount={CARD_BLUR}
+                glassOpacity={CARD_GLASS}
+              />
+            ))}
 
           {showing === 'desks' && desks && (
             desks.collapsed ? (
               // The dots a home screen uses to say which page you are on
               // - still a way to get there, and still what "collapsed"
               // has meant here since the user first asked for it.
-              <GlassDrop style={[styles.dotsShell, styles.faceDesks]}>
+              <GlassDrop style={styles.dotsShell} blurAmount={CARD_BLUR} glassOpacity={CARD_GLASS}>
                 <Pressable
                   style={styles.dotsRow}
                   onLongPress={desks.onToggleCollapsed}
@@ -307,7 +305,7 @@ export default function ContextDock() {
                 </Pressable>
               </GlassDrop>
             ) : (
-              <GlassDrop style={[styles.shell, styles.faceDesks]}>
+              <GlassDrop style={styles.shell} blurAmount={CARD_BLUR} glassOpacity={CARD_GLASS}>
                 <Pressable
                   style={styles.actionRow}
                   onLongPress={desks.onToggleCollapsed}
@@ -348,7 +346,7 @@ export default function ContextDock() {
           )}
 
           {showing === 'context' && strip && (
-            <GlassDrop style={[styles.shell, styles.faceContext]}>
+            <GlassDrop style={styles.shell} blurAmount={CARD_BLUR} glassOpacity={CARD_GLASS}>
               <ScrollView
                 ref={stripRef}
                 horizontal
@@ -406,7 +404,7 @@ export default function ContextDock() {
           )}
 
           {showing === 'context' && trail && (
-            <GlassDrop style={[styles.shell, styles.trailShell, styles.faceContext]}>
+            <GlassDrop style={[styles.shell, styles.trailShell]} blurAmount={CARD_BLUR} glassOpacity={CARD_GLASS}>
               <View style={styles.trailRow}>
                 <ScrollView
                   ref={trailRef}
@@ -461,7 +459,7 @@ export default function ContextDock() {
           )}
 
           {showing === 'actions' && !!actions?.length && (
-            <GlassDrop style={[styles.shell, styles.faceActions, styles.actionsShell]}>
+            <GlassDrop style={[styles.shell, styles.actionsShell]} blurAmount={CARD_BLUR} glassOpacity={CARD_GLASS}>
               {/* Scrolls, like the path does. A screen with five things
                   its list can be done TO is not a screen with a design
                   problem - the card simply holds what fits and the rest
@@ -502,7 +500,7 @@ export default function ContextDock() {
           )}
           </View>
           </GestureDetector>
-          {!!beads.right && <Bead bead={beads.right} theme={theme} />}
+          {beads.right ? <Bead bead={beads.right} theme={theme} /> : <View style={styles.beadSlot} />}
         </View>
       </View>
     </GlassPortal>
@@ -514,7 +512,7 @@ export default function ContextDock() {
 function Bead({ bead, theme }: { bead: DockBead; theme: ReturnType<typeof useTheme> }) {
   return (
     <Pressable onPress={bead.onPress} onLongPress={bead.onLongPress}>
-      <GlassDrop style={styles.bead}>
+      <GlassDrop style={styles.bead} blurAmount={CARD_BLUR} glassOpacity={CARD_GLASS}>
         <Ionicons
           name={bead.icon as keyof typeof Ionicons.glyphMap}
           size={22}
@@ -581,22 +579,16 @@ const styles = StyleSheet.create({
   shell: {
     padding: NAV_PADDING,
   },
-  // TEMPORARY - see FACE_CONTEXT/FACE_ACTIONS.
-  faceContext: {
-    backgroundColor: FACE_CONTEXT,
-  },
-  faceActions: {
-    backgroundColor: FACE_ACTIONS,
-  },
-  faceDesks: {
-    backgroundColor: FACE_DESKS,
-  },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   actionsShell: {
     maxWidth: 210,
+  },
+  beadSlot: {
+    flexShrink: 0,
+    width: NAV_BUTTON + NAV_PADDING * 2,
   },
   bead: {
     // Fixed: a bead never gives up room, it is the card that does.
