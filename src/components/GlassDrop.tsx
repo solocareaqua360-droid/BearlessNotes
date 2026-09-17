@@ -50,6 +50,7 @@ export default function GlassDrop({
   // Every visual parameter is the theme's by default and the caller's
   // when it has a reason - see tokens.ts for what each one is.
   glassOpacity,
+  glassBody,
   blurAmount,
   specularIntensity,
   rimOpacity,
@@ -68,6 +69,10 @@ export default function GlassDrop({
   style?: StyleProp<ViewStyle>;
   radius?: number;
   glassOpacity?: number;
+  // The colour of the glass itself, where the theme's is the wrong one
+  // - the black theme's body is WHITE at 5%, right for a whisper of a
+  // capsule and wrong for a dense frosted one.
+  glassBody?: string;
   blurAmount?: number;
   specularIntensity?: number;
   rimOpacity?: number;
@@ -126,8 +131,8 @@ export default function GlassDrop({
               {/* The body. Lighter where the light comes from, so even the
                   clean middle is not a flat wash of one colour. */}
               <LinearGradient id={`${uid}-body`} x1="0" y1="0" x2="0.35" y2="1">
-                <Stop offset="0" stopColor={g.body} stopOpacity={(glassOpacity ?? g.opacity) * 1.15} />
-                <Stop offset="1" stopColor={g.body} stopOpacity={(glassOpacity ?? g.opacity) * 0.85} />
+                <Stop offset="0" stopColor={glassBody ?? g.body} stopOpacity={(glassOpacity ?? g.opacity) * 1.15} />
+                <Stop offset="1" stopColor={glassBody ?? g.body} stopOpacity={(glassOpacity ?? g.opacity) * 0.85} />
               </LinearGradient>
               {/* The outer specular: brightest at the top-left corner and
                   gone by the middle of the run, which is what stops it

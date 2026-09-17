@@ -61,10 +61,18 @@ const FLAT = {
   specularIntensity: 0,
   rimOpacity: 0,
   vignetteIntensity: 0,
-  glassOpacity: 0.72,
+  glassOpacity: 0.78,
   blurAmount: 70,
   lift: 'none' as const,
 };
+// The frost's own colour. NOT the theme's glass body: in the black theme
+// that is white at 5% - a whisper, right for its capsules and wrong here,
+// where at 78% it made a white pill with white icons on it. Dark frost on
+// the dark themes, a light grey frost on the white one - the reference
+// is dark on a dark screen and would be light on a light one.
+function frostFor(themeKey: string): string {
+  return themeKey === 'white' ? '#D9DCE1' : '#1C1B19';
+}
 // Sizes, in points, from the reference at this phone's density: beads
 // of 44, a capsule a touch taller than the beads at 52, standing 30 in
 // from the edge with 14 between a bead and the capsule.
@@ -77,6 +85,7 @@ const GAP = 14;
 
 export default function ContextDock() {
   const theme = useTheme();
+  const glassBody = frostFor(theme.key);
   const insets = useSafeAreaInsets();
   // Three cards, and they are three because of the one thing a
   // navigation dock must never do: the desks used to vanish the moment
@@ -261,7 +270,7 @@ export default function ContextDock() {
           {beads.left ? <Bead bead={beads.left} theme={theme} /> : <View style={styles.beadSlot} />}
           {showBead && (
             <Pressable onPress={stepOut}>
-              <GlassDrop style={styles.exitBead} {...FLAT}>
+              <GlassDrop style={styles.exitBead} {...FLAT} glassBody={glassBody}>
                 <Ionicons name="chevron-back" size={11} color={theme.glass.inkMuted} />
                 <Ionicons name={icon} size={20} color={theme.glass.ink} />
               </GlassDrop>
@@ -276,32 +285,41 @@ export default function ContextDock() {
                 stack's back card shows is that it is there. */}
             {/* One edge per card behind, so the stack says its own depth
                 rather than leaving you to guess how far round you are. */}
-            {/* Plain bands, NOT glass. Glass carries a lit rim, and three
-                rims stacked under the front card read as a staircase of
-                outlines - the reference shows a single darker sliver and
-                nothing else. */}
-            {Array.from({ length: behind }).map((_, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.behind,
-                  {
-                    bottom: -(BEHIND_EDGE * i),
-                    left: BEHIND_INSET * (i + 1),
-                    right: BEHIND_INSET * (i + 1),
-                    backgroundColor: theme.glass.body,
-                    opacity: Math.min(0.9, theme.glass.opacity + 0.25 + i * 0.1),
-                  },
-                ]}
-              />
-            ))}
+            {/* Only what shows BELOW the front card is drawn at all. The
+                front card is translucent so the screen shows through it -
+                and what showed through it was the cards behind, a lighter
+                smear where they overlapped. Clipped to the slivers, they
+                cannot be behind anything. Plain bands, not glass: glass
+                carries a lit rim and three rims read as a staircase. */}
+            {behind > 0 && (
+              <View style={[styles.behindClip, { height: BEHIND_EDGE * behind }]} pointerEvents="none">
+                {Array.from({ length: behind })
+                  .map((_, i) => i)
+                  .reverse()
+                  .map((i) => (
+                    <View
+                      key={i}
+                      style={[
+                        styles.behind,
+                        {
+                          top: -(CARD_H - BEHIND_EDGE * (i + 1)),
+                          left: BEHIND_INSET * (i + 1),
+                          right: BEHIND_INSET * (i + 1),
+                          backgroundColor: glassBody,
+                          opacity: Math.min(0.95, FLAT.glassOpacity + 0.1 + i * 0.05),
+                        },
+                      ]}
+                    />
+                  ))}
+              </View>
+            )}
 
           {showing === 'desks' && desks && (
             desks.collapsed ? (
               // The dots a home screen uses to say which page you are on
               // - still a way to get there, and still what "collapsed"
               // has meant here since the user first asked for it.
-              <GlassDrop style={styles.dotsShell} {...FLAT}>
+              <GlassDrop style={styles.dotsShell} {...FLAT} glassBody={glassBody}>
                 <Pressable
                   style={styles.dotsRow}
                   onLongPress={desks.onToggleCollapsed}
@@ -327,7 +345,7 @@ export default function ContextDock() {
                 </Pressable>
               </GlassDrop>
             ) : (
-              <GlassDrop style={styles.shell} {...FLAT}>
+              <GlassDrop style={styles.shell} {...FLAT} glassBody={glassBody}>
                 <Pressable
                   style={[styles.actionRow, styles.spread]}
                   onLongPress={desks.onToggleCollapsed}
@@ -368,7 +386,7 @@ export default function ContextDock() {
           )}
 
           {showing === 'context' && strip && (
-            <GlassDrop style={styles.shell} {...FLAT}>
+            <GlassDrop style={styles.shell} {...FLAT} glassBody={glassBody}>
               <ScrollView
                 ref={stripRef}
                 horizontal
@@ -425,7 +443,7 @@ export default function ContextDock() {
           )}
 
           {showing === 'context' && trail && (
-            <GlassDrop style={[styles.shell, styles.trailShell]} {...FLAT}>
+            <GlassDrop style={[styles.shell, styles.trailShell]} {...FLAT} glassBody={glassBody}>
               <View style={styles.trailRow}>
                 <ScrollView
                   ref={trailRef}
@@ -480,7 +498,7 @@ export default function ContextDock() {
           )}
 
           {showing === 'actions' && !!actions?.length && (
-            <GlassDrop style={[styles.shell, styles.actionsShell]} {...FLAT}>
+            <GlassDrop style={[styles.shell, styles.actionsShell]} {...FLAT} glassBody={glassBody}>
               {/* Scrolls, like the path does. A screen with five things
                   its list can be done TO is not a screen with a design
                   problem - the card simply holds what fits and the rest
@@ -533,7 +551,7 @@ export default function ContextDock() {
 function Bead({ bead, theme }: { bead: DockBead; theme: ReturnType<typeof useTheme> }) {
   return (
     <Pressable onPress={bead.onPress} onLongPress={bead.onLongPress}>
-      <GlassDrop style={styles.bead} {...FLAT}>
+      <GlassDrop style={styles.bead} {...FLAT} glassBody={frostFor(theme.key)}>
         <Ionicons
           name={bead.icon as keyof typeof Ionicons.glyphMap}
           size={21}
@@ -557,19 +575,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    alignItems: 'center',
+    alignItems: 'stretch',
     paddingHorizontal: EDGE_INSET,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: GAP,
-    width: '100%',
-    // Never wider than the screen. A path grows with every folder you
-    // walk into, and left to itself it pushed the bead beside it clean
-    // off the edge - the capsule scrolls INSIDE, so what has to give is
-    // the capsule's width, not the row's.
-    maxWidth: '100%',
+    alignSelf: 'stretch',
   },
   exitBead: {
     flexShrink: 0,
@@ -590,9 +603,16 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     minWidth: 0,
   },
+  // The window under the front card that the slivers show through.
+  behindClip: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: CARD_H,
+    overflow: 'hidden',
+  },
   behind: {
     position: 'absolute',
-    bottom: 0,
     height: CARD_H,
     borderRadius: 999,
   },
