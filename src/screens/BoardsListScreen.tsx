@@ -268,7 +268,7 @@ export default function BoardsListScreen({
   // the tile width is an exact number of pixels, so it has to be worked
   // out from the SAME margins the grid actually uses, or the last column
   // ends up under the buttons.
-  const gridWidth = Math.min(windowWidth, MAX_CONTENT_WIDTH) - 20 - RAIL_CLEARANCE;
+  const gridWidth = Math.min(windowWidth, MAX_CONTENT_WIDTH) - 20;
   const tileColumns = Math.max(2, Math.min(4, Math.floor(gridWidth / 300)));
   const tileWidth = Math.floor((gridWidth - 12 * (tileColumns - 1)) / tileColumns);
 

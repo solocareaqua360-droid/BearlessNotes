@@ -20,6 +20,10 @@ import GlassDrop, { GlassIcon } from './GlassDrop';
 import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
 import RailCapsule from './RailCapsule';
+import { useDockActions, useDockBeads } from '../navigation/navDock';
+import { NAV_BOTTOM, NAV_BUTTON as DOCK_BUTTON, NAV_PADDING as DOCK_PADDING } from '../constants/rail';
+// What a menu has to clear to stand above the dock rather than under it.
+const DOCK_CLEAR = NAV_BOTTOM + DOCK_BUTTON + DOCK_PADDING * 2 + 12;
 import ScreenBackdrop from './ScreenBackdrop';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from './TagsDrawer';
 import BulkActionBar from './BulkActionBar';
@@ -274,6 +278,81 @@ export default function DatabaseChrome<T extends { id: string }>({
   // and the buttons around it come back.
   const keyboardUp = useKeyboardVisible();
   const searchingAlone = list.isSearching && keyboardUp;
+  // Everything this screen offers now goes to the DOCK, not the rail -
+  // the same move the documents screen made, and it lands on files,
+  // photos, links and the boards list at once because they all came
+  // through here. Search on the left, creating on the right, and what
+  // the list can be done TO on the stack's second card.
+  //
+  // The rail reserved 90 points of width whether it held four capsules
+  // or one; that is what leaving it buys, not the count of buttons.
+  useDockBeads(
+    isFocused
+      ? {
+          icon: list.isSelectMode || list.isSearching ? 'close-outline' : 'search-outline',
+          active: list.isSearching,
+          onPress: () => {
+            // While selecting, this is the way OUT of selecting - the one
+            // screen state you most need to be able to leave.
+            if (list.isSelectMode) {
+              list.toggleSelectMode();
+              return;
+            }
+            list.setIsSearching((prev) => !prev);
+          },
+        }
+      : null,
+    isFocused && !list.isSelectMode && !searchingAlone && onAdd
+      ? { icon: addIcon ?? 'add-outline', badge: 'add-circle-outline', onPress: onAdd }
+      : null
+  );
+  useDockActions(
+    isFocused && !searchingAlone
+      ? [
+          ...(shape ? [{ key: 'shape', icon: shape.icon as string, onPress: shape.onToggle }] : []),
+          {
+            key: 'sort',
+            icon: 'filter-outline',
+            active: sortMenuOpen,
+            onPress: () => setSortMenuOpen((v) => !v),
+          },
+          ...(bulk
+            ? [
+                {
+                  key: 'select',
+                  icon: list.isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
+                  active: list.isSelectMode,
+                  onPress: () => list.toggleSelectMode(),
+                },
+              ]
+            : []),
+          // Folders are made far less often than records - the user's own
+          // reckoning - so this rides with the rest rather than beside
+          // the bead that makes a record.
+          ...(explorer?.active
+            ? [
+                {
+                  key: 'folder',
+                  icon: 'folder-outline',
+                  badge: 'add-circle-outline',
+                  onPress: explorer.onNewFolder,
+                },
+              ]
+            : []),
+          ...(menuRows
+            ? [
+                {
+                  key: 'menu',
+                  icon: 'ellipsis-horizontal-outline',
+                  active: menuOpen,
+                  onPress: () => setMenuOpen((v) => !v),
+                },
+              ]
+            : []),
+        ]
+      : null
+  );
+
   // Pulled down from the top of the list, the search comes out.
   const pull = usePullToSearch(() => {
     pullHaptic();
@@ -305,49 +384,15 @@ export default function DatabaseChrome<T extends { id: string }>({
           visible={menuOpen && !!menuRows}
           onClose={() => setMenuOpen(false)}
           entries={[]}
-          style={{ position: 'absolute', top: 96, right: RAIL_CLEARANCE }}
+          // Above the dock, where the button that opens it now lives.
+          style={{ position: 'absolute', right: 16, bottom: DOCK_CLEAR + insets.bottom }}
         >
           {menuRows?.(() => setMenuOpen(false))}
         </Menu>
 
-        {/* What this screen can do TO its list: what shape it takes, and
-            what order it is in. The same capsule, in the same place, as on
-            a custom database. */}
-        {isFocused && !searchingAlone && (
-          <RailCapsule
-            side={railSide}
-            bottom={ownHistory || rung.selectOwn ? rail.extraBottom : rail.actionsBottom}
-            buttons={[
-              ...(shape
-                ? [
-                    {
-                      icon: shape.icon,
-                      onPress: shape.onToggle,
-                    },
-                  ]
-                : []),
-              { icon: 'filter-outline', onPress: () => setSortMenuOpen((v) => !v), active: sortMenuOpen },
-            ]}
-          />
-        )}
         {/* Choosing several is a mode, not an action - its own capsule,
             where a custom database keeps it too, for as long as the screen
             has the height for one. */}
-        {isFocused && !searchingAlone && !!bulk && rung.selectOwn && (
-          <RailCapsule
-            side={railSide}
-            bottom={ownHistory ? rail.actionsBottom : rail.historyBottom}
-            buttons={[
-              {
-                icon: (list.isSelectMode ? 'close-outline' : 'checkmark-circle-outline') as
-                  | 'close-outline'
-                  | 'checkmark-circle-outline',
-                onPress: () => list.toggleSelectMode(),
-                active: list.isSelectMode,
-              },
-            ]}
-          />
-        )}
         <Menu
           visible={sortMenuOpen}
           onClose={() => setSortMenuOpen(false)}
@@ -364,8 +409,8 @@ export default function DatabaseChrome<T extends { id: string }>({
               },
             })),
           ]}
-          // Beside the button that opens it, which is on the rail now.
-          style={{ position: 'absolute', right: RAIL_CLEARANCE, bottom: rail.actionsBottom }}
+          // Above the dock, where the button that opens it now lives.
+          style={{ position: 'absolute', right: 16, bottom: DOCK_CLEAR + insets.bottom }}
         />
 
         {/* The tabs float over the cards rather than standing above them,
@@ -386,7 +431,7 @@ export default function DatabaseChrome<T extends { id: string }>({
                   dark
                   blurTarget={blurTarget}
                   startPadding={splitting ? listPaneX + 20 : undefined}
-                  endPadding={RAIL_CLEARANCE}
+                  endPadding={20}
                 />
               )}
             </View>
@@ -477,7 +522,7 @@ export default function DatabaseChrome<T extends { id: string }>({
             {children(
               list.tagFilter || list.isSearching ? 0 : chromeBottom,
               pull.listProps,
-              Math.max(0, columnWidth - RAIL_CLEARANCE - 20),
+              Math.max(0, columnWidth - 20),
               pull.scrollY
             )}
           </GestureDetector>
@@ -492,56 +537,6 @@ export default function DatabaseChrome<T extends { id: string }>({
           real screen, leaving a sliver of white at an edge otherwise. */}
       <ScreenBackdrop id="databaseBg" colors={['#705648', '#69736E', '#000000']} scrollY={pull.scrollY} />
 
-      {/* Through the portal, which is where a blur is safe - inside the
-          screen it would be blurring a picture it is part of. */}
-      {isFocused && !searchingAlone && (
-        <GlassPortal>
-          <View
-            style={[
-              styles.railWrap,
-              railSide === 'left' ? styles.railWrapLeft : styles.railWrapRight,
-              { top: insets.top + CHROME_TOP + CAPSULE_DROP },
-            ]}
-            pointerEvents="box-none"
-          >
-            <GlassDrop style={styles.headerButtons}>
-              {/* While selecting, the top button is the way OUT of it.
-                  It was only a row inside the "..." menu - two taps and
-                  invisible, on the one screen state you most need to be
-                  able to leave. */}
-              <Pressable
-                hitSlop={8}
-                onPress={() => {
-                  if (list.isSelectMode) {
-                    list.toggleSelectMode();
-                    return;
-                  }
-                  list.setIsSearching((prev) => !prev);
-                }}
-              >
-                <GlassIcon
-                  name={list.isSelectMode || list.isSearching ? 'close-outline' : 'search-outline'}
-                  size={24}
-                />
-              </Pressable>
-              {/* Only where the screen still has rows to put in it. The
-                  three that had nothing but the "Вигляд" pair now have
-                  that on the rail, and a "..." opening an empty panel is
-                  worse than no "...". */}
-              {!!menuRows && (
-                <>
-                  <View style={styles.headerButtonsDivider} />
-                  <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-                    <GlassIcon name="ellipsis-horizontal-outline" size={24} />
-                  </Pressable>
-                </>
-              )}
-              {/* The way out of this database, where the arrow in the
-                  header's corner used to be. A tab's own root has none. */}
-            </GlassDrop>
-          </View>
-        </GlassPortal>
-      )}
 
       {splitting ? (
         <View style={styles.paneRow}>
@@ -570,28 +565,6 @@ export default function DatabaseChrome<T extends { id: string }>({
           record, and a folder beside it - the same pair, drawn the same
           way, as on the documents screen. Everywhere else it stays the
           one round accent button it has always been. */}
-      {isFocused && !list.isSelectMode && !searchingAlone && onAdd && explorer?.active && (
-        <RailCapsule
-          side={railSide}
-          bottom={rail.addBottom}
-          buttons={[
-            { icon: addIcon ?? 'add-outline', badge: 'add-circle-outline', onPress: onAdd },
-            { icon: 'folder-outline', badge: 'add-circle-outline', onPress: explorer.onNewFolder },
-          ]}
-        />
-      )}
-      {isFocused && !list.isSelectMode && !searchingAlone && onAdd && !explorer?.active && (
-        // The same capsule as everything else on the rail, with this
-        // database's accent under its glass. It was a button of its own
-        // beside the rail, with its own width and its own distance from
-        // the edge, and it sat off the rail's axis - twice.
-        <RailCapsule
-          side={railSide}
-          bottom={rail.addBottom}
-          tint={accentGlass}
-          buttons={[{ icon: 'add-outline', size: 28, onPress: onAdd }]}
-        />
-      )}
 
       {!hideDrawer && (
       <TagsDrawer

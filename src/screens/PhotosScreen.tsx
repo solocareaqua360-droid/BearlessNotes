@@ -1149,7 +1149,7 @@ const makeStyles = (t: Theme) =>
     paddingLeft: 20,
     // The rail stands at the right edge; the rows stop short of it rather
     // than running under it - the same clearance the calendar keeps.
-    paddingRight: RAIL_CLEARANCE,
+    paddingRight: 20,
     gap: 10,
   },
   gridWithBulkBar: {
