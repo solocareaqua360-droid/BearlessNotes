@@ -533,11 +533,15 @@ export default function CalendarScreen() {
   // were rows in a sheet because they are switches - but a switch with
   // its state ON THE ICON is a better switch than a row with a tick, and
   // it costs a press less.
-  // Right bead: "today". Away from today it takes you back - the one
-  // move the strip cannot make, since it walks a day at a time. ON today
-  // there is nowhere to jump, so the same press turns the dock to the
-  // desks instead, which is what the user asked for and keeps the two
-  // beads symmetrical on every day of the year.
+  // Right bead: "today", and it never does two things at once. Away from
+  // today, its ONE job is to bring you back - the move the strip cannot
+  // make, since that walks a day at a time - and it shows you the day it
+  // brought you to. Already on today, it walks a ring of two: the desks
+  // and the days, over and over.
+  //
+  // The options card is deliberately NOT in that ring. The user's own
+  // line: the bead is for the two places you go, and options are what
+  // the swipe is for.
   useDockBeads(
     calendarFocused ? { icon: 'search-outline', onPress: () => navigation.navigate('Diary') } : null,
     calendarFocused
@@ -547,9 +551,10 @@ export default function CalendarScreen() {
           onPress: () => {
             if (selectedKeyForDock !== todayKey) {
               jumpToToday();
+              setDockFace('context');
               return;
             }
-            setDockFace('desks');
+            setDockFace(dockFace === 'context' ? 'desks' : 'context');
           },
         }
       : null
@@ -606,7 +611,7 @@ export default function CalendarScreen() {
       : null
   );
   const showContext = useDockShowContext();
-  const [, setDockFace] = useNavDockFace();
+  const [dockFace, setDockFace] = useNavDockFace();
   const publishToDock = useNavDockPublisher();
   const pickDay = useCallback((key: string) => selectDay(parseDateKey(key)), []);
   useEffect(() => {

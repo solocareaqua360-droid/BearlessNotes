@@ -50,13 +50,11 @@ const BEHIND_EDGE = 3;
 // edges nearly line up, which is what makes it one stack instead of
 // three pills of decreasing size.
 const BEHIND_INSET = 5;
-// The test colours are gone. What replaces them is the reference the
-// user has been pointing at all along: FROSTED glass - it does not show
-// the picture behind it, it blurs that picture hard and keeps only its
-// averaged tint. Which also means a card behind does NOT tint the one in
-// front, so an edge is an edge and not a colour sample.
-const CARD_BLUR = 40;
-const CARD_GLASS = 0.30;
+// No glass settings of our own. The user pointed at the capsule they
+// wanted the dock to look like and it turned out to be an ordinary
+// GlassDrop with nothing overridden - the theme's own answer. Passing
+// blurAmount/glassOpacity here only ever made it THINNER than the thing
+// it was supposed to match.
 
 export default function ContextDock() {
   const theme = useTheme();
@@ -243,7 +241,7 @@ export default function ContextDock() {
           {beads.left ? <Bead bead={beads.left} theme={theme} /> : <View style={styles.beadSlot} />}
           {showBead && (
             <Pressable onPress={stepOut}>
-              <GlassDrop style={styles.exitBead} blurAmount={CARD_BLUR} glassOpacity={CARD_GLASS}>
+              <GlassDrop style={styles.exitBead}>
                 <Ionicons name="chevron-back" size={11} color={theme.glass.inkMuted} />
                 <Ionicons name={icon} size={20} color={theme.glass.ink} />
               </GlassDrop>
@@ -269,8 +267,6 @@ export default function ContextDock() {
                     right: BEHIND_INSET * (i + 1),
                   },
                 ]}
-                blurAmount={CARD_BLUR}
-                glassOpacity={CARD_GLASS}
               />
             ))}
 
@@ -279,7 +275,7 @@ export default function ContextDock() {
               // The dots a home screen uses to say which page you are on
               // - still a way to get there, and still what "collapsed"
               // has meant here since the user first asked for it.
-              <GlassDrop style={styles.dotsShell} blurAmount={CARD_BLUR} glassOpacity={CARD_GLASS}>
+              <GlassDrop style={styles.dotsShell}>
                 <Pressable
                   style={styles.dotsRow}
                   onLongPress={desks.onToggleCollapsed}
@@ -305,7 +301,7 @@ export default function ContextDock() {
                 </Pressable>
               </GlassDrop>
             ) : (
-              <GlassDrop style={styles.shell} blurAmount={CARD_BLUR} glassOpacity={CARD_GLASS}>
+              <GlassDrop style={styles.shell}>
                 <Pressable
                   style={styles.actionRow}
                   onLongPress={desks.onToggleCollapsed}
@@ -346,7 +342,7 @@ export default function ContextDock() {
           )}
 
           {showing === 'context' && strip && (
-            <GlassDrop style={styles.shell} blurAmount={CARD_BLUR} glassOpacity={CARD_GLASS}>
+            <GlassDrop style={styles.shell}>
               <ScrollView
                 ref={stripRef}
                 horizontal
@@ -404,7 +400,7 @@ export default function ContextDock() {
           )}
 
           {showing === 'context' && trail && (
-            <GlassDrop style={[styles.shell, styles.trailShell]} blurAmount={CARD_BLUR} glassOpacity={CARD_GLASS}>
+            <GlassDrop style={[styles.shell, styles.trailShell]}>
               <View style={styles.trailRow}>
                 <ScrollView
                   ref={trailRef}
@@ -459,7 +455,7 @@ export default function ContextDock() {
           )}
 
           {showing === 'actions' && !!actions?.length && (
-            <GlassDrop style={[styles.shell, styles.actionsShell]} blurAmount={CARD_BLUR} glassOpacity={CARD_GLASS}>
+            <GlassDrop style={[styles.shell, styles.actionsShell]}>
               {/* Scrolls, like the path does. A screen with five things
                   its list can be done TO is not a screen with a design
                   problem - the card simply holds what fits and the rest
@@ -512,7 +508,7 @@ export default function ContextDock() {
 function Bead({ bead, theme }: { bead: DockBead; theme: ReturnType<typeof useTheme> }) {
   return (
     <Pressable onPress={bead.onPress} onLongPress={bead.onLongPress}>
-      <GlassDrop style={styles.bead} blurAmount={CARD_BLUR} glassOpacity={CARD_GLASS}>
+      <GlassDrop style={styles.bead}>
         <Ionicons
           name={bead.icon as keyof typeof Ionicons.glyphMap}
           size={22}
