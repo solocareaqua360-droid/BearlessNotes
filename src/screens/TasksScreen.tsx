@@ -50,24 +50,16 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ScreenBackdrop from '../components/ScreenBackdrop';
-import RailCapsule from '../components/RailCapsule';
 import Menu from '../components/surfaces/Menu';
-import { GlassPortal } from '../components/GlassPortal';
-import { useBlurTarget } from '../components/GlassTarget';
-import { useRail } from '../hooks/useRail';
-import {
-  CAPSULE_HEIGHT,
-  CAPSULE_HEIGHT_1,
-  CHROME_TOP,
-  CAPSULE_DROP,
-  RAIL_CLEARANCE,
-  RAIL_RIGHT,
-} from '../constants/rail';
-import GlassDrop, { GlassIcon } from '../components/GlassDrop';
+import { CHROME_TOP, NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
+import { useDockActions, useDockLeave, useDockShowContext } from '../navigation/navDock';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { confirm } from '../components/surfaces/Ask';
 
 const ACCENT = '#4E9A6B';
+// The foot the list keeps clear for the dock - the same reckoning
+// DatabaseChrome makes.
+const DOCK_CLEAR = NAV_BOTTOM + NAV_BUTTON + NAV_PADDING * 2 + 12;
 const DANGER = '#EF4444';
 const PROJECT_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
 const tasksCollection = collection(db, 'tasks');
@@ -167,19 +159,45 @@ export default function TasksScreen() {
     clear: clearSelection,
   } = useMultiSelect();
   const [menuOpen, setMenuOpen] = useState(false);
-  const railBlurTarget = useBlurTarget();
-  const insets = useSafeAreaInsets();
-  // Every piece of this rail is drawn through the portal, and the portal
-  // reaches over the WHOLE app - so a screen pushed on top of this one
-  // (a document opened from a task) had these capsules still floating
-  // above it, overlapping its own. A screen's rail belongs to the screen
-  // that is actually on show.
   const isFocused = useIsFocused();
-  // One button at the top (the way out), what this list can be DONE to
-  // under it, and choosing in its own capsule. This screen is PUSHED over
-  // the tabs, so there is no island at its foot, and tasks are made inside
-  // a document, so there is no "+" either.
-  const rail = useRail(CAPSULE_HEIGHT_1, CAPSULE_HEIGHT, 0, CAPSULE_HEIGHT_1, false);
+  useDockActions(
+    isFocused
+      ? [
+          {
+            key: 'shape',
+            icon: kanbanMode ? 'albums-outline' : 'reorder-four-outline',
+            closesStack: true,
+            onPress: () =>
+              setKanbanMode((v) => {
+                const next = !v;
+                if (next) clearSelection();
+                return next;
+              }),
+          },
+          { key: 'sort', icon: 'filter-outline', active: menuOpen, onPress: () => setMenuOpen((v) => !v) },
+          {
+            key: 'select',
+            icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
+            active: isSelectMode,
+            onPress: () => {
+              // Leaving select mode is the END of the thing this card was
+              // opened for; entering it is the start.
+              if (isSelectMode) showContext();
+              else setKanbanMode(false);
+              toggleSelectMode();
+            },
+          },
+        ]
+      : null
+  );
+  const insets = useSafeAreaInsets();
+  const showContext = useDockShowContext();
+  // Everything this screen offered on the rail goes to the DOCK now, as
+  // on every database: the way out as the leave bead, and what the list
+  // can be done TO on the stack's second card. This screen is PUSHED
+  // over the tabs, and tasks are made inside a document, so there is no
+  // "+" - no bead on the right.
+  useDockLeave('arrow-back-outline', () => navigation.goBack());
   const { sortPref, selectSortField } = useSortPref('tasksPrefs');
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -862,7 +880,7 @@ export default function TasksScreen() {
         snapToInterval={kanbanColumnWidth + KANBAN_COLUMN_GAP}
         decelerationRate="fast"
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.kanbanBoard}
+        contentContainerStyle={[styles.kanbanBoard, { paddingBottom: DOCK_CLEAR + insets.bottom }]}
         onScroll={(e) => {
           boardScrollXRef.current = e.nativeEvent.contentOffset.x;
         }}
@@ -920,53 +938,6 @@ export default function TasksScreen() {
     <View style={styles.container}>
       <ScreenBackdrop id="tasksBg" colors={['#705648', '#69736E', '#000000']} />
 
-      {/* The way out, in the top capsule where it is on every database. */}
-      {isFocused && (
-      <GlassPortal>
-        <View style={[styles.railTop, { top: insets.top + CHROME_TOP + CAPSULE_DROP }]} pointerEvents="box-none">
-          <GlassDrop style={styles.topCapsule}>
-            <Pressable hitSlop={8} onPress={() => (kanbanMode ? setKanbanMode(false) : navigation.goBack())}>
-              <GlassIcon name="arrow-back-outline" size={24} />
-            </Pressable>
-          </GlassDrop>
-        </View>
-      </GlassPortal>
-      )}
-
-      {/* What shape the list takes, and what order it is in. */}
-      {isFocused && (
-      <RailCapsule
-        bottom={rail.actionsBottom}
-        buttons={[
-          {
-            icon: kanbanMode ? 'albums-outline' : 'reorder-four-outline',
-            onPress: () =>
-              setKanbanMode((v) => {
-                const next = !v;
-                if (next) clearSelection();
-                return next;
-              }),
-          },
-          { icon: 'filter-outline', onPress: () => setMenuOpen((v) => !v), active: menuOpen },
-        ]}
-      />
-      )}
-      {isFocused && (
-      <RailCapsule
-        bottom={rail.historyBottom}
-        buttons={[
-          {
-            icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
-            onPress: () => {
-              if (!isSelectMode) setKanbanMode(false);
-              toggleSelectMode();
-            },
-            active: isSelectMode,
-          },
-        ]}
-      />
-      )}
-
       <ContentColumn>
         {/* The band the status bar and the rail's top capsule stand in.
             It was the header row's own top padding until the header went. */}
@@ -976,11 +947,11 @@ export default function TasksScreen() {
             light capsule of this screen's own invention - the one screen
             in the app that was still white. They are on the rail now,
             each in the place it has everywhere else. */}
-        {/* Ordering hangs off the button that opens it, on the rail. */}
+        {/* Ordering hangs off the button that opens it, above the dock. */}
         {menuOpen && (
           <>
             <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />
-            <View style={[styles.menuPanel, { bottom: rail.actionsBottom }]}>
+            <View style={[styles.menuPanel, { bottom: DOCK_CLEAR + insets.bottom }]}>
               <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
             </View>
           </>
@@ -1014,7 +985,7 @@ export default function TasksScreen() {
             />
           </>
         ) : (
-        <ScrollView contentContainerStyle={styles.list}>
+        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: DOCK_CLEAR + insets.bottom }]}>
           {todayTasks.length > 0 &&
             renderSection({
               key: '__today__',
@@ -1132,19 +1103,6 @@ const makeStyles = (t: Theme) =>
   container: {
     flex: 1,
   },
-  railTop: {
-    position: 'absolute',
-    right: RAIL_RIGHT,
-    alignItems: 'center',
-    zIndex: 20,
-  },
-  // The same capsule every other screen's top one is - 19 of padding
-  // around a 24px icon, inside a hairline border.
-  topCapsule: {
-    alignItems: 'center',
-    paddingVertical: 18,
-    paddingHorizontal: 19,
-  },
   menuBackdrop: {
     position: 'absolute',
     left: 0,
@@ -1155,9 +1113,9 @@ const makeStyles = (t: Theme) =>
   },
   menuPanel: {
     position: 'absolute',
-    // Beside the button that opens it, which is on the rail now - the
-    // `bottom` comes from the rail at the call site.
-    right: RAIL_CLEARANCE,
+    // Above the dock, where the button that opens it lives - the
+    // `bottom` comes from the call site.
+    right: 16,
     width: 200,
     backgroundColor: t.surface,
     borderRadius: 14,
@@ -1244,9 +1202,7 @@ const makeStyles = (t: Theme) =>
     paddingVertical: 8,
     paddingLeft: 20,
     gap: 8,
-    // The rail stands at the right edge; the rows stop short of it rather
-    // than running under it, as they do on every other list.
-    paddingRight: RAIL_CLEARANCE,
+    paddingRight: 20,
   },
   group: {
     gap: 8,
@@ -1441,9 +1397,7 @@ const makeStyles = (t: Theme) =>
   },
   kanbanBoard: {
     paddingLeft: 16,
-    // Clear of the rail, like every other list on this screen.
-    paddingRight: RAIL_CLEARANCE,
-    paddingBottom: 16,
+    paddingRight: 16,
     gap: KANBAN_COLUMN_GAP,
   },
   kanbanColumnHead: {
