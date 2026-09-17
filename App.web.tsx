@@ -16,6 +16,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import RootNavigator from './src/AppNavigator';
 import { navigationRef } from './src/navigationRef';
 import { AskHost } from './src/components/surfaces/Ask';
+import CaptureWindow from './src/components/CaptureWindow';
 import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
 import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
@@ -271,6 +272,14 @@ export default function App() {
           <GlassPortalHost>
             <GlassTargetProvider>
               <AskHost />
+            {/* «Загальний чат» - the window the dock's long press
+                opens, already listening. Inside the blur target,
+                like every other sheet. */}
+            <CaptureWindow
+              onOpenChat={() => {
+                if (navigationRef.isReady()) navigationRef.navigate('Chat');
+              }}
+            />
               {/* The whole app, not the board alone - the same tree the
                   phone mounts, from src/AppNavigator. What the browser
                   leaves out is chosen file by file (.web siblings), not

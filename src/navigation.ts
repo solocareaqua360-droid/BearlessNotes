@@ -44,6 +44,9 @@ export type RootStackParamList = {
   // separate screen.
   EditorModal: { documentId: string; autoFocusTitle?: boolean; offerBoard?: boolean };
   Tasks: undefined;
+  // «Загальний чат» - the capture inbox read back. What goes IN is the
+  // window on the dock's long press; this is the history.
+  Chat: undefined;
   // A COPY of the documents list, or of the boards, pushed over the tile
   // board. The tile is a door into the database, the way every other tile
   // is, not a shortcut to its tab - so it opens a screen on top, and back

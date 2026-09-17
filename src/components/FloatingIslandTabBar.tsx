@@ -1,8 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
-import { doc, onSnapshot } from '../firestore';
-import { setDoc } from '../utils/owned';
-import { db } from '../firebase';
-import { hapticButtonDown } from '../utils/haptics';
+import { useMemo } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { useIsFocused } from '@react-navigation/native';
@@ -27,16 +23,13 @@ const ICON_BY_ROUTE: Record<string, keyof typeof Ionicons.glyphMap> = {
 // them: "док досі не гортається на екрані документів". The desks are a
 // card in the same stack now, and the stack is one control again.
 export default function FloatingIslandTabBar({ state, navigation }: MaterialTopTabBarProps) {
-  // Held down, the desks shrink to the row of dots a home screen uses to
-  // say which page you are on. Kept in settings, so it stays as left.
-  const [collapsed, setCollapsed] = useState(false);
-  useEffect(
-    () =>
-      onSnapshot(doc(db, 'settings', 'navIsland'), (snapshot) => {
-        setCollapsed(!!snapshot.data()?.collapsed);
-      }),
-    []
-  );
+  // The desks used to collapse to a row of dots on a long press. That
+  // press opens the capture window now - the user gave the gesture up for
+  // it: "якщо все-таки воно мені знадобиться, придумаємо якийсь інший
+  // спосіб". Said as a constant rather than left reading the old
+  // preference, because a device that had collapsed them before this
+  // change would have no way back out of the dots.
+  const collapsed = false;
   // The island used to withdraw when the tabs were not the screen on show
   // - a native stack keeps the screen under the top one mounted. It still
   // must: a note pushed over the tabs has its own dock.
@@ -70,10 +63,10 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
           icon: ICON_BY_ROUTE[state.routes[state.index]?.name] ?? 'ellipse-outline',
           desks,
           collapsed,
-          onToggleCollapsed: () => {
-            hapticButtonDown();
-            setDoc(doc(db, 'settings', 'navIsland'), { collapsed: !collapsed }, { merge: true });
-          },
+          // Nothing to toggle any more - the dock's long press belongs to
+          // the capture window. Kept on the contract because the dock
+          // still asks for it.
+          onToggleCollapsed: () => {},
         }
       : null
   );

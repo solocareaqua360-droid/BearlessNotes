@@ -90,6 +90,16 @@
             }
           ]
         }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "mindEva потребує мікрофона, щоб записати вашу думку голосом",
+          "speechRecognitionPermission": "mindEva перетворює сказане на текст, щоб не довелося друкувати",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
       ]
     ],
     "extra": {

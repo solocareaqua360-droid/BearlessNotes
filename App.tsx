@@ -23,6 +23,7 @@ import { navigationRef } from './src/navigationRef';
 import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
 import { AskHost } from './src/components/surfaces/Ask';
+import CaptureWindow from './src/components/CaptureWindow';
 import { ThemeProvider, ThemedStatusBar, useTheme } from './src/theme/ThemeProvider';
 import CrashBoundary from './src/components/CrashBoundary';
 import FatalErrorOverlay from './src/components/FatalErrorOverlay';
@@ -144,6 +145,14 @@ export default function App() {
                 blur target: what it blurs is the screens, and from outside
                 them expo-blur quietly falls back to a flat dim. */}
             <AskHost />
+            {/* «Загальний чат» - the window the dock's long press
+                opens, already listening. Inside the blur target,
+                like every other sheet. */}
+            <CaptureWindow
+              onOpenChat={() => {
+                if (navigationRef.isReady()) navigationRef.navigate('Chat');
+              }}
+            />
             {/* A ringing alarm is its own Modal too, for the same reason -
                 see AlarmRingOverlay. */}
             <AlarmRingOverlay />

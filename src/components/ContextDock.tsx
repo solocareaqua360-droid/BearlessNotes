@@ -2,6 +2,7 @@ import { ReactNode, useMemo, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleProp, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { openCapture } from './CaptureWindow';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import Svg, { Circle } from 'react-native-svg';
@@ -426,7 +427,7 @@ export default function ContextDock() {
               <View style={[styles.dotsShell, dims.card]}>
                 <Pressable
                   style={styles.dotsRow}
-                  onLongPress={desks.onToggleCollapsed}
+                  onLongPress={openCapture}
                   delayLongPress={400}
                 >
                   {desks.desks.map((desk) => (
@@ -434,7 +435,7 @@ export default function ContextDock() {
                       key={desk.key}
                       hitSlop={6}
                       onPress={desk.onPress}
-                      onLongPress={desks.onToggleCollapsed}
+                      onLongPress={openCapture}
                       delayLongPress={400}
                     >
                       <View
@@ -452,14 +453,14 @@ export default function ContextDock() {
               <View style={[styles.shell, dims.card]}>
                 <Pressable
                   style={[styles.actionRow, styles.spread]}
-                  onLongPress={desks.onToggleCollapsed}
+                  onLongPress={openCapture}
                   delayLongPress={400}
                 >
                   {desks.desks.map((desk) => (
                     <Pressable
                       key={desk.key}
                       onPress={desk.onPress}
-                      onLongPress={desks.onToggleCollapsed}
+                      onLongPress={openCapture}
                       delayLongPress={400}
                     >
                       {desk.active ? (

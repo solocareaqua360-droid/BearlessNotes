@@ -2,6 +2,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Tabs from './navigation/Tabs';
 import PlaceholderScreen from './screens/PlaceholderScreen';
 import TasksScreen from './screens/TasksScreen';
+import ChatScreen from './screens/ChatScreen';
 import DocumentsScreen from './screens/DocumentsScreen';
 import BoardsListScreen from './screens/BoardsListScreen';
 import BoardScreen from './screens/BoardScreen';
@@ -47,6 +48,7 @@ export default function RootNavigator() {
       <Stack.Screen name="Editor" component={DocumentEditorScreen} />
       <Stack.Screen name="EditorModal" component={DocumentEditorScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="Tasks" component={TasksScreen} />
+      <Stack.Screen name="Chat" component={ChatScreen} />
       <Stack.Screen name="DocumentsCopy">{() => <DocumentsScreen standalone />}</Stack.Screen>
       <Stack.Screen name="BoardsCopy">{() => <BoardsListScreen standalone />}</Stack.Screen>
       <Stack.Screen name="BoardCopy" component={BoardScreen} />
