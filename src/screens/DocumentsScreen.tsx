@@ -61,7 +61,7 @@ import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
 import DocumentCard from '../components/DocumentCard';
 import { useExplorer, nameOf } from '../hooks/useExplorer';
-import { useDockLeave } from '../navigation/navDock';
+import { useDockActions, useDockLeave } from '../navigation/navDock';
 import UndoToast from '../components/UndoToast';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
@@ -79,7 +79,9 @@ import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import SketchEditor from '../components/SketchEditor';
 import { BlurView } from 'expo-blur';
 import { GlassPortal } from '../components/GlassPortal';
-import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CHROME_TOP, NAV_HEIGHT, RAIL_CLEARANCE, RAIL_GAP, RAIL_RIGHT, RAIL_WIDTH, railFits } from '../constants/rail';
+import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CHROME_TOP, NAV_BOTTOM, NAV_BUTTON, NAV_HEIGHT, NAV_PADDING, RAIL_CLEARANCE, RAIL_GAP, RAIL_RIGHT, RAIL_WIDTH, railFits } from '../constants/rail';
+// The dock's own capsule height - what the sort menu has to clear.
+const NAV_HEIGHT_ONE = NAV_BUTTON + NAV_PADDING * 2;
 import { useRail, useRailFree } from '../hooks/useRail';
 import { useBlurTarget } from '../components/GlassTarget';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
@@ -435,6 +437,33 @@ export default function DocumentsScreen({
   // other, and leaving it belongs under the thumb with the rest - see
   // ContextDock. The tab's own copy has nowhere to go back to.
   useDockLeave('document-text-outline', () => navigation.goBack(), !!standalone);
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  // What this LIST can do, as the dock's second card - see DockAction.
+  // The rail keeps what is left: search, and creating. These three are
+  // the ones that were costing the screen its width for the least use.
+  useDockActions(
+    isFocused && !searchingAlone
+      ? [
+          {
+            key: 'view',
+            icon: viewMode === 'grid' ? 'grid-outline' : 'reorder-four-outline',
+            onPress: () => changeViewMode(viewMode === 'grid' ? 'list' : 'grid'),
+          },
+          {
+            key: 'sort',
+            icon: 'filter-outline',
+            active: sortMenuOpen,
+            onPress: () => setSortMenuOpen((v) => !v),
+          },
+          {
+            key: 'select',
+            icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
+            active: isSelectMode,
+            onPress: toggleSelectMode,
+          },
+        ]
+      : null
+  );
   // The folder back/forward arrows are gone from the rail - the dock
   // carries the path now, and every level of it is one press away. The
   // slot they used to need is simply not asked for.
@@ -444,15 +473,15 @@ export default function DocumentsScreen({
   // says how the list is drawn. The point is not fewer buttons - it is
   // that the rail means the same thing on every screen, so the hand
   // learns it once.
+  // Only creating is left on the rail now - choosing, sorting and the
+  // view switch went to the dock's second card.
   const rail = useRail(
     topCapsuleHeight,
-    CAPSULE_HEIGHT_1,
+    0,
     explorer.active ? CAPSULE_HEIGHT : RAIL_WIDTH,
-    CAPSULE_HEIGHT_1,
-    !standalone,
-    CAPSULE_HEIGHT
+    0,
+    !standalone
   );
-  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   // Opening the search takes the screen, so anything hanging off the rail
   // goes with it - the sort menu stayed up over the keyboard otherwise.
   useEffect(() => {
@@ -1304,37 +1333,6 @@ export default function DocumentsScreen({
             choose in it. They were rows of the "..." menu, two taps away;
             the user asked for exactly these two on the rail and no more,
             grouped, so the rail does not turn into a wall of options. */}
-        {isFocused && !searchingAlone && !(isTwoPane && !!openDoc && paneFullscreen) && (
-          <RailCapsule
-            side={railSide}
-            bottom={rail.historyBottom}
-            buttons={[
-              {
-                icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
-                onPress: toggleSelectMode,
-                active: isSelectMode,
-              },
-            ]}
-          />
-        )}
-        {/* How this list is DRAWN: its shape, and its order. One question
-            in two halves, so they stand together - and in the same place
-            they stand on every other database. The view switch was a
-            section of a menu; a shape you change while looking at the
-            result belongs where you can see the result change. */}
-        {isFocused && !searchingAlone && !(isTwoPane && !!openDoc && paneFullscreen) && (
-          <RailCapsule
-            side={railSide}
-            bottom={rail.extraBottom}
-            buttons={[
-              {
-                icon: viewMode === 'grid' ? 'grid-outline' : 'reorder-four-outline',
-                onPress: () => changeViewMode(viewMode === 'grid' ? 'list' : 'grid'),
-              },
-              { icon: 'filter-outline', onPress: () => setSortMenuOpen((v) => !v), active: sortMenuOpen },
-            ]}
-          />
-        )}
         <Menu
           visible={sortMenuOpen}
           onClose={() => setSortMenuOpen(false)}
@@ -1351,8 +1349,8 @@ export default function DocumentsScreen({
               },
             })),
           ]}
-          // Beside the button that opens it, which is on the rail now.
-          style={{ position: 'absolute', right: RAIL_CLEARANCE, bottom: rail.extraBottom }}
+          // Above the dock, where the button that opens it now lives.
+          style={{ position: 'absolute', right: 16, bottom: NAV_BOTTOM + insets.bottom + NAV_HEIGHT_ONE + 12 }}
         />
         {/* The create capsule: a new note, and in the explorer a new folder
             beside it - each glyph shows the plus ON the thing it adds, the

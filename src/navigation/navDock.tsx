@@ -73,8 +73,25 @@ export type DockTargets = (path: string) => (node: View | null) => void;
 // the database is exactly the thing you want under your thumb.
 export type DockLeave = { icon: string; onLeave: () => void };
 
+// What this screen can DO - the other half of the dock's stack.
+//
+// Deliberately NOT part of the context. The user's own objection, and it
+// settled the design: the dock answers "where am I", the rail answers
+// "what can I do", and the two being both made of buttons does not make
+// them one thing. They live in one place now but stay two objects - two
+// capsules, one behind the other, the way a Samsung lock screen stacks
+// its cards.
+export type DockAction = {
+  key: string;
+  icon: string;
+  onPress: () => void;
+  active?: boolean;
+};
+
 type Value = {
   context: DockContext | null;
+  actions: DockAction[] | null;
+  publishActions: (actions: DockAction[] | null) => void;
   leave: DockLeave | null;
   publishLeave: (leave: DockLeave | null) => void;
   publish: (context: DockContext | null) => void;
@@ -88,6 +105,10 @@ type Value = {
 };
 
 const NavDockContext = createContext<Value | null>(null);
+
+function actionSignature(list: DockAction[] | null): string {
+  return list ? list.map((a) => `${a.key}:${a.icon}:${a.active ? 1 : 0}`).join('|') : '';
+}
 
 export function NavDockProvider({ children }: { children: ReactNode }) {
   const [context, setContext] = useState<DockContext | null>(null);
@@ -139,14 +160,33 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       return { value: next };
     });
   }, []);
+  // Compared by SIGNATURE, not by identity: a screen builds this array
+  // fresh on every render, and the handlers inside it close over state
+  // that the signature already accounts for (an icon that changes with
+  // the view mode, an `active` that changes with select mode).
+  const [actions, setActions] = useState<DockAction[] | null>(null);
+  const publishActions = useCallback((next: DockAction[] | null) => {
+    setActions((prev) => (actionSignature(prev) === actionSignature(next) ? prev : next));
+  }, []);
   const [hidden, setHidden] = useState(false);
   // A new context is a new question, so a context stepped out of does not
   // stay stepped out of once you have gone somewhere else.
   const contextKey = context ? `${context.kind}:${context.icon}` : '';
   useEffect(() => setHidden(false), [contextKey]);
   const value = useMemo(
-    () => ({ context, publish, leave, publishLeave, targets, publishTargets, hidden, setHidden }),
-    [context, publish, leave, publishLeave, targets, publishTargets, hidden]
+    () => ({
+      context,
+      publish,
+      actions,
+      publishActions,
+      leave,
+      publishLeave,
+      targets,
+      publishTargets,
+      hidden,
+      setHidden,
+    }),
+    [context, publish, actions, publishActions, leave, publishLeave, targets, publishTargets, hidden]
   );
   return <NavDockContext.Provider value={value}>{children}</NavDockContext.Provider>;
 }
@@ -213,4 +253,22 @@ export function useDockLeave(icon: string, onLeave: () => void, enabled = true) 
 
 export function useNavDockLeave(): DockLeave | null {
   return useContext(NavDockContext)?.leave ?? null;
+}
+
+// What a screen publishes as its own actions - see DockAction.
+export function useDockActions(actions: DockAction[] | null) {
+  const publish = useContext(NavDockContext)?.publishActions;
+  const focused = useIsFocused();
+  const ref = useRef(actions);
+  ref.current = actions;
+  const signature = actionSignature(actions);
+  useEffect(() => {
+    if (!publish || !focused) return;
+    publish(ref.current);
+    return () => publish(null);
+  }, [publish, focused, signature]);
+}
+
+export function useNavDockActions(): DockAction[] | null {
+  return useContext(NavDockContext)?.actions ?? null;
 }

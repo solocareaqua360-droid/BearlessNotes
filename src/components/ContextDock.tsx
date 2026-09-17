@@ -1,13 +1,15 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GlassDrop from './GlassDrop';
 import { GlassPortal } from './GlassPortal';
 import { useTheme } from '../theme/ThemeProvider';
+import { hapticButtonDown } from '../utils/haptics';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { useNavDockContext, useNavDockHidden, useNavDockLeave, useNavDockTargets } from '../navigation/navDock';
+import { useNavDockActions, useNavDockContext, useNavDockHidden, useNavDockLeave, useNavDockTargets } from '../navigation/navDock';
 
 // The dock, when it is holding a CONTEXT rather than the four desks.
 //
@@ -28,6 +30,9 @@ const STRIP_WIDTH = STRIP_ITEM * STRIP_VISIBLE;
 // The same blue the calendar's own history dot uses - a mark has to mean
 // the same thing in both places or it means nothing in either.
 const STRIP_MARK_ACCENT = '#60A5FA';
+// How much of the card behind is visible. Enough to know it is there,
+// not enough to argue with the one in front.
+const BEHIND_EDGE = 7;
 
 export default function ContextDock() {
   const theme = useTheme();
@@ -38,6 +43,31 @@ export default function ContextDock() {
   // database, the way back to the databases was the small arrow in the
   // top-right corner of the rail, and it belongs under the thumb.
   const leave = useNavDockLeave();
+  // The other card in the stack: what this screen can DO. Two capsules,
+  // one behind the other, swapped with a light swipe - the user's own
+  // reference, a Samsung lock screen, and the shape it keeps: the back
+  // one shows only an EDGE, both are the same size in the same place,
+  // and whatever stands beside the stack does not move at all.
+  const actions = useNavDockActions();
+  const [face, setFace] = useState<'context' | 'actions'>('context');
+  // A new screen is a new question: always open on where you are.
+  const contextKind = dock?.kind ?? '';
+  useEffect(() => setFace('context'), [contextKind]);
+  const stacked = !!dock && !!actions?.length;
+  const showing = stacked ? face : dock ? 'context' : 'actions';
+  const flip = Gesture.Pan()
+    .enabled(stacked)
+    // Strictly vertical, and it gives up the moment it reads as
+    // sideways: the capsule under it scrolls horizontally (the days, the
+    // path), and that has to keep working.
+    .activeOffsetY([-12, 12])
+    .failOffsetX([-16, 16])
+    .runOnJS(true)
+    .onEnd((e) => {
+      if (Math.abs(e.translationY) < 12) return;
+      hapticButtonDown();
+      setFace(e.translationY < 0 ? 'actions' : 'context');
+    });
   const [, setHidden] = useNavDockHidden();
   // A card being carried can step onto a crumb - the same registry the
   // folder rows use, handed up by whichever screen is carrying.
@@ -75,7 +105,7 @@ export default function ContextDock() {
     return () => clearTimeout(id);
   }, [stripIndex]);
 
-  if (!dock && !leave) return null;
+  if (!dock && !leave && !actions?.length) return null;
 
   // The way out, as a bead of its own beside the pill rather than a
   // button inside it - the user's own call: inside, it read as an eighth
@@ -118,7 +148,15 @@ export default function ContextDock() {
             </Pressable>
           )}
 
-          {strip && (
+          <GestureDetector gesture={flip}>
+          <View style={styles.stack}>
+            {/* The card behind, seen as an EDGE and nothing more - a few
+                points of the same glass, a little narrower, so it reads
+                as BEHIND rather than beside. Empty on purpose: what a
+                stack's back card shows is that it is there. */}
+            {stacked && <GlassDrop style={styles.behind} />}
+
+          {showing === 'context' && strip && (
             <GlassDrop style={styles.shell}>
               <ScrollView
                 ref={stripRef}
@@ -176,7 +214,7 @@ export default function ContextDock() {
             </GlassDrop>
           )}
 
-          {trail && (
+          {showing === 'context' && trail && (
             <GlassDrop style={[styles.shell, styles.trailShell]}>
               <View style={styles.trailRow}>
                 <ScrollView
@@ -230,6 +268,28 @@ export default function ContextDock() {
               </View>
             </GlassDrop>
           )}
+
+          {showing === 'actions' && !!actions?.length && (
+            <GlassDrop style={styles.shell}>
+              <View style={styles.actionRow}>
+                {actions.map((action) => (
+                  <Pressable
+                    key={action.key}
+                    onPress={action.onPress}
+                    style={[styles.actionButton, action.active && styles.actionButtonActive]}
+                  >
+                    <Ionicons
+                      name={action.icon as keyof typeof Ionicons.glyphMap}
+                      size={22}
+                      color={action.active ? theme.accent : theme.glass.ink}
+                    />
+                  </Pressable>
+                ))}
+              </View>
+            </GlassDrop>
+          )}
+          </View>
+          </GestureDetector>
         </View>
       </View>
     </GlassPortal>
@@ -257,8 +317,33 @@ const styles = StyleSheet.create({
     paddingRight: 13,
     height: NAV_BUTTON + NAV_PADDING * 2,
   },
+  stack: {
+    // Room under the front capsule for the back one's edge to show in.
+    paddingBottom: BEHIND_EDGE,
+  },
+  behind: {
+    position: 'absolute',
+    left: 10,
+    right: 10,
+    bottom: 0,
+    height: NAV_BUTTON + NAV_PADDING * 2,
+  },
   shell: {
     padding: NAV_PADDING,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionButton: {
+    width: NAV_BUTTON,
+    height: NAV_BUTTON,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionButtonActive: {
+    backgroundColor: 'rgba(255,255,255,0.10)',
   },
   trailShell: {
     flexShrink: 1,
