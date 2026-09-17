@@ -81,17 +81,31 @@ const CARD_F = 0.148;
 const GAP_F = 0.037;
 const INSET_F = 0.076;
 const CARD_PAD = 2;
+// ...but of a PHONE's width, never of whatever screen this happens to be.
+// A fraction of the screen is the right answer to "how big on a phone"
+// and the wrong answer to "how big on a screen twice as wide": the dock
+// is held in a thumb, and a thumb is the same size on a fold as on a
+// phone. Unfolded, it came out nearly twice the size - "виглядає
+// аномально великим... на великому екрані він буде капець яким
+// аномально большим". Above this width the dock simply stops growing
+// and stands centred, which is also what it should do in landscape,
+// where the width is enormous and the height is not.
+// 430 is wider than any phone in portrait, so no phone is touched.
+const PHONE_W = 430;
 
 export default function ContextDock() {
   const theme = useTheme();
-  const { width: screenW } = useWindowDimensions();
+  const { width: windowW } = useWindowDimensions();
+  const screenW = Math.min(windowW, PHONE_W);
   const BEAD = Math.round(screenW * BEAD_F);
   const CARD_H = Math.round(screenW * CARD_F);
   const CARD_BUTTON = CARD_H - CARD_PAD * 2;
   const GAP = Math.round(screenW * GAP_F);
   const EDGE_INSET = Math.round(screenW * INSET_F);
   // The row's width is SAID, not left to flex: it was settling at
-  // three-quarters of the screen and nobody could tell why.
+  // three-quarters of the screen and nobody could tell why. On a screen
+  // wider than a phone this is narrower than the window, and the wrap
+  // below centres it.
   const rowWidth = screenW - EDGE_INSET * 2;
   // And so is the CARD'S. Left to flex it hugged its content - one
   // folder deep the path card shrank to a single word and the whole row
