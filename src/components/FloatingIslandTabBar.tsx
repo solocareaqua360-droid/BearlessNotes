@@ -30,7 +30,7 @@ const ICON_BY_ROUTE: Record<string, keyof typeof Ionicons.glyphMap> = {
 const ICON_SIZE = 24;
 // Every day the same width, so the dock can put the selected one under
 // the thumb without measuring anything.
-const STRIP_ITEM = 40;
+const STRIP_ITEM = 38;
 // Seven of them, and no more - the user's own correction. The dock stays
 // a pill rather than a ribbon, and seven is the number a week already is.
 // The days BEYOND those seven are still there, just off the edge: that is
@@ -164,26 +164,21 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
         strip ? (
         // A run of days under the thumb. Same shell, same height: the
         // dock holding time instead of places.
+        //
+        // The way out stands BESIDE the pill as a bead of its own, not
+        // inside it - the user's own call. Inside, it read as an eighth
+        // day and had to be aimed at; outside, it is a separate object
+        // with a separate job, and the seven days stay seven.
+        <View style={styles.dockRow}>
+        <Pressable onPress={() => setContextHidden(true)} onLongPress={toggleCollapsed} delayLongPress={400}>
+          <GlassDrop style={styles.exitBead}>
+            <Ionicons name="chevron-back" size={11} color={theme.glass.inkMuted} />
+            <Ionicons name={hereIcon} size={20} color={theme.glass.ink} />
+          </GlassDrop>
+        </Pressable>
         <GlassDrop style={styles.islandShell}>
         <Pressable onLongPress={toggleCollapsed} delayLongPress={400}>
         <View style={styles.stripRow}>
-          {/* The way back to the desks. It was a bare chevron pressed
-              against the edge, and the user's objection was simply true:
-              small, cornered, awkward to hit. It is a proper button now,
-              the size of the desks' own, carrying the icon of the desk
-              you are standing on with a chevron leading out of it - so it
-              says WHERE it takes you, not only that it takes you
-              somewhere. */}
-          <Pressable
-            hitSlop={6}
-            onPress={() => setContextHidden(true)}
-            onLongPress={toggleCollapsed}
-            delayLongPress={400}
-            style={styles.stripOut}
-          >
-            <Ionicons name="chevron-back" size={11} color={theme.glass.inkMuted} />
-            <Ionicons name={hereIcon} size={20} color={theme.glass.ink} />
-          </Pressable>
           <ScrollView
             ref={stripRef}
             horizontal
@@ -266,26 +261,24 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
         </View>
         </Pressable>
         </GlassDrop>
+        </View>
         ) : trail ? (
         // The path, in the dock's own shell: same height, same place,
         // wider. A morph has to change SHAPE to be noticed at all - this
         // project has already reverted one that only cross-faded.
-        <GlassDrop style={[styles.islandShell, styles.trailShell]}>
-        <Pressable style={styles.stripRow} onLongPress={toggleCollapsed} delayLongPress={400}>
-          {/* The same way out as the days have, and it means the same
-              thing in both: back to the desks. Getting to the ROOT of the
-              folders is a different move and now says so - it is the
-              first crumb in the strip, where a file manager puts it. */}
-          <Pressable
-            hitSlop={6}
-            onPress={() => setContextHidden(true)}
-            onLongPress={toggleCollapsed}
-            delayLongPress={400}
-            style={styles.stripOut}
-          >
+        <View style={styles.dockRow}>
+        {/* The same bead the days have, meaning the same thing: back to
+            the desks. Getting to the ROOT of the folders is a different
+            move and says so separately - it is the first crumb in the
+            strip, where a file manager puts it. */}
+        <Pressable onPress={() => setContextHidden(true)} onLongPress={toggleCollapsed} delayLongPress={400}>
+          <GlassDrop style={styles.exitBead}>
             <Ionicons name="chevron-back" size={11} color={theme.glass.inkMuted} />
             <Ionicons name={hereIcon} size={20} color={theme.glass.ink} />
-          </Pressable>
+          </GlassDrop>
+        </Pressable>
+        <GlassDrop style={[styles.islandShell, styles.trailShell]}>
+        <Pressable style={styles.stripRow} onLongPress={toggleCollapsed} delayLongPress={400}>
           <ScrollView
             ref={trailRef}
             horizontal
@@ -338,6 +331,7 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
           </ScrollView>
         </Pressable>
         </GlassDrop>
+        </View>
         ) : (
         <GlassDrop style={styles.islandShell}>
         <Pressable style={styles.islandRow} onLongPress={toggleCollapsed} delayLongPress={400}>
@@ -481,13 +475,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  stripOut: {
+  // A bead of its own beside the pill - same glass, same height, its own
+  // object.
+  dockRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  exitBead: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 1,
-    paddingLeft: 2,
-    paddingRight: 6,
-    height: NAV_BUTTON,
+    paddingLeft: 10,
+    paddingRight: 13,
+    height: NAV_BUTTON + NAV_PADDING * 2,
   },
   stripViewport: {
     width: STRIP_WIDTH,

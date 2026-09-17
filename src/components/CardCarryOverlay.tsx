@@ -4,6 +4,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import GlassDrop, { GlassIcon } from './GlassDrop';
+import { GlassPortal } from './GlassPortal';
 import { useTheme } from '../theme/ThemeProvider';
 import type { CardCarry } from '../hooks/useCardCarry';
 
@@ -83,6 +84,15 @@ export default function CardCarryOverlay<T extends { id: string }>({
   );
 
   return (
+    // Drawn in the floating layer, ABOVE the dock - two things depended
+    // on it and neither worked while this sat in the screen's own tree.
+    // The card in your hand went BEHIND the dock, which is the one place
+    // it must never be; and the second finger's tap never reached this
+    // overlay at all, because the dock stood over it and swallowed the
+    // touch. Both are the same fact - who is on top - so both are fixed
+    // by saying it once, with a priority rather than by luck of mount
+    // order.
+    <GlassPortal priority={10}>
     <GestureDetector gesture={Gesture.Simultaneous(secondFinger, secondFingerTap)}>
       <Animated.View style={StyleSheet.absoluteFill} pointerEvents={ghost ? 'auto' : 'none'}>
         {ghost && (
@@ -97,6 +107,7 @@ export default function CardCarryOverlay<T extends { id: string }>({
         )}
       </Animated.View>
     </GestureDetector>
+    </GlassPortal>
   );
 }
 

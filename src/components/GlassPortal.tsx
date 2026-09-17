@@ -25,17 +25,23 @@ import { BlurTargetBridge, useBlurTarget } from './GlassTarget';
 // host's place in the tree, not from where they were declared. The host
 // therefore sits inside NavigationContainer, so a sheet that navigates
 // still can.
-type Mount = (id: string, node: ReactNode) => void;
+// Which floating layer stands over which. Everything drawn here floats
+// over the app, so "above" among THEMSELVES cannot be left to the order
+// they happened to mount in - the dock mounts with the tabs and a carry
+// overlay mounts with a screen, and which of those comes first is an
+// accident of the navigator. A carried card has to ride over the dock:
+// it is the thing in your hand.
+type Mount = (id: string, node: ReactNode, priority: number) => void;
 type Unmount = (id: string) => void;
 
 const PortalContext = createContext<{ mount: Mount; unmount: Unmount } | null>(null);
 
 export function GlassPortalHost({ children }: { children: ReactNode }) {
-  const [nodes, setNodes] = useState<Map<string, ReactNode>>(new Map());
-  const mount = useCallback<Mount>((id, node) => {
+  const [nodes, setNodes] = useState<Map<string, { node: ReactNode; priority: number }>>(new Map());
+  const mount = useCallback<Mount>((id, node, priority) => {
     setNodes((prev) => {
       const next = new Map(prev);
-      next.set(id, node);
+      next.set(id, { node, priority });
       return next;
     });
   }, []);
@@ -48,7 +54,9 @@ export function GlassPortalHost({ children }: { children: ReactNode }) {
     });
   }, []);
   const value = useMemo(() => ({ mount, unmount }), [mount, unmount]);
-  const entries = Array.from(nodes.entries());
+  // Stable sort: same priority keeps mount order, which is what every
+  // sheet has always relied on.
+  const entries = Array.from(nodes.entries()).sort((a, b) => a[1].priority - b[1].priority);
 
   return (
     <PortalContext.Provider value={value}>
@@ -57,9 +65,9 @@ export function GlassPortalHost({ children }: { children: ReactNode }) {
           this layer must let every touch through to the app under it. */}
       {entries.length > 0 && (
         <View style={styles.host} pointerEvents="box-none">
-          {entries.map(([id, node]) => (
+          {entries.map(([id, entry]) => (
             <View key={id} style={StyleSheet.absoluteFill} pointerEvents="box-none">
-              {node}
+              {entry.node}
             </View>
           ))}
         </View>
@@ -70,7 +78,7 @@ export function GlassPortalHost({ children }: { children: ReactNode }) {
 
 let nextId = 0;
 
-export function GlassPortal({ children }: { children: ReactNode }) {
+export function GlassPortal({ children, priority = 0 }: { children: ReactNode; priority?: number }) {
   const portal = useContext(PortalContext);
   // Captured HERE, where the glass is written - inside the target - and
   // carried to the host, which is outside it. Without this every
@@ -84,7 +92,7 @@ export function GlassPortal({ children }: { children: ReactNode }) {
   // Layout effect, not effect: the host should have the sheet before the
   // frame is shown, or a sheet flickers in a frame late.
   useLayoutEffect(() => {
-    portal?.mount(id, <BlurTargetBridge value={blurTarget}>{children}</BlurTargetBridge>);
+    portal?.mount(id, <BlurTargetBridge value={blurTarget}>{children}</BlurTargetBridge>, priority);
   });
   useLayoutEffect(() => () => portal?.unmount(id), [portal, id]);
 
