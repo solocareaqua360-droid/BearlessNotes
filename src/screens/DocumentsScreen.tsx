@@ -55,6 +55,7 @@ import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import Menu from '../components/surfaces/Menu';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from '../components/TagsDrawer';
+import { MAX_CONTENT_WIDTH } from '../components/ContentColumn';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
@@ -955,7 +956,7 @@ export default function DocumentsScreen({
           {searchOpen && (
             // Fades down into place: the pull that opens it is a slow
             // movement, and the field arriving instantly read as a jolt.
-            <Animated.View entering={FadeInDown.duration(220)}>
+            <Animated.View entering={FadeInDown.duration(220)} style={styles.searchWrap}>
               {/* Closes the search outright rather than only emptying it:
                   with the keyboard up this is the one control on the
                   screen, and emptying a field the user is done with only
@@ -1562,9 +1563,19 @@ const makeStyles = (t: Theme) =>
     // direction rather than by swapping the two children, so the list
     // stays the first thing in the tree - it is the screen.
     flexDirection: 'row-reverse',
+    // Centred, so the capped pane below stands in the middle of a screen
+    // wider than it rather than against one edge.
+    justifyContent: 'center',
   },
   pane: {
     flex: 1,
+    // A list row stretched across a monitor is a hairline of text with a
+    // date a foot away from it - "непропорційним", on DeX. Every other
+    // database has been capped at this width through ContentColumn since
+    // the Fold; this screen has its own layout and never got it. The
+    // tabs and the filter chips follow by themselves: they already take
+    // their left edge from this pane's measured x.
+    maxWidth: MAX_CONTENT_WIDTH,
   },
   paneHidden: {
     display: 'none',
@@ -1708,6 +1719,15 @@ const makeStyles = (t: Theme) =>
   // The field, in the same glass as the pills under it. Stops short of the
   // rail, like they do.
   // Only where it sits - the pill itself is SearchField's.
+  // The field is drawn through the portal, in window coordinates, so the
+  // pane's cap does not reach it - it is said again here, on the wrapper.
+  // Not on the field itself: SearchField puts `style` on the capsule, so a
+  // maxWidth there would resize the pill rather than the room around it.
+  searchWrap: {
+    width: '100%',
+    maxWidth: MAX_CONTENT_WIDTH,
+    alignSelf: 'center',
+  },
   searchRow: {
     marginLeft: 20,
     marginRight: 20,
