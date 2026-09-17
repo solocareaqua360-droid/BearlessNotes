@@ -560,17 +560,21 @@ export default function CalendarScreen() {
                 },
               ]
             : []),
+          // Two switches were one filter with three states all along:
+          // every day, then only the days that hold something, then only
+          // the days something was added on. Pressing it walks the three
+          // - and the icon says which one is in force, which two separate
+          // buttons could only say by both being off.
           {
-            key: 'filled',
-            icon: 'filter-outline',
-            active: compactFilter === 'filled',
-            onPress: () => toggleCompactFilter('filled'),
-          },
-          {
-            key: 'history-only',
-            icon: 'hourglass-outline',
-            active: compactFilter === 'history',
-            onPress: () => toggleCompactFilter('history'),
+            key: 'filter',
+            icon:
+              compactFilter === 'filled'
+                ? 'filter'
+                : compactFilter === 'history'
+                  ? 'hourglass-outline'
+                  : 'filter-outline',
+            active: compactFilter !== 'none',
+            onPress: cycleCompactFilter,
           },
           {
             key: 'select',
@@ -634,6 +638,13 @@ export default function CalendarScreen() {
 
   async function toggleCompactFilter(mode: 'filled' | 'history') {
     const next = compactFilter === mode ? 'none' : mode;
+    await setDoc(calendarPrefsDoc, { compactFilter: next }, { merge: true });
+  }
+
+  // One switch, three states, walked in a ring: every day, then the days
+  // that hold something, then the days something was added on.
+  async function cycleCompactFilter() {
+    const next = compactFilter === 'none' ? 'filled' : compactFilter === 'filled' ? 'history' : 'none';
     await setDoc(calendarPrefsDoc, { compactFilter: next }, { merge: true });
   }
 

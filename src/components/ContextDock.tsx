@@ -25,7 +25,7 @@ import { DockBead, useNavDockActions, useNavDockFace, useNavDockBeads, useNavDoc
 // useNavDockHasContext). One control, drawn in one place, whatever screen
 // is underneath.
 const STRIP_ITEM = 38;
-const STRIP_VISIBLE = 7;
+const STRIP_VISIBLE = 5;
 const STRIP_WIDTH = STRIP_ITEM * STRIP_VISIBLE;
 // The same blue the calendar's own history dot uses - a mark has to mean
 // the same thing in both places or it means nothing in either.
