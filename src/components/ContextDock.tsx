@@ -1,9 +1,10 @@
-import { useMemo, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ReactNode, useMemo, useEffect, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleProp, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import GlassDrop from './GlassDrop';
+import { BlurView } from 'expo-blur';
+import { useBlurTarget } from './GlassTarget';
 import { GlassPortal } from './GlassPortal';
 import { useTheme } from '../theme/ThemeProvider';
 import { hapticButtonDown } from '../utils/haptics';
@@ -50,23 +51,19 @@ const BEHIND_EDGE = 3;
 // edges nearly line up, which is what makes it one stack instead of
 // three pills of decreasing size.
 const BEHIND_INSET = 5;
-// The dock is made of the TAGS DRAWER'S material - the user's own
-// pointer, and the first one that has matched by their eye: "у шторки
-// рівень блюру і структури матеріалу який ідеально підійде для нашого
-// дока". The drawer is a BlurView at 60, tinted dark in every theme,
-// under one flat layer of the theme's own `surface`. So is this, layer
-// for layer: no specular, no rim, no vignette, no lift, an even body -
-// the surface colour at its own alpha over the same blur.
-const FLAT = {
-  specularIntensity: 0,
-  rimOpacity: 0,
-  vignetteIntensity: 0,
-  glassOpacity: 1,
-  blurAmount: 60,
-  blurTint: 'dark' as const,
-  lift: 'none' as const,
-  bodyEven: true,
-};
+// The dock is made of the TAGS DRAWER'S material - and now literally of
+// its LAYERS, not of GlassDrop dressed up to look like it. The drawer is
+// two flat things: a BlurView at 60, tinted dark in every theme, and a
+// View of the theme's surface colour over it, clipped by a rounded
+// parent. GlassDrop paints its body as an SVG rectangle instead, and
+// two things went wrong with that here: at full strength it was solid
+// (white in the white theme, black in the black), and a bead's bottom
+// point kept going missing under it. Frost, below, is the drawer's own
+// construction with one deliberate difference - the tint is never
+// opaque, whatever the theme's surface is, because a dock that is a
+// solid slab is not frosted glass in any theme.
+const FROST_BLUR = 60;
+const FROST_TINT = 0.55;
 // Sizes as FRACTIONS OF THE SCREEN'S WIDTH, read off the reference and
 // our own dock side by side at the same pixel scale. Not points: every
 // guess at this phone's density was wrong, and a dock sized in points
@@ -82,8 +79,6 @@ const CARD_PAD = 2;
 
 export default function ContextDock() {
   const theme = useTheme();
-  // The drawer's own tint layer, exactly - see FLAT.
-  const glassBody = theme.surface;
   const { width: screenW } = useWindowDimensions();
   const BEAD = Math.round(screenW * BEAD_F);
   const CARD_H = Math.round(screenW * CARD_F);
@@ -319,10 +314,10 @@ export default function ContextDock() {
           {beads.left ? <Bead bead={beads.left} theme={theme} size={BEAD} /> : <View style={[styles.beadSlot, dims.bead]} />}
           {showBead && (
             <Pressable onPress={stepOut}>
-              <GlassDrop style={[styles.exitBead, { height: BEAD }]} radius={BEAD / 2} {...FLAT} glassBody={glassBody}>
+              <Frost style={[styles.exitBead, { height: BEAD }]} radius={BEAD / 2}>
                 <Ionicons name="chevron-back" size={11} color={theme.glass.inkMuted} />
                 <Ionicons name={icon} size={20} color={theme.glass.ink} />
-              </GlassDrop>
+              </Frost>
             </Pressable>
           )}
 
@@ -356,7 +351,7 @@ export default function ContextDock() {
                           top: -(CARD_H - BEHIND_EDGE * (i + 1)),
                           left: BEHIND_INSET * (i + 1),
                           right: BEHIND_INSET * (i + 1),
-                          backgroundColor: glassBody,
+                          backgroundColor: theme.surface,
                           opacity: 0.85 - i * 0.1,
                         },
                       ]}
@@ -370,7 +365,7 @@ export default function ContextDock() {
               // The dots a home screen uses to say which page you are on
               // - still a way to get there, and still what "collapsed"
               // has meant here since the user first asked for it.
-              <GlassDrop style={[styles.dotsShell, dims.card]} radius={CARD_H / 2} {...FLAT} glassBody={glassBody}>
+              <Frost style={[styles.dotsShell, dims.card]} radius={CARD_H / 2}>
                 <Pressable
                   style={styles.dotsRow}
                   onLongPress={desks.onToggleCollapsed}
@@ -394,9 +389,9 @@ export default function ContextDock() {
                     </Pressable>
                   ))}
                 </Pressable>
-              </GlassDrop>
+              </Frost>
             ) : (
-              <GlassDrop style={[styles.shell, dims.card]} radius={CARD_H / 2} {...FLAT} glassBody={glassBody}>
+              <Frost style={[styles.shell, dims.card]} radius={CARD_H / 2}>
                 <Pressable
                   style={[styles.actionRow, styles.spread]}
                   onLongPress={desks.onToggleCollapsed}
@@ -432,12 +427,12 @@ export default function ContextDock() {
                     </Pressable>
                   ))}
                 </Pressable>
-              </GlassDrop>
+              </Frost>
             )
           )}
 
           {showing === 'context' && strip && (
-            <GlassDrop style={[styles.shell, dims.card]} radius={CARD_H / 2} {...FLAT} glassBody={glassBody}>
+            <Frost style={[styles.shell, dims.card]} radius={CARD_H / 2}>
               <ScrollView
                 ref={stripRef}
                 horizontal
@@ -490,11 +485,11 @@ export default function ContextDock() {
                   );
                 })}
               </ScrollView>
-            </GlassDrop>
+            </Frost>
           )}
 
           {showing === 'context' && trail && (
-            <GlassDrop style={[styles.shell, styles.trailShell, dims.card]} radius={CARD_H / 2} {...FLAT} glassBody={glassBody}>
+            <Frost style={[styles.shell, styles.trailShell, dims.card]} radius={CARD_H / 2}>
               <View style={[styles.trailRow, dims.rowHeight]}>
                 <ScrollView
                   ref={trailRef}
@@ -545,11 +540,11 @@ export default function ContextDock() {
                   })}
                 </ScrollView>
               </View>
-            </GlassDrop>
+            </Frost>
           )}
 
           {showing === 'actions' && !!actions?.length && (
-            <GlassDrop style={[styles.shell, styles.actionsShell, dims.card]} radius={CARD_H / 2} {...FLAT} glassBody={glassBody}>
+            <Frost style={[styles.shell, styles.actionsShell, dims.card]} radius={CARD_H / 2}>
               {/* Scrolls, like the path does. A screen with five things
                   its list can be done TO is not a screen with a design
                   problem - the card simply holds what fits and the rest
@@ -586,7 +581,7 @@ export default function ContextDock() {
                   </Pressable>
                 ))}
               </ScrollView>
-            </GlassDrop>
+            </Frost>
           )}
           </View>
           </GestureDetector>
@@ -599,6 +594,38 @@ export default function ContextDock() {
 
 // A bead: the same glass, the same height as a capsule, standing on its
 // own beside the stack.
+// The drawer's two layers, clipped round. `radius` is always half of a
+// size the view already has - never 999 (see dims).
+function Frost({
+  style,
+  radius,
+  children,
+}: {
+  style?: StyleProp<ViewStyle>;
+  radius: number;
+  children?: ReactNode;
+}) {
+  const theme = useTheme();
+  const blurTarget = useBlurTarget();
+  return (
+    <View style={[style, { borderRadius: radius, overflow: 'hidden' }]}>
+      <BlurView
+        intensity={FROST_BLUR}
+        tint="dark"
+        blurMethod="dimezisBlurView"
+        blurTarget={blurTarget ?? undefined}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+      <View
+        style={[StyleSheet.absoluteFill, { backgroundColor: theme.surface, opacity: FROST_TINT }]}
+        pointerEvents="none"
+      />
+      {children}
+    </View>
+  );
+}
+
 function Bead({ bead, theme, size }: { bead: DockBead; theme: ReturnType<typeof useTheme>; size: number }) {
   return (
     <Pressable
@@ -606,7 +633,7 @@ function Bead({ bead, theme, size }: { bead: DockBead; theme: ReturnType<typeof 
       onLongPress={bead.onLongPress}
       style={{ width: size, height: size, overflow: 'visible' }}
     >
-      <GlassDrop style={[styles.bead, { width: size, height: size }]} radius={size / 2} {...FLAT} glassBody={theme.surface}>
+      <Frost style={[styles.bead, { width: size, height: size }]} radius={size / 2}>
         <Ionicons
           name={bead.icon as keyof typeof Ionicons.glyphMap}
           size={21}
@@ -620,7 +647,7 @@ function Bead({ bead, theme, size }: { bead: DockBead; theme: ReturnType<typeof 
             style={styles.badge}
           />
         )}
-      </GlassDrop>
+      </Frost>
     </Pressable>
   );
 }
