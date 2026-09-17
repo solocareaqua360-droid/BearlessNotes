@@ -36,9 +36,14 @@ type Props = {
   // varies between them.
   defaultLabel?: string;
   onPickDefault?: () => void;
-  onPickToday: () => void;
-  onPickNew: () => void;
-  onPickExisting: (documentId: string) => void;
+  // The three note destinations are optional, and left out together:
+  // a caller with something that is already a note has only boards to
+  // offer (see boardsOnly).
+  onPickToday?: () => void;
+  onPickNew?: () => void;
+  onPickExisting?: (documentId: string) => void;
+  // Boards and nothing else - the whole note half of the sheet goes.
+  boardsOnly?: boolean;
   onPickNewBoard: () => void;
   onPickExistingBoard: (boardId: string) => void;
   onClose: () => void;
@@ -53,6 +58,7 @@ type Props = {
 export default function SaveDestinationSheet({
   visible,
   title,
+  boardsOnly,
   defaultLabel,
   onPickDefault,
   onPickToday,
@@ -131,20 +137,26 @@ export default function SaveDestinationSheet({
               </Pressable>
             )}
 
-            <Pressable style={styles.row} onPress={onPickToday}>
-              <View style={styles.actionIcon}>
-                <Ionicons name="today-outline" size={16} color={ACCENT} />
-              </View>
-              <Text style={[styles.rowText, styles.rowTextAction]}>Сьогодні</Text>
-            </Pressable>
+            {!boardsOnly && onPickToday && (
+              <Pressable style={styles.row} onPress={onPickToday}>
+                <View style={styles.actionIcon}>
+                  <Ionicons name="today-outline" size={16} color={ACCENT} />
+                </View>
+                <Text style={[styles.rowText, styles.rowTextAction]}>Сьогодні</Text>
+              </Pressable>
+            )}
 
-            <Pressable style={styles.row} onPress={onPickNew}>
-              <View style={styles.actionIcon}>
-                <Ionicons name="add" size={16} color={ACCENT} />
-              </View>
-              <Text style={[styles.rowText, styles.rowTextAction]}>Нова нотатка</Text>
-            </Pressable>
+            {!boardsOnly && onPickNew && (
+              <Pressable style={styles.row} onPress={onPickNew}>
+                <View style={styles.actionIcon}>
+                  <Ionicons name="add" size={16} color={ACCENT} />
+                </View>
+                <Text style={[styles.rowText, styles.rowTextAction]}>Нова нотатка</Text>
+              </Pressable>
+            )}
 
+            {!boardsOnly && (
+            <>
             <Text style={styles.sectionLabel}>Існуюча нотатка</Text>
             <View style={styles.searchRow}>
               <Ionicons name="search" size={14} color={GLASS_TEXT_FAINT} />
@@ -160,7 +172,7 @@ export default function SaveDestinationSheet({
               <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
             ) : (
               filteredDocuments.map((d) => (
-                <Pressable key={d.id} style={styles.row} onPress={() => onPickExisting(d.id)}>
+                <Pressable key={d.id} style={styles.row} onPress={() => onPickExisting?.(d.id)}>
                   <View style={styles.docIcon}>
                     <Ionicons name="document-text-outline" size={16} color={ACCENT} />
                   </View>
@@ -169,6 +181,8 @@ export default function SaveDestinationSheet({
                   </Text>
                 </Pressable>
               ))
+            )}
+            </>
             )}
 
             <Pressable style={styles.row} onPress={onPickNewBoard}>

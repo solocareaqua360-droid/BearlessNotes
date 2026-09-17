@@ -198,3 +198,33 @@ export function blockFromCustomView(view: { id: string; databaseId: string; name
   if (view.createdAt) block.createdAt = view.createdAt;
   return block;
 }
+
+// A block that IS its own record - its id is the record's id, and two
+// documents holding that id hold ONE record listed in both (see the
+// blockFrom* helpers above and usedInDocuments). Everything else is
+// plain content, and a COPY of it has to be a new block: a checkbox is
+// mirrored into `tasks` under its block id with a single documentId, so
+// two copies sharing an id would be one task that keeps changing which
+// note it belongs to.
+const RECORD_BACKED = new Set(['image', 'file', 'dbRow', 'dbView']);
+
+// One selected block on its way into a clipping note. Moving keeps every
+// id - the block is the same block, it has simply gone somewhere else.
+export function clippedBlock(block: Block, moving: boolean): Block {
+  if (moving || RECORD_BACKED.has(block.type ?? 'paragraph')) return { ...block };
+  return { ...block, id: generateId() };
+}
+
+// The blocks chosen in one note, as a note of their own. Named by the
+// caller, because the name is the source's own plus "(вирізки)" and only
+// the editor knows what the source is called.
+export async function clipBlocksToNote(title: string, blocks: Block[]): Promise<string> {
+  const now = Date.now();
+  const ref = await addDoc(documentsCollection, {
+    title,
+    blocks,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return ref.id;
+}

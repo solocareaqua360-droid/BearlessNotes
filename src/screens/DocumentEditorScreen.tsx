@@ -71,6 +71,8 @@ import {
   updateDoc,
 } from '../firestore';
 import { ownedQuery, setDoc } from '../utils/owned';
+import SaveDestinationSheet from '../components/SaveDestinationSheet';
+import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
 import { db } from '../firebase';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import { Block, CanvasLink, BlockType, Group, SketchElement, Tag, TableRow } from '../types';
@@ -93,6 +95,7 @@ import TextRecognizer, {
 } from '../components/TextRecognizer';
 import TextSelection from '../components/TextSelection';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
+import { clipBlocksToNote, clippedBlock } from '../utils/copyToNote';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags, detachTagFromDeletedItem } from '../hooks/useTags';
@@ -2309,6 +2312,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // navigation.ts's own comment on this param.
   const autoFocusTitle =
     'pane' in props ? !!props.autoFocusTitle : !embedded && !('pane' in props) && !!props.route.params.autoFocusTitle;
+  // This note was just cut out of another one, and the offer to put it on
+  // a board came in with it - see clipSelectedToNote. Shown once: state,
+  // not the param itself, so dismissing it actually dismisses it.
+  const [boardOffer, setBoardOffer] = useState(
+    !embedded && !('pane' in props) && !!props.route.params.offerBoard
+  );
+  const [boardPicker, setBoardPicker] = useState(false);
   const recordColour = useRecordColour();
   const [title, setTitle] = useState('');
   const [blocks, setBlocks] = useState<Block[]>([]);
@@ -4712,6 +4722,61 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     await Clipboard.setStringAsync(text);
   }
 
+  // The chosen blocks as a note of their own, named after this one. Asked
+  // each time whether they are copied or moved: "вирізки" reads like
+  // cutting, but taking blocks out of a note is not something to do by
+  // accident, and both answers are useful.
+  async function clipSelectedToNote() {
+    const ordered = blocks.filter((b) => selectedIds.has(b.id));
+    if (ordered.length === 0) return;
+    const answer = await ask({
+      title: 'Нова нотатка з вирізок',
+      message: `${ordered.length} ${ordered.length === 1 ? 'блок' : 'блоки(ів)'} з «${title.trim() || 'Без назви'}»`,
+      actions: [
+        { id: 'copy', label: 'Копіювати', tone: 'primary' },
+        { id: 'move', label: 'Перенести' },
+      ],
+    });
+    if (answer !== 'copy' && answer !== 'move') return;
+    const moving = answer === 'move';
+    let clippedId: string;
+    try {
+      clippedId = await clipBlocksToNote(
+        `${title.trim() || 'Без назви'} (вирізки)`,
+        ordered.map((b) => clippedBlock(b, moving))
+      );
+    } catch (e) {
+      notify('Не збереглося', (e as Error).message);
+      return;
+    }
+    if (moving) {
+      snapshotBeforeChange();
+      setBlocks((prev) => {
+        const next = prev.filter((block) => !selectedIds.has(block.id));
+        return next.length > 0 ? next : [newBlock()];
+      });
+    }
+    setSelectedIds(new Set());
+    setIsSelectMode(false);
+    navigation.navigate('Editor', { documentId: clippedId, offerBoard: true });
+  }
+
+  // Accepting the offer above. The note already exists in Firestore - the
+  // clipping wrote it before this screen opened - so the card can point
+  // at it straight away.
+  async function putThisNoteOnBoard(boardId: string | null) {
+    const name = title.trim() || 'Без назви';
+    setBoardPicker(false);
+    setBoardOffer(false);
+    try {
+      const item = { id: documentId, kind: 'document', title: name, data: {} };
+      if (boardId) await addItemToBoard(boardId, item);
+      else await createBoardAndAddItem(name, item);
+    } catch (e) {
+      notify('Не вдалося додати на дошку', (e as Error).message);
+    }
+  }
+
   function deleteSelectedBlocks() {
     snapshotBeforeChange();
     setBlocks((prev) => {
@@ -5466,6 +5531,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               <Ionicons name="copy-outline" size={18} color="#fff" />
               <Text style={styles.selectedActionLabel}>Копіювати</Text>
             </Pressable>
+            <Pressable style={styles.selectedActionBtn} hitSlop={6} onPress={clipSelectedToNote}>
+              <Ionicons name="document-text-outline" size={18} color="#fff" />
+              <Text style={styles.selectedActionLabel}>В нотатку</Text>
+            </Pressable>
             <Pressable style={styles.selectedActionBtn} hitSlop={6} onPress={deleteSelectedBlocks}>
               <Ionicons name="trash-outline" size={18} color="#fff" />
               <Text style={styles.selectedActionLabel}>Видалити</Text>
@@ -5473,6 +5542,35 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           </View>
         </View>
       )}
+
+      {/* The offer that rides in with a clipping - accept or refuse, and
+          either way it is gone. It stands where the select-mode bar
+          stands, and never at the same time as it. */}
+      {boardOffer && selectedIds.size === 0 && (
+        <View style={styles.selectedActionsWrap} pointerEvents="box-none">
+          <View style={styles.selectedActionsCapsule}>
+            <Text style={styles.selectedActionsCount}>Додати на дошку?</Text>
+            <View style={styles.selectedActionsDivider} />
+            <Pressable style={styles.selectedActionBtn} hitSlop={6} onPress={() => setBoardPicker(true)}>
+              <Ionicons name="checkmark" size={18} color="#fff" />
+              <Text style={styles.selectedActionLabel}>Так</Text>
+            </Pressable>
+            <Pressable style={styles.selectedActionBtn} hitSlop={6} onPress={() => setBoardOffer(false)}>
+              <Ionicons name="close" size={18} color="#fff" />
+              <Text style={styles.selectedActionLabel}>Ні</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      <SaveDestinationSheet
+        visible={boardPicker}
+        boardsOnly
+        title="На яку дошку?"
+        onPickNewBoard={() => putThisNoteOnBoard(null)}
+        onPickExistingBoard={(boardId) => putThisNoteOnBoard(boardId)}
+        onClose={() => setBoardPicker(false)}
+      />
 
       {viewerBlock?.imageUri && (
         <Modal

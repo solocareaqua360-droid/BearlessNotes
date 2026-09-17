@@ -33,13 +33,16 @@ export type RootStackParamList = {
   // keyboard the instant the editor opens, since a fresh "Без назви"
   // document is always going to be named first. Absent (not just false) on
   // every other navigation to this screen.
-  Editor: { documentId: string; autoFocusTitle?: boolean };
+  // offerBoard: this note was just made out of another one's blocks,
+  // and the offer to put it on a board rides in with it - see the
+  // clipping bar in DocumentEditorScreen.
+  Editor: { documentId: string; autoFocusTitle?: boolean; offerBoard?: boolean };
   // Same DocumentEditorScreen as `Editor`, registered a second time purely
   // for its App.tsx presentation style (slide-up modal, swipe-down to
   // dismiss) - used when opening a document FROM the board, so editing it
   // feels like staying on the board rather than navigating away to a
   // separate screen.
-  EditorModal: { documentId: string; autoFocusTitle?: boolean };
+  EditorModal: { documentId: string; autoFocusTitle?: boolean; offerBoard?: boolean };
   Tasks: undefined;
   // A COPY of the documents list, or of the boards, pushed over the tile
   // board. The tile is a door into the database, the way every other tile
