@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -73,19 +73,37 @@ const FLAT = {
 function frostFor(themeKey: string): string {
   return themeKey === 'white' ? '#D9DCE1' : '#1C1B19';
 }
-// Sizes, in points, from the reference at this phone's density: beads
-// of 44, a capsule a touch taller than the beads at 52, standing 30 in
-// from the edge with 14 between a bead and the capsule.
-const BEAD = 46;
-const CARD_H = 52;
+// Sizes as FRACTIONS OF THE SCREEN'S WIDTH, read off the reference and
+// our own dock side by side at the same pixel scale. Not points: every
+// guess at this phone's density was wrong, and a dock sized in points
+// came out a fifth too small every time - "я не знаю чому у тебе
+// проблеми з розмірами". Fractions cannot be wrong about density.
+//   bead diameter    0.111   capsule height   0.148 (a third taller)
+//   bead-to-capsule  0.037   edge to bead     0.076
+const BEAD_F = 0.111;
+const CARD_F = 0.148;
+const GAP_F = 0.037;
+const INSET_F = 0.076;
 const CARD_PAD = 2;
-const CARD_BUTTON = CARD_H - CARD_PAD * 2;
-const EDGE_INSET = 28;
-const GAP = 14;
 
 export default function ContextDock() {
   const theme = useTheme();
   const glassBody = frostFor(theme.key);
+  const { width: screenW } = useWindowDimensions();
+  const BEAD = Math.round(screenW * BEAD_F);
+  const CARD_H = Math.round(screenW * CARD_F);
+  const CARD_BUTTON = CARD_H - CARD_PAD * 2;
+  const GAP = Math.round(screenW * GAP_F);
+  const EDGE_INSET = Math.round(screenW * INSET_F);
+  // The row's width is SAID, not left to flex: it was settling at
+  // three-quarters of the screen and nobody could tell why.
+  const rowWidth = screenW - EDGE_INSET * 2;
+  const dims = {
+    bead: { width: BEAD, height: BEAD },
+    card: { height: CARD_H },
+    button: { width: CARD_BUTTON, height: CARD_BUTTON },
+    rowHeight: { height: CARD_BUTTON },
+  };
   const insets = useSafeAreaInsets();
   // Three cards, and they are three because of the one thing a
   // navigation dock must never do: the desks used to vanish the moment
@@ -261,16 +279,16 @@ export default function ContextDock() {
 
   return (
     <GlassPortal>
-      <View style={[styles.wrap, { bottom: 22 + insets.bottom }]} pointerEvents="box-none">
-        <View style={styles.row}>
+      <View style={[styles.wrap, { bottom: 22 + insets.bottom, paddingHorizontal: EDGE_INSET }]} pointerEvents="box-none">
+        <View style={[styles.row, { width: rowWidth, gap: GAP }]}>
           {/* A missing bead keeps its place. Without this the stack
               drifted: two beads on documents, one on the calendar, and
               the same control sat in a different spot on each - "док
               зміщений відносно того що є на екрані документів". */}
-          {beads.left ? <Bead bead={beads.left} theme={theme} /> : <View style={styles.beadSlot} />}
+          {beads.left ? <Bead bead={beads.left} theme={theme} size={BEAD} /> : <View style={[styles.beadSlot, dims.bead]} />}
           {showBead && (
             <Pressable onPress={stepOut}>
-              <GlassDrop style={styles.exitBead} {...FLAT} glassBody={glassBody}>
+              <GlassDrop style={[styles.exitBead, { height: BEAD }]} {...FLAT} glassBody={glassBody}>
                 <Ionicons name="chevron-back" size={11} color={theme.glass.inkMuted} />
                 <Ionicons name={icon} size={20} color={theme.glass.ink} />
               </GlassDrop>
@@ -292,7 +310,7 @@ export default function ContextDock() {
                 cannot be behind anything. Plain bands, not glass: glass
                 carries a lit rim and three rims read as a staircase. */}
             {behind > 0 && (
-              <View style={[styles.behindClip, { height: BEHIND_EDGE * behind }]} pointerEvents="none">
+              <View style={[styles.behindClip, { top: CARD_H, height: BEHIND_EDGE * behind }]} pointerEvents="none">
                 {Array.from({ length: behind })
                   .map((_, i) => i)
                   .reverse()
@@ -302,6 +320,7 @@ export default function ContextDock() {
                       style={[
                         styles.behind,
                         {
+                          height: CARD_H,
                           top: -(CARD_H - BEHIND_EDGE * (i + 1)),
                           left: BEHIND_INSET * (i + 1),
                           right: BEHIND_INSET * (i + 1),
@@ -319,7 +338,7 @@ export default function ContextDock() {
               // The dots a home screen uses to say which page you are on
               // - still a way to get there, and still what "collapsed"
               // has meant here since the user first asked for it.
-              <GlassDrop style={styles.dotsShell} {...FLAT} glassBody={glassBody}>
+              <GlassDrop style={[styles.dotsShell, dims.card]} {...FLAT} glassBody={glassBody}>
                 <Pressable
                   style={styles.dotsRow}
                   onLongPress={desks.onToggleCollapsed}
@@ -345,7 +364,7 @@ export default function ContextDock() {
                 </Pressable>
               </GlassDrop>
             ) : (
-              <GlassDrop style={styles.shell} {...FLAT} glassBody={glassBody}>
+              <GlassDrop style={[styles.shell, dims.card]} {...FLAT} glassBody={glassBody}>
                 <Pressable
                   style={[styles.actionRow, styles.spread]}
                   onLongPress={desks.onToggleCollapsed}
@@ -362,7 +381,7 @@ export default function ContextDock() {
                         // A lens over the bar, not a pane: the tab you
                         // are on, marked the way this dock marks
                         // everything you are on.
-                        <View style={[styles.actionButton, styles.here]}>
+                        <View style={[styles.actionButton, dims.button, styles.here]}>
                           <Ionicons
                             name={desk.icon as keyof typeof Ionicons.glyphMap}
                             size={22}
@@ -370,7 +389,7 @@ export default function ContextDock() {
                           />
                         </View>
                       ) : (
-                        <View style={styles.actionButton}>
+                        <View style={[styles.actionButton, dims.button]}>
                           <Ionicons
                             name={desk.icon as keyof typeof Ionicons.glyphMap}
                             size={22}
@@ -386,7 +405,7 @@ export default function ContextDock() {
           )}
 
           {showing === 'context' && strip && (
-            <GlassDrop style={styles.shell} {...FLAT} glassBody={glassBody}>
+            <GlassDrop style={[styles.shell, dims.card]} {...FLAT} glassBody={glassBody}>
               <ScrollView
                 ref={stripRef}
                 horizontal
@@ -431,9 +450,9 @@ export default function ContextDock() {
                   return (
                     <Pressable key={item.key} onPress={() => strip.onPick(item.key)}>
                       {current ? (
-                        <View style={[styles.stripItem, styles.here]}>{body}</View>
+                        <View style={[styles.stripItem, dims.rowHeight, styles.here]}>{body}</View>
                       ) : (
-                        <View style={styles.stripItem}>{body}</View>
+                        <View style={[styles.stripItem, dims.rowHeight]}>{body}</View>
                       )}
                     </Pressable>
                   );
@@ -443,8 +462,8 @@ export default function ContextDock() {
           )}
 
           {showing === 'context' && trail && (
-            <GlassDrop style={[styles.shell, styles.trailShell]} {...FLAT} glassBody={glassBody}>
-              <View style={styles.trailRow}>
+            <GlassDrop style={[styles.shell, styles.trailShell, dims.card]} {...FLAT} glassBody={glassBody}>
+              <View style={[styles.trailRow, dims.rowHeight]}>
                 <ScrollView
                   ref={trailRef}
                   horizontal
@@ -498,7 +517,7 @@ export default function ContextDock() {
           )}
 
           {showing === 'actions' && !!actions?.length && (
-            <GlassDrop style={[styles.shell, styles.actionsShell]} {...FLAT} glassBody={glassBody}>
+            <GlassDrop style={[styles.shell, styles.actionsShell, dims.card]} {...FLAT} glassBody={glassBody}>
               {/* Scrolls, like the path does. A screen with five things
                   its list can be done TO is not a screen with a design
                   problem - the card simply holds what fits and the rest
@@ -517,7 +536,7 @@ export default function ContextDock() {
                       if (action.closesStack) setFace('context');
                     }}
                     onLongPress={action.onLongPress}
-                    style={[styles.actionButton, action.active && styles.actionButtonActive]}
+                    style={[styles.actionButton, dims.button, action.active && styles.actionButtonActive]}
                   >
                     <Ionicons
                       name={action.icon as keyof typeof Ionicons.glyphMap}
@@ -539,7 +558,7 @@ export default function ContextDock() {
           )}
           </View>
           </GestureDetector>
-          {beads.right ? <Bead bead={beads.right} theme={theme} /> : <View style={styles.beadSlot} />}
+          {beads.right ? <Bead bead={beads.right} theme={theme} size={BEAD} /> : <View style={[styles.beadSlot, dims.bead]} />}
         </View>
       </View>
     </GlassPortal>
@@ -548,10 +567,10 @@ export default function ContextDock() {
 
 // A bead: the same glass, the same height as a capsule, standing on its
 // own beside the stack.
-function Bead({ bead, theme }: { bead: DockBead; theme: ReturnType<typeof useTheme> }) {
+function Bead({ bead, theme, size }: { bead: DockBead; theme: ReturnType<typeof useTheme>; size: number }) {
   return (
     <Pressable onPress={bead.onPress} onLongPress={bead.onLongPress}>
-      <GlassDrop style={styles.bead} {...FLAT} glassBody={frostFor(theme.key)}>
+      <GlassDrop style={[styles.bead, { width: size, height: size }]} {...FLAT} glassBody={frostFor(theme.key)}>
         <Ionicons
           name={bead.icon as keyof typeof Ionicons.glyphMap}
           size={21}
@@ -575,14 +594,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    alignItems: 'stretch',
-    paddingHorizontal: EDGE_INSET,
+    alignItems: 'center',
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: GAP,
-    alignSelf: 'stretch',
   },
   exitBead: {
     flexShrink: 0,
@@ -591,7 +607,6 @@ const styles = StyleSheet.create({
     gap: 1,
     paddingLeft: 9,
     paddingRight: 12,
-    height: BEAD,
   },
   stack: {
     // Room under the front capsule for the cards behind it - exactly as
@@ -608,18 +623,15 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    top: CARD_H,
     overflow: 'hidden',
   },
   behind: {
     position: 'absolute',
-    height: CARD_H,
     borderRadius: 999,
   },
   shell: {
     padding: CARD_PAD,
     width: '100%',
-    height: CARD_H,
     justifyContent: 'center',
   },
   actionRow: {
@@ -632,13 +644,10 @@ const styles = StyleSheet.create({
   actionsShell: {},
   beadSlot: {
     flexShrink: 0,
-    width: BEAD,
   },
   bead: {
     // Fixed: a bead never gives up room, it is the card that does.
     flexShrink: 0,
-    width: BEAD,
-    height: BEAD,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -648,8 +657,6 @@ const styles = StyleSheet.create({
     bottom: 8,
   },
   actionButton: {
-    width: CARD_BUTTON,
-    height: CARD_BUTTON,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
@@ -662,7 +669,6 @@ const styles = StyleSheet.create({
   dotsShell: {
     paddingHorizontal: 10,
     width: '100%',
-    height: CARD_H,
     justifyContent: 'center',
   },
   dotsRow: {
@@ -692,7 +698,6 @@ const styles = StyleSheet.create({
   },
   stripItem: {
     width: STRIP_ITEM,
-    height: CARD_BUTTON,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 999,
@@ -728,7 +733,6 @@ const styles = StyleSheet.create({
   trailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: CARD_BUTTON,
     minWidth: 0,
   },
   trailStrip: {
