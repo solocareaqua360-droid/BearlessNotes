@@ -74,8 +74,8 @@ const HERE_FILL = 'rgba(255,255,255,0.16)';
 // проблеми з розмірами". Fractions cannot be wrong about density.
 //   bead diameter    0.111   capsule height   0.148 (a third taller)
 //   bead-to-capsule  0.037   edge to bead     0.076
-// The way out inside the card: chevron, icon, a hairline - said in points.
-const LEAVE_W = 50;
+// The way out inside the card: a chevron and a hairline - said in points.
+const LEAVE_W = 36;
 const BEAD_F = 0.111;
 const CARD_F = 0.148;
 const GAP_F = 0.037;
@@ -314,8 +314,10 @@ export default function ContextDock() {
   const showLeave = !trail && !!leave;
   // What it carries: the thing it is LEAVING, when there is one.
   const icon = ((leave?.icon ?? dock?.icon) as keyof typeof Ionicons.glyphMap) ?? 'ellipse-outline';
-  // Four desks fit in the card whether or not the way out is riding at
-  // its left edge - the card does not grow, so the desks give.
+  // Four buttons fit in the card - desks OR actions - whether or not the
+  // way out is riding at its left edge. The card does not grow, so the
+  // buttons give: at full size a fifth thing simply scrolled off the end
+  // of the card, which is where the "..." went on the custom database.
   const DESK = Math.min(CARD_BUTTON, Math.floor((cardWidth - CARD_PAD * 2 - (showLeave ? LEAVE_W : 0)) / 4));
 
   return (
@@ -391,8 +393,13 @@ export default function ContextDock() {
           <Frost style={[styles.front, dims.card]} radius={CARD_H / 2}>
           {showLeave && (
             <Pressable onPress={stepOut} style={[styles.leave, { height: CARD_H }]}>
-              <Ionicons name="chevron-back" size={11} color={theme.glass.inkMuted} />
-              <Ionicons name={icon} size={20} color={theme.glass.ink} />
+              {/* A back chevron and nothing else. It used to carry the
+                  icon of the thing it was leaving, at full size with a
+                  tiny chevron beside it - and inside the card that read
+                  as one more button about the list: "кнопка виходу ніяк
+                  не відображає те що саме вона виконує функцію виходу".
+                  A database's own icon is said by the card behind it. */}
+              <Ionicons name="chevron-back" size={24} color={theme.glass.ink} />
               <View style={[styles.leaveRule, { backgroundColor: theme.glass.inkMuted, opacity: 0.4 }]} />
             </Pressable>
           )}
@@ -616,7 +623,7 @@ export default function ContextDock() {
                       if (action.closesStack) setFace('context');
                     }}
                     onLongPress={action.onLongPress}
-                    style={[styles.actionButton, dims.button, action.active && styles.actionButtonActive]}
+                    style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: DESK / 2 }, action.active && styles.actionButtonActive]}
                   >
                     <Ionicons
                       name={action.icon as keyof typeof Ionicons.glyphMap}

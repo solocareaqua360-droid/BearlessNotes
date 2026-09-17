@@ -166,7 +166,17 @@ export default function TagPicker({
 
           {mode === 'list' ? (
             <>
-              <Text style={styles.title}>Теги</Text>
+              <View style={styles.titleRow}>
+                <Text style={styles.title}>Теги</Text>
+                {/* The way out. This sheet stands nearly edge to edge and
+                    the keyboard covers the rest, so the backdrop a tap
+                    used to close it through is barely on the screen -
+                    "немає кнопки завершення для закриття вікна вибору
+                    тегів". */}
+                <Pressable hitSlop={10} onPress={onClose}>
+                  <Ionicons name="close" size={22} color={GLASS_TEXT_MUTED} />
+                </Pressable>
+              </View>
               <View style={styles.searchRow}>
                 <Ionicons name="search" size={16} color={GLASS_TEXT_FAINT} />
                 <TextInput
@@ -330,12 +340,17 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 12,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
   title: {
     fontSize: 17,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
-    marginBottom: 10,
   },
   searchRow: {
     flexDirection: 'row',
