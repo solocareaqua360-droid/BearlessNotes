@@ -50,11 +50,30 @@ const BEHIND_EDGE = 3;
 // edges nearly line up, which is what makes it one stack instead of
 // three pills of decreasing size.
 const BEHIND_INSET = 5;
-// No glass settings of our own. The user pointed at the capsule they
-// wanted the dock to look like and it turned out to be an ordinary
-// GlassDrop with nothing overridden - the theme's own answer. Passing
-// blurAmount/glassOpacity here only ever made it THINNER than the thing
-// it was supposed to match.
+// The dock's own glass, measured off the reference (a Samsung lock
+// screen) rather than inherited from the theme. The theme's drop is a
+// bead of glass - a lit contour, a rim inside it, a shadow under it, a
+// convex body. The reference is none of those: FLAT frosted glass, dense
+// enough that the picture behind is only a tint, with no edge drawn at
+// all. "Форма колір розмір положення все не туди" was the theme's glass
+// standing where the reference's frost should be.
+const FLAT = {
+  specularIntensity: 0,
+  rimOpacity: 0,
+  vignetteIntensity: 0,
+  glassOpacity: 0.72,
+  blurAmount: 70,
+  lift: 'none' as const,
+};
+// Sizes, in points, from the reference at this phone's density: beads
+// of 44, a capsule a touch taller than the beads at 52, standing 30 in
+// from the edge with 14 between a bead and the capsule.
+const BEAD = 46;
+const CARD_H = 52;
+const CARD_PAD = 2;
+const CARD_BUTTON = CARD_H - CARD_PAD * 2;
+const EDGE_INSET = 28;
+const GAP = 14;
 
 export default function ContextDock() {
   const theme = useTheme();
@@ -180,19 +199,20 @@ export default function ContextDock() {
   // either side stay mounted just off the edge.
   const stripIndex = strip ? strip.items.findIndex((item) => item.key === strip.selected) : -1;
   const stripSettled = useRef(false);
+  const [stripWidth, setStripWidth] = useState(STRIP_WIDTH);
   useEffect(() => {
     if (stripIndex < 0) {
       stripSettled.current = false;
       return;
     }
-    const x = Math.max(0, stripIndex * STRIP_ITEM + STRIP_ITEM / 2 - STRIP_WIDTH / 2);
+    const x = Math.max(0, stripIndex * STRIP_ITEM + STRIP_ITEM / 2 - stripWidth / 2);
     // The first placement is not a journey - opening the calendar should
     // not show the strip travelling in from the first of the month.
     const animated = stripSettled.current;
     stripSettled.current = true;
     const id = setTimeout(() => stripRef.current?.scrollTo({ x, animated }), 0);
     return () => clearTimeout(id);
-  }, [stripIndex]);
+  }, [stripIndex, stripWidth]);
 
   if (!dock && !leave && !actions?.length && !beads.left && !beads.right) return null;
 
@@ -232,7 +252,7 @@ export default function ContextDock() {
 
   return (
     <GlassPortal>
-      <View style={[styles.wrap, { bottom: NAV_BOTTOM + insets.bottom }]} pointerEvents="box-none">
+      <View style={[styles.wrap, { bottom: 22 + insets.bottom }]} pointerEvents="box-none">
         <View style={styles.row}>
           {/* A missing bead keeps its place. Without this the stack
               drifted: two beads on documents, one on the calendar, and
@@ -241,7 +261,7 @@ export default function ContextDock() {
           {beads.left ? <Bead bead={beads.left} theme={theme} /> : <View style={styles.beadSlot} />}
           {showBead && (
             <Pressable onPress={stepOut}>
-              <GlassDrop style={styles.exitBead}>
+              <GlassDrop style={styles.exitBead} {...FLAT}>
                 <Ionicons name="chevron-back" size={11} color={theme.glass.inkMuted} />
                 <Ionicons name={icon} size={20} color={theme.glass.ink} />
               </GlassDrop>
@@ -256,8 +276,12 @@ export default function ContextDock() {
                 stack's back card shows is that it is there. */}
             {/* One edge per card behind, so the stack says its own depth
                 rather than leaving you to guess how far round you are. */}
+            {/* Plain bands, NOT glass. Glass carries a lit rim, and three
+                rims stacked under the front card read as a staircase of
+                outlines - the reference shows a single darker sliver and
+                nothing else. */}
             {Array.from({ length: behind }).map((_, i) => (
-              <GlassDrop
+              <View
                 key={i}
                 style={[
                   styles.behind,
@@ -265,6 +289,8 @@ export default function ContextDock() {
                     bottom: -(BEHIND_EDGE * i),
                     left: BEHIND_INSET * (i + 1),
                     right: BEHIND_INSET * (i + 1),
+                    backgroundColor: theme.glass.body,
+                    opacity: Math.min(0.9, theme.glass.opacity + 0.25 + i * 0.1),
                   },
                 ]}
               />
@@ -275,7 +301,7 @@ export default function ContextDock() {
               // The dots a home screen uses to say which page you are on
               // - still a way to get there, and still what "collapsed"
               // has meant here since the user first asked for it.
-              <GlassDrop style={styles.dotsShell}>
+              <GlassDrop style={styles.dotsShell} {...FLAT}>
                 <Pressable
                   style={styles.dotsRow}
                   onLongPress={desks.onToggleCollapsed}
@@ -301,9 +327,9 @@ export default function ContextDock() {
                 </Pressable>
               </GlassDrop>
             ) : (
-              <GlassDrop style={styles.shell}>
+              <GlassDrop style={styles.shell} {...FLAT}>
                 <Pressable
-                  style={styles.actionRow}
+                  style={[styles.actionRow, styles.spread]}
                   onLongPress={desks.onToggleCollapsed}
                   delayLongPress={400}
                 >
@@ -318,18 +344,18 @@ export default function ContextDock() {
                         // A lens over the bar, not a pane: the tab you
                         // are on, marked the way this dock marks
                         // everything you are on.
-                        <GlassDrop style={styles.actionButton} lift="none" blurAmount={0} convex>
+                        <View style={[styles.actionButton, styles.here]}>
                           <Ionicons
                             name={desk.icon as keyof typeof Ionicons.glyphMap}
-                            size={24}
+                            size={22}
                             color={theme.glass.ink}
                           />
-                        </GlassDrop>
+                        </View>
                       ) : (
                         <View style={styles.actionButton}>
                           <Ionicons
                             name={desk.icon as keyof typeof Ionicons.glyphMap}
-                            size={24}
+                            size={22}
                             color={theme.glass.ink}
                           />
                         </View>
@@ -342,12 +368,13 @@ export default function ContextDock() {
           )}
 
           {showing === 'context' && strip && (
-            <GlassDrop style={styles.shell}>
+            <GlassDrop style={styles.shell} {...FLAT}>
               <ScrollView
                 ref={stripRef}
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 style={styles.stripViewport}
+                onLayout={(e) => setStripWidth(e.nativeEvent.layout.width)}
               >
                 {strip.items.map((item) => {
                   const current = item.key === strip.selected;
@@ -386,9 +413,7 @@ export default function ContextDock() {
                   return (
                     <Pressable key={item.key} onPress={() => strip.onPick(item.key)}>
                       {current ? (
-                        <GlassDrop style={styles.stripItem} lift="none" blurAmount={0} convex>
-                          {body}
-                        </GlassDrop>
+                        <View style={[styles.stripItem, styles.here]}>{body}</View>
                       ) : (
                         <View style={styles.stripItem}>{body}</View>
                       )}
@@ -400,7 +425,7 @@ export default function ContextDock() {
           )}
 
           {showing === 'context' && trail && (
-            <GlassDrop style={[styles.shell, styles.trailShell]}>
+            <GlassDrop style={[styles.shell, styles.trailShell]} {...FLAT}>
               <View style={styles.trailRow}>
                 <ScrollView
                   ref={trailRef}
@@ -426,14 +451,14 @@ export default function ContextDock() {
                           // Where you are, in the lens the dock marks the
                           // desk you are on with. No target: a card is
                           // already here.
-                          <GlassDrop style={styles.trailCurrent} lift="none" blurAmount={0} convex>
+                          <View style={[styles.trailCurrent, styles.here]}>
                             <Text
                               style={[styles.trailLabel, styles.trailLabelCurrent, { color: theme.glass.ink }]}
                               numberOfLines={1}
                             >
                               {segment}
                             </Text>
-                          </GlassDrop>
+                          </View>
                         ) : (
                           <View ref={targets?.(target)} collapsable={false}>
                             <Pressable onPress={() => trail.onGo(target)} style={styles.trailSegment}>
@@ -455,7 +480,7 @@ export default function ContextDock() {
           )}
 
           {showing === 'actions' && !!actions?.length && (
-            <GlassDrop style={[styles.shell, styles.actionsShell]}>
+            <GlassDrop style={[styles.shell, styles.actionsShell]} {...FLAT}>
               {/* Scrolls, like the path does. A screen with five things
                   its list can be done TO is not a screen with a design
                   problem - the card simply holds what fits and the rest
@@ -478,7 +503,7 @@ export default function ContextDock() {
                   >
                     <Ionicons
                       name={action.icon as keyof typeof Ionicons.glyphMap}
-                      size={22}
+                      size={21}
                       color={action.active ? theme.accent : theme.glass.ink}
                     />
                     {!!action.badge && (
@@ -508,10 +533,10 @@ export default function ContextDock() {
 function Bead({ bead, theme }: { bead: DockBead; theme: ReturnType<typeof useTheme> }) {
   return (
     <Pressable onPress={bead.onPress} onLongPress={bead.onLongPress}>
-      <GlassDrop style={styles.bead}>
+      <GlassDrop style={styles.bead} {...FLAT}>
         <Ionicons
           name={bead.icon as keyof typeof Ionicons.glyphMap}
-          size={22}
+          size={21}
           color={bead.active ? theme.accent : theme.glass.ink}
         />
         {!!bead.badge && (
@@ -533,13 +558,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
-    // The beads must not touch the edges of the screen.
-    paddingHorizontal: 12,
+    paddingHorizontal: EDGE_INSET,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: GAP,
+    width: '100%',
     // Never wider than the screen. A path grows with every folder you
     // walk into, and left to itself it pushed the bead beside it clean
     // off the edge - the capsule scrolls INSIDE, so what has to give is
@@ -551,9 +576,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 1,
-    paddingLeft: 10,
-    paddingRight: 13,
-    height: NAV_BUTTON + NAV_PADDING * 2,
+    paddingLeft: 9,
+    paddingRight: 12,
+    height: BEAD,
   },
   stack: {
     // Room under the front capsule for the cards behind it - exactly as
@@ -567,30 +592,33 @@ const styles = StyleSheet.create({
   },
   behind: {
     position: 'absolute',
-    left: 10,
-    right: 10,
     bottom: 0,
-    height: NAV_BUTTON + NAV_PADDING * 2,
+    height: CARD_H,
+    borderRadius: 999,
   },
   shell: {
-    padding: NAV_PADDING,
+    padding: CARD_PAD,
+    width: '100%',
+    height: CARD_H,
+    justifyContent: 'center',
   },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  actionsShell: {
-    maxWidth: 210,
+  spread: {
+    justifyContent: 'space-around',
   },
+  actionsShell: {},
   beadSlot: {
     flexShrink: 0,
-    width: NAV_BUTTON + NAV_PADDING * 2,
+    width: BEAD,
   },
   bead: {
     // Fixed: a bead never gives up room, it is the card that does.
     flexShrink: 0,
-    width: NAV_BUTTON + NAV_PADDING * 2,
-    height: NAV_BUTTON + NAV_PADDING * 2,
+    width: BEAD,
+    height: BEAD,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -600,15 +628,22 @@ const styles = StyleSheet.create({
     bottom: 8,
   },
   actionButton: {
-    width: NAV_BUTTON,
-    height: NAV_BUTTON,
+    width: CARD_BUTTON,
+    height: CARD_BUTTON,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Where you are: a flat lighter disc on the frost. Not a bead - the
+  // reference has no beads inside its capsule.
+  here: {
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
   dotsShell: {
-    paddingVertical: 12,
     paddingHorizontal: 10,
+    width: '100%',
+    height: CARD_H,
+    justifyContent: 'center',
   },
   dotsRow: {
     flexDirection: 'row',
@@ -631,18 +666,13 @@ const styles = StyleSheet.create({
   trailShell: {
     flexShrink: 1,
     minWidth: 0,
-    // Short on purpose. Left to fill the row it showed three and a half
-    // folders with the last one cut in half, which reads as a mistake
-    // rather than as a path that continues. The user's own measure: the
-    // root and a couple of folders, and the rest is scrolled to.
-    maxWidth: 210,
   },
   stripViewport: {
-    width: STRIP_WIDTH,
+    flex: 1,
   },
   stripItem: {
     width: STRIP_ITEM,
-    height: NAV_BUTTON,
+    height: CARD_BUTTON,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 999,
@@ -678,7 +708,7 @@ const styles = StyleSheet.create({
   trailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: NAV_BUTTON,
+    height: CARD_BUTTON,
     minWidth: 0,
   },
   trailStrip: {
@@ -702,6 +732,7 @@ const styles = StyleSheet.create({
   trailCurrent: {
     paddingHorizontal: 12,
     paddingVertical: 8,
+    borderRadius: 999,
   },
   trailLabel: {
     fontSize: 14,
