@@ -25,6 +25,11 @@ type Props = {
   // across those steps instead of closing and reopening, which on Android
   // reads as a flicker between two windows.
   busy?: boolean;
+  // For text rather than a name: the box grows with what is in it and
+  // Enter makes a line instead of saving. A whole spoken thought in a
+  // one-line field ran off the end of it, which is no way to correct
+  // anything - "вузька строчка з текстом який уходе за межі поля вводу".
+  multiline?: boolean;
   onCancel: () => void;
   onSave: (value: string) => void;
 };
@@ -46,7 +51,16 @@ type Props = {
 // draws inside the screen, so opening one from behind a Modal - the photo
 // viewer, say - puts it underneath, where it stays invisible until that
 // Modal closes. Close the Modal first.
-export default function RenamePrompt({ visible, title, initialValue, placeholder, busy, onCancel, onSave }: Props) {
+export default function RenamePrompt({
+  visible,
+  title,
+  initialValue,
+  placeholder,
+  busy,
+  multiline,
+  onCancel,
+  onSave,
+}: Props) {
   const [value, setValue] = useState(initialValue);
 
   // Lifted clear of the keyboard by hand, the way TagPicker,
@@ -90,9 +104,12 @@ export default function RenamePrompt({ visible, title, initialValue, placeholder
           onChangeText={setValue}
           placeholder={placeholder ?? 'Назва'}
           placeholderTextColor={GLASS_TEXT_FAINT}
-          style={[styles.input, busy && styles.inputBusy]}
-          onSubmitEditing={() => value.trim() && !busy && onSave(value.trim())}
-          returnKeyType="done"
+          multiline={multiline}
+          style={[styles.input, multiline && styles.inputTall, busy && styles.inputBusy]}
+          onSubmitEditing={
+            multiline ? undefined : () => value.trim() && !busy && onSave(value.trim())
+          }
+          returnKeyType={multiline ? 'default' : 'done'}
         />
         {busy ? (
           <View style={styles.busyRow}>
@@ -152,6 +169,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: FONT_REGULAR,
     color: GLASS_TEXT,
+  },
+  inputTall: {
+    minHeight: 110,
+    maxHeight: 260,
+    lineHeight: 22,
+    textAlignVertical: 'top',
   },
   inputBusy: {
     color: GLASS_TEXT_MUTED,

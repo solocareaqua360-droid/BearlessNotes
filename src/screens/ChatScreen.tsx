@@ -118,6 +118,12 @@ export default function ChatScreen() {
             onPress: () => setSending([...selected]),
             closesStack: true,
           },
+          {
+            key: 'delete',
+            icon: 'trash-outline',
+            onPress: () => deleteChosen(),
+            closesStack: true,
+          },
         ]
       : null
   );
@@ -244,6 +250,24 @@ export default function ChatScreen() {
     }
   }
 
+  async function deleteChosen() {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    const sure = await confirm({
+      title: ids.length === 1 ? 'Видалити повідомлення?' : `Видалити ${ids.length} повідомлень?`,
+      message: 'Це єдине, що справді прибирає їх з чату.',
+      confirmLabel: 'Видалити',
+    });
+    if (!sure) return;
+    try {
+      await Promise.all(ids.map((id) => deleteChatMessage(id)));
+      setSelected(new Set());
+      setIsSelectMode(false);
+    } catch (e) {
+      notify('Не вдалося', (e as Error).message);
+    }
+  }
+
   async function saveEdit(text: string) {
     const message = editing;
     setEditing(null);
@@ -299,11 +323,11 @@ export default function ChatScreen() {
                         minute: '2-digit',
                       })}
                     </Text>
-                    {Object.entries(message.tasks ?? {}).map(([taskId, documentId]) => (
+                    {Object.entries(message.tasks ?? {}).map(([taskId]) => (
                       <Pressable
                         key={taskId}
                         style={styles.usedChip}
-                        onPress={() => navigation.navigate('Editor', { documentId })}
+                        onPress={() => navigation.navigate('Tasks')}
                       >
                         <Ionicons name="checkbox-outline" size={11} color={theme.accent} />
                         <Text style={[styles.usedLabel, { color: theme.accent }]}>Справа</Text>
@@ -366,6 +390,7 @@ export default function ChatScreen() {
 
       <RenamePrompt
         visible={!!editing}
+        multiline
         title="Виправити"
         initialValue={editing?.text ?? ''}
         placeholder="Текст повідомлення"
