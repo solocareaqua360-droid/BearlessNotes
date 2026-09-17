@@ -276,9 +276,9 @@ export default function App() {
                   leaves out is chosen file by file (.web siblings), not
                   route by route here. */}
               <RootNavigator />
+              {/* See App.tsx: inside the target, drawn by its own portal. */}
+              <ContextDock />
             </GlassTargetProvider>
-            {/* See App.tsx. */}
-            <ContextDock />
           </GlassPortalHost>
           </NavDockProvider>
         </ThemedNavigationContainer>

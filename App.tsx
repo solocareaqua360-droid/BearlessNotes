@@ -157,12 +157,15 @@ export default function App() {
             <CrashBoundary>
               <RootNavigator />
             </CrashBoundary>
-            </GlassTargetProvider>
-            {/* The dock, when it holds a context rather than the desks -
-                see components/ContextDock. Inside the portal host so its
-                glass has something to blur, and OUTSIDE the blur target
-                for the same reason every other piece of glass is. */}
+            {/* The dock - see components/ContextDock. Declared INSIDE the
+                blur target, like the tags drawer and every sheet, and
+                drawn outside it by its own GlassPortal. Declared outside,
+                it found no target to blur and expo-blur quietly fell back
+                to a flat translucent rectangle: the light, unblurred dock
+                the user set beside the drawer and asked whether the two
+                could possibly be the same material. */}
             <ContextDock />
+            </GlassTargetProvider>
           </GlassPortalHost>
           </NavDockProvider>
           {/* Above the portal host, and outside every boundary:
