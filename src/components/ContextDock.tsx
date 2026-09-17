@@ -299,8 +299,19 @@ export default function ContextDock() {
 
   return (
     <GlassPortal>
-      <View style={[styles.wrap, { bottom: 22 + insets.bottom, paddingHorizontal: EDGE_INSET }]} pointerEvents="box-none">
-        <View style={[styles.row, { width: rowWidth, gap: GAP }]}>
+      <View
+        style={[styles.wrap, { bottom: 22 + insets.bottom, paddingHorizontal: EDGE_INSET }]}
+        pointerEvents="box-none"
+      >
+        <View
+          style={[
+            styles.row,
+            // Height SAID too, with the slivers' room included, so that
+            // centring the beads happens inside a box that is really
+            // this tall - and nothing in this chain is allowed to clip.
+            { width: rowWidth, gap: GAP, height: CARD_H + BEHIND_EDGE * behind, overflow: 'visible' },
+          ]}
+        >
           {/* A missing bead keeps its place. Without this the stack
               drifted: two beads on documents, one on the calendar, and
               the same control sat in a different spot on each - "док
@@ -590,7 +601,11 @@ export default function ContextDock() {
 // own beside the stack.
 function Bead({ bead, theme, size }: { bead: DockBead; theme: ReturnType<typeof useTheme>; size: number }) {
   return (
-    <Pressable onPress={bead.onPress} onLongPress={bead.onLongPress}>
+    <Pressable
+      onPress={bead.onPress}
+      onLongPress={bead.onLongPress}
+      style={{ width: size, height: size, overflow: 'visible' }}
+    >
       <GlassDrop style={[styles.bead, { width: size, height: size }]} radius={size / 2} {...FLAT} glassBody={theme.surface}>
         <Ionicons
           name={bead.icon as keyof typeof Ionicons.glyphMap}
@@ -616,6 +631,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
+    // Slack above and below, and no clipping: a bead's bottom point
+    // was going missing, and the one thing every ancestor here can be
+    // made to promise is that it is not the one cutting it.
+    paddingVertical: 6,
+    overflow: 'visible',
   },
   row: {
     flexDirection: 'row',
