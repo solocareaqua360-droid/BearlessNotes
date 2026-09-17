@@ -165,10 +165,12 @@ export function useExplorerCarry<T extends { id: string }>({
   // exists at all: every database carries cards the same way, so all five
   // of them gain this at once and none of them can drift out of it.
   //
-  // It is the same registry the folder rows use, so a crumb in the dock
-  // and a folder in the list are the same kind of place to let a card go
-  // - and the second finger's tap works on them too, which is what makes
-  // "hold a card, walk down the dock, drop it where you arrive" possible.
+  // As STEP targets, not drop targets (see registerStepTarget): the dock
+  // takes you places while you hold a card, and the folder you arrive in
+  // takes the card. Letting go over the dock itself is deliberately not a
+  // thing - the user's own reason, and a good one: the card in your hand
+  // is big, and over a strip of small crumbs you cannot be sure which one
+  // you are about to hit.
   const carryFocused = useIsFocused();
   const publishDockTargets = useNavDockTargetPublisher();
   // Published through a wrapper that never changes, reading the live
@@ -181,8 +183,8 @@ export function useExplorerCarry<T extends { id: string }>({
   // "Maximum update depth exceeded", on the device, within a second of
   // opening the explorer. A published value has to be stable by
   // construction; it cannot depend on a caller remembering to memoise.
-  const registrarRef = useRef(carry.registerFolder);
-  registrarRef.current = carry.registerFolder;
+  const registrarRef = useRef(carry.registerStepTarget);
+  registrarRef.current = carry.registerStepTarget;
   const dockRegistrar = useCallback((path: string) => registrarRef.current(path), []);
   useEffect(() => {
     if (!publishDockTargets) return;

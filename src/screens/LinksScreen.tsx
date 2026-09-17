@@ -635,7 +635,6 @@ export default function LinksScreen({
         folderRef={carrying.carry.registerFolder}
         path={explorer.path}
         folders={explorer.folders}
-        showCrumbs={explorer.active}
         itemIcon="link-outline"
         onGo={(next) => {
           explorer.setPath(next);
@@ -644,7 +643,6 @@ export default function LinksScreen({
             list.setIsSearching(false);
           }
         }}
-        onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
         onFolderMenu={openFolderMenu}
         trash={{ count: trashedLinks.length, onOpen: () => setTrashOpen(true) }}
       />

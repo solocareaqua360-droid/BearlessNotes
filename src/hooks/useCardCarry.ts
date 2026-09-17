@@ -124,6 +124,8 @@ export function useCardCarry<T extends { id: string }>({
   // as they unmount. A `measure`-able node, not a rect: rects go stale
   // the moment the list scrolls, nodes don't.
   const folderNodes = useRef(new Map<string, View>());
+  // Step-only targets - see registerStepTarget.
+  const stepNodes = useRef(new Map<string, View>());
   // Every card row on screen: its node, what it would carry, and what its
   // own short hold opens.
   const cardNodes = useRef(new Map<string, { node: View; group: () => T[]; onMenu: () => void }>());
@@ -138,6 +140,28 @@ export function useCardCarry<T extends { id: string }>({
     return (node: View | null) => {
       if (node) folderNodes.current.set(path, node);
       else folderNodes.current.delete(path);
+    };
+  }
+
+  // A place you can STEP into with the second finger, but not DROP onto.
+  //
+  // The dock's crumbs are these. Walking the dock while holding a card is
+  // exactly right; letting go over the dock is not, and the user said why
+  // - the card in your hand is big, and over a strip of small crumbs you
+  // cannot be sure which one you are about to hit. So the dock takes you
+  // places and the folder you arrive in takes the card.
+  //
+  // Kept in a register of its own rather than a flag, because the two
+  // registers are allowed to hold the SAME PATH at once: the dock's
+  // crumb for a parent folder and a folder row for the same parent are
+  // two different nodes, and one map keeps one node per path - which is
+  // precisely how the step-up arrow silently killed the dock's parent
+  // crumb, each of them registering the same path and the last one
+  // winning.
+  function registerStepTarget(path: string) {
+    return (node: View | null) => {
+      if (node) stepNodes.current.set(path, node);
+      else stepNodes.current.delete(path);
     };
   }
 
@@ -214,9 +238,13 @@ export function useCardCarry<T extends { id: string }>({
   // letting go of the card.
   const hitTargetAt = useCallback((x: number, y: number, onHit: (path: string) => void) => {
     aliveAt.current = Date.now();
-    folderNodes.current.forEach((node, path) => {
-      node.measureInWindow((nx, ny, nw, nh) => {
-        if (x >= nx && x <= nx + nw && y >= ny && y <= ny + nh) onHit(path);
+    // Both registers: stepping is what the dock's crumbs are FOR, and a
+    // folder row can be stepped into as well as dropped on.
+    [folderNodes.current, stepNodes.current].forEach((register) => {
+      register.forEach((node, path) => {
+        node.measureInWindow((nx, ny, nw, nh) => {
+          if (x >= nx && x <= nx + nw && y >= ny && y <= ny + nh) onHit(path);
+        });
       });
     });
   }, []);
@@ -294,6 +322,7 @@ export function useCardCarry<T extends { id: string }>({
   return {
     ghost,
     registerFolder,
+    registerStepTarget,
     registerCard,
     pickUpAt,
     menuAt,

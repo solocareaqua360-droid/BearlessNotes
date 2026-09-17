@@ -1010,7 +1010,6 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                   folderRef={carrying.carry.registerFolder}
                   path={explorer.path}
                   folders={explorer.folders}
-                  showCrumbs={explorer.active}
                   itemIcon="image-outline"
                   onGo={(next) => {
                     explorer.setPath(next);
@@ -1019,7 +1018,6 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                       list.setIsSearching(false);
                     }
                   }}
-                  onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
                   onFolderMenu={openFolderMenu}
                   trash={{ count: trashedPhotos.length, onOpen: () => setTrashOpen(true) }}
                 />

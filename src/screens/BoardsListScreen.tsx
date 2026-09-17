@@ -592,7 +592,6 @@ export default function BoardsListScreen({
                 folderRef={carrying.carry.registerFolder}
                 path={explorer.path}
                 folders={explorer.folders}
-                showCrumbs={explorer.active}
                 columns={isTwoPane ? (layoutWidth > layoutHeight ? 3 : 2) : 1}
                 itemIcon="apps-outline"
                 onGo={(next) => {
@@ -604,7 +603,6 @@ export default function BoardsListScreen({
                     list.setIsSearching(false);
                   }
                 }}
-                onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
                 onFolderMenu={openFolderMenu}
               />
               </View>

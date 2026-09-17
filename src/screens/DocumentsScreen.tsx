@@ -60,7 +60,7 @@ import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
 import DocumentCard from '../components/DocumentCard';
-import { useExplorer, nameOf, parentOf } from '../hooks/useExplorer';
+import { useExplorer, nameOf } from '../hooks/useExplorer';
 import UndoToast from '../components/UndoToast';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
@@ -1191,28 +1191,6 @@ export default function DocumentsScreen({
                 </View>
               ) : explorerMode && (explorer.folders.length > 0 || (explorer.active && explorer.path !== '')) ? (
                 <View style={[styles.explorerHead, folderColumns > 1 && styles.explorerHeadWide]}>
-                  {explorer.active && explorer.path !== '' && (
-                    // The path is gone from here - the dock carries it
-                    // now, and reading the same thing twice on one screen
-                    // was the temporary duplication while the user got
-                    // used to the new place. Same change as
-                    // ExplorerHead's, which every other database uses.
-                    //
-                    // The step UP stays, and not only out of habit: the
-                    // crumbs were quietly the drop targets that meant
-                    // "out of this folder" for a card being carried. The
-                    // arrow is that target now, under the parent's own
-                    // path - which it could not be while a crumb beside
-                    // it claimed the same path, since the registry keeps
-                    // one node per path.
-                    <View style={[styles.explorerCrumb, folderColumns > 1 && styles.explorerCrumbWide]}>
-                      <View ref={carrying.carry.registerFolder(parentOf(explorer.path))} collapsable={false}>
-                        <Pressable hitSlop={8} onPress={explorerUp} style={styles.crumbUp}>
-                          <Ionicons name="chevron-back" size={18} color={theme.ink.primary} />
-                        </Pressable>
-                      </View>
-                    </View>
-                  )}
                   {/* A folder row wears the document row's clothes - the
                       same card, with the tag's icon in a frame where a
                       document shows its picture - so the two read as one

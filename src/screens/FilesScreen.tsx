@@ -673,7 +673,6 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
       <ExplorerHead
         path={explorer.path}
         folders={explorer.folders}
-        showCrumbs={explorer.active}
         itemIcon="document-outline"
         onGo={(next) => {
           explorer.setPath(next);
@@ -682,7 +681,6 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
             list.setIsSearching(false);
           }
         }}
-        onUp={() => explorer.setPath((prev) => prev.split('/').slice(0, -1).join('/'))}
         onFolderMenu={openFolderMenu}
         trash={{ count: trashedFiles.length, onOpen: () => setTrashOpen(true) }}
         folderRef={carrying.carry.registerFolder}

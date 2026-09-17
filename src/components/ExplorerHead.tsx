@@ -3,7 +3,7 @@ import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { ExplorerFolder, parentOf } from '../hooks/useExplorer';
+import { ExplorerFolder } from '../hooks/useExplorer';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 // What stands above a database's records while it is in explorer mode:
@@ -18,7 +18,6 @@ export default function ExplorerHead({
   path,
   folders,
   onGo,
-  onUp,
   onFolderMenu,
   // The icon beside a folder's first number - what this database's
   // records ARE (a document, a board), since that number counts them.
@@ -26,18 +25,15 @@ export default function ExplorerHead({
   // The bin, at the root, after the folders - where a file manager keeps
   // it. Absent on a database that has no bin yet.
   trash,
-  showCrumbs,
   columns,
   folderRef,
 }: {
   path: string;
   folders: ExplorerFolder[];
   onGo: (path: string) => void;
-  onUp: () => void;
   onFolderMenu: (folder: ExplorerFolder) => void;
   itemIcon: keyof typeof Ionicons.glyphMap;
   trash?: { count: number; onOpen: () => void };
-  showCrumbs: boolean;
   // How many folders stand across a line. One on a phone; two or three
   // on the Fold's inner screen, where a folder row - an icon, a name and
   // two small numbers - is a very long way to say very little at full
@@ -59,31 +55,12 @@ export default function ExplorerHead({
   const cols = Math.max(1, columns ?? 1);
   const rowWidth = cols > 1 && width > 0 ? Math.floor((width - FOLDER_GAP * (cols - 1)) / cols) : undefined;
 
-  if (folders.length === 0 && !(showCrumbs && path !== '') && !trash) return null;
+  // Nothing above the list unless there is something to put there. The
+  // path used to count as something; it lives in the dock now.
+  if (folders.length === 0 && !trash) return null;
 
   return (
     <View style={styles.head} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
-      {showCrumbs && path !== '' && (
-        // The path itself is gone from here: the dock carries it now, and
-        // reading the same thing twice on one screen was the deliberate,
-        // temporary duplication while the user got used to the new place.
-        //
-        // What is left is the step UP, and it stays for a reason the
-        // crumbs were quietly doing all along: a card being carried has
-        // to have somewhere to be dropped that means "out of this
-        // folder". The crumbs were those targets. The arrow is now the
-        // one target, registered under the parent's own path - which it
-        // could not be before, because a crumb beside it already claimed
-        // that path and the registry keeps one node per path.
-        <View style={styles.crumbRow}>
-          <View ref={folderRef?.(parentOf(path))} collapsable={false}>
-            <Pressable hitSlop={8} onPress={onUp} style={styles.crumbUp}>
-              <Ionicons name="chevron-back" size={18} color={theme.ink.primary} />
-            </Pressable>
-          </View>
-        </View>
-      )}
-
       <View style={cols > 1 ? styles.folderGrid : styles.folderStack}>
       {folders.map((folder) => (
         <View key={folder.fullPath} ref={folderRef?.(folder.fullPath)} collapsable={false}>
