@@ -126,6 +126,7 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
+import { useDockLeave } from '../navigation/navDock';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_ISLAND } from '../constants/glass';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
@@ -223,6 +224,9 @@ export default function CustomDatabaseScreen({
   // list - order it, filter it, choose in it - belongs on the rail, with
   // the same two or three buttons as every other screen.
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  // The way out of this database lives in the dock now, under the thumb,
+  // the same as every other database (see DatabaseChrome).
+  useDockLeave('grid-outline', () => navigation.goBack());
   const route = useRoute();
   const params = (route.params ?? {}) as {
     databaseId?: string;
@@ -1667,12 +1671,6 @@ export default function CustomDatabaseScreen({
               <View style={styles.headerButtonsDivider} />
               <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
                 <GlassIcon name="ellipsis-horizontal-outline" size={24} />
-              </Pressable>
-              <View style={styles.headerButtonsDivider} />
-              {/* The way out of this database - the same place it is on
-                  every other one. */}
-              <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-                <GlassIcon name="arrow-back-outline" size={24} />
               </Pressable>
             </GlassDrop>
           </View>

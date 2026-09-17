@@ -656,6 +656,7 @@ export default function LinksScreen({
       accent={ACCENT}
       accentGlass={ACCENT_GLASS}
       onBack={() => navigation.goBack()}
+      leaveIcon="link-outline"
       searchPlaceholder="Пошук за назвою"
       onAdd={() => setAddLinkUrlPromptVisible(true)}
       // The shape of the list is a button on the rail now - it was two

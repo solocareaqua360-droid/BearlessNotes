@@ -4,6 +4,7 @@ import type { Theme } from '../theme/tokens';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
+import { useDockLeave } from '../navigation/navDock';
 import { useIsFocused } from '@react-navigation/native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -44,9 +45,17 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   // The "+" button's fill - the accent at half strength, since the blur
   // behind it is what separates it from the screen.
   accentGlass: string;
-  // Absent on a tab's own root, which has nowhere to go back TO. The
-  // button leaves the top capsule with it.
+  // Absent on a tab's own root, which has nowhere to go back TO.
+  //
+  // It is no longer a button up here: it is published to the dock, at
+  // the foot of the screen, where the hand already is. The user's own
+  // ask - standing in a database's root there was nothing under the
+  // thumb at all, and the way back to the databases was the small arrow
+  // in the top-right corner.
   onBack?: () => void;
+  // What the dock's bead shows while it is offering that way out - the
+  // thing this database holds, so the way out says what it is leaving.
+  leaveIcon?: keyof typeof Ionicons.glyphMap;
   // A tab's root also keeps the navigation island at its foot, so the
   // rail must leave room for it; a PUSHED screen has none.
   hasIsland?: boolean;
@@ -137,6 +146,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   accent,
   accentGlass,
   onBack,
+  leaveIcon,
   hasIsland,
   railSide = 'right',
   searchPlaceholder,
@@ -183,7 +193,10 @@ export default function DatabaseChrome<T extends { id: string }>({
   // files and links only ever arrive from inside a document.
   // Search, plus "..." where the screen still has rows for it, plus the
   // way out where there is one - one, two or three buttons.
-  const topHeight = capsuleHeightFor(1 + (menuRows ? 1 : 0) + (onBack ? 1 : 0));
+  // The way out went to the dock, so the top capsule is one button
+  // shorter than it used to be.
+  useDockLeave(leaveIcon ?? 'albums-outline', onBack ?? (() => {}), !!onBack);
+  const topHeight = capsuleHeightFor(1 + (menuRows ? 1 : 0));
   const createHeight = onAdd ? (explorer?.active ? CAPSULE_HEIGHT : RAIL_WIDTH) : 0;
   const selectHeight = bulk ? CAPSULE_HEIGHT_1 : 0;
   // Back and forward take a capsule of their own wherever the screen is
@@ -544,14 +557,6 @@ export default function DatabaseChrome<T extends { id: string }>({
               )}
               {/* The way out of this database, where the arrow in the
                   header's corner used to be. A tab's own root has none. */}
-              {!!onBack && (
-                <>
-                  <View style={styles.headerButtonsDivider} />
-                  <Pressable hitSlop={8} onPress={onBack}>
-                    <GlassIcon name="arrow-back-outline" size={24} />
-                  </Pressable>
-                </>
-              )}
             </GlassDrop>
           </View>
         </GlassPortal>

@@ -745,6 +745,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
       accent={ACCENT}
       accentGlass={ACCENT_GLASS}
       onBack={() => navigation.goBack()}
+      leaveIcon="image-outline"
       searchPlaceholder="Пошук фото за назвою"
       onAdd={() => askWhereFrom()}
       // The same two rows Files and Links already have. Photos had only

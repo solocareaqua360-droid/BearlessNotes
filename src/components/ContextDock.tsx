@@ -7,7 +7,7 @@ import { GlassPortal } from './GlassPortal';
 import { useTheme } from '../theme/ThemeProvider';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { useNavDockContext, useNavDockHidden, useNavDockTargets } from '../navigation/navDock';
+import { useNavDockContext, useNavDockHidden, useNavDockLeave, useNavDockTargets } from '../navigation/navDock';
 
 // The dock, when it is holding a CONTEXT rather than the four desks.
 //
@@ -33,6 +33,11 @@ export default function ContextDock() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const dock = useNavDockContext();
+  // The way out of the SCREEN, which is true even at a database's root,
+  // where there is no path to show. The user's own ask: standing in a
+  // database, the way back to the databases was the small arrow in the
+  // top-right corner of the rail, and it belongs under the thumb.
+  const leave = useNavDockLeave();
   const [, setHidden] = useNavDockHidden();
   // A card being carried can step onto a crumb - the same registry the
   // folder rows use, handed up by whichever screen is carrying.
@@ -70,7 +75,7 @@ export default function ContextDock() {
     return () => clearTimeout(id);
   }, [stripIndex]);
 
-  if (!dock) return null;
+  if (!dock && !leave) return null;
 
   // The way out, as a bead of its own beside the pill rather than a
   // button inside it - the user's own call: inside, it read as an eighth
@@ -80,14 +85,22 @@ export default function ContextDock() {
   // For folders, leaving the context and walking out to the root are the
   // same move, and the context ends itself when the root is reached. A
   // calendar has no root to walk to, so there it is simply put away.
-  const leave = () => (trail ? trail.onGo('') : setHidden(true));
-  const icon = (dock.icon as keyof typeof Ionicons.glyphMap) ?? 'ellipse-outline';
+  // One bead, stepping out one level at a time - the same ladder the
+  // note's back arrow walks. Inside folders it walks to the root; at the
+  // root it leaves the database altogether; a calendar, which has no
+  // root, is simply put away.
+  const stepOut = () => {
+    if (trail) return trail.onGo('');
+    if (strip) return setHidden(true);
+    leave?.onLeave();
+  };
+  const icon = ((dock?.icon ?? leave?.icon) as keyof typeof Ionicons.glyphMap) ?? 'ellipse-outline';
 
   return (
     <GlassPortal>
       <View style={[styles.wrap, { bottom: NAV_BOTTOM + insets.bottom }]} pointerEvents="box-none">
         <View style={styles.row}>
-          <Pressable onPress={leave}>
+          <Pressable onPress={stepOut}>
             <GlassDrop style={styles.exitBead}>
               <Ionicons name="chevron-back" size={11} color={theme.glass.inkMuted} />
               <Ionicons name={icon} size={20} color={theme.glass.ink} />

@@ -1,5 +1,6 @@
-import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { View } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 
 // What the dock is showing instead of the desks.
 //
@@ -65,8 +66,17 @@ export type DockContext =
 // two different hooks that learn their answers at different moments.
 export type DockTargets = (path: string) => (node: View | null) => void;
 
+// The way OUT of a whole screen, for the screens that are pushed over
+// the tabs - a database opened from «Більше», a board, a note. Separate
+// from the context because it is true whether or not there is a path:
+// standing in a database's root there is nothing to show, and leaving
+// the database is exactly the thing you want under your thumb.
+export type DockLeave = { icon: string; onLeave: () => void };
+
 type Value = {
   context: DockContext | null;
+  leave: DockLeave | null;
+  publishLeave: (leave: DockLeave | null) => void;
   publish: (context: DockContext | null) => void;
   // Stepped out of, without being given up: the context is still there,
   // one press brings it back. Lives here rather than in the dock because
@@ -119,14 +129,24 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
     (next: DockTargets | null) => setTargetBox((prev) => (prev.fn === next ? prev : { fn: next })),
     []
   );
+  const [leaveBox, setLeaveBox] = useState<{ value: DockLeave | null }>({ value: null });
+  const leave = leaveBox.value;
+  const publishLeave = useCallback((next: DockLeave | null) => {
+    setLeaveBox((prev) => {
+      const a = prev.value;
+      if (a === next) return prev;
+      if (a && next && a.icon === next.icon && a.onLeave === next.onLeave) return prev;
+      return { value: next };
+    });
+  }, []);
   const [hidden, setHidden] = useState(false);
   // A new context is a new question, so a context stepped out of does not
   // stay stepped out of once you have gone somewhere else.
   const contextKey = context ? `${context.kind}:${context.icon}` : '';
   useEffect(() => setHidden(false), [contextKey]);
   const value = useMemo(
-    () => ({ context, publish, targets, publishTargets, hidden, setHidden }),
-    [context, publish, targets, publishTargets, hidden]
+    () => ({ context, publish, leave, publishLeave, targets, publishTargets, hidden, setHidden }),
+    [context, publish, leave, publishLeave, targets, publishTargets, hidden]
   );
   return <NavDockContext.Provider value={value}>{children}</NavDockContext.Provider>;
 }
@@ -173,4 +193,24 @@ export function useNavDockTargets(): DockTargets | null {
 
 export function useNavDockTargetPublisher() {
   return useContext(NavDockContext)?.publishTargets;
+}
+
+// What a pushed screen publishes so the dock can carry its way out.
+export function useDockLeave(icon: string, onLeave: () => void, enabled = true) {
+  const publish = useContext(NavDockContext)?.publishLeave;
+  const focused = useIsFocused();
+  const leaveRef = useRef(onLeave);
+  leaveRef.current = onLeave;
+  // Stable by construction - a fresh handler every render would publish
+  // every render, and publishing is a setState above the whole app.
+  const stable = useCallback(() => leaveRef.current(), []);
+  useEffect(() => {
+    if (!publish || !focused || !enabled) return;
+    publish({ icon, onLeave: stable });
+    return () => publish(null);
+  }, [publish, focused, enabled, icon, stable]);
+}
+
+export function useNavDockLeave(): DockLeave | null {
+  return useContext(NavDockContext)?.leave ?? null;
 }
