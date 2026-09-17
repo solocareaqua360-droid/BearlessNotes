@@ -15,6 +15,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Image } from 'react-native';
 import { hapticButtonDown } from '../utils/haptics';
 import { useTheme } from '../theme/ThemeProvider';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 
 // The capture window - what the dock's long press opens. Its whole job is
 // to cost nothing: it comes up ALREADY LISTENING, so "зажав док і сразу
@@ -36,7 +37,10 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
   const [visible, setVisible] = useState(false);
   const [text, setText] = useState('');
   const [listening, setListening] = useState(false);
-  const [typing, setTyping] = useState(false);
+  // The window stands at the foot of the screen, so the keyboard would
+  // stand ON it - which is what made the keyboard button look dead: it
+  // worked, and then what it opened covered the thing it opened.
+  const keyboardHeight = useKeyboardHeight();
   const [trouble, setTrouble] = useState<string | null>(null);
   // As many as were put on one thought: a screenshot AND the link it came
   // from belong in the same message. Each record is already written by
@@ -58,7 +62,6 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
       committed.current = '';
       setAttachments([]);
       setTrouble(null);
-      setTyping(false);
       setVisible(true);
     };
     return () => {
@@ -74,14 +77,14 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
   const startListening = useCallback(async () => {
     setTrouble(null);
     if (!ExpoSpeechRecognitionModule.isRecognitionAvailable()) {
-      setTrouble('Розпізнавання тут недоступне - напишіть або скористайтеся мікрофоном клавіатури');
-      setTyping(true);
+      setTrouble('Розпізнавання тут недоступне - напишіть');
+      inputRef.current?.focus();
       return;
     }
     const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
     if (!permission.granted) {
       setTrouble('Без дозволу на мікрофон лишається клавіатура');
-      setTyping(true);
+      inputRef.current?.focus();
       return;
     }
     committed.current = text;
@@ -119,7 +122,6 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
     // what silence sounds like.
     if (event.error === 'no-speech' || event.error === 'aborted') return;
     setTrouble('Не почулося. Спробуйте ще раз або напишіть');
-    setTyping(true);
   });
 
   const close = useCallback(() => {
@@ -136,11 +138,17 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
     await sendChatMessage(toSend, withThem);
   }
 
-  async function attachOne(pick: () => Promise<ChatAttachment | null>) {
+  async function attach(pick: () => Promise<ChatAttachment[]>) {
     setAttaching(true);
     try {
       const picked = await pick();
-      if (picked) setAttachments((prev) => [...prev, picked]);
+      // Never the same record twice: a link taken from the clipboard a
+      // second time is the same link, and its id says so.
+      if (picked.length > 0)
+        setAttachments((prev) => [
+          ...prev,
+          ...picked.filter((one) => !prev.some((had) => had.id === one.id)),
+        ]);
     } catch (e) {
       setTrouble((e as Error).message);
     } finally {
@@ -160,7 +168,10 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
         return;
       }
       const link = await attachLinkToChat(fromClipboard);
-      if (link) setAttachments((prev) => [...prev, link]);
+      if (link.length > 0)
+        setAttachments((prev) =>
+          prev.some((had) => had.id === link[0].id) ? prev : [...prev, link[0]]
+        );
     } catch (e) {
       setTrouble((e as Error).message);
     } finally {
@@ -180,7 +191,7 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
 
   return (
     <GlassLayer visible={visible} onClose={close}>
-      <View style={styles.backdrop}>
+      <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={close} />
         <View style={styles.sheet}>
           <View style={styles.handle} />
@@ -206,7 +217,6 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
             placeholder={listening ? 'Говоріть…' : 'Скажіть або напишіть'}
             placeholderTextColor={GLASS_TEXT_FAINT}
             style={styles.input}
-            showSoftInputOnFocus={typing}
           />
 
           {attachments.map((item, index) => (
@@ -251,7 +261,7 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
               hitSlop={8}
               style={styles.attachButton}
               disabled={attaching}
-              onPress={() => attachOne(pickMediaForChat)}
+              onPress={() => attach(pickMediaForChat)}
             >
               <Ionicons name="image-outline" size={20} color={GLASS_TEXT_MUTED} />
             </Pressable>
@@ -259,7 +269,7 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
               hitSlop={8}
               style={styles.attachButton}
               disabled={attaching}
-              onPress={() => attachOne(pickFileForChat)}
+              onPress={() => attach(pickFileForChat)}
             >
               <Ionicons name="document-outline" size={20} color={GLASS_TEXT_MUTED} />
             </Pressable>
@@ -274,7 +284,6 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
               style={styles.sideButton}
               onPress={() => {
                 stopListening();
-                setTyping(true);
                 inputRef.current?.focus();
               }}
             >
