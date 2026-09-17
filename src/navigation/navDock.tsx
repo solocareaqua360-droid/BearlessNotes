@@ -100,6 +100,10 @@ export type DockAction = {
   key: string;
   icon: string;
   onPress: () => void;
+  // Done in one press, so the stack goes back to where-you-are by
+  // itself: the card of actions is a drawer you opened for one thing,
+  // not a place to stand.
+  closesStack?: boolean;
   onLongPress?: () => void;
   active?: boolean;
   // A small glyph over the icon's corner - "the plus ON the thing it
@@ -120,6 +124,8 @@ export type DockBead = {
 };
 
 type Value = {
+  face: 'context' | 'actions';
+  setFace: (face: 'context' | 'actions') => void;
   // What the dock falls back to when no screen has anything more
   // specific to say: the desks. A path or a calendar takes the front
   // while it exists; putting one away lands here rather than nowhere.
@@ -230,6 +236,11 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       return same && prev.onToggleCollapsed === next.onToggleCollapsed ? prev : next;
     });
   }, []);
+  // Which card of the stack is in front. It lives here rather than in
+  // the dock because screens have to be able to ask for it back - an
+  // action that finishes somewhere else (a sort chosen in a menu, a
+  // select mode left) should put the path in front again.
+  const [face, setFace] = useState<'context' | 'actions'>('context');
   const [hidden, setHidden] = useState(false);
   // A new context is a new question, so a context stepped out of does not
   // stay stepped out of once you have gone somewhere else.
@@ -237,6 +248,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
   useEffect(() => setHidden(false), [contextKey]);
   const value = useMemo(
     () => ({
+      face,
+      setFace,
       base,
       publishBase,
       context,
@@ -253,6 +266,7 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       setHidden,
     }),
     [
+      face,
       base,
       publishBase,
       context,
@@ -388,4 +402,19 @@ export function useDockBase(base: DockContext | null) {
     publish(ref.current);
     return () => publish(null);
   }, [publish, signature]);
+}
+
+// Which card of the stack is in front, and how to change it.
+export function useNavDockFace(): ['context' | 'actions', (face: 'context' | 'actions') => void] {
+  const value = useContext(NavDockContext);
+  return [value?.face ?? 'context', value?.setFace ?? (() => {})];
+}
+
+// What a screen calls when an action has FINISHED somewhere else - a
+// sort picked from its menu, a select mode left, a folder named. The
+// card of actions was opened for one thing; once that thing is done,
+// where-you-are is what belongs in front.
+export function useDockShowContext(): () => void {
+  const setFace = useContext(NavDockContext)?.setFace;
+  return useCallback(() => setFace?.('context'), [setFace]);
 }

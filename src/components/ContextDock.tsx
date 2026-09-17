@@ -9,7 +9,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { hapticButtonDown } from '../utils/haptics';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { DockBead, useNavDockActions, useNavDockBeads, useNavDockContext, useNavDockHidden, useNavDockLeave, useNavDockTargets } from '../navigation/navDock';
+import { DockBead, useNavDockActions, useNavDockFace, useNavDockBeads, useNavDockContext, useNavDockHidden, useNavDockLeave, useNavDockTargets } from '../navigation/navDock';
 
 // The dock, when it is holding a CONTEXT rather than the four desks.
 //
@@ -60,7 +60,9 @@ export default function ContextDock() {
   // on the left, creating on the right. The user's own arrangement, and
   // Samsung's own reasoning - a pile of cards is for what changes.
   const beads = useNavDockBeads();
-  const [face, setFace] = useState<'context' | 'actions'>('context');
+  // Lives in the provider now - a screen has to be able to ask for the
+  // path back when an action finishes somewhere else.
+  const [face, setFace] = useNavDockFace();
   // Back to where-you-are whenever a context arrives - changing screen,
   // or stepping into folders from a root that had none. Watching the
   // context's KIND was not enough: moving between two screens that both
@@ -72,7 +74,7 @@ export default function ContextDock() {
   // Now that the desks are a context too, "a context arrived" is almost
   // always true and would never have reset anything.
   const contextKey = dock ? `${dock.kind}:${dock.icon}` : '';
-  useEffect(() => setFace('context'), [contextKey]);
+  useEffect(() => setFace('context'), [contextKey, setFace]);
   // What is actually drawn. A context always wins the front unless the
   // swipe asked otherwise; with no context there is only one card to
   // show, so there is nothing to be uncertain about.
@@ -91,6 +93,11 @@ export default function ContextDock() {
   // thing that stopped the reference drag dead two days ago. It was
   // being rebuilt here on every render of a dock that re-renders
   // constantly, which is why the swipe did not exist at all.
+  // Read through a ref inside the gesture, which is built once: the
+  // gesture must not be rebuilt when the face changes, or it stops
+  // activating (the whole reason the swipe did not exist at first).
+  const faceRef = useRef(face);
+  faceRef.current = face;
   const swipe = useMemo(
     () =>
       Gesture.Pan()
@@ -108,7 +115,7 @@ export default function ContextDock() {
         .onEnd((e) => {
           if (e.translationY > -10) return;
           hapticButtonDown();
-          setFace((prev) => (prev === 'context' ? 'actions' : 'context'));
+          setFace(faceRef.current === 'context' ? 'actions' : 'context');
         }),
     []
   );
@@ -403,7 +410,11 @@ export default function ContextDock() {
                 {actions.map((action) => (
                   <Pressable
                     key={action.key}
-                    onPress={action.onPress}
+                    onPress={() => {
+                      action.onPress();
+                      // Done in one press: the path comes back by itself.
+                      if (action.closesStack) setFace('context');
+                    }}
                     onLongPress={action.onLongPress}
                     style={[styles.actionButton, action.active && styles.actionButtonActive]}
                   >
@@ -562,6 +573,11 @@ const styles = StyleSheet.create({
   trailShell: {
     flexShrink: 1,
     minWidth: 0,
+    // Short on purpose. Left to fill the row it showed three and a half
+    // folders with the last one cut in half, which reads as a mistake
+    // rather than as a path that continues. The user's own measure: the
+    // root and a couple of folders, and the rest is scrolled to.
+    maxWidth: 210,
   },
   stripViewport: {
     width: STRIP_WIDTH,

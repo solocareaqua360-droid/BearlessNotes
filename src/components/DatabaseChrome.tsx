@@ -20,7 +20,7 @@ import GlassDrop, { GlassIcon } from './GlassDrop';
 import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
 import RailCapsule from './RailCapsule';
-import { useDockActions, useDockBeads } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockShowContext } from '../navigation/navDock';
 import { NAV_BOTTOM, NAV_BUTTON as DOCK_BUTTON, NAV_PADDING as DOCK_PADDING } from '../constants/rail';
 // What a menu has to clear to stand above the dock rather than under it.
 const DOCK_CLEAR = NAV_BOTTOM + DOCK_BUTTON + DOCK_PADDING * 2 + 12;
@@ -278,6 +278,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   // and the buttons around it come back.
   const keyboardUp = useKeyboardVisible();
   const searchingAlone = list.isSearching && keyboardUp;
+  const showContext = useDockShowContext();
   // Everything this screen offers now goes to the DOCK, not the rail -
   // the same move the documents screen made, and it lands on files,
   // photos, links and the boards list at once because they all came
@@ -309,7 +310,9 @@ export default function DatabaseChrome<T extends { id: string }>({
   useDockActions(
     isFocused && !searchingAlone
       ? [
-          ...(shape ? [{ key: 'shape', icon: shape.icon as string, onPress: shape.onToggle }] : []),
+          ...(shape
+            ? [{ key: 'shape', icon: shape.icon as string, onPress: shape.onToggle, closesStack: true }]
+            : []),
           {
             key: 'sort',
             icon: 'filter-outline',
@@ -322,7 +325,12 @@ export default function DatabaseChrome<T extends { id: string }>({
                   key: 'select',
                   icon: list.isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
                   active: list.isSelectMode,
-                  onPress: () => list.toggleSelectMode(),
+                  onPress: () => {
+                    // Leaving select mode is the END of the thing this
+                    // card was opened for; entering it is the start.
+                    if (list.isSelectMode) showContext();
+                    list.toggleSelectMode();
+                  },
                 },
               ]
             : []),
@@ -336,6 +344,7 @@ export default function DatabaseChrome<T extends { id: string }>({
                   icon: 'folder-outline',
                   badge: 'add-circle-outline',
                   onPress: explorer.onNewFolder,
+                  closesStack: true,
                 },
               ]
             : []),
@@ -406,6 +415,8 @@ export default function DatabaseChrome<T extends { id: string }>({
               onPress: () => {
                 list.selectSortField(field);
                 setSortMenuOpen(false);
+                // The card of actions was opened for this one thing.
+                showContext();
               },
             })),
           ]}

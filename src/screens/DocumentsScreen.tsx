@@ -61,7 +61,7 @@ import TagPicker from '../components/TagPicker';
 import BulkActionBar from '../components/BulkActionBar';
 import DocumentCard from '../components/DocumentCard';
 import { useExplorer, nameOf } from '../hooks/useExplorer';
-import { useDockActions, useDockBeads, useDockLeave } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockLeave, useDockShowContext } from '../navigation/navDock';
 import UndoToast from '../components/UndoToast';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
@@ -437,6 +437,7 @@ export default function DocumentsScreen({
   // ContextDock. The tab's own copy has nowhere to go back to.
   useDockLeave('document-text-outline', () => navigation.goBack(), !!standalone);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const showContext = useDockShowContext();
   // Search on the left, creating a note on the right: the two things
   // that never change, standing beside the stack and not moving with it.
   // The user's own arrangement, and Samsung's own reasoning - a pile of
@@ -471,6 +472,7 @@ export default function DocumentsScreen({
             key: 'view',
             icon: viewMode === 'grid' ? 'grid-outline' : 'reorder-four-outline',
             onPress: () => changeViewMode(viewMode === 'grid' ? 'list' : 'grid'),
+            closesStack: true,
           },
           {
             key: 'sort',
@@ -482,7 +484,12 @@ export default function DocumentsScreen({
             key: 'select',
             icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
             active: isSelectMode,
-            onPress: toggleSelectMode,
+            onPress: () => {
+              // Leaving select mode is the END of the thing this card
+              // was opened for; entering it is the start.
+              if (isSelectMode) showContext();
+              toggleSelectMode();
+            },
           },
           // Creating a FOLDER is creating, but the user's own reckoning
           // settles where it goes: "створення папок відбувається набагато
@@ -495,6 +502,7 @@ export default function DocumentsScreen({
                   icon: 'folder-outline',
                   badge: 'add-circle-outline',
                   onPress: () => explorer.setFolderPrompt({ mode: 'new', parent: explorer.path }),
+                  closesStack: true,
                 },
               ]
             : []),
@@ -1351,6 +1359,8 @@ export default function DocumentsScreen({
               onPress: () => {
                 selectSortField(field);
                 setSortMenuOpen(false);
+                // The card of actions was opened for this one thing.
+                showContext();
               },
             })),
           ]}
