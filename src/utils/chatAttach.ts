@@ -1,4 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { doc, updateDoc } from '../firestore';
 import { setDoc } from './owned';
@@ -55,6 +56,16 @@ export async function pickMediaForChat(): Promise<ChatAttachment | null> {
 
   // A video is a FILE here, not a photo: «Зображення» is pictures, and a
   // clip belongs with everything else that is opened rather than looked at.
+  return saveFileRecord(id, destUri, name, mimeType);
+}
+
+async function saveFileRecord(
+  id: string,
+  destUri: string,
+  name: string,
+  mimeType: string
+): Promise<ChatAttachment> {
+  const now = Date.now();
   await setDoc(
     doc(db, 'files', id),
     {
@@ -72,6 +83,22 @@ export async function pickMediaForChat(): Promise<ChatAttachment | null> {
     if (uploaded) updateDoc(doc(db, 'files', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
   });
   return { kind: 'file', id, uri: destUri, name, mimeType };
+}
+
+// Anything at all, from the system's own picker - a PDF, a spreadsheet,
+// whatever the thought needed. It lands in «Файли», like every other file
+// in the app.
+export async function pickFileForChat(): Promise<ChatAttachment | null> {
+  // copyToCacheDirectory: false and the copy below, for the reason the
+  // editor's own file block gives - a cached copy Android hands back can
+  // be a stale one under a path this app chose.
+  const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: false });
+  if (result.canceled || !result.assets[0]) return null;
+  const asset = result.assets[0];
+  const id = generateId();
+  const destUri = `${LegacyFileSystem.cacheDirectory}${id}-${asset.name}`;
+  await LegacyFileSystem.copyAsync({ from: asset.uri, to: destUri });
+  return saveFileRecord(id, destUri, asset.name, asset.mimeType || 'application/octet-stream');
 }
 
 // A link, and with it a geo point and a video: which of the three it is

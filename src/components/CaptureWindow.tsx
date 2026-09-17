@@ -10,7 +10,7 @@ import GlassLayer from './GlassLayer';
 import { GLASS_BODY_BLURRED, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED, SHEET_WINDOW } from '../constants/glass';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 import { sendChatMessage } from '../utils/chat';
-import { ChatAttachment, attachLinkToChat, pickMediaForChat } from '../utils/chatAttach';
+import { ChatAttachment, attachLinkToChat, pickFileForChat, pickMediaForChat } from '../utils/chatAttach';
 import * as Clipboard from 'expo-clipboard';
 import { Image } from 'react-native';
 import { hapticButtonDown } from '../utils/haptics';
@@ -38,11 +38,11 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
   const [listening, setListening] = useState(false);
   const [typing, setTyping] = useState(false);
   const [trouble, setTrouble] = useState<string | null>(null);
-  // One thing at a time: a message carries a photo, a video or a link -
-  // and the record for it is already written by the time it is shown here
-  // (see chatAttach), so the picture in the chat IS the one in its
-  // database.
-  const [attachment, setAttachment] = useState<ChatAttachment | null>(null);
+  // As many as were put on one thought: a screenshot AND the link it came
+  // from belong in the same message. Each record is already written by
+  // the time it is shown here (see chatAttach), so the picture in the
+  // chat IS the one in its database.
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [attaching, setAttaching] = useState(false);
   const inputRef = useRef<TextInput>(null);
   // What the recogniser has heard so far in THIS run. Kept apart from
@@ -56,7 +56,7 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
       if (!open) return;
       setText('');
       committed.current = '';
-      setAttachment(null);
+      setAttachments([]);
       setTrouble(null);
       setTyping(false);
       setVisible(true);
@@ -131,16 +131,16 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
 
   async function send() {
     const toSend = text;
-    const withIt = attachment;
+    const withThem = attachments;
     close();
-    await sendChatMessage(toSend, withIt);
+    await sendChatMessage(toSend, withThem);
   }
 
-  async function attachMedia() {
+  async function attachOne(pick: () => Promise<ChatAttachment | null>) {
     setAttaching(true);
     try {
-      const picked = await pickMediaForChat();
-      if (picked) setAttachment(picked);
+      const picked = await pick();
+      if (picked) setAttachments((prev) => [...prev, picked]);
     } catch (e) {
       setTrouble((e as Error).message);
     } finally {
@@ -160,7 +160,7 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
         return;
       }
       const link = await attachLinkToChat(fromClipboard);
-      if (link) setAttachment(link);
+      if (link) setAttachments((prev) => [...prev, link]);
     } catch (e) {
       setTrouble((e as Error).message);
     } finally {
@@ -209,17 +209,17 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
             showSoftInputOnFocus={typing}
           />
 
-          {!!attachment && (
-            <View style={styles.attached}>
-              {attachment.kind === 'photo' ? (
-                <Image source={{ uri: attachment.uri }} style={styles.attachedThumb} />
+          {attachments.map((item, index) => (
+            <View key={`${item.kind}-${item.id}-${index}`} style={styles.attached}>
+              {item.kind === 'photo' ? (
+                <Image source={{ uri: item.uri }} style={styles.attachedThumb} />
               ) : (
                 <View style={[styles.attachedThumb, styles.attachedIcon]}>
                   <Ionicons
                     name={
-                      attachment.kind === 'file'
+                      item.kind === 'file'
                         ? 'videocam-outline'
-                        : attachment.siteName === 'Геоточка'
+                        : item.siteName === 'Геоточка'
                           ? 'location-outline'
                           : 'link-outline'
                     }
@@ -229,23 +229,39 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
                 </View>
               )}
               <Text style={styles.attachedLabel} numberOfLines={2}>
-                {attachment.kind === 'link'
-                  ? attachment.title || attachment.url
-                  : attachment.kind === 'file'
-                    ? attachment.name
+                {item.kind === 'link'
+                  ? item.title || item.url
+                  : item.kind === 'file'
+                    ? item.name
                     : 'Зображення'}
               </Text>
-              <Pressable hitSlop={8} onPress={() => setAttachment(null)}>
+              <Pressable
+                hitSlop={8}
+                onPress={() => setAttachments((prev) => prev.filter((_, i) => i !== index))}
+              >
                 <Ionicons name="close" size={18} color={GLASS_TEXT_MUTED} />
               </Pressable>
             </View>
-          )}
+          ))}
 
           {!!trouble && <Text style={styles.trouble}>{trouble}</Text>}
 
           <View style={styles.attachRow}>
-            <Pressable hitSlop={8} style={styles.attachButton} disabled={attaching} onPress={attachMedia}>
+            <Pressable
+              hitSlop={8}
+              style={styles.attachButton}
+              disabled={attaching}
+              onPress={() => attachOne(pickMediaForChat)}
+            >
               <Ionicons name="image-outline" size={20} color={GLASS_TEXT_MUTED} />
+            </Pressable>
+            <Pressable
+              hitSlop={8}
+              style={styles.attachButton}
+              disabled={attaching}
+              onPress={() => attachOne(pickFileForChat)}
+            >
+              <Ionicons name="document-outline" size={20} color={GLASS_TEXT_MUTED} />
             </Pressable>
             <Pressable hitSlop={8} style={styles.attachButton} disabled={attaching} onPress={attachLink}>
               <Ionicons name="link-outline" size={20} color={GLASS_TEXT_MUTED} />
@@ -285,14 +301,17 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
 
             <Pressable
               hitSlop={8}
-              disabled={!text.trim() && !attachment}
-              style={[styles.sideButton, !text.trim() && !attachment && styles.sideButtonOff]}
+              disabled={!text.trim() && attachments.length === 0}
+              style={[
+                styles.sideButton,
+                !text.trim() && attachments.length === 0 && styles.sideButtonOff,
+              ]}
               onPress={send}
             >
               <Ionicons
                 name="arrow-up"
                 size={22}
-                color={text.trim() || attachment ? theme.accent : GLASS_TEXT_FAINT}
+                color={text.trim() || attachments.length > 0 ? theme.accent : GLASS_TEXT_FAINT}
               />
             </Pressable>
           </View>

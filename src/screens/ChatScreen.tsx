@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FileRow, LinkRow, PhotoRow } from '../components/ItemCards';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -315,44 +316,49 @@ export default function ChatScreen() {
                     openMessageMenu(message);
                   }}
                 >
-                  {/* What came with the words. It is already a record in
-                      its own database - this is the same picture, not a
-                      copy - so touching it goes there. */}
-                  {!!message.attachment && (
-                    <Pressable
-                      style={styles.attachment}
-                      onPress={() => {
-                        if (isSelectMode) return toggle(message.id);
-                        const a = message.attachment!;
-                        if (a.kind === 'photo') navigation.navigate('Photos');
-                        else if (a.kind === 'file') navigation.navigate('Files');
-                        else Linking.openURL(a.url).catch(() => {});
-                      }}
-                    >
-                      {message.attachment.kind === 'photo' ? (
-                        <Image source={{ uri: message.attachment.uri }} style={styles.attachmentPhoto} />
+                  {/* Each attachment is drawn as the CARD ITS OWN DATABASE
+                      draws it - the same component «Посилання», «Файли»
+                      and «Зображення» use, so a video arrives with its
+                      preview: "в чаті повинен бути вигляд картки з бази
+                      даних". It is the same record, not a copy, so
+                      touching it goes to where it lives. */}
+                  {(message.attachments ?? []).map((item, index) => (
+                    <View key={`${item.kind}-${item.id}-${index}`} style={styles.attachment}>
+                      {item.kind === 'photo' ? (
+                        <PhotoRow
+                          photo={{ id: item.id, imageUri: item.uri, documentIds: [], tagIds: [] }}
+                          tags={[]}
+                          onPress={() =>
+                            isSelectMode ? toggle(message.id) : navigation.navigate('Photos')
+                          }
+                        />
+                      ) : item.kind === 'file' ? (
+                        <FileRow
+                          file={{ id: item.id, fileName: item.name, fileUri: item.uri, tagIds: [] }}
+                          tags={[]}
+                          onPress={() =>
+                            isSelectMode ? toggle(message.id) : navigation.navigate('Files')
+                          }
+                        />
                       ) : (
-                        <View style={styles.attachmentRow}>
-                          <Ionicons
-                            name={
-                              message.attachment.kind === 'file'
-                                ? 'videocam-outline'
-                                : message.attachment.siteName === 'Геоточка'
-                                  ? 'location-outline'
-                                  : 'link-outline'
-                            }
-                            size={16}
-                            color={theme.ink.muted}
-                          />
-                          <Text style={styles.attachmentLabel} numberOfLines={2}>
-                            {message.attachment.kind === 'file'
-                              ? message.attachment.name
-                              : message.attachment.title || message.attachment.url}
-                          </Text>
-                        </View>
+                        <LinkRow
+                          link={{
+                            id: item.id,
+                            url: item.url,
+                            title: item.title,
+                            siteName: item.siteName,
+                            imageUrl: item.imageUrl,
+                            tagIds: [],
+                          }}
+                          tags={[]}
+                          onPress={() => {
+                            if (isSelectMode) return toggle(message.id);
+                            Linking.openURL(item.url).catch(() => {});
+                          }}
+                        />
                       )}
-                    </Pressable>
-                  )}
+                    </View>
+                  ))}
                   {!!message.text && <Text style={styles.bubbleText}>{message.text}</Text>}
                   <View style={styles.bubbleFoot}>
                     <Text style={styles.bubbleTime}>
@@ -474,29 +480,7 @@ const makeStyles = (t: Theme) =>
       color: t.ink.primary,
     },
     attachment: {
-      borderRadius: 12,
-      overflow: 'hidden',
-    },
-    attachmentPhoto: {
-      width: '100%',
-      height: 180,
-      borderRadius: 12,
-      backgroundColor: 'rgba(255,255,255,0.06)',
-    },
-    attachmentRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      padding: 10,
-      borderRadius: 12,
-      backgroundColor: 'rgba(255,255,255,0.06)',
-    },
-    attachmentLabel: {
-      flex: 1,
-      minWidth: 0,
-      fontSize: 13,
-      fontFamily: FONT_REGULAR,
-      color: t.ink.muted,
+      marginBottom: 2,
     },
     bubbleFoot: {
       flexDirection: 'row',

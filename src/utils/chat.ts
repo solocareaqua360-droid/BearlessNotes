@@ -24,26 +24,29 @@ export type ChatMessage = {
   // note, see createTaskInToday). Same idea as usedIn: the message says
   // what it became and can take you there.
   tasks?: Record<string, string>;
-  // A photo, a video, a link or a geo point. Whatever it is, it is
-  // ALREADY a record in its own database (see chatAttach) - this is a
-  // pointer to it, so the chat and «Зображення» show one picture.
-  attachment?: ChatAttachment;
+  // Photos, videos, links, geo points - as many as were put on one
+  // thought, because a screenshot and the link it came from belong in the
+  // same message: "або фото або посилання, одночасно не можна додати, бо
+  // інакше одне витісняє інше". Each is ALREADY a record in its own
+  // database (see chatAttach); these are pointers to them, so the picture
+  // in the chat and the picture in «Зображення» are one picture.
+  attachments?: ChatAttachment[];
 };
 
 const chatCollection = collection(db, 'chat');
 
 export async function sendChatMessage(
   text: string,
-  attachment?: ChatAttachment | null
+  attachments?: ChatAttachment[]
 ): Promise<string | null> {
   const trimmed = text.trim();
   // An attachment is a whole message on its own - a photo with nothing
   // said about it is still a thought caught.
-  if (!trimmed && !attachment) return null;
+  if (!trimmed && !attachments?.length) return null;
   const ref = await addDoc(chatCollection, {
     text: trimmed,
     createdAt: Date.now(),
-    ...(attachment ? { attachment } : {}),
+    ...(attachments?.length ? { attachments } : {}),
   });
   return ref.id;
 }
@@ -65,7 +68,12 @@ export function watchChat(
           createdAt: (d.data().createdAt as number) ?? 0,
           usedIn: d.data().usedIn as Record<string, string> | undefined,
           tasks: d.data().tasks as Record<string, string> | undefined,
-          attachment: d.data().attachment as ChatAttachment | undefined,
+          // `attachment`, singular, is what the first messages were
+          // written with - read as a list of one rather than migrated,
+          // since nothing is gained by rewriting what already works.
+          attachments:
+            (d.data().attachments as ChatAttachment[] | undefined) ??
+            (d.data().attachment ? [d.data().attachment as ChatAttachment] : undefined),
         }))
         .sort((a, b) => a.createdAt - b.createdAt);
       onMessages(messages);
