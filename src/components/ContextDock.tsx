@@ -4,6 +4,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
+import Svg, { Circle } from 'react-native-svg';
 import { useBlurTarget } from './GlassTarget';
 import { GlassPortal } from './GlassPortal';
 import { useTheme } from '../theme/ThemeProvider';
@@ -64,6 +65,8 @@ const BEHIND_INSET = 5;
 // solid slab is not frosted glass in any theme.
 const FROST_BLUR = 60;
 const FROST_TINT = 0.55;
+// The lighter mark on the thing you are on.
+const HERE_FILL = 'rgba(255,255,255,0.16)';
 // Sizes as FRACTIONS OF THE SCREEN'S WIDTH, read off the reference and
 // our own dock side by side at the same pixel scale. Not points: every
 // guess at this phone's density was wrong, and a dock sized in points
@@ -304,7 +307,12 @@ export default function ContextDock() {
             // Height SAID too, with the slivers' room included, so that
             // centring the beads happens inside a box that is really
             // this tall - and nothing in this chain is allowed to clip.
-            { width: rowWidth, gap: GAP, height: CARD_H + BEHIND_EDGE * behind, overflow: 'visible' },
+            // ALWAYS the room for two slivers, whether this screen has
+            // two, one or none behind. The row is anchored at the bottom,
+            // so a row that grew with its slivers pushed the front card
+            // UP - a hair higher on the screens with more cards behind,
+            // which read as a different dock on every desk.
+            { width: rowWidth, gap: GAP, height: CARD_H + BEHIND_EDGE * 2, overflow: 'visible' },
           ]}
         >
           {/* A missing bead keeps its place. Without this the stack
@@ -322,7 +330,7 @@ export default function ContextDock() {
           )}
 
           <GestureDetector gesture={swipe}>
-          <View style={[styles.stack, { width: cardWidth, paddingBottom: BEHIND_EDGE * behind }]}>
+          <View style={[styles.stack, { width: cardWidth, paddingBottom: BEHIND_EDGE * 2 }]}>
             {/* The card behind, seen as an EDGE and nothing more - a few
                 points of the same glass, a little narrower, so it reads
                 as BEHIND rather than beside. Empty on purpose: what a
@@ -408,7 +416,20 @@ export default function ContextDock() {
                         // A lens over the bar, not a pane: the tab you
                         // are on, marked the way this dock marks
                         // everything you are on.
-                        <View style={[styles.actionButton, dims.button, styles.here]}>
+                        <View style={[styles.actionButton, dims.button]}>
+                          {/* A real circle. The View's own borderRadius -
+                              999, then half the size, then anything - kept
+                              coming up a rounded SQUARE on Android for the
+                              desk you are on. An SVG circle has no radius
+                              to get wrong. */}
+                          <Svg
+                            width={CARD_BUTTON}
+                            height={CARD_BUTTON}
+                            style={StyleSheet.absoluteFill}
+                            pointerEvents="none"
+                          >
+                            <Circle cx={CARD_BUTTON / 2} cy={CARD_BUTTON / 2} r={CARD_BUTTON / 2} fill={HERE_FILL} />
+                          </Svg>
                           <Ionicons
                             name={desk.icon as keyof typeof Ionicons.glyphMap}
                             size={22}
