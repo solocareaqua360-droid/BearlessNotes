@@ -39,7 +39,7 @@ import { useDayHistory } from '../hooks/useDayHistory';
 import DayHistoryList from '../components/DayHistoryList';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { DockMark, useNavDockPublisher } from '../navigation/navDock';
+import { DockMark, useDockActions, useDockBeads, useDockShowContext, useNavDockPublisher } from '../navigation/navDock';
 import {
   MONTH_FULL,
   WEEKDAY_SHORT,
@@ -151,7 +151,9 @@ export default function CalendarScreen() {
   // is the rail's, so a page sized against 16 twice is 74 too wide and the
   // last day of the week drops off the end - which is exactly the failure
   // PLATE_MARGIN's own comment above describes, arriving a third time.
-  const plateRightMargin = isTwoPane ? 0 : RAIL_CLEARANCE;
+  // The rail is gone from this screen, so nothing has to stand clear of
+  // it - the calendar plate gets the width back.
+  const plateRightMargin = 20;
   //
   // While the pane is not yet measured (the first frame, and the frame
   // after a turn) the fallback must be a PANE'S width, not the window's.
@@ -223,7 +225,6 @@ export default function CalendarScreen() {
   const [dueReminders, setDueReminders] = useState<
     { id: string; text: string; checked: boolean; documentId: string; reminderTime?: string }[]
   >([]);
-  const [menuOpen, setMenuOpen] = useState(false);
   // The capsule stands on the rail at the right edge now, drawn through
   // the portal for its blur - so it has to withdraw when the calendar
   // isn't the screen on show.
@@ -527,6 +528,63 @@ export default function CalendarScreen() {
       }),
     [stripDays, todayKey, filledDates, historyDates]
   );
+  // The calendar's own rail is gone: search is the left bead, and what
+  // was the "…" menu's five switches is the stack's second card. They
+  // were rows in a sheet because they are switches - but a switch with
+  // its state ON THE ICON is a better switch than a row with a tick, and
+  // it costs a press less.
+  useDockBeads(
+    calendarFocused ? { icon: 'search-outline', onPress: () => navigation.navigate('Diary') } : null,
+    null
+  );
+  useDockActions(
+    calendarFocused
+      ? [
+          ...(!onlyFilledDays && !isTwoPane
+            ? [
+                {
+                  key: 'month',
+                  icon: 'calendar-outline',
+                  active: isMonthExpanded,
+                  onPress: () => setIsMonthExpanded((prev) => !prev),
+                },
+              ]
+            : []),
+          ...(!isTwoPane && (historyByDate.get(dateKey(selectedDate))?.length ?? 0) > 0
+            ? [
+                {
+                  key: 'history',
+                  icon: 'time-outline',
+                  active: historyExpanded,
+                  onPress: () => setHistoryExpanded((v) => !v),
+                },
+              ]
+            : []),
+          {
+            key: 'filled',
+            icon: 'filter-outline',
+            active: compactFilter === 'filled',
+            onPress: () => toggleCompactFilter('filled'),
+          },
+          {
+            key: 'history-only',
+            icon: 'hourglass-outline',
+            active: compactFilter === 'history',
+            onPress: () => toggleCompactFilter('history'),
+          },
+          {
+            key: 'select',
+            icon: noteSelectMode ? 'close-outline' : 'ellipse-outline',
+            active: noteSelectMode,
+            onPress: () => {
+              if (noteSelectMode) showContext();
+              noteEditorRef.current?.toggleSelectMode();
+            },
+          },
+        ]
+      : null
+  );
+  const showContext = useDockShowContext();
   const publishToDock = useNavDockPublisher();
   const pickDay = useCallback((key: string) => selectDay(parseDateKey(key)), []);
   useEffect(() => {
@@ -575,7 +633,6 @@ export default function CalendarScreen() {
   }
 
   async function toggleCompactFilter(mode: 'filled' | 'history') {
-    setMenuOpen(false);
     const next = compactFilter === mode ? 'none' : mode;
     await setDoc(calendarPrefsDoc, { compactFilter: next }, { merge: true });
   }
@@ -841,6 +898,10 @@ export default function CalendarScreen() {
             <Text style={styles.headerDateLabel} numberOfLines={1}>
               {WEEKDAY_SHORT[mondayIndex(selectedDate)]}, {formatBigDate(selectedDate)}
             </Text>
+            {/* The ring went round the rail's capsule, and the rail is
+                gone. It belongs here anyway: what it reports is the
+                DAY'S note being written, and this is the day. */}
+            <SaveRing saving={noteSaveStatus === 'saving'} color={theme.ink.muted} />
             {isWriting ? (
               <Ionicons name="chevron-down" size={12} color={theme.ink.muted} />
             ) : (
@@ -856,88 +917,6 @@ export default function CalendarScreen() {
           </Pressable>
         </View>
       </View>
-
-      {/* The same rail the documents screen and the note have: at the
-          right edge, in the same glass, hanging from the same line. */}
-      {calendarFocused && (
-        <GlassPortal>
-          <View
-            style={[styles.calendarRail, { top: calendarInsets.top + CHROME_TOP + CAPSULE_DROP }]}
-            pointerEvents="box-none"
-          >
-            <GlassDrop style={styles.headerButtons}>
-              <Pressable hitSlop={8} onPress={() => navigation.navigate('Diary')}>
-                <GlassIcon name="search-outline" size={24} />
-              </Pressable>
-              <View style={styles.headerButtonsDivider} />
-              <Pressable hitSlop={8} onPress={() => setMenuOpen((v) => !v)}>
-                <GlassIcon name="ellipsis-horizontal-outline" size={24} />
-              </Pressable>
-              {/* The save indicator is the capsule's own outline now, not a
-                  circle standing beside it - see SaveRing. */}
-              <SaveRing saving={noteSaveStatus === 'saving'} />
-            </GlassDrop>
-
-          </View>
-        </GlassPortal>
-      )}
-
-      <Menu
-        visible={menuOpen}
-        onClose={() => setMenuOpen(false)}
-        accent={ACCENT}
-        style={{
-          position: 'absolute',
-          top: calendarInsets.top + CHROME_TOP + CAPSULE_DROP,
-          right: RAIL_CLEARANCE,
-        }}
-        entries={[
-          // The month and the day's history were round buttons on the
-          // rail; they are rows here - both are switches, and a switch
-          // reads better as a line with a tick than as one more circle
-          // beside the capsule. Held down, the calendar still does the
-          // same two things without opening this at all.
-          ...(!onlyFilledDays && !isTwoPane
-            ? [
-                {
-                  label: 'Місяць',
-                  icon: 'calendar-outline' as const,
-                  checked: isMonthExpanded,
-                  onPress: () => setIsMonthExpanded((prev) => !prev),
-                },
-              ]
-            : []),
-          ...(!isTwoPane && (historyByDate.get(selectedKey)?.length ?? 0) > 0
-            ? [
-                {
-                  label: 'Історія дня',
-                  icon: 'time-outline' as const,
-                  checked: historyExpanded,
-                  onPress: () => setHistoryExpanded((v) => !v),
-                },
-              ]
-            : []),
-          { kind: 'rule' as const },
-          {
-            label: 'Лише заповнені дні',
-            icon: 'filter-outline' as const,
-            checked: compactFilter === 'filled',
-            onPress: () => toggleCompactFilter('filled'),
-          },
-          {
-            label: 'Лише дні з історією',
-            icon: 'time-outline' as const,
-            checked: compactFilter === 'history',
-            onPress: () => toggleCompactFilter('history'),
-          },
-          { kind: 'rule' as const },
-          {
-            label: noteSelectMode ? 'Скасувати вибір' : 'Вибрати',
-            icon: noteSelectMode ? ('close-outline' as const) : ('ellipse-outline' as const),
-            onPress: () => noteEditorRef.current?.toggleSelectMode(),
-          },
-        ]}
-      />
 
       {/* One column on a phone (calendar, then the note under it), two on
           a wide screen (calendar left, note right). Both halves are flex:1
@@ -1333,7 +1312,7 @@ const makeStyles = (t: Theme) =>
     // the date start on the plate's own left edge rather than 4px in from
     // it, and neither runs under the rail.
     paddingLeft: 16,
-    paddingRight: RAIL_CLEARANCE,
+    paddingRight: 20,
     // paddingTop is computed - see headerPadTop.
     paddingBottom: HEADER_GAP,
   },
@@ -1420,7 +1399,7 @@ const makeStyles = (t: Theme) =>
     borderRadius: RAIL_WIDTH / 2,
     marginLeft: 16,
     // Stops before the rail rather than running under the capsule.
-    marginRight: RAIL_CLEARANCE,
+    marginRight: 20,
     overflow: 'hidden',
   },
   // Between the calendar and the note there were two margins (the plate's
@@ -1678,7 +1657,7 @@ const makeStyles = (t: Theme) =>
     alignItems: 'flex-start',
     gap: 8,
     marginLeft: 16,
-    marginRight: RAIL_CLEARANCE,
+    marginRight: 20,
     // Equal above and below: the calendar plate sits flush on top of this
     // row (its height is exactly its own rows, no bottom padding), so
     // without the top margin the capsules hug the calendar while keeping a

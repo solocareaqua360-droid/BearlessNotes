@@ -405,8 +405,16 @@ export default function ContextDock() {
           )}
 
           {showing === 'actions' && !!actions?.length && (
-            <GlassDrop style={[styles.shell, styles.faceActions]}>
-              <View style={styles.actionRow}>
+            <GlassDrop style={[styles.shell, styles.faceActions, styles.actionsShell]}>
+              {/* Scrolls, like the path does. A screen with five things
+                  its list can be done TO is not a screen with a design
+                  problem - the card simply holds what fits and the rest
+                  is a thumb away. */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.actionRow}
+              >
                 {actions.map((action) => (
                   <Pressable
                     key={action.key}
@@ -433,7 +441,7 @@ export default function ContextDock() {
                     )}
                   </Pressable>
                 ))}
-              </View>
+              </ScrollView>
             </GlassDrop>
           )}
           </View>
@@ -527,6 +535,9 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  actionsShell: {
+    maxWidth: 210,
   },
   bead: {
     // Fixed: a bead never gives up room, it is the card that does.
