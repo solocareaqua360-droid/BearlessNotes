@@ -26,6 +26,7 @@ import { AskHost } from './src/components/surfaces/Ask';
 import { ThemeProvider, ThemedStatusBar, useTheme } from './src/theme/ThemeProvider';
 import CrashBoundary from './src/components/CrashBoundary';
 import FatalErrorOverlay from './src/components/FatalErrorOverlay';
+import ContextDock from './src/components/ContextDock';
 import { NavDockProvider } from './src/navigation/navDock';
 import AlarmRingOverlay from './src/components/AlarmRingOverlay';
 import { useStickerDeepLink } from './src/hooks/useStickerDeepLink';
@@ -132,6 +133,9 @@ export default function App() {
               OUTSIDE the blur target below, because a blur inside the
               picture it blurs tries to draw itself. The target wraps only
               the screens: that is what a sheet blurs. */}
+          {/* Wraps BOTH the portal host and the screens: one side
+              publishes where it is, the other draws it. */}
+          <NavDockProvider>
           <GlassPortalHost>
             <ThemedStatusBar />
             <GlassTargetProvider>
@@ -151,15 +155,16 @@ export default function App() {
                 browser build has had this since the day it went white;
                 the phone should have had it too. */}
             <CrashBoundary>
-              {/* What the dock is showing - see navigation/navDock.tsx.
-                  Above the tabs AND above the screens, since one writes
-                  what the other draws. */}
-              <NavDockProvider>
-                <RootNavigator />
-              </NavDockProvider>
+              <RootNavigator />
             </CrashBoundary>
             </GlassTargetProvider>
+            {/* The dock, when it holds a context rather than the desks -
+                see components/ContextDock. Inside the portal host so its
+                glass has something to blur, and OUTSIDE the blur target
+                for the same reason every other piece of glass is. */}
+            <ContextDock />
           </GlassPortalHost>
+          </NavDockProvider>
           {/* Above the portal host, and outside every boundary:
               what it reports is the error class that leaves NOTHING
               on the screen - see src/utils/fatalErrors.ts. */}

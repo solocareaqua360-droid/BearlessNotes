@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { doc, onSnapshot } from '../firestore';
 import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
@@ -11,8 +11,7 @@ import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { useIsFocused } from '@react-navigation/native';
 import { GlassPortal } from './GlassPortal';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_GAP, NAV_PADDING } from '../constants/rail';
-import { useNavDockContext, useNavDockTargets } from '../navigation/navDock';
-import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { useNavDockHasContext, useNavDockHidden } from '../navigation/navDock';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Outline glyphs at 24, the same set and the same size as everything else
@@ -71,65 +70,19 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
   // - including screens pushed on top of the tabs. Without this it stayed
   // floating over an open note, where there is nothing to navigate to.
   const tabsFocused = useIsFocused();
-  // Where the screen underneath currently is - see navigation/navDock.tsx
-  // and «план навігації» in the project memory. While there is a path to
-  // show, the dock IS the path: the same pill in the same place, holding
-  // something else. That is the whole idea - the app does not grow a new
-  // control for every context, the one control changes shape.
-  // The way OUT of a context, which the dock did not have. Holding it
-  // folds it to the dots, and the system back gesture works - but both
-  // are invisible, and a control you have to be told about is a trap:
-  // the user got stuck "в колесі календаря" with no way back to the
-  // desks that could be seen. So the context carries a visible way out,
-  // and stepping out is only ever hiding - the context itself stays, so
-  // one press brings it back.
-  const [contextHidden, setContextHidden] = useState(false);
-  const published = useNavDockContext();
-  // A card being carried can be dropped on a crumb, or stepped into with
-  // the second finger - the same registry the folder rows use, handed up
-  // by whichever screen is carrying (see useExplorerCarry).
-  const dockTargets = useNavDockTargets();
-  // Changing desk answers the question by itself: the new screen's own
-  // context is the one worth showing.
-  useEffect(() => setContextHidden(false), [state.index]);
-  const dock = contextHidden ? null : published;
-  const trail = dock?.kind === 'path' ? dock : null;
-  const strip = dock?.kind === 'strip' ? dock : null;
-  const trailRef = useRef<ScrollView>(null);
-  const stripRef = useRef<ScrollView>(null);
-  const depth = trail?.crumbs.length ?? 0;
-  useEffect(() => {
-    if (!depth) return;
-    // Deeper means further right, and the deepest is where you are.
-    const id = setTimeout(() => trailRef.current?.scrollToEnd({ animated: true }), 0);
-    return () => clearTimeout(id);
-  }, [depth]);
-  // The day you are on sits under your thumb, in the middle - a scrubber
-  // you have to hunt along is not a scrubber. It SLIDES there: the days
-  // either side stay mounted just off the edge, so moving a day scrolls
-  // the run by one instead of swapping seven numbers for seven others.
-  // The user noticed the difference before it was deliberate ("було
-  // непогано, що воно трішки прокручувалося, а не отак точково
-  // перелистувалося") - so now it is.
-  const stripIndex = strip ? strip.items.findIndex((item) => item.key === strip.selected) : -1;
-  const stripSettled = useRef(false);
-  useEffect(() => {
-    if (stripIndex < 0) {
-      stripSettled.current = false;
-      return;
-    }
-    const x = Math.max(0, stripIndex * STRIP_ITEM + STRIP_ITEM / 2 - STRIP_WIDTH / 2);
-    // The first placement is not a journey - opening the calendar should
-    // not show the strip travelling in from the first of the month.
-    const animated = stripSettled.current;
-    stripSettled.current = true;
-    const id = setTimeout(() => stripRef.current?.scrollTo({ x, animated }), 0);
-    return () => clearTimeout(id);
-  }, [stripIndex]);
+  // The dock's CONTEXT half moved out to ContextDock, which stands over
+  // the whole app - because the screens that have folders are mostly
+  // PUSHED over the tabs (files, photos, links, boards, the custom
+  // databases), and a tab bar is not drawn there at all. What is left
+  // here is the one thing that is genuinely about tabs: the four desks.
+  //
+  // And the desks stand aside while a context is showing. The user's own
+  // question, and the right one: what would four desk buttons be FOR at
+  // that depth? Nothing - so they are not there.
+  const hasContext = useNavDockHasContext();
+  const [, setDockHidden] = useNavDockHidden();
 
-  if (!tabsFocused) return null;
-  const here = state.routes[state.index];
-  const hereIcon = ICON_BY_ROUTE[here?.name] ?? 'ellipse-outline';
+  if (!tabsFocused || hasContext) return null;
 
   return (
     <GlassPortal>
@@ -161,178 +114,6 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
           </Pressable>
           </GlassDrop>
         ) : (
-        strip ? (
-        // A run of days under the thumb. Same shell, same height: the
-        // dock holding time instead of places.
-        //
-        // The way out stands BESIDE the pill as a bead of its own, not
-        // inside it - the user's own call. Inside, it read as an eighth
-        // day and had to be aimed at; outside, it is a separate object
-        // with a separate job, and the seven days stay seven.
-        <View style={styles.dockRow}>
-        <Pressable onPress={() => setContextHidden(true)} onLongPress={toggleCollapsed} delayLongPress={400}>
-          <GlassDrop style={styles.exitBead}>
-            <Ionicons name="chevron-back" size={11} color={theme.glass.inkMuted} />
-            <Ionicons name={hereIcon} size={20} color={theme.glass.ink} />
-          </GlassDrop>
-        </Pressable>
-        <GlassDrop style={styles.islandShell}>
-        <Pressable onLongPress={toggleCollapsed} delayLongPress={400}>
-        <View style={styles.stripRow}>
-          <ScrollView
-            ref={stripRef}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.stripViewport}
-          >
-            {strip.items.map((item) => {
-              const current = item.key === strip.selected;
-              const body = (
-                <>
-                  <Text
-                    style={[
-                      styles.stripLabel,
-                      item.anchor && styles.stripLabelToday,
-                      { color: item.anchor ? theme.accent : current ? theme.glass.ink : theme.glass.inkMuted },
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                  {!!item.sub && (
-                    <Text
-                      style={[
-                        styles.stripSub,
-                        // A day reads as ONE thing, number and weekday
-                        // together, not a number with a footnote under it.
-                        { color: item.anchor ? theme.accent : current ? theme.glass.ink : theme.glass.inkMuted },
-                      ]}
-                    >
-                      {item.sub}
-                    </Text>
-                  )}
-                  {/* The user's own invention, and their own words for why
-                      it earns the room: "оці дві крапочки дуже маленькі,
-                      але вони мене дуже рятують. Це теж про навігацію." So
-                      they come with the days into the dock. */}
-                  {!!item.marks?.length && (
-                    <View style={styles.stripMarks}>
-                      {item.marks.map((mark, i) => (
-                        <View
-                          key={`${mark}-${i}`}
-                          style={[
-                            styles.stripMark,
-                            { backgroundColor: mark === 'accent' ? STRIP_MARK_ACCENT : theme.glass.ink },
-                          ]}
-                        />
-                      ))}
-                    </View>
-                  )}
-                </>
-              );
-              return (
-                <Pressable
-                  key={item.key}
-                  onPress={() => strip.onPick(item.key)}
-                  onLongPress={toggleCollapsed}
-                  delayLongPress={400}
-                >
-                  {current ? (
-                    // The lens is the day you PICKED, riding in the
-                    // middle - the user's own correction, and they were
-                    // right: the lens is what the dock has always meant
-                    // by "the one you are on", and the strip must not
-                    // speak two dialects.
-                    //
-                    // Today is said in COLOUR instead, which is a
-                    // different sentence rather than a competing one:
-                    // the lens says where you are, the colour says where
-                    // now is, and both can be read at a glance without
-                    // either dimming the other.
-                    <GlassDrop style={styles.stripItem} lift="none" blurAmount={0} convex>
-                      {body}
-                    </GlassDrop>
-                  ) : (
-                    <View style={styles.stripItem}>{body}</View>
-                  )}
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
-        </Pressable>
-        </GlassDrop>
-        </View>
-        ) : trail ? (
-        // The path, in the dock's own shell: same height, same place,
-        // wider. A morph has to change SHAPE to be noticed at all - this
-        // project has already reverted one that only cross-faded.
-        <View style={styles.dockRow}>
-        {/* The same bead the days have, meaning the same thing: back to
-            the desks. Getting to the ROOT of the folders is a different
-            move and says so separately - it is the first crumb in the
-            strip, where a file manager puts it. */}
-        <Pressable onPress={() => setContextHidden(true)} onLongPress={toggleCollapsed} delayLongPress={400}>
-          <GlassDrop style={styles.exitBead}>
-            <Ionicons name="chevron-back" size={11} color={theme.glass.inkMuted} />
-            <Ionicons name={hereIcon} size={20} color={theme.glass.ink} />
-          </GlassDrop>
-        </Pressable>
-        <GlassDrop style={[styles.islandShell, styles.trailShell]}>
-        <Pressable style={styles.stripRow} onLongPress={toggleCollapsed} delayLongPress={400}>
-          <ScrollView
-            ref={trailRef}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.trailStrip}
-          >
-            <View ref={dockTargets?.('')} collapsable={false}>
-              <Pressable
-                onPress={() => trail.onGo('')}
-                onLongPress={toggleCollapsed}
-                delayLongPress={400}
-                style={styles.trailSegment}
-              >
-                <Text style={[styles.trailLabel, { color: theme.glass.inkMuted }]}>Всі</Text>
-              </Pressable>
-            </View>
-            {trail.crumbs.map((segment, index) => {
-              const isLast = index === trail.crumbs.length - 1;
-              const target = trail.crumbs.slice(0, index + 1).join('/');
-              return (
-                <View key={target} style={styles.trailPair}>
-                  <Ionicons name="chevron-forward" size={13} color={theme.glass.inkMuted} />
-                  {isLast ? (
-                    // Where you are, marked the way the dock marks the
-                    // desk you are on - the same lens, so the two shapes
-                    // of this one control speak the same language. No
-                    // drop target: a card is already here.
-                    <GlassDrop style={styles.trailCurrent} lift="none" blurAmount={0} convex>
-                      <Text style={[styles.trailLabel, styles.trailLabelCurrent, { color: theme.glass.ink }]} numberOfLines={1}>
-                        {segment}
-                      </Text>
-                    </GlassDrop>
-                  ) : (
-                    <View ref={dockTargets?.(target)} collapsable={false}>
-                      <Pressable
-                        onPress={() => trail.onGo(target)}
-                        onLongPress={toggleCollapsed}
-                        delayLongPress={400}
-                        style={styles.trailSegment}
-                      >
-                        <Text style={[styles.trailLabel, { color: theme.glass.inkMuted }]} numberOfLines={1}>
-                          {segment}
-                        </Text>
-                      </Pressable>
-                    </View>
-                  )}
-                </View>
-              );
-            })}
-          </ScrollView>
-        </Pressable>
-        </GlassDrop>
-        </View>
-        ) : (
         <GlassDrop style={styles.islandShell}>
         <Pressable style={styles.islandRow} onLongPress={toggleCollapsed} delayLongPress={400}>
           {state.routes.map((route, index) => {
@@ -342,12 +123,12 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
               <Pressable
                 key={route.key}
                 onPress={() => {
-                  // Pressing the desk you are already on used to do
-                  // nothing at all. It is now the way back INTO this
-                  // screen's own context - a gesture that was going
-                  // spare, doing the one job the dock was missing.
-                  if (focused && published) {
-                    setContextHidden(false);
+                  // Pressing the desk you are already on brings its
+                  // context back - see useNavDockHidden. The desks only
+                  // stand here at all when a context is put away, so it
+                  // is the one thing that press can usefully mean.
+                  if (focused && hasContext) {
+                    setDockHidden(false);
                     return;
                   }
                   const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
@@ -398,7 +179,6 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
           })}
         </Pressable>
         </GlassDrop>
-        )
         )}
       </View>
     </GlassPortal>
@@ -406,20 +186,12 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
 }
 
 const styles = StyleSheet.create({
-  // Back across the foot of the screen, centred, the way it was before it
-  // stood on the rail: the swipe between tabs is the main way around now,
-  // and the island is the shortcut - which belongs under the thumb rather
-  // than up the side.
   wrap: {
     position: 'absolute',
     left: 0,
     right: 0,
     alignItems: 'center',
   },
-  // The shell is the drop's (see GlassDrop); what is left here is the
-  // room inside it and the row of buttons within that. Two views because
-  // the whole island is also one long-press target - holding anywhere on
-  // it folds it away.
   islandShell: {
     padding: NAV_PADDING,
   },
@@ -427,112 +199,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: NAV_GAP,
   },
-  // The dock holding a path instead of the desks. Its height is the
-  // island's own (the buttons set it), so the two shapes read as one
-  // control in two states rather than two different bars; only the width
-  // changes, and it stops well short of the screen so it still reads as
-  // a pill lying on the screen rather than a bar across it.
-  trailShell: {
-    maxWidth: '88%',
-  },
-  trailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: NAV_BUTTON,
-  },
-  trailHome: {
-    width: NAV_BUTTON - 8,
-    height: NAV_BUTTON,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  trailStrip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingRight: 4,
-  },
-  trailPair: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  trailSegment: {
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-  },
-  trailCurrent: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  trailLabel: {
-    fontSize: 14,
-    maxWidth: 160,
-    fontFamily: FONT_REGULAR,
-  },
-  // Exactly seven days wide. What is outside it is mounted, not gone -
-  // that is what the sliding is made of.
-  stripRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  // A bead of its own beside the pill - same glass, same height, its own
-  // object.
-  dockRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  exitBead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 1,
-    paddingLeft: 10,
-    paddingRight: 13,
-    height: NAV_BUTTON + NAV_PADDING * 2,
-  },
-  stripViewport: {
-    width: STRIP_WIDTH,
-  },
-  stripItem: {
-    width: STRIP_ITEM,
-    height: NAV_BUTTON,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 999,
-  },
-  stripLabel: {
-    fontSize: 16,
-    fontFamily: FONT_SEMIBOLD,
-    fontWeight: '600',
-  },
-  // Today is heavier as well as coloured: on a dark ground a tint alone
-  // is a weak signal, and this is the one day that has to be findable
-  // without looking for it.
-  stripLabelToday: {
-    fontFamily: FONT_BOLD,
-    fontWeight: '700',
-  },
-  stripSub: {
-    fontSize: 10,
-    marginTop: 1,
-    fontFamily: FONT_REGULAR,
-  },
-  stripMarks: {
-    position: 'absolute',
-    bottom: 3,
-    flexDirection: 'row',
-    gap: 3,
-  },
-  stripMark: {
-    width: 3.5,
-    height: 3.5,
-    borderRadius: 2,
-  },
-  trailLabelCurrent: {
-    fontFamily: FONT_SEMIBOLD,
-    fontWeight: '600',
-  },
-  // The collapsed island: the page dots, in the same glass.
   dotsShell: {
     paddingVertical: 12,
     paddingHorizontal: 10,
@@ -559,8 +225,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // The lens bulges a little past the bar's own edge, as a bead of
-  // glass sitting on a surface does.
   lens: {
     transform: [{ scale: 1.12 }],
   },

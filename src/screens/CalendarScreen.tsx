@@ -531,7 +531,7 @@ export default function CalendarScreen() {
   const pickDay = useCallback((key: string) => selectDay(parseDateKey(key)), []);
   useEffect(() => {
     if (!publishToDock || !calendarFocused) return;
-    publishToDock({ kind: 'strip', items: stripItems, selected: selectedKeyForDock, onPick: pickDay });
+    publishToDock({ kind: 'strip', icon: 'calendar-outline', items: stripItems, selected: selectedKeyForDock, onPick: pickDay });
     return () => publishToDock(null);
   }, [publishToDock, calendarFocused, stripItems, selectedKeyForDock, pickDay]);
 

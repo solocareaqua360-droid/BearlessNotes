@@ -69,6 +69,16 @@ export const parentOf = (path: string) => path.split('/').slice(0, -1).join('/')
 export const nameOf = (path: string) => path.split('/').pop() ?? path;
 const randomColor = () => TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
 
+// What the dock's own way-out bead shows while you are inside this
+// database's folders: the thing the folders hold.
+const DOCK_ICON: Partial<Record<TaggableKind, string>> = {
+  document: 'document-text-outline',
+  file: 'document-outline',
+  photo: 'image-outline',
+  link: 'link-outline',
+  board: 'easel-outline',
+};
+
 export function useExplorer<T extends { id: string }>(options: ExplorerOptions<T>) {
   const {
     kind,
@@ -333,7 +343,7 @@ export function useExplorer<T extends { id: string }>(options: ExplorerOptions<T
   useEffect(() => {
     if (!publishToDock) return;
     if (!focused || !active || crumbKey === '') return;
-    publishToDock({ kind: 'path', crumbs: crumbKey.split('/'), onGo: goToCrumb });
+    publishToDock({ kind: 'path', icon: DOCK_ICON[kind] ?? 'folder-outline', crumbs: crumbKey.split('/'), onGo: goToCrumb });
     return () => publishToDock(null);
   }, [publishToDock, focused, active, crumbKey, goToCrumb]);
 

@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { View } from 'react-native';
 
 // What the dock is showing instead of the desks.
@@ -38,6 +38,9 @@ export type DockStripItem = {
 export type DockContext =
   | {
       kind: 'path';
+      // What this database IS - drawn in the bead that leads out of the
+      // context, so the way out says where it goes.
+      icon: string;
       // Folder names from the root down, the deepest last.
       crumbs: string[];
       // Where a crumb leads: '' is the root, which is also what puts the
@@ -45,6 +48,7 @@ export type DockContext =
       onGo: (path: string) => void;
     }
   | {
+      icon: string;
       // A run of things you scrub through with your thumb - days, for
       // now. The SCREEN builds the labels, because it is the one that
       // knows what they mean; the dock only draws them and reports a tap.
@@ -64,6 +68,11 @@ export type DockTargets = (path: string) => (node: View | null) => void;
 type Value = {
   context: DockContext | null;
   publish: (context: DockContext | null) => void;
+  // Stepped out of, without being given up: the context is still there,
+  // one press brings it back. Lives here rather than in the dock because
+  // the dock is drawn in more than one place now.
+  hidden: boolean;
+  setHidden: (hidden: boolean) => void;
   targets: DockTargets | null;
   publishTargets: (targets: DockTargets | null) => void;
 };
@@ -110,16 +119,34 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
     (next: DockTargets | null) => setTargetBox((prev) => (prev.fn === next ? prev : { fn: next })),
     []
   );
+  const [hidden, setHidden] = useState(false);
+  // A new context is a new question, so a context stepped out of does not
+  // stay stepped out of once you have gone somewhere else.
+  const contextKey = context ? `${context.kind}:${context.icon}` : '';
+  useEffect(() => setHidden(false), [contextKey]);
   const value = useMemo(
-    () => ({ context, publish, targets, publishTargets }),
-    [context, publish, targets, publishTargets]
+    () => ({ context, publish, targets, publishTargets, hidden, setHidden }),
+    [context, publish, targets, publishTargets, hidden]
   );
   return <NavDockContext.Provider value={value}>{children}</NavDockContext.Provider>;
 }
 
 // What the dock reads. Null where nothing has been wrapped.
 export function useNavDockContext(): DockContext | null {
-  return useContext(NavDockContext)?.context ?? null;
+  const value = useContext(NavDockContext);
+  if (!value || value.hidden) return null;
+  return value.context;
+}
+
+// Whether there IS a context, hidden or not - what the desks ask before
+// deciding to stand aside.
+export function useNavDockHasContext(): boolean {
+  return !!useContext(NavDockContext)?.context;
+}
+
+export function useNavDockHidden(): [boolean, (hidden: boolean) => void] {
+  const value = useContext(NavDockContext);
+  return [value?.hidden ?? false, value?.setHidden ?? (() => {})];
 }
 
 // What a screen writes. Publishing null (or unmounting) hands the dock
