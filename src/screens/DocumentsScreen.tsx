@@ -480,6 +480,16 @@ export default function DocumentsScreen({
             active: sortMenuOpen,
             onPress: () => setSortMenuOpen((v) => !v),
           },
+          // The tags drawer - see the same button on DatabaseChrome. The
+          // swipe from the middle of the screen still opens it; it is no
+          // longer the only thing that does.
+          {
+            key: 'tags',
+            icon: 'pricetag-outline',
+            active: !!activeFilter,
+            onPress: () => drawerRef.current?.open(),
+            closesStack: true,
+          },
           {
             key: 'select',
             icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',

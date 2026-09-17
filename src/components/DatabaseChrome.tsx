@@ -319,6 +319,20 @@ export default function DatabaseChrome<T extends { id: string }>({
             active: sortMenuOpen,
             onPress: () => setSortMenuOpen((v) => !v),
           },
+          // Narrowing the list to a tag. The drawer answers a swipe from
+          // the middle of the screen - the user's own gesture - and that
+          // was the ONLY way in once the rail's tag button went with the
+          // rail: "відсутнє фільтрування, воно було раніше, а тепер я не
+          // знаю, як відфільтрувати елементи бази". A gesture is a
+          // shortcut for the hand that knows it, not the way to reach a
+          // thing at all.
+          {
+            key: 'tags',
+            icon: 'pricetag-outline',
+            active: !!list.tagFilter,
+            onPress: () => drawerRef.current?.open(),
+            closesStack: true,
+          },
           ...(bulk
             ? [
                 {
