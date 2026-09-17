@@ -911,8 +911,7 @@ export default function LinksScreen({
               styles.gridPage,
               railClear(inPane ? 'left' : 'right', 20),
               { paddingTop: listTopPad },
-              isSelectMode && styles.listWithBulkBar,
-            ]}
+              ]}
           >
             {explorerOrTrashHead()}
             <View style={styles.gridRows}>
@@ -934,8 +933,7 @@ export default function LinksScreen({
               styles.list,
               railClear(inPane ? 'left' : 'right', 20),
               { paddingTop: listTopPad },
-              isSelectMode && styles.listWithBulkBar,
-            ]}
+              ]}
           >
             {explorerOrTrashHead()}
             {(trashOpen ? trashedLinks : linksHere).map((item) =>
@@ -1038,9 +1036,6 @@ const makeStyles = (t: Theme) =>
     flexWrap: 'wrap',
     alignItems: 'flex-start',
     gap: 12,
-  },
-  listWithBulkBar: {
-    paddingBottom: 90,
   },
   cardMenuBackdrop: {
     backgroundColor: 'rgba(17,24,39,0.45)',

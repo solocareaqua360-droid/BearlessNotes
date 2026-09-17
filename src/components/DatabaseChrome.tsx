@@ -21,12 +21,9 @@ import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
 import RailCapsule from './RailCapsule';
 import { useDockActions, useDockBeads, useDockShowContext } from '../navigation/navDock';
-import { NAV_BOTTOM, NAV_BUTTON as DOCK_BUTTON, NAV_PADDING as DOCK_PADDING } from '../constants/rail';
-// What a menu has to clear to stand above the dock rather than under it.
-const DOCK_CLEAR = NAV_BOTTOM + DOCK_BUTTON + DOCK_PADDING * 2 + 12;
+import { useDockClearance } from '../navigation/dockGeometry';
 import ScreenBackdrop from './ScreenBackdrop';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from './TagsDrawer';
-import BulkActionBar from './BulkActionBar';
 import { useRail, useRailFree } from '../hooks/useRail';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
@@ -279,6 +276,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   const keyboardUp = useKeyboardVisible();
   const searchingAlone = list.isSearching && keyboardUp;
   const showContext = useDockShowContext();
+  const dockClear = useDockClearance();
   // Everything this screen offers now goes to the DOCK, not the rail -
   // the same move the documents screen made, and it lands on files,
   // photos, links and the boards list at once because they all came
@@ -309,70 +307,80 @@ export default function DatabaseChrome<T extends { id: string }>({
   );
   useDockActions(
     isFocused && !searchingAlone
-      ? [
-          ...(shape
-            ? [{ key: 'shape', icon: shape.icon as string, onPress: shape.onToggle, closesStack: true }]
-            : []),
-          {
-            key: 'sort',
-            icon: 'filter-outline',
-            active: sortMenuOpen,
-            onPress: () => setSortMenuOpen((v) => !v),
-          },
-          // Narrowing the list to a tag. The drawer answers a swipe from
-          // the middle of the screen - the user's own gesture - and that
-          // was the ONLY way in once the rail's tag button went with the
-          // rail: "відсутнє фільтрування, воно було раніше, а тепер я не
-          // знаю, як відфільтрувати елементи бази". A gesture is a
-          // shortcut for the hand that knows it, not the way to reach a
-          // thing at all.
-          {
-            key: 'tags',
-            icon: 'pricetag-outline',
-            active: !!list.tagFilter,
-            onPress: () => drawerRef.current?.open(),
-            closesStack: true,
-          },
-          ...(bulk
-            ? [
-                {
-                  key: 'select',
-                  icon: list.isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
-                  active: list.isSelectMode,
-                  onPress: () => {
-                    // Leaving select mode is the END of the thing this
-                    // card was opened for; entering it is the start.
-                    if (list.isSelectMode) showContext();
-                    list.toggleSelectMode();
+      ? list.isSelectMode
+        ? [
+            {
+              key: 'cancel',
+              icon: 'close-outline',
+              onPress: () => {
+                showContext();
+                list.toggleSelectMode();
+              },
+            },
+            ...(bulk && list.selectedIds.size > 0
+              ? [
+                  { key: 'tag', icon: 'pricetag-outline' as const, onPress: bulk.onTag },
+                  { key: 'group', icon: 'folder-outline' as const, onPress: bulk.onGroup },
+                  ...(bulk.onCopy
+                    ? [{ key: 'copy', icon: 'document-text-outline' as const, onPress: bulk.onCopy }]
+                    : []),
+                  ...(bulk.onCopyObject && list.selectedIds.size === 1
+                    ? [{ key: 'copyObject', icon: 'clipboard-outline' as const, onPress: bulk.onCopyObject }]
+                    : []),
+                  { key: 'delete', icon: 'trash-outline' as const, onPress: bulk.onDelete },
+                ]
+              : []),
+          ]
+        : [
+            ...(shape
+              ? [{ key: 'shape', icon: shape.icon as string, onPress: shape.onToggle, closesStack: true }]
+              : []),
+            {
+              key: 'sort',
+              icon: 'filter-outline',
+              active: sortMenuOpen,
+              onPress: () => setSortMenuOpen((v) => !v),
+            },
+            // Narrowing the list to a tag. The drawer answers a swipe from
+            // the middle of the screen - the user's own gesture - and that
+            // was the ONLY way in once the rail's tag button went with the
+            // rail: "відсутнє фільтрування, воно було раніше, а тепер я не
+            // знаю, як відфільтрувати елементи бази". A gesture is a
+            // shortcut for the hand that knows it, not the way to reach a
+            // thing at all.
+            {
+              key: 'tags',
+              icon: 'pricetag-outline',
+              active: !!list.tagFilter,
+              onPress: () => drawerRef.current?.open(),
+              closesStack: true,
+            },
+            ...(bulk ? [{ key: 'select', icon: 'checkmark-circle-outline', onPress: () => list.toggleSelectMode() }] : []),
+            // Folders are made far less often than records - the user's own
+            // reckoning - so this rides with the rest rather than beside
+            // the bead that makes a record.
+            ...(explorer?.active
+              ? [
+                  {
+                    key: 'folder',
+                    icon: 'folder-outline',
+                    badge: 'add-circle-outline',
+                    onPress: explorer.onNewFolder,
+                    closesStack: true,
                   },
-                },
-              ]
-            : []),
-          // Folders are made far less often than records - the user's own
-          // reckoning - so this rides with the rest rather than beside
-          // the bead that makes a record.
-          ...(explorer?.active
-            ? [
-                {
-                  key: 'folder',
-                  icon: 'folder-outline',
-                  badge: 'add-circle-outline',
-                  onPress: explorer.onNewFolder,
-                  closesStack: true,
-                },
-              ]
-            : []),
-          ...(menuRows
-            ? [
-                {
-                  key: 'menu',
-                  icon: 'ellipsis-horizontal-outline',
-                  active: menuOpen,
-                  onPress: () => setMenuOpen((v) => !v),
-                },
-              ]
-            : []),
-        ]
+                ]
+              : []),
+            ...(menuRows
+              ? [
+                  {
+                    key: 'menu',
+                    icon: 'ellipsis-horizontal-outline',
+                    active: menuOpen,
+                    onPress: () => setMenuOpen((v) => !v),
+                  },
+                ]
+              : []),
+          ]
       : null
   );
 
@@ -408,7 +416,7 @@ export default function DatabaseChrome<T extends { id: string }>({
           onClose={() => setMenuOpen(false)}
           entries={[]}
           // Above the dock, where the button that opens it now lives.
-          style={{ position: 'absolute', right: 16, bottom: DOCK_CLEAR + insets.bottom }}
+          style={{ position: 'absolute', right: 16, bottom: dockClear + insets.bottom }}
         >
           {menuRows?.(() => setMenuOpen(false))}
         </Menu>
@@ -435,7 +443,7 @@ export default function DatabaseChrome<T extends { id: string }>({
             })),
           ]}
           // Above the dock, where the button that opens it now lives.
-          style={{ position: 'absolute', right: 16, bottom: DOCK_CLEAR + insets.bottom }}
+          style={{ position: 'absolute', right: 16, bottom: dockClear + insets.bottom }}
         />
 
         {/* The tabs float over the cards rather than standing above them,
@@ -610,16 +618,6 @@ export default function DatabaseChrome<T extends { id: string }>({
       />
       )}
 
-      {bulk && (
-        <BulkActionBar
-          count={list.selectedIds.size}
-          onTag={bulk.onTag}
-          onGroup={bulk.onGroup}
-          onCopy={bulk.onCopy}
-          onCopyObject={bulk.onCopyObject}
-          onDelete={bulk.onDelete}
-        />
-      )}
     </View>
   );
 }

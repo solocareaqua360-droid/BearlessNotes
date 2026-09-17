@@ -4,6 +4,8 @@ import { useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { useRecordColour } from '../theme/ThemeProvider';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useDockClearance } from '../navigation/dockGeometry';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureDetector } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
@@ -61,6 +63,8 @@ export default function BoardsListScreen({
 }: { inPane?: boolean; standalone?: boolean } = {}) {
   const styles = useStyles(makeStyles);
   const recordColour = useRecordColour();
+  const insets = useSafeAreaInsets();
+  const dockClear = useDockClearance();
   const navigation = useNavigation<NativeStackNavigationProp<BoardsStackParamList>>();
   const { width: windowWidth } = useWindowDimensions();
   // Two across where there is room for two. A board's row is a name and a
@@ -362,8 +366,8 @@ export default function BoardsListScreen({
           { backgroundColor: background },
           carriedProps?.dimmed && styles.carried,
         ]}
-        onPress={() => openBoard(item)}
-        onLongPress={carried ? undefined : () => askBoardActions(item)}
+        onPress={() => (isSelectMode ? toggleSelected(item.id) : openBoard(item))}
+        onLongPress={carried || isSelectMode ? undefined : () => askBoardActions(item)}
       >
         {/* The board's own layout in miniature, drawn from its cards -
             always current, because it is the cards. Falls back to the
@@ -387,9 +391,19 @@ export default function BoardsListScreen({
             {item.cards.length} {item.cards.length === 1 ? 'картка' : 'карток'}
           </Text>
         </View>
-        <Pressable hitSlop={8} onPress={() => askBoardActions(item)} style={styles.rowActionButton}>
-          <Ionicons name="ellipsis-horizontal" size={16} color={textMuted} />
-        </Pressable>
+        {isSelectMode ? (
+          <Pressable hitSlop={8} onPress={() => toggleSelected(item.id)} style={styles.rowActionButton}>
+            <Ionicons
+              name={selectedIds.has(item.id) ? 'checkmark-circle' : 'ellipse-outline'}
+              size={22}
+              color={selectedIds.has(item.id) ? text : textMuted}
+            />
+          </Pressable>
+        ) : (
+          <Pressable hitSlop={8} onPress={() => askBoardActions(item)} style={styles.rowActionButton}>
+            <Ionicons name="ellipsis-horizontal" size={16} color={textMuted} />
+          </Pressable>
+        )}
       </Pressable>
     );
     return row;
@@ -412,8 +426,8 @@ export default function BoardsListScreen({
           { width: tileWidth, backgroundColor: background },
           carriedProps?.dimmed && styles.carried,
         ]}
-        onPress={() => openBoard(item)}
-        onLongPress={carried ? undefined : () => askBoardActions(item)}
+        onPress={() => (isSelectMode ? toggleSelected(item.id) : openBoard(item))}
+        onLongPress={carried || isSelectMode ? undefined : () => askBoardActions(item)}
       >
         <View style={[styles.tileMap, { height: mapHeight }]}>
           <CoverGradientView gradient={defaultCoverFor(item.id)} style={StyleSheet.absoluteFill} />
@@ -425,6 +439,15 @@ export default function BoardsListScreen({
             </View>
           )}
         </View>
+        {isSelectMode && (
+          <View style={styles.tileSelectBadge} pointerEvents="none">
+            <Ionicons
+              name={selectedIds.has(item.id) ? 'checkmark-circle' : 'ellipse-outline'}
+              size={20}
+              color={selectedIds.has(item.id) ? text : '#fff'}
+            />
+          </View>
+        )}
         <View style={styles.tileBody}>
           <Text style={[styles.rowTitle, { color: text }]} numberOfLines={1}>
             {item.title || 'Без назви'}
@@ -578,9 +601,8 @@ export default function BoardsListScreen({
               viewMode === 'cards' ? styles.tileGrid : styles.list,
               railClear(inPane ? 'left' : 'right', viewMode === 'cards' ? 10 : 20),
               viewMode !== 'cards' && isTwoPane && styles.listWide,
-              { paddingTop: listTopPad },
-              isSelectMode && styles.listWithBulkBar,
-            ]}
+              { paddingTop: listTopPad, paddingBottom: dockClear + insets.bottom },
+              ]}
           >
             {/* Where you are and what folders are here - only in
                 explorer mode; in the other two this draws nothing. */}
@@ -665,15 +687,12 @@ const makeStyles = (t: Theme) =>
     flexWrap: 'wrap',
     gap: 12,
     paddingLeft: 20,
-    // Clear of the rail, like the row list.
+    // Clear of the rail, like the row list. paddingBottom comes from the
+    // dock's own real height at the call site - see dockGeometry.
     paddingRight: RAIL_CLEARANCE,
-    paddingBottom: 140,
   },
   // Room for the bulk-action bar while choosing, so the last board can
   // still be scrolled out from under it.
-  listWithBulkBar: {
-    paddingBottom: 90,
-  },
   tile: {
     borderRadius: 16,
     overflow: 'hidden',
@@ -709,11 +728,10 @@ const makeStyles = (t: Theme) =>
     paddingLeft: 20,
     // The rail stands at the right edge; the rows stop short of it rather
     // than running under it - the same clearance the calendar keeps.
+    // paddingBottom comes from the dock's own real height at the call
+    // site - see dockGeometry.
     paddingRight: RAIL_CLEARANCE,
     gap: 10,
-    // Clears FloatingIslandTabBar the same way DocumentsScreen's list does -
-    // without it the last board sits permanently under the island.
-    paddingBottom: 120,
   },
   row: {
     flexDirection: 'row',
@@ -755,5 +773,11 @@ const makeStyles = (t: Theme) =>
   },
   rowActionButton: {
     padding: 6,
+  },
+  tileSelectBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 2,
   },
   });

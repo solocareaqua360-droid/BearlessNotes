@@ -12,6 +12,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { hapticButtonDown } from '../utils/haptics';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { DOCK_BOTTOM, dockCardHeight } from '../navigation/dockGeometry';
 import {
   DockBead,
   DockFace,
@@ -78,7 +79,7 @@ const HERE_FILL = 'rgba(255,255,255,0.16)';
 // The way out inside the card: a chevron and a hairline - said in points.
 const LEAVE_W = 36;
 const BEAD_F = 0.111;
-const CARD_F = 0.148;
+
 const GAP_F = 0.037;
 const INSET_F = 0.076;
 const CARD_PAD = 2;
@@ -92,14 +93,14 @@ const CARD_PAD = 2;
 // and stands centred, which is also what it should do in landscape,
 // where the width is enormous and the height is not.
 // 430 is wider than any phone in portrait, so no phone is touched.
-const PHONE_W = 430;
+
 
 export default function ContextDock() {
   const theme = useTheme();
   const { width: windowW } = useWindowDimensions();
-  const screenW = Math.min(windowW, PHONE_W);
+  const CARD_H = dockCardHeight(windowW);
+  const screenW = Math.min(windowW, 430);
   const BEAD = Math.round(screenW * BEAD_F);
-  const CARD_H = Math.round(screenW * CARD_F);
   const CARD_BUTTON = CARD_H - CARD_PAD * 2;
   const GAP = Math.round(screenW * GAP_F);
   const EDGE_INSET = Math.round(screenW * INSET_F);
@@ -338,7 +339,7 @@ export default function ContextDock() {
   return (
     <GlassPortal>
       <View
-        style={[styles.wrap, { bottom: 22 + insets.bottom, paddingHorizontal: EDGE_INSET }]}
+        style={[styles.wrap, { bottom: DOCK_BOTTOM + insets.bottom, paddingHorizontal: EDGE_INSET }]}
         pointerEvents="box-none"
       >
         <View

@@ -88,7 +88,6 @@ import PhotoCarousel from '../components/PhotoCarousel';
 import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
-import BulkActionBar from '../components/BulkActionBar';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
@@ -125,12 +124,12 @@ import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDockActions, useDockBeads, useDockLeave, useDockShowContext } from '../navigation/navDock';
 import { GLASS_ISLAND } from '../constants/glass';
-import { CHROME_TOP, NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
+import { CHROME_TOP } from '../constants/rail';
+import { useDockClearance } from '../navigation/dockGeometry';
 import Menu from '../components/surfaces/Menu';
 
 const ACCENT = '#A05C7B';
 // The foot the lists keep clear for the dock - DatabaseChrome's reckoning.
-const DOCK_CLEAR = NAV_BOTTOM + NAV_BUTTON + NAV_PADDING * 2 + 12;
 // The same half-strength tint the documents screen's add button takes.
 const ACCENT_GLASS = 'rgba(160,92,123,0.55)';
 const DANGER = '#EF4444';
@@ -200,6 +199,7 @@ export default function CustomDatabaseScreen({
   const recordColour = useRecordColour();
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
+  const dockClear = useDockClearance();
   const showContext = useDockShowContext();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   // The way out of this database lives in the dock now, under the thumb,
@@ -604,16 +604,11 @@ export default function CustomDatabaseScreen({
   // are a fourth tab of the parameters window rather than a fifth
   // button: a view IS a saved set of those parameters.
   useDockBeads(
-    isFocused
+    isFocused && !isSelectMode
       ? {
-          icon: isSelectMode || isSearching ? 'close-outline' : 'search-outline',
+          icon: isSearching ? 'close-outline' : 'search-outline',
           active: isSearching,
           onPress: () => {
-            // While selecting, this is the way out of it.
-            if (isSelectMode) {
-              toggleSelectMode();
-              return;
-            }
             // Closing the search clears it too - leaving a filter
             // applied behind a hidden input is how a database looks
             // half-empty for no visible reason.
@@ -630,30 +625,40 @@ export default function CustomDatabaseScreen({
   );
   useDockActions(
     isFocused
-      ? [
-          // The shape of the list - its icon IS the shape, so the button
-          // says which one is in force with no label at all.
-          { key: 'shape', icon: VIEW_ICONS[viewMode], active: openParam === 'view', onPress: () => openParamList('view') },
-          // Ordering, narrowing, grouping and the saved views, in one
-          // window with four tabs. Lit while any of them is in force or
-          // a saved view is on, since with one button nothing else says so.
-          {
-            key: 'params',
-            icon: 'options-outline',
-            active: openParam === 'params' || activeParamCount > 0 || !!activeView,
-            onPress: () => openParamList('params'),
-          },
-          {
-            key: 'select',
-            icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
-            active: isSelectMode,
-            onPress: () => {
-              if (isSelectMode) showContext();
-              toggleSelectMode();
+      ? isSelectMode
+        ? [
+            {
+              key: 'cancel',
+              icon: 'close-outline',
+              onPress: () => {
+                showContext();
+                toggleSelectMode();
+              },
             },
-          },
-          { key: 'menu', icon: 'ellipsis-horizontal-outline', active: menuOpen, onPress: () => setMenuOpen((v) => !v) },
-        ]
+            ...(selectedIds.size > 0
+              ? [
+                  { key: 'tag', icon: 'pricetag-outline' as const, onPress: () => setBulkTagPickerVisible(true) },
+                  { key: 'group', icon: 'folder-outline' as const, onPress: () => setBulkGroupPickerVisible(true) },
+                  { key: 'delete', icon: 'trash-outline' as const, onPress: confirmDeleteSelected },
+                ]
+              : []),
+          ]
+        : [
+            // The shape of the list - its icon IS the shape, so the button
+            // says which one is in force with no label at all.
+            { key: 'shape', icon: VIEW_ICONS[viewMode], active: openParam === 'view', onPress: () => openParamList('view') },
+            // Ordering, narrowing, grouping and the saved views, in one
+            // window with four tabs. Lit while any of them is in force or
+            // a saved view is on, since with one button nothing else says so.
+            {
+              key: 'params',
+              icon: 'options-outline',
+              active: openParam === 'params' || activeParamCount > 0 || !!activeView,
+              onPress: () => openParamList('params'),
+            },
+            { key: 'select', icon: 'checkmark-circle-outline', onPress: () => toggleSelectMode() },
+            { key: 'menu', icon: 'ellipsis-horizontal-outline', active: menuOpen, onPress: () => setMenuOpen((v) => !v) },
+          ]
       : null
   );
 
@@ -1591,7 +1596,7 @@ export default function CustomDatabaseScreen({
         visible={menuOpen}
         onClose={() => setMenuOpen(false)}
         // Above the dock, where the button that opens it lives.
-        style={{ position: 'absolute', right: 16, bottom: DOCK_CLEAR + insets.bottom }}
+        style={{ position: 'absolute', right: 16, bottom: dockClear + insets.bottom }}
         entries={[
           // What the list shows and how it is ordered live on the dock,
           // not here: they're changed constantly while working, and a
@@ -1624,7 +1629,7 @@ export default function CustomDatabaseScreen({
             style={[
               styles.paramExpanded,
               // Above the dock, where the button that opened it lives.
-              { bottom: DOCK_CLEAR + insets.bottom, right: 16, minWidth: 220 },
+              { bottom: dockClear + insets.bottom, right: 16, minWidth: 220 },
             ]}
           >
             {openParam === 'view' && (
@@ -1969,7 +1974,7 @@ export default function CustomDatabaseScreen({
         renderTable()
       ) : viewMode === 'cards' ? (
         <ScrollView
-          contentContainerStyle={[styles.cardGrid, { paddingHorizontal: CARD_GRID_PADDING, paddingBottom: DOCK_CLEAR + insets.bottom }, isSelectMode && styles.listWithBulkBar]}
+          contentContainerStyle={[styles.cardGrid, { paddingHorizontal: CARD_GRID_PADDING, paddingBottom: dockClear + insets.bottom }]}
         >
           {displayedRows.map((row) => (
             <CustomRowGridCard
@@ -2000,7 +2005,7 @@ export default function CustomDatabaseScreen({
         // Grouped by one field: a header per value with its own count, and
         // the total under the last group - the "how many working, how many
         // in for repair, how many altogether" read.
-        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: DOCK_CLEAR + insets.bottom }, isSelectMode && styles.listWithBulkBar]}>
+        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }]}>
           {rowGroups.map((group) => (
             <View key={group.key || '__empty__'} style={styles.groupSection}>
               <View style={styles.groupHeader}>
@@ -2018,7 +2023,7 @@ export default function CustomDatabaseScreen({
           </View>
         </ScrollView>
       ) : (
-        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: DOCK_CLEAR + insets.bottom }, isSelectMode && styles.listWithBulkBar]}>
+        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }]}>
           {displayedRows.map(renderRowCard)}
         </ScrollView>
       )}
@@ -2562,14 +2567,6 @@ export default function CustomDatabaseScreen({
           navigation.navigate('Editor', { documentId });
         }}
         onClose={() => setDocumentPicker(null)}
-      />
-
-      <BulkActionBar
-        aboveTabBar
-        count={selectedIds.size}
-        onTag={() => setBulkTagPickerVisible(true)}
-        onGroup={() => setBulkGroupPickerVisible(true)}
-        onDelete={confirmDeleteSelected}
       />
 
       {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
@@ -3648,9 +3645,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: CARD_GRID_PADDING,
     paddingVertical: 8,
     gap: CARD_GRID_GAP,
-  },
-  listWithBulkBar: {
-    paddingBottom: 170,
   },
   rowActionButton: {
     padding: 6,

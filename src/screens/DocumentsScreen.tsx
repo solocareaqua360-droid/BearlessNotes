@@ -59,7 +59,6 @@ import { MAX_CONTENT_WIDTH } from '../components/ContentColumn';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
-import BulkActionBar from '../components/BulkActionBar';
 import DocumentCard from '../components/DocumentCard';
 import { useExplorer, nameOf } from '../hooks/useExplorer';
 import { useDockActions, useDockBeads, useDockLeave, useDockShowContext } from '../navigation/navDock';
@@ -80,10 +79,9 @@ import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import SketchEditor from '../components/SketchEditor';
 import { BlurView } from 'expo-blur';
 import { GlassPortal } from '../components/GlassPortal';
-import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CHROME_TOP, NAV_BOTTOM, NAV_BUTTON, NAV_HEIGHT, NAV_PADDING, RAIL_CLEARANCE, RAIL_GAP, RAIL_RIGHT, RAIL_WIDTH, railFits } from '../constants/rail';
-// The dock's own capsule height - what the sort menu has to clear.
-const NAV_HEIGHT_ONE = NAV_BUTTON + NAV_PADDING * 2;
-import { useRail, useRailFree } from '../hooks/useRail';
+import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CHROME_TOP, NAV_HEIGHT, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH, railFits } from '../constants/rail';
+import { useDockClearance } from '../navigation/dockGeometry';
+import { useRailFree } from '../hooks/useRail';
 import { useBlurTarget } from '../components/GlassTarget';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import TagEditSheet from '../components/TagEditSheet';
@@ -470,56 +468,64 @@ export default function DocumentsScreen({
   // the ones that were costing the screen its width for the least use.
   useDockActions(
     isFocused && !searchingAlone
-      ? [
-          {
-            key: 'view',
-            icon: viewMode === 'grid' ? 'grid-outline' : 'reorder-four-outline',
-            onPress: () => changeViewMode(viewMode === 'grid' ? 'list' : 'grid'),
-            closesStack: true,
-          },
-          {
-            key: 'sort',
-            icon: 'filter-outline',
-            active: sortMenuOpen,
-            onPress: () => setSortMenuOpen((v) => !v),
-          },
-          // The tags drawer - see the same button on DatabaseChrome. The
-          // swipe from the middle of the screen still opens it; it is no
-          // longer the only thing that does.
-          {
-            key: 'tags',
-            icon: 'pricetag-outline',
-            active: !!activeFilter,
-            onPress: () => drawerRef.current?.open(),
-            closesStack: true,
-          },
-          {
-            key: 'select',
-            icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
-            active: isSelectMode,
-            onPress: () => {
-              // Leaving select mode is the END of the thing this card
-              // was opened for; entering it is the start.
-              if (isSelectMode) showContext();
-              toggleSelectMode();
+      ? isSelectMode
+        ? [
+            {
+              key: 'cancel',
+              icon: 'close-outline',
+              onPress: () => {
+                showContext();
+                toggleSelectMode();
+              },
             },
-          },
-          // Creating a FOLDER is creating, but the user's own reckoning
-          // settles where it goes: "створення папок відбувається набагато
-          // рідше, аніж додавання документів". The bead is for the thing
-          // you do constantly; this belongs with the rest.
-          ...(explorer.active
-            ? [
-                {
-                  key: 'folder',
-                  icon: 'folder-outline',
-                  badge: 'add-circle-outline',
-                  onPress: () => explorer.setFolderPrompt({ mode: 'new', parent: explorer.path }),
-                  closesStack: true,
-                },
-              ]
-            : []),
-        ]
+            ...(selectedIds.size > 0
+              ? [
+                  { key: 'tag', icon: 'pricetag-outline' as const, onPress: () => setBulkTagPickerVisible(true) },
+                  { key: 'group', icon: 'folder-outline' as const, onPress: () => setBulkGroupPickerVisible(true) },
+                  { key: 'delete', icon: 'trash-outline' as const, onPress: confirmDeleteSelected },
+                ]
+              : []),
+          ]
+        : [
+            {
+              key: 'view',
+              icon: viewMode === 'grid' ? 'grid-outline' : 'reorder-four-outline',
+              onPress: () => changeViewMode(viewMode === 'grid' ? 'list' : 'grid'),
+              closesStack: true,
+            },
+            {
+              key: 'sort',
+              icon: 'filter-outline',
+              active: sortMenuOpen,
+              onPress: () => setSortMenuOpen((v) => !v),
+            },
+            // The tags drawer - see the same button on DatabaseChrome. The
+            // swipe from the middle of the screen still opens it; it is no
+            // longer the only thing that does.
+            {
+              key: 'tags',
+              icon: 'pricetag-outline',
+              active: !!activeFilter,
+              onPress: () => drawerRef.current?.open(),
+              closesStack: true,
+            },
+            { key: 'select', icon: 'checkmark-circle-outline', onPress: () => toggleSelectMode() },
+            // Creating a FOLDER is creating, but the user's own reckoning
+            // settles where it goes: "створення папок відбувається набагато
+            // рідше, аніж додавання документів". The bead is for the thing
+            // you do constantly; this belongs with the rest.
+            ...(explorer.active
+              ? [
+                  {
+                    key: 'folder',
+                    icon: 'folder-outline',
+                    badge: 'add-circle-outline',
+                    onPress: () => explorer.setFolderPrompt({ mode: 'new', parent: explorer.path }),
+                    closesStack: true,
+                  },
+                ]
+              : []),
+          ]
       : null
   );
   // The folder back/forward arrows are gone from the rail - the dock
@@ -533,13 +539,6 @@ export default function DocumentsScreen({
   // learns it once.
   // Only creating is left on the rail now - choosing, sorting and the
   // view switch went to the dock's second card.
-  const rail = useRail(
-    topCapsuleHeight,
-    0,
-    explorer.active ? CAPSULE_HEIGHT : RAIL_WIDTH,
-    0,
-    !standalone
-  );
   // Opening the search takes the screen, so anything hanging off the rail
   // goes with it - the sort menu stayed up over the keyboard otherwise.
   useEffect(() => {
@@ -548,9 +547,11 @@ export default function DocumentsScreen({
     }
   }, [searchOpen, isSelectMode]);
   // How far the list has to clear the bottom edge so its last card never
-  // ends up sitting behind the navigation island - the island is the
-  // tallest thing on the rail's foot and the closest to that edge.
-  const listBottomPad = rail.navBottom + rail.islandHeight + RAIL_GAP;
+  // ends up sitting behind the dock - read off the dock's OWN geometry
+  // (see dockGeometry) rather than a guessed number, which is what let
+  // the dock overlap a menu or the last row of a list on some screen
+  // widths: "в доці знову хаос".
+  const listBottomPad = useDockClearance();
   // The menu runs from the capsule's top down to the folder button under
   // it, rather than being cut to the capsule itself - at two buttons the
   // capsule is far too short to hold a menu, and the rows were clipped
@@ -1378,7 +1379,7 @@ export default function DocumentsScreen({
             })),
           ]}
           // Above the dock, where the button that opens it now lives.
-          style={{ position: 'absolute', right: 16, bottom: NAV_BOTTOM + insets.bottom + NAV_HEIGHT_ONE + 12 }}
+          style={{ position: 'absolute', right: 16, bottom: listBottomPad + insets.bottom }}
         />
         </View>
 
@@ -1548,13 +1549,6 @@ export default function DocumentsScreen({
         onClose={() => setBulkGroupPickerVisible(false)}
       />
 
-      <BulkActionBar
-        count={selectedIds.size}
-        onTag={() => setBulkTagPickerVisible(true)}
-        onGroup={() => setBulkGroupPickerVisible(true)}
-        onDelete={confirmDeleteSelected}
-        aboveTabBar
-      />
     </View>
   );
 }

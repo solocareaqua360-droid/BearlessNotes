@@ -52,7 +52,8 @@ import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import Menu from '../components/surfaces/Menu';
-import { CHROME_TOP, NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
+import { CHROME_TOP } from '../constants/rail';
+import { useDockClearance } from '../navigation/dockGeometry';
 import { useDockActions, useDockBeads, useDockLeave, useDockShowContext } from '../navigation/navDock';
 import SearchField from '../components/SearchField';
 import RenamePrompt from '../components/RenamePrompt';
@@ -62,7 +63,6 @@ import { confirm, notify } from '../components/surfaces/Ask';
 const ACCENT = '#4E9A6B';
 // The foot the list keeps clear for the dock - the same reckoning
 // DatabaseChrome makes.
-const DOCK_CLEAR = NAV_BOTTOM + NAV_BUTTON + NAV_PADDING * 2 + 12;
 const DANGER = '#EF4444';
 const PROJECT_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
 const tasksCollection = collection(db, 'tasks');
@@ -171,16 +171,11 @@ export default function TasksScreen() {
   // database has them. Neither existed on this screen: tasks are
   // one-liners scattered over every note, and finding one meant scrolling.
   useDockBeads(
-    isFocused
+    isFocused && !isSelectMode
       ? {
-          icon: isSelectMode || isSearching ? 'close-outline' : 'search-outline',
+          icon: isSearching ? 'close-outline' : 'search-outline',
           active: isSearching,
           onPress: () => {
-            // While selecting, this is the way OUT of selecting.
-            if (isSelectMode) {
-              toggleSelectMode();
-              return;
-            }
             if (isSearching) setSearchQuery('');
             setIsSearching((prev) => !prev);
           },
@@ -192,35 +187,41 @@ export default function TasksScreen() {
   );
   useDockActions(
     isFocused
-      ? [
-          {
-            key: 'shape',
-            icon: kanbanMode ? 'albums-outline' : 'reorder-four-outline',
-            closesStack: true,
-            onPress: () =>
-              setKanbanMode((v) => {
-                const next = !v;
-                if (next) clearSelection();
-                return next;
-              }),
-          },
-          { key: 'sort', icon: 'filter-outline', active: menuOpen, onPress: () => setMenuOpen((v) => !v) },
-          {
-            key: 'select',
-            icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
-            active: isSelectMode,
-            onPress: () => {
-              // Leaving select mode is the END of the thing this card was
-              // opened for; entering it is the start.
-              if (isSelectMode) showContext();
-              else setKanbanMode(false);
-              toggleSelectMode();
+      ? isSelectMode
+        ? [
+            {
+              key: 'cancel',
+              icon: 'close-outline',
+              onPress: () => {
+                showContext();
+                toggleSelectMode();
+              },
             },
-          },
-        ]
+            ...(selectedIds.size > 0
+              ? [{ key: 'delete', icon: 'trash-outline' as const, onPress: confirmBulkDeleteTasks }]
+              : []),
+          ]
+        : [
+            {
+              key: 'shape',
+              icon: kanbanMode ? 'albums-outline' : 'reorder-four-outline',
+              closesStack: true,
+              onPress: () => setKanbanMode((v) => !v),
+            },
+            { key: 'sort', icon: 'filter-outline', active: menuOpen, onPress: () => setMenuOpen((v) => !v) },
+            {
+              key: 'select',
+              icon: 'checkmark-circle-outline',
+              onPress: () => {
+                setKanbanMode(false);
+                toggleSelectMode();
+              },
+            },
+          ]
       : null
   );
   const insets = useSafeAreaInsets();
+  const dockClear = useDockClearance();
   const showContext = useDockShowContext();
   // Everything this screen offered on the rail goes to the DOCK now, as
   // on every database: the way out as the leave bead, and what the list
@@ -943,7 +944,7 @@ export default function TasksScreen() {
         snapToInterval={kanbanColumnWidth + KANBAN_COLUMN_GAP}
         decelerationRate="fast"
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[styles.kanbanBoard, { paddingBottom: DOCK_CLEAR + insets.bottom }]}
+        contentContainerStyle={[styles.kanbanBoard, { paddingBottom: dockClear + insets.bottom }]}
         onScroll={(e) => {
           boardScrollXRef.current = e.nativeEvent.contentOffset.x;
         }}
@@ -1025,7 +1026,7 @@ export default function TasksScreen() {
         {menuOpen && (
           <>
             <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />
-            <View style={[styles.menuPanel, { bottom: DOCK_CLEAR + insets.bottom }]}>
+            <View style={[styles.menuPanel, { bottom: dockClear + insets.bottom }]}>
               <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
             </View>
           </>
@@ -1079,7 +1080,7 @@ export default function TasksScreen() {
             />
           </>
         ) : (
-        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: DOCK_CLEAR + insets.bottom }]}>
+        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }]}>
           {todayTasks.length > 0 &&
             renderSection({
               key: '__today__',
@@ -1104,16 +1105,6 @@ export default function TasksScreen() {
             <Text style={styles.emptyFilterLabel}>Немає справ із цим фільтром</Text>
           )}
         </ScrollView>
-        )}
-
-        {isSelectMode && selectedIds.size > 0 && (
-          <View style={styles.selectionBar}>
-            <Text style={styles.selectionCount}>{selectedIds.size}</Text>
-            <Pressable style={styles.selectionDeleteBtn} onPress={confirmBulkDeleteTasks}>
-              <Ionicons name="trash-outline" size={18} color={DANGER} />
-              <Text style={styles.selectionDeleteLabel}>Видалити</Text>
-            </Pressable>
-          </View>
         )}
 
         <Modal visible={pickerTaskId !== null} transparent animationType="fade" onRequestClose={() => setPickerTaskId(null)}>

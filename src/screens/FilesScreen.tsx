@@ -994,8 +994,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
               styles.gridPage,
               railClear(inPane ? 'left' : 'right', 20),
               { paddingTop: listTopPad },
-              isSelectMode && styles.listWithBulkBar,
-            ]}
+              ]}
           >
 {explorerOrTrashHead()}
             <View style={styles.gridRows}>
@@ -1017,8 +1016,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
               styles.list,
               railClear(inPane ? 'left' : 'right', 20),
               { paddingTop: listTopPad },
-              isSelectMode && styles.listWithBulkBar,
-            ]}
+              ]}
           >
 {explorerOrTrashHead()}
             {(trashOpen ? trashedFiles : listedFiles).map((item) =>
@@ -1120,9 +1118,6 @@ const makeStyles = (t: Theme) =>
     flexWrap: 'wrap',
     alignItems: 'flex-start',
     gap: 12,
-  },
-  listWithBulkBar: {
-    paddingBottom: 90,
   },
   cardMenuBackdrop: {
     backgroundColor: 'rgba(17,24,39,0.45)',

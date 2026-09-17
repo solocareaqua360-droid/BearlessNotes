@@ -90,7 +90,7 @@ import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useBlurTarget } from '../components/GlassTarget';
-import { NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
+import { useDockClearance } from '../navigation/dockGeometry';
 import { useDockActions, useDockBeads, useDockLeave } from '../navigation/navDock';
 import { ask, confirm } from '../components/surfaces/Ask';
 
@@ -108,7 +108,6 @@ const STICKY_COLORS = ['#FEF3C7', '#DBEAFE', '#DCFCE7', '#FCE7F3', '#EDE9FE', '#
 const SELECTION_COLOR = '#2563EB';
 // The foot the selection bar keeps clear for the dock - the same
 // reckoning DatabaseChrome makes.
-const DOCK_CLEAR = NAV_BOTTOM + NAV_BUTTON + NAV_PADDING * 2 + 12;
 // Kanban columns. A column is exactly wide enough for a default card plus
 // its own padding on both sides, so a card dropped in sits flush.
 // A column with nothing in it still has to be a visible drop target.
@@ -1040,6 +1039,7 @@ export default function BoardScreen() {
   // than that fixed number to keep either from sitting partly behind it.
   // Same fix as BulkActionBar's own bottom offset.
   const bottomInset = useSafeAreaInsets().bottom;
+  const dockClear = useDockClearance();
   const boardBlurTarget = useBlurTarget();
 
   const [title, setTitle] = useState('');
@@ -2622,7 +2622,7 @@ export default function BoardScreen() {
           // own multi-select bar), kept local rather than reusing that
           // component directly since its action set (tag/group/copy)
           // doesn't apply to board cards.
-          <View style={[styles.selectionBarWrap, { bottom: DOCK_CLEAR + bottomInset }]} pointerEvents="box-none">
+          <View style={[styles.selectionBarWrap, { bottom: dockClear + bottomInset }]} pointerEvents="box-none">
             <View style={styles.selectionBarCapsule}>
               <Text style={styles.selectionBarCount}>{selectedCardIds.size}</Text>
               <View style={styles.selectionBarDivider} />

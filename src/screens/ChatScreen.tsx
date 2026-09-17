@@ -14,7 +14,8 @@ import * as Clipboard from 'expo-clipboard';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { openCapture } from '../components/CaptureWindow';
 import { useDockActions, useDockBeads, useDockLeave, useDockShowContext } from '../navigation/navDock';
-import { CHROME_TOP, NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
+import { CHROME_TOP } from '../constants/rail';
+import { useDockClearance } from '../navigation/dockGeometry';
 import {
   ChatMessage,
   deleteChatMessage,
@@ -36,7 +37,6 @@ import { RootStackParamList } from '../navigation';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 
-const DOCK_CLEAR = NAV_BOTTOM + NAV_BUTTON + NAV_PADDING * 2 + 12;
 
 // The history side of «загальний чат». The capture window is where things
 // go IN; this is where they are read back and harvested. Nothing is ever
@@ -56,6 +56,7 @@ export default function ChatScreen() {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
+  const dockClear = useDockClearance();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const isFocused = useIsFocused();
   const showContext = useDockShowContext();
@@ -294,7 +295,7 @@ export default function ChatScreen() {
             ref={listRef}
             data={rows}
             keyExtractor={(row) => row.key}
-            contentContainerStyle={[styles.list, { paddingBottom: DOCK_CLEAR + insets.bottom }]}
+            contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }]}
             onScrollToIndexFailed={() => {}}
             renderItem={({ item }) => {
               if (item.kind === 'day') {

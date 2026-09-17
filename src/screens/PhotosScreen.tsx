@@ -985,7 +985,6 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
               viewMode === 'list' ? styles.list : styles.gridPage,
               railClear(inPane ? 'left' : 'right', viewMode === 'list' ? 20 : 16),
               { paddingTop: listTopPad },
-              isSelectMode && styles.gridWithBulkBar,
             ]}
             ListHeaderComponent={
               trashOpen ? (
@@ -1151,8 +1150,5 @@ const makeStyles = (t: Theme) =>
     // than running under it - the same clearance the calendar keeps.
     paddingRight: 20,
     gap: 10,
-  },
-  gridWithBulkBar: {
-    paddingBottom: 90,
   },
   });
