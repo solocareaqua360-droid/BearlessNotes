@@ -464,14 +464,21 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
+    // The beads must not touch the edges of the screen.
+    paddingHorizontal: 12,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    maxWidth: '96%',
+    // Never wider than the screen. A path grows with every folder you
+    // walk into, and left to itself it pushed the bead beside it clean
+    // off the edge - the capsule scrolls INSIDE, so what has to give is
+    // the capsule's width, not the row's.
+    maxWidth: '100%',
   },
   exitBead: {
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 1,
@@ -482,6 +489,12 @@ const styles = StyleSheet.create({
   stack: {
     // Room under the front capsule for the back one's edge to show in.
     paddingBottom: BEHIND_EDGE,
+    // The one thing in the row allowed to shrink: the beads either side
+    // keep their size, and the card between them takes what is left.
+    // minWidth 0 because a flex child will not shrink below its content
+    // without it, and the content here is a scroller full of folders.
+    flexShrink: 1,
+    minWidth: 0,
   },
   behind: {
     position: 'absolute',
@@ -505,6 +518,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   bead: {
+    // Fixed: a bead never gives up room, it is the card that does.
+    flexShrink: 0,
     width: NAV_BUTTON + NAV_PADDING * 2,
     height: NAV_BUTTON + NAV_PADDING * 2,
     alignItems: 'center',
@@ -546,6 +561,7 @@ const styles = StyleSheet.create({
   },
   trailShell: {
     flexShrink: 1,
+    minWidth: 0,
   },
   stripViewport: {
     width: STRIP_WIDTH,
@@ -589,6 +605,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     height: NAV_BUTTON,
+    minWidth: 0,
   },
   trailStrip: {
     flexDirection: 'row',
