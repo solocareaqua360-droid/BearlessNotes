@@ -1,4 +1,5 @@
 import { createContext, ReactNode, useCallback, useContext, useMemo, useState } from 'react';
+import type { View } from 'react-native';
 
 // What the dock is showing instead of the desks.
 //
@@ -53,7 +54,19 @@ export type DockContext =
       onPick: (key: string) => void;
     };
 
-type Value = { context: DockContext | null; publish: (context: DockContext | null) => void };
+// How the dock's own crumbs become DROP TARGETS for a card being
+// carried. It is a second, independent slot rather than part of the
+// context: the screen publishes where it is (useExplorer) and the carry
+// publishes how to register a target (useExplorerCarry), and those are
+// two different hooks that learn their answers at different moments.
+export type DockTargets = (path: string) => (node: View | null) => void;
+
+type Value = {
+  context: DockContext | null;
+  publish: (context: DockContext | null) => void;
+  targets: DockTargets | null;
+  publishTargets: (targets: DockTargets | null) => void;
+};
 
 const NavDockContext = createContext<Value | null>(null);
 
@@ -84,7 +97,14 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       return next;
     });
   }, []);
-  const value = useMemo(() => ({ context, publish }), [context, publish]);
+  const [targets, setTargets] = useState<DockTargets | null>(null);
+  // Stored through a setter function, or React would call the registrar
+  // itself as a state updater.
+  const publishTargets = useCallback((next: DockTargets | null) => setTargets(() => next), []);
+  const value = useMemo(
+    () => ({ context, publish, targets, publishTargets }),
+    [context, publish, targets, publishTargets]
+  );
   return <NavDockContext.Provider value={value}>{children}</NavDockContext.Provider>;
 }
 
@@ -97,4 +117,14 @@ export function useNavDockContext(): DockContext | null {
 // back to the desks.
 export function useNavDockPublisher() {
   return useContext(NavDockContext)?.publish;
+}
+
+// What the dock's crumbs register themselves with, and what a carry
+// publishes into. Null where nothing is being carried anywhere.
+export function useNavDockTargets(): DockTargets | null {
+  return useContext(NavDockContext)?.targets ?? null;
+}
+
+export function useNavDockTargetPublisher() {
+  return useContext(NavDockContext)?.publishTargets;
 }

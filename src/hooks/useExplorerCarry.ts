@@ -3,7 +3,9 @@ import { ScrollView } from 'react-native';
 import type { FlatList } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
 import type { SharedValue } from 'react-native-reanimated';
+import { useIsFocused } from '@react-navigation/native';
 import { useCardCarry } from './useCardCarry';
+import { useNavDockTargetPublisher } from '../navigation/navDock';
 
 // Longer than a plain short hold - the user's own two-hold-length rule:
 // a short one opens the card's menu, a longer one lifts it.
@@ -157,6 +159,24 @@ export function useExplorerCarry<T extends { id: string }>({
       .reduce<Promise<unknown>>((run, one) => run.then(() => moveItem(one, back)), Promise.resolve());
     setMovedToast(null);
   }
+
+  // The dock's crumbs become drop targets too - see navigation/navDock.
+  // Written here rather than on each screen for the reason this hook
+  // exists at all: every database carries cards the same way, so all five
+  // of them gain this at once and none of them can drift out of it.
+  //
+  // It is the same registry the folder rows use, so a crumb in the dock
+  // and a folder in the list are the same kind of place to let a card go
+  // - and the second finger's tap works on them too, which is what makes
+  // "hold a card, walk down the dock, drop it where you arrive" possible.
+  const carryFocused = useIsFocused();
+  const publishDockTargets = useNavDockTargetPublisher();
+  useEffect(() => {
+    if (!publishDockTargets) return;
+    if (!carryFocused || !active) return;
+    publishDockTargets(carry.registerFolder);
+    return () => publishDockTargets(null);
+  }, [publishDockTargets, carryFocused, active, carry.registerFolder]);
 
   return {
     carry,

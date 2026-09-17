@@ -11,7 +11,7 @@ import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { useIsFocused } from '@react-navigation/native';
 import { GlassPortal } from './GlassPortal';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_GAP, NAV_PADDING } from '../constants/rail';
-import { useNavDockContext } from '../navigation/navDock';
+import { useNavDockContext, useNavDockTargets } from '../navigation/navDock';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -85,6 +85,10 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
   // one press brings it back.
   const [contextHidden, setContextHidden] = useState(false);
   const published = useNavDockContext();
+  // A card being carried can be dropped on a crumb, or stepped into with
+  // the second finger - the same registry the folder rows use, handed up
+  // by whichever screen is carrying (see useExplorerCarry).
+  const dockTargets = useNavDockTargets();
   // Changing desk answers the question by itself: the new screen's own
   // context is the one worth showing.
   useEffect(() => setContextHidden(false), [state.index]);
@@ -288,14 +292,16 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.trailStrip}
           >
-            <Pressable
-              onPress={() => trail.onGo('')}
-              onLongPress={toggleCollapsed}
-              delayLongPress={400}
-              style={styles.trailSegment}
-            >
-              <Text style={[styles.trailLabel, { color: theme.glass.inkMuted }]}>Всі</Text>
-            </Pressable>
+            <View ref={dockTargets?.('')} collapsable={false}>
+              <Pressable
+                onPress={() => trail.onGo('')}
+                onLongPress={toggleCollapsed}
+                delayLongPress={400}
+                style={styles.trailSegment}
+              >
+                <Text style={[styles.trailLabel, { color: theme.glass.inkMuted }]}>Всі</Text>
+              </Pressable>
+            </View>
             {trail.crumbs.map((segment, index) => {
               const isLast = index === trail.crumbs.length - 1;
               const target = trail.crumbs.slice(0, index + 1).join('/');
@@ -305,23 +311,26 @@ export default function FloatingIslandTabBar({ state, navigation }: MaterialTopT
                   {isLast ? (
                     // Where you are, marked the way the dock marks the
                     // desk you are on - the same lens, so the two shapes
-                    // of this one control speak the same language.
+                    // of this one control speak the same language. No
+                    // drop target: a card is already here.
                     <GlassDrop style={styles.trailCurrent} lift="none" blurAmount={0} convex>
                       <Text style={[styles.trailLabel, styles.trailLabelCurrent, { color: theme.glass.ink }]} numberOfLines={1}>
                         {segment}
                       </Text>
                     </GlassDrop>
                   ) : (
-                    <Pressable
-                      onPress={() => trail.onGo(target)}
-                      onLongPress={toggleCollapsed}
-                      delayLongPress={400}
-                      style={styles.trailSegment}
-                    >
-                      <Text style={[styles.trailLabel, { color: theme.glass.inkMuted }]} numberOfLines={1}>
-                        {segment}
-                      </Text>
-                    </Pressable>
+                    <View ref={dockTargets?.(target)} collapsable={false}>
+                      <Pressable
+                        onPress={() => trail.onGo(target)}
+                        onLongPress={toggleCollapsed}
+                        delayLongPress={400}
+                        style={styles.trailSegment}
+                      >
+                        <Text style={[styles.trailLabel, { color: theme.glass.inkMuted }]} numberOfLines={1}>
+                          {segment}
+                        </Text>
+                      </Pressable>
+                    </View>
                   )}
                 </View>
               );
