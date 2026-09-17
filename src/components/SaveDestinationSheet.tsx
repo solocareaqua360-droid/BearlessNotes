@@ -41,11 +41,16 @@ type Props = {
   // offer (see boardsOnly).
   onPickToday?: () => void;
   onPickNew?: () => void;
-  onPickExisting?: (documentId: string) => void;
+  // The title comes with the id because a caller that RECORDS where
+  // something went needs the name, and the sheet is holding it already.
+  onPickExisting?: (documentId: string, title: string) => void;
   // Boards and nothing else - the whole note half of the sheet goes.
   boardsOnly?: boolean;
-  onPickNewBoard: () => void;
-  onPickExistingBoard: (boardId: string) => void;
+  // The other way round: notes and nothing else, for something that is
+  // already on a board or has no business being on one.
+  notesOnly?: boolean;
+  onPickNewBoard?: () => void;
+  onPickExistingBoard?: (boardId: string) => void;
   onClose: () => void;
 };
 
@@ -59,6 +64,7 @@ export default function SaveDestinationSheet({
   visible,
   title,
   boardsOnly,
+  notesOnly,
   defaultLabel,
   onPickDefault,
   onPickToday,
@@ -172,7 +178,7 @@ export default function SaveDestinationSheet({
               <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
             ) : (
               filteredDocuments.map((d) => (
-                <Pressable key={d.id} style={styles.row} onPress={() => onPickExisting?.(d.id)}>
+                <Pressable key={d.id} style={styles.row} onPress={() => onPickExisting?.(d.id, d.title || 'Без назви')}>
                   <View style={styles.docIcon}>
                     <Ionicons name="document-text-outline" size={16} color={ACCENT} />
                   </View>
@@ -185,7 +191,9 @@ export default function SaveDestinationSheet({
             </>
             )}
 
-            <Pressable style={styles.row} onPress={onPickNewBoard}>
+            {!notesOnly && (
+            <>
+            <Pressable style={styles.row} onPress={() => onPickNewBoard?.()}>
               <View style={styles.actionIcon}>
                 <Ionicons name="add" size={16} color={ACCENT} />
               </View>
@@ -207,7 +215,7 @@ export default function SaveDestinationSheet({
               <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
             ) : (
               filteredBoards.map((b) => (
-                <Pressable key={b.id} style={styles.row} onPress={() => onPickExistingBoard(b.id)}>
+                <Pressable key={b.id} style={styles.row} onPress={() => onPickExistingBoard?.(b.id)}>
                   <View style={styles.docIcon}>
                     <Ionicons name="grid-outline" size={16} color={ACCENT} />
                   </View>
@@ -216,6 +224,8 @@ export default function SaveDestinationSheet({
                   </Text>
                 </Pressable>
               ))
+            )}
+            </>
             )}
           </ScrollView>
         </View>

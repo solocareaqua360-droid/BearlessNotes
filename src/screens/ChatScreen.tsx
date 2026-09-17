@@ -8,12 +8,26 @@ import { useIsFocused } from '@react-navigation/native';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import ContentColumn from '../components/ContentColumn';
 import RenamePrompt from '../components/RenamePrompt';
-import { notify } from '../components/surfaces/Ask';
+import SaveDestinationSheet from '../components/SaveDestinationSheet';
+import * as Clipboard from 'expo-clipboard';
+import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { openCapture } from '../components/CaptureWindow';
 import { useDockActions, useDockBeads, useDockLeave, useDockShowContext } from '../navigation/navDock';
 import { CHROME_TOP, NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
-import { ChatMessage, markChatMessagesUsed, watchChat } from '../utils/chat';
-import { clipBlocksToNote } from '../utils/copyToNote';
+import {
+  ChatMessage,
+  deleteChatMessage,
+  editChatMessage,
+  markChatMessageTask,
+  markChatMessagesUsed,
+  watchChat,
+} from '../utils/chat';
+import {
+  appendBlocksToToday,
+  clipBlocksToNote,
+  copyObjectsToNote,
+  createTaskInToday,
+} from '../utils/copyToNote';
 import { formatShortDate } from '../utils/dateLocale';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { Block } from '../types';
@@ -49,7 +63,12 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Which messages are on their way somewhere - one from its own menu, or
+  // everything chosen in select mode. The destination sheet and the name
+  // prompt both read this, so one path serves both.
+  const [sending, setSending] = useState<string[] | null>(null);
   const [naming, setNaming] = useState(false);
+  const [editing, setEditing] = useState<ChatMessage | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(
@@ -96,7 +115,7 @@ export default function ChatScreen() {
           {
             key: 'note',
             icon: 'document-text-outline',
-            onPress: () => setNaming(true),
+            onPress: () => setSending([...selected]),
             closesStack: true,
           },
         ]
@@ -119,32 +138,117 @@ export default function ChatScreen() {
     });
   }
 
-  async function gatherIntoNote(title: string) {
-    const chosen = messages.filter((m) => selected.has(m.id));
-    if (chosen.length === 0) {
-      setNaming(false);
-      return;
-    }
-    setBusy(true);
-    try {
-      const blocks: Block[] = chosen.map((m) => ({
+  // The messages on their way somewhere, as blocks. New ids: the message
+  // stays in the chat, so what lands in the note is a copy of it.
+  function blocksFor(ids: string[]): { chosen: ChatMessage[]; blocks: Block[] } {
+    const chosen = messages.filter((m) => ids.includes(m.id));
+    return {
+      chosen,
+      blocks: chosen.map((m) => ({
         id: newBlockId(),
         text: m.text,
-        type: 'paragraph',
+        type: 'paragraph' as const,
         createdAt: m.createdAt,
-      }));
-      const documentId = await clipBlocksToNote(title.trim() || 'Без назви', blocks);
+      })),
+    };
+  }
+
+  function doneSending() {
+    setSending(null);
+    setNaming(false);
+    setSelected(new Set());
+    setIsSelectMode(false);
+  }
+
+  // Into a note that already exists, or into today's - the two that need
+  // no name. A new one asks for one first (see gatherIntoNewNote).
+  async function sendInto(where: 'today' | { id: string; title: string }) {
+    const ids = sending ?? [];
+    const { chosen, blocks } = blocksFor(ids);
+    if (chosen.length === 0) return doneSending();
+    setBusy(true);
+    try {
+      const documentId =
+        where === 'today'
+          ? await appendBlocksToToday(blocks, [])
+          : await copyObjectsToNote(where.id, blocks, []);
+      const title = where === 'today' ? `Сьогодні · ${formatShortDate(new Date())}` : where.title;
+      await markChatMessagesUsed(chosen.map((m) => m.id), documentId, title);
+      doneSending();
+      navigation.navigate('Editor', { documentId });
+    } catch (e) {
+      notify('Не збереглося', (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function gatherIntoNewNote(title: string) {
+    const ids = sending ?? [];
+    const { chosen, blocks } = blocksFor(ids);
+    if (chosen.length === 0) return doneSending();
+    setBusy(true);
+    try {
+      const name = title.trim() || 'Без назви';
+      const documentId = await clipBlocksToNote(name, blocks);
       // The message stays where it is and says where it went.
-      await markChatMessagesUsed(chosen.map((m) => m.id), documentId, title.trim() || 'Без назви');
-      setNaming(false);
-      setSelected(new Set());
-      setIsSelectMode(false);
+      await markChatMessagesUsed(chosen.map((m) => m.id), documentId, name);
+      doneSending();
       navigation.navigate('Editor', { documentId, offerBoard: true });
     } catch (e) {
       notify('Не збереглося', (e as Error).message);
     } finally {
       setBusy(false);
     }
+  }
+
+  // Everything one message can become, in the menu every list in this app
+  // opens on a long press.
+  async function openMessageMenu(message: ChatMessage) {
+    const choice = await ask({
+      title: message.text.length > 60 ? `${message.text.slice(0, 60)}…` : message.text,
+      actions: [
+        { id: 'copy', label: 'Копіювати', icon: 'copy-outline' },
+        { id: 'edit', label: 'Виправити', icon: 'pencil-outline' },
+        { id: 'note', label: 'У нотатку…', icon: 'document-text-outline' },
+        { id: 'task', label: 'Зробити справою', icon: 'checkbox-outline' },
+        { id: 'select', label: 'Вибрати кілька', icon: 'checkmark-circle-outline' },
+        { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' },
+      ],
+    });
+    if (choice === 'copy') await Clipboard.setStringAsync(message.text);
+    else if (choice === 'edit') setEditing(message);
+    else if (choice === 'note') setSending([message.id]);
+    else if (choice === 'task') makeTask(message);
+    else if (choice === 'select') {
+      setIsSelectMode(true);
+      setSelected(new Set([message.id]));
+    } else if (choice === 'delete') {
+      const sure = await confirm({
+        title: 'Видалити повідомлення?',
+        message: 'Це єдине, що справді прибирає його з чату.',
+        confirmLabel: 'Видалити',
+      });
+      if (sure) await deleteChatMessage(message.id).catch((e: Error) => notify('Не вдалося', e.message));
+    }
+  }
+
+  // A checkbox in TODAY's daily note - which is where every task in this
+  // app lives, so it shows up in the calendar's day and in Справи at once.
+  async function makeTask(message: ChatMessage) {
+    try {
+      const { taskId, documentId } = await createTaskInToday(message.text);
+      await markChatMessageTask(message.id, taskId, documentId);
+    } catch (e) {
+      notify('Не вдалося створити справу', (e as Error).message);
+    }
+  }
+
+  async function saveEdit(text: string) {
+    const message = editing;
+    setEditing(null);
+    if (!message || !text.trim()) return;
+    await editChatMessage(message.id, text).catch((e: Error) => notify('Не збереглося', e.message));
   }
 
   return (
@@ -184,8 +288,7 @@ export default function ChatScreen() {
                   onPress={() => (isSelectMode ? toggle(message.id) : undefined)}
                   onLongPress={() => {
                     if (isSelectMode) return;
-                    setIsSelectMode(true);
-                    setSelected(new Set([message.id]));
+                    openMessageMenu(message);
                   }}
                 >
                   <Text style={styles.bubbleText}>{message.text}</Text>
@@ -196,6 +299,16 @@ export default function ChatScreen() {
                         minute: '2-digit',
                       })}
                     </Text>
+                    {Object.entries(message.tasks ?? {}).map(([taskId, documentId]) => (
+                      <Pressable
+                        key={taskId}
+                        style={styles.usedChip}
+                        onPress={() => navigation.navigate('Editor', { documentId })}
+                      >
+                        <Ionicons name="checkbox-outline" size={11} color={theme.accent} />
+                        <Text style={[styles.usedLabel, { color: theme.accent }]}>Справа</Text>
+                      </Pressable>
+                    ))}
                     {used.map(([documentId, documentTitle]) => (
                       <Pressable
                         key={documentId}
@@ -225,14 +338,39 @@ export default function ChatScreen() {
         )}
       </ContentColumn>
 
+      {/* Where the chosen messages go. Notes only: a message is text, and
+          what it becomes is a note - putting it straight on a board is
+          what the note's own offer is for. */}
+      <SaveDestinationSheet
+        visible={!!sending && !naming}
+        notesOnly
+        title={sending && sending.length > 1 ? `${sending.length} повідомлень у…` : 'Повідомлення у…'}
+        onPickToday={() => sendInto('today')}
+        onPickNew={() => setNaming(true)}
+        onPickExisting={(documentId, documentTitle) => sendInto({ id: documentId, title: documentTitle })}
+        onClose={() => setSending(null)}
+      />
+
       <RenamePrompt
         visible={naming}
         title="Нотатка з думок"
         initialValue={`Думки · ${formatShortDate(new Date())}`}
         placeholder="Назва нотатки"
         busy={busy}
-        onCancel={() => setNaming(false)}
-        onSave={gatherIntoNote}
+        onCancel={() => {
+          setNaming(false);
+          setSending(null);
+        }}
+        onSave={gatherIntoNewNote}
+      />
+
+      <RenamePrompt
+        visible={!!editing}
+        title="Виправити"
+        initialValue={editing?.text ?? ''}
+        placeholder="Текст повідомлення"
+        onCancel={() => setEditing(null)}
+        onSave={saveEdit}
       />
     </View>
   );

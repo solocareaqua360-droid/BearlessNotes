@@ -43,7 +43,8 @@ import CardCarryOverlay from '../components/CardCarryOverlay';
 import UndoToast from '../components/UndoToast';
 import { useSortPref } from '../hooks/useSortPref';
 import { cancelReminder, scheduleReminder, type ReminderKind } from '../utils/reminders';
-import { dateKey, formatShortDate, parseDateKey } from '../utils/dateLocale';
+import { formatShortDate, parseDateKey } from '../utils/dateLocale';
+import { createTaskInToday } from '../utils/copyToNote';
 import { sortItems } from '../utils/sortItems';
 import ContentColumn from '../components/ContentColumn';
 import { BlurView } from 'expo-blur';
@@ -59,11 +60,6 @@ import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fo
 import { confirm, notify } from '../components/surfaces/Ask';
 
 const ACCENT = '#4E9A6B';
-
-// The same id every block gets in the editor - see its generateId.
-function newBlockId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
 // The foot the list keeps clear for the dock - the same reckoning
 // DatabaseChrome makes.
 const DOCK_CLEAR = NAV_BOTTOM + NAV_BUTTON + NAV_PADDING * 2 + 12;
@@ -375,24 +371,7 @@ export default function TasksScreen() {
     }
     setCreatingBusy(true);
     try {
-      const key = dateKey(new Date());
-      const documentId = `day_${key}`;
-      const documentRef = doc(db, 'documents', documentId);
-      const data = (await getDoc(documentRef)).data();
-      const now = Date.now();
-      const block: Block = { id: newBlockId(), type: 'checkbox', text, checked: false, createdAt: now };
-      const blocks: Block[] = [...((data?.blocks as Block[] | undefined) ?? []), block];
-      await setDoc(
-        documentRef,
-        {
-          blocks,
-          updatedAt: now,
-          calendarDate: key,
-          ...(data ? {} : { title: '', createdAt: now }),
-        },
-        { merge: true }
-      );
-      await setDoc(doc(db, 'tasks', block.id), { text, checked: false, documentId, updatedAt: now, createdAt: now });
+      await createTaskInToday(text);
       setCreating(false);
     } catch (e) {
       notify('Не збереглося', (e as Error).message);

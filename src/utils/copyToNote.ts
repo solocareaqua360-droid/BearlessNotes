@@ -2,6 +2,7 @@ import {
   arrayUnion,
   collection,
   doc,
+  getDoc,
   updateDoc,
 } from '../firestore';
 import { addDoc, setDoc } from './owned';
@@ -227,4 +228,42 @@ export async function clipBlocksToNote(title: string, blocks: Block[]): Promise<
     updatedAt: now,
   });
   return ref.id;
+}
+
+// A task made from outside a note - the tasks screen's own "+", and a
+// message in the chat turned into something to do. It is a checkbox block
+// in TODAY's daily note, which is what every task in this app already is:
+// no second kind of record, so the eight writers that reach a task
+// through its document need no second path. The mirror is written here
+// too, so the task shows up in the list at once rather than waiting for
+// the note to be opened. Carries the calendar's own `calendarDate` field,
+// or the day would not count as filled.
+export async function createTaskInToday(
+  text: string
+): Promise<{ taskId: string; documentId: string }> {
+  const key = dateKey(new Date());
+  const documentId = `day_${key}`;
+  const documentRef = doc(db, 'documents', documentId);
+  const data = (await getDoc(documentRef)).data();
+  const now = Date.now();
+  const block: Block = { id: generateId(), type: 'checkbox', text, checked: false, createdAt: now };
+  const blocks: Block[] = [...((data?.blocks as Block[] | undefined) ?? []), block];
+  await setDoc(
+    documentRef,
+    {
+      blocks,
+      updatedAt: now,
+      calendarDate: key,
+      ...(data ? {} : { title: '', createdAt: now }),
+    },
+    { merge: true }
+  );
+  await setDoc(doc(db, 'tasks', block.id), {
+    text,
+    checked: false,
+    documentId,
+    updatedAt: now,
+    createdAt: now,
+  });
+  return { taskId: block.id, documentId };
 }
