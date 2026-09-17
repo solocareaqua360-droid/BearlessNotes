@@ -628,18 +628,29 @@ export default function CalendarScreen() {
     paddingBottom: 32 * visibleAmount.value,
     borderWidth: visibleAmount.value,
   }));
+  // Folded no longer means "a week" - it means the month's NAME, and
+  // nothing else. The week strip's job (moving from day to day) went to
+  // the dock, where it is under the thumb; what is left up here is the
+  // month's SHAPE, which the dock cannot show and which the user needs
+  // only now and then ("інколи треба подивитись на місяць"). So the
+  // month is something you ask for, not a standing charge for the
+  // occasions you want it.
   const calendarWrapStyle = useAnimatedStyle(() => {
-    const navHeight = MONTH_NAV_HEIGHT * expandAmount.value;
-    const gridHeight = weekRowHeight + (monthAreaHeight - weekRowHeight) * expandAmount.value;
-    const weekdayHeight = onlyFilledDays ? 0 : WEEKDAY_HEADER_HEIGHT;
+    // The month's name stands whether the grid is open or not: it is the
+    // handle the grid opens from, and the answer to "which month am I
+    // looking at" when it is closed.
+    const gridHeight = onlyFilledDays ? weekRowHeight : monthAreaHeight * expandAmount.value;
+    const weekdayHeight = onlyFilledDays ? 0 : WEEKDAY_HEADER_HEIGHT * expandAmount.value;
     return {
-      height: (navHeight + weekdayHeight + gridHeight) * visibleAmount.value,
+      height: (MONTH_NAV_HEIGHT + weekdayHeight + gridHeight) * visibleAmount.value,
       opacity: visibleAmount.value,
     };
   }, [weekRowHeight, monthAreaHeight, onlyFilledDays]);
-  const monthNavStyle = useAnimatedStyle(() => ({
-    height: MONTH_NAV_HEIGHT * expandAmount.value,
+  const monthNavStyle = useAnimatedStyle(() => ({ height: MONTH_NAV_HEIGHT }));
+  const weekdayHeaderStyle = useAnimatedStyle(() => ({
+    height: WEEKDAY_HEADER_HEIGHT * expandAmount.value,
     opacity: expandAmount.value,
+    overflow: 'hidden',
   }));
   // Dragged up and down, the calendar folds between its week strip and its
   // month grid - the same value the button moves, moved by the finger.
@@ -664,7 +675,7 @@ export default function CalendarScreen() {
         .onUpdate((e) => {
           // The drag is measured against the height the calendar actually
           // gains, so the grid follows the finger rather than a guess.
-          const travel = Math.max(1, monthAreaHeight - weekRowHeight);
+          const travel = Math.max(1, monthAreaHeight);
           const next = expandAtDragStart.value + e.translationY / travel;
           expandAmount.value = Math.min(1, Math.max(0, next));
         })
@@ -707,9 +718,12 @@ export default function CalendarScreen() {
     [foldGesture, historyGesture]
   );
 
+  // Closed, there is no grid at all any more - only the month's name
+  // above it. The "only filled days" strip is the exception: it is not a
+  // week and has no month behind it, so it simply stands.
   const gridClipStyle = useAnimatedStyle(() => ({
-    height: weekRowHeight + (monthAreaHeight - weekRowHeight) * expandAmount.value,
-  }), [weekRowHeight, monthAreaHeight]);
+    height: onlyFilledDays ? weekRowHeight : monthAreaHeight * expandAmount.value,
+  }), [weekRowHeight, monthAreaHeight, onlyFilledDays]);
   const weekLayerStyle = useAnimatedStyle(() => ({ opacity: 1 - expandAmount.value }));
   const monthLayerStyle = useAnimatedStyle(() => ({ opacity: expandAmount.value }));
 
@@ -942,9 +956,26 @@ export default function CalendarScreen() {
                 <Pressable hitSlop={10} onPress={() => changeVisibleMonth(-1)}>
                   <Ionicons name="chevron-back" size={18} color={theme.ink.muted} />
                 </Pressable>
-                <Text style={styles.monthNavLabel}>
-                  {MONTH_FULL[visibleMonth.month]} {visibleMonth.year}
-                </Text>
+                {/* The name IS the switch. Nothing new to learn and
+                    nothing new on the screen: the row that says which
+                    month you are looking at is the row that opens it. */}
+                <Pressable
+                  hitSlop={10}
+                  disabled={isTwoPane || onlyFilledDays}
+                  onPress={() => setIsMonthExpanded((prev) => !prev)}
+                  style={styles.monthNavHandle}
+                >
+                  <Text style={styles.monthNavLabel}>
+                    {MONTH_FULL[visibleMonth.month]} {visibleMonth.year}
+                  </Text>
+                  {!isTwoPane && !onlyFilledDays && (
+                    <Ionicons
+                      name={monthOpen ? 'chevron-up' : 'chevron-down'}
+                      size={14}
+                      color={theme.ink.faint}
+                    />
+                  )}
+                </Pressable>
                 <Pressable hitSlop={10} onPress={() => changeVisibleMonth(1)}>
                   <Ionicons name="chevron-forward" size={18} color={theme.ink.muted} />
                 </Pressable>
@@ -957,16 +988,23 @@ export default function CalendarScreen() {
               // from one filled day to the next), so weekday letters above them
               // would be meaningless. The reclaimed height goes to bigger day
               // cells instead (see FILLED_ROW_HEIGHT).
-              <View style={styles.weekdayHeader}>
+              <Animated.View style={[styles.weekdayHeader, weekdayHeaderStyle]}>
                 {WEEKDAY_SHORT.map((w) => (
                   <Text key={w} style={styles.weekdayHeaderLabel}>
                     {w}
                   </Text>
                 ))}
-              </View>
+              </Animated.View>
             )}
 
             <Animated.View style={[styles.gridClip, gridClipStyle]}>
+              {/* The week strip is gone from here - the dock is the week
+                  now, under the thumb where moving from day to day
+                  belongs. This layer survives for the OTHER strip it also
+                  held: "only filled days", which is not a week at all but
+                  a run of the days that have something on them, and which
+                  the dock does not replace. */}
+              {onlyFilledDays && (
               <Animated.View
                 style={[styles.calendarLayer, { height: weekRowHeight }, weekLayerStyle]}
                 pointerEvents={monthOpen ? 'none' : 'auto'}
@@ -1041,6 +1079,7 @@ export default function CalendarScreen() {
                   </ScrollView>
                 )}
               </Animated.View>
+              )}
 
               <Animated.View
                 style={[styles.calendarLayer, { height: monthAreaHeight }, monthLayerStyle]}
@@ -1386,6 +1425,11 @@ const makeStyles = (t: Theme) =>
     alignItems: 'center',
     justifyContent: 'center',
     gap: 18,
+  },
+  monthNavHandle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   monthNavLabel: {
     fontSize: 16,
