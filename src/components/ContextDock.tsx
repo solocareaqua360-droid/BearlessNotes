@@ -61,9 +61,11 @@ const FLAT = {
   specularIntensity: 0,
   rimOpacity: 0,
   vignetteIntensity: 0,
-  glassOpacity: 0.78,
+  glassOpacity: 0.8,
   blurAmount: 70,
   lift: 'none' as const,
+  // A slab, not a bead: the same density top to bottom.
+  bodyEven: true,
 };
 // The frost's own colour. NOT the theme's glass body: in the black theme
 // that is white at 5% - a whisper, right for its capsules and wrong here,
@@ -71,7 +73,13 @@ const FLAT = {
 // the dark themes, a light grey frost on the white one - the reference
 // is dark on a dark screen and would be light on a light one.
 function frostFor(themeKey: string): string {
-  return themeKey === 'white' ? '#D9DCE1' : '#1C1B19';
+  // The white theme's frost has to stand off WHITE PAPER, not off the
+  // theme's pale ground - the calendar's note and every open document
+  // are white, and the dock floats over them. At #D9DCE1 a bead came
+  // out (225,229,232) on (255,255,255): a full circle by measurement,
+  // and "обрізана" to the eye, because its rounded ends were the first
+  // thing to vanish into the page.
+  return themeKey === 'white' ? '#C6CBD2' : '#1C1B19';
 }
 // Sizes as FRACTIONS OF THE SCREEN'S WIDTH, read off the reference and
 // our own dock side by side at the same pixel scale. Not points: every

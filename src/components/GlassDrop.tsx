@@ -51,6 +51,7 @@ export default function GlassDrop({
   // when it has a reason - see tokens.ts for what each one is.
   glassOpacity,
   glassBody,
+  bodyEven,
   blurAmount,
   specularIntensity,
   rimOpacity,
@@ -73,6 +74,12 @@ export default function GlassDrop({
   // - the black theme's body is WHITE at 5%, right for a whisper of a
   // capsule and wrong for a dense frosted one.
   glassBody?: string;
+  // An even body, the same density top to bottom. The default is a
+  // touch denser at the top - the light coming from above - which a
+  // bead of glass wants and a slab of frost does not: on a white ground
+  // the lighter foot of a small round drop vanishes first, and the
+  // circle reads as cut off at the bottom.
+  bodyEven?: boolean;
   blurAmount?: number;
   specularIntensity?: number;
   rimOpacity?: number;
@@ -131,8 +138,8 @@ export default function GlassDrop({
               {/* The body. Lighter where the light comes from, so even the
                   clean middle is not a flat wash of one colour. */}
               <LinearGradient id={`${uid}-body`} x1="0" y1="0" x2="0.35" y2="1">
-                <Stop offset="0" stopColor={glassBody ?? g.body} stopOpacity={(glassOpacity ?? g.opacity) * 1.15} />
-                <Stop offset="1" stopColor={glassBody ?? g.body} stopOpacity={(glassOpacity ?? g.opacity) * 0.85} />
+                <Stop offset="0" stopColor={glassBody ?? g.body} stopOpacity={(glassOpacity ?? g.opacity) * (bodyEven ? 1 : 1.15)} />
+                <Stop offset="1" stopColor={glassBody ?? g.body} stopOpacity={(glassOpacity ?? g.opacity) * (bodyEven ? 1 : 0.85)} />
               </LinearGradient>
               {/* The outer specular: brightest at the top-left corner and
                   gone by the middle of the run, which is what stops it
