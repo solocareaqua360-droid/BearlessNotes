@@ -74,6 +74,8 @@ const HERE_FILL = 'rgba(255,255,255,0.16)';
 // проблеми з розмірами". Fractions cannot be wrong about density.
 //   bead diameter    0.111   capsule height   0.148 (a third taller)
 //   bead-to-capsule  0.037   edge to bead     0.076
+// The way out inside the card: chevron, icon, a hairline - said in points.
+const LEAVE_W = 50;
 const BEAD_F = 0.111;
 const CARD_F = 0.148;
 const GAP_F = 0.037;
@@ -105,7 +107,6 @@ export default function ContextDock() {
   // a capsule as long as its centre is no nearer the end than its
   // radius; laid edge to edge from the card's inner padding, the first
   // and last centres sit exactly where the capsule's own caps are.
-  const DESK = Math.min(CARD_BUTTON, Math.floor((cardWidth - CARD_PAD * 2) / 4));
   // Every radius is SAID as half the size, never left as 999. Android
   // works a "999" out from the size it knows at the moment it draws the
   // background, and on the first frame that size was not there yet -
@@ -310,9 +311,12 @@ export default function ContextDock() {
   // which has no root to walk to and is simply put away. Inside folders
   // the first crumb already goes to the root, and two buttons for one
   // job is what the user rightly refused.
-  const showBead = !trail && !!leave;
-  // What the bead carries: the thing it is LEAVING, when there is one.
+  const showLeave = !trail && !!leave;
+  // What it carries: the thing it is LEAVING, when there is one.
   const icon = ((leave?.icon ?? dock?.icon) as keyof typeof Ionicons.glyphMap) ?? 'ellipse-outline';
+  // Four desks fit in the card whether or not the way out is riding at
+  // its left edge - the card does not grow, so the desks give.
+  const DESK = Math.min(CARD_BUTTON, Math.floor((cardWidth - CARD_PAD * 2 - (showLeave ? LEAVE_W : 0)) / 4));
 
   return (
     <GlassPortal>
@@ -339,15 +343,6 @@ export default function ContextDock() {
               the same control sat in a different spot on each - "док
               зміщений відносно того що є на екрані документів". */}
           {beads.left ? <Bead bead={beads.left} theme={theme} size={BEAD} /> : <View style={[styles.beadSlot, dims.bead]} />}
-          {showBead && (
-            <Pressable onPress={stepOut}>
-              <Frost style={[styles.exitBead, { height: BEAD }]} radius={BEAD / 2}>
-                <Ionicons name="chevron-back" size={11} color={theme.glass.inkMuted} />
-                <Ionicons name={icon} size={20} color={theme.glass.ink} />
-              </Frost>
-            </Pressable>
-          )}
-
           <GestureDetector gesture={swipe}>
           <View style={[styles.stack, { width: cardWidth, paddingBottom: BEHIND_EDGE * 2 }]}>
             {/* The card behind, seen as an EDGE and nothing more - a few
@@ -387,12 +382,27 @@ export default function ContextDock() {
               </View>
             )}
 
+          {/* ONE piece of glass for the front card. The way out used to be
+              a bead of its own beside the stack - the user asked for it
+              inside the common block instead: "не виділяй його в окремий
+              кружечок... зроби загальним доком". What it is - a leave, or
+              one day something else - is still open; where it stands is
+              settled. */}
+          <Frost style={[styles.front, dims.card]} radius={CARD_H / 2}>
+          {showLeave && (
+            <Pressable onPress={stepOut} style={[styles.leave, { height: CARD_H }]}>
+              <Ionicons name="chevron-back" size={11} color={theme.glass.inkMuted} />
+              <Ionicons name={icon} size={20} color={theme.glass.ink} />
+              <View style={[styles.leaveRule, { backgroundColor: theme.glass.inkMuted, opacity: 0.4 }]} />
+            </Pressable>
+          )}
+          <View style={styles.face}>
           {showing === 'desks' && desks && (
             desks.collapsed ? (
               // The dots a home screen uses to say which page you are on
               // - still a way to get there, and still what "collapsed"
               // has meant here since the user first asked for it.
-              <Frost style={[styles.dotsShell, dims.card]} radius={CARD_H / 2}>
+              <View style={[styles.dotsShell, dims.card]}>
                 <Pressable
                   style={styles.dotsRow}
                   onLongPress={desks.onToggleCollapsed}
@@ -416,9 +426,9 @@ export default function ContextDock() {
                     </Pressable>
                   ))}
                 </Pressable>
-              </Frost>
+              </View>
             ) : (
-              <Frost style={[styles.shell, dims.card]} radius={CARD_H / 2}>
+              <View style={[styles.shell, dims.card]}>
                 <Pressable
                   style={[styles.actionRow, styles.spread]}
                   onLongPress={desks.onToggleCollapsed}
@@ -462,12 +472,12 @@ export default function ContextDock() {
                     </Pressable>
                   ))}
                 </Pressable>
-              </Frost>
+              </View>
             )
           )}
 
           {showing === 'context' && strip && (
-            <Frost style={[styles.shell, dims.card]} radius={CARD_H / 2}>
+            <View style={[styles.shell, dims.card]}>
               <ScrollView
                 ref={stripRef}
                 horizontal
@@ -528,11 +538,11 @@ export default function ContextDock() {
                   );
                 })}
               </ScrollView>
-            </Frost>
+            </View>
           )}
 
           {showing === 'context' && trail && (
-            <Frost style={[styles.shell, styles.trailShell, dims.card]} radius={CARD_H / 2}>
+            <View style={[styles.shell, styles.trailShell, dims.card]}>
               <View style={[styles.trailRow, dims.rowHeight]}>
                 <ScrollView
                   ref={trailRef}
@@ -583,11 +593,11 @@ export default function ContextDock() {
                   })}
                 </ScrollView>
               </View>
-            </Frost>
+            </View>
           )}
 
           {showing === 'actions' && !!actions?.length && (
-            <Frost style={[styles.shell, styles.actionsShell, dims.card]} radius={CARD_H / 2}>
+            <View style={[styles.shell, styles.actionsShell, dims.card]}>
               {/* Scrolls, like the path does. A screen with five things
                   its list can be done TO is not a screen with a design
                   problem - the card simply holds what fits and the rest
@@ -624,8 +634,10 @@ export default function ContextDock() {
                   </Pressable>
                 ))}
               </ScrollView>
-            </Frost>
+            </View>
           )}
+          </View>
+          </Frost>
           </View>
           </GestureDetector>
           {beads.right ? <Bead bead={beads.right} theme={theme} size={BEAD} /> : <View style={[styles.beadSlot, dims.bead]} />}
@@ -711,13 +723,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  exitBead: {
+  front: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  face: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  leave: {
+    width: LEAVE_W,
     flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 1,
-    paddingLeft: 9,
-    paddingRight: 12,
+  },
+  leaveRule: {
+    position: 'absolute',
+    right: 0,
+    top: '30%',
+    bottom: '30%',
+    width: StyleSheet.hairlineWidth,
   },
   stack: {
     // Room under the front capsule for the cards behind it - exactly as
