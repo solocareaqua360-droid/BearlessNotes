@@ -368,15 +368,39 @@ export function useNavDockLeave(): DockLeave | null {
 }
 
 // What a screen publishes as its own actions - see DockAction.
+//
+// The handlers published are STABLE WRAPPERS that call the latest ones
+// through a ref. Actions are deduplicated by signature (key, icon,
+// active), which is right for redrawing - but a handler can close over
+// state the signature knows nothing about, and the dock was then
+// keeping the FIRST handler it ever saw. The calendar's "today" bead
+// read which card was in front from a closure that was several renders
+// old, so its desks/days ring stopped after one step.
 export function useDockActions(actions: DockAction[] | null) {
   const publish = useContext(NavDockContext)?.publishActions;
   const focused = useIsFocused();
   const ref = useRef(actions);
   ref.current = actions;
+  const wrappers = useRef(new Map<string, { onPress: () => void; onLongPress: () => void }>());
   const signature = actionSignature(actions);
   useEffect(() => {
     if (!publish || !focused) return;
-    publish(ref.current);
+    const live = ref.current;
+    publish(
+      live
+        ? live.map((a) => {
+            let w = wrappers.current.get(a.key);
+            if (!w) {
+              w = {
+                onPress: () => ref.current?.find((x) => x.key === a.key)?.onPress(),
+                onLongPress: () => ref.current?.find((x) => x.key === a.key)?.onLongPress?.(),
+              };
+              wrappers.current.set(a.key, w);
+            }
+            return { ...a, onPress: w.onPress, onLongPress: a.onLongPress ? w.onLongPress : undefined };
+          })
+        : null
+    );
     return () => publish(null);
   }, [publish, focused, signature]);
 }
@@ -385,16 +409,25 @@ export function useNavDockActions(): DockAction[] | null {
   return useContext(NavDockContext)?.actions ?? null;
 }
 
-// The two fixed beads either side of the stack - see DockBead.
+// The two fixed beads either side of the stack - see DockBead. Same
+// stable-wrapper rule as the actions, for the same reason.
 export function useDockBeads(left: DockBead | null, right: DockBead | null) {
   const publish = useContext(NavDockContext)?.publishBeads;
   const focused = useIsFocused();
   const ref = useRef({ left, right });
   ref.current = { left, right };
+  const wrap = useRef({
+    left: { onPress: () => ref.current.left?.onPress(), onLongPress: () => ref.current.left?.onLongPress?.() },
+    right: { onPress: () => ref.current.right?.onPress(), onLongPress: () => ref.current.right?.onLongPress?.() },
+  });
   const signature = beadSignature({ left, right });
   useEffect(() => {
     if (!publish || !focused) return;
-    publish(ref.current);
+    const { left: l, right: r } = ref.current;
+    publish({
+      left: l ? { ...l, onPress: wrap.current.left.onPress, onLongPress: l.onLongPress ? wrap.current.left.onLongPress : undefined } : null,
+      right: r ? { ...r, onPress: wrap.current.right.onPress, onLongPress: r.onLongPress ? wrap.current.right.onLongPress : undefined } : null,
+    });
     return () => publish({ left: null, right: null });
   }, [publish, focused, signature]);
 }
