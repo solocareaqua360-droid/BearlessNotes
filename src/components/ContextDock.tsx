@@ -96,6 +96,16 @@ export default function ContextDock() {
   // bunched up on the left. A card is four buttons wide whatever it
   // holds: the width between the beads, every time, on every screen.
   const cardWidth = rowWidth - BEAD * 2 - GAP * 2;
+  // A desk button is the biggest circle FOUR of which fit in the card
+  // side by side - and never more than the card's own inner height.
+  // At full card height, four of them were a few points wider than the
+  // card, so the last desk's circle stood closer to the capsule's end
+  // than its own radius and the capsule's rounded end took a bite out
+  // of it: "обрізана, як неповна фаза місяця". A circle is whole inside
+  // a capsule as long as its centre is no nearer the end than its
+  // radius; laid edge to edge from the card's inner padding, the first
+  // and last centres sit exactly where the capsule's own caps are.
+  const DESK = Math.min(CARD_BUTTON, Math.floor((cardWidth - CARD_PAD * 2) / 4));
   // Every radius is SAID as half the size, never left as 999. Android
   // works a "999" out from the size it knows at the moment it draws the
   // background, and on the first frame that size was not there yet -
@@ -416,19 +426,14 @@ export default function ContextDock() {
                         // A lens over the bar, not a pane: the tab you
                         // are on, marked the way this dock marks
                         // everything you are on.
-                        <View style={[styles.actionButton, dims.button]}>
+                        <View style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: DESK / 2 }]}>
                           {/* A real circle. The View's own borderRadius -
                               999, then half the size, then anything - kept
                               coming up a rounded SQUARE on Android for the
                               desk you are on. An SVG circle has no radius
                               to get wrong. */}
-                          <Svg
-                            width={CARD_BUTTON}
-                            height={CARD_BUTTON}
-                            style={StyleSheet.absoluteFill}
-                            pointerEvents="none"
-                          >
-                            <Circle cx={CARD_BUTTON / 2} cy={CARD_BUTTON / 2} r={CARD_BUTTON / 2} fill={HERE_FILL} />
+                          <Svg width={DESK} height={DESK} style={StyleSheet.absoluteFill} pointerEvents="none">
+                            <Circle cx={DESK / 2} cy={DESK / 2} r={DESK / 2} fill={HERE_FILL} />
                           </Svg>
                           <Ionicons
                             name={desk.icon as keyof typeof Ionicons.glyphMap}
@@ -437,7 +442,7 @@ export default function ContextDock() {
                           />
                         </View>
                       ) : (
-                        <View style={[styles.actionButton, dims.button]}>
+                        <View style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: DESK / 2 }]}>
                           <Ionicons
                             name={desk.icon as keyof typeof Ionicons.glyphMap}
                             size={22}
@@ -728,7 +733,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   spread: {
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
+    flex: 1,
   },
   actionsShell: {},
   beadSlot: {
