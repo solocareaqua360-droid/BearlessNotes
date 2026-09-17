@@ -57,6 +57,7 @@ const BEHIND_INSET = 5;
 // the shape itself is settled.
 const FACE_CONTEXT = '#1D4ED8';
 const FACE_ACTIONS = '#B91C1C';
+const FACE_DESKS = '#15803D';
 
 export default function ContextDock() {
   const theme = useTheme();
@@ -249,27 +250,38 @@ export default function ContextDock() {
                 stack's back card shows is that it is there. */}
             {/* One edge per card behind, so the stack says its own depth
                 rather than leaving you to guess how far round you are. */}
-            {Array.from({ length: behind }).map((_, i) => (
-              <GlassDrop
-                key={i}
-                style={[
-                  styles.behind,
-                  {
-                    bottom: -(BEHIND_EDGE * i),
-                    left: BEHIND_INSET * (i + 1),
-                    right: BEHIND_INSET * (i + 1),
-                  },
-                  i === 0 ? styles.faceActions : styles.faceContext,
-                ]}
-              />
-            ))}
+            {Array.from({ length: behind }).map((_, i) => {
+              // The edge shows the colour of the card it actually IS, in
+              // the order the swipe will reach it - so the stack says
+              // not only how deep it goes but what is coming next.
+              const at = faces.indexOf(showing);
+              const next = faces[(at + 1 + i) % faces.length];
+              return (
+                <GlassDrop
+                  key={i}
+                  style={[
+                    styles.behind,
+                    {
+                      bottom: -(BEHIND_EDGE * i),
+                      left: BEHIND_INSET * (i + 1),
+                      right: BEHIND_INSET * (i + 1),
+                    },
+                    next === 'actions'
+                      ? styles.faceActions
+                      : next === 'desks'
+                        ? styles.faceDesks
+                        : styles.faceContext,
+                  ]}
+                />
+              );
+            })}
 
           {showing === 'desks' && desks && (
             desks.collapsed ? (
               // The dots a home screen uses to say which page you are on
               // - still a way to get there, and still what "collapsed"
               // has meant here since the user first asked for it.
-              <GlassDrop style={styles.dotsShell}>
+              <GlassDrop style={[styles.dotsShell, styles.faceDesks]}>
                 <Pressable
                   style={styles.dotsRow}
                   onLongPress={desks.onToggleCollapsed}
@@ -295,7 +307,7 @@ export default function ContextDock() {
                 </Pressable>
               </GlassDrop>
             ) : (
-              <GlassDrop style={[styles.shell, styles.faceContext]}>
+              <GlassDrop style={[styles.shell, styles.faceDesks]}>
                 <Pressable
                   style={styles.actionRow}
                   onLongPress={desks.onToggleCollapsed}
@@ -575,6 +587,9 @@ const styles = StyleSheet.create({
   },
   faceActions: {
     backgroundColor: FACE_ACTIONS,
+  },
+  faceDesks: {
+    backgroundColor: FACE_DESKS,
   },
   actionRow: {
     flexDirection: 'row',
