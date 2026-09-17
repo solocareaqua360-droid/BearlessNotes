@@ -52,6 +52,7 @@ export default function GlassDrop({
   glassOpacity,
   glassBody,
   bodyEven,
+  blurTint,
   blurAmount,
   specularIntensity,
   rimOpacity,
@@ -80,6 +81,9 @@ export default function GlassDrop({
   // the lighter foot of a small round drop vanishes first, and the
   // circle reads as cut off at the bottom.
   bodyEven?: boolean;
+  // The blur's own tint, where the theme's is the wrong one. The tags
+  // drawer blurs 'dark' in every theme and the dock matches the drawer.
+  blurTint?: 'light' | 'dark' | 'default';
   blurAmount?: number;
   specularIntensity?: number;
   rimOpacity?: number;
@@ -125,7 +129,7 @@ export default function GlassDrop({
         {!insideTarget && (
           <BlurView
             intensity={blurAmount ?? g.blur}
-            tint={g.blurTint}
+            tint={blurTint ?? g.blurTint}
             blurMethod="dimezisBlurView"
             blurTarget={blurTarget ?? undefined}
             style={StyleSheet.absoluteFill}

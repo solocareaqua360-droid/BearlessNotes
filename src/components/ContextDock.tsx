@@ -50,37 +50,23 @@ const BEHIND_EDGE = 3;
 // edges nearly line up, which is what makes it one stack instead of
 // three pills of decreasing size.
 const BEHIND_INSET = 5;
-// The dock's own glass, measured off the reference (a Samsung lock
-// screen) rather than inherited from the theme. The theme's drop is a
-// bead of glass - a lit contour, a rim inside it, a shadow under it, a
-// convex body. The reference is none of those: FLAT frosted glass, dense
-// enough that the picture behind is only a tint, with no edge drawn at
-// all. "Форма колір розмір положення все не туди" was the theme's glass
-// standing where the reference's frost should be.
+// The dock is made of the TAGS DRAWER'S material - the user's own
+// pointer, and the first one that has matched by their eye: "у шторки
+// рівень блюру і структури матеріалу який ідеально підійде для нашого
+// дока". The drawer is a BlurView at 60, tinted dark in every theme,
+// under one flat layer of the theme's own `surface`. So is this, layer
+// for layer: no specular, no rim, no vignette, no lift, an even body -
+// the surface colour at its own alpha over the same blur.
 const FLAT = {
   specularIntensity: 0,
   rimOpacity: 0,
   vignetteIntensity: 0,
-  glassOpacity: 0.8,
-  blurAmount: 70,
+  glassOpacity: 1,
+  blurAmount: 60,
+  blurTint: 'dark' as const,
   lift: 'none' as const,
-  // A slab, not a bead: the same density top to bottom.
   bodyEven: true,
 };
-// The frost's own colour. NOT the theme's glass body: in the black theme
-// that is white at 5% - a whisper, right for its capsules and wrong here,
-// where at 78% it made a white pill with white icons on it. Dark frost on
-// the dark themes, a light grey frost on the white one - the reference
-// is dark on a dark screen and would be light on a light one.
-function frostFor(themeKey: string): string {
-  // The white theme's frost has to stand off WHITE PAPER, not off the
-  // theme's pale ground - the calendar's note and every open document
-  // are white, and the dock floats over them. At #D9DCE1 a bead came
-  // out (225,229,232) on (255,255,255): a full circle by measurement,
-  // and "обрізана" to the eye, because its rounded ends were the first
-  // thing to vanish into the page.
-  return themeKey === 'white' ? '#C6CBD2' : '#1C1B19';
-}
 // Sizes as FRACTIONS OF THE SCREEN'S WIDTH, read off the reference and
 // our own dock side by side at the same pixel scale. Not points: every
 // guess at this phone's density was wrong, and a dock sized in points
@@ -96,7 +82,8 @@ const CARD_PAD = 2;
 
 export default function ContextDock() {
   const theme = useTheme();
-  const glassBody = frostFor(theme.key);
+  // The drawer's own tint layer, exactly - see FLAT.
+  const glassBody = theme.surface;
   const { width: screenW } = useWindowDimensions();
   const BEAD = Math.round(screenW * BEAD_F);
   const CARD_H = Math.round(screenW * CARD_F);
@@ -354,7 +341,7 @@ export default function ContextDock() {
                           left: BEHIND_INSET * (i + 1),
                           right: BEHIND_INSET * (i + 1),
                           backgroundColor: glassBody,
-                          opacity: Math.min(0.95, FLAT.glassOpacity + 0.1 + i * 0.05),
+                          opacity: 0.85 - i * 0.1,
                         },
                       ]}
                     />
@@ -599,7 +586,7 @@ export default function ContextDock() {
 function Bead({ bead, theme, size }: { bead: DockBead; theme: ReturnType<typeof useTheme>; size: number }) {
   return (
     <Pressable onPress={bead.onPress} onLongPress={bead.onLongPress}>
-      <GlassDrop style={[styles.bead, { width: size, height: size }]} radius={size / 2} {...FLAT} glassBody={frostFor(theme.key)}>
+      <GlassDrop style={[styles.bead, { width: size, height: size }]} radius={size / 2} {...FLAT} glassBody={theme.surface}>
         <Ionicons
           name={bead.icon as keyof typeof Ionicons.glyphMap}
           size={21}
