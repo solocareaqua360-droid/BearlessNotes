@@ -93,6 +93,11 @@ export default function ContextDock() {
   // The row's width is SAID, not left to flex: it was settling at
   // three-quarters of the screen and nobody could tell why.
   const rowWidth = screenW - EDGE_INSET * 2;
+  // And so is the CARD'S. Left to flex it hugged its content - one
+  // folder deep the path card shrank to a single word and the whole row
+  // bunched up on the left. A card is four buttons wide whatever it
+  // holds: the width between the beads, every time, on every screen.
+  const cardWidth = rowWidth - BEAD * 2 - GAP * 2;
   // Every radius is SAID as half the size, never left as 999. Android
   // works a "999" out from the size it knows at the moment it draws the
   // background, and on the first frame that size was not there yet -
@@ -311,7 +316,7 @@ export default function ContextDock() {
           )}
 
           <GestureDetector gesture={swipe}>
-          <View style={[styles.stack, { paddingBottom: BEHIND_EDGE * behind }]}>
+          <View style={[styles.stack, { width: cardWidth, paddingBottom: BEHIND_EDGE * behind }]}>
             {/* The card behind, seen as an EDGE and nothing more - a few
                 points of the same glass, a little narrower, so it reads
                 as BEHIND rather than beside. Empty on purpose: what a
