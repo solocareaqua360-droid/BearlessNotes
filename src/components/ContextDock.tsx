@@ -255,12 +255,21 @@ export default function ContextDock() {
   const stripIndex = strip ? strip.items.findIndex((item) => item.key === strip.selected) : -1;
   const stripSettled = useRef(false);
   const [stripWidth, setStripWidth] = useState(STRIP_WIDTH);
+  // Where the strip has to be so the day you are on is in the middle.
+  const stripOffsetFor = (width: number) =>
+    Math.max(0, stripIndex * STRIP_ITEM + STRIP_ITEM / 2 - width / 2);
+  // Centred on every SHOWING, not only on every change of day. The days
+  // card is unmounted while the desks or the actions are in front, and a
+  // scroller that has just been mounted starts at zero - the first day of
+  // the run, the 25th of last month - while the day you are on has not
+  // changed at all, so nothing else asked for a scroll: "показує умовний
+  // початок відліку, а не нашу поточну дату посередині".
   useEffect(() => {
     if (stripIndex < 0) {
       stripSettled.current = false;
       return;
     }
-    const x = Math.max(0, stripIndex * STRIP_ITEM + STRIP_ITEM / 2 - stripWidth / 2);
+    const x = stripOffsetFor(stripWidth);
     // The first placement is not a journey - opening the calendar should
     // not show the strip travelling in from the first of the month.
     const animated = stripSettled.current;
@@ -464,7 +473,15 @@ export default function ContextDock() {
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 style={styles.stripViewport}
-                onLayout={(e) => setStripWidth(e.nativeEvent.layout.width)}
+                onLayout={(e) => {
+                  const width = e.nativeEvent.layout.width;
+                  setStripWidth(width);
+                  // A scroller that has just appeared is at zero. Put it
+                  // where it belongs in the same frame, unanimated - it was
+                  // not on screen a moment ago, so there is nothing to
+                  // travel from.
+                  stripRef.current?.scrollTo({ x: stripOffsetFor(width), animated: false });
+                }}
               >
                 {strip.items.map((item) => {
                   const current = item.key === strip.selected;
