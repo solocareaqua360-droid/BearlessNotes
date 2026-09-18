@@ -597,7 +597,19 @@ export default function ContextDock() {
               зміщений відносно того що є на екрані документів". */}
           {beads.left ? <Bead bead={beads.left} theme={theme} size={BEAD} /> : <View style={[styles.beadSlot, dims.bead]} />}
           <GestureDetector gesture={swipe}>
-          <View style={[styles.stack, { width: cardWidth, paddingBottom: BEHIND_EDGE * 2 }]}>
+          <View
+            style={[
+              styles.stack,
+              // Said explicitly now, not left to its own content: both
+              // card layers inside are position:'absolute', which counts
+              // for nothing toward a container's own height - `stack`
+              // collapsed to just its padding, and centred (`row`'s own
+              // alignItems) in a taller row, it dropped toward the
+              // middle instead of sitting flush at the top: "док
+              // змістився вниз".
+              { width: cardWidth, height: CARD_H + BEHIND_EDGE * 2, paddingBottom: BEHIND_EDGE * 2 },
+            ]}
+          >
             {/* The card behind, seen as an EDGE and nothing more - a few
                 points of the same glass, a little narrower, so it reads
                 as BEHIND rather than beside. Empty on purpose: what a
