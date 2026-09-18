@@ -545,6 +545,8 @@ export default function ContextDock() {
   // The card on its way behind the others - set at the peak, when the
   // finger lifts, and cleared once the settle has landed.
   const [lifting, setLifting] = useState<DockFace | null>(null);
+  // Flipped on every settle - see the inner view's own comment.
+  const [settleNudge, setSettleNudge] = useState(0);
   const faceIndexRef = useRef(faceIndex);
   faceIndexRef.current = faceIndex;
   const ringSizeRef = useRef(ringSize);
@@ -605,6 +607,7 @@ export default function ContextDock() {
         commitRef.current(next);
         setLifting(null);
         setSwiping(false);
+        setSettleNudge((n) => n + 1);
       },
       // Nothing was committed: the cards settle back onto the very
       // arrangement the outer views never left.
@@ -613,6 +616,7 @@ export default function ContextDock() {
         setLifting(null);
         gesture.value = 0;
         setSwiping(false);
+        setSettleNudge((n) => n + 1);
       },
       lift: (f: DockFace) => setLifting(f),
     }),
@@ -1064,8 +1068,32 @@ export default function ContextDock() {
                 ]}
                 pointerEvents={f === showing ? 'auto' : 'none'}
               >
-                {/* INNER: the swipe's own difference, identity at rest. */}
-                <Animated.View style={slotStyles[i]}>
+                {/* INNER: the swipe's own difference while a swipe is
+                    running, and a plain identity the rest of the time.
+                    Which of the two is in force is REACT'S decision,
+                    made in the same commit as the outer arrangement
+                    above - so the moment the outer takes the step, the
+                    inner stops carrying it, with nothing crossing a
+                    thread boundary in between. That is what the last
+                    two attempts could not manage: one lagged a frame
+                    one way and dropped the cards a step back, the
+                    other lagged the frame the other way and flashed
+                    the old icons under the dock.
+
+                    The hundredth of a point alternates on every
+                    settle. Reanimated does not undo its own writes to
+                    a view when its style comes off, and React only
+                    sends a prop it can see has changed - so without
+                    something that always differs, the identity here
+                    could be silently skipped and the last animated
+                    frame left standing. */}
+                <Animated.View
+                  style={
+                    swiping
+                      ? slotStyles[i]
+                      : { transform: [{ translateY: (settleNudge % 2) * 0.01 }, { scale: 1 }] }
+                  }
+                >
                   <Frost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
                     {renderCard(f)}
                   </Frost>
