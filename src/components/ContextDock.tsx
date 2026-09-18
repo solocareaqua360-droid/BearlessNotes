@@ -346,7 +346,15 @@ export default function ContextDock() {
   // the old key never changed between them and the reset simply did not
   // happen. That is why this read as arbitrary rather than as sticky:
   // it depended on which pair of screens you happened to walk between.
-  useEffect(() => {
+  // A LAYOUT effect, so the reset lands before the frame is shown.
+  //
+  // As an ordinary effect it ran after painting, and the log caught
+  // exactly what that costs: `+0ms actions/3/1` and then `+21ms
+  // desks/3/2`. One frame of the previous desk's own card, gone again
+  // before it could be photographed - "блимнуло і все". Deciding this
+  // before the paint means the first frame of the new screen is
+  // already the right one.
+  useLayoutEffect(() => {
     if (faceRef.current === 'desks') return;
     setFace(opensOn);
   }, [screenKey, opensOn, setFace]);
