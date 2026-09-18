@@ -9,8 +9,12 @@
 // If Google renames or retires this model, a call fails with the API's
 // own error text (surfaced to the user as-is, see askGemini below)
 // rather than a silent wrong answer - change this constant and nothing
-// else if that happens.
-const GEMINI_MODEL = 'gemini-2.0-flash';
+// else if that happens. It already happened once: gemini-2.0-flash was
+// retired, and the API's OWN error named its replacement outright
+// ("Please update your code to use models/gemini-3.6-flash") - trust
+// that live message over anything written here, since a model's
+// lifespan runs well past this file's own knowledge of it.
+const GEMINI_MODEL = 'gemini-3.6-flash';
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 export class GeminiError extends Error {}
