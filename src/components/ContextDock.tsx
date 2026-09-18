@@ -552,9 +552,14 @@ export default function ContextDock() {
       // A swipe has begun: pin the animated placement to exactly where
       // the cards are resting, then let it take over.
       begin: () => {
+        // Only the finger, not the animation - there is no animation
+        // yet, and claiming one here is what left this raised when a
+        // gesture was CANCELLED instead of ended: `onEnd` never came,
+        // so nothing lowered it, and the assertion stayed switched off
+        // until a timer rescued it. The animation window is claimed in
+        // `onEnd`, which is the only place an animation actually
+        // starts.
         draggingRef.current = true;
-        animatingRef.current = true;
-        armBackstop(4000);
         dragBase.value = faceIndexRef.current;
         progress.value = faceIndexRef.current;
         setSwiping(true);
@@ -581,6 +586,10 @@ export default function ContextDock() {
       // not left for a swipe that may not come for a while.
       end: () => {
         draggingRef.current = false;
+        // The release animation starts right after this returns. It
+        // lasts 220 or 260ms; 600 is the outside edge of that, after
+        // which the assertion takes over whatever happened.
+        animatingRef.current = true;
         armBackstop(600);
       },
       // `setSwiping(false)` here is UNCONDITIONAL, not a response to
@@ -645,6 +654,7 @@ export default function ContextDock() {
         .onFinalize(() => {
           draggingRef.current = false;
         })
+
         .onStart(() => {
           // On ACTIVATION, not on touch-down: the animated style only
           // needs to exist once something is actually being dragged.
@@ -994,7 +1004,7 @@ export default function ContextDock() {
           Remove once that is found and fixed. */}
       <View style={[styles.debugHud, { top: insets.top + 4 }]} pointerEvents="none">
         <Text style={styles.debugText}>
-          {`ring=${ringSize} idx=${faceIndex} showing=${showing} swiping=${swiping ? 1 : 0} flux=${tabsInFlux ? 1 : 0}\nown=${own ? own.kind : '-'} act=${actions?.length ?? 0} leave=${showLeave ? 1 : 0} bottom=${bottomInset} key=${screenKey.slice(-6)}\nfaces=[${faces.join(',')}] restY=${faces
+          {`ring=${ringSize} idx=${faceIndex} showing=${showing} drag=${draggingRef.current ? 1 : 0} anim=${animatingRef.current ? 1 : 0} flux=${tabsInFlux ? 1 : 0}\nown=${own ? own.kind : '-'} act=${actions?.length ?? 0} leave=${showLeave ? 1 : 0} bottom=${bottomInset} key=${screenKey.slice(-6)}\nfaces=[${faces.join(',')}] restY=${faces
             .map((_, i) => Math.round((restStyles[i].transform[0] as { translateY: number }).translateY * 100) / 100)
             .join('/')}\n${trail0.current.lines.join('\n')}`}
         </Text>
