@@ -280,8 +280,17 @@ export default function ContextDock() {
   // Lives in the provider now - a screen has to be able to ask for the
   // path back when an action finishes somewhere else.
   const [face, setFace] = useNavDockFace();
-  // TEMPORARY - the face-on-open logic this fed is disabled below for
-  // a test, so nothing here computes it for now.
+  // Which card a screen OPENS on. A path is worth seeing straight away -
+  // it says where in the database you are standing. A calendar's days
+  // are not: the calendar itself is already on the screen above, so the
+  // dock is better spent saying where else you could go. With no
+  // context of its own - a database's root, the boards list - the
+  // screen opens on the DESKS.
+  //
+  // Cleared of blame by the user's own test: disabled outright, every
+  // remaining bug stayed exactly as present as before. Restored as it
+  // was; whatever is left lives somewhere else in this file.
+  const opensOn: DockFace = !own ? 'desks' : own.kind === 'strip' ? 'desks' : 'context';
   const screenKey = useScreenKey();
   // The cards this screen actually has, in the order they are wanted:
   // what you are in, what you can do in it, where else you could be. A
@@ -317,22 +326,19 @@ export default function ContextDock() {
   // activating.
   const faceRef = useRef(face);
   faceRef.current = face;
-  // TEMPORARY - DISABLED FOR A TEST.
-  //
-  // The user's own request, after every other fix on this reset still
-  // left every bug in place: turn the whole thing off and confirm, for
-  // certain, that THIS is where they come from, rather than trust
-  // another round of reasoning about it. Screens no longer reset the
-  // front card on a screen or context change at all - `face` only ever
-  // moves by an explicit swipe on the dock itself. Switching desks will
-  // NOT bring the desks card to the front any more; that is the point
-  // of the test, not a bug in it.
-  //
-  // const opensOn: DockFace = !own ? 'desks' : own.kind === 'strip' ? 'desks' : 'context';
-  // const contextKey = dock ? `${dock.kind}:${dock.icon}` : '';
-  // useLayoutEffect(() => {
-  //   setFace(opensOn);
-  // }, [screenKey, contextKey, opensOn, setFace]);
+  // Keyed on the SCREEN and on the CONTEXT, because neither alone is
+  // early enough or reliable enough on its own. The screen key is read
+  // off the navigation state through a subscription and can arrive a
+  // frame late; the context (what `own` actually is) is usually
+  // available on the very first render of the new screen, but two
+  // screens can carry the same KIND of context under the same icon -
+  // files and photos both open on a path with a database's glyph - and
+  // then it alone never changes between them. A layout effect, so this
+  // lands before the frame is shown rather than after it.
+  const contextKey = dock ? `${dock.kind}:${dock.icon}` : '';
+  useLayoutEffect(() => {
+    setFace(opensOn);
+  }, [screenKey, contextKey, opensOn, setFace]);
   const facesRef = useRef(faces);
   facesRef.current = faces;
   const cardHRef = useRef(CARD_H);
