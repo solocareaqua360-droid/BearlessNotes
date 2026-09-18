@@ -233,27 +233,49 @@ export default function ContextDock() {
   const cardHRef = useRef(CARD_H);
   cardHRef.current = CARD_H;
   // The morph - the whole reason this is a swipe and not a tap. 0 is at
-  // rest. Negative is the CURRENT card leaving, travelling up and out;
-  // positive is the NEXT one arriving, travelling up FROM BELOW into
-  // rest - one sign convention, so both halves of the cycle read as the
-  // same upward motion through the stack rather than two different
-  // effects stitched together. A cross-fade was tried for the card->page
-  // move once and judged "дешево" - a morph has to change SHAPE, not
-  // just opacity, or it reads as nothing happening at all.
+  // rest: FRONT full size in place, BACK a little smaller, sitting just
+  // behind it. 1 is the far end of the SAME journey: FRONT has finished
+  // rising, peaked, and settled back down into the BACK card's own
+  // smaller resting spot - "опускається вниз, стає такого ж розміру,
+  // ефект перелистування" - while BACK has grown up into the FRONT
+  // spot. One value drives both cards the whole way, drag and settle
+  // alike, so release never has to fake a hand-off between two separate
+  // animations - it is the same motion, just carried to its end instead
+  // of let go of early.
   const morph = useSharedValue(0);
   function commitSwap(next: DockFace) {
     setFace(next);
     morph.value = 0;
   }
-  // Only the card in FRONT ever moves - the one underneath is static,
-  // sitting exactly at rest the whole time. Lifting the front one off is
-  // what reveals it, the same way sliding the top card off a real stack
-  // uncovers the one under it - not a fade, an actual uncovering.
-  const swipeStyle = useAnimatedStyle(() => {
+  // A little smaller, a little lower - "нижній блок трохи менший" - a
+  // REAL card sitting behind the front one, not the flat painted bar the
+  // deeper slivers still are. BACK_Y is small on purpose: the back card
+  // is not far away, it is the same stack, one card down.
+  const BACK_SCALE = 0.94;
+  const BACK_Y = 10;
+  // How high the front card rises at the peak of its arc before coming
+  // back down onto the back spot - a real "лift and flip", not a
+  // straight climb that would have to reverse direction awkwardly.
+  const RISE_F = 0.32;
+  // FRONT: rises to a peak around the midpoint, then comes back DOWN
+  // onto the back card's own resting transform - one continuous arc,
+  // not a rise-then-teleport. BACK: the exact reverse, growing from the
+  // back spot up into the front one. Passing each other at the
+  // midpoint is the "перелистування" - the page actually turning, not
+  // one card fading while another fades in.
+  const frontStyle = useAnimatedStyle(() => {
     const cardH = cardHRef.current;
-    return {
-      transform: [{ translateY: -morph.value * cardH }, { scale: 1 - Math.min(1, morph.value) * 0.04 }],
-    };
+    const p = morph.value;
+    const arc = Math.sin(Math.min(1, p) * Math.PI); // 0 -> 1 -> 0
+    const translateY = -arc * cardH * RISE_F + p * BACK_Y;
+    const scale = 1 - p * (1 - BACK_SCALE);
+    return { transform: [{ translateY }, { scale }] };
+  });
+  const backStyle = useAnimatedStyle(() => {
+    const p = morph.value;
+    const translateY = BACK_Y * (1 - p);
+    const scale = BACK_SCALE + p * (1 - BACK_SCALE);
+    return { transform: [{ translateY }, { scale }] };
   });
   const swipe = useMemo(
     () =>
@@ -271,10 +293,12 @@ export default function ContextDock() {
         // system itself uses just below here.
         .onUpdate((e) => {
           if (facesRef.current.length < 2) return;
-          // A touch of resistance past a full card's height, so a very
-          // long drag does not send it flying arbitrarily far.
+          // Capped well short of 1 - the drag previews the RISE, release
+          // decides whether it ever completes the DESCENT onto the back
+          // spot. Letting a drag alone reach 1 would settle the flip
+          // before the finger ever lifted.
           const dragged = Math.max(0, -e.translationY) / cardHRef.current;
-          morph.value = Math.min(1.15, dragged);
+          morph.value = Math.min(0.55, dragged);
         })
         .onEnd((e) => {
           const ring = facesRef.current;
@@ -286,14 +310,14 @@ export default function ContextDock() {
             hapticButtonDown();
             const at = ring.indexOf(faceRef.current);
             const next = ring[(at + 1) % ring.length] ?? ring[0];
-            // Finish rising clear, THEN swap - the swap has to land once
-            // the card has actually cleared the frame, or the change of
-            // content is seen mid-flight instead of once it settles.
-            morph.value = withTiming(1, { duration: 150, easing: Easing.out(Easing.cubic) }, (finished) => {
+            // Carry the SAME arc on to its end - down onto the back
+            // spot - THEN swap, once both cards have actually arrived
+            // where a swap would be invisible, rather than mid-flight.
+            morph.value = withTiming(1, { duration: 260, easing: Easing.inOut(Easing.cubic) }, (finished) => {
               if (finished) runOnJS(commitSwap)(next);
             });
           } else {
-            morph.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.cubic) });
+            morph.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) });
           }
         }),
     []
@@ -647,22 +671,25 @@ export default function ContextDock() {
               </View>
             )}
 
-          {/* Two pieces of glass, not one - the queued card sits at rest
-              underneath, permanently, so lifting the front one off
-              genuinely UNCOVERS it rather than swapping in once the
-              front has already gone: "за нею повинна проступати інша
-              картка... а зараз під нею нічого". What either of them is -
-              a leave, or one day something else - is still open; where
-              it stands is settled. */}
+          {/* Two pieces of glass, not one, and both REAL cards now - the
+              back one used to be a flat painted bar for anything beyond
+              the immediate next; this one is the actual queued card,
+              genuinely smaller and set back, with its own edge so the
+              two read as separate objects even though the glass itself
+              is the same colour: "потрібно щоб це була справжня задня
+              картка... контур не сильно контрастний, щоб було видно, що
+              один за одним". What either of them is - a leave, or one
+              day something else - is still open; where it stands is
+              settled. */}
           {queued && (
-            <View style={[styles.cardLayer, dims.card]} pointerEvents="none">
-              <Frost style={[styles.front, dims.card]} radius={CARD_H / 2}>
+            <Animated.View style={[styles.cardLayer, dims.card, { zIndex: 1 }, backStyle]} pointerEvents="none">
+              <Frost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
                 {renderCard(queued)}
               </Frost>
-            </View>
+            </Animated.View>
           )}
-          <Animated.View style={[styles.cardLayer, dims.card, swipeStyle]}>
-            <Frost style={[styles.front, dims.card]} radius={CARD_H / 2}>
+          <Animated.View style={[styles.cardLayer, dims.card, { zIndex: 2 }, frontStyle]}>
+            <Frost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
               {renderCard(showing)}
             </Frost>
           </Animated.View>
@@ -759,6 +786,14 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     top: 0,
+  },
+  // Thin, low-contrast - the two cards are the same glass, same colour,
+  // and without SOME line between them the eye cannot tell there are
+  // two objects at all, only one thing moving strangely: "два блоки
+  // розділяються... кольори у них однакові".
+  cardEdge: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.16)',
   },
   front: {
     width: '100%',
