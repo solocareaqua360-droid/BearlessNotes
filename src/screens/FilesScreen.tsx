@@ -859,6 +859,20 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
                     </Text>
                   </Pressable>
                 )}
+                {/* The only way to a single delete used to be select-mode
+                    on exactly one item - "в файлах немає функції
+                    видалення". Straight to the bin, no confirmation: the
+                    bin is the undo, same as Photos' own single delete. */}
+                <Pressable
+                  style={styles.cardMenuRow}
+                  onPress={() => {
+                    if (cardMenuFile) bin.moveToBin(cardMenuFile.id);
+                    setCardMenuFileId(null);
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                  <Text style={[styles.cardMenuRowLabel, { color: '#EF4444' }]}>Видалити</Text>
+                </Pressable>
               </Pressable>
             </Pressable>
           </Modal>

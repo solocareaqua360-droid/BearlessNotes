@@ -761,6 +761,20 @@ export default function LinksScreen({
                     </Text>
                   </Pressable>
                 )}
+                {/* The only way to a single delete used to be select-mode
+                    on exactly one item - "в посиланнях немає функції
+                    видалення". Straight to the bin, no confirmation: the
+                    bin is the undo, same as Photos' own single delete. */}
+                <Pressable
+                  style={styles.cardMenuRow}
+                  onPress={() => {
+                    if (cardMenuLink) bin.moveToBin(cardMenuLink.id);
+                    setCardMenuLinkId(null);
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                  <Text style={[styles.cardMenuRowLabel, { color: '#EF4444' }]}>Видалити</Text>
+                </Pressable>
               </Pressable>
             </Pressable>
           </Modal>
