@@ -234,6 +234,13 @@ export default function ContextDock() {
   const dims = {
     bead: { width: BEAD, height: BEAD, borderRadius: BEAD / 2 },
     card: { height: CARD_H, borderRadius: CARD_H / 2 },
+    // The OUTER layer of a card: its height and nothing else. No
+    // radius, because a rounded parent on Android clips its children -
+    // and the inner view rises a whole card's height above this box at
+    // the peak of a swipe, which is exactly what was being cut off:
+    // "анімація дьоргана вгорі на піку". The radius belongs to the
+    // glass inside, which already carries it.
+    cardBox: { height: CARD_H },
     button: { width: CARD_BUTTON, height: CARD_BUTTON, borderRadius: CARD_BUTTON / 2 },
     rowHeight: { height: CARD_BUTTON, borderRadius: CARD_BUTTON / 2 },
   };
@@ -518,6 +525,9 @@ export default function ContextDock() {
   const slotStyles = [delta(0), delta(1), delta(2)];
   // Whether the animated style is attached at all.
   const [swiping, setSwiping] = useState(false);
+  // The card on its way behind the others - set at the peak, when the
+  // finger lifts, and cleared once the settle has landed.
+  const [lifting, setLifting] = useState<DockFace | null>(null);
   const faceIndexRef = useRef(faceIndex);
   faceIndexRef.current = faceIndex;
   const ringSizeRef = useRef(ringSize);
@@ -548,29 +558,36 @@ export default function ContextDock() {
         // lasts 220 or 260ms. 600 is the outside edge of that.
         armBackstop(600);
       },
-      // COMMITTED AT RELEASE, not when the animation ends.
+      // COMMITTED WHEN THE SETTLE ENDS, and this is the one moment it
+      // can be done without anything jumping.
       //
-      // React is told the new front card the moment the finger lifts,
-      // so the outer views hold the NEW arrangement from the very first
-      // frame of the settle. `gRest` moves with it, and the difference
-      // the inner views carry simply animates down to nothing on top of
-      // it - the departing card descending from its peak onto the
-      // deepest slot, the one behind rising into the front. Nothing
-      // waits for an animation to finish to learn where it belongs,
-      // which is what every version of this that waited kept getting
-      // wrong.
+      // Committing at RELEASE was tried and is what "картки
+      // підміняються вгорі" was: React took the new arrangement
+      // immediately while the compensating difference on the UI thread
+      // arrived a frame later, and that one frame reads as the cards
+      // swapping places at the peak. Here, by contrast, the two
+      // descriptions are the SAME PICTURE: before, the outer sits on
+      // the old arrangement and the inner carries a full step; after,
+      // the outer sits on the new one and the inner carries nothing.
+      // Whichever of the two lands first, nothing moves - which is the
+      // only kind of hand-over this file has ever got away with.
       commit: (next: DockFace, to: number) => {
         if (backstop.current) clearTimeout(backstop.current);
         gRest.value = to;
         commitRef.current(next);
+        setLifting(null);
+        gesture.value = 0;
+        setSwiping(false);
       },
       // Nothing was committed: the cards settle back onto the very
       // arrangement the outer views never left.
       settle: () => {
         if (backstop.current) clearTimeout(backstop.current);
+        setLifting(null);
         gesture.value = 0;
         setSwiping(false);
       },
+      lift: (f: DockFace) => setLifting(f),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
@@ -637,14 +654,20 @@ export default function ContextDock() {
             const at = ring.indexOf(faceRef.current);
             const next = ring[(at + 1) % ring.length] ?? ring[0];
             const to = dragBase.value + 1;
-            // React is told NOW, at the release, so the outer views
-            // hold the new arrangement for the whole settle. Then the
-            // cards simply travel the rest of the way onto it.
-            hand.commit(next, to);
+            // The ONE thing decided at release: which card is going
+            // behind. It is the card in front right now, and from this
+            // moment - the peak of its arc - it has to be drawn under
+            // whatever is climbing past it. Order of drawing has no
+            // in-between to interpolate, so flipping it here rather
+            // than gradually is exactly right.
+            hand.lift(faceRef.current);
             gVisual.value = withTiming(
               to,
               { duration: 260, easing: Easing.inOut(Easing.cubic) },
-              () => runOnJS(hand.settle)()
+              (finished) => {
+                if (finished) runOnJS(hand.commit)(next, to);
+                else runOnJS(hand.settle)();
+              }
             );
           } else {
             gVisual.value = withTiming(
@@ -1004,7 +1027,14 @@ export default function ContextDock() {
               // outrun by anything on the UI thread.
               <View
                 key={f}
-                style={[styles.cardLayer, dims.card, restStyles[i]]}
+                style={[
+                  styles.cardLayer,
+                  dims.cardBox,
+                  restStyles[i],
+                  // Under everything, from the peak of its arc until
+                  // the settle lands.
+                  f === lifting && styles.lifted,
+                ]}
                 pointerEvents={f === showing ? 'auto' : 'none'}
               >
                 {/* INNER: the swipe's own difference, identity at rest. */}
@@ -1117,11 +1147,17 @@ const styles = StyleSheet.create({
   // One per card in the ring - absolutely positioned, all of them
   // stacked on the same spot, and each pushed to its own place by its
   // own transform.
+  lifted: {
+    zIndex: 0,
+  },
   cardLayer: {
     position: 'absolute',
     left: 0,
     right: 0,
     top: 0,
+    // Said out loud: the card inside rises clear of this box at the
+    // peak of a swipe and must not be cut off doing it.
+    overflow: 'visible',
   },
   // Thin, low-contrast - the two cards are the same glass, same colour,
   // and without SOME line between them the eye cannot tell there are
