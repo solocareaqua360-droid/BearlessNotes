@@ -344,12 +344,6 @@ export interface BoardCard extends Omit<Block, 'type'> {
   // when the card is drawn, because it is DERIVED from the picture and
   // storing derived data is how two devices end up disagreeing about it.
   imageNatural?: boolean;
-  // 'paragraph' cards only - drop the sticky's coloured backing and its
-  // padding, leaving the words alone on the canvas. The same idea as
-  // imageBare one type over: a board sometimes wants a label, not an
-  // object. Colour is kept, not cleared, so turning the backing back on
-  // restores the card the user had.
-  textBare?: boolean;
   // 'document' cards only - the referenced doc's id (Editor screen param)
   // and a cached title for display, snapshotted at add-time same as every
   // other reference card's display fields (fileTitle/imageTitle/linkTitle).
@@ -407,12 +401,57 @@ export interface BoardColumn {
   kind?: string;
 }
 
+// FURNITURE, NOT CONTENT.
+//
+// A shape or a loose word on a board is DECORATION and nothing else -
+// the user drew the line themselves, and it is the sharpest line in this
+// screen: "це просто заповнення дошки, якісь елементи оформлення. І все.
+// Я не буду потім з цього ромба робити картку. Зберігати її. Ні."
+//
+// So a shape is deliberately NOT a BoardCard. A card is a BLOCK: it can
+// be collected into a document, grouped, tagged, and it is the board's
+// whole reason for existing. None of that may ever happen to a diamond.
+// Keeping them in a separate list is what makes that true by
+// construction rather than by everyone remembering to skip them - every
+// piece of code that walks `cards` is already correct for shapes,
+// because shapes are not in it.
+//
+// Lives on the board document and nowhere else: no mirror collection, no
+// database record, nothing to find it by.
+export type BoardShapeKind =
+  | 'text'
+  | 'rect'
+  | 'square'
+  | 'triangle'
+  | 'diamond'
+  | 'ellipse'
+  | 'circle';
+
+export interface BoardShape {
+  id: string;
+  kind: BoardShapeKind;
+  x: number;
+  y: number;
+  width: number;
+  // Free for a rectangle, an ellipse and a triangle; tied to the width
+  // for a square and a circle, and ignored by text, which is as tall as
+  // its own words.
+  height: number;
+  // Words written inside the outline - or, for 'text', the whole thing.
+  text?: string;
+  // The outline's own colour. The fill is the same colour, much weaker,
+  // so one value describes the shape.
+  color?: string;
+}
+
 export interface BoardItem {
   id: string;
   title: string;
   cards: BoardCard[];
   connections?: BoardConnection[];
   columns?: BoardColumn[];
+  // See BoardShape: the board's own furniture, never blocks.
+  shapes?: BoardShape[];
   // A board is a record of a database like any other now: it carries tags
   // (which are also its folders - see the explorer), a group, and a bin
   // flag. Absent on every board made before that, and read as empty.

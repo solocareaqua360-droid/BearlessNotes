@@ -26,7 +26,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
 } from 'react-native-reanimated';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Ellipse, Path, Polygon, Rect } from 'react-native-svg';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -48,7 +48,7 @@ import * as Clipboard from 'expo-clipboard';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import { db } from '../firebase';
 import { BoardsStackParamList, RootStackParamList } from '../navigation';
-import { Block, BoardCard, BoardColumn, BoardConnection } from '../types';
+import { Block, BoardCard, BoardColumn, BoardConnection, BoardShape, BoardShapeKind } from '../types';
 import CustomRowBlockCard from '../components/CustomRowBlockCard';
 import { hapticDrop, hapticPickUp, hapticSuccess } from '../utils/haptics';
 import {
@@ -118,6 +118,36 @@ const MAX_SCALE = 3;
 // and the board read as a handful of lamps again. At 0.72 a coloured
 // card is still clearly more present than a plain one - which is the
 // point of colouring it - without being the brightest thing there.
+// The board's furniture - see BoardShape in types.ts.
+const SHAPE_STROKE = 2;
+const SHAPE_MIN = 48;
+// A loose label is as tall as its own words, which nothing measures. The
+// same kind of stand-in APPROX_CARD_HEIGHT is, and used for the same two
+// things: aiming an arrow at it, and hit-testing.
+const SHAPE_TEXT_HEIGHT = 34;
+const SHAPE_MAX = 900;
+const clampShapeSize = (v: number) => Math.round(Math.max(SHAPE_MIN, Math.min(SHAPE_MAX, v)));
+// What each kind is born as. A square and a circle are born square and
+// stay square; the others are free.
+const SHAPE_BIRTH: Record<BoardShapeKind, { width: number; height: number }> = {
+  text: { width: 180, height: 0 },
+  rect: { width: 180, height: 110 },
+  square: { width: 140, height: 140 },
+  triangle: { width: 160, height: 140 },
+  diamond: { width: 160, height: 140 },
+  ellipse: { width: 180, height: 110 },
+  circle: { width: 140, height: 140 },
+};
+const SHAPE_MENU: { kind: BoardShapeKind; label: string; icon: string }[] = [
+  { kind: 'text', label: 'Текст', icon: 'format-text' },
+  { kind: 'rect', label: 'Прямокутник', icon: 'rectangle-outline' },
+  { kind: 'square', label: 'Квадрат', icon: 'square-outline' },
+  { kind: 'triangle', label: 'Трикутник', icon: 'triangle-outline' },
+  { kind: 'diamond', label: 'Ромб', icon: 'rhombus-outline' },
+  { kind: 'circle', label: 'Коло', icon: 'circle-outline' },
+  { kind: 'ellipse', label: 'Овал', icon: 'ellipse-outline' },
+];
+
 const STICKY_MUTE = 0.72;
 const STICKY_COLORS = ['#FEF3C7', '#DBEAFE', '#DCFCE7', '#FCE7F3', '#EDE9FE', '#FFE4E6'];
 // Cards don't carry their own rendered height (only width) - close enough
@@ -402,7 +432,14 @@ function releaseFromColumn(card: BoardCard): BoardCard {
 // vertical side faces the other card, so the line never has to cross back
 // over a card to reach it. Recomputed on every render rather than stored,
 // which is what lets dragging a card past its partner flip the routing.
-function connectionEndpoints(from: BoardCard, to: BoardCard, heights: Map<string, number>) {
+// ANYTHING AN ARROW CAN END ON. A card or a piece of the board's own
+// furniture - the arrow does not care which, and it must not: the user
+// asked for shapes an arrow can reach and said in the same breath that
+// this is not a new thing to store. It is not: a connection holds two
+// ids, and an id is an id.
+type BoardNode = { id: string; x: number; y: number; width: number; height: number };
+
+function connectionEndpoints(from: BoardNode, to: BoardNode) {
   const fromCenterX = from.x + from.width / 2;
   const toCenterX = to.x + to.width / 2;
   const fromIsLeft = fromCenterX <= toCenterX;
@@ -411,9 +448,9 @@ function connectionEndpoints(from: BoardCard, to: BoardCard, heights: Map<string
     // The measured height, matching what LiveConnectionLine uses - taking
     // the rough constant here instead would make the line jump vertically
     // the moment a drag ended on any card that isn't exactly that tall.
-    y1: from.y + heightOf(from, heights) / 2,
+    y1: from.y + from.height / 2,
     x2: fromIsLeft ? to.x : to.x + to.width,
-    y2: to.y + heightOf(to, heights) / 2,
+    y2: to.y + to.height / 2,
   };
 }
 
@@ -954,28 +991,16 @@ function DraggableCard({
             )}
           </View>
         ) : type === 'paragraph' ? (
-          card.textBare ? (
-            // Words on the canvas with nothing under them. Still a card
-            // in every other respect - it drags, it selects, an arrow
-            // can end on it - which is the whole reason this is a flag
-            // on a paragraph rather than a type of its own.
-            <View style={styles.bareTextCard}>
-              <Text style={styles.bareText} numberOfLines={6}>
-                {card.text || 'Текст'}
-              </Text>
-            </View>
-          ) : (
-            <View
-              style={[
-                styles.stickyCard,
-                { backgroundColor: mutedForTheme(card.color ?? STICKY_COLORS[0], theme, STICKY_MUTE) },
-              ]}
-            >
-              <Text style={styles.stickyText} numberOfLines={6}>
-                {card.text || 'Порожня картка'}
-              </Text>
-            </View>
-          )
+          <View
+            style={[
+              styles.stickyCard,
+              { backgroundColor: mutedForTheme(card.color ?? STICKY_COLORS[0], theme, STICKY_MUTE) },
+            ]}
+          >
+            <Text style={styles.stickyText} numberOfLines={6}>
+              {card.text || 'Порожня картка'}
+            </Text>
+          </View>
         ) : type === 'image' ? (
           card.imageBare ? (
             imageSource ? (
@@ -1054,6 +1079,231 @@ function DraggableCard({
         ) : null}
 
         {resizable && (
+          <GestureDetector gesture={resizeGesture}>
+            <View style={styles.cardGrip}>
+              <Ionicons name="resize-outline" size={13} color="#fff" />
+            </View>
+          </GestureDetector>
+        )}
+      </Animated.View>
+    </GestureDetector>
+  );
+}
+
+// A piece of the board's FURNITURE, drawn. See BoardShape in types.ts
+// for why this is not a card: it is decoration, it never becomes a
+// block, and keeping it out of `cards` is what makes that true by
+// construction instead of by everyone remembering.
+function ShapeBody({
+  shape,
+  width,
+  height,
+  stroke,
+  ink,
+}: {
+  shape: BoardShape;
+  width: number;
+  height: number;
+  stroke: string;
+  ink: string;
+}) {
+  const styles = useStyles(makeStyles);
+  const w = Math.max(1, width);
+  const h = Math.max(1, height);
+  // Half the stroke sits outside the path, so every shape is drawn
+  // inset by that much or its outline is clipped by its own box.
+  const i = SHAPE_STROKE / 2;
+  return (
+    <>
+      {shape.kind !== 'text' && (
+        <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
+          {(shape.kind === 'rect' || shape.kind === 'square') && (
+            <Rect
+              x={i}
+              y={i}
+              width={w - SHAPE_STROKE}
+              height={h - SHAPE_STROKE}
+              rx={10}
+              fill="none"
+              stroke={stroke}
+              strokeWidth={SHAPE_STROKE}
+            />
+          )}
+          {(shape.kind === 'ellipse' || shape.kind === 'circle') && (
+            <Ellipse
+              cx={w / 2}
+              cy={h / 2}
+              rx={w / 2 - i}
+              ry={h / 2 - i}
+              fill="none"
+              stroke={stroke}
+              strokeWidth={SHAPE_STROKE}
+            />
+          )}
+          {shape.kind === 'triangle' && (
+            <Polygon
+              points={`${w / 2},${i} ${w - i},${h - i} ${i},${h - i}`}
+              fill="none"
+              stroke={stroke}
+              strokeWidth={SHAPE_STROKE}
+              strokeLinejoin="round"
+            />
+          )}
+          {shape.kind === 'diamond' && (
+            <Polygon
+              points={`${w / 2},${i} ${w - i},${h / 2} ${w / 2},${h - i} ${i},${h / 2}`}
+              fill="none"
+              stroke={stroke}
+              strokeWidth={SHAPE_STROKE}
+              strokeLinejoin="round"
+            />
+          )}
+        </Svg>
+      )}
+      {/* The words sit in the middle of whatever was drawn - and for
+          'text' they ARE the whole thing. Padded well in from the edge:
+          a triangle and a diamond have very little room at their points,
+          and text that runs into the outline reads as a mistake. */}
+      <View style={[styles.shapeTextWrap, shape.kind === 'text' && styles.shapeTextWrapBare]}>
+        <Text
+          style={[
+            styles.shapeText,
+            { color: shape.kind === 'text' ? shape.color ?? ink : ink },
+            shape.kind === 'text' && styles.shapeTextLoose,
+          ]}
+        >
+          {shape.text || (shape.kind === 'text' ? 'Текст' : '')}
+        </Text>
+      </View>
+    </>
+  );
+}
+
+// One shape's own drag, built exactly like a card's - see DraggableCard
+// for why the position lives in shared values and nowhere else.
+function DraggableShape({
+  shape,
+  isSelected,
+  posX,
+  posY,
+  onDragStart,
+  canvasScale,
+  canvasPanGesture,
+  canvasHoldGesture,
+  onTap,
+  onLongPress,
+  onDragEnd,
+  onResize,
+}: {
+  shape: BoardShape;
+  isSelected: boolean;
+  // From the board's own registry, the same one the cards use - so an
+  // arrow ending on this shape follows it live while it is dragged.
+  posX: SharedValue<number>;
+  posY: SharedValue<number>;
+  onDragStart: (id: string) => void;
+  canvasScale: SharedValue<number>;
+  canvasPanGesture: ReturnType<typeof Gesture.Pan>;
+  canvasHoldGesture: ReturnType<typeof Gesture.LongPress>;
+  onTap: (shape: BoardShape) => void;
+  onLongPress: (shape: BoardShape) => void;
+  onDragEnd: (id: string, x: number, y: number) => void;
+  onResize: (id: string, width: number, height: number) => void;
+}) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
+  const reportedX = useSharedValue(shape.x);
+  const reportedY = useSharedValue(shape.y);
+  useEffect(() => {
+    if (shape.x !== reportedX.value) {
+      posX.value = shape.x;
+      reportedX.value = shape.x;
+    }
+    if (shape.y !== reportedY.value) {
+      posY.value = shape.y;
+      reportedY.value = shape.y;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shape.x, shape.y]);
+
+  const [live, setLive] = useState<{ width: number; height: number } | null>(null);
+  const resizeBase = useRef({ width: 0, height: 0 });
+
+  const panGesture = Gesture.Pan()
+    .blocksExternalGesture(canvasPanGesture)
+    .onStart(() => {
+      runOnJS(onDragStart)(shape.id);
+    })
+    .onChange((e) => {
+      posX.value += e.changeX / canvasScale.value;
+      posY.value += e.changeY / canvasScale.value;
+    })
+    .onEnd(() => {
+      reportedX.value = posX.value;
+      reportedY.value = posY.value;
+      runOnJS(onDragEnd)(shape.id, posX.value, posY.value);
+    });
+  const tapGesture = Gesture.Tap().onEnd(() => {
+    runOnJS(onTap)(shape);
+  });
+  const longPressGesture = Gesture.LongPress()
+    .minDuration(350)
+    .maxDistance(10)
+    .blocksExternalGesture(canvasHoldGesture, canvasPanGesture)
+    .onStart(() => {
+      runOnJS(onLongPress)(shape);
+    });
+  const gesture = Gesture.Race(panGesture, tapGesture, longPressGesture);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: posX.value }, { translateY: posY.value }],
+  }));
+
+  const width = live?.width ?? shape.width;
+  // Text is as tall as its own words; everything else is the box it was
+  // given. A square and a circle are the same shapes as a rectangle and
+  // an ellipse with one rule added, which is why they are separate kinds
+  // rather than a flag: the rule belongs to the shape, not to a mode.
+  const locked = shape.kind === 'square' || shape.kind === 'circle';
+  const height = shape.kind === 'text' ? undefined : locked ? width : live?.height ?? shape.height;
+
+  const resizeGesture = Gesture.Pan()
+    .blocksExternalGesture(canvasPanGesture)
+    .onStart(() => {
+      resizeBase.current = { width, height: height ?? shape.height };
+    })
+    .onChange((e) => {
+      const nextW = clampShapeSize(resizeBase.current.width + e.translationX / canvasScale.value);
+      const nextH = locked
+        ? nextW
+        : clampShapeSize(resizeBase.current.height + e.translationY / canvasScale.value);
+      setLive({ width: nextW, height: nextH });
+    })
+    .onEnd(() => {
+      const next = live;
+      setLive(null);
+      if (next) runOnJS(onResize)(shape.id, next.width, locked ? next.width : next.height);
+    })
+    .runOnJS(true);
+
+  return (
+    <GestureDetector gesture={gesture}>
+      <Animated.View
+        style={[
+          styles.shape,
+          { width, height },
+          animatedStyle,
+          isSelected && styles.shapeSelected,
+        ]}
+      >
+        <ShapeBody
+          shape={shape}
+          width={width}
+          height={height ?? 0}
+          stroke={shape.color ?? theme.canvas.inkMuted}
+          ink={theme.canvas.ink}
+        />
+        {isSelected && shape.kind !== 'text' && (
           <GestureDetector gesture={resizeGesture}>
             <View style={styles.cardGrip}>
               <Ionicons name="resize-outline" size={13} color="#fff" />
@@ -1144,6 +1394,14 @@ export default function BoardScreen() {
   const [canvasTool, setCanvasTool] = useState<'move' | 'select' | 'connect'>('move');
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const [connections, setConnections] = useState<BoardConnection[]>([]);
+  // The board's own furniture - see BoardShape. A list of its OWN, never
+  // merged into `cards`, so nothing that collects, groups or exports
+  // cards can ever pick one up.
+  const [shapes, setShapes] = useState<BoardShape[]>([]);
+  const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
+  const [draggedShapeId, setDraggedShapeId] = useState<string | null>(null);
+  const [shapeSheetVisible, setShapeSheetVisible] = useState(false);
+  const [editingShape, setEditingShape] = useState<BoardShape | null>(null);
   const [columns, setColumns] = useState<BoardColumn[]>([]);
   // Each card's real rendered height, reported by its own onLayout - what
   // a column stacks by. State rather than a ref specifically so a height
@@ -1215,10 +1473,16 @@ export default function BoardScreen() {
   // What is believed to be in the document right now. Every save writes
   // the difference against this, so one moved card is one field - see
   // utils/boardStorage for why that matters.
-  const savedRef = useRef<{ cards: BoardCard[]; columns: BoardColumn[]; connections: BoardConnection[] }>({
+  const savedRef = useRef<{
+    cards: BoardCard[];
+    columns: BoardColumn[];
+    connections: BoardConnection[];
+    shapes: BoardShape[];
+  }>({
     cards: [],
     columns: [],
     connections: [],
+    shapes: [],
   });
   // What shape the DOCUMENT is in, which decides how a save may be
   // written - and the one thing here that must never be guessed.
@@ -1248,12 +1512,16 @@ export default function BoardScreen() {
   // useSharedValue because the set of cards is dynamic and hooks can't be.
   const cardPositions = useRef<Map<string, { x: SharedValue<number>; y: SharedValue<number> }>>(new Map());
 
-  function positionOf(card: BoardCard) {
-    const existing = cardPositions.current.get(card.id);
+  function positionFor(id: string, x: number, y: number) {
+    const existing = cardPositions.current.get(id);
     if (existing) return existing;
-    const created = { x: makeMutable(card.x), y: makeMutable(card.y) };
-    cardPositions.current.set(card.id, created);
+    const created = { x: makeMutable(x), y: makeMutable(y) };
+    cardPositions.current.set(id, created);
     return created;
+  }
+
+  function positionOf(card: BoardCard) {
+    return positionFor(card.id, card.x, card.y);
   }
 
   useEffect(() => {
@@ -1270,6 +1538,7 @@ export default function BoardScreen() {
       const loadedCards = readBoardPart<BoardCard>(data?.cards);
       const loadedColumns = readBoardPart<BoardColumn>(data?.columns);
       const loadedConnections = readBoardPart<BoardConnection>(data?.connections);
+      const loadedShapes = readBoardPart<BoardShape>(data?.shapes);
       const looksLikeArray =
         Array.isArray(data?.cards) || Array.isArray(data?.columns) || Array.isArray(data?.connections);
       // A keyed copy is trustworthy even from the cache - the change is
@@ -1297,10 +1566,16 @@ export default function BoardScreen() {
             shapeRef.current = 'array';
           });
       }
-      savedRef.current = { cards: loadedCards, columns: loadedColumns, connections: loadedConnections };
+      savedRef.current = {
+        cards: loadedCards,
+        columns: loadedColumns,
+        connections: loadedConnections,
+        shapes: loadedShapes,
+      };
       setTitle(data?.title ?? 'Без назви');
       setCards(loadedCards);
       setConnections(loadedConnections);
+      setShapes(loadedShapes);
       setColumns(loadedColumns);
       setIsLoaded(true);
     })();
@@ -1347,15 +1622,17 @@ export default function BoardScreen() {
       const cardPatch = whole ? keyedAll(cardsToSave) : keyedDiff(saved.cards, cardsToSave);
       const columnPatch = whole ? keyedAll(columns) : keyedDiff(saved.columns, columns);
       const connectionPatch = whole ? keyedAll(connections) : keyedDiff(saved.connections, connections);
+      const shapePatch = whole ? keyedAll(shapes) : keyedDiff(saved.shapes, shapes);
       if (cardPatch) patch.cards = cardPatch;
       if (columnPatch) patch.columns = columnPatch;
       if (connectionPatch) patch.connections = connectionPatch;
+      if (shapePatch) patch.shapes = shapePatch;
       shapeRef.current = 'keyed';
       // Recorded as sent, not as acknowledged: Firestore keeps an unsent
       // write on disk and replays it in order, so it WILL arrive - and
       // until it does, the next difference must be measured against it
       // rather than against what the server has yet to hear.
-      savedRef.current = { cards: cardsToSave, columns, connections };
+      savedRef.current = { cards: cardsToSave, columns, connections, shapes };
       setDoc(doc(db, 'boards', boardId), patch, { merge: true });
     };
     saveTimeoutRef.current = setTimeout(attemptSave, AUTOSAVE_DELAY_MS);
@@ -1363,7 +1640,7 @@ export default function BoardScreen() {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, cards, connections, columns, isLoaded]);
+  }, [title, cards, connections, columns, shapes, isLoaded]);
 
   // Read by the focus-time preview refresh below, which must not re-run
   // every time a card moves - so it reads the current cards through this
@@ -1572,8 +1849,27 @@ export default function BoardScreen() {
       .pop();
   }
 
+  // What an arrow may start from or land on. Cards first, then the
+  // furniture underneath them - a card wins where the two overlap,
+  // because the card is what is drawn on top.
+  function nodeAt(worldX: number, worldY: number): BoardNode | undefined {
+    const card = cardAt(worldX, worldY);
+    if (card) return nodeById.get(card.id);
+    return shapes
+      .map((sh) => nodeById.get(sh.id))
+      .filter(
+        (n): n is BoardNode =>
+          !!n &&
+          worldX >= n.x &&
+          worldX <= n.x + n.width &&
+          worldY >= n.y &&
+          worldY <= n.y + n.height
+      )
+      .pop();
+  }
+
   function beginConnection(worldX: number, worldY: number) {
-    const source = cardAt(worldX, worldY);
+    const source = nodeAt(worldX, worldY);
     connectingFromIdRef.current = source ? source.id : null;
   }
 
@@ -1581,7 +1877,7 @@ export default function BoardScreen() {
     const fromId = connectingFromIdRef.current;
     connectingFromIdRef.current = null;
     if (!fromId) return;
-    const target = cardAt(worldX, worldY);
+    const target = nodeAt(worldX, worldY);
     if (!target || target.id === fromId) return;
     setConnections((prev) => {
       // Links are undirected as far as the user is concerned, so a pair
@@ -1679,6 +1975,7 @@ export default function BoardScreen() {
   // - including while it is being carried - and out again the moment
   // there is not.
   const clearSelection = useCallback(() => {
+    setSelectedShapeId(null);
     setSelectedCardIds(new Set());
     setCanvasTool('move');
   }, []);
@@ -2399,9 +2696,52 @@ export default function BoardScreen() {
   const onlySelectedImageCard =
     onlySelectedCard && (onlySelectedCard.type ?? 'paragraph') === 'image' ? onlySelectedCard : undefined;
 
-  // Only a lone sticky offers the backing toggle - see textBare.
-  const onlySelectedTextCard =
-    onlySelectedCard && (onlySelectedCard.type ?? 'paragraph') === 'paragraph' ? onlySelectedCard : undefined;
+  // FURNITURE. Every one of these writes `shapes` and nothing else -
+  // that separation is the whole design, see BoardShape.
+  function addShape(kind: BoardShapeKind) {
+    setShapeSheetVisible(false);
+    const birth = SHAPE_BIRTH[kind];
+    // Born where a new card is born, and nudged the same way, so two
+    // made in a row do not land exactly on top of each other.
+    const jitter = (shapes.length % 6) * 24;
+    const shape: BoardShape = {
+      id: generateId(),
+      kind,
+      x: WORLD_CENTER - birth.width / 2 + jitter,
+      y: WORLD_CENTER - birth.height / 2 + jitter,
+      width: birth.width,
+      height: birth.height,
+    };
+    setShapes((prev) => [...prev, shape]);
+    setSelectedShapeId(shape.id);
+    // Straight into the words: a shape with nothing written in it is
+    // rarely what anyone wanted, and a loose label is never.
+    setEditingShape(shape);
+  }
+
+  function moveShape(id: string, x: number, y: number) {
+    setShapes((prev) => prev.map((sh) => (sh.id === id ? { ...sh, x, y } : sh)));
+  }
+
+  function resizeShape(id: string, width: number, height: number) {
+    setShapes((prev) => prev.map((sh) => (sh.id === id ? { ...sh, width, height } : sh)));
+  }
+
+  function setShapeText(id: string, text: string) {
+    setShapes((prev) => prev.map((sh) => (sh.id === id ? { ...sh, text } : sh)));
+  }
+
+  function setShapeColour(id: string, colour: string | undefined) {
+    setShapes((prev) => prev.map((sh) => (sh.id === id ? { ...sh, color: colour } : sh)));
+  }
+
+  function deleteShape(id: string) {
+    setShapes((prev) => prev.filter((sh) => sh.id !== id));
+    setConnections((prev) => prev.filter((c) => c.fromCardId !== id && c.toCardId !== id));
+    setSelectedShapeId((current) => (current === id ? null : current));
+  }
+
+  const selectedShape = shapes.find((sh) => sh.id === selectedShapeId);
 
   function toggleImageBare(card: BoardCard) {
     setCards((prev) => prev.map((c) => (c.id === card.id ? { ...c, imageBare: !c.imageBare } : c)));
@@ -2411,9 +2751,6 @@ export default function BoardScreen() {
     setCards((prev) => prev.map((c) => (c.id === card.id ? { ...c, imageNatural: !c.imageNatural } : c)));
   }
 
-  function toggleTextBare(card: BoardCard) {
-    setCards((prev) => prev.map((c) => (c.id === card.id ? { ...c, textBare: !c.textBare } : c)));
-  }
 
   // A card's text as text: its own for a sticky, its document's whole body
   // for a document card - the preview on the card is clipped, and copying
@@ -2485,10 +2822,36 @@ export default function BoardScreen() {
   // selected card, so all of their links go too.
   // Which shared offsets currently apply to this card, so a live line can
   // add exactly the same ones the card's own animated style does.
-  function liveEndpointFor(card: BoardCard): LiveEndpoint {
-    const inGroupDrag = selectedCardIds.has(card.id);
-    const inColumnDrag = !!card.columnId && card.columnId === draggingColumnId;
-    const position = positionOf(card);
+  // Every box an arrow may end on, cards and furniture together, looked
+  // up by the one thing a connection actually stores: an id.
+  const nodeById = new Map<string, BoardNode>();
+  for (const card of cards) {
+    nodeById.set(card.id, {
+      id: card.id,
+      x: card.x,
+      y: card.y,
+      width: widthInColumn(card),
+      height: heightOf(card, cardHeights),
+    });
+  }
+  for (const shape of shapes) {
+    nodeById.set(shape.id, {
+      id: shape.id,
+      x: shape.x,
+      y: shape.y,
+      width: shape.width,
+      // Loose text is as tall as its own words, which nothing here has
+      // measured; a card's own rough constant is the same stand-in the
+      // marquee uses, and it is close enough to aim a line at.
+      height: shape.kind === 'text' ? SHAPE_TEXT_HEIGHT : shape.kind === 'square' || shape.kind === 'circle' ? shape.width : shape.height,
+    });
+  }
+
+  function liveEndpointFor(node: BoardNode): LiveEndpoint {
+    const card = cardById.get(node.id);
+    const inGroupDrag = !!card && selectedCardIds.has(node.id);
+    const inColumnDrag = !!card?.columnId && card.columnId === draggingColumnId;
+    const position = positionFor(node.id, node.x, node.y);
     return {
       posX: position.x,
       posY: position.y,
@@ -2496,8 +2859,8 @@ export default function BoardScreen() {
       offsetY: inGroupDrag ? groupOffsetY : null,
       columnOffsetX: inColumnDrag ? columnOffsetX : null,
       columnOffsetY: inColumnDrag ? columnOffsetY : null,
-      width: widthInColumn(card),
-      height: heightOf(card, cardHeights),
+      width: node.width,
+      height: node.height,
     };
   }
 
@@ -2509,6 +2872,13 @@ export default function BoardScreen() {
       : selectedCardIds.has(draggedCardId) && selectedCardIds.size > 1
         ? selectedCardIds
         : new Set([draggedCardId]);
+  // Furniture under the finger moves its arrows the same way a card
+  // does - it is in the same position registry, so there is nothing
+  // special to do beyond saying which one is moving.
+  const movingIds =
+    draggedShapeId !== null
+      ? new Set([...(movingCardIds ?? []), draggedShapeId])
+      : movingCardIds;
   const selectionHasConnections = connections.some(
     (c) => selectedCardIds.has(c.fromCardId) || selectedCardIds.has(c.toCardId)
   );
@@ -2592,15 +2962,42 @@ export default function BoardScreen() {
                   its own small Svg sized to that pair's bounding box - one
                   canvas the size of the whole 6000px world would be a lot to
                   hand the renderer for a handful of thin curves. */}
+              {/* THE BOARD'S FURNITURE, between the lanes and the
+                  cards: it is drawn ON the canvas, and the cards are the
+                  things that live on top of it. */}
+              {shapes.map((shape) => (
+                <DraggableShape
+                  key={shape.id}
+                  shape={shape}
+                  isSelected={shape.id === selectedShapeId}
+                  posX={positionFor(shape.id, shape.x, shape.y).x}
+                  posY={positionFor(shape.id, shape.x, shape.y).y}
+                  onDragStart={setDraggedShapeId}
+                  canvasScale={scale}
+                  canvasPanGesture={canvasBlockingGesture}
+                  canvasHoldGesture={holdToSelectGesture}
+                  onTap={(sh) => setSelectedShapeId((c) => (c === sh.id ? null : sh.id))}
+                  onLongPress={(sh) => {
+                    setSelectedShapeId(sh.id);
+                    setEditingShape(sh);
+                  }}
+                  onDragEnd={(id, x, y) => {
+                    setDraggedShapeId(null);
+                    moveShape(id, x, y);
+                  }}
+                  onResize={resizeShape}
+                />
+              ))}
+
               {connections.map((connection) => {
-                const from = cardById.get(connection.fromCardId);
-                const to = cardById.get(connection.toCardId);
+                const from = nodeById.get(connection.fromCardId);
+                const to = nodeById.get(connection.toCardId);
                 if (!from || !to) return null;
                 // While either end is in motion the line is drawn live off
                 // the cards' own shared positions instead - the resting
                 // curve below is computed from React state, which doesn't
                 // update until the drop commits.
-                if (movingCardIds && (movingCardIds.has(from.id) || movingCardIds.has(to.id))) {
+                if (movingIds && (movingIds.has(from.id) || movingIds.has(to.id))) {
                   return (
                     <LiveConnectionLine
                       key={connection.id}
@@ -2609,7 +3006,7 @@ export default function BoardScreen() {
                     />
                   );
                 }
-                const { x1, y1, x2, y2 } = connectionEndpoints(from, to, cardHeights);
+                const { x1, y1, x2, y2 } = connectionEndpoints(from, to);
                 const left = Math.min(x1, x2) - CONNECTION_PADDING;
                 const top = Math.min(y1, y2) - CONNECTION_PADDING;
                 const width = Math.abs(x2 - x1) + CONNECTION_PADDING * 2;
@@ -2701,6 +3098,60 @@ export default function BoardScreen() {
           </Pressable>
         </View>
 
+        {/* FURNITURE'S OWN BAR. Separate from the cards' one and never
+            shown with it, because the two act on two different lists -
+            and that is deliberate: if a shape could join a card
+            selection, every bulk action would have to learn to skip it.
+            See BoardShape. */}
+        {selectedShape && selectedCardIds.size === 0 ? (
+          <View style={[styles.selectionBarWrap, { bottom: dockClear + bottomInset }]} pointerEvents="box-none">
+            <View style={styles.selectionBarCapsule}>
+              <Pressable
+                style={styles.selectionBarAction}
+                hitSlop={6}
+                onPress={() => setEditingShape(selectedShape)}
+              >
+                <MaterialCommunityIcons name="format-text" size={18} color="#fff" />
+                <Text style={styles.selectionBarActionLabel}>Текст</Text>
+              </Pressable>
+              <View style={styles.selectionBarDivider} />
+              {/* The outline's colour. The first swatch is "no colour" -
+                  the theme's own quiet ink, which is what a shape is
+                  born with. */}
+              <Pressable
+                hitSlop={4}
+                onPress={() => setShapeColour(selectedShape.id, undefined)}
+                style={[
+                  styles.shapeSwatch,
+                  { borderColor: theme.canvas.inkMuted },
+                  !selectedShape.color && styles.shapeSwatchOn,
+                ]}
+              />
+              {STICKY_COLORS.map((colour) => (
+                <Pressable
+                  key={colour}
+                  hitSlop={4}
+                  onPress={() => setShapeColour(selectedShape.id, colour)}
+                  style={[
+                    styles.shapeSwatch,
+                    { borderColor: colour, backgroundColor: colour },
+                    selectedShape.color === colour && styles.shapeSwatchOn,
+                  ]}
+                />
+              ))}
+              <View style={styles.selectionBarDivider} />
+              <Pressable
+                style={styles.selectionBarAction}
+                hitSlop={6}
+                onPress={() => deleteShape(selectedShape.id)}
+              >
+                <Ionicons name="trash-outline" size={18} color="#fff" />
+                <Text style={styles.selectionBarActionLabel}>Видалити</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
         {selectedCardIds.size > 0 ? (
           // Compact, content-hugging, centred capsule - same look as the
           // shared BulkActionBar component (Documents/Files/Photos/Links'
@@ -2745,22 +3196,6 @@ export default function BoardScreen() {
                 <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={disconnectSelectedCards}>
                   <MaterialCommunityIcons name="vector-line" size={18} color="#fff" />
                   <Text style={styles.selectionBarActionLabel}>Відʼєднати</Text>
-                </Pressable>
-              )}
-              {!!onlySelectedTextCard && (
-                <Pressable
-                  style={styles.selectionBarAction}
-                  hitSlop={6}
-                  onPress={() => toggleTextBare(onlySelectedTextCard)}
-                >
-                  <MaterialCommunityIcons
-                    name={onlySelectedTextCard.textBare ? 'card-text-outline' : 'format-text'}
-                    size={18}
-                    color="#fff"
-                  />
-                  <Text style={styles.selectionBarActionLabel}>
-                    {onlySelectedTextCard.textBare ? 'З підкладкою' : 'Без підкладки'}
-                  </Text>
                 </Pressable>
               )}
               {!!onlySelectedImageCard && (
@@ -2950,6 +3385,18 @@ export default function BoardScreen() {
                 <Ionicons name="search-outline" size={18} color="#111827" />
                 <Text style={styles.sheetRowLabel}>З бази даних</Text>
               </Pressable>
+              {/* Furniture, not content - so it sits at the bottom,
+                  below everything that becomes part of a document. */}
+              <Pressable
+                style={styles.sheetRow}
+                onPress={() => {
+                  setAddSheetVisible(false);
+                  setShapeSheetVisible(true);
+                }}
+              >
+                <MaterialCommunityIcons name="shape-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>Фігура або напис</Text>
+              </Pressable>
               <Pressable style={styles.sheetRow} onPress={addColumn}>
                 <MaterialCommunityIcons name="view-column-outline" size={18} color="#111827" />
                 <Text style={styles.sheetRowLabel}>Стовпчик</Text>
@@ -2957,6 +3404,44 @@ export default function BoardScreen() {
             </Pressable>
           </Pressable>
         </Modal>
+        {/* Which piece of furniture. A short list of shapes and one
+            loose label - see BoardShape for why none of them is a card. */}
+        <Modal
+          visible={shapeSheetVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShapeSheetVisible(false)}
+        >
+          <Pressable style={styles.sheetBackdrop} onPress={() => setShapeSheetVisible(false)}>
+            <Pressable style={styles.sheet} onPress={() => {}}>
+              <View style={styles.sheetHandle} />
+              {SHAPE_MENU.map((entry) => (
+                <Pressable key={entry.kind} style={styles.sheetRow} onPress={() => addShape(entry.kind)}>
+                  <MaterialCommunityIcons
+                    name={entry.icon as keyof typeof MaterialCommunityIcons.glyphMap}
+                    size={18}
+                    color="#111827"
+                  />
+                  <Text style={styles.sheetRowLabel}>{entry.label}</Text>
+                </Pressable>
+              ))}
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        <RenamePrompt
+          visible={editingShape !== null}
+          title={editingShape?.kind === 'text' ? 'Напис' : 'Текст у фігурі'}
+          initialValue={editingShape?.text ?? ''}
+          placeholder="Текст"
+          multiline
+          onCancel={() => setEditingShape(null)}
+          onSave={(value) => {
+            if (editingShape) setShapeText(editingShape.id, value.trim());
+            setEditingShape(null);
+          }}
+        />
+
 
         <AddExistingItemModal
           visible={existingItemPickerVisible}
@@ -3201,6 +3686,59 @@ const makeStyles = (theme: Theme) =>
       borderWidth: 2,
       borderColor: SELECTION_COLOR,
     },
+    // FURNITURE. Pinned at 0/0 like a card, for the same reason: the
+    // position rides entirely on the animated transform.
+    shape: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    shapeSelected: {
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: SELECTION_COLOR,
+    },
+    // Well in from the edge: a triangle and a diamond have very little
+    // room at their points, and words running into the outline read as a
+    // mistake rather than as a label.
+    shapeTextWrap: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 18,
+      paddingVertical: 14,
+    },
+    // Loose text has no outline to stay clear of.
+    shapeTextWrapBare: {
+      position: 'relative',
+      paddingHorizontal: 4,
+      paddingVertical: 4,
+    },
+    shapeText: {
+      fontSize: 14,
+      fontFamily: FONT_SEMIBOLD,
+      textAlign: 'center',
+    },
+    shapeTextLoose: {
+      fontSize: 16,
+      textAlign: 'left',
+    },
+    shapeSwatch: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      borderWidth: 2,
+    },
+    shapeSwatchOn: {
+      borderColor: '#fff',
+      borderWidth: 3,
+    },
     stickyCard: {
       borderRadius: 8,
       padding: 12,
@@ -3210,18 +3748,6 @@ const makeStyles = (theme: Theme) =>
       shadowRadius: 6,
       shadowOffset: { width: 0, height: 2 },
       elevation: 3,
-    },
-    // Text with nothing under it. No fill, no border, no padding beyond
-    // what keeps the letters off the selection outline - the card is
-    // its words.
-    bareTextCard: {
-      paddingVertical: 4,
-      paddingHorizontal: 4,
-    },
-    bareText: {
-      fontSize: 15,
-      fontFamily: FONT_SEMIBOLD,
-      color: theme.canvas.ink,
     },
     stickyText: {
       fontSize: 14,
