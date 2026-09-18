@@ -338,6 +338,18 @@ export interface BoardCard extends Omit<Block, 'type'> {
   // reason color is: a document's own image block always keeps its
   // caption, since that is where a picture's title is actually set.
   imageBare?: boolean;
+  // 'image' cards only - draw the picture in ITS OWN proportions rather
+  // than in the card's fixed 90/144 window. The shape a picture is
+  // actually in is not stored: it is read off the file (Image.getSize)
+  // when the card is drawn, because it is DERIVED from the picture and
+  // storing derived data is how two devices end up disagreeing about it.
+  imageNatural?: boolean;
+  // 'paragraph' cards only - drop the sticky's coloured backing and its
+  // padding, leaving the words alone on the canvas. The same idea as
+  // imageBare one type over: a board sometimes wants a label, not an
+  // object. Colour is kept, not cleared, so turning the backing back on
+  // restores the card the user had.
+  textBare?: boolean;
   // 'document' cards only - the referenced doc's id (Editor screen param)
   // and a cached title for display, snapshotted at add-time same as every
   // other reference card's display fields (fileTitle/imageTitle/linkTitle).

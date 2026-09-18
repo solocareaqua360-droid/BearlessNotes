@@ -60,6 +60,7 @@ import {
   widthInColumn,
   clampCardWidth,
   cardImageHeight,
+  CARD_IMAGE_PADDING,
   COLUMN_SPACING,
   COLUMN_WIDTH,
   DEFAULT_CARD_WIDTH,
@@ -864,6 +865,32 @@ function DraggableCard({
 
   const type = card.type ?? 'paragraph';
   const cardWidth = liveWidth ?? widthInColumn(card);
+  // THE SHAPE THE PICTURE IS ACTUALLY IN.
+  //
+  // Read off the file, never stored: it is a property of the picture,
+  // and a number two devices each recompute and write back is how the
+  // board learnt to argue with itself once already. Undefined until the
+  // file answers, and the fixed window is what is drawn until then, so
+  // a card never has no height at all.
+  const [naturalAspect, setNaturalAspect] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (!card.imageNatural || !imageSource) return;
+    let alive = true;
+    Image.getSize(
+      imageSource,
+      (w, h) => {
+        if (alive && w > 0 && h > 0) setNaturalAspect(h / w);
+      },
+      () => {}
+    );
+    return () => {
+      alive = false;
+    };
+  }, [card.imageNatural, imageSource]);
+  const pictureHeight =
+    card.imageNatural && naturalAspect
+      ? Math.round((cardWidth - CARD_IMAGE_PADDING * 2) * naturalAspect)
+      : cardImageHeight(cardWidth);
   // Every card kind can be made bigger, not just a picture - a sticky
   // note's text or a document's preview reads just as well wider. In a
   // column every card takes the column's width, so there is nothing to
@@ -927,26 +954,38 @@ function DraggableCard({
             )}
           </View>
         ) : type === 'paragraph' ? (
-          <View
-            style={[
-              styles.stickyCard,
-              { backgroundColor: mutedForTheme(card.color ?? STICKY_COLORS[0], theme, STICKY_MUTE) },
-            ]}
-          >
-            <Text style={styles.stickyText} numberOfLines={6}>
-              {card.text || 'Порожня картка'}
-            </Text>
-          </View>
+          card.textBare ? (
+            // Words on the canvas with nothing under them. Still a card
+            // in every other respect - it drags, it selects, an arrow
+            // can end on it - which is the whole reason this is a flag
+            // on a paragraph rather than a type of its own.
+            <View style={styles.bareTextCard}>
+              <Text style={styles.bareText} numberOfLines={6}>
+                {card.text || 'Текст'}
+              </Text>
+            </View>
+          ) : (
+            <View
+              style={[
+                styles.stickyCard,
+                { backgroundColor: mutedForTheme(card.color ?? STICKY_COLORS[0], theme, STICKY_MUTE) },
+              ]}
+            >
+              <Text style={styles.stickyText} numberOfLines={6}>
+                {card.text || 'Порожня картка'}
+              </Text>
+            </View>
+          )
         ) : type === 'image' ? (
           card.imageBare ? (
             imageSource ? (
               <Image
                 source={{ uri: imageSource }}
-                style={[styles.refThumbBare, { height: cardImageHeight(cardWidth) }]}
+                style={[styles.refThumbBare, { height: pictureHeight }]}
                 resizeMode="cover" resizeMethod="resize"
               />
             ) : (
-              <View style={[styles.refThumbBare, styles.refThumbPlaceholder, { height: cardImageHeight(cardWidth) }]}>
+              <View style={[styles.refThumbBare, styles.refThumbPlaceholder, { height: pictureHeight }]}>
                 {imageStatus === 'restoring' ? (
                   <ActivityIndicator color="#9CA3AF" />
                 ) : (
@@ -959,11 +998,11 @@ function DraggableCard({
               {imageSource ? (
                 <Image
                   source={{ uri: imageSource }}
-                  style={[styles.refThumb, { height: cardImageHeight(cardWidth) }]}
+                  style={[styles.refThumb, { height: pictureHeight }]}
                   resizeMode="cover" resizeMethod="resize"
                 />
               ) : (
-                <View style={[styles.refThumb, styles.refThumbPlaceholder, { height: cardImageHeight(cardWidth) }]}>
+                <View style={[styles.refThumb, styles.refThumbPlaceholder, { height: pictureHeight }]}>
                   {imageStatus === 'restoring' ? (
                     <ActivityIndicator color="#9CA3AF" />
                   ) : (
@@ -2360,8 +2399,20 @@ export default function BoardScreen() {
   const onlySelectedImageCard =
     onlySelectedCard && (onlySelectedCard.type ?? 'paragraph') === 'image' ? onlySelectedCard : undefined;
 
+  // Only a lone sticky offers the backing toggle - see textBare.
+  const onlySelectedTextCard =
+    onlySelectedCard && (onlySelectedCard.type ?? 'paragraph') === 'paragraph' ? onlySelectedCard : undefined;
+
   function toggleImageBare(card: BoardCard) {
     setCards((prev) => prev.map((c) => (c.id === card.id ? { ...c, imageBare: !c.imageBare } : c)));
+  }
+
+  function toggleImageNatural(card: BoardCard) {
+    setCards((prev) => prev.map((c) => (c.id === card.id ? { ...c, imageNatural: !c.imageNatural } : c)));
+  }
+
+  function toggleTextBare(card: BoardCard) {
+    setCards((prev) => prev.map((c) => (c.id === card.id ? { ...c, textBare: !c.textBare } : c)));
   }
 
   // A card's text as text: its own for a sticky, its document's whole body
@@ -2694,6 +2745,38 @@ export default function BoardScreen() {
                 <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={disconnectSelectedCards}>
                   <MaterialCommunityIcons name="vector-line" size={18} color="#fff" />
                   <Text style={styles.selectionBarActionLabel}>Відʼєднати</Text>
+                </Pressable>
+              )}
+              {!!onlySelectedTextCard && (
+                <Pressable
+                  style={styles.selectionBarAction}
+                  hitSlop={6}
+                  onPress={() => toggleTextBare(onlySelectedTextCard)}
+                >
+                  <MaterialCommunityIcons
+                    name={onlySelectedTextCard.textBare ? 'card-text-outline' : 'format-text'}
+                    size={18}
+                    color="#fff"
+                  />
+                  <Text style={styles.selectionBarActionLabel}>
+                    {onlySelectedTextCard.textBare ? 'З підкладкою' : 'Без підкладки'}
+                  </Text>
+                </Pressable>
+              )}
+              {!!onlySelectedImageCard && (
+                <Pressable
+                  style={styles.selectionBarAction}
+                  hitSlop={6}
+                  onPress={() => toggleImageNatural(onlySelectedImageCard)}
+                >
+                  <MaterialCommunityIcons
+                    name={onlySelectedImageCard.imageNatural ? 'crop-square' : 'image-size-select-actual'}
+                    size={18}
+                    color="#fff"
+                  />
+                  <Text style={styles.selectionBarActionLabel}>
+                    {onlySelectedImageCard.imageNatural ? 'Однакові' : 'Свої пропорції'}
+                  </Text>
                 </Pressable>
               )}
               {!!onlySelectedImageCard && (
@@ -3127,6 +3210,18 @@ const makeStyles = (theme: Theme) =>
       shadowRadius: 6,
       shadowOffset: { width: 0, height: 2 },
       elevation: 3,
+    },
+    // Text with nothing under it. No fill, no border, no padding beyond
+    // what keeps the letters off the selection outline - the card is
+    // its words.
+    bareTextCard: {
+      paddingVertical: 4,
+      paddingHorizontal: 4,
+    },
+    bareText: {
+      fontSize: 15,
+      fontFamily: FONT_SEMIBOLD,
+      color: theme.canvas.ink,
     },
     stickyText: {
       fontSize: 14,
