@@ -443,6 +443,45 @@ export default function ContextDock() {
   // go of it and falling back on React's own number changes nothing
   // that can be seen.
   const gesture = useSharedValue(0);
+  // THE RESTING NUMBERS, AS SHARED VALUES AGAIN - but written a
+  // different way than the mirrors this file tore out.
+  //
+  // Baking `faceIndex`/`ringSize`/`CARD_H` straight into the worklet as
+  // closure values, declared as useAnimatedStyle's own dependencies,
+  // fixed which card gets CHOSEN - the log settled that, one line per
+  // screen, no more re-choosing. It left one frame of lag in the
+  // PLACEMENT, because a change to those dependencies makes
+  // useAnimatedStyle rebuild its worklet inside its own internal
+  // useEffect - an ordinary one, which Reanimated owns and this file
+  // cannot turn into a layout effect - and an ordinary effect runs
+  // after the frame is painted.
+  //
+  // The fix tried next put the same numbers in a plain sibling style,
+  // reasoning that React's own commit would win by sitting last in the
+  // array. It could not: once an animated style is present on a view,
+  // Reanimated owns that view's transform outright, writing to it
+  // imperatively from the UI thread - a plain style in the same array
+  // is not in a fight it can win, "last" or not. It did not fix the
+  // lag and it broke the dock outright, disappearing on a plain side
+  // swipe that never touched the dock's own gesture at all.
+  //
+  // So: shared values once more, but WRITTEN from a layout effect that
+  // runs on every render, no dependency list, so nothing about writing
+  // them ever depends on noticing a change. A shared value's write from
+  // the JS thread reaches the UI thread's own mapper synchronously -
+  // that cross-thread reactivity is the whole reason Reanimated's
+  // shared values exist, and it is not gated behind any React effect
+  // timing. The worklets below read ONLY shared values, never a JS
+  // closure number, so there is no second effect anywhere left to lag
+  // behind the first.
+  const restIndexSV = useSharedValue(0);
+  const ringRestSV = useSharedValue(1);
+  const cardHRestSV = useSharedValue(0);
+  useLayoutEffect(() => {
+    restIndexSV.value = faceIndex;
+    ringRestSV.value = ringSize;
+    cardHRestSV.value = CARD_H;
+  });
   // A hard limit on how long a swipe may speak for the placement. Every
   // long-lived bug here has been a flag raised by one callback and
   // lowered by another that had a way of never running.
@@ -481,17 +520,32 @@ export default function ContextDock() {
   logDock(`${showing}/${ringSize}/${faceIndex}/${own ? own.kind : '-'}/${actions?.length ?? 0}`);
   // Three, always: the ring is at most three cards, and a hook cannot be
   // called in a loop whose length changes between renders.
-  const slot0 = useAnimatedStyle(
-    () => slotTransform(0, gesture.value ? progress.value : faceIndex, ringSize, CARD_H, 0),
-    [faceIndex, ringSize, CARD_H]
+  const slot0 = useAnimatedStyle(() =>
+    slotTransform(
+      0,
+      gesture.value ? progress.value : restIndexSV.value,
+      ringRestSV.value,
+      cardHRestSV.value,
+      0
+    )
   );
-  const slot1 = useAnimatedStyle(
-    () => slotTransform(1, gesture.value ? progress.value : faceIndex, ringSize, CARD_H, 0),
-    [faceIndex, ringSize, CARD_H]
+  const slot1 = useAnimatedStyle(() =>
+    slotTransform(
+      1,
+      gesture.value ? progress.value : restIndexSV.value,
+      ringRestSV.value,
+      cardHRestSV.value,
+      0
+    )
   );
-  const slot2 = useAnimatedStyle(
-    () => slotTransform(2, gesture.value ? progress.value : faceIndex, ringSize, CARD_H, 0),
-    [faceIndex, ringSize, CARD_H]
+  const slot2 = useAnimatedStyle(() =>
+    slotTransform(
+      2,
+      gesture.value ? progress.value : restIndexSV.value,
+      ringRestSV.value,
+      cardHRestSV.value,
+      0
+    )
   );
   const slotStyles = [slot0, slot1, slot2];
   // The one moment a swipe stops speaking for the placement: the render
@@ -958,7 +1012,7 @@ export default function ContextDock() {
           Remove once that is found and fixed. */}
       <View style={[styles.debugHud, { top: insets.top + 4 }]} pointerEvents="none">
         <Text style={styles.debugText}>
-          {`ring=${ringSize} idx=${faceIndex} PROG=${progress.value} G=${gesture.value}\nown=${own ? own.kind : '-'} act=${actions?.length ?? 0} leave=${showLeave ? 1 : 0} bottom=${bottomInset} key=${screenKey.slice(-6)}\nfaces=[${faces.join(',')}] restY=${faces
+          {`ring=${ringSize} idx=${faceIndex} PROG=${progress.value} G=${gesture.value} RI=${restIndexSV.value} RN=${ringRestSV.value}\nown=${own ? own.kind : '-'} act=${actions?.length ?? 0} leave=${showLeave ? 1 : 0} bottom=${bottomInset} key=${screenKey.slice(-6)}\nfaces=[${faces.join(',')}] restY=${faces
             .map((_, i) => Math.round((restStyles[i].transform[0] as { translateY: number }).translateY * 100) / 100)
             .join('/')}\n${dockTrail.current.lines.join('\n')}`}
         </Text>
