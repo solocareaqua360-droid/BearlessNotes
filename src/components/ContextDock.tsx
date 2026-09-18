@@ -269,33 +269,51 @@ export default function ContextDock() {
   facesRef.current = faces;
   const cardHRef = useRef(CARD_H);
   cardHRef.current = CARD_H;
-  // WHY THE FLICKER WAS NOT A TIMING BUG.
+  // WHERE THE CARDS STAND, AND WHO IS ALLOWED TO SAY SO.
   //
-  // This used to be two fixed slots - FRONT and BACK - each holding
-  // whichever face React had put there, and one value that swapped their
-  // POSITIONS. At the end of a swipe two things then had to happen at
-  // once: the slots had to take their new content, and the value had to
-  // snap back to zero. One of those lives in React state, the other on
-  // the UI thread. They can be brought close - moving the reset into an
-  // effect got it down to a single frame - but they cannot be made
-  // simultaneous, and in any frame where only one of them has landed the
-  // two cards are drawn INVERTED: the new front small and behind, the
-  // old one full size in front. That frame is the flicker. No ordering
-  // of the two removes it, because the pair is the bug.
+  // Two facts about this file, both learned the hard way:
   //
-  // So nothing swaps any more. Every face in the ring is mounted once,
-  // in its own layer, and never moves in the tree; `progress` alone
-  // decides where each one stands (see slotTransform). The effect below
-  // still writes the front card's index back into it, but that write is
-  // now arithmetically invisible: a ring of two lands on progress 2 and
-  // the effect writes 0, and 2 and 0 place every card identically. Early,
-  // late or never, the screen cannot tell. A race nothing can observe is
-  // not a race.
+  // 1. A card's place must be a function of ONE number, not of two
+  //    things that have to agree. Fixed FRONT and BACK slots whose
+  //    contents React swapped while a shared value swapped their
+  //    positions could never be made simultaneous, and every frame
+  //    where only one had landed drew the pair inverted. So the ring is
+  //    mounted once, nothing ever moves in the tree, and slotTransform
+  //    places every card from a single position.
+  //
+  // 2. A Reanimated style CANNOT land in the same commit as the content
+  //    beside it. useAnimatedStyle computes its inline value exactly
+  //    once, on the first render; every change after that reaches the
+  //    view from the UI thread, through a mapper started in an effect.
+  //    So anything React changes in a commit - which cards exist, which
+  //    of them is in front - is on screen a frame before an animated
+  //    style that was supposed to change with it. That is what made the
+  //    dock flash when switching desks: the new screen's ring and front
+  //    card arrived, and the transform saying where they stand arrived
+  //    after.
+  //
+  // Hence: AT REST THE ANIMATED STYLE IS NOT THERE AT ALL. A resting
+  // card's place is a plain style, computed right here, and it lands
+  // with everything else in the same commit - a desk switch has nothing
+  // left to race. The animated style is attached only while a swipe is
+  // actually running, and both hand-overs are between two descriptions
+  // of the SAME picture:
+  //
+  //   on   the gesture freezes the front index into dragBase and starts
+  //        from drift 0, so the animated placement it attaches with is
+  //        pixel-for-pixel the resting one it replaces
+  //   off  the swipe ends at dragBase + 1, the face is committed, and
+  //        only once React is actually holding the new front card does
+  //        the animated style come off - and dragBase + 1 is that new
+  //        card's resting place, in a ring, to the pixel
+  //
+  // Neither hand-over can be seen whichever frame it lands on, which is
+  // the only property that has ever made this stop flickering.
   const progress = useSharedValue(0);
   const dragBase = useSharedValue(0);
-  // Read on the UI thread, so they are shared values rather than refs -
-  // a ref read inside a worklet is frozen at the value it had when the
-  // worklet was built.
+  // Read from the UI thread, so shared values rather than refs - a ref
+  // read inside a worklet is frozen at the value it had when the worklet
+  // was built.
   const cardHSV = useSharedValue(CARD_H);
   const ringSV = useSharedValue(1);
   useEffect(() => {
@@ -304,21 +322,67 @@ export default function ContextDock() {
   useEffect(() => {
     ringSV.value = ringSize;
   }, [ringSize, ringSV]);
-  useEffect(() => {
-    progress.value = faceIndex;
-  }, [faceIndex, progress]);
-  // Three of them, always: the ring is at most three cards, and a hook
-  // cannot be called in a loop whose length changes between renders. A
-  // layer past the end of this screen's ring is simply not rendered.
+  // Where every card rests, said in plain style objects React commits
+  // along with the cards themselves.
+  const restStyles = [0, 1, 2].map((i) => slotTransform(i, faceIndex, ringSize, CARD_H));
+  // Three, always: the ring is at most three cards, and a hook cannot be
+  // called in a loop whose length changes between renders.
   const slot0 = useAnimatedStyle(() => slotTransform(0, progress.value, ringSV.value, cardHSV.value));
   const slot1 = useAnimatedStyle(() => slotTransform(1, progress.value, ringSV.value, cardHSV.value));
   const slot2 = useAnimatedStyle(() => slotTransform(2, progress.value, ringSV.value, cardHSV.value));
   const slotStyles = [slot0, slot1, slot2];
-  // The gesture is built once, so anything it calls must be reachable
-  // through something that does not change identity.
+  // Whether the animated style is attached at all.
+  const [swiping, setSwiping] = useState(false);
+  const faceIndexRef = useRef(faceIndex);
+  faceIndexRef.current = faceIndex;
+  // The gesture is built once, so everything it reaches has to be
+  // reachable through something whose identity never changes.
   const commitRef = useRef<(f: DockFace) => void>(() => {});
   commitRef.current = setFace;
-  const commit = useMemo(() => (next: DockFace) => commitRef.current(next), []);
+  const pending = useRef<DockFace | null>(null);
+  const showingRef = useRef(showing);
+  showingRef.current = showing;
+  const hand = useMemo(
+    () => ({
+      // A swipe has begun: pin the animated placement to exactly where
+      // the cards are resting, then let it take over.
+      begin: () => {
+        dragBase.value = faceIndexRef.current;
+        progress.value = faceIndexRef.current;
+        setSwiping(true);
+      },
+      // Asked for, not done: the animated style stays on until React is
+      // actually holding the new front card. Taking it off any earlier
+      // would drop the cards back onto the OLD resting places for a
+      // frame, which is the flash all over again.
+      commit: (next: DockFace) => {
+        // Nothing to wait for if the card asked for is the one already
+        // in front - there would be no change of `showing` to hear.
+        if (next === showingRef.current) {
+          pending.current = null;
+          setSwiping(false);
+          return;
+        }
+        pending.current = next;
+        commitRef.current(next);
+      },
+      // Nothing was committed, so resting and animated already agree.
+      done: () => {
+        pending.current = null;
+        setSwiping(false);
+      },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+  useEffect(() => {
+    // Any change of the front card ends the swipe, not only the one the
+    // swipe asked for: whatever React has landed on, its resting style
+    // is the honest answer from here on.
+    if (!pending.current) return;
+    pending.current = null;
+    setSwiping(false);
+  }, [showing]);
   const swipe = useMemo(
     () =>
       Gesture.Pan()
@@ -333,11 +397,10 @@ export default function ContextDock() {
         // cycle, so there is nothing to remember about which way is
         // which. Down does nothing on purpose; it is the direction the
         // system itself uses just below here.
-        .onBegin(() => {
-          // Where this drag started from, so everything it does is said
-          // relative to it rather than to an absolute zero the ring may
-          // long since have walked past.
-          dragBase.value = Math.round(progress.value);
+        .onStart(() => {
+          // On ACTIVATION, not on touch-down: the animated style only
+          // needs to exist once something is actually being dragged.
+          hand.begin();
         })
         .onUpdate((e) => {
           if (facesRef.current.length < 2) return;
@@ -367,11 +430,17 @@ export default function ContextDock() {
               dragBase.value + 1,
               { duration: 260, easing: Easing.inOut(Easing.cubic) },
               (finished) => {
-                if (finished) runOnJS(commit)(next);
+                if (finished) runOnJS(hand.commit)(next);
               }
             );
           } else {
-            progress.value = withTiming(dragBase.value, { duration: 220, easing: Easing.out(Easing.cubic) });
+            progress.value = withTiming(
+              dragBase.value,
+              { duration: 220, easing: Easing.out(Easing.cubic) },
+              (finished) => {
+                if (finished) runOnJS(hand.done)();
+              }
+            );
           }
         }),
     []
@@ -699,7 +768,7 @@ export default function ContextDock() {
             {faces.map((f, i) => (
               <Animated.View
                 key={f}
-                style={[styles.cardLayer, dims.card, slotStyles[i]]}
+                style={[styles.cardLayer, dims.card, restStyles[i], swiping ? slotStyles[i] : null]}
                 pointerEvents={f === showing ? 'auto' : 'none'}
               >
                 <Frost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
