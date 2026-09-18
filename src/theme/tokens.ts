@@ -104,6 +104,12 @@ export type Theme = {
     // The round "+" floating over it, and its glyph.
     fab: string;
     fabInk: string;
+    // A lane drawn ON the canvas for cards to stand in (the board's
+    // columns), and its edge. A wash rather than a fill - it has to
+    // read as an area of the canvas, not as a card lying on it, so it
+    // goes the SAME way as the ladder but by a much smaller step.
+    lane: string;
+    laneEdge: string;
   };
   lift: Lift;
   // The glass a floating control is made of - a role in ALL THREE
@@ -188,6 +194,8 @@ const colour: Theme = {
     inkFaint: '#9CA3AF',
     fab: '#111827',
     fabInk: '#FFFFFF',
+    lane: 'rgba(17,24,39,0.05)',
+    laneEdge: 'rgba(17,24,39,0.12)',
   },
   lift: 'blur',
   glass: {
@@ -263,6 +271,8 @@ const white: Theme = {
     inkFaint: '#9CA3AF',
     fab: '#111827',
     fabInk: '#FFFFFF',
+    lane: 'rgba(17,24,39,0.05)',
+    laneEdge: 'rgba(17,24,39,0.12)',
   },
   lift: 'shadow',
   // On white almost nothing can come from the fill - white glass on a
@@ -332,6 +342,10 @@ const black: Theme = {
     inkFaint: 'rgba(236,237,239,0.38)',
     fab: '#2C2F36',
     fabInk: '#ECEDEF',
+    // Light, not dark: a dark wash on a dark canvas is nothing at all,
+    // which is how the board's columns disappeared.
+    lane: 'rgba(255,255,255,0.05)',
+    laneEdge: 'rgba(255,255,255,0.12)',
   },
   lift: 'glow',
   // The one the user called bad, and the reason was the milky wash: a

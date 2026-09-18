@@ -1,3 +1,5 @@
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import { mutedForTheme, type Theme } from '../theme/tokens';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -101,6 +103,21 @@ const MAX_SCALE = 3;
 // plain offsets from this world's own top-left, and the world container
 // itself starts centered on screen (see canvasSurface/world styles), so
 // WORLD_CENTER is where a freshly created card lands by default.
+// The six a sticky card can be. STORED as they are - the colour is the
+// user's own choice and must survive a change of theme - but DRAWN
+// through `mutedForTheme`: #FEF3C7 on a near-black canvas is a torch,
+// and blended most of the way into the theme's own surface the card
+// stays recognisable as "the yellow one" while it stops being the
+// brightest thing on the screen. In the colour theme mutedForTheme
+// hands the colour back untouched, so nothing moves there.
+//
+// Muted HARDER than the app's default 0.62, because a sticky fills a
+// whole card rather than a chip beside a row, and area is light: at the
+// default the six of them came out well above the plain card's own fill
+// and the board read as a handful of lamps again. At 0.72 a coloured
+// card is still clearly more present than a plain one - which is the
+// point of colouring it - without being the brightest thing there.
+const STICKY_MUTE = 0.72;
 const STICKY_COLORS = ['#FEF3C7', '#DBEAFE', '#DCFCE7', '#FCE7F3', '#EDE9FE', '#FFE4E6'];
 // Cards don't carry their own rendered height (only width) - close enough
 // for hit-testing the marquee-selection rectangle against, not meant to be
@@ -426,6 +443,8 @@ function ConnectDraftLine({
   endY: SharedValue<number>;
   visible: SharedValue<boolean>;
 }) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const animatedStyle = useAnimatedStyle(() => {
     const dx = endX.value - startX.value;
     const dy = endY.value - startY.value;
@@ -468,6 +487,8 @@ type LiveEndpoint = {
 // needs nothing but a transform, and the curve comes back the moment the
 // card is dropped.
 function LiveConnectionLine({ from, to }: { from: LiveEndpoint; to: LiveEndpoint }) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const animatedStyle = useAnimatedStyle(() => {
     const fromX = from.posX.value + (from.offsetX?.value ?? 0) + (from.columnOffsetX?.value ?? 0);
     const fromY = from.posY.value + (from.offsetY?.value ?? 0) + (from.columnOffsetY?.value ?? 0);
@@ -533,6 +554,8 @@ function DraggableColumn({
   onRename: (column: BoardColumn) => void;
   onDelete: (column: BoardColumn) => void;
 }) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const posX = useSharedValue(column.x);
   const posY = useSharedValue(column.y);
   const reportedX = useSharedValue(column.x);
@@ -699,6 +722,8 @@ function DraggableCard({
   onResize,
   canvasHoldGesture,
 }: DraggableCardProps) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   // The last position this card itself put into the parent's state. Used
   // only to tell "our own drag echoing back" (ignore) apart from a real
   // external move (adopt).
@@ -902,7 +927,12 @@ function DraggableCard({
             )}
           </View>
         ) : type === 'paragraph' ? (
-          <View style={[styles.stickyCard, { backgroundColor: card.color ?? STICKY_COLORS[0] }]}>
+          <View
+            style={[
+              styles.stickyCard,
+              { backgroundColor: mutedForTheme(card.color ?? STICKY_COLORS[0], theme, STICKY_MUTE) },
+            ]}
+          >
             <Text style={styles.stickyText} numberOfLines={6}>
               {card.text || 'Порожня картка'}
             </Text>
@@ -1004,6 +1034,8 @@ type Props = NativeStackScreenProps<BoardsStackParamList, 'Board'>;
 // existing file/photo/link comes straight out of AddExistingItemModal
 // unmodified, exactly like inserting one into a document does.
 export default function BoardScreen() {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const keyboardHeight = useKeyboardHeight();
   const boardFocused = useIsFocused();
   const boardInsets = useSafeAreaInsets();
@@ -2957,7 +2989,9 @@ export default function BoardScreen() {
                     onPress={() => setEditingCardColor(color)}
                     style={[
                       styles.textEditColorSwatch,
-                      { backgroundColor: color },
+                      // Muted the same way the card will be, or the
+                      // swatch promises a colour the board never shows.
+                      { backgroundColor: mutedForTheme(color, theme, STICKY_MUTE) },
                       editingCard.color === color && styles.textEditColorSwatchActive,
                     ]}
                   />
@@ -3017,409 +3051,418 @@ export default function BoardScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  splitRoot: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#F3F4F6',
-  },
-  paneHidden: {
-    display: 'none',
-  },
-  docPane: {
-    flex: 1,
-    borderLeftWidth: 1,
-    borderLeftColor: 'rgba(17,24,39,0.12)',
-    overflow: 'hidden',
-  },
-  canvasSurface: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  world: {
-    width: WORLD_SIZE,
-    height: WORLD_SIZE,
-  },
-  // left/top are pinned at 0 on purpose - a card's world position is carried
-  // entirely by its animated transform (see DraggableCard), never by layout.
-  card: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    zIndex: 0,
-  },
-  // The card currently being dragged renders above every other card - see
-  // the isDragging comment where this is applied.
-  cardDragging: {
-    zIndex: 100,
-    elevation: 12,
-  },
-  // The corner a picture is made bigger by. Hangs half off the card, the
-  // way the tile board's own grip does, so it never sits on the picture.
-  cardGrip: {
-    position: 'absolute',
-    right: -8,
-    bottom: -8,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(17,24,39,0.85)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
-    zIndex: 30,
-  },
-  cardSelected: {
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: SELECTION_COLOR,
-  },
-  stickyCard: {
-    borderRadius: 8,
-    padding: 12,
-    minHeight: 90,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-  stickyText: {
-    fontSize: 14,
-    fontFamily: FONT_REGULAR,
-    color: '#111827',
-  },
-  dbRowCard: {
-    padding: 2,
-  },
-  refCard: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 8,
-    gap: 6,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-  refThumb: {
-    width: '100%',
-    height: 90,
-    borderRadius: 6,
-  },
-  // imageBare cards only - no refCard wrapper around this one, so the
-  // picture itself carries the card's own rounding and shadow.
-  refThumbBare: {
-    width: '100%',
-    height: 90,
-    borderRadius: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-  refThumbPlaceholder: {
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  refLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    fontFamily: FONT_SEMIBOLD,
-    color: '#111827',
-  },
-  documentPreviewText: {
-    fontSize: 11,
-    fontFamily: FONT_REGULAR,
-    lineHeight: 15,
-    color: '#6B7280',
-  },
-  headerRow: {
-    position: 'absolute',
-    top: 56,
-    left: 20,
-    right: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  titleTap: {
-    flex: 1,
-    // The app's own glass. No BlurView behind it, deliberately: this
-    // screen is INSIDE the blur target, and a blur asked to blur a
-    // picture it is itself part of recurses and takes the app down - it
-    // did exactly that here. A blurred one would have to be drawn through
-    // GlassPortal, like the rail's.
-    overflow: 'hidden',
-    backgroundColor: GLASS_ISLAND,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    color: '#fff',
-    textAlign: 'center',
-  },
-  // `bottom` is set inline (104 + the device's real safe-area inset) -
-  // see the component body. Board is a screen inside the "Дошки" tab, so
-  // FloatingIslandTabBar's pill (bottom: 24, ~48 tall) is always showing
-  // underneath here - 104 is the fixed clearance BulkActionBar's own
-  // aboveTabBar variant uses for the same pill.
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+    splitRoot: {
+      flex: 1,
+      flexDirection: 'row',
+    },
+    container: {
+      flex: 1,
+      // The canvas's own ground. It was a flat light grey whatever the
+      // theme, which in the black one is one huge bright rectangle the
+      // eye has to re-adjust for every time it leaves the board -
+      // "її полотно біле а вся загальна тема чорна".
+      backgroundColor: theme.canvas.ground,
+    },
+    paneHidden: {
+      display: 'none',
+    },
+    docPane: {
+      flex: 1,
+      borderLeftWidth: 1,
+      borderLeftColor: 'rgba(17,24,39,0.12)',
+      overflow: 'hidden',
+    },
+    canvasSurface: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    world: {
+      width: WORLD_SIZE,
+      height: WORLD_SIZE,
+    },
+    // left/top are pinned at 0 on purpose - a card's world position is carried
+    // entirely by its animated transform (see DraggableCard), never by layout.
+    card: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      zIndex: 0,
+    },
+    // The card currently being dragged renders above every other card - see
+    // the isDragging comment where this is applied.
+    cardDragging: {
+      zIndex: 100,
+      elevation: 12,
+    },
+    // The corner a picture is made bigger by. Hangs half off the card, the
+    // way the tile board's own grip does, so it never sits on the picture.
+    cardGrip: {
+      position: 'absolute',
+      right: -8,
+      bottom: -8,
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(17,24,39,0.85)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.5)',
+      zIndex: 30,
+    },
+    cardSelected: {
+      borderRadius: 10,
+      borderWidth: 2,
+      borderColor: SELECTION_COLOR,
+    },
+    stickyCard: {
+      borderRadius: 8,
+      padding: 12,
+      minHeight: 90,
+      shadowColor: '#000',
+      shadowOpacity: 0.15,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 3,
+    },
+    stickyText: {
+      fontSize: 14,
+      fontFamily: FONT_REGULAR,
+      color: theme.canvas.ink,
+    },
+    dbRowCard: {
+      padding: 2,
+    },
+    refCard: {
+      backgroundColor: theme.canvas.card,
+      borderRadius: 10,
+      padding: 8,
+      gap: 6,
+      borderWidth: 1,
+      // What parts a card from the canvas in the dark - there is
+      // nothing darker for the shadow below to fall on.
+      borderColor: theme.canvas.edge,
+      shadowColor: '#000',
+      shadowOpacity: 0.15,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 3,
+    },
+    refThumb: {
+      width: '100%',
+      height: 90,
+      borderRadius: 6,
+    },
+    // imageBare cards only - no refCard wrapper around this one, so the
+    // picture itself carries the card's own rounding and shadow.
+    refThumbBare: {
+      width: '100%',
+      height: 90,
+      borderRadius: 10,
+      shadowColor: '#000',
+      shadowOpacity: 0.15,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 3,
+    },
+    refThumbPlaceholder: {
+      backgroundColor: theme.canvas.lane,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    refLabel: {
+      fontSize: 12,
+      fontWeight: '600',
+      fontFamily: FONT_SEMIBOLD,
+      color: '#111827',
+    },
+    documentPreviewText: {
+      fontSize: 11,
+      fontFamily: FONT_REGULAR,
+      lineHeight: 15,
+      color: theme.canvas.inkMuted,
+    },
+    headerRow: {
+      position: 'absolute',
+      top: 56,
+      left: 20,
+      right: 20,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    titleTap: {
+      flex: 1,
+      // The app's own glass. No BlurView behind it, deliberately: this
+      // screen is INSIDE the blur target, and a blur asked to blur a
+      // picture it is itself part of recurses and takes the app down - it
+      // did exactly that here. A blurred one would have to be drawn through
+      // GlassPortal, like the rail's.
+      overflow: 'hidden',
+      backgroundColor: GLASS_ISLAND,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.4)',
+      borderRadius: 999,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+    },
+    headerTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+      fontFamily: FONT_BOLD,
+      color: '#fff',
+      textAlign: 'center',
+    },
+    // `bottom` is set inline (104 + the device's real safe-area inset) -
+    // see the component body. Board is a screen inside the "Дошки" tab, so
+    // FloatingIslandTabBar's pill (bottom: 24, ~48 tall) is always showing
+    // underneath here - 104 is the fixed clearance BulkActionBar's own
+    // aboveTabBar variant uses for the same pill.
 
-  marquee: {
-    position: 'absolute',
-    backgroundColor: 'rgba(37,99,235,0.15)',
-    borderWidth: 1.5,
-    borderColor: SELECTION_COLOR,
-    borderRadius: 4,
-  },
-  // left/top come from each connection's own bounding box at render time.
-  connection: {
-    position: 'absolute',
-  },
-  connectDraft: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    height: 2,
-    backgroundColor: CONNECTION_COLOR,
-  },
-  // left/top pinned at 0 on purpose - the column's world position rides
-  // entirely on its animated transform, same as a card's.
-  column: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    width: COLUMN_WIDTH,
-    borderRadius: 14,
-    backgroundColor: 'rgba(17,24,39,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.12)',
-  },
-  // Lit while a card is held over it.
-  columnCatching: {
-    borderColor: SELECTION_COLOR,
-    borderWidth: 2,
-    backgroundColor: 'rgba(139,92,246,0.10)',
-  },
-  columnHeader: {
-    height: COLUMN_HEADER_HEIGHT,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    paddingHorizontal: COLUMN_PADDING,
-  },
-  columnTitleWrap: {
-    flex: 1,
-  },
-  columnTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    color: '#374151',
-  },
-  columnCount: {
-    fontSize: 11,
-    fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
-  },
-  // Same compact, content-hugging dark-glass pill as the shared
-  // BulkActionBar component (Documents/Files/Photos/Links' own
-  // multi-select bar) - kept local rather than reusing that component
-  // directly since its action set (tag/group/copy) doesn't apply to board
-  // cards. `bottom` is set inline, same as the FAB above.
-  selectionBarWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  selectionBarCapsule: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    backgroundColor: 'rgba(20,20,20,0.55)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
-    borderRadius: 24,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowOffset: { width: 0, height: 6 },
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  selectionBarCount: {
-    fontSize: 14,
-    fontWeight: '800',
-    fontFamily: FONT_EXTRABOLD,
-    color: '#fff',
-  },
-  selectionBarDivider: {
-    width: 1,
-    height: 22,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-  },
-  selectionBarAction: {
-    alignItems: 'center',
-    gap: 3,
-  },
-  selectionBarActionLabel: {
-    fontSize: 9.5,
-    fontWeight: '600',
-    fontFamily: FONT_SEMIBOLD,
-    color: '#fff',
-  },
-  // Same dark-glass treatment as the selection bar's own capsule above,
-  // for the one confirmation that sits over the canvas itself rather than
-  // this app's usual native Alert.
-  sheetBackdrop: {
-    backgroundColor: 'rgba(17,24,39,0.45)',
-    ...SHEET_BACKDROP,
-  },
-  sheet: {
-    backgroundColor: '#fff',
-    ...SHEET_WINDOW,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 28,
-  },
-  sheetTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    color: '#111827',
-    marginBottom: 6,
-  },
-  groupList: {
-    maxHeight: 360,
-  },
-  groupDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  groupCount: {
-    fontSize: 13,
-    fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
-  },
-  groupEmpty: {
-    fontSize: 14,
-    fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
-    paddingVertical: 10,
-  },
-  sheetHandle: {
-    width: 36,
-    height: 4,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 12,
-  },
-  sheetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-  },
-  sheetRowLabel: {
-    flex: 1,
-    fontSize: 15,
-    fontFamily: FONT_REGULAR,
-    color: '#111827',
-  },
-  textEditBackdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(17,24,39,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  textEditCard: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    gap: 12,
-  },
-  readTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    color: '#111827',
-  },
-  readBody: {
-    maxHeight: 360,
-  },
-  textEditInput: {
-    minHeight: 100,
-    fontSize: 15,
-    fontFamily: FONT_REGULAR,
-    color: '#111827',
-    textAlignVertical: 'top',
-  },
-  textEditColors: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  textEditColorSwatch: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-  },
-  textEditColorSwatchActive: {
-    borderWidth: 2,
-    borderColor: '#111827',
-  },
-  textEditButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 12,
-  },
-  textEditCancel: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-  },
-  textEditCancelLabel: {
-    fontSize: 15,
-    fontFamily: FONT_REGULAR,
-    color: '#6B7280',
-  },
-  textEditSave: {
-    backgroundColor: ACCENT,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-  },
-  textEditSaveLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    fontFamily: FONT_SEMIBOLD,
-    color: '#fff',
-  },
-});
+    marquee: {
+      position: 'absolute',
+      backgroundColor: 'rgba(37,99,235,0.15)',
+      borderWidth: 1.5,
+      borderColor: SELECTION_COLOR,
+      borderRadius: 4,
+    },
+    // left/top come from each connection's own bounding box at render time.
+    connection: {
+      position: 'absolute',
+    },
+    connectDraft: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      height: 2,
+      backgroundColor: CONNECTION_COLOR,
+    },
+    // left/top pinned at 0 on purpose - the column's world position rides
+    // entirely on its animated transform, same as a card's.
+    column: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      width: COLUMN_WIDTH,
+      borderRadius: 14,
+      // A lane ON the canvas, not a card lying on it. It was a 5% dark
+      // wash, which over a dark canvas is nothing at all.
+      backgroundColor: theme.canvas.lane,
+      borderWidth: 1,
+      borderColor: theme.canvas.laneEdge,
+    },
+    // Lit while a card is held over it.
+    columnCatching: {
+      borderColor: SELECTION_COLOR,
+      borderWidth: 2,
+      backgroundColor: 'rgba(139,92,246,0.10)',
+    },
+    columnHeader: {
+      height: COLUMN_HEADER_HEIGHT,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+      paddingHorizontal: COLUMN_PADDING,
+    },
+    columnTitleWrap: {
+      flex: 1,
+    },
+    columnTitle: {
+      fontSize: 13,
+      fontWeight: '700',
+      fontFamily: FONT_BOLD,
+      color: theme.canvas.inkMuted,
+    },
+    columnCount: {
+      fontSize: 11,
+      fontFamily: FONT_REGULAR,
+      color: theme.canvas.inkFaint,
+    },
+    // Same compact, content-hugging dark-glass pill as the shared
+    // BulkActionBar component (Documents/Files/Photos/Links' own
+    // multi-select bar) - kept local rather than reusing that component
+    // directly since its action set (tag/group/copy) doesn't apply to board
+    // cards. `bottom` is set inline, same as the FAB above.
+    selectionBarWrap: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      alignItems: 'center',
+    },
+    selectionBarCapsule: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      backgroundColor: 'rgba(20,20,20,0.55)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.35)',
+      borderRadius: 24,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      shadowColor: '#000',
+      shadowOpacity: 0.3,
+      shadowOffset: { width: 0, height: 6 },
+      shadowRadius: 16,
+      elevation: 8,
+    },
+    selectionBarCount: {
+      fontSize: 14,
+      fontWeight: '800',
+      fontFamily: FONT_EXTRABOLD,
+      color: '#fff',
+    },
+    selectionBarDivider: {
+      width: 1,
+      height: 22,
+      backgroundColor: 'rgba(255,255,255,0.3)',
+    },
+    selectionBarAction: {
+      alignItems: 'center',
+      gap: 3,
+    },
+    selectionBarActionLabel: {
+      fontSize: 9.5,
+      fontWeight: '600',
+      fontFamily: FONT_SEMIBOLD,
+      color: '#fff',
+    },
+    // Same dark-glass treatment as the selection bar's own capsule above,
+    // for the one confirmation that sits over the canvas itself rather than
+    // this app's usual native Alert.
+    sheetBackdrop: {
+      backgroundColor: 'rgba(17,24,39,0.45)',
+      ...SHEET_BACKDROP,
+    },
+    sheet: {
+      backgroundColor: '#fff',
+      ...SHEET_WINDOW,
+      paddingHorizontal: 20,
+      paddingTop: 12,
+      paddingBottom: 28,
+    },
+    sheetTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+      fontFamily: FONT_BOLD,
+      color: '#111827',
+      marginBottom: 6,
+    },
+    groupList: {
+      maxHeight: 360,
+    },
+    groupDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+    },
+    groupCount: {
+      fontSize: 13,
+      fontFamily: FONT_REGULAR,
+      color: '#9CA3AF',
+    },
+    groupEmpty: {
+      fontSize: 14,
+      fontFamily: FONT_REGULAR,
+      color: '#9CA3AF',
+      paddingVertical: 10,
+    },
+    sheetHandle: {
+      width: 36,
+      height: 4,
+      backgroundColor: '#E5E7EB',
+      borderRadius: 2,
+      alignSelf: 'center',
+      marginBottom: 12,
+    },
+    sheetRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 12,
+    },
+    sheetRowLabel: {
+      flex: 1,
+      fontSize: 15,
+      fontFamily: FONT_REGULAR,
+      color: '#111827',
+    },
+    textEditBackdrop: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(17,24,39,0.5)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+    },
+    textEditCard: {
+      width: '100%',
+      maxWidth: 360,
+      backgroundColor: '#fff',
+      borderRadius: 16,
+      padding: 16,
+      gap: 12,
+    },
+    readTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+      fontFamily: FONT_BOLD,
+      color: '#111827',
+    },
+    readBody: {
+      maxHeight: 360,
+    },
+    textEditInput: {
+      minHeight: 100,
+      fontSize: 15,
+      fontFamily: FONT_REGULAR,
+      color: '#111827',
+      textAlignVertical: 'top',
+    },
+    textEditColors: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    textEditColorSwatch: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+    },
+    textEditColorSwatchActive: {
+      borderWidth: 2,
+      borderColor: '#111827',
+    },
+    textEditButtons: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: 12,
+    },
+    textEditCancel: {
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+    },
+    textEditCancelLabel: {
+      fontSize: 15,
+      fontFamily: FONT_REGULAR,
+      color: '#6B7280',
+    },
+    textEditSave: {
+      backgroundColor: ACCENT,
+      borderRadius: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 18,
+    },
+    textEditSaveLabel: {
+      fontSize: 15,
+      fontWeight: '600',
+      fontFamily: FONT_SEMIBOLD,
+      color: '#fff',
+    },
+  });
