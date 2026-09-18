@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import { BlurTargetBridge, useBlurTarget } from './GlassTarget';
 
 // Draws a sheet at the top of the app instead of where it is declared.
@@ -37,6 +37,23 @@ type Unmount = (id: string) => void;
 const PortalContext = createContext<{ mount: Mount; unmount: Unmount } | null>(null);
 
 export function GlassPortalHost({ children }: { children: ReactNode }) {
+  // The screens under this host are drawn through react-native-screens -
+  // native containers the OS itself sizes to the true device screen,
+  // never through this file's own Yoga tree at all. This host's `host`
+  // view is the one thing here that IS in that Yoga tree, sized the
+  // ordinary React Native way - `top: 0, bottom: 0` filling whatever its
+  // own parent measures itself to be. Those two numbers are not always
+  // the same one: a screen never disagreed with itself, because it was
+  // never measured twice by two different systems, but this host is -
+  // and the gap between them is exactly what a bottom-anchored child
+  // sitting in this view showed, a stack (and its dock) that had climbed
+  // partway up the screen instead of standing on the true bottom edge,
+  // with real content still visibly going on beneath it: "док... сідав
+  // нижче". `useWindowDimensions` reads the device's own number directly
+  // - not this file's Yoga chain's opinion of it - so giving `host` an
+  // explicit height from it can no longer disagree with what the actual
+  // screen underneath is doing.
+  const { height: windowHeight } = useWindowDimensions();
   const [nodes, setNodes] = useState<Map<string, { node: ReactNode; priority: number }>>(new Map());
   const mount = useCallback<Mount>((id, node, priority) => {
     setNodes((prev) => {
@@ -64,7 +81,7 @@ export function GlassPortalHost({ children }: { children: ReactNode }) {
       {/* Above everything the children drew. box-none: with no sheet open
           this layer must let every touch through to the app under it. */}
       {entries.length > 0 && (
-        <View style={styles.host} pointerEvents="box-none">
+        <View style={[styles.host, { height: windowHeight }]} pointerEvents="box-none">
           {entries.map(([id, entry]) => (
             <View key={id} style={StyleSheet.absoluteFill} pointerEvents="box-none">
               {entry.node}
@@ -107,7 +124,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     top: 0,
-    bottom: 0,
+    // No `bottom: 0` any more - `height` (set inline, from
+    // useWindowDimensions) is what decides this view's size now, not
+    // whatever its own parent's Yoga measurement happens to be.
     zIndex: 1000,
   },
 });
