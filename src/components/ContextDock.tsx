@@ -399,54 +399,38 @@ export default function ContextDock() {
   // Read from the UI thread, so shared values rather than refs - a ref
   // read inside a worklet is frozen at the value it had when the worklet
   // was built.
-  const cardHSV = useSharedValue(CARD_H);
-  const ringSV = useSharedValue(1);
-  // TEMPORARY - see the debug strip. Records a line only when it would
-  // differ from the last one, so a run of identical outcomes stays one
-  // line and the interesting moments stand out.
-  const dockTrail = useRef<{ t0: number; lines: string[]; last: string }>({ t0: Date.now(), lines: [], last: '' });
-  const logDock = (line: string) => {
-    if (line === dockTrail.current.last) return;
-    dockTrail.current.last = line;
-    dockTrail.current.lines = [...dockTrail.current.lines, `+${Date.now() - dockTrail.current.t0}ms ${line}`].slice(-6);
-  };
-  // WHY CORRECT VALUES WERE NOT ENOUGH.
+  // WHAT THE CARDS ARE PLACED FROM, AND WHY IT IS NO LONGER A MIRROR.
   //
-  // A mapper runs when one of the shared values it reads CHANGES.
-  // Asserting the right numbers every render does nothing when they are
-  // already right - and a card whose animated style has just been
-  // swapped for a different slot's needs the mapper to run to be drawn
-  // anywhere new at all. That is the whole of it: arriving on the
-  // calendar the desks card moves from one slot style to another, the
-  // numbers it is placed from happen not to change, no mapper runs, and
-  // it keeps the transform the style it USED to wear had left on it -
-  // one step behind, which is precisely what the two identical debug
-  // readouts with two different cards in front were showing.
+  // The resting numbers - which card is in front, how many there are,
+  // how tall one is - used to be copied into shared values for the
+  // worklets to read. Every copy is a chance to be out of step, and the
+  // debug strip caught exactly that: the assertion logged `SET p=2 n=3`
+  // while the strip, in the same breath, read back 0/1 and then 1/2 -
+  // the ring's own sizes from earlier in the screen's loading, arriving
+  // late and in order. The drawing was always faithful to those
+  // numbers; the numbers were behind React.
   //
-  // This changes on every assertion, and the worklets read it. A value
-  // that always changes is a mapper that always runs, so a view can
-  // never be left holding a placement nobody recomputed.
-  const tick = useSharedValue(0);
-  // Whether a swipe owns these values right now - the finger on the
-  // card, or the release animation still running after it lifted. The
-  // one and only thing allowed to hold off the assertion below.
-  const draggingRef = useRef(false);
-  const animatingRef = useRef(false);
-  // A HARD TIME LIMIT on how long a swipe may hold off the assertion.
+  // So they are not copied any more. They are ORDINARY VALUES, baked
+  // into the worklets and listed as their dependencies, which is what
+  // makes Reanimated rebuild the worklets when React changes its mind.
+  // Nothing to fall behind, because nothing is being mirrored.
   //
-  // Every bug in this file that took days to find had the same shape: a
-  // flag meant to be lowered by a callback, and a path where that
-  // callback never ran. The release animations here last 220 and 260ms.
-  // Past that, whatever was supposed to lower this has not, and waiting
-  // any longer only means a card left standing where React never put
-  // it. Nothing here may be the only way this flag comes down.
+  // One shared value is left, and only a finger moves it: `progress`,
+  // the live position while a swipe runs. `gesture` says when to listen
+  // to it. At the moment a swipe finishes, progress sits at the front
+  // index plus one, which in a ring IS the new front index - so letting
+  // go of it and falling back on React's own number changes nothing
+  // that can be seen.
+  const gesture = useSharedValue(0);
+  // A hard limit on how long a swipe may speak for the placement. Every
+  // long-lived bug here has been a flag raised by one callback and
+  // lowered by another that had a way of never running.
   const backstop = useRef<ReturnType<typeof setTimeout> | null>(null);
   const armBackstop = (ms: number) => {
     if (backstop.current) clearTimeout(backstop.current);
     backstop.current = setTimeout(() => {
       backstop.current = null;
-      draggingRef.current = false;
-      animatingRef.current = false;
+      gesture.value = 0;
       setSwiping(false);
     }, ms);
   };
@@ -456,69 +440,13 @@ export default function ContextDock() {
     },
     []
   );
-  // ASSERTED ON EVERY RENDER, with no dependency list at all.
-  //
-  // Reanimated is the only writer that reaches these views, and it
-  // reads these three values - so whenever they are stale, the cards
-  // stand somewhere React never asked for, and nothing puts them right.
-  // They used to be carried over by effects keyed on what they were
-  // made of, which only fires when that thing CHANGES. The user caught
-  // exactly the gap that leaves: two screenshots of the calendar,
-  // seconds apart, with identical numbers in the debug strip - idx=2,
-  // showing=desks, restY=10/20/0 - and two completely different cards
-  // drawn in front. React's answer never moved; the values feeding the
-  // placement were a step behind it, and no dependency had changed to
-  // say so.
-  //
-  // Keyed on nothing, this cannot happen: after every render that is
-  // not a swipe's own, what Reanimated reads is what React just
-  // decided. Writing a value it already holds costs nothing.
-  useLayoutEffect(() => {
-    if (draggingRef.current || animatingRef.current) {
-      logDock(`SKIP d${draggingRef.current ? 1 : 0}a${animatingRef.current ? 1 : 0}`);
-      return;
-    }
-    cardHSV.value = CARD_H;
-    ringSV.value = ringSize;
-    progress.value = faceIndex;
-    tick.value = tick.value + 1;
-    logDock(`SET p=${faceIndex} n=${ringSize}`);
-  });
-  // Where every card rests, said in plain style objects React commits
-  // along with the cards themselves.
-  // ONE WRITER PLACES THESE CARDS, AND IT IS REANIMATED.
-  //
-  // This file spent a while with two: React committing a plain resting
-  // style, and the animated style attached only while a swipe ran. The
-  // user's own measurements killed that design. Two screenshots of the
-  // same screen, sound and sunk, differed in nothing but the dock's own
-  // band - the list had not scrolled a pixel. Template matching put the
-  // bead beside the dock at (0, 0) and the card at 26px down with its
-  // contents drawn in 14px each side, which solves to a scale of 0.94
-  // about the card's centre: BACK_SCALE. The card was wearing the BACK
-  // card's transform on a ring of ONE, where no back card exists - and
-  // the debug strip, in the same frame, read `restY=0`. React had the
-  // right answer and could not deliver it.
-  //
-  // It could not because Reanimated writes straight to the native view,
-  // and once it has, React's own diff has nothing to report: its record
-  // of what it last sent is unchanged, so it sends nothing, and the
-  // view keeps the last imperative write for good. Forcing a difference
-  // (a hundredth of a point, flipped on every settle) changed nothing,
-  // which settled it - React's commits were not reaching this view at
-  // all once Reanimated had touched it. The one thing that ever fixed
-  // it was starting another swipe, because that re-attaches the
-  // animated style and lets the writer that DOES reach the view have
-  // its say.
-  //
-  // So the plain resting style is gone from the cards. The animated
-  // style is attached always, it alone places them, and the shared
-  // values it reads are carried across in layout effects - before the
-  // frame is shown rather than after it - so a screen change reaches
-  // the writer as promptly as React can hand it over.
-  // What the resting arrangement SAYS each card's place is. Read by the
-  // debug strip only - the cards themselves are placed by the animated
-  // style below and by nothing else.
+  // TEMPORARY - see the debug strip.
+  const dockTrail = useRef<{ t0: number; lines: string[]; last: string }>({ t0: Date.now(), lines: [], last: '' });
+  const logDock = (line: string) => {
+    if (line === dockTrail.current.last) return;
+    dockTrail.current.last = line;
+    dockTrail.current.lines = [...dockTrail.current.lines, `+${Date.now() - dockTrail.current.t0}ms ${line}`].slice(-6);
+  };
   const restStyles = [0, 1, 2].map((i) => slotTransform(i, faceIndex, ringSize, CARD_H, 0));
   // TEMPORARY - a rolling log of what the dock decided, and when,
   // measured from the moment the screen changed. The two seconds in
@@ -532,16 +460,25 @@ export default function ContextDock() {
   logDock(`${showing}/${ringSize}/${faceIndex}/${own ? own.kind : '-'}/${actions?.length ?? 0}`);
   // Three, always: the ring is at most three cards, and a hook cannot be
   // called in a loop whose length changes between renders.
-  const slot0 = useAnimatedStyle(() =>
-    slotTransform(0, progress.value, ringSV.value, cardHSV.value, (tick.value % 2) * 0.01)
+  const slot0 = useAnimatedStyle(
+    () => slotTransform(0, gesture.value ? progress.value : faceIndex, ringSize, CARD_H, 0),
+    [faceIndex, ringSize, CARD_H]
   );
-  const slot1 = useAnimatedStyle(() =>
-    slotTransform(1, progress.value, ringSV.value, cardHSV.value, (tick.value % 2) * 0.01)
+  const slot1 = useAnimatedStyle(
+    () => slotTransform(1, gesture.value ? progress.value : faceIndex, ringSize, CARD_H, 0),
+    [faceIndex, ringSize, CARD_H]
   );
-  const slot2 = useAnimatedStyle(() =>
-    slotTransform(2, progress.value, ringSV.value, cardHSV.value, (tick.value % 2) * 0.01)
+  const slot2 = useAnimatedStyle(
+    () => slotTransform(2, gesture.value ? progress.value : faceIndex, ringSize, CARD_H, 0),
+    [faceIndex, ringSize, CARD_H]
   );
   const slotStyles = [slot0, slot1, slot2];
+  // The one moment a swipe stops speaking for the placement: the render
+  // where React's own index has caught up with where the swipe left
+  // off. In a ring those two are the same position, so nothing moves.
+  useLayoutEffect(() => {
+    gesture.value = 0;
+  }, [faceIndex, ringSize, gesture]);
   // Whether the animated style is attached at all.
   const [swiping, setSwiping] = useState(false);
   const faceIndexRef = useRef(faceIndex);
@@ -555,17 +492,11 @@ export default function ContextDock() {
       // A swipe has begun: pin the animated placement to exactly where
       // the cards are resting, then let it take over.
       begin: () => {
-        // Only the finger, not the animation - there is no animation
-        // yet, and claiming one here is what left this raised when a
-        // gesture was CANCELLED instead of ended: `onEnd` never came,
-        // so nothing lowered it, and the assertion stayed switched off
-        // until a timer rescued it. The animation window is claimed in
-        // `onEnd`, which is the only place an animation actually
-        // starts.
-        draggingRef.current = true;
         dragBase.value = faceIndexRef.current;
         progress.value = faceIndexRef.current;
+        gesture.value = 1;
         setSwiping(true);
+        armBackstop(4000);
       },
       // The finger has already lifted, whichever way this resolves -
       // said here, in `onEnd` itself, rather than waited for out of
@@ -588,11 +519,8 @@ export default function ContextDock() {
       // screen change during it is corrected on its own next render,
       // not left for a swipe that may not come for a while.
       end: () => {
-        draggingRef.current = false;
-        // The release animation starts right after this returns. It
-        // lasts 220 or 260ms; 600 is the outside edge of that, after
-        // which the assertion takes over whatever happened.
-        animatingRef.current = true;
+        // The release animation starts right after this returns, and
+        // lasts 220 or 260ms. 600 is the outside edge of that.
         armBackstop(600);
       },
       // `setSwiping(false)` here is UNCONDITIONAL, not a response to
@@ -603,21 +531,25 @@ export default function ContextDock() {
       // going to ask for another render on its behalf, so this is the
       // one call in the whole cycle that is not allowed to depend on
       // anything else having worked.
+      // The swipe ended on a NEW card. `gesture` is NOT lowered here:
+      // progress is sitting at the old index plus one, and React does
+      // not hold the new index yet, so handing the placement back this
+      // instant would put the cards one step behind for a frame. The
+      // layout effect below lowers it, on the render that actually has
+      // the new index.
       commit: (next: DockFace) => {
         if (backstop.current) clearTimeout(backstop.current);
-        animatingRef.current = false;
         commitRef.current(next);
         setSwiping(false);
       },
-      // The cancelled path - dragged, released short of the threshold,
-      // settled back onto the very card it started from. Nothing here
-      // ever calls `setFace`, so nothing else would ever ask for a
-      // render either; this is the only thing that ends it.
+      // Nothing was committed: progress came back to the index React
+      // already holds, so letting go of it changes nothing.
       settle: () => {
         if (backstop.current) clearTimeout(backstop.current);
-        animatingRef.current = false;
+        gesture.value = 0;
         setSwiping(false);
       },
+
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
@@ -654,9 +586,7 @@ export default function ContextDock() {
         // over mid-drag is cancelled, not ended. The finger flag is what
         // holds off the assertion above, so it is not allowed to depend
         // on a callback that has any way of being skipped.
-        .onFinalize(() => {
-          draggingRef.current = false;
-        })
+
 
         .onStart(() => {
           // On ACTIVATION, not on touch-down: the animated style only
@@ -1007,7 +937,7 @@ export default function ContextDock() {
           Remove once that is found and fixed. */}
       <View style={[styles.debugHud, { top: insets.top + 4 }]} pointerEvents="none">
         <Text style={styles.debugText}>
-          {`ring=${ringSize} idx=${faceIndex} PROG=${progress.value} N=${ringSV.value} drag=${draggingRef.current ? 1 : 0} anim=${animatingRef.current ? 1 : 0}\nown=${own ? own.kind : '-'} act=${actions?.length ?? 0} leave=${showLeave ? 1 : 0} bottom=${bottomInset} key=${screenKey.slice(-6)}\nfaces=[${faces.join(',')}] restY=${faces
+          {`ring=${ringSize} idx=${faceIndex} PROG=${progress.value} G=${gesture.value}\nown=${own ? own.kind : '-'} act=${actions?.length ?? 0} leave=${showLeave ? 1 : 0} bottom=${bottomInset} key=${screenKey.slice(-6)}\nfaces=[${faces.join(',')}] restY=${faces
             .map((_, i) => Math.round((restStyles[i].transform[0] as { translateY: number }).translateY * 100) / 100)
             .join('/')}\n${dockTrail.current.lines.join('\n')}`}
         </Text>
