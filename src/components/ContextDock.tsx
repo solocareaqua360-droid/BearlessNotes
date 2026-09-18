@@ -857,6 +857,14 @@ export default function ContextDock() {
 
   return (
     <GlassPortal>
+      {/* TEMPORARY - a live readout of the dock's own state, to catch
+          "опускається" with real numbers instead of another guess.
+          Remove once that is found and fixed. */}
+      <View style={[styles.debugHud, { top: insets.top + 4 }]} pointerEvents="none">
+        <Text style={styles.debugText}>
+          {`ring=${ringSize} idx=${faceIndex} showing=${showing} swiping=${swiping ? 1 : 0} flux=${tabsInFlux ? 1 : 0}\nown=${own ? own.kind : '-'} act=${actions?.length ?? 0} leave=${showLeave ? 1 : 0} bottom=${bottomInset} key=${screenKey.slice(-6)}`}
+        </Text>
+      </View>
       <View
         style={[styles.wrap, { bottom: DOCK_BOTTOM + bottomInset, paddingHorizontal: EDGE_INSET }]}
         pointerEvents="box-none"
@@ -983,6 +991,20 @@ function Bead({ bead, theme, size }: { bead: DockBead; theme: ReturnType<typeof 
 }
 
 const styles = StyleSheet.create({
+  debugHud: {
+    position: 'absolute',
+    left: 4,
+    zIndex: 999,
+    backgroundColor: 'rgba(255,0,0,0.85)',
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  debugText: {
+    color: '#fff',
+    fontSize: 10,
+    fontFamily: FONT_REGULAR,
+  },
   wrap: {
     position: 'absolute',
     left: 0,
