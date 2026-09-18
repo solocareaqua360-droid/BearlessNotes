@@ -127,6 +127,7 @@ import DownloadToast from '../components/DownloadToast';
 import UndoToast from '../components/UndoToast';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import { COVER_GRADIENTS, CoverGradientView } from '../theme/covers';
+import StockPhotoPicker from '../components/StockPhotoPicker';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import CustomRowBlockCard from '../components/CustomRowBlockCard';
 import CustomDatabaseViewBlockCard from '../components/CustomDatabaseViewBlockCard';
@@ -2406,6 +2407,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // The chosen cover gradient's id - see theme/covers. Saved beside the
   // cover picture and synced the same way.
   const [coverGradient, setCoverGradient] = useState<string | undefined>(undefined);
+  // "Пошук зображень" from the cover menu - see StockPhotoPicker.
+  const [searchingCover, setSearchingCover] = useState(false);
   // A note created and then left untouched shouldn't be kept. Gated on
   // autoFocusTitle, which is set only when the document was made a moment
   // ago by the "+" button - opening an existing empty note and backing out
@@ -4368,7 +4371,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // the app to show up.
   function openCoverImageOptions() {
     setExportMenuOpen(false);
-    // Four answers when there is already a cover - which is exactly one
+    // Five answers when there is already a cover - which is exactly two
     // more than Android's own dialog will show, and it drops the extra
     // without a word. Here they are rows, so all of them fit.
     ask({
@@ -4376,14 +4379,35 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       actions: [
         { id: 'gallery', label: 'Галерея', icon: 'images-outline' },
         { id: 'camera', label: 'Камера', icon: 'camera-outline' },
+        // The same free library the tile board's own backgrounds search
+        // - see StockPhotoPicker. No duotone here: that step belongs to
+        // the tile board's own colour-matching, not to a note's cover.
+        { id: 'stock', label: 'Пошук зображень', icon: 'search-outline' },
         ...(coverImageUri
           ? [{ id: 'remove', label: 'Прибрати заставку', tone: 'danger' as const, icon: 'trash-outline' as const }]
           : []),
       ],
     }).then((answer) => {
       if (answer === 'gallery' || answer === 'camera') pickCoverImage(answer);
-      if (answer === 'remove') setCoverImageUri(undefined);
+      else if (answer === 'stock') setSearchingCover(true);
+      else if (answer === 'remove') setCoverImageUri(undefined);
     });
+  }
+
+  // A stock pick lands as a local file with no width/height attached -
+  // Image.getSize reads what compressPickedImage needs, the same two
+  // numbers the gallery/camera path already has from the OS picker.
+  function pickCoverImageFromStock(uri: string) {
+    setSearchingCover(false);
+    Image.getSize(
+      uri,
+      async (width, height) => {
+        const compressed = await compressPickedImage(uri, width, height);
+        setCoverImageUri(compressed);
+        setCoverGradient(undefined);
+      },
+      () => notify('Не вдалося встановити заставку', 'Не визначився розмір зображення')
+    );
   }
 
   async function pickCoverImage(source: 'gallery' | 'camera') {
@@ -5950,6 +5974,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               .map((b) => b.id)
           )
         }
+      />
+
+      <StockPhotoPicker
+        visible={searchingCover}
+        onClose={() => setSearchingCover(false)}
+        onPicked={pickCoverImageFromStock}
       />
       {flattenNode}
     </View>

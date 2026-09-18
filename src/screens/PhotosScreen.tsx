@@ -22,6 +22,7 @@ import * as Sharing from 'expo-sharing';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
+import StockPhotoPicker from '../components/StockPhotoPicker';
 import {
   deleteDoc,
   deleteField,
@@ -121,6 +122,8 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
   const [justAddedPhoto, setJustAddedPhoto] = useState<JustAddedPhoto | null>(null);
+  // "Пошук зображень" from the "+" menu - see StockPhotoPicker.
+  const [searchingPhoto, setSearchingPhoto] = useState(false);
   const [saveDestinationVisible, setSaveDestinationVisible] = useState(false);
   useEffect(() => {
     if (!justAddedPhoto || saveDestinationVisible) return;
@@ -338,10 +341,32 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
       actions: [
         { id: 'gallery', label: 'Галерея', icon: 'images-outline' },
         { id: 'camera', label: 'Камера', icon: 'camera-outline' },
+        // Same free library the tile backgrounds already search - see
+        // StockPhotoPicker. What comes back here is a real Photos
+        // record though, so it is written through the exact same path
+        // a gallery pick takes, no duotone (that step belongs to the
+        // tile board alone).
+        { id: 'stock', label: 'Пошук зображень', icon: 'search-outline' },
       ],
     }).then((answer) => {
       if (answer === 'gallery' || answer === 'camera') addPhotoDirectly(answer);
+      else if (answer === 'stock') setSearchingPhoto(true);
     });
+  }
+
+  // A picture already downloaded to a local file (from the stock picker)
+  // has no width/height handed along with it - Image.getSize reads what
+  // compressPickedImage needs, the same two numbers the gallery/camera
+  // path already had from the OS picker.
+  function addPhotoFromStock(uri: string) {
+    setSearchingPhoto(false);
+    Image.getSize(
+      uri,
+      (width, height) => {
+        addPhotoFromUri(uri, width, height).catch((e) => console.warn('[PhotosScreen] stock add failed', e));
+      },
+      () => notify('Не вдалося додати фото', 'Не визначився розмір зображення')
+    );
   }
 
   async function addPhotoDirectly(source: 'gallery' | 'camera') {
@@ -362,28 +387,12 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
             allowsMultipleSelection: true,
           });
     if (result.canceled || result.assets.length === 0) return;
-    const now = Date.now();
     const added: JustAddedPhoto[] = [];
     // In the order they were picked, and each one written before the next
     // is compressed - a batch of twenty on a phone is enough to matter.
     for (const asset of result.assets) {
       const imageUri = await compressPickedImage(asset.uri, asset.width, asset.height);
-      const id = generateId();
-      const data: Record<string, unknown> = {
-        imageUri,
-        imageFit: 'contain',
-        updatedAt: now,
-        createdAt: now,
-        usedInDocuments: {},
-      };
-      if (source === 'camera') data.groupId = CAMERA_PHOTOS_GROUP_ID;
-      await setDoc(doc(db, 'photos', id), data, { merge: true });
-      // Made inside a folder, it belongs to that folder - see useExplorer.
-      await explorer.assignToCurrentFolder(id);
-      backupFileToDrive(imageUri, `${id}.jpg`, 'image/jpeg', 'Photos').then((uploaded) => {
-        if (uploaded) updateDoc(doc(db, 'photos', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
-      });
-      added.push({ id, imageUri, createdAt: now });
+      added.push(await addPhotoFromUri(imageUri, asset.width, asset.height, source));
     }
     // Lands in the base either way (unchanged, fast) - see FilesScreen's
     // identical justAddedFile for why "Перемістити" only ADDS a block
@@ -391,6 +400,37 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     // about the last one; the rest are already where they belong.
     if (added.length === 1) setJustAddedPhoto(added[0]);
     else notify(`Додано зображень: ${added.length}`);
+  }
+
+  // The one write every "+" source shares - gallery, camera, and now
+  // Пошук зображень. `imageUri` is already the final, compressed file;
+  // pulled out so a stock pick does not have to fake an ImagePicker
+  // asset to reach it.
+  async function addPhotoFromUri(
+    imageUri: string,
+    width: number,
+    height: number,
+    source?: 'gallery' | 'camera'
+  ): Promise<JustAddedPhoto> {
+    const now = Date.now();
+    const id = generateId();
+    const data: Record<string, unknown> = {
+      imageUri,
+      imageFit: 'contain',
+      updatedAt: now,
+      createdAt: now,
+      usedInDocuments: {},
+    };
+    if (source === 'camera') data.groupId = CAMERA_PHOTOS_GROUP_ID;
+    await setDoc(doc(db, 'photos', id), data, { merge: true });
+    // Made inside a folder, it belongs to that folder - see useExplorer.
+    await explorer.assignToCurrentFolder(id);
+    backupFileToDrive(imageUri, `${id}.jpg`, 'image/jpeg', 'Photos').then((uploaded) => {
+      if (uploaded) updateDoc(doc(db, 'photos', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+    });
+    const added = { id, imageUri, createdAt: now };
+    if (!source) setJustAddedPhoto(added);
+    return added;
   }
 
   function photoToBlock(item: JustAddedPhoto) {
@@ -826,6 +866,12 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
             onClose={() => setSketchPhotoId(null)}
           />
           {flattenPhotoNode}
+
+          <StockPhotoPicker
+            visible={searchingPhoto}
+            onClose={() => setSearchingPhoto(false)}
+            onPicked={addPhotoFromStock}
+          />
 
           <RenamePrompt
             visible={renamingPhoto !== null}
