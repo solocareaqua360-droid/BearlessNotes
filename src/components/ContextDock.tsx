@@ -421,8 +421,23 @@ export default function ContextDock() {
   // can stop this from running. `posRef` is the JS-side twin, kept
   // here because the gesture cannot read the shared one without
   // reading it late.
+  // NOTE WHAT IS NOT WRITTEN HERE: `pos`.
+  //
+  // This effect runs on every render, and `commit` calls `setFace` at
+  // the release - which causes a render, which ran this, which wrote
+  // `pos` straight over the settle animation that had just started.
+  // withTiming was cancelled before it moved, its callback never saw
+  // `finished`, so the swipe was never told it had ended and the flag
+  // that decides who draws stayed up until a timer rescued it. That is
+  // both the step going wrong and the databases dock keeping the back
+  // card's size.
+  //
+  // `pos` belongs to the gesture alone. At rest nobody reads it -
+  // React draws then - so it is allowed to be stale, and the gesture
+  // seeds it from `posRef` the moment it starts. The rest stay: the
+  // ring's length and the card height do not change under a swipe, and
+  // `posRef` only ever gets written the congruent value here.
   useLayoutEffect(() => {
-    pos.value = faceIndex;
     posRef.current = faceIndex;
     ringSV.value = ringSize;
     cardHSV.value = CARD_H;
@@ -553,6 +568,9 @@ export default function ContextDock() {
         // which way is which. Down does nothing on purpose; it is the
         // direction the system itself uses just below here.
         .onStart(() => {
+          // Seeded here, from React's own current answer, so the swipe
+          // starts exactly where the plain style had the cards.
+          pos.value = posRef.current;
           hand.start();
         })
         .onFinalize(() => {
