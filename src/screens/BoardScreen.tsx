@@ -3207,83 +3207,94 @@ export default function BoardScreen() {
             selection, every bulk action would have to learn to skip it.
             See BoardShape. */}
         {selectedShape && selectedCardIds.size === 0 ? (
+          // TWO ROWS, not one long one. A single row here ran wider than
+          // even the Fold's OUTER (cover) screen - "розмір панелі ширший
+          // за зовнішній фолд" - because it was never one control, it was
+          // five: text, a size stepper, fill, eight colour swatches and
+          // delete, laid end to end with no wrap and no scroll. The
+          // Fold's actual screen (unfolded) has the width to spare, so
+          // splitting it in two uses that width instead of demanding
+          // ever more of it in one direction.
           <View style={[styles.selectionBarWrap, { bottom: dockClear + bottomInset }]} pointerEvents="box-none">
             <View style={styles.selectionBarCapsule}>
-              <Pressable
-                style={styles.selectionBarAction}
-                hitSlop={6}
-                onPress={() => setEditingShape(selectedShape)}
-              >
-                <MaterialCommunityIcons name="format-text" size={18} color="#fff" />
-                <Text style={styles.selectionBarActionLabel}>Текст</Text>
-              </Pressable>
-              {/* A step, not a slider - see SHAPE_TEXT_SIZES. Two taps
-                  either side of the label rather than one button, so
-                  each press is one clear step instead of a cycle whose
-                  current value has to be read off a changing icon. */}
-              <View style={styles.textSizeGroup}>
-                <Pressable
-                  hitSlop={6}
-                  onPress={() => stepShapeTextSize(selectedShape, -1)}
-                >
-                  <Ionicons name="remove" size={16} color="#fff" />
-                </Pressable>
-                <Text style={styles.selectionBarActionLabel}>Розмір</Text>
-                <Pressable
-                  hitSlop={6}
-                  onPress={() => stepShapeTextSize(selectedShape, 1)}
-                >
-                  <Ionicons name="add" size={16} color="#fff" />
-                </Pressable>
-              </View>
-              {selectedShape.kind !== 'text' && (
+              <View style={styles.selectionBarRow}>
                 <Pressable
                   style={styles.selectionBarAction}
                   hitSlop={6}
-                  onPress={() => toggleShapeFilled(selectedShape.id)}
+                  onPress={() => setEditingShape(selectedShape)}
                 >
-                  <Ionicons
-                    name={selectedShape.filled ? 'color-fill' : 'color-fill-outline'}
-                    size={18}
-                    color="#fff"
-                  />
-                  <Text style={styles.selectionBarActionLabel}>Заливка</Text>
+                  <MaterialCommunityIcons name="format-text" size={18} color="#fff" />
+                  <Text style={styles.selectionBarActionLabel}>Текст</Text>
                 </Pressable>
-              )}
-              <View style={styles.selectionBarDivider} />
-              {/* The outline's colour. The first swatch is "no colour" -
-                  the theme's own quiet ink, which is what a shape is
-                  born with. */}
-              <Pressable
-                hitSlop={4}
-                onPress={() => setShapeColour(selectedShape.id, undefined)}
-                style={[
-                  styles.shapeSwatch,
-                  { borderColor: theme.canvas.inkMuted },
-                  !selectedShape.color && styles.shapeSwatchOn,
-                ]}
-              />
-              {STICKY_COLORS.map((colour) => (
+                {/* A step, not a slider - see SHAPE_TEXT_SIZES. Two taps
+                    either side of the label rather than one button, so
+                    each press is one clear step instead of a cycle whose
+                    current value has to be read off a changing icon. */}
+                <View style={styles.textSizeGroup}>
+                  <Pressable
+                    hitSlop={6}
+                    onPress={() => stepShapeTextSize(selectedShape, -1)}
+                  >
+                    <Ionicons name="remove" size={16} color="#fff" />
+                  </Pressable>
+                  <Text style={styles.selectionBarActionLabel}>Розмір</Text>
+                  <Pressable
+                    hitSlop={6}
+                    onPress={() => stepShapeTextSize(selectedShape, 1)}
+                  >
+                    <Ionicons name="add" size={16} color="#fff" />
+                  </Pressable>
+                </View>
+                {selectedShape.kind !== 'text' && (
+                  <Pressable
+                    style={styles.selectionBarAction}
+                    hitSlop={6}
+                    onPress={() => toggleShapeFilled(selectedShape.id)}
+                  >
+                    <Ionicons
+                      name={selectedShape.filled ? 'color-fill' : 'color-fill-outline'}
+                      size={18}
+                      color="#fff"
+                    />
+                    <Text style={styles.selectionBarActionLabel}>Заливка</Text>
+                  </Pressable>
+                )}
+                <View style={styles.selectionBarDivider} />
                 <Pressable
-                  key={colour}
+                  style={styles.selectionBarAction}
+                  hitSlop={6}
+                  onPress={() => deleteShape(selectedShape.id)}
+                >
+                  <Ionicons name="trash-outline" size={18} color="#fff" />
+                  <Text style={styles.selectionBarActionLabel}>Видалити</Text>
+                </Pressable>
+              </View>
+              <View style={styles.selectionBarRow}>
+                {/* The outline's colour. The first swatch is "no colour" -
+                    the theme's own quiet ink, which is what a shape is
+                    born with. */}
+                <Pressable
                   hitSlop={4}
-                  onPress={() => setShapeColour(selectedShape.id, colour)}
+                  onPress={() => setShapeColour(selectedShape.id, undefined)}
                   style={[
                     styles.shapeSwatch,
-                    { borderColor: colour, backgroundColor: colour },
-                    selectedShape.color === colour && styles.shapeSwatchOn,
+                    { borderColor: theme.canvas.inkMuted },
+                    !selectedShape.color && styles.shapeSwatchOn,
                   ]}
                 />
-              ))}
-              <View style={styles.selectionBarDivider} />
-              <Pressable
-                style={styles.selectionBarAction}
-                hitSlop={6}
-                onPress={() => deleteShape(selectedShape.id)}
-              >
-                <Ionicons name="trash-outline" size={18} color="#fff" />
-                <Text style={styles.selectionBarActionLabel}>Видалити</Text>
-              </Pressable>
+                {STICKY_COLORS.map((colour) => (
+                  <Pressable
+                    key={colour}
+                    hitSlop={4}
+                    onPress={() => setShapeColour(selectedShape.id, colour)}
+                    style={[
+                      styles.shapeSwatch,
+                      { borderColor: colour, backgroundColor: colour },
+                      selectedShape.color === colour && styles.shapeSwatchOn,
+                    ]}
+                  />
+                ))}
+              </View>
             </View>
           </View>
         ) : null}
@@ -3973,10 +3984,13 @@ const makeStyles = (theme: Theme) =>
       right: 0,
       alignItems: 'center',
     },
+    // A COLUMN now, of rows - see the shape selection bar's own comment
+    // for why: one row of every control here ran past even the Fold's
+    // narrow outer screen.
     selectionBarCapsule: {
-      flexDirection: 'row',
+      flexDirection: 'column',
       alignItems: 'center',
-      gap: 14,
+      gap: 10,
       backgroundColor: 'rgba(20,20,20,0.55)',
       borderWidth: 1,
       borderColor: 'rgba(255,255,255,0.35)',
@@ -3993,6 +4007,12 @@ const makeStyles = (theme: Theme) =>
       width: 1,
       height: 22,
       backgroundColor: 'rgba(255,255,255,0.3)',
+    },
+    selectionBarRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 14,
     },
     selectionBarAction: {
       alignItems: 'center',
