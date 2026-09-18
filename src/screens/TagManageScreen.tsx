@@ -3,7 +3,8 @@ import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
+import { useDockLeave } from '../navigation/navDock';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Tag } from '../types';
 import { RootStackParamList } from '../navigation';
@@ -37,6 +38,8 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { tags, isLoading, updateTag, deleteTagCompletely } = useTags();
   const railSide = inPane ? ('left' as const) : ('right' as const);
+  const isFocused = useIsFocused();
+  useDockLeave('pricetag-outline', () => navigation.goBack(), isFocused);
   // A tag's path IS the tree - "робота/оренда" is the folder "робота"
   // holding "оренда" - and this screen drew them as a flat list of full
   // paths, which threw the whole structure away. Rows are laid out in
@@ -85,7 +88,7 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
   }
 
   return (
-    <PlainScreenShell id="tagsBg" onBack={() => navigation.goBack()} railSide={railSide} hasIsland={!inPane}>
+    <PlainScreenShell id="tagsBg">
       <Text style={[styles.subtitle, shellClear(railSide, 4)]}>
         Керування вже існуючими тегами. Створити новий тег можна лише разом із присвоєнням елементу.
       </Text>

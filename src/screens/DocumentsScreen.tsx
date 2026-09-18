@@ -49,7 +49,6 @@ import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } f
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import DocumentEditorScreen from './DocumentEditorScreen';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from '../components/SortMenuRows';
-import RailCapsule from '../components/RailCapsule';
 import SearchField from '../components/SearchField';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import ScreenBackdrop from '../components/ScreenBackdrop';
@@ -79,9 +78,8 @@ import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import SketchEditor from '../components/SketchEditor';
 import { BlurView } from 'expo-blur';
 import { GlassPortal } from '../components/GlassPortal';
-import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CHROME_TOP, NAV_HEIGHT, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH, railFits } from '../constants/rail';
+import { CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
-import { useRailFree } from '../hooks/useRail';
 import { useBlurTarget } from '../components/GlassTarget';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import TagEditSheet from '../components/TagEditSheet';
@@ -431,8 +429,6 @@ export default function DocumentsScreen({
   // at this list" - and the "…" menu held nothing BUT that view switch,
   // so it left with it. A menu with one section in it is a second press
   // for nothing.
-  const topCapsuleHeight = CAPSULE_HEIGHT_1;
-  const railFree = useRailFree(topCapsuleHeight, !standalone);
   // Pushed over the databases screen, this list is a database like any
   // other, and leaving it belongs under the thumb with the rest - see
   // ContextDock. The tab's own copy has nowhere to go back to.
@@ -459,7 +455,16 @@ export default function DocumentsScreen({
           icon: 'document-text-outline',
           badge: 'add-circle-outline',
           onPress: createDocument,
-          onLongPress: openStickerComposer,
+          // Held rather than tapped, and one of two things depending on
+          // context: a sticker most of the time, a folder while actually
+          // browsing folders - "створення папок відбувається набагато
+          // рідше, аніж додавання документів", so it rides the SAME bead
+          // as making a record instead of a fifth slot on the actions
+          // card (four is the most that fits beside the way out). The two
+          // are never both on offer at once, so nothing is actually lost.
+          onLongPress: explorer.active
+            ? () => explorer.setFolderPrompt({ mode: 'new', parent: explorer.path })
+            : openStickerComposer,
         }
       : null
   );
@@ -510,21 +515,6 @@ export default function DocumentsScreen({
               closesStack: true,
             },
             { key: 'select', icon: 'checkmark-circle-outline', onPress: () => toggleSelectMode() },
-            // Creating a FOLDER is creating, but the user's own reckoning
-            // settles where it goes: "створення папок відбувається набагато
-            // рідше, аніж додавання документів". The bead is for the thing
-            // you do constantly; this belongs with the rest.
-            ...(explorer.active
-              ? [
-                  {
-                    key: 'folder',
-                    icon: 'folder-outline',
-                    badge: 'add-circle-outline',
-                    onPress: () => explorer.setFolderPrompt({ mode: 'new', parent: explorer.path }),
-                    closesStack: true,
-                  },
-                ]
-              : []),
           ]
       : null
   );
@@ -1975,20 +1965,6 @@ const makeStyles = (t: Theme) =>
   // Glass like everything else on the rail, in its own colour rather than
   // a solid disc with a light around it: the blur is what separates it
   // from the cards underneath, so the fill only has to tint.
-  fab: {
-    position: 'absolute',
-    right: RAIL_RIGHT,
-    width: RAIL_WIDTH,
-    height: RAIL_WIDTH,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: ACCENT_GLASS,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 4,
-  },
   // Long-pressing the FAB switches it to sticker-creation mode - the color
   // swap away from ACCENT is the only feedback the gesture has fired,
   // since it fires while still held rather than on release.

@@ -73,9 +73,10 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
+import { useDockBeads } from '../navigation/navDock';
+import { useDockClearance } from '../navigation/dockGeometry';
 import { useBlurTarget } from '../components/GlassTarget';
-import GlassDrop, { GlassIcon } from '../components/GlassDrop';
-import { CAPSULE_DROP, CHROME_TOP, NAV_BOTTOM, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
+import { CHROME_TOP } from '../constants/rail';
 
 const NEW_TILE_KEY = '__new__';
 const PIN_TILE_KEY = '__pin__';
@@ -191,6 +192,14 @@ export default function DatabasesScreen() {
   const databasesBlurTarget = useBlurTarget();
   const databasesFocused = useIsFocused();
   const databasesInsets = useSafeAreaInsets();
+  const dockClear = useDockClearance();
+  // "Більше" - a tab's own root, so no way OUT (nothing to leave to);
+  // search on the left, the way every database's dock has it, settings
+  // where the old capsule kept it, on the right.
+  useDockBeads(
+    databasesFocused ? { icon: 'search-outline', onPress: () => navigation.navigate('Search') } : null,
+    databasesFocused ? { icon: 'ellipsis-horizontal-outline', onPress: () => navigation.navigate('Settings') } : null
+  );
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const responsive = useResponsiveLayout();
@@ -1116,25 +1125,6 @@ export default function DatabasesScreen() {
       {/* The rail, as on every other screen: right edge, same width, same
           glass, hanging from the same line. Through the portal for the
           blur, so it withdraws when this screen isn't the one on show. */}
-      {databasesFocused && (
-        <GlassPortal>
-          <View
-            style={[styles.railWrap, { top: databasesInsets.top + CHROME_TOP + CAPSULE_DROP }]}
-            pointerEvents="box-none"
-          >
-            <GlassDrop style={styles.headerButtons}>
-              <Pressable hitSlop={8} onPress={() => navigation.navigate('Search')}>
-                <GlassIcon name="search-outline" size={24} />
-              </Pressable>
-              <View style={styles.headerButtonsDivider} />
-              <Pressable hitSlop={8} onPress={() => navigation.navigate('Settings')}>
-                <GlassIcon name="ellipsis-horizontal-outline" size={24} />
-              </Pressable>
-            </GlassDrop>
-          </View>
-        </GlassPortal>
-      )}
-
       {/* On a wide screen the tile's menu is not a window over the board
           - it is the other half of it. The board keeps the right side,
           against the rail that belongs to it (the same reasoning as the
@@ -1222,7 +1212,7 @@ export default function DatabasesScreen() {
             styles.editBar,
             // Clear of the island lying across the foot of the screen -
             // its own height plus the gap it keeps from the edge.
-            { bottom: databasesInsets.bottom + NAV_BOTTOM + RAIL_WIDTH + 16 },
+            { bottom: databasesInsets.bottom + dockClear },
           ]}
         >
         {/* A new section: a named band across the board. */}
@@ -1693,24 +1683,6 @@ const makeStyles = (t: Theme) =>
   StyleSheet.create({
   container: {
     flex: 1,
-  },
-  railWrap: {
-    position: 'absolute',
-    right: RAIL_RIGHT,
-    alignItems: 'center',
-  },
-  // Stood on its end, like every other screen's.
-  headerButtons: {
-    alignItems: 'center',
-    gap: 18,
-    paddingVertical: 18,
-    paddingHorizontal: 19,
-  },
-  // Turned with the capsule.
-  headerButtonsDivider: {
-    width: 20,
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.3)',
   },
   content: {
     // Full width: the tiles pass UNDER the rail, and the glass over them

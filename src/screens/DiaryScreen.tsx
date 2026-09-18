@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
+import { useDockActions, useDockLeave } from '../navigation/navDock';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { onSnapshot } from '../firestore';
 import { ownedQuery } from '../utils/owned';
@@ -40,6 +41,22 @@ export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
   // had to walk back. The sheet opens here instead and the way out in the
   // top capsule returns to the list, where the next day is one tap away.
   const [openDate, setOpenDate] = useState<string | null>(null);
+  const isFocused = useIsFocused();
+  // Two depths, one bead: leaving a day goes back to the LIST, not out of
+  // the diary - the same "step up one level" the explorer's own crumbs
+  // use, so the icon stays the diary's own either way.
+  useDockLeave('book-outline', () => (openDate ? setOpenDate(null) : navigation.goBack()), isFocused);
+  useDockActions(
+    isFocused && openDate
+      ? [
+          {
+            key: 'jump',
+            icon: 'calendar-outline',
+            onPress: () => navigation.navigate('Tabs', { screen: 'Календар', params: { jumpToDate: openDate } }),
+          },
+        ]
+      : null
+  );
 
   useEffect(() => {
     // "Has a calendarDate" used to be a range filter, and the sort used to
@@ -77,20 +94,7 @@ export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
 
   if (openDate) {
     return (
-      <PlainScreenShell
-        id="diaryBg"
-        // Back means back to the LIST, not out of the diary.
-        onBack={() => setOpenDate(null)}
-        railSide={railSide}
-        hasIsland={!inPane}
-        actions={[
-          {
-            icon: 'calendar-outline',
-            onPress: () =>
-              navigation.navigate('Tabs', { screen: 'Календар', params: { jumpToDate: openDate } }),
-          },
-        ]}
-      >
+      <PlainScreenShell id="diaryBg">
         <View style={[styles.sheetHead, shellClear(railSide, 4)]}>
           <Text style={styles.sheetDate}>{formatShortDate(parseDateKey(openDate))}</Text>
         </View>
@@ -110,7 +114,7 @@ export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
   }
 
   return (
-    <PlainScreenShell id="diaryBg" onBack={() => navigation.goBack()} railSide={railSide} hasIsland={!inPane}>
+    <PlainScreenShell id="diaryBg">
       <SearchField
         value={query_}
         onChangeText={setQuery}

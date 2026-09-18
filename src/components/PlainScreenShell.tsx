@@ -1,81 +1,36 @@
 import { ReactNode } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useIsFocused } from '@react-navigation/native';
+import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ContentColumn from './ContentColumn';
 import ScreenBackdrop from './ScreenBackdrop';
-import RailCapsule, { RailButton } from './RailCapsule';
-import { GlassPortal } from './GlassPortal';
-import GlassDrop, { GlassIcon } from './GlassDrop';
-import { useTheme } from '../theme/ThemeProvider';
-import { CAPSULE_DROP, CAPSULE_HEIGHT_1, CHROME_TOP, RAIL_CLEARANCE } from '../constants/rail';
-import { useRail } from '../hooks/useRail';
+import { CHROME_TOP } from '../constants/rail';
 
 // The frame the three registry screens share - the diary, the groups and
 // the tags.
 //
 // They are not databases of records the way Files or Photos are: there is
 // nothing to sort, group or put in folders, so DatabaseChrome (which is
-// built around useDatabaseList) has nothing to work with. But they had
-// nothing at all either - two of them stood on plain white with a
-// hand-built header, which read as another app. This is the smallest
-// thing that makes them part of this one: the app's backdrop, the way
-// out in the top capsule where it is on every other screen, and an
-// optional capsule of the screen's own actions.
+// built around useDatabaseList) has nothing to work with. What they DO
+// share with every other screen now is the dock - the way out, and
+// whatever action each one has, are published straight from the screen
+// itself (useDockLeave/useDockActions), the same as everywhere else. This
+// shell is left holding only what has nothing to do with navigation: the
+// app's own backdrop, and the line the content starts on.
 export default function PlainScreenShell({
   id,
-  onBack,
-  actions,
-  // Drawn inside another screen's LEFT pane, the rail stands on the
-  // window's outer edge - see RailCapsule.
-  railSide = 'right',
-  hasIsland = true,
   children,
 }: {
   id: string;
-  onBack: () => void;
-  actions?: RailButton[];
-  railSide?: 'left' | 'right';
-  hasIsland?: boolean;
   children: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
-  const isFocused = useIsFocused();
-  const theme = useTheme();
-  const rail = useRail(CAPSULE_HEIGHT_1, actions?.length ? CAPSULE_HEIGHT_1 : 0, 0, 0, hasIsland);
 
   return (
     <View style={styles.container}>
       <ScreenBackdrop id={id} colors={['#705648', '#69736E', '#000000']} />
-
-      {/* Everything that floats withdraws when this screen is not the one
-          on show - the portal reaches the whole app. */}
-      {isFocused && (
-        <GlassPortal>
-          <View
-            style={[
-              styles.railTop,
-              railSide === 'left' ? styles.railTopLeft : styles.railTopRight,
-              { top: insets.top + CHROME_TOP + CAPSULE_DROP },
-            ]}
-            pointerEvents="box-none"
-          >
-            <GlassDrop style={styles.topCapsule}>
-              <Pressable hitSlop={8} onPress={onBack}>
-                <GlassIcon name="arrow-back-outline" size={24} />
-              </Pressable>
-            </GlassDrop>
-          </View>
-        </GlassPortal>
-      )}
-
-      {isFocused && !!actions?.length && (
-        <RailCapsule bottom={rail.actionsBottom} buttons={actions} side={railSide} />
-      )}
-
       <ContentColumn>
-        {/* The band the status bar and the top capsule stand in. */}
+        {/* The band the status bar stands in - the dock carries the way
+            out now, at the foot of the screen, not a capsule up here. */}
         <View style={{ height: insets.top + CHROME_TOP + 8 }} />
         {children}
       </ContentColumn>
@@ -83,32 +38,14 @@ export default function PlainScreenShell({
   );
 }
 
-// What a list inside the shell keeps clear of, so the rows do not run
-// under the buttons - the side the rail is actually on.
-export function shellClear(railSide: 'left' | 'right', base: number) {
-  return railSide === 'left'
-    ? { paddingLeft: RAIL_CLEARANCE, paddingRight: base }
-    : { paddingLeft: base, paddingRight: RAIL_CLEARANCE };
+// What a list inside the shell keeps clear of. Plain padding now - there
+// is no side rail any more to leave room for.
+export function shellClear(_railSide: 'left' | 'right', base: number) {
+  return { paddingHorizontal: base };
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  railTop: {
-    position: 'absolute',
-    alignItems: 'center',
-  },
-  railTopRight: {
-    right: 20,
-  },
-  railTopLeft: {
-    left: 20,
-  },
-  topCapsule: {
-    alignItems: 'center',
-    gap: 18,
-    paddingVertical: 18,
-    paddingHorizontal: 19,
   },
 });

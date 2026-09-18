@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import PlainScreenShell, { shellClear } from '../components/PlainScreenShell';
+import { useDockLeave } from '../navigation/navDock';
+import { useIsFocused } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Modal,
@@ -60,6 +62,8 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
   // Only for the chips the cards carry - the drawer's own tag tree is a
   // different thing entirely.
   const { tags } = useTags();
+  const isFocused = useIsFocused();
+  useDockLeave('albums-outline', () => navigation.goBack(), isFocused);
   const [openGroupId, setOpenGroupId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const railSide = inPane ? ('left' as const) : ('right' as const);
@@ -165,7 +169,7 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
   }
 
   return (
-    <PlainScreenShell id="groupsBg" onBack={() => navigation.goBack()} railSide={railSide} hasIsland={!inPane}>
+    <PlainScreenShell id="groupsBg">
         {isLoading ? (
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />

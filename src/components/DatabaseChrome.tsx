@@ -19,16 +19,14 @@ import SearchField, { searchFieldSides } from './SearchField';
 import GlassDrop, { GlassIcon } from './GlassDrop';
 import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
-import RailCapsule from './RailCapsule';
 import { useDockActions, useDockBeads, useDockShowContext } from '../navigation/navDock';
 import { useDockClearance } from '../navigation/dockGeometry';
 import ScreenBackdrop from './ScreenBackdrop';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from './TagsDrawer';
-import { useRail, useRailFree } from '../hooks/useRail';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { CAPSULE_DROP, CAPSULE_HEIGHT, CAPSULE_HEIGHT_1, CAPSULE_HEIGHT_3, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH, capsuleHeightFor, railFits } from '../constants/rail';
+import { CHROME_TOP } from '../constants/rail';
 
 // Everything a database screen puts AROUND its records: the gradient it
 // stands on, the capsule on the rail (search / "..." / the way out), the
@@ -189,7 +187,6 @@ export default function DatabaseChrome<T extends { id: string }>({
   //
   // Every screen this chrome dresses - files, photos, links, stickers -
   // is PUSHED over the tabs, so the navigation island is not on it and
-  // the rail must not hold its height at the foot (see useRail). Nor the
   // create button's, on the three databases that have no "+": photos,
   // files and links only ever arrive from inside a document.
   // Search, plus "..." where the screen still has rows for it, plus the
@@ -197,71 +194,6 @@ export default function DatabaseChrome<T extends { id: string }>({
   // The way out went to the dock, so the top capsule is one button
   // shorter than it used to be.
   useDockLeave(leaveIcon ?? 'albums-outline', onBack ?? (() => {}), !!onBack);
-  const topHeight = capsuleHeightFor(1 + (menuRows ? 1 : 0));
-  const createHeight = onAdd ? (explorer?.active ? CAPSULE_HEIGHT : RAIL_WIDTH) : 0;
-  const selectHeight = bulk ? CAPSULE_HEIGHT_1 : 0;
-  // Back and forward take a capsule of their own wherever the screen is
-  // tall enough to stand five pieces clear of one another; where it is
-  // not, they fall back into the actions capsule rather than ride up over
-  // the top one. The user's point, and it was right: on a screen with the
-  // same number of buttons as the documents list there is no reason they
-  // cannot have their own.
-  const railFree = useRailFree(topHeight, !!hasIsland);
-  // A LADDER, not one fallback. The first version tried the arrows in a
-  // capsule of their own, then in the actions capsule, and stopped - so on
-  // a screen too short for either (the Fold lying down: a tall top inset,
-  // the island at the foot, and only about 440 points between them) the
-  // stack still rode up over the top capsule. Each rung here gives up one
-  // more thing, and the first that stands clear is the one drawn.
-  //
-  // The arrows go before anything else does: back and forward are a
-  // convenience, and the path strip above the list does the same job.
-  // Ordering, the shape of the list and choosing all stay.
-  const RUNGS = [
-    { arrows: 'own' as const, selectOwn: true },
-    { arrows: 'inside' as const, selectOwn: true },
-    { arrows: 'inside' as const, selectOwn: false },
-    { arrows: 'none' as const, selectOwn: true },
-    { arrows: 'none' as const, selectOwn: false },
-  ];
-  const rungActions = (rung: (typeof RUNGS)[number]) =>
-    capsuleHeightFor(
-      (shape ? 1 : 0) + 1 + (rung.arrows === 'inside' ? 2 : 0) + (rung.selectOwn ? 0 : 1)
-    );
-  const rung = explorer?.active
-    ? RUNGS.find((candidate) =>
-        railFits(
-          railFree,
-          candidate.selectOwn ? selectHeight : rungActions(candidate),
-          createHeight,
-          candidate.arrows === 'own' ? CAPSULE_HEIGHT : candidate.selectOwn ? selectHeight : 0,
-          candidate.arrows === 'own' ? rungActions(candidate) : candidate.selectOwn ? rungActions(candidate) : 0
-        )
-      ) ?? RUNGS[RUNGS.length - 1]
-    : { arrows: 'none' as const, selectOwn: true };
-  // Back and forward through the folders you have been in are GONE from
-  // the rail. Their own comment said what they were for - "so the hand
-  // need not reach for the path strip at the top" - and there is no strip
-  // at the top any more: the path is in the dock, under the thumb, and
-  // every level of it is one press away. A control kept for a reach
-  // nobody makes is a control to delete.
-  //
-  // The rung system still counts a slot for them where a tall screen
-  // would have had one; that only makes it more generous than it needs to
-  // be, never less.
-  const ownHistory = false;
-  const actionsHeight = rungActions(rung);
-  const rail = useRail(
-    topHeight,
-    // With a capsule of their own, the arrows take the middle slot and
-    // choosing moves up one; with choosing folded in there is no middle
-    // slot at all.
-    rung.selectOwn ? selectHeight : actionsHeight,
-    createHeight,
-    ownHistory ? CAPSULE_HEIGHT : rung.selectOwn ? selectHeight : 0,
-    !!hasIsland,
-    ownHistory || rung.selectOwn ? actionsHeight : 0
-  );
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -302,7 +234,17 @@ export default function DatabaseChrome<T extends { id: string }>({
         }
       : null,
     isFocused && !list.isSelectMode && !searchingAlone && onAdd
-      ? { icon: addIcon ?? 'add-outline', badge: 'add-circle-outline', onPress: onAdd }
+      ? {
+          icon: addIcon ?? 'add-outline',
+          badge: 'add-circle-outline',
+          onPress: onAdd,
+          // Folders are made far less often than records - the user's
+          // own reckoning - so making one rides the SAME bead as making
+          // a record, held rather than tapped, instead of taking a fifth
+          // slot on the actions card (four is the most that ever fits
+          // beside the way out).
+          onLongPress: explorer?.active ? explorer.onNewFolder : undefined,
+        }
       : null
   );
   useDockActions(
@@ -356,20 +298,6 @@ export default function DatabaseChrome<T extends { id: string }>({
               closesStack: true,
             },
             ...(bulk ? [{ key: 'select', icon: 'checkmark-circle-outline', onPress: () => list.toggleSelectMode() }] : []),
-            // Folders are made far less often than records - the user's own
-            // reckoning - so this rides with the rest rather than beside
-            // the bead that makes a record.
-            ...(explorer?.active
-              ? [
-                  {
-                    key: 'folder',
-                    icon: 'folder-outline',
-                    badge: 'add-circle-outline',
-                    onPress: explorer.onNewFolder,
-                    closesStack: true,
-                  },
-                ]
-              : []),
             ...(menuRows
               ? [
                   {
@@ -684,30 +612,6 @@ const makeStyles = (t: Theme) =>
     borderLeftWidth: 1,
     borderLeftColor: 'rgba(255,255,255,0.15)',
     overflow: 'hidden',
-  },
-  railWrap: {
-    position: 'absolute',
-    alignItems: 'center',
-  },
-  railWrapRight: {
-    right: RAIL_RIGHT,
-  },
-  railWrapLeft: {
-    left: RAIL_RIGHT,
-  },
-  // Stood on its end, like every other screen's. The glass itself is
-  // GlassDrop's - this is only the room inside it.
-  headerButtons: {
-    alignItems: 'center',
-    gap: 18,
-    paddingVertical: 18,
-    paddingHorizontal: 19,
-  },
-  // Turned with the capsule.
-  headerButtonsDivider: {
-    width: 20,
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.3)',
   },
   menuRule: {
     height: 1,
