@@ -438,6 +438,17 @@ export default function ContextDock() {
   const restStyles = [0, 1, 2].map((i) =>
     slotTransform(i, faceIndex, ringSize, CARD_H, settleNudge % 2 === 1 ? 0.01 : 0)
   );
+  // And on any change of the resting arrangement itself, not only when
+  // a swipe settles. The case the user pinned down: a neighbouring desk
+  // showing its OPTIONS card leaves the desks card standing at slot 1,
+  // and arriving on the databases desk - a ring of one - it has to
+  // become slot 0. That transition is not a settle, so nothing flipped
+  // the nudge for it, and the card kept the transform it wore on the
+  // other desk. Showing the DESKS card on that neighbour instead leaves
+  // it at slot 0 already, which is why that way round was always fine.
+  useEffect(() => {
+    setSettleNudge((n) => n + 1);
+  }, [faceIndex, ringSize]);
   // Three, always: the ring is at most three cards, and a hook cannot be
   // called in a loop whose length changes between renders.
   const slot0 = useAnimatedStyle(() => slotTransform(0, progress.value, ringSV.value, cardHSV.value));
@@ -895,7 +906,9 @@ export default function ContextDock() {
           Remove once that is found and fixed. */}
       <View style={[styles.debugHud, { top: insets.top + 4 }]} pointerEvents="none">
         <Text style={styles.debugText}>
-          {`ring=${ringSize} idx=${faceIndex} showing=${showing} swiping=${swiping ? 1 : 0} flux=${tabsInFlux ? 1 : 0}\nown=${own ? own.kind : '-'} act=${actions?.length ?? 0} leave=${showLeave ? 1 : 0} bottom=${bottomInset} key=${screenKey.slice(-6)}`}
+          {`ring=${ringSize} idx=${faceIndex} showing=${showing} swiping=${swiping ? 1 : 0} flux=${tabsInFlux ? 1 : 0}\nown=${own ? own.kind : '-'} act=${actions?.length ?? 0} leave=${showLeave ? 1 : 0} bottom=${bottomInset} key=${screenKey.slice(-6)}\nfaces=[${faces.join(',')}] restY=${faces
+            .map((_, i) => Math.round((restStyles[i].transform[0] as { translateY: number }).translateY * 100) / 100)
+            .join('/')} nudge=${settleNudge}`}
         </Text>
       </View>
       <View
