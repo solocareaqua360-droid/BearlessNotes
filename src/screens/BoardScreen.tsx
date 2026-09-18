@@ -2455,6 +2455,8 @@ export default function BoardScreen() {
                 : canvasTool === 'connect'
                   ? 'mc:vector-line'
                   : 'mc:cursor-move',
+            label:
+              canvasTool === 'select' ? 'Вибір' : canvasTool === 'connect' ? 'Звʼязок' : 'Рух',
             active: canvasTool !== 'move',
             onPress: toggleCanvasTool,
           },

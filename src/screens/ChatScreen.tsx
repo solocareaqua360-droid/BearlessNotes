@@ -181,12 +181,14 @@ export default function ChatScreen() {
               {
                 key: 'note',
                 icon: 'document-text-outline',
+                label: 'У нотатку',
                 onPress: () => setSending([...selected]),
                 closesStack: true,
               },
               {
                 key: 'delete',
                 icon: 'trash-outline',
+                label: 'Видалити',
                 onPress: () => deleteChosen(),
                 closesStack: true,
               },
@@ -196,6 +198,7 @@ export default function ChatScreen() {
             {
               key: 'search',
               icon: isSearching ? 'close-outline' : 'search-outline',
+              label: 'Пошук',
               active: isSearching,
               onPress: () => {
                 if (isSearching) setSearchQuery('');
@@ -205,6 +208,7 @@ export default function ChatScreen() {
             {
               key: 'filter',
               icon: 'funnel-outline',
+              label: 'Фільтр',
               active: filterKind !== null,
               onPress: () => setFilterMenuOpen((v) => !v),
             },

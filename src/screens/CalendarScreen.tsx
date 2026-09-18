@@ -567,6 +567,7 @@ export default function CalendarScreen() {
                 {
                   key: 'month',
                   icon: 'calendar-outline',
+                  label: 'Місяць',
                   active: isMonthExpanded,
                   onPress: () => setIsMonthExpanded((prev) => !prev),
                 },
@@ -577,6 +578,7 @@ export default function CalendarScreen() {
                 {
                   key: 'history',
                   icon: 'time-outline',
+                  label: 'Історія',
                   active: historyExpanded,
                   onPress: () => setHistoryExpanded((v) => !v),
                 },
@@ -589,6 +591,7 @@ export default function CalendarScreen() {
           // buttons could only say by both being off.
           {
             key: 'filter',
+            label: 'Фільтр',
             icon:
               compactFilter === 'filled'
                 ? 'filter'
@@ -601,6 +604,7 @@ export default function CalendarScreen() {
           {
             key: 'select',
             icon: noteSelectMode ? 'close-outline' : 'ellipse-outline',
+            label: noteSelectMode ? 'Вийти' : 'Вибір',
             active: noteSelectMode,
             onPress: () => {
               if (noteSelectMode) showContext();

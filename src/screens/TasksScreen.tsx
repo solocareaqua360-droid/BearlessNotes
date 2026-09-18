@@ -192,26 +192,29 @@ export default function TasksScreen() {
             {
               key: 'cancel',
               icon: 'close-outline',
+              label: 'Вийти',
               onPress: () => {
                 showContext();
                 toggleSelectMode();
               },
             },
             ...(selectedIds.size > 0
-              ? [{ key: 'delete', icon: 'trash-outline' as const, onPress: confirmBulkDeleteTasks }]
+              ? [{ key: 'delete', icon: 'trash-outline' as const, label: 'Видалити', onPress: confirmBulkDeleteTasks }]
               : []),
           ]
         : [
             {
               key: 'shape',
               icon: kanbanMode ? 'albums-outline' : 'reorder-four-outline',
+              label: kanbanMode ? 'Канбан' : 'Список',
               closesStack: true,
               onPress: () => setKanbanMode((v) => !v),
             },
-            { key: 'sort', icon: 'filter-outline', active: menuOpen, onPress: () => setMenuOpen((v) => !v) },
+            { key: 'sort', icon: 'filter-outline', label: 'Порядок', active: menuOpen, onPress: () => setMenuOpen((v) => !v) },
             {
               key: 'select',
               icon: 'checkmark-circle-outline',
+              label: 'Вибір',
               onPress: () => {
                 setKanbanMode(false);
                 toggleSelectMode();

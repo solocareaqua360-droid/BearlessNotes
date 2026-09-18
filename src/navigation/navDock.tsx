@@ -105,6 +105,13 @@ export type DockAction = {
   key: string;
   // An Ionicons name, or "mc:<name>" for a MaterialCommunityIcons one.
   icon: string;
+  // One word under the icon, and it is not optional in spirit: the user
+  // asked for words because a card of bare glyphs stops being readable
+  // the moment the set of them changes from screen to screen - "іконки
+  // починають мене плутати... ти вже не розумієш, яка із них що
+  // значить". Keep it SHORT - the card is only a quarter of the screen
+  // wide and each button gets a quarter of that.
+  label?: string;
   onPress: () => void;
   // Done in one press, so the stack goes back to where-you-are by
   // itself: the card of actions is a drawer you opened for one thing,
@@ -173,7 +180,7 @@ type Value = {
 const NavDockContext = createContext<Value | null>(null);
 
 function actionSignature(list: DockAction[] | null): string {
-  return list ? list.map((a) => `${a.key}:${a.icon}:${a.badge ?? ''}:${a.active ? 1 : 0}`).join('|') : '';
+  return list ? list.map((a) => `${a.key}:${a.icon}:${a.label ?? ''}:${a.badge ?? ''}:${a.active ? 1 : 0}`).join('|') : '';
 }
 
 function beadSignature(beads: { left: DockBead | null; right: DockBead | null }): string {

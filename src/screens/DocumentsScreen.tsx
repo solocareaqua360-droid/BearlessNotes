@@ -478,6 +478,7 @@ export default function DocumentsScreen({
             {
               key: 'cancel',
               icon: 'close-outline',
+              label: 'Вийти',
               onPress: () => {
                 showContext();
                 toggleSelectMode();
@@ -485,9 +486,9 @@ export default function DocumentsScreen({
             },
             ...(selectedIds.size > 0
               ? [
-                  { key: 'tag', icon: 'pricetag-outline' as const, onPress: () => setBulkTagPickerVisible(true) },
-                  { key: 'group', icon: 'folder-outline' as const, onPress: () => setBulkGroupPickerVisible(true) },
-                  { key: 'delete', icon: 'trash-outline' as const, onPress: confirmDeleteSelected },
+                  { key: 'tag', icon: 'pricetag-outline' as const, label: 'Теги', onPress: () => setBulkTagPickerVisible(true) },
+                  { key: 'group', icon: 'folder-outline' as const, label: 'Група', onPress: () => setBulkGroupPickerVisible(true) },
+                  { key: 'delete', icon: 'trash-outline' as const, label: 'Видалити', onPress: confirmDeleteSelected },
                 ]
               : []),
           ]
@@ -495,12 +496,14 @@ export default function DocumentsScreen({
             {
               key: 'view',
               icon: viewMode === 'grid' ? 'grid-outline' : 'reorder-four-outline',
+              label: 'Вигляд',
               onPress: () => changeViewMode(viewMode === 'grid' ? 'list' : 'grid'),
               closesStack: true,
             },
             {
               key: 'sort',
               icon: 'filter-outline',
+              label: 'Порядок',
               active: sortMenuOpen,
               onPress: () => setSortMenuOpen((v) => !v),
             },
@@ -510,11 +513,12 @@ export default function DocumentsScreen({
             {
               key: 'tags',
               icon: 'pricetag-outline',
+              label: 'Папки',
               active: !!activeFilter,
               onPress: () => drawerRef.current?.open(),
               closesStack: true,
             },
-            { key: 'select', icon: 'checkmark-circle-outline', onPress: () => toggleSelectMode() },
+            { key: 'select', icon: 'checkmark-circle-outline', label: 'Вибір', onPress: () => toggleSelectMode() },
           ]
       : null
   );

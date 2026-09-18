@@ -254,6 +254,7 @@ export default function DatabaseChrome<T extends { id: string }>({
             {
               key: 'cancel',
               icon: 'close-outline',
+              label: 'Вийти',
               onPress: () => {
                 showContext();
                 list.toggleSelectMode();
@@ -261,25 +262,26 @@ export default function DatabaseChrome<T extends { id: string }>({
             },
             ...(bulk && list.selectedIds.size > 0
               ? [
-                  { key: 'tag', icon: 'pricetag-outline' as const, onPress: bulk.onTag },
-                  { key: 'group', icon: 'folder-outline' as const, onPress: bulk.onGroup },
+                  { key: 'tag', icon: 'pricetag-outline' as const, label: 'Теги', onPress: bulk.onTag },
+                  { key: 'group', icon: 'folder-outline' as const, label: 'Група', onPress: bulk.onGroup },
                   ...(bulk.onCopy
-                    ? [{ key: 'copy', icon: 'document-text-outline' as const, onPress: bulk.onCopy }]
+                    ? [{ key: 'copy', icon: 'document-text-outline' as const, label: 'У нотатку', onPress: bulk.onCopy }]
                     : []),
                   ...(bulk.onCopyObject && list.selectedIds.size === 1
-                    ? [{ key: 'copyObject', icon: 'clipboard-outline' as const, onPress: bulk.onCopyObject }]
+                    ? [{ key: 'copyObject', icon: 'clipboard-outline' as const, label: 'Копія', onPress: bulk.onCopyObject }]
                     : []),
-                  { key: 'delete', icon: 'trash-outline' as const, onPress: bulk.onDelete },
+                  { key: 'delete', icon: 'trash-outline' as const, label: 'Видалити', onPress: bulk.onDelete },
                 ]
               : []),
           ]
         : [
             ...(shape
-              ? [{ key: 'shape', icon: shape.icon as string, onPress: shape.onToggle, closesStack: true }]
+              ? [{ key: 'shape', icon: shape.icon as string, label: 'Вигляд', onPress: shape.onToggle, closesStack: true }]
               : []),
             {
               key: 'sort',
               icon: 'filter-outline',
+              label: 'Порядок',
               active: sortMenuOpen,
               onPress: () => setSortMenuOpen((v) => !v),
             },
@@ -293,16 +295,18 @@ export default function DatabaseChrome<T extends { id: string }>({
             {
               key: 'tags',
               icon: 'pricetag-outline',
+              label: 'Папки',
               active: !!list.tagFilter,
               onPress: () => drawerRef.current?.open(),
               closesStack: true,
             },
-            ...(bulk ? [{ key: 'select', icon: 'checkmark-circle-outline', onPress: () => list.toggleSelectMode() }] : []),
+            ...(bulk ? [{ key: 'select', icon: 'checkmark-circle-outline', label: 'Вибір', onPress: () => list.toggleSelectMode() }] : []),
             ...(menuRows
               ? [
                   {
                     key: 'menu',
                     icon: 'ellipsis-horizontal-outline',
+                    label: 'Ще',
                     active: menuOpen,
                     onPress: () => setMenuOpen((v) => !v),
                   },

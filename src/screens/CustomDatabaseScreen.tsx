@@ -630,6 +630,7 @@ export default function CustomDatabaseScreen({
             {
               key: 'cancel',
               icon: 'close-outline',
+              label: 'Вийти',
               onPress: () => {
                 showContext();
                 toggleSelectMode();
@@ -637,27 +638,28 @@ export default function CustomDatabaseScreen({
             },
             ...(selectedIds.size > 0
               ? [
-                  { key: 'tag', icon: 'pricetag-outline' as const, onPress: () => setBulkTagPickerVisible(true) },
-                  { key: 'group', icon: 'folder-outline' as const, onPress: () => setBulkGroupPickerVisible(true) },
-                  { key: 'delete', icon: 'trash-outline' as const, onPress: confirmDeleteSelected },
+                  { key: 'tag', icon: 'pricetag-outline' as const, label: 'Теги', onPress: () => setBulkTagPickerVisible(true) },
+                  { key: 'group', icon: 'folder-outline' as const, label: 'Група', onPress: () => setBulkGroupPickerVisible(true) },
+                  { key: 'delete', icon: 'trash-outline' as const, label: 'Видалити', onPress: confirmDeleteSelected },
                 ]
               : []),
           ]
         : [
-            // The shape of the list - its icon IS the shape, so the button
-            // says which one is in force with no label at all.
-            { key: 'shape', icon: VIEW_ICONS[viewMode], active: openParam === 'view', onPress: () => openParamList('view') },
+            // The shape of the list - the icon says WHICH shape is in
+            // force, the word says what the button is for.
+            { key: 'shape', icon: VIEW_ICONS[viewMode], label: 'Вигляд', active: openParam === 'view', onPress: () => openParamList('view') },
             // Ordering, narrowing, grouping and the saved views, in one
             // window with four tabs. Lit while any of them is in force or
             // a saved view is on, since with one button nothing else says so.
             {
               key: 'params',
               icon: 'options-outline',
+              label: 'Параметри',
               active: openParam === 'params' || activeParamCount > 0 || !!activeView,
               onPress: () => openParamList('params'),
             },
-            { key: 'select', icon: 'checkmark-circle-outline', onPress: () => toggleSelectMode() },
-            { key: 'menu', icon: 'ellipsis-horizontal-outline', active: menuOpen, onPress: () => setMenuOpen((v) => !v) },
+            { key: 'select', icon: 'checkmark-circle-outline', label: 'Вибір', onPress: () => toggleSelectMode() },
+            { key: 'menu', icon: 'ellipsis-horizontal-outline', label: 'Ще', active: menuOpen, onPress: () => setMenuOpen((v) => !v) },
           ]
       : null
   );

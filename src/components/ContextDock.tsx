@@ -760,16 +760,39 @@ export default function ContextDock() {
                       if (action.closesStack) setFace('context');
                     }}
                     onLongPress={action.onLongPress}
-                    style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: DESK / 2 }, action.active && styles.actionButtonActive]}
+                    style={[
+                      styles.actionButton,
+                      { width: ACT_W, height: CARD_BUTTON, borderRadius: Math.round(CARD_BUTTON / 3) },
+                      action.active && styles.actionButtonActive,
+                    ]}
                   >
+                    {/* Icon over word. The button is a quarter of the
+                        card wide and the whole card tall, so the word
+                        gets one line and no more - a label that wrapped
+                        would push the icon off centre and make one
+                        button taller than its neighbours. */}
                     {action.icon.startsWith('mc:') ? (
                       <MaterialCommunityIcons
                         name={action.icon.slice(3) as keyof typeof MaterialCommunityIcons.glyphMap}
-                        size={21}
+                        size={ACT_ICON}
                         color={action.active ? theme.accent : theme.glass.ink}
                       />
                     ) : (
-                      <Ionicons name={action.icon as keyof typeof Ionicons.glyphMap} size={21} color={action.active ? theme.accent : theme.glass.ink} />
+                      <Ionicons name={action.icon as keyof typeof Ionicons.glyphMap} size={ACT_ICON} color={action.active ? theme.accent : theme.glass.ink} />
+                    )}
+                    {!!action.label && (
+                      <Text
+                        numberOfLines={1}
+                        // A safety net, not a licence for long words: a
+                        // label one letter too wide shrinks rather than
+                        // ending in an ellipsis, which would hide the
+                        // very thing the label was added for.
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.75}
+                        style={[styles.actionLabel, { color: action.active ? theme.accent : theme.glass.ink }]}
+                      >
+                        {action.label}
+                      </Text>
                     )}
                     {!!action.badge && (
                       <Ionicons name={action.badge as keyof typeof Ionicons.glyphMap} size={12} color={theme.glass.ink} style={styles.badge} />
@@ -785,6 +808,12 @@ export default function ContextDock() {
   }
 
   const DESK = Math.min(CARD_BUTTON, Math.floor((cardWidth - CARD_PAD * 2 - (showLeave ? LEAVE_W : 0)) / 4));
+  // An action button carries a word, so unlike a desk it is not a
+  // circle and takes the full quarter of the card. Divided by four
+  // whatever the count, so the buttons are the same size on a screen
+  // with two actions and on one with four.
+  const ACT_W = Math.max(DESK, Math.floor((cardWidth - CARD_PAD * 2 - (showLeave ? LEAVE_W : 0)) / 4));
+  const ACT_ICON = 19;
 
   return (
     <GlassPortal>
@@ -1010,9 +1039,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   badge: {
+    // Over the icon's own corner. It used to be measured from the
+    // button's bottom, which was the icon's bottom while the button
+    // held nothing else; with a word down there it would sit on the
+    // word instead.
     position: 'absolute',
-    right: 8,
-    bottom: 8,
+    right: 6,
+    top: 6,
   },
   actionButton: {
     borderRadius: 999,
@@ -1046,6 +1079,12 @@ const styles = StyleSheet.create({
   },
   actionButtonActive: {
     backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  actionLabel: {
+    fontSize: 9.5,
+    fontWeight: '600',
+    marginTop: 2,
+    paddingHorizontal: 2,
   },
   trailShell: {
     flexShrink: 1,

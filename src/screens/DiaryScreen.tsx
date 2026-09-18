@@ -52,6 +52,7 @@ export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
           {
             key: 'jump',
             icon: 'calendar-outline',
+            label: 'Календар',
             onPress: () => navigation.navigate('Tabs', { screen: 'Календар', params: { jumpToDate: openDate } }),
           },
         ]
