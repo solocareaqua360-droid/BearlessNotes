@@ -421,11 +421,53 @@ export default function ContextDock() {
     slotTransform(2, base.value + drag.value, ringSV.value, cardHSV.value)
   );
   const slotStyles = [slot0, slot1, slot2];
+  // AND THE SAME PLACEMENT AGAIN, IN A PLAIN STYLE, FOR WHEN NOTHING
+  // IS MOVING.
+  //
+  // Not a second source fighting the first - the same arithmetic, from
+  // React's own numbers, used at the times Reanimated is worst at its
+  // job. On a screen change the UI thread is busy painting the new
+  // screen, and a mapper's re-run queues behind that work while
+  // React's own props ride in with the commit itself. That is why the
+  // lag there was never a frame: "пропадає на секунду док в календарі",
+  // and on the boards "зменшується трішки а потім стає таким як був" -
+  // a card drawn one slot back until the transform finally caught up.
+  //
+  // So React draws the stack at rest and Reanimated draws it while a
+  // swipe runs, and the switch between them is invisible BY
+  // CONSTRUCTION rather than by timing:
+  //
+  //   starting  plain(faceIndex) gives way to animated(base + 0), and
+  //             `base` is always congruent to faceIndex - the same
+  //             picture, whichever frame the switch lands on
+  //
+  //   ending    animated(base + 1) gives way to plain(newFaceIndex),
+  //             and a whole turn of the ring is the identity, so those
+  //             two are the same picture as well - AND they are set in
+  //             one call, so React commits both together
+  //
+  // Because the two agree exactly at every switch, it does not even
+  // matter that Reanimated leaves its last write on the view when its
+  // style comes off: that leftover IS what the plain style says.
+  const restStyles = [0, 1, 2].map((i) => slotTransform(i, faceIndex, ringSize, CARD_H));
+  const [swiping, setSwiping] = useState(false);
   // The gesture is built once, so what it calls has to be reachable
   // through something whose identity never changes.
   const commitRef = useRef<(f: DockFace) => void>(() => {});
   commitRef.current = setFace;
-  const commit = useMemo(() => (next: DockFace) => commitRef.current(next), []);
+  const hand = useMemo(
+    () => ({
+      start: () => setSwiping(true),
+      // One call, so React commits the new front card and the return
+      // to the plain style in the SAME render.
+      finish: (next: DockFace) => {
+        commitRef.current(next);
+        setSwiping(false);
+      },
+      stop: () => setSwiping(false),
+    }),
+    []
+  );
   const swipe = useMemo(
     () =>
       Gesture.Pan()
@@ -439,6 +481,9 @@ export default function ContextDock() {
         // of two is a cycle, so there is nothing to remember about
         // which way is which. Down does nothing on purpose; it is the
         // direction the system itself uses just below here.
+        .onStart(() => {
+          hand.start();
+        })
         .onUpdate((e) => {
           if (facesRef.current.length < 2) return;
           // Capped at the peak. Past it the arc comes back DOWN, and a
@@ -463,15 +508,24 @@ export default function ContextDock() {
               1,
               { duration: 260, easing: Easing.inOut(Easing.cubic) },
               (finished) => {
+                // Interrupted only ever by a NEW gesture, which has
+                // already set everything it needs - leaving it alone
+                // is right.
                 if (!finished) return;
-                // The whole hand-over, on one thread, in one step.
+                // The whole ring step, on one thread, in one go.
                 base.value = base.value + 1;
                 drag.value = 0;
-                runOnJS(commit)(next);
+                runOnJS(hand.finish)(next);
               }
             );
           } else {
-            drag.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) });
+            drag.value = withTiming(
+              0,
+              { duration: 220, easing: Easing.out(Easing.cubic) },
+              (finished) => {
+                if (finished) runOnJS(hand.stop)();
+              }
+            );
           }
         }),
     []
@@ -812,7 +866,7 @@ export default function ContextDock() {
               // where it stands. No second layer to keep in step.
               <Animated.View
                 key={f}
-                style={[styles.cardLayer, dims.card, slotStyles[i]]}
+                style={[styles.cardLayer, dims.card, swiping ? slotStyles[i] : restStyles[i]]}
                 pointerEvents={f === showing ? 'auto' : 'none'}
               >
                 <Frost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
