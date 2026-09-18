@@ -25,6 +25,7 @@ import {
   useNavDockHidden,
   useNavDockLeave,
   useNavDockOwnContext,
+  useNavDockTabsInFlux,
   useNavDockTargets,
 } from '../navigation/navDock';
 
@@ -243,9 +244,20 @@ export default function ContextDock() {
   // you stepped into a folder or opened the calendar - "навігація між
   // столами пропадає зовсім". They are a card of their own now, so
   // wherever you are, where else you could be is one swipe away.
-  const own = useNavDockOwnContext();
+  const ownPublished = useNavDockOwnContext();
   const desksCard = useNavDockDesks();
   const [hidden] = useNavDockHidden();
+  // See FloatingIslandTabBar and navDock's own comment on `tabsInFlux`:
+  // for the one beat a swipe's settle has not yet reached
+  // react-navigation, whatever is published here can still be the
+  // PREVIOUS screen's - the desks card is the only thing in the stack
+  // that is already correct that instant, being driven by the pager's
+  // own live position rather than by focus. Standing on it, rather than
+  // on a stale context, is what used to read as the dock sitting into
+  // an extra sliver that should not have been there: "док... опущений
+  // трохи нижче... і тому... сіпається вниз", only ever after a swipe.
+  const tabsInFlux = useNavDockTabsInFlux();
+  const own = tabsInFlux ? null : ownPublished;
   const dock = hidden ? desksCard : (own ?? desksCard);
   // The way out of the SCREEN, which is true even at a database's root,
   // where there is no path to show. The user's own ask: standing in a
@@ -257,7 +269,8 @@ export default function ContextDock() {
   // reference, a Samsung lock screen, and the shape it keeps: the back
   // one shows only an EDGE, both are the same size in the same place,
   // and whatever stands beside the stack does not move at all.
-  const actions = useNavDockActions();
+  const actionsPublished = useNavDockActions();
+  const actions = tabsInFlux ? null : actionsPublished;
   // What never changes stands beside the stack and does not move: search
   // on the left, creating on the right. The user's own arrangement, and
   // Samsung's own reasoning - a pile of cards is for what changes.

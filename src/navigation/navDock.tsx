@@ -152,6 +152,22 @@ type Value = {
   setHidden: (hidden: boolean) => void;
   targets: DockTargets | null;
   publishTargets: (targets: DockTargets | null) => void;
+  // True for the one beat, on a SWIPED desk change, between the native
+  // pager visually settling on the new page and react-navigation's own
+  // state catching up to it. A tap sets its target synchronously - the
+  // same call that moves the page also moves this - but a swipe's
+  // commit is a native event crossing back to JS, and everything a
+  // screen publishes (its own context, its actions) is gated on
+  // react-navigation's focus, which only flips once that event lands.
+  // For that one beat the OLD screen's context is still the published
+  // one, while the eye is already on the new screen - "док... опущений
+  // трохи нижче... і тому... сіпається вниз", and only after a swipe,
+  // never landing on a desk directly (confirmed on-device): a stale
+  // card is what was sitting behind the desks card, peeking out under
+  // it exactly where a real second card does. See FloatingIslandTabBar,
+  // the one place that can see both the live page and the settled one.
+  tabsInFlux: boolean;
+  publishTabsInFlux: (inFlux: boolean) => void;
 };
 
 const NavDockContext = createContext<Value | null>(null);
@@ -248,6 +264,10 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
   // select mode left) should put the path in front again.
   const [face, setFace] = useState<DockFace>('context');
   const [hidden, setHidden] = useState(false);
+  const [tabsInFlux, setTabsInFlux] = useState(false);
+  const publishTabsInFlux = useCallback((inFlux: boolean) => {
+    setTabsInFlux((prev) => (prev === inFlux ? prev : inFlux));
+  }, []);
   // A new context is a new question, so a context stepped out of does not
   // stay stepped out of once you have gone somewhere else.
   const contextKey = context ? `${context.kind}:${context.icon}` : '';
@@ -270,6 +290,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       publishTargets,
       hidden,
       setHidden,
+      tabsInFlux,
+      publishTabsInFlux,
     }),
     [
       face,
@@ -286,6 +308,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       targets,
       publishTargets,
       hidden,
+      tabsInFlux,
+      publishTabsInFlux,
     ]
   );
   return <NavDockContext.Provider value={value}>{children}</NavDockContext.Provider>;
@@ -435,6 +459,17 @@ export function useDockBeads(left: DockBead | null, right: DockBead | null) {
 
 export function useNavDockBeads() {
   return useContext(NavDockContext)?.beads ?? { left: null, right: null };
+}
+
+// Whether a swipe has visually settled on a new desk that
+// react-navigation does not know about yet - see the field's own
+// comment on Value. Read by ContextDock, written by FloatingIslandTabBar.
+export function useNavDockTabsInFlux(): boolean {
+  return useContext(NavDockContext)?.tabsInFlux ?? false;
+}
+
+export function useDockTabsInFluxPublisher() {
+  return useContext(NavDockContext)?.publishTabsInFlux;
 }
 
 // The desks, published by the tab bar - see DockDesk.
