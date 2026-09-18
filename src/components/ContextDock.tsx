@@ -245,8 +245,18 @@ export default function ContextDock() {
   const morph = useSharedValue(0);
   function commitSwap(next: DockFace) {
     setFace(next);
-    morph.value = 0;
+    // NOT reset here. React's state update is async - by the time this
+    // bridged write reached the UI thread, `showing` had not always
+    // swapped yet, so the FRONT slot (zIndex back to 2, full size)
+    // popped back on top for a frame still holding the OLD content, the
+    // very thing the animation had just finished showing go behind:
+    // "проявляється задній блок... миготіння". The effect below fires
+    // once React has actually committed the new content, and only then
+    // resets the transform - so the two are never out of step.
   }
+  useEffect(() => {
+    morph.value = 0;
+  }, [showing, morph]);
   // A little smaller, a little lower - "нижній блок трохи менший" - a
   // REAL card sitting behind the front one, not the flat painted bar the
   // deeper slivers still are. BACK_Y is small on purpose: the back card
