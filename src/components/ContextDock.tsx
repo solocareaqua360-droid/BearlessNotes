@@ -322,53 +322,45 @@ export default function ContextDock() {
   // Read through a ref inside the gesture, which is built once: the
   // gesture must not be rebuilt when the face changes, or it stops
   // activating (the whole reason the swipe did not exist at first).
+  // Read through a ref inside the gesture, which is built once: the
+  // gesture must not be rebuilt when the face changes, or it stops
+  // activating.
   const faceRef = useRef(face);
   faceRef.current = face;
-  // WHAT SURVIVES A CHANGE OF SCREEN, and what does not.
+  // WHY THE STICKY CHECK IS GONE.
   //
-  // A card stays in front on the next screen only if it means the same
-  // thing there. The DESKS do: they are the same four places whatever
-  // you are standing on, and they are also the only way to reach
-  // another desk - drop them on arrival and every step between desks
-  // would cost a swipe to set up the next one. So they stay.
+  // This reset used to read `if (faceRef.current === 'desks') return;`
+  // before setting the face - meant to let the desks card survive a
+  // screen change instead of being reset like everything else. That
+  // read a REF, at the moment the effect ran, to decide whether to act
+  // at all - a conditional built on remembered state, which is exactly
+  // the shape every race in this file has had: a decision made from
+  // something that might already be stale by the time it is checked.
   //
-  // The ACTIONS do not. The card looks identical and holds four
-  // completely different buttons, so the first press on the new screen
-  // is a press on something you did not mean. The contract already
-  // treats that card as a drawer opened for one thing - see
-  // DockAction's `closesStack`, which puts the context back the moment
-  // an action finishes - and a drawer that follows you between rooms is
-  // not a drawer. It gives way to whatever the new screen opens on.
+  // It was also solving a problem `opensOn` already solves on its own.
+  // Every desk's OWN root - Databases, the boards list, Documents with
+  // no folder open, the calendar - already opens on 'desks', because
+  // none of them has a path-shaped context of its own. Setting the
+  // face UNCONDITIONALLY to `opensOn` on every screen change already
+  // lands back on desks for all of those, with nothing to remember and
+  // nothing that can go stale. The one thing the sticky check bought
+  // beyond that - keeping desks in front if you had manually swiped to
+  // it while standing deep in a folder - is a small, rare case not
+  // worth the class of bug it was causing: "і стара і нова проблеми
+  // вкупі... все пішло не туди коли я попросив поставити показ дока
+  // при прогортанні між робочими столами" was exactly right.
   //
-  // Keyed on the SCREEN, not on the context as it used to be. Two
-  // screens can carry contexts of the same kind and the same icon -
-  // files and photos both open on a path with a database's glyph - so
-  // the old key never changed between them and the reset simply did not
-  // happen. That is why this read as arbitrary rather than as sticky:
-  // it depended on which pair of screens you happened to walk between.
-  // A LAYOUT effect, so the reset lands before the frame is shown.
-  //
-  // As an ordinary effect it ran after painting, and the log caught
-  // exactly what that costs: `+0ms actions/3/1` and then `+21ms
-  // desks/3/2`. One frame of the previous desk's own card, gone again
-  // before it could be photographed - "блимнуло і все". Deciding this
-  // before the paint means the first frame of the new screen is
-  // already the right one.
   // Keyed on the SCREEN and on the CONTEXT, because neither alone is
-  // early enough or reliable enough on its own.
-  //
-  // The screen key is read off the navigation state through a
-  // subscription, and the log showed exactly what that costs: the new
-  // desk's own context was already published at +0ms - `strip/4` - and
-  // the screen key did not arrive until +21ms, so the reset fired a
-  // frame and a half late and the previous desk's card was drawn in
-  // between. The context alone is not enough either: two screens can
-  // carry the same kind of context under the same glyph (files and
-  // photos both open on a path with a database icon), and then it
-  // never changes between them. Together they cover both.
+  // early enough or reliable enough on its own. The screen key is read
+  // off the navigation state through a subscription and can arrive a
+  // frame late; the context (what `own` actually is) is usually
+  // available on the very first render of the new screen, but two
+  // screens can carry the same KIND of context under the same icon -
+  // files and photos both open on a path with a database's glyph - and
+  // then it alone never changes between them. A layout effect, so this
+  // lands before the frame is shown rather than after it.
   const contextKey = dock ? `${dock.kind}:${dock.icon}` : '';
   useLayoutEffect(() => {
-    if (faceRef.current === 'desks') return;
     setFace(opensOn);
   }, [screenKey, contextKey, opensOn, setFace]);
   const facesRef = useRef(faces);
