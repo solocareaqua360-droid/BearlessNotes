@@ -280,18 +280,8 @@ export default function ContextDock() {
   // Lives in the provider now - a screen has to be able to ask for the
   // path back when an action finishes somewhere else.
   const [face, setFace] = useNavDockFace();
-  // Which card a screen OPENS on. A path is worth seeing straight away -
-  // it says where in the database you are standing. A calendar's days
-  // are not: the calendar itself is already on the screen above, so the
-  // dock is better spent saying where else you could go.
-  //
-  // With no context of its own - a database's root, the boards list -
-  // the screen opens on the DESKS. It used to ask for 'context', which
-  // was not in the ring there, and the fallback was the first card in
-  // the ring: the actions. So swiping from the calendar to documents
-  // landed on the options card every time - "автоматично вмикається док
-  // опцій".
-  const opensOn: DockFace = !own ? 'desks' : own.kind === 'strip' ? 'desks' : 'context';
+  // TEMPORARY - the face-on-open logic this fed is disabled below for
+  // a test, so nothing here computes it for now.
   const screenKey = useScreenKey();
   // The cards this screen actually has, in the order they are wanted:
   // what you are in, what you can do in it, where else you could be. A
@@ -327,42 +317,22 @@ export default function ContextDock() {
   // activating.
   const faceRef = useRef(face);
   faceRef.current = face;
-  // WHY THE STICKY CHECK IS GONE.
+  // TEMPORARY - DISABLED FOR A TEST.
   //
-  // This reset used to read `if (faceRef.current === 'desks') return;`
-  // before setting the face - meant to let the desks card survive a
-  // screen change instead of being reset like everything else. That
-  // read a REF, at the moment the effect ran, to decide whether to act
-  // at all - a conditional built on remembered state, which is exactly
-  // the shape every race in this file has had: a decision made from
-  // something that might already be stale by the time it is checked.
+  // The user's own request, after every other fix on this reset still
+  // left every bug in place: turn the whole thing off and confirm, for
+  // certain, that THIS is where they come from, rather than trust
+  // another round of reasoning about it. Screens no longer reset the
+  // front card on a screen or context change at all - `face` only ever
+  // moves by an explicit swipe on the dock itself. Switching desks will
+  // NOT bring the desks card to the front any more; that is the point
+  // of the test, not a bug in it.
   //
-  // It was also solving a problem `opensOn` already solves on its own.
-  // Every desk's OWN root - Databases, the boards list, Documents with
-  // no folder open, the calendar - already opens on 'desks', because
-  // none of them has a path-shaped context of its own. Setting the
-  // face UNCONDITIONALLY to `opensOn` on every screen change already
-  // lands back on desks for all of those, with nothing to remember and
-  // nothing that can go stale. The one thing the sticky check bought
-  // beyond that - keeping desks in front if you had manually swiped to
-  // it while standing deep in a folder - is a small, rare case not
-  // worth the class of bug it was causing: "і стара і нова проблеми
-  // вкупі... все пішло не туди коли я попросив поставити показ дока
-  // при прогортанні між робочими столами" was exactly right.
-  //
-  // Keyed on the SCREEN and on the CONTEXT, because neither alone is
-  // early enough or reliable enough on its own. The screen key is read
-  // off the navigation state through a subscription and can arrive a
-  // frame late; the context (what `own` actually is) is usually
-  // available on the very first render of the new screen, but two
-  // screens can carry the same KIND of context under the same icon -
-  // files and photos both open on a path with a database's glyph - and
-  // then it alone never changes between them. A layout effect, so this
-  // lands before the frame is shown rather than after it.
-  const contextKey = dock ? `${dock.kind}:${dock.icon}` : '';
-  useLayoutEffect(() => {
-    setFace(opensOn);
-  }, [screenKey, contextKey, opensOn, setFace]);
+  // const opensOn: DockFace = !own ? 'desks' : own.kind === 'strip' ? 'desks' : 'context';
+  // const contextKey = dock ? `${dock.kind}:${dock.icon}` : '';
+  // useLayoutEffect(() => {
+  //   setFace(opensOn);
+  // }, [screenKey, contextKey, opensOn, setFace]);
   const facesRef = useRef(faces);
   facesRef.current = faces;
   const cardHRef = useRef(CARD_H);
