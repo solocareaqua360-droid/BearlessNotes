@@ -260,25 +260,31 @@ export default function ContextDock() {
   // the dock's own top edge - "картка навіть не дотягується до
   // верхнього краю дока".
   const RISE_F = 1.0;
-  // FRONT: rises to a peak around the midpoint, then comes back DOWN
-  // onto the back card's own resting transform - one continuous arc,
-  // not a rise-then-teleport. BACK: the exact reverse, growing from the
-  // back spot up into the front one. Passing each other at the
-  // midpoint is the "перелистування" - the page actually turning, not
-  // one card fading while another fades in.
+  // FRONT: rises to a peak at the MIDPOINT, then comes back DOWN onto
+  // the back card's own resting transform - one continuous arc, not a
+  // rise-then-teleport. BACK: the exact reverse, growing from the back
+  // spot up into the front one. Passing each other at the midpoint is
+  // the "перелистування" - the page actually turning, not one card
+  // fading while another fades in. Which one is drawn ON TOP swaps
+  // exactly there too - short of the midpoint FRONT is still the thing
+  // that was in front and stays painted over BACK; past it, FRONT is
+  // the thing descending INTO the stack and has to go visually BEHIND
+  // the card rising past it, or the descent never reads as going under
+  // anything: "передній... не заходить за задній, а опускається вниз
+  // так само".
   const frontStyle = useAnimatedStyle(() => {
     const cardH = cardHRef.current;
     const p = morph.value;
     const arc = Math.sin(Math.min(1, p) * Math.PI); // 0 -> 1 -> 0
     const translateY = -arc * cardH * RISE_F + p * BACK_Y;
     const scale = 1 - p * (1 - BACK_SCALE);
-    return { transform: [{ translateY }, { scale }] };
+    return { transform: [{ translateY }, { scale }], zIndex: p > 0.5 ? 1 : 2 };
   });
   const backStyle = useAnimatedStyle(() => {
     const p = morph.value;
     const translateY = BACK_Y * (1 - p);
     const scale = BACK_SCALE + p * (1 - BACK_SCALE);
-    return { transform: [{ translateY }, { scale }] };
+    return { transform: [{ translateY }, { scale }], zIndex: p > 0.5 ? 2 : 1 };
   });
   const swipe = useMemo(
     () =>
@@ -296,14 +302,14 @@ export default function ContextDock() {
         // system itself uses just below here.
         .onUpdate((e) => {
           if (facesRef.current.length < 2) return;
-          // Capped short of 1 - the drag previews the RISE, release
-          // decides whether it ever completes the DESCENT onto the back
-          // spot. Letting a drag alone reach 1 would settle the flip
-          // before the finger ever lifted. High enough now (with
-          // RISE_F=1) that the card visibly clears the dock's own top
-          // edge well before the cap.
+          // Capped EXACTLY at the peak (0.5) - past that point the arc
+          // itself starts coming back DOWN, and a live drag was doing
+          // that on its own, without release, the moment the finger
+          // crossed the midpoint: "я не дотягнув догори, воно вже
+          // перелиснуло". A drag may only ever RISE; the descent onto
+          // the back spot happens on release, never mid-drag.
           const dragged = Math.max(0, -e.translationY) / cardHRef.current;
-          morph.value = Math.min(0.85, dragged);
+          morph.value = Math.min(0.5, dragged);
         })
         .onEnd((e) => {
           const ring = facesRef.current;
@@ -687,13 +693,13 @@ export default function ContextDock() {
               day something else - is still open; where it stands is
               settled. */}
           {queued && (
-            <Animated.View style={[styles.cardLayer, dims.card, { zIndex: 1 }, backStyle]} pointerEvents="none">
+            <Animated.View style={[styles.cardLayer, dims.card, backStyle]} pointerEvents="none">
               <Frost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
                 {renderCard(queued)}
               </Frost>
             </Animated.View>
           )}
-          <Animated.View style={[styles.cardLayer, dims.card, { zIndex: 2 }, frontStyle]}>
+          <Animated.View style={[styles.cardLayer, dims.card, frontStyle]}>
             <Frost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
               {renderCard(showing)}
             </Frost>
