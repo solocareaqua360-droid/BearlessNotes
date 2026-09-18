@@ -31,6 +31,13 @@ export type ChatMessage = {
   // database (see chatAttach); these are pointers to them, so the picture
   // in the chat and the picture in «Зображення» are one picture.
   attachments?: ChatAttachment[];
+  // Set only on a message Gemini wrote (see askGemini/sendGeminiReply) -
+  // never on the user's own. `replyTo` is the id of the message that was
+  // asked, so the answer stays traceable to its question even once both
+  // have scrolled off screen. The answer is a message like any other:
+  // selectable into a note, deletable, and it can be asked about in turn.
+  from?: 'gemini';
+  replyTo?: string;
 };
 
 const chatCollection = collection(db, 'chat');
@@ -47,6 +54,22 @@ export async function sendChatMessage(
     text: trimmed,
     createdAt: Date.now(),
     ...(attachments?.length ? { attachments } : {}),
+  });
+  return ref.id;
+}
+
+// Gemini's answer, landing as a message underneath the one that was
+// asked - the plan's own words: "одне optional - тік «спитати» на
+// повідомленні, відповідь приходить повідомленням знизу" (see
+// project_plan_chat). Never consumed, never special beyond the
+// `from`/`replyTo` tag: it can be selected into a note, deleted, or
+// asked about again, exactly like anything the user typed.
+export async function sendGeminiReply(text: string, replyTo: string): Promise<string> {
+  const ref = await addDoc(chatCollection, {
+    text: text.trim(),
+    createdAt: Date.now(),
+    from: 'gemini',
+    replyTo,
   });
   return ref.id;
 }
@@ -68,6 +91,8 @@ export function watchChat(
           createdAt: (d.data().createdAt as number) ?? 0,
           usedIn: d.data().usedIn as Record<string, string> | undefined,
           tasks: d.data().tasks as Record<string, string> | undefined,
+          from: d.data().from as 'gemini' | undefined,
+          replyTo: d.data().replyTo as string | undefined,
           // `attachment`, singular, is what the first messages were
           // written with - read as a list of one rather than migrated,
           // since nothing is gained by rewriting what already works.

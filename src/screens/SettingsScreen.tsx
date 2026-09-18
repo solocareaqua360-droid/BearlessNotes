@@ -39,6 +39,7 @@ import { backfillDriveCopies } from '../utils/backfillDrive';
 import { STALE_AFTER_DAYS, localAttachmentUsage } from '../utils/attachmentCache';
 import { chooseDownloadFolder, currentDownloadFolder } from '../utils/downloadToFolder';
 import { getPexelsKey, setPexelsKey } from '../utils/pexelsKey';
+import { getGeminiKey, setGeminiKey } from '../utils/geminiKey';
 import { useThemeChoice } from '../theme/ThemeProvider';
 import { THEMES, THEME_ORDER } from '../theme/tokens';
 import { confirm, notify } from '../components/surfaces/Ask';
@@ -99,6 +100,14 @@ export default function SettingsScreen() {
   const [enteringPexelsKey, setEnteringPexelsKey] = useState(false);
   useEffect(() => {
     getPexelsKey().then(setPexelsKeyState);
+  }, []);
+  // Same shape as the Pexels key just above - a credential only the user
+  // can create, device-local for the same reason (see utils/geminiKey).
+  // Powers the chat's "Запитати Gemini".
+  const [geminiKey, setGeminiKeyState] = useState<string | null | undefined>(undefined);
+  const [enteringGeminiKey, setEnteringGeminiKey] = useState(false);
+  useEffect(() => {
+    getGeminiKey().then(setGeminiKeyState);
   }, []);
 
   useEffect(() => {
@@ -541,6 +550,52 @@ export default function SettingsScreen() {
             </>
           )}
         </View>
+
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="sparkles-outline" size={22} color={ACCENT} />
+            <Text style={styles.cardTitle}>Gemini у чаті</Text>
+          </View>
+          {geminiKey ? (
+            <>
+              <Text style={styles.cardBody}>Ключ Gemini підключено</Text>
+              <Text style={styles.cardHint}>
+                У «Загальному чаті» довге натискання на повідомлення відкриває «Запитати Gemini» - відповідь
+                приходить окремим повідомленням знизу, її теж можна забрати в нотатку.
+              </Text>
+              <Pressable style={styles.checkButton} onPress={() => setEnteringGeminiKey(true)} disabled={busy}>
+                <Text style={styles.checkLabel}>Змінити ключ</Text>
+              </Pressable>
+              <Pressable
+                style={styles.disconnectButton}
+                onPress={async () => {
+                  const yes = await confirm({
+                    title: 'Прибрати ключ Gemini?',
+                    message: '«Запитати Gemini» знову проситиме ключ, коли знадобиться.',
+                    confirmLabel: 'Прибрати',
+                  });
+                  if (!yes) return;
+                  await setGeminiKey(null);
+                  setGeminiKeyState(null);
+                }}
+              >
+                <Text style={styles.disconnectLabel}>Прибрати</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text style={styles.cardHint}>
+                Необовʼязково: додай безкоштовний ключ з aistudio.google.com/apikey, щоб «Загальний чат» міг
+                питати Gemini про окреме повідомлення - відповідь прийде повідомленням знизу. Ключ лишається
+                тільки на цьому пристрої. Варто самим перевірити умови безкоштовного тарифу щодо навчання моделі
+                на тому, що ти надсилаєш - це другий мозок, а не чернетка.
+              </Text>
+              <Pressable style={styles.connectButton} onPress={() => setEnteringGeminiKey(true)} disabled={busy}>
+                <Text style={styles.connectLabel}>Додати ключ Gemini</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
         </ScrollView>
       </ContentColumn>
 
@@ -556,6 +611,21 @@ export default function SettingsScreen() {
           if (!trimmed) return;
           await setPexelsKey(trimmed);
           setPexelsKeyState(trimmed);
+        }}
+      />
+
+      <RenamePrompt
+        visible={enteringGeminiKey}
+        title="Ключ Gemini"
+        initialValue={geminiKey ?? ''}
+        placeholder="Встав ключ із aistudio.google.com/apikey"
+        onCancel={() => setEnteringGeminiKey(false)}
+        onSave={async (value) => {
+          setEnteringGeminiKey(false);
+          const trimmed = value.trim();
+          if (!trimmed) return;
+          await setGeminiKey(trimmed);
+          setGeminiKeyState(trimmed);
         }}
       />
     </View>

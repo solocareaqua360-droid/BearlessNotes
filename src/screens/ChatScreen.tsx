@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { FileRow, LinkRow, PhotoRow } from '../components/ItemCards';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -17,6 +17,8 @@ import { categoryFromSiteName } from '../utils/linkCategory';
 import * as Clipboard from 'expo-clipboard';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { openCapture } from '../components/CaptureWindow';
+import { askGemini } from '../utils/gemini';
+import { getGeminiKey } from '../utils/geminiKey';
 import { useDockActions, useDockBeads, useDockLeave, useDockShowContext } from '../navigation/navDock';
 import { CHROME_TOP } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
@@ -26,6 +28,7 @@ import {
   editChatMessage,
   markChatMessageTask,
   markChatMessagesUsed,
+  sendGeminiReply,
   watchChat,
 } from '../utils/chat';
 import {
@@ -39,7 +42,7 @@ import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { Block } from '../types';
 import { RootStackParamList } from '../navigation';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
-import type { Theme } from '../theme/tokens';
+import { mutedForTheme, type Theme } from '../theme/tokens';
 
 
 // The history side of «загальний чат». The capture window is where things
@@ -109,6 +112,11 @@ export default function ChatScreen() {
   const [sending, setSending] = useState<string[] | null>(null);
   const [naming, setNaming] = useState(false);
   const [editing, setEditing] = useState<ChatMessage | null>(null);
+  // The id of the message currently awaiting a Gemini answer, so its own
+  // bubble can show that instead of the whole screen locking up - Gemini
+  // takes a few seconds and the rest of the chat stays usable while it
+  // does.
+  const [askingId, setAskingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -305,14 +313,21 @@ export default function ChatScreen() {
         { id: 'edit', label: 'Виправити', icon: 'pencil-outline' },
         { id: 'note', label: 'У нотатку…', icon: 'document-text-outline' },
         { id: 'task', label: 'Зробити справою', icon: 'checkbox-outline' },
+        // Gemini's own words are not asked about again by default - a
+        // reply of a reply is a rabbit hole nobody asked this screen to
+        // dig, and "ask" simply isn't offered on one.
+        ...(message.from !== 'gemini'
+          ? [{ id: 'ask' as const, label: 'Запитати Gemini', icon: 'sparkles-outline' as const }]
+          : []),
         { id: 'select', label: 'Вибрати кілька', icon: 'checkmark-circle-outline' },
-        { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' },
+        { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' as const },
       ],
     });
     if (choice === 'copy') await Clipboard.setStringAsync(message.text);
     else if (choice === 'edit') setEditing(message);
     else if (choice === 'note') setSending([message.id]);
     else if (choice === 'task') makeTask(message);
+    else if (choice === 'ask') await askGeminiFor(message);
     else if (choice === 'select') {
       setIsSelectMode(true);
       setSelected(new Set([message.id]));
@@ -323,6 +338,33 @@ export default function ChatScreen() {
         confirmLabel: 'Видалити',
       });
       if (sure) await deleteChatMessage(message.id).catch((e: Error) => notify('Не вдалося', e.message));
+    }
+  }
+
+  // "Спитати" - the ONE optional thing Gemini does here, per the plan.
+  // No key configured is not an error, it is the expected first state:
+  // point at Settings rather than failing silently or nagging on every
+  // message.
+  async function askGeminiFor(message: ChatMessage) {
+    if (!message.text.trim()) return;
+    const key = await getGeminiKey();
+    if (!key) {
+      const goSettings = await confirm({
+        title: 'Немає ключа Gemini',
+        message: 'Додай безкоштовний ключ у Налаштуваннях, щоб Gemini міг відповідати на повідомлення.',
+        confirmLabel: 'Налаштування',
+      });
+      if (goSettings) navigation.navigate('Settings');
+      return;
+    }
+    setAskingId(message.id);
+    try {
+      const answer = await askGemini(message.text, key);
+      await sendGeminiReply(answer, message.id);
+    } catch (e) {
+      notify('Gemini не відповів', (e as Error).message);
+    } finally {
+      setAskingId((current) => (current === message.id ? null : current));
     }
   }
 
@@ -417,15 +459,26 @@ export default function ChatScreen() {
               const message = item.message;
               const used = Object.entries(message.usedIn ?? {});
               const picked = selected.has(message.id);
+              const fromGemini = message.from === 'gemini';
               return (
                 <Pressable
-                  style={[styles.bubble, picked && { borderColor: theme.accent }]}
+                  style={[
+                    styles.bubble,
+                    fromGemini && styles.bubbleGemini,
+                    picked && { borderColor: theme.accent },
+                  ]}
                   onPress={() => (isSelectMode ? toggle(message.id) : undefined)}
                   onLongPress={() => {
                     if (isSelectMode) return;
                     openMessageMenu(message);
                   }}
                 >
+                  {fromGemini && (
+                    <View style={styles.geminiLabel}>
+                      <Ionicons name="sparkles" size={12} color={theme.accent} />
+                      <Text style={[styles.geminiLabelText, { color: theme.accent }]}>Gemini</Text>
+                    </View>
+                  )}
                   {/* Each attachment is drawn as the CARD ITS OWN DATABASE
                       draws it - the same component «Посилання», «Файли»
                       and «Зображення» use, so a video arrives with its
@@ -470,6 +523,12 @@ export default function ChatScreen() {
                     </View>
                   ))}
                   {!!message.text && <Text style={styles.bubbleText}>{message.text}</Text>}
+                  {askingId === message.id && (
+                    <View style={styles.askingRow}>
+                      <ActivityIndicator size="small" color={theme.ink.muted} />
+                      <Text style={styles.askingLabel}>Gemini думає…</Text>
+                    </View>
+                  )}
                   <View style={styles.bubbleFoot}>
                     <Text style={styles.bubbleTime}>
                       {new Date(message.createdAt).toLocaleTimeString('uk-UA', {
@@ -618,6 +677,35 @@ const makeStyles = (t: Theme) =>
       paddingHorizontal: 14,
       paddingVertical: 10,
       gap: 6,
+    },
+    // A tint, not a whole second style - the shape of the bubble stays
+    // the same, only WHO wrote it changes. Same reasoning as everywhere
+    // else colour is used sparingly in this app: one accent, spent on
+    // purpose.
+    bubbleGemini: {
+      borderColor: t.accent,
+      backgroundColor: mutedForTheme(t.accent, t, 0.85),
+    },
+    geminiLabel: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    geminiLabelText: {
+      fontSize: 11,
+      fontFamily: FONT_SEMIBOLD,
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    },
+    askingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    askingLabel: {
+      fontSize: 13,
+      fontFamily: FONT_REGULAR,
+      color: t.ink.muted,
     },
     bubbleText: {
       fontSize: 16,
