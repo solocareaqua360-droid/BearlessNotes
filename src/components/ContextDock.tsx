@@ -354,10 +354,23 @@ export default function ContextDock() {
   // before it could be photographed - "блимнуло і все". Deciding this
   // before the paint means the first frame of the new screen is
   // already the right one.
+  // Keyed on the SCREEN and on the CONTEXT, because neither alone is
+  // early enough or reliable enough on its own.
+  //
+  // The screen key is read off the navigation state through a
+  // subscription, and the log showed exactly what that costs: the new
+  // desk's own context was already published at +0ms - `strip/4` - and
+  // the screen key did not arrive until +21ms, so the reset fired a
+  // frame and a half late and the previous desk's card was drawn in
+  // between. The context alone is not enough either: two screens can
+  // carry the same kind of context under the same glyph (files and
+  // photos both open on a path with a database icon), and then it
+  // never changes between them. Together they cover both.
+  const contextKey = dock ? `${dock.kind}:${dock.icon}` : '';
   useLayoutEffect(() => {
     if (faceRef.current === 'desks') return;
     setFace(opensOn);
-  }, [screenKey, opensOn, setFace]);
+  }, [screenKey, contextKey, opensOn, setFace]);
   const facesRef = useRef(faces);
   facesRef.current = faces;
   const cardHRef = useRef(CARD_H);
