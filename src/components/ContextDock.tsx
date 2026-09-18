@@ -455,17 +455,69 @@ export default function ContextDock() {
   // through something whose identity never changes.
   const commitRef = useRef<(f: DockFace) => void>(() => {});
   commitRef.current = setFace;
+  // WHETHER A SETTLE IS RUNNING, and a timer that ends the swipe state
+  // even if nothing else does.
+  //
+  // This flag decides who draws - Reanimated while it is up, React
+  // while it is down - so a flag left UP is the whole bug class back
+  // again: the dock drawn from numbers that only get refreshed for a
+  // swipe, on a screen that has since changed underneath them. That is
+  // exactly what the user caught. Arriving on the databases desk from
+  // the boards, the stale two-card arrangement puts the one card there
+  // at slot ONE - the back card's own place - and with no second card
+  // to hide behind it simply looks small; a swipe puts the flag back
+  // down, React takes over, and it is the right size again. Their own
+  // reading of it was right.
+  //
+  // It was sticking when the dock's own gesture activated and was then
+  // taken over by the pager mid-drag. `onFinalize` runs for that case
+  // as well as for a clean end, and the timer covers anything neither
+  // of them catches. Both are safe to be wrong in the direction they
+  // fail: the flag DOWN is the plain style, which is correct at all
+  // times - the worst either can do is cut an animation short.
+  const settling = useRef(false);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hand = useMemo(
     () => ({
-      start: () => setSwiping(true),
+      start: () => {
+        settling.current = false;
+        setSwiping(true);
+      },
+      settleStarted: () => {
+        settling.current = true;
+        if (settleTimer.current) clearTimeout(settleTimer.current);
+        settleTimer.current = setTimeout(() => {
+          settleTimer.current = null;
+          settling.current = false;
+          setSwiping(false);
+        }, 600);
+      },
       // One call, so React commits the new front card and the return
       // to the plain style in the SAME render.
       finish: (next: DockFace) => {
+        if (settleTimer.current) clearTimeout(settleTimer.current);
+        settling.current = false;
         commitRef.current(next);
         setSwiping(false);
       },
-      stop: () => setSwiping(false),
+      stop: () => {
+        if (settleTimer.current) clearTimeout(settleTimer.current);
+        settling.current = false;
+        setSwiping(false);
+      },
+      // The finger is off, whichever way the gesture went. If no
+      // settle was ever started - a cancelled gesture, which never
+      // reaches `onEnd` - nothing else is coming to put the flag down.
+      finalize: () => {
+        if (!settling.current) setSwiping(false);
+      },
     }),
+    []
+  );
+  useEffect(
+    () => () => {
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+    },
     []
   );
   const swipe = useMemo(
@@ -484,6 +536,9 @@ export default function ContextDock() {
         .onStart(() => {
           hand.start();
         })
+        .onFinalize(() => {
+          hand.finalize();
+        })
         .onUpdate((e) => {
           if (facesRef.current.length < 2) return;
           // Capped at the peak. Past it the arc comes back DOWN, and a
@@ -500,6 +555,7 @@ export default function ContextDock() {
           // flick, the same as any carousel. Short of two cards there
           // is nothing to cycle to.
           const committed = ring.length >= 2 && (e.translationY < -40 || e.velocityY < -600);
+          hand.settleStarted();
           if (committed) {
             hapticButtonDown();
             const at = ring.indexOf(faceRef.current);
