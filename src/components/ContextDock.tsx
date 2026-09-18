@@ -1,4 +1,4 @@
-import { ReactNode, useMemo, useEffect, useRef, useState } from 'react';
+import { ReactNode, useLayoutEffect, useMemo, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleProp, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming, Easing } from 'react-native-reanimated';
@@ -117,10 +117,7 @@ const BACK_Y = 10;
 // height: short of that the drag never visibly clears the dock's own top
 // edge - "картка навіть не дотягується до верхнього краю дока".
 const RISE_F = 1.0;
-// `eps` is a hundredth of a point added to translateY and to nothing
-// else - see the settle nudge at its only call site. The UI thread's own
-// path always passes 0.
-function slotTransform(i: number, f: number, n: number, cardH: number, eps: number = 0) {
+function slotTransform(i: number, f: number, n: number, cardH: number) {
   'worklet';
   const k = Math.floor(f);
   const t = f - k;
@@ -136,7 +133,7 @@ function slotTransform(i: number, f: number, n: number, cardH: number, eps: numb
     y = slot * BACK_Y;
   }
   return {
-    transform: [{ translateY: y + eps }, { scale: Math.pow(BACK_SCALE, slot) }],
+    transform: [{ translateY: y }, { scale: Math.pow(BACK_SCALE, slot) }],
     zIndex: Math.round((n - slot) * 10),
   };
 }
@@ -402,53 +399,52 @@ export default function ContextDock() {
   // was built.
   const cardHSV = useSharedValue(CARD_H);
   const ringSV = useSharedValue(1);
-  useEffect(() => {
+  // Before the frame is shown, not after it. These three carry the
+  // resting arrangement to the only writer that reaches the view, so
+  // the later they land the longer the cards stand somewhere they no
+  // longer belong.
+  useLayoutEffect(() => {
     cardHSV.value = CARD_H;
   }, [CARD_H, cardHSV]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     ringSV.value = ringSize;
   }, [ringSize, ringSV]);
   // Where every card rests, said in plain style objects React commits
   // along with the cards themselves.
-  // A HUNDREDTH OF A POINT, and the only reason it exists.
+  // ONE WRITER PLACES THESE CARDS, AND IT IS REANIMATED.
   //
-  // Two things write this view's transform: React, through the plain
-  // resting style, and Reanimated, which writes straight to the native
-  // view without telling React. They are not meant to overlap - the
-  // animated style is attached only while a swipe runs - but a mapper
-  // run already queued on the UI thread can land AFTER the style has
-  // come off, and Reanimated restores nothing when it does. The card
-  // then keeps that last write for good.
+  // This file spent a while with two: React committing a plain resting
+  // style, and the animated style attached only while a swipe ran. The
+  // user's own measurements killed that design. Two screenshots of the
+  // same screen, sound and sunk, differed in nothing but the dock's own
+  // band - the list had not scrolled a pixel. Template matching put the
+  // bead beside the dock at (0, 0) and the card at 26px down with its
+  // contents drawn in 14px each side, which solves to a scale of 0.94
+  // about the card's centre: BACK_SCALE. The card was wearing the BACK
+  // card's transform on a ring of ONE, where no back card exists - and
+  // the debug strip, in the same frame, read `restY=0`. React had the
+  // right answer and could not deliver it.
   //
-  // Measured off the user's own two screenshots, one sound and one
-  // sunk: the beads beside the dock had not moved by a pixel, the card
-  // had gone down 26 and drawn its contents in by 14 each side - a
-  // scale of 0.94 about its centre, which is BACK_SCALE. The card was
-  // wearing the BACK card's transform on a ring of one, where there is
-  // no back card at all.
+  // It could not because Reanimated writes straight to the native view,
+  // and once it has, React's own diff has nothing to report: its record
+  // of what it last sent is unchanged, so it sends nothing, and the
+  // view keeps the last imperative write for good. Forcing a difference
+  // (a hundredth of a point, flipped on every settle) changed nothing,
+  // which settled it - React's commits were not reaching this view at
+  // all once Reanimated had touched it. The one thing that ever fixed
+  // it was starting another swipe, because that re-attaches the
+  // animated style and lets the writer that DOES reach the view have
+  // its say.
   //
-  // React cannot correct that by itself: its record of the last value
-  // it sent is unchanged, so it diffs, finds nothing, and sends
-  // nothing. This flips between 0 and 0.01 every time a swipe settles,
-  // so the transform React commits then is never equal to the one
-  // before it, and therefore always reaches the view - carrying the
-  // right resting placement with it. Nothing else about the swipe
-  // changes; this only makes React's existing answer actually arrive.
-  const [settleNudge, setSettleNudge] = useState(0);
-  const restStyles = [0, 1, 2].map((i) =>
-    slotTransform(i, faceIndex, ringSize, CARD_H, settleNudge % 2 === 1 ? 0.01 : 0)
-  );
-  // And on any change of the resting arrangement itself, not only when
-  // a swipe settles. The case the user pinned down: a neighbouring desk
-  // showing its OPTIONS card leaves the desks card standing at slot 1,
-  // and arriving on the databases desk - a ring of one - it has to
-  // become slot 0. That transition is not a settle, so nothing flipped
-  // the nudge for it, and the card kept the transform it wore on the
-  // other desk. Showing the DESKS card on that neighbour instead leaves
-  // it at slot 0 already, which is why that way round was always fine.
-  useEffect(() => {
-    setSettleNudge((n) => n + 1);
-  }, [faceIndex, ringSize]);
+  // So the plain resting style is gone from the cards. The animated
+  // style is attached always, it alone places them, and the shared
+  // values it reads are carried across in layout effects - before the
+  // frame is shown rather than after it - so a screen change reaches
+  // the writer as promptly as React can hand it over.
+  // What the resting arrangement SAYS each card's place is. Read by the
+  // debug strip only - the cards themselves are placed by the animated
+  // style below and by nothing else.
+  const restStyles = [0, 1, 2].map((i) => slotTransform(i, faceIndex, ringSize, CARD_H));
   // Three, always: the ring is at most three cards, and a hook cannot be
   // called in a loop whose length changes between renders.
   const slot0 = useAnimatedStyle(() => slotTransform(0, progress.value, ringSV.value, cardHSV.value));
@@ -510,7 +506,6 @@ export default function ContextDock() {
       commit: (next: DockFace) => {
         commitRef.current(next);
         setSwiping(false);
-      setSettleNudge((n) => n + 1);
       },
       // The cancelled path - dragged, released short of the threshold,
       // settled back onto the very card it started from. Nothing here
@@ -518,7 +513,6 @@ export default function ContextDock() {
       // render either; this is the only thing that ends it.
       settle: () => {
         setSwiping(false);
-      setSettleNudge((n) => n + 1);
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -537,11 +531,9 @@ export default function ContextDock() {
   // has no such trap: it is a plain value computed fresh every render,
   // never state, so there is no value it can equal that suppresses the
   // next render, and this effect never has a target it can miss.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (draggingRef.current) return;
     progress.value = faceIndex;
-    setSwiping(false);
-    setSettleNudge((n) => n + 1);
   }, [faceIndex, progress]);
   const swipe = useMemo(
     () =>
@@ -908,7 +900,7 @@ export default function ContextDock() {
         <Text style={styles.debugText}>
           {`ring=${ringSize} idx=${faceIndex} showing=${showing} swiping=${swiping ? 1 : 0} flux=${tabsInFlux ? 1 : 0}\nown=${own ? own.kind : '-'} act=${actions?.length ?? 0} leave=${showLeave ? 1 : 0} bottom=${bottomInset} key=${screenKey.slice(-6)}\nfaces=[${faces.join(',')}] restY=${faces
             .map((_, i) => Math.round((restStyles[i].transform[0] as { translateY: number }).translateY * 100) / 100)
-            .join('/')} nudge=${settleNudge}`}
+            .join('/')}`}
         </Text>
       </View>
       <View
@@ -959,7 +951,7 @@ export default function ContextDock() {
             {faces.map((f, i) => (
               <Animated.View
                 key={f}
-                style={[styles.cardLayer, dims.card, restStyles[i], swiping ? slotStyles[i] : null]}
+                style={[styles.cardLayer, dims.card, slotStyles[i]]}
                 pointerEvents={f === showing ? 'auto' : 'none'}
               >
                 <Frost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
