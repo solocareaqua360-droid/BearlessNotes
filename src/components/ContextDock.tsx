@@ -401,6 +401,15 @@ export default function ContextDock() {
   // was built.
   const cardHSV = useSharedValue(CARD_H);
   const ringSV = useSharedValue(1);
+  // TEMPORARY - see the debug strip. Records a line only when it would
+  // differ from the last one, so a run of identical outcomes stays one
+  // line and the interesting moments stand out.
+  const dockTrail = useRef<{ t0: number; lines: string[]; last: string }>({ t0: Date.now(), lines: [], last: '' });
+  const logDock = (line: string) => {
+    if (line === dockTrail.current.last) return;
+    dockTrail.current.last = line;
+    dockTrail.current.lines = [...dockTrail.current.lines, `+${Date.now() - dockTrail.current.t0}ms ${line}`].slice(-6);
+  };
   // WHY CORRECT VALUES WERE NOT ENOUGH.
   //
   // A mapper runs when one of the shared values it reads CHANGES.
@@ -465,11 +474,15 @@ export default function ContextDock() {
   // not a swipe's own, what Reanimated reads is what React just
   // decided. Writing a value it already holds costs nothing.
   useLayoutEffect(() => {
-    if (draggingRef.current || animatingRef.current) return;
+    if (draggingRef.current || animatingRef.current) {
+      logDock(`SKIP d${draggingRef.current ? 1 : 0}a${animatingRef.current ? 1 : 0}`);
+      return;
+    }
     cardHSV.value = CARD_H;
     ringSV.value = ringSize;
     progress.value = faceIndex;
     tick.value = tick.value + 1;
+    logDock(`SET p=${faceIndex} n=${ringSize}`);
   });
   // Where every card rests, said in plain style objects React commits
   // along with the cards themselves.
@@ -511,22 +524,12 @@ export default function ContextDock() {
   // measured from the moment the screen changed. The two seconds in
   // question are hard to photograph; this way one screenshot taken
   // afterwards carries the whole sequence. Out with the strip above it.
-  const trail0 = useRef<{ t0: number; lines: string[] }>({ t0: Date.now(), lines: [] });
-  const lastLine = useRef('');
   const screenKeyPrev = useRef(screenKey);
   if (screenKeyPrev.current !== screenKey) {
     screenKeyPrev.current = screenKey;
-    trail0.current = { t0: Date.now(), lines: [] };
-    lastLine.current = '';
+    dockTrail.current = { t0: Date.now(), lines: [], last: '' };
   }
-  {
-    const line = `${showing}/${ringSize}/${faceIndex}/${own ? own.kind : '-'}/${actions?.length ?? 0}`;
-    if (line !== lastLine.current) {
-      lastLine.current = line;
-      const at = Date.now() - trail0.current.t0;
-      trail0.current.lines = [...trail0.current.lines, `+${at}ms ${line}`].slice(-5);
-    }
-  }
+  logDock(`${showing}/${ringSize}/${faceIndex}/${own ? own.kind : '-'}/${actions?.length ?? 0}`);
   // Three, always: the ring is at most three cards, and a hook cannot be
   // called in a loop whose length changes between renders.
   const slot0 = useAnimatedStyle(() =>
@@ -1004,9 +1007,9 @@ export default function ContextDock() {
           Remove once that is found and fixed. */}
       <View style={[styles.debugHud, { top: insets.top + 4 }]} pointerEvents="none">
         <Text style={styles.debugText}>
-          {`ring=${ringSize} idx=${faceIndex} showing=${showing} drag=${draggingRef.current ? 1 : 0} anim=${animatingRef.current ? 1 : 0} flux=${tabsInFlux ? 1 : 0}\nown=${own ? own.kind : '-'} act=${actions?.length ?? 0} leave=${showLeave ? 1 : 0} bottom=${bottomInset} key=${screenKey.slice(-6)}\nfaces=[${faces.join(',')}] restY=${faces
+          {`ring=${ringSize} idx=${faceIndex} PROG=${progress.value} N=${ringSV.value} drag=${draggingRef.current ? 1 : 0} anim=${animatingRef.current ? 1 : 0}\nown=${own ? own.kind : '-'} act=${actions?.length ?? 0} leave=${showLeave ? 1 : 0} bottom=${bottomInset} key=${screenKey.slice(-6)}\nfaces=[${faces.join(',')}] restY=${faces
             .map((_, i) => Math.round((restStyles[i].transform[0] as { translateY: number }).translateY * 100) / 100)
-            .join('/')}\n${trail0.current.lines.join('\n')}`}
+            .join('/')}\n${dockTrail.current.lines.join('\n')}`}
         </Text>
       </View>
       <View
