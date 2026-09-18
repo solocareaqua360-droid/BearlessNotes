@@ -16,12 +16,35 @@ export const TILE_COLUMNS = 4;
 // What a cell comes out as on a phone, and so what it should stay near.
 const TARGET_CELL = 84;
 
+// The cap used to sit at 12 regardless of how wide the board actually
+// is - fine up to a tablet, wrong on a genuinely wide DeX window: a
+// board near 1900dp wide hit the cap, and the columns stopped growing
+// while the WIDTH kept growing, so cells almost doubled past their
+// target size instead of the board simply gaining more of them at the
+// right size - "тайли повинні перегруповуватись, а не роздуватись".
+// Measured on the user's own DeX screenshot: 1900 / 84 wants ~22
+// columns, and the old cap gave it 12, which is exactly the ~1.8x
+// oversized tiles seen there.
+//
+// So the cap now SCALES with the board instead of being one constant -
+// one cell every ~160dp of width past the point the old cap started
+// biting, which keeps a cell within about 25% of TARGET_CELL at any
+// width this app is likely to run at, phone through a maximized
+// desktop window, without letting the column count run away on a
+// screen nobody actually has.
+const MAX_COLUMNS_BASE = 12;
+const MAX_COLUMNS_AT_WIDTH = 1200;
+
 export function tileColumnsFor(boardWidth: number, gap: number): number {
   if (boardWidth <= 0) return TILE_COLUMNS;
   const columns = Math.round((boardWidth + gap) / (TARGET_CELL + gap));
+  const cap =
+    boardWidth <= MAX_COLUMNS_AT_WIDTH
+      ? MAX_COLUMNS_BASE
+      : MAX_COLUMNS_BASE + Math.round((boardWidth - MAX_COLUMNS_AT_WIDTH) / 160);
   // Never fewer than four - the stored sizes go up to four cells wide, and
   // a tile wider than the board has nowhere to be placed at all.
-  return Math.max(TILE_COLUMNS, Math.min(12, columns));
+  return Math.max(TILE_COLUMNS, Math.min(cap, columns));
 }
 
 export type TileSize = { w: number; h: number };
