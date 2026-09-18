@@ -1,7 +1,6 @@
 import { ReactNode, useLayoutEffect, useMemo, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleProp, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming, Easing } from 'react-native-reanimated';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { openCapture } from './CaptureWindow';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -363,195 +362,83 @@ export default function ContextDock() {
   facesRef.current = faces;
   const cardHRef = useRef(CARD_H);
   cardHRef.current = CARD_H;
-  // WHERE THE CARDS STAND. ONE ANSWER, FROM TWO NUMBERS THAT NEVER
-  // HAVE TO AGREE WITH EACH OTHER.
+  // ONE CLOCK. REACT DRAWS THE DOCK, ALWAYS - INCLUDING WHILE IT MOVES.
   //
-  // Everything that went wrong in this file for a long stretch had one
-  // shape: a card's position was the PRODUCT of two sources - React's
-  // own style and Reanimated's - and the two live on different clocks.
-  // Every hand-over between them was a race, and every fix for one
-  // race opened another, in both directions: cards a step back, cards
-  // a step too far, the old icons flashing under the dock, the dock
-  // ballooning. The answer was not a better hand-over. It was to stop
-  // needing one.
+  // Every bug in this long run had the same cause, and it was never
+  // the arithmetic. A card's position was written by TWO hands, React
+  // and Reanimated, on two clocks that cannot be made to agree: a
+  // shared value written from a layout effect does not reach the UI
+  // thread in the frame React just committed, and a worklet rebuilt
+  // because its captured numbers changed is rebuilt after the paint.
+  // Every hand-over between them was a race, and closing one opened
+  // the next - cards a step back, cards a step too far, the old icons
+  // under the dock, the dock ballooning, the same card twice.
   //
-  // Placement is Reanimated's alone now, computed from exactly two
-  // shared values that are never written by the same hand:
+  // So there is no second hand any more. The ring's position is plain
+  // React state and the cards are plain views. At rest there is not
+  // even a value to keep in step - `pos` IS `faceIndex`, computed in
+  // the render that draws it, so a screen change can never be one
+  // frame ahead of its own dock. While a swipe runs the gesture sets
+  // that state directly, and the settle is a requestAnimationFrame
+  // loop doing the same.
   //
-  //   `base`  which card is in front, as a ring position. Written ONLY
-  //           by React, unconditionally, every render. It is allowed
-  //           to be a frame behind on a screen change; it is never
-  //           allowed to be wrong for longer than that, and nothing
-  //           guards it, so nothing can leave it stuck.
-  //
-  //   `drag`  how far through a swipe the stack is, 0 at rest. Written
-  //           ONLY by the gesture. React does not know it exists.
-  //
-  // A swipe's end - the one moment that used to need a hand-over - is
-  // now a single UI-thread step: `base` gains one and `drag` returns
-  // to zero, together, in the same callback. base+1+0 is base+1: the
-  // picture does not change, because nothing about it changed hands.
-  // React is told afterwards, for its own sake, and when it writes
-  // `base` back it writes the same ring position it already held -
-  // a whole turn of the ring is the identity, so that write is
-  // invisible too.
-  // ONE number for where the ring stands, not two.
-  //
-  // It was `base` plus `drag`, stepped on the UI thread when the
-  // settle animation ended. Two things were wrong with that. The step
-  // landing at the END of the animation meant a second swipe started
-  // before it read a position that had not moved yet; and reading a
-  // shared value from the JS thread reads a JS-side COPY, which a
-  // UI-thread write only reaches asynchronously - so `base.value` in
-  // the gesture was exactly as far behind as the React ref it had
-  // replaced. That is why the options card came up twice.
-  //
-  // One value, absolute, and the ring steps at RELEASE instead: in JS,
-  // synchronously, where the next swipe can see it immediately. That
-  // is only safe because the plain style is out of use while a swipe
-  // runs - React can be told the new card the moment the finger lifts
-  // and nothing moves, because nothing on screen is reading React
-  // until the swipe is over.
-  const pos = useSharedValue(0);
-  const posRef = useRef(0);
-  const ringSV = useSharedValue(1);
-  const cardHSV = useSharedValue(0);
-  // No dependency list, no conditions, no flags. Writing a value it
-  // already holds costs nothing, and there is no state anywhere that
-  // can stop this from running. `posRef` is the JS-side twin, kept
-  // here because the gesture cannot read the shared one without
-  // reading it late.
-  // NOTE WHAT IS NOT WRITTEN HERE: `pos`.
-  //
-  // This effect runs on every render, and `commit` calls `setFace` at
-  // the release - which causes a render, which ran this, which wrote
-  // `pos` straight over the settle animation that had just started.
-  // withTiming was cancelled before it moved, its callback never saw
-  // `finished`, so the swipe was never told it had ended and the flag
-  // that decides who draws stayed up until a timer rescued it. That is
-  // both the step going wrong and the databases dock keeping the back
-  // card's size.
-  //
-  // `pos` belongs to the gesture alone. At rest nobody reads it -
-  // React draws then - so it is allowed to be stale, and the gesture
-  // seeds it from `posRef` the moment it starts. The rest stay: the
-  // ring's length and the card height do not change under a swipe, and
-  // `posRef` only ever gets written the congruent value here.
-  useLayoutEffect(() => {
-    posRef.current = faceIndex;
-    ringSV.value = ringSize;
-    cardHSV.value = CARD_H;
-  });
-  // Three, always: the ring is at most three cards, and a hook cannot
-  // be called in a loop whose length changes between renders.
-  const slot0 = useAnimatedStyle(() =>
-    slotTransform(0, pos.value, ringSV.value, cardHSV.value)
+  // The end of a swipe - the moment that defeated every previous
+  // design - is now one setState batch: the new front card and the
+  // return to rest, together, in a single React commit. And because a
+  // whole turn of the ring is the identity, `to` and the new
+  // `faceIndex` place every card identically, so even that commit
+  // moves nothing on screen.
+  const [drag, setDrag] = useState<number | null>(null);
+  const pos = drag ?? faceIndex;
+  const faceIndexRef = useRef(faceIndex);
+  faceIndexRef.current = faceIndex;
+  const startRef = useRef(0);
+  // Where the finger left the card. Read back in onEnd, which has to
+  // glide from the position actually on screen, not from a guess.
+  const dragRef = useRef(0);
+  const rafRef = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    },
+    []
   );
-  const slot1 = useAnimatedStyle(() =>
-    slotTransform(1, pos.value, ringSV.value, cardHSV.value)
+  // The settle, by hand. Short, and the only animation this file has
+  // left - which is the point: it runs on the same clock as everything
+  // that reads it.
+  const glide = useMemo(
+    () => (from: number, to: number, ms: number, easing: (t: number) => number, done: () => void) => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      const t0 = Date.now();
+      const step = () => {
+        const k = Math.min(1, (Date.now() - t0) / ms);
+        setDrag(from + (to - from) * easing(k));
+        if (k < 1) {
+          rafRef.current = requestAnimationFrame(step);
+          return;
+        }
+        rafRef.current = null;
+        done();
+      };
+      rafRef.current = requestAnimationFrame(step);
+    },
+    []
   );
-  const slot2 = useAnimatedStyle(() =>
-    slotTransform(2, pos.value, ringSV.value, cardHSV.value)
-  );
-  const slotStyles = [slot0, slot1, slot2];
-  // AND THE SAME PLACEMENT AGAIN, IN A PLAIN STYLE, FOR WHEN NOTHING
-  // IS MOVING.
-  //
-  // Not a second source fighting the first - the same arithmetic, from
-  // React's own numbers, used at the times Reanimated is worst at its
-  // job. On a screen change the UI thread is busy painting the new
-  // screen, and a mapper's re-run queues behind that work while
-  // React's own props ride in with the commit itself. That is why the
-  // lag there was never a frame: "пропадає на секунду док в календарі",
-  // and on the boards "зменшується трішки а потім стає таким як був" -
-  // a card drawn one slot back until the transform finally caught up.
-  //
-  // So React draws the stack at rest and Reanimated draws it while a
-  // swipe runs, and the switch between them is invisible BY
-  // CONSTRUCTION rather than by timing:
-  //
-  //   starting  plain(faceIndex) gives way to animated(base + 0), and
-  //             `base` is always congruent to faceIndex - the same
-  //             picture, whichever frame the switch lands on
-  //
-  //   ending    animated(base + 1) gives way to plain(newFaceIndex),
-  //             and a whole turn of the ring is the identity, so those
-  //             two are the same picture as well - AND they are set in
-  //             one call, so React commits both together
-  //
-  // Because the two agree exactly at every switch, it does not even
-  // matter that Reanimated leaves its last write on the view when its
-  // style comes off: that leftover IS what the plain style says.
-  const restStyles = [0, 1, 2].map((i) => slotTransform(i, faceIndex, ringSize, CARD_H));
-  const [swiping, setSwiping] = useState(false);
+  const cardStyles = [0, 1, 2].map((i) => slotTransform(i, pos, ringSize, CARD_H));
   // The gesture is built once, so what it calls has to be reachable
   // through something whose identity never changes.
   const commitRef = useRef<(f: DockFace) => void>(() => {});
   commitRef.current = setFace;
-  // WHETHER A SETTLE IS RUNNING, and a timer that ends the swipe state
-  // even if nothing else does.
-  //
-  // This flag decides who draws - Reanimated while it is up, React
-  // while it is down - so a flag left UP is the whole bug class back
-  // again: the dock drawn from numbers that only get refreshed for a
-  // swipe, on a screen that has since changed underneath them. That is
-  // exactly what the user caught. Arriving on the databases desk from
-  // the boards, the stale two-card arrangement puts the one card there
-  // at slot ONE - the back card's own place - and with no second card
-  // to hide behind it simply looks small; a swipe puts the flag back
-  // down, React takes over, and it is the right size again. Their own
-  // reading of it was right.
-  //
-  // It was sticking when the dock's own gesture activated and was then
-  // taken over by the pager mid-drag. `onFinalize` runs for that case
-  // as well as for a clean end, and the timer covers anything neither
-  // of them catches. Both are safe to be wrong in the direction they
-  // fail: the flag DOWN is the plain style, which is correct at all
-  // times - the worst either can do is cut an animation short.
-  const settling = useRef(false);
-  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hand = useMemo(
+  const land = useMemo(
     () => ({
-      start: () => {
-        settling.current = false;
-        setSwiping(true);
-      },
-      settleStarted: () => {
-        settling.current = true;
-        if (settleTimer.current) clearTimeout(settleTimer.current);
-        settleTimer.current = setTimeout(() => {
-          settleTimer.current = null;
-          settling.current = false;
-          setSwiping(false);
-        }, 600);
-      },
-      // Told at the RELEASE, while the swipe is still running. The
-      // plain style is out of use until `stop`, so React learning the
-      // new front card here moves nothing on screen - it only means
-      // that by the time the animation ends, React is already holding
-      // what the animation was carrying, and the switch back to the
-      // plain style has nothing left to reconcile.
+      // Both in one call, so React commits them together. `to` and the
+      // new `faceIndex` are the same ring position, so nothing moves.
       commit: (next: DockFace) => {
         commitRef.current(next);
+        setDrag(null);
       },
-      stop: () => {
-        if (settleTimer.current) clearTimeout(settleTimer.current);
-        settling.current = false;
-        setSwiping(false);
-      },
-      // The finger is off, whichever way the gesture went. If no
-      // settle was ever started - a cancelled gesture, which never
-      // reaches `onEnd` - nothing else is coming to put the flag down.
-      finalize: () => {
-        if (!settling.current) setSwiping(false);
-      },
+      rest: () => setDrag(null),
     }),
-    []
-  );
-  useEffect(
-    () => () => {
-      if (settleTimer.current) clearTimeout(settleTimer.current);
-    },
     []
   );
   const swipe = useMemo(
@@ -563,18 +450,10 @@ export default function ContextDock() {
         .activeOffsetY([-10, 10])
         .failOffsetX([-16, 16])
         .runOnJS(true)
-        // UP only, and every swipe steps the ring on by one - a stack
-        // of two is a cycle, so there is nothing to remember about
-        // which way is which. Down does nothing on purpose; it is the
-        // direction the system itself uses just below here.
         .onStart(() => {
-          // Seeded here, from React's own current answer, so the swipe
-          // starts exactly where the plain style had the cards.
-          pos.value = posRef.current;
-          hand.start();
-        })
-        .onFinalize(() => {
-          hand.finalize();
+          startRef.current = faceIndexRef.current;
+          dragRef.current = startRef.current;
+          setDrag(startRef.current);
         })
         .onUpdate((e) => {
           if (facesRef.current.length < 2) return;
@@ -584,66 +463,42 @@ export default function ContextDock() {
           // перелиснуло". A drag may only ever rise; the descent onto
           // the back spot belongs to the release.
           const dragged = Math.max(0, -e.translationY) / cardHRef.current;
-          pos.value = posRef.current + Math.min(0.5, dragged);
+          dragRef.current = startRef.current + Math.min(0.5, dragged);
+          setDrag(dragRef.current);
         })
         .onEnd((e) => {
           const ring = facesRef.current;
+          const len = ring.length;
           // A real swipe, not a nudge - distance OR a fast enough
           // flick, the same as any carousel. Short of two cards there
           // is nothing to cycle to.
-          const committed = ring.length >= 2 && (e.translationY < -40 || e.velocityY < -600);
-          hand.settleStarted();
-          if (committed) {
-            hapticButtonDown();
-            // WHERE THE STEP IS COUNTED FROM, and WHEN it is taken.
-            //
-            // From a POSITION in the ring, not from the stored face.
-            // `face` is one value shared by every screen while a ring
-            // is a list each screen writes for itself, so the two
-            // disagree constantly - a face carried in from another
-            // desk is not in this ring at all. A position cannot name
-            // a card this screen does not have.
-            //
-            // And taken HERE, at the release, in JS. It used to be
-            // taken on the UI thread when the settle animation ended,
-            // which was wrong twice over: a second swipe starting
-            // before that read a position that had not moved yet, and
-            // reading a shared value from the JS thread reads a
-            // JS-side copy that a UI-thread write only reaches later -
-            // so it was exactly as far behind as the React ref it had
-            // replaced. Either way the same card came up twice:
-            // "свайп знову функції".
-            //
-            // Nothing jumps from telling React this early, because
-            // while a swipe runs the plain style is out of use and
-            // the cards are drawn from `pos` alone.
-            //
-            // It is also why the rings never had to be made the same
-            // size everywhere: nothing here needs to know what another
-            // screen's ring held - only where this one stands, and how
-            // long it is.
-            const len = ring.length;
-            const at = ((Math.round(posRef.current) % len) + len) % len;
-            const to = at + 1;
-            const next = ring[to % len] ?? ring[0];
-            posRef.current = to;
-            hand.commit(next);
-            pos.value = withTiming(
-              to,
-              { duration: 260, easing: Easing.inOut(Easing.cubic) },
-              (finished) => {
-                if (finished) runOnJS(hand.stop)();
-              }
-            );
-          } else {
-            pos.value = withTiming(
-              posRef.current,
-              { duration: 220, easing: Easing.out(Easing.cubic) },
-              (finished) => {
-                if (finished) runOnJS(hand.stop)();
-              }
-            );
+          const committed = len >= 2 && (e.translationY < -40 || e.velocityY < -600);
+          const from = dragRef.current;
+          if (!committed) {
+            glide(from, startRef.current, 220, (t) => 1 - Math.pow(1 - t, 3), land.rest);
+            return;
           }
+          hapticButtonDown();
+          // Counted from a POSITION in the ring, never from the stored
+          // face: `face` is one value shared by every screen while a
+          // ring is a list each screen writes for itself, so a face
+          // carried in from another desk may not be in this ring at
+          // all.
+          const at = ((Math.round(startRef.current) % len) + len) % len;
+          const to = at + 1;
+          const next = ring[to % len] ?? ring[0];
+          glide(
+            from,
+            to,
+            260,
+            (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2),
+            () => land.commit(next)
+          );
+        })
+        // Runs for a gesture the pager takes over mid-drag as well as
+        // for a clean end, so the dock can never be left mid-swipe.
+        .onFinalize(() => {
+          if (rafRef.current === null) setDrag(null);
         }),
     []
   );
@@ -981,15 +836,15 @@ export default function ContextDock() {
             {faces.map((f, i) => (
               // One view per card, one animated style, one source for
               // where it stands. No second layer to keep in step.
-              <Animated.View
+              <View
                 key={f}
-                style={[styles.cardLayer, dims.card, swiping ? slotStyles[i] : restStyles[i]]}
+                style={[styles.cardLayer, dims.card, cardStyles[i]]}
                 pointerEvents={f === showing ? 'auto' : 'none'}
               >
                 <Frost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
                   {renderCard(f)}
                 </Frost>
-              </Animated.View>
+              </View>
             ))}
           </View>
           </GestureDetector>
