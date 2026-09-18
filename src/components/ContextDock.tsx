@@ -1011,7 +1011,21 @@ export default function ContextDock() {
             {faces.map((f, i) => (
               <Animated.View
                 key={f}
-                style={[styles.cardLayer, dims.card, slotStyles[i]]}
+                style={[
+                  styles.cardLayer,
+                  dims.card,
+                  slotStyles[i],
+                  // LAST, and only at rest. The animated style is built
+                  // from ordinary values and Reanimated only rebuilds it
+                  // after the frame is shown, so on the first frame of a
+                  // new screen it still places the cards by the old
+                  // screen's numbers - which is the blink that is left.
+                  // This is the same placement said in a plain style,
+                  // which React commits with the cards themselves, in
+                  // the same frame. While a swipe runs it steps aside
+                  // and the animated style has it alone.
+                  swiping ? null : restStyles[i],
+                ]}
                 pointerEvents={f === showing ? 'auto' : 'none'}
               >
                 <Frost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
