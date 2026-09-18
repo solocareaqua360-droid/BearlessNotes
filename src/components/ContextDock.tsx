@@ -523,6 +523,23 @@ export default function ContextDock() {
       };
     });
   const slotStyles = [delta(0), delta(1), delta(2)];
+  // THE HAND-OVER, and the only place it happens.
+  //
+  // Once React is actually holding the new arrangement - this effect
+  // runs on the render that has it - the outer views carry the step,
+  // so the inner ones must stop. Before this, they carry it and the
+  // outer does not; after, the other way round. Doing it here rather
+  // than at the moment the swipe commits is what keeps those two from
+  // ever both being empty at once.
+  //
+  // And when `setFace` turns out to be a no-op - the face already held
+  // that value - this simply never fires, the inner views keep their
+  // step, the outer never moved, and the picture is still right. It
+  // degrades into being correct rather than into being stuck.
+  useLayoutEffect(() => {
+    gRest.value = faceIndex;
+    gesture.value = 0;
+  }, [faceIndex, ringSize, gRest, gesture]);
   // Whether the animated style is attached at all.
   const [swiping, setSwiping] = useState(false);
   // The card on its way behind the others - set at the peak, when the
@@ -571,12 +588,22 @@ export default function ContextDock() {
       // the outer sits on the new one and the inner carries nothing.
       // Whichever of the two lands first, nothing moves - which is the
       // only kind of hand-over this file has ever got away with.
+      // NOTHING about the placement is touched here. The inner views
+      // keep carrying their full step until React has actually moved
+      // the outer ones - see the layout effect below, which is the
+      // only place that hands it over.
+      //
+      // Dropping the step here was the jerk: for as long as it took
+      // React to re-render, the outer sat on the OLD arrangement with
+      // the inner carrying nothing, which puts every card one step
+      // back - the peeking card dropping by exactly its own peek and
+      // returning, "на висоту його виглядання і сіпається". And if
+      // `setFace` happened to be a no-op, that state had nothing
+      // coming to end it at all.
       commit: (next: DockFace, to: number) => {
         if (backstop.current) clearTimeout(backstop.current);
-        gRest.value = to;
         commitRef.current(next);
         setLifting(null);
-        gesture.value = 0;
         setSwiping(false);
       },
       // Nothing was committed: the cards settle back onto the very
