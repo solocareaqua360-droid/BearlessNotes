@@ -51,10 +51,56 @@ const STRIP_MARK_ACCENT = '#60A5FA';
 // At seven it read as a second capsule parked under the first rather
 // than as the same object with more of itself behind.
 const BEHIND_EDGE = 3;
-// How far each card behind is drawn in from the sides. Barely: the
-// edges nearly line up, which is what makes it one stack instead of
-// three pills of decreasing size.
-const BEHIND_INSET = 5;
+// THE WHOLE STACK IS ONE NUMBER.
+//
+// `progress` says which ring position is in FRONT: 0, 1, 2... and
+// fractions in between while a swipe is under way. Given that one
+// number, this returns where the card with fixed ring index `i` stands.
+// Nothing else feeds it - not which face React thinks is showing, not
+// which slot a card is mounted in - so there is nothing for it to
+// disagree with.
+//
+//   slot 0  the front card, full size, in place
+//   slot 1  one card back: a little smaller, a little lower
+//   slot k  k cards back, the same step again
+//
+// The card LEAVING the front (rel === 0) does not slide back through
+// the others - it rises in an arc, clears the dock's top edge, and comes
+// down onto the deepest slot, passing behind whatever is climbing past
+// it. Every other card simply steps one slot forward.
+//
+// Two properties make this race-proof, and both are why it is written
+// this way. It is CONTINUOUS at every whole number: a card's place as
+// progress approaches k+1 from below is exactly its place at k+1. And it
+// is PERIODIC: progress 2 and progress 0 in a ring of two give every
+// card the same place, to the pixel. So resetting progress to the front
+// card's index - whenever React gets round to it - cannot be seen.
+const BACK_SCALE = 0.94;
+const BACK_Y = 10;
+// How high the departing card rises at the peak of its arc. A full card
+// height: short of that the drag never visibly clears the dock's own top
+// edge - "картка навіть не дотягується до верхнього краю дока".
+const RISE_F = 1.0;
+function slotTransform(i: number, f: number, n: number, cardH: number) {
+  'worklet';
+  const k = Math.floor(f);
+  const t = f - k;
+  const rel = (((i - k) % n) + n) % n;
+  let slot: number;
+  let y: number;
+  if (rel === 0) {
+    const deepest = Math.max(1, n - 1);
+    slot = t * deepest;
+    y = -Math.sin(Math.min(1, t) * Math.PI) * cardH * RISE_F + slot * BACK_Y;
+  } else {
+    slot = rel - t;
+    y = slot * BACK_Y;
+  }
+  return {
+    transform: [{ translateY: y }, { scale: Math.pow(BACK_SCALE, slot) }],
+    zIndex: Math.round((n - slot) * 10),
+  };
+}
 // The dock is made of the TAGS DRAWER'S material - and now literally of
 // its LAYERS, not of GlassDrop dressed up to look like it. The drawer is
 // two flat things: a BlurView at 60, tinted dark in every theme, and a
@@ -204,19 +250,10 @@ export default function ContextDock() {
     : faces.includes('desks')
       ? 'desks'
       : (faces[0] ?? 'context');
-  const stacked = faces.length > 1;
-  // The card the swipe reveals - always ONE ahead of the front, in the
-  // same ring order stepping the gesture already walks. Rendered at
-  // rest, permanently, underneath the front card: nothing about it
-  // animates on its own, because it does not need to - lifting the
-  // front card off is what shows it, exactly like sliding the top card
-  // off a real stack uncovers the one under it.
-  const queued: DockFace | null =
-    faces.length > 1 ? faces[(faces.indexOf(showing) + 1) % faces.length] ?? null : null;
-  // How many cards are BEHIND the one in front, drawn as that many
-  // edges - the stack says its own depth instead of leaving you to
-  // guess how far round the ring you are.
-  const behind = Math.max(0, faces.length - 1);
+  // The two numbers the whole stack is drawn from: how many cards it
+  // holds, and which of them is in front.
+  const ringSize = Math.max(1, faces.length);
+  const faceIndex = Math.max(0, faces.indexOf(showing));
   // ONE gesture, not a new one per render. A fresh Gesture object hands
   // GestureDetector a new configuration on every render, and a gesture
   // being reconfigured is a gesture that never activates - the same
@@ -232,70 +269,56 @@ export default function ContextDock() {
   facesRef.current = faces;
   const cardHRef = useRef(CARD_H);
   cardHRef.current = CARD_H;
-  // The morph - the whole reason this is a swipe and not a tap. 0 is at
-  // rest: FRONT full size in place, BACK a little smaller, sitting just
-  // behind it. 1 is the far end of the SAME journey: FRONT has finished
-  // rising, peaked, and settled back down into the BACK card's own
-  // smaller resting spot - "опускається вниз, стає такого ж розміру,
-  // ефект перелистування" - while BACK has grown up into the FRONT
-  // spot. One value drives both cards the whole way, drag and settle
-  // alike, so release never has to fake a hand-off between two separate
-  // animations - it is the same motion, just carried to its end instead
-  // of let go of early.
-  const morph = useSharedValue(0);
-  function commitSwap(next: DockFace) {
-    setFace(next);
-    // NOT reset here. React's state update is async - by the time this
-    // bridged write reached the UI thread, `showing` had not always
-    // swapped yet, so the FRONT slot (zIndex back to 2, full size)
-    // popped back on top for a frame still holding the OLD content, the
-    // very thing the animation had just finished showing go behind:
-    // "проявляється задній блок... миготіння". The effect below fires
-    // once React has actually committed the new content, and only then
-    // resets the transform - so the two are never out of step.
-  }
+  // WHY THE FLICKER WAS NOT A TIMING BUG.
+  //
+  // This used to be two fixed slots - FRONT and BACK - each holding
+  // whichever face React had put there, and one value that swapped their
+  // POSITIONS. At the end of a swipe two things then had to happen at
+  // once: the slots had to take their new content, and the value had to
+  // snap back to zero. One of those lives in React state, the other on
+  // the UI thread. They can be brought close - moving the reset into an
+  // effect got it down to a single frame - but they cannot be made
+  // simultaneous, and in any frame where only one of them has landed the
+  // two cards are drawn INVERTED: the new front small and behind, the
+  // old one full size in front. That frame is the flicker. No ordering
+  // of the two removes it, because the pair is the bug.
+  //
+  // So nothing swaps any more. Every face in the ring is mounted once,
+  // in its own layer, and never moves in the tree; `progress` alone
+  // decides where each one stands (see slotTransform). The effect below
+  // still writes the front card's index back into it, but that write is
+  // now arithmetically invisible: a ring of two lands on progress 2 and
+  // the effect writes 0, and 2 and 0 place every card identically. Early,
+  // late or never, the screen cannot tell. A race nothing can observe is
+  // not a race.
+  const progress = useSharedValue(0);
+  const dragBase = useSharedValue(0);
+  // Read on the UI thread, so they are shared values rather than refs -
+  // a ref read inside a worklet is frozen at the value it had when the
+  // worklet was built.
+  const cardHSV = useSharedValue(CARD_H);
+  const ringSV = useSharedValue(1);
   useEffect(() => {
-    morph.value = 0;
-  }, [showing, morph]);
-  // A little smaller, a little lower - "нижній блок трохи менший" - a
-  // REAL card sitting behind the front one, not the flat painted bar the
-  // deeper slivers still are. BACK_Y is small on purpose: the back card
-  // is not far away, it is the same stack, one card down.
-  const BACK_SCALE = 0.94;
-  const BACK_Y = 10;
-  // How high the front card rises at the peak of its arc before coming
-  // back down onto the back spot - a real "лift and flip", not a
-  // straight climb that would have to reverse direction awkwardly. A
-  // full card's height: short of that, the drag never visibly clears
-  // the dock's own top edge - "картка навіть не дотягується до
-  // верхнього краю дока".
-  const RISE_F = 1.0;
-  // FRONT: rises to a peak at the MIDPOINT, then comes back DOWN onto
-  // the back card's own resting transform - one continuous arc, not a
-  // rise-then-teleport. BACK: the exact reverse, growing from the back
-  // spot up into the front one. Passing each other at the midpoint is
-  // the "перелистування" - the page actually turning, not one card
-  // fading while another fades in. Which one is drawn ON TOP swaps
-  // exactly there too - short of the midpoint FRONT is still the thing
-  // that was in front and stays painted over BACK; past it, FRONT is
-  // the thing descending INTO the stack and has to go visually BEHIND
-  // the card rising past it, or the descent never reads as going under
-  // anything: "передній... не заходить за задній, а опускається вниз
-  // так само".
-  const frontStyle = useAnimatedStyle(() => {
-    const cardH = cardHRef.current;
-    const p = morph.value;
-    const arc = Math.sin(Math.min(1, p) * Math.PI); // 0 -> 1 -> 0
-    const translateY = -arc * cardH * RISE_F + p * BACK_Y;
-    const scale = 1 - p * (1 - BACK_SCALE);
-    return { transform: [{ translateY }, { scale }], zIndex: p > 0.5 ? 1 : 2 };
-  });
-  const backStyle = useAnimatedStyle(() => {
-    const p = morph.value;
-    const translateY = BACK_Y * (1 - p);
-    const scale = BACK_SCALE + p * (1 - BACK_SCALE);
-    return { transform: [{ translateY }, { scale }], zIndex: p > 0.5 ? 2 : 1 };
-  });
+    cardHSV.value = CARD_H;
+  }, [CARD_H, cardHSV]);
+  useEffect(() => {
+    ringSV.value = ringSize;
+  }, [ringSize, ringSV]);
+  useEffect(() => {
+    progress.value = faceIndex;
+  }, [faceIndex, progress]);
+  // Three of them, always: the ring is at most three cards, and a hook
+  // cannot be called in a loop whose length changes between renders. A
+  // layer past the end of this screen's ring is simply not rendered.
+  const slot0 = useAnimatedStyle(() => slotTransform(0, progress.value, ringSV.value, cardHSV.value));
+  const slot1 = useAnimatedStyle(() => slotTransform(1, progress.value, ringSV.value, cardHSV.value));
+  const slot2 = useAnimatedStyle(() => slotTransform(2, progress.value, ringSV.value, cardHSV.value));
+  const slotStyles = [slot0, slot1, slot2];
+  // The gesture is built once, so anything it calls must be reachable
+  // through something that does not change identity.
+  const commitRef = useRef<(f: DockFace) => void>(() => {});
+  commitRef.current = setFace;
+  const commit = useMemo(() => (next: DockFace) => commitRef.current(next), []);
   const swipe = useMemo(
     () =>
       Gesture.Pan()
@@ -310,6 +333,12 @@ export default function ContextDock() {
         // cycle, so there is nothing to remember about which way is
         // which. Down does nothing on purpose; it is the direction the
         // system itself uses just below here.
+        .onBegin(() => {
+          // Where this drag started from, so everything it does is said
+          // relative to it rather than to an absolute zero the ring may
+          // long since have walked past.
+          dragBase.value = Math.round(progress.value);
+        })
         .onUpdate((e) => {
           if (facesRef.current.length < 2) return;
           // Capped EXACTLY at the peak (0.5) - past that point the arc
@@ -319,7 +348,7 @@ export default function ContextDock() {
           // перелиснуло". A drag may only ever RISE; the descent onto
           // the back spot happens on release, never mid-drag.
           const dragged = Math.max(0, -e.translationY) / cardHRef.current;
-          morph.value = Math.min(0.5, dragged);
+          progress.value = dragBase.value + Math.min(0.5, dragged);
         })
         .onEnd((e) => {
           const ring = facesRef.current;
@@ -334,11 +363,15 @@ export default function ContextDock() {
             // Carry the SAME arc on to its end - down onto the back
             // spot - THEN swap, once both cards have actually arrived
             // where a swap would be invisible, rather than mid-flight.
-            morph.value = withTiming(1, { duration: 260, easing: Easing.inOut(Easing.cubic) }, (finished) => {
-              if (finished) runOnJS(commitSwap)(next);
-            });
+            progress.value = withTiming(
+              dragBase.value + 1,
+              { duration: 260, easing: Easing.inOut(Easing.cubic) },
+              (finished) => {
+                if (finished) runOnJS(commit)(next);
+              }
+            );
           } else {
-            morph.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) });
+            progress.value = withTiming(dragBase.value, { duration: 220, easing: Easing.out(Easing.cubic) });
           }
         }),
     []
@@ -431,9 +464,9 @@ export default function ContextDock() {
   // buttons give: at full size a fifth thing simply scrolled off the end
   // of the card, which is where the "..." went on the custom database.
   // One card's whole content, parameterised by WHICH face it draws -
-  // called twice now (see queued/showing below) instead of once, so the
-  // swipe can uncover a real card sitting underneath instead of an empty
-  // sliver. `showLeave` is the same regardless of which face this draws:
+  // called once per card in the ring, since every one of them is
+  // mounted the whole time rather than conjured up when a swipe needs
+  // it. `showLeave` is the same regardless of which face this draws:
   // it is about whether this SCREEN has a way out, not about which card
   // is showing.
   function renderCard(f: DockFace) {
@@ -655,65 +688,25 @@ export default function ContextDock() {
               { width: cardWidth, height: CARD_H + BEHIND_EDGE * 2, paddingBottom: BEHIND_EDGE * 2 },
             ]}
           >
-            {/* The card behind, seen as an EDGE and nothing more - a few
-                points of the same glass, a little narrower, so it reads
-                as BEHIND rather than beside. Empty on purpose: what a
-                stack's back card shows is that it is there. */}
-            {/* One edge per card behind, so the stack says its own depth
-                rather than leaving you to guess how far round you are. */}
-            {/* Only what shows BELOW the front card is drawn at all. The
-                front card is translucent so the screen shows through it -
-                and what showed through it was the cards behind, a lighter
-                smear where they overlapped. Clipped to the slivers, they
-                cannot be behind anything. Plain bands, not glass: glass
-                carries a lit rim and three rims read as a staircase. */}
-            {behind > 0 && (
-              <View style={[styles.behindClip, { top: CARD_H, height: BEHIND_EDGE * behind }]} pointerEvents="none">
-                {Array.from({ length: behind })
-                  .map((_, i) => i)
-                  .reverse()
-                  .map((i) => (
-                    <View
-                      key={i}
-                      style={[
-                        styles.behind,
-                        {
-                          height: CARD_H,
-                          borderRadius: CARD_H / 2,
-                          top: -(CARD_H - BEHIND_EDGE * (i + 1)),
-                          left: BEHIND_INSET * (i + 1),
-                          right: BEHIND_INSET * (i + 1),
-                          backgroundColor: theme.surface,
-                          opacity: 0.85 - i * 0.1,
-                        },
-                      ]}
-                    />
-                  ))}
-              </View>
-            )}
-
-          {/* Two pieces of glass, not one, and both REAL cards now - the
-              back one used to be a flat painted bar for anything beyond
-              the immediate next; this one is the actual queued card,
-              genuinely smaller and set back, with its own edge so the
-              two read as separate objects even though the glass itself
-              is the same colour: "потрібно щоб це була справжня задня
-              картка... контур не сильно контрастний, щоб було видно, що
-              один за одним". What either of them is - a leave, or one
-              day something else - is still open; where it stands is
-              settled. */}
-          {queued && (
-            <Animated.View style={[styles.cardLayer, dims.card, backStyle]} pointerEvents="none">
-              <Frost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
-                {renderCard(queued)}
-              </Frost>
-            </Animated.View>
-          )}
-          <Animated.View style={[styles.cardLayer, dims.card, frontStyle]}>
-            <Frost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
-              {renderCard(showing)}
-            </Frost>
-          </Animated.View>
+            {/* Every card this screen's stack holds, mounted once and
+                never moved from its own layer. Which one is in front,
+                which is peeking out below it, and which is on its way
+                over the top are all one number's doing - see
+                slotTransform. The cards behind used to be painted bars
+                standing in for cards that were not there; they are the
+                real ones now, which is what the user asked for:
+                "потрібно щоб це була справжня задня картка". */}
+            {faces.map((f, i) => (
+              <Animated.View
+                key={f}
+                style={[styles.cardLayer, dims.card, slotStyles[i]]}
+                pointerEvents={f === showing ? 'auto' : 'none'}
+              >
+                <Frost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
+                  {renderCard(f)}
+                </Frost>
+              </Animated.View>
+            ))}
           </View>
           </GestureDetector>
           {beads.right ? <Bead bead={beads.right} theme={theme} size={BEAD} /> : <View style={[styles.beadSlot, dims.bead]} />}
@@ -799,9 +792,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  // The two overlapping layers a card transition stands in - absolutely
-  // positioned so QUEUED and the animated FRONT sit exactly on top of
-  // each other at rest, one hiding the other completely.
+  // One per card in the ring - absolutely positioned, all of them
+  // stacked on the same spot, and each pushed to its own place by its
+  // own transform.
   cardLayer: {
     position: 'absolute',
     left: 0,
@@ -850,17 +843,6 @@ const styles = StyleSheet.create({
     // without it, and the content here is a scroller full of folders.
     flexShrink: 1,
     minWidth: 0,
-  },
-  // The window under the front card that the slivers show through.
-  behindClip: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    overflow: 'hidden',
-  },
-  behind: {
-    position: 'absolute',
-    borderRadius: 999,
   },
   shell: {
     padding: CARD_PAD,
