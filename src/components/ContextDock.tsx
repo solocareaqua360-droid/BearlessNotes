@@ -117,7 +117,9 @@ const BACK_Y = 10;
 // height: short of that the drag never visibly clears the dock's own top
 // edge - "картка навіть не дотягується до верхнього краю дока".
 const RISE_F = 1.0;
-function slotTransform(i: number, f: number, n: number, cardH: number) {
+// `eps` alternates between 0 and a hundredth of a point. It exists to
+// be READ - see `tick` at the call site - and is far too small to see.
+function slotTransform(i: number, f: number, n: number, cardH: number, eps: number) {
   'worklet';
   const k = Math.floor(f);
   const t = f - k;
@@ -133,7 +135,7 @@ function slotTransform(i: number, f: number, n: number, cardH: number) {
     y = slot * BACK_Y;
   }
   return {
-    transform: [{ translateY: y }, { scale: Math.pow(BACK_SCALE, slot) }],
+    transform: [{ translateY: y + eps }, { scale: Math.pow(BACK_SCALE, slot) }],
     zIndex: Math.round((n - slot) * 10),
   };
 }
@@ -399,6 +401,23 @@ export default function ContextDock() {
   // was built.
   const cardHSV = useSharedValue(CARD_H);
   const ringSV = useSharedValue(1);
+  // WHY CORRECT VALUES WERE NOT ENOUGH.
+  //
+  // A mapper runs when one of the shared values it reads CHANGES.
+  // Asserting the right numbers every render does nothing when they are
+  // already right - and a card whose animated style has just been
+  // swapped for a different slot's needs the mapper to run to be drawn
+  // anywhere new at all. That is the whole of it: arriving on the
+  // calendar the desks card moves from one slot style to another, the
+  // numbers it is placed from happen not to change, no mapper runs, and
+  // it keeps the transform the style it USED to wear had left on it -
+  // one step behind, which is precisely what the two identical debug
+  // readouts with two different cards in front were showing.
+  //
+  // This changes on every assertion, and the worklets read it. A value
+  // that always changes is a mapper that always runs, so a view can
+  // never be left holding a placement nobody recomputed.
+  const tick = useSharedValue(0);
   // Whether a swipe owns these values right now - the finger on the
   // card, or the release animation still running after it lifted. The
   // one and only thing allowed to hold off the assertion below.
@@ -450,6 +469,7 @@ export default function ContextDock() {
     cardHSV.value = CARD_H;
     ringSV.value = ringSize;
     progress.value = faceIndex;
+    tick.value = tick.value + 1;
   });
   // Where every card rests, said in plain style objects React commits
   // along with the cards themselves.
@@ -486,12 +506,18 @@ export default function ContextDock() {
   // What the resting arrangement SAYS each card's place is. Read by the
   // debug strip only - the cards themselves are placed by the animated
   // style below and by nothing else.
-  const restStyles = [0, 1, 2].map((i) => slotTransform(i, faceIndex, ringSize, CARD_H));
+  const restStyles = [0, 1, 2].map((i) => slotTransform(i, faceIndex, ringSize, CARD_H, 0));
   // Three, always: the ring is at most three cards, and a hook cannot be
   // called in a loop whose length changes between renders.
-  const slot0 = useAnimatedStyle(() => slotTransform(0, progress.value, ringSV.value, cardHSV.value));
-  const slot1 = useAnimatedStyle(() => slotTransform(1, progress.value, ringSV.value, cardHSV.value));
-  const slot2 = useAnimatedStyle(() => slotTransform(2, progress.value, ringSV.value, cardHSV.value));
+  const slot0 = useAnimatedStyle(() =>
+    slotTransform(0, progress.value, ringSV.value, cardHSV.value, (tick.value % 2) * 0.01)
+  );
+  const slot1 = useAnimatedStyle(() =>
+    slotTransform(1, progress.value, ringSV.value, cardHSV.value, (tick.value % 2) * 0.01)
+  );
+  const slot2 = useAnimatedStyle(() =>
+    slotTransform(2, progress.value, ringSV.value, cardHSV.value, (tick.value % 2) * 0.01)
+  );
   const slotStyles = [slot0, slot1, slot2];
   // Whether the animated style is attached at all.
   const [swiping, setSwiping] = useState(false);
