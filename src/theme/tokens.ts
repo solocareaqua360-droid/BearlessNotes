@@ -69,6 +69,42 @@ export type Theme = {
     tint: string;
     selected: string;
   };
+  // THE CANVAS a note or a board is laid out on, and the cards lying on
+  // it. Its own role, because it is the one place in the app where four
+  // surfaces stack on top of each other, and that is what makes it the
+  // hardest thing to get right in a dark theme.
+  //
+  // The user found both ways of getting it wrong, one in each screen:
+  // a light canvas inside a dark app is one huge bright rectangle that
+  // the eye has to re-adjust for every time it looks at the dock; and a
+  // BLACK canvas with white cards is the highest-contrast edge there is,
+  // repeated once per card - "з білими картками це був контрастний біль
+  // по очах".
+  //
+  // Both are the same mistake: a jump of about twenty times in lightness
+  // at every edge. So these five values are a LADDER with small steps,
+  // roughly 1.3-1.6x apart, and it only ever climbs: ground is lighter
+  // than the screen behind it, card is lighter than ground. Light comes
+  // from above, as it does on a real table - invert that anywhere and
+  // the eye reads a hole instead of an object. The canvas is never the
+  // same colour as the screen's own ground either: a canvas that matches
+  // its surroundings is not a surface, it is an absence, and then every
+  // card on it is a light source in a void.
+  //
+  // `ink` is never pure white for the same reason `paper.ink` is not -
+  // white on near-black flares at the contours of the letters.
+  canvas: {
+    ground: string;
+    card: string;
+    edge: string;
+    edgeActive: string;
+    ink: string;
+    inkMuted: string;
+    inkFaint: string;
+    // The round "+" floating over it, and its glyph.
+    fab: string;
+    fabInk: string;
+  };
   lift: Lift;
   // The glass a floating control is made of - a role in ALL THREE
   // themes, not a trick of the colour one. A white or black theme with
@@ -139,6 +175,20 @@ const colour: Theme = {
     tint: '#F3F4F6',
     selected: '#EFF6FF',
   },
+  // Transparent on purpose: today the canvas has no ground of its own and
+  // shows the editor's, and the colour theme is a photograph of where we
+  // started. Every other value here is the literal this file replaced.
+  canvas: {
+    ground: 'transparent',
+    card: '#FFFFFF',
+    edge: '#E5E7EB',
+    edgeActive: '#8AB4FF',
+    ink: '#111827',
+    inkMuted: '#6B7280',
+    inkFaint: '#9CA3AF',
+    fab: '#111827',
+    fabInk: '#FFFFFF',
+  },
   lift: 'blur',
   glass: {
     blur: 60,
@@ -200,6 +250,20 @@ const white: Theme = {
     tint: '#F3F4F6',
     selected: '#EFF6FF',
   },
+  // The ladder runs the other way up here - the card is the brightest
+  // thing and the canvas is a shade of desk under it. A white card on a
+  // white canvas would have no edge at all.
+  canvas: {
+    ground: '#EDEFF2',
+    card: '#FFFFFF',
+    edge: '#DDE1E7',
+    edgeActive: '#8AB4FF',
+    ink: '#111827',
+    inkMuted: '#6B7280',
+    inkFaint: '#9CA3AF',
+    fab: '#111827',
+    fabInk: '#FFFFFF',
+  },
   lift: 'shadow',
   // On white almost nothing can come from the fill - white glass on a
   // white ground has no contrast to spend. So the body stays thin and
@@ -253,6 +317,21 @@ const black: Theme = {
     edge: 'rgba(255,255,255,0.14)',
     tint: 'rgba(255,255,255,0.06)',
     selected: 'rgba(255,255,255,0.10)',
+  },
+  // The ladder: ground #0E0F12 -> canvas #141519 -> card #1E2025, each
+  // a small step up, none of them black and none of them white. The "+"
+  // is a dark disc with light ink rather than a light disc, which on
+  // this ground would be a lamp.
+  canvas: {
+    ground: '#141519',
+    card: '#1E2025',
+    edge: '#2C2F36',
+    edgeActive: '#7FA8F0',
+    ink: '#ECEDEF',
+    inkMuted: 'rgba(236,237,239,0.62)',
+    inkFaint: 'rgba(236,237,239,0.38)',
+    fab: '#2C2F36',
+    fabInk: '#ECEDEF',
   },
   lift: 'glow',
   // The one the user called bad, and the reason was the milky wash: a

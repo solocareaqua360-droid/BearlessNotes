@@ -1,3 +1,5 @@
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
   BackHandler,
@@ -32,18 +34,16 @@ import { Block, CanvasLink } from '../types';
 import { orderByCanvasLinks, sequenceLinkIds } from '../utils/canvasOrder';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
-// The canvas is part of the note, and the note is paper - white, with
-// dark text. The glass palette belongs to the windows that float OVER a
-// screen; a card lying ON the page is not one of those, and translucent
-// dark cards on white paper read as smudges. So these are the page's own
-// colours, the same ones the blocks have when they are read down the
-// page instead of across it.
-const PAPER_CARD = '#FFFFFF';
-const PAPER_EDGE = '#E5E7EB';
-const PAPER_EDGE_EDITING = '#8AB4FF';
-const PAPER_TEXT = '#111827';
-const PAPER_TEXT_MUTED = '#6B7280';
-const PAPER_TEXT_FAINT = '#9CA3AF';
+// The canvas's colours come from `theme.canvas` now, not from here.
+//
+// They were six literals of the page's own palette - white card, dark
+// text - written when the app had one theme. That is fine over paper and
+// wrong over anything else: in the black theme it made the canvas a
+// black void with white cards floating in it, which is the highest
+// contrast two surfaces can have, repeated once per card. The theme's
+// `canvas` role is a LADDER instead - see the long note on it in
+// tokens.ts - and the colour theme's values there are these six exactly,
+// so nothing moves in the theme they were written for.
 // The board's own violet, for the same thing: an arrow between two
 // cards, and the card an arrow is about to be drawn from.
 const LINK_COLOR = '#8B5CF6';
@@ -231,6 +231,8 @@ function DocumentCanvasInner({
   // rather than at the bottom of a column somewhere off-screen.
   onAdd: (at: { x: number; y: number }) => void;
 }, ref: React.Ref<DocumentCanvasHandle>) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const { width } = useWindowDimensions();
   // The trackpad, on a laptop: two fingers move the canvas, a pinch zooms
   // it around the pointer, shift+scroll goes sideways. The board's own
@@ -730,7 +732,9 @@ function DocumentCanvasInner({
                         onToggleLink(link.from, link.to);
                       }}
                     >
-                      <Ionicons name="close" size={14} color={PAPER_CARD} />
+                      {/* On the arrow's own violet, not on a card - so
+                          this one stays white in every theme. */}
+                      <Ionicons name="close" size={14} color="#FFFFFF" />
                     </Pressable>
                   )}
                 </View>
@@ -810,11 +814,11 @@ function DocumentCanvasInner({
           onAdd({ x: centre.x - CARD_WIDTH / 2, y: centre.y - 40 });
         }}
       >
-        <Ionicons name="add" size={28} color={PAPER_CARD} />
+        <Ionicons name="add" size={28} color={theme.canvas.fabInk} />
       </Pressable>
       {blocks.length === 0 && (
         <View style={styles.emptyState} pointerEvents="none">
-          <Ionicons name="shapes-outline" size={30} color={PAPER_TEXT_FAINT} />
+          <Ionicons name="shapes-outline" size={30} color={theme.canvas.inkFaint} />
           <Text style={styles.emptyLabel}>Порожня нотатка - напишіть щось на сторінці</Text>
         </View>
       )}
@@ -838,6 +842,8 @@ type LiveEnd = {
 // into Android's view-size limits. A line needs only a transform, and
 // the curve comes back the moment the card is dropped.
 function LiveLine({ from, to, colour }: { from: LiveEnd; to: LiveEnd; colour: string }) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const style = useAnimatedStyle(() => {
     const fromX = from.x.value + (from.offsetX?.value ?? 0);
     const fromY = from.y.value + (from.offsetY?.value ?? 0);
@@ -880,6 +886,8 @@ function DraftLine({
   endY: SharedValue<number>;
   visible: SharedValue<boolean>;
 }) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const style = useAnimatedStyle(() => {
     const dx = endX.value - startX.value;
     const dy = endY.value - startY.value;
@@ -972,6 +980,8 @@ function CanvasCard({
   onDone: () => void;
   onOpen: (id: string) => void;
 }) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const posX = position.x;
   const posY = position.y;
   // The card follows its placement whenever it is not under the finger:
@@ -1170,7 +1180,7 @@ function CanvasCard({
               is no room for a word here, and a tick is what "done"
               looks like everywhere. */}
           <Pressable hitSlop={10} style={styles.cardDone} onPress={onDone}>
-            <Ionicons name="checkmark" size={18} color={PAPER_TEXT_MUTED} />
+            <Ionicons name="checkmark" size={18} color={theme.canvas.inkMuted} />
           </Pressable>
           <TextInput
             ref={(node) => {
@@ -1197,7 +1207,7 @@ function CanvasCard({
             value={block.text}
             onChangeText={(text) => onChangeText(block.id, text)}
             placeholder="Текст"
-            placeholderTextColor={PAPER_TEXT_FAINT}
+            placeholderTextColor={theme.canvas.inkFaint}
             style={styles.cardInput}
           />
           </>
@@ -1234,6 +1244,8 @@ function CardBody({
   textNode?: React.Ref<Text>;
   onTextLayout?: (e: { nativeEvent: { lines: CaretLine[] } }) => void;
 }) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const type = block.type ?? 'paragraph';
 
   if (type === 'image' || type === 'sketch') {
@@ -1269,7 +1281,7 @@ function CardBody({
         <Ionicons
           name={type === 'bulleted' ? 'ellipse' : 'list-outline'}
           size={type === 'bulleted' ? 7 : 16}
-          color={PAPER_TEXT_MUTED}
+          color={theme.canvas.inkMuted}
         />
         <Text style={styles.cardText}>
           {block.text || ' '}
@@ -1283,7 +1295,7 @@ function CardBody({
         <Ionicons
           name={block.checked ? 'checkbox' : 'square-outline'}
           size={18}
-          color={block.checked ? PAPER_TEXT_MUTED : PAPER_TEXT_FAINT}
+          color={block.checked ? theme.canvas.inkMuted : theme.canvas.inkFaint}
         />
         <Text style={[styles.cardText, block.checked && styles.cardTextDone]}>
           {block.text || 'Пункт'}
@@ -1299,9 +1311,11 @@ function CardBody({
 }
 
 function CardRow({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   return (
     <View style={styles.cardRow}>
-      <Ionicons name={icon} size={18} color={PAPER_TEXT_MUTED} />
+      <Ionicons name={icon} size={18} color={theme.canvas.inkMuted} />
       <Text style={styles.cardText} numberOfLines={3}>
         {label}
       </Text>
@@ -1309,237 +1323,252 @@ function CardRow({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label:
   );
 }
 
-const styles = StyleSheet.create({
-  viewport: {
-    flex: 1,
-    overflow: 'hidden',
-  },
-  fill: {
-    flex: 1,
-  },
-  // The surface itself has no size: the cards are absolutely positioned on
-  // it and it is the transform that moves them all together.
-  surface: {
-    position: 'absolute',
-    left: -WORLD_HALF,
-    top: -WORLD_HALF,
-    right: -WORLD_HALF,
-    bottom: -WORLD_HALF,
-  },
-  // Big enough to catch a tap anywhere around the cards, in surface
-  // coordinates - the canvas can be panned and zoomed far from its
-  // origin, and this has to still be under wherever it ends up.
-  stopEditingCatcher: {
-    ...StyleSheet.absoluteFill,
-  },
-  // Opaque, and with a hairline edge: on white paper an edge is the only
-  // thing that says where one card ends and the next begins.
-  marquee: {
-    position: 'absolute',
-    borderWidth: 1,
-    borderColor: PAPER_EDGE_EDITING,
-    backgroundColor: 'rgba(138,180,255,0.12)',
-    borderRadius: 4,
-  },
-  link: {
-    position: 'absolute',
-  },
-  // The card an arrow is about to be drawn from: the arrow's own colour
-  // on its edge, so it is plain which end has been chosen.
-  cardLinkSource: {
-    borderColor: LINK_COLOR,
-    borderWidth: 2,
-  },
-  cardSelected: {
-    borderColor: PAPER_EDGE_EDITING,
-    borderWidth: 2,
-  },
-  card: {
-    position: 'absolute',
-    width: CARD_WIDTH,
-    minHeight: 56,
-    // No cap on the height: a card used to stop at six lines and end in
-    // an ellipsis, which on a surface meant for reading is the card
-    // hiding what it is for. It grows to its text instead - the column
-    // is laid out from measured heights anyway, so a tall card simply
-    // takes the room it needs.
-    backgroundColor: PAPER_CARD,
-    borderWidth: 1,
-    borderColor: PAPER_EDGE,
-    borderRadius: 16,
-    padding: 12,
-    overflow: 'hidden',
-    // A shadow rather than a fill difference - the card has to lift off
-    // paper of the same colour as itself.
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  // The card being typed into: the app's own blue on its edge, so it is
-  // plain which one the keyboard belongs to.
-  cardEditing: {
-    borderColor: PAPER_EDGE_EDITING,
-    borderWidth: 2,
-  },
-  cardInput: {
-    paddingRight: 22,
-    // A browser gives a textarea its own default width (the `cols`
-    // attribute), which is narrower than the card it sits in - the input
-    // has to be told to fill its parent, exactly as the editor's own
-    // inputs had to be.
-    width: '100%',
-    alignSelf: 'stretch',
-    textAlignVertical: 'top',
-    // No flex here on purpose. In the editor's rows `flex: 1` governs a
-    // field's WIDTH (those rows lay out sideways); this card lays out
-    // downwards, where flex would govern the HEIGHT instead and fight the
-    // grown height above.
-    fontSize: 14,
-    lineHeight: 19,
-    fontFamily: FONT_REGULAR,
-    color: PAPER_TEXT,
-    padding: 0,
-    minHeight: 40,
-  },
-  // The card's number on the page, in the arrow's colour, hung off the
-  // top-left corner so it reads as a label on the card rather than part
-  // of its text.
-  ordinal: {
-    position: 'absolute',
-    top: -1,
-    left: -1,
-    minWidth: 22,
-    height: 22,
-    paddingHorizontal: 6,
-    borderRadius: 11,
-    borderBottomRightRadius: 11,
-    backgroundColor: LINK_COLOR,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 3,
-  },
-  ordinalLabel: {
-    fontSize: 12,
-    fontFamily: FONT_SEMIBOLD,
-    color: PAPER_CARD,
-  },
-  // The corner tick. Padded into the card's own padding rather than
-  // pushing the text aside - it only exists while that card is being
-  // typed into.
-  // A live arrow / the draft line: 2pt of the arrow's colour, positioned
-  // and turned entirely by its animated transform.
-  linkCross: {
-    position: 'absolute',
-    width: LINK_DOT,
-    height: LINK_DOT,
-    borderRadius: LINK_DOT / 2,
-    backgroundColor: LINK_COLOR,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 3,
-  },
-  liveLine: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    height: 2,
-    backgroundColor: LINK_COLOR,
-  },
-  // The arrow handle, on the card's right edge at half its height. Faint
-  // until it is being dragged - it is on every card, and a ring on every
-  // card must not shout.
-  handle: {
-    position: 'absolute',
-    right: 2,
-    top: '50%',
-    marginTop: -9,
-    width: 18,
-    height: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 2,
-  },
-  handleDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    borderWidth: 1.5,
-    borderColor: LINK_COLOR,
-    backgroundColor: PAPER_CARD,
-    opacity: 0.55,
-  },
-  cardDone: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    zIndex: 2,
-    padding: 4,
-  },
-  cardImage: {
-    width: '100%',
-    height: 140,
-    borderRadius: 10,
-    backgroundColor: '#F3F4F6',
-  },
-  cardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  cardText: {
-    flex: 1,
-    fontSize: 14,
-    lineHeight: 19,
-    fontFamily: FONT_REGULAR,
-    color: PAPER_TEXT,
-  },
-  cardTextDone: {
-    color: PAPER_TEXT_MUTED,
-    textDecorationLine: 'line-through',
-  },
-  cardHeading: {
-    fontSize: 17,
-    fontFamily: FONT_SEMIBOLD,
-    color: PAPER_TEXT,
-  },
-  cardDivider: {
-    height: 1,
-    backgroundColor: PAPER_EDGE,
-    marginVertical: 8,
-  },
-  addButton: {
-    position: 'absolute',
-    right: 20,
-    bottom: 28,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: PAPER_TEXT,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-    zIndex: 5,
-  },
-  emptyState: {
-    ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    padding: 32,
-  },
-  emptyLabel: {
-    fontSize: 14,
-    textAlign: 'center',
-    fontFamily: FONT_REGULAR,
-    color: PAPER_TEXT_FAINT,
-  },
-});
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+    viewport: {
+      flex: 1,
+      overflow: 'hidden',
+      // The canvas's OWN ground, and the reason the role exists. It used
+      // to have none and simply showed whatever screen it was cut into -
+      // which in a dark theme is a hole, not a table, and a card lying
+      // on a hole is a light source. Transparent in the colour theme, so
+      // that one is unchanged.
+      backgroundColor: theme.canvas.ground,
+    },
+    fill: {
+      flex: 1,
+    },
+    // The surface itself has no size: the cards are absolutely positioned on
+    // it and it is the transform that moves them all together.
+    surface: {
+      position: 'absolute',
+      left: -WORLD_HALF,
+      top: -WORLD_HALF,
+      right: -WORLD_HALF,
+      bottom: -WORLD_HALF,
+    },
+    // Big enough to catch a tap anywhere around the cards, in surface
+    // coordinates - the canvas can be panned and zoomed far from its
+    // origin, and this has to still be under wherever it ends up.
+    stopEditingCatcher: {
+      ...StyleSheet.absoluteFill,
+    },
+    // Opaque, and with a hairline edge: on white paper an edge is the only
+    // thing that says where one card ends and the next begins.
+    marquee: {
+      position: 'absolute',
+      borderWidth: 1,
+      borderColor: theme.canvas.edgeActive,
+      backgroundColor: 'rgba(138,180,255,0.12)',
+      borderRadius: 4,
+    },
+    link: {
+      position: 'absolute',
+    },
+    // The card an arrow is about to be drawn from: the arrow's own colour
+    // on its edge, so it is plain which end has been chosen.
+    cardLinkSource: {
+      borderColor: LINK_COLOR,
+      borderWidth: 2,
+    },
+    cardSelected: {
+      borderColor: theme.canvas.edgeActive,
+      borderWidth: 2,
+    },
+    card: {
+      position: 'absolute',
+      width: CARD_WIDTH,
+      minHeight: 56,
+      // No cap on the height: a card used to stop at six lines and end in
+      // an ellipsis, which on a surface meant for reading is the card
+      // hiding what it is for. It grows to its text instead - the column
+      // is laid out from measured heights anyway, so a tall card simply
+      // takes the room it needs.
+      backgroundColor: theme.canvas.card,
+      borderWidth: 1,
+      borderColor: theme.canvas.edge,
+      borderRadius: 16,
+      padding: 12,
+      overflow: 'hidden',
+      // A shadow rather than a fill difference - the card has to lift off
+      // paper of the same colour as itself. In the black theme this does
+      // nothing, and should not: there is nothing darker for a shadow to
+      // fall on, so the EDGE above is what parts the card there. A glow
+      // instead would be wrong for the same reason a list does not glow -
+      // forty haloes are fog, not light.
+      shadowColor: '#000',
+      shadowOpacity: 0.08,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 2,
+    },
+    // The card being typed into: the app's own blue on its edge, so it is
+    // plain which one the keyboard belongs to.
+    cardEditing: {
+      borderColor: theme.canvas.edgeActive,
+      borderWidth: 2,
+    },
+    cardInput: {
+      paddingRight: 22,
+      // A browser gives a textarea its own default width (the `cols`
+      // attribute), which is narrower than the card it sits in - the input
+      // has to be told to fill its parent, exactly as the editor's own
+      // inputs had to be.
+      width: '100%',
+      alignSelf: 'stretch',
+      textAlignVertical: 'top',
+      // No flex here on purpose. In the editor's rows `flex: 1` governs a
+      // field's WIDTH (those rows lay out sideways); this card lays out
+      // downwards, where flex would govern the HEIGHT instead and fight the
+      // grown height above.
+      fontSize: 14,
+      lineHeight: 19,
+      fontFamily: FONT_REGULAR,
+      color: theme.canvas.ink,
+      padding: 0,
+      minHeight: 40,
+    },
+    // The card's number on the page, in the arrow's colour, hung off the
+    // top-left corner so it reads as a label on the card rather than part
+    // of its text.
+    ordinal: {
+      position: 'absolute',
+      top: -1,
+      left: -1,
+      minWidth: 22,
+      height: 22,
+      paddingHorizontal: 6,
+      borderRadius: 11,
+      borderBottomRightRadius: 11,
+      backgroundColor: LINK_COLOR,
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 3,
+    },
+    ordinalLabel: {
+      fontSize: 12,
+      fontFamily: FONT_SEMIBOLD,
+      // Stands on the arrow's violet chip, so it is white everywhere.
+      color: '#FFFFFF',
+    },
+    // The corner tick. Padded into the card's own padding rather than
+    // pushing the text aside - it only exists while that card is being
+    // typed into.
+    // A live arrow / the draft line: 2pt of the arrow's colour, positioned
+    // and turned entirely by its animated transform.
+    linkCross: {
+      position: 'absolute',
+      width: LINK_DOT,
+      height: LINK_DOT,
+      borderRadius: LINK_DOT / 2,
+      backgroundColor: LINK_COLOR,
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 3,
+    },
+    liveLine: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      height: 2,
+      backgroundColor: LINK_COLOR,
+    },
+    // The arrow handle, on the card's right edge at half its height. Faint
+    // until it is being dragged - it is on every card, and a ring on every
+    // card must not shout.
+    handle: {
+      position: 'absolute',
+      right: 2,
+      top: '50%',
+      marginTop: -9,
+      width: 18,
+      height: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 2,
+    },
+    handleDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      borderWidth: 1.5,
+      borderColor: LINK_COLOR,
+      backgroundColor: theme.canvas.card,
+      opacity: 0.55,
+    },
+    cardDone: {
+      position: 'absolute',
+      top: 6,
+      right: 6,
+      zIndex: 2,
+      padding: 4,
+    },
+    cardImage: {
+      width: '100%',
+      height: 140,
+      borderRadius: 10,
+      backgroundColor: '#F3F4F6',
+    },
+    cardRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    cardText: {
+      flex: 1,
+      fontSize: 14,
+      lineHeight: 19,
+      fontFamily: FONT_REGULAR,
+      color: theme.canvas.ink,
+    },
+    cardTextDone: {
+      color: theme.canvas.inkMuted,
+      textDecorationLine: 'line-through',
+    },
+    cardHeading: {
+      fontSize: 17,
+      fontFamily: FONT_SEMIBOLD,
+      color: theme.canvas.ink,
+    },
+    cardDivider: {
+      height: 1,
+      backgroundColor: theme.canvas.edge,
+      marginVertical: 8,
+    },
+    addButton: {
+      position: 'absolute',
+      right: 20,
+      bottom: 28,
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      // Its own pair, not the ink: the ink is what you READ, and a disc
+      // of it would be the brightest thing on a dark canvas by a wide
+      // margin - a lamp, not a button.
+      backgroundColor: theme.canvas.fab,
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: '#000',
+      shadowOpacity: 0.18,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 4,
+      zIndex: 5,
+    },
+    emptyState: {
+      ...StyleSheet.absoluteFill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+      padding: 32,
+    },
+    emptyLabel: {
+      fontSize: 14,
+      textAlign: 'center',
+      fontFamily: FONT_REGULAR,
+      color: theme.canvas.inkFaint,
+    },
+  });
 
 // forwardRef, only so the screen can reach stopEditing - see
 // DocumentCanvasHandle.
