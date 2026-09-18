@@ -9,6 +9,7 @@ import Svg, { Circle } from 'react-native-svg';
 import { useBlurTarget } from './GlassTarget';
 import { GlassPortal } from './GlassPortal';
 import { useLift, useTheme } from '../theme/ThemeProvider';
+import { liftStyle } from '../theme/tokens';
 import { hapticButtonDown } from '../utils/haptics';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -439,6 +440,23 @@ export default function ContextDock() {
   // plain bands.
   const lift = useLift();
   const ringFloor = Math.floor(pos);
+  // HOW BRIGHT EACH CARD'S LIGHT IS, as a plain function of where the
+  // stack stands - so the hand-over is the same continuous number that
+  // moves the cards, not an event at the end of one.
+  //
+  // The card in front (rel 0) is the lit one; the card right behind it
+  // (rel 1) is the one that WILL be in front when `pos` crosses the
+  // next whole number. So through a swipe the first dims to nothing
+  // while the second comes up, and at the moment the two swap places
+  // they are each at zero and full - nothing changes in that frame,
+  // which is exactly what a jump is the absence of.
+  const carry = pos - ringFloor;
+  const glowAt = (i: number) => {
+    const rel = (((i - ringFloor) % ringSize) + ringSize) % ringSize;
+    if (rel === 0) return 1 - carry;
+    if (rel === 1 && ringSize > 1) return carry;
+    return 0;
+  };
   // The gesture is built once, so what it calls has to be reachable
   // through something whose identity never changes.
   const commitRef = useRef<(f: DockFace) => void>(() => {});
@@ -881,12 +899,7 @@ export default function ContextDock() {
               // where it stands. No second layer to keep in step.
               <View
                 key={f}
-                style={[
-                  styles.cardLayer,
-                  dims.card,
-                  (((i - ringFloor) % ringSize) + ringSize) % ringSize === 0 && lift,
-                  cardStyles[i],
-                ]}
+                style={[styles.cardLayer, dims.card, liftStyle(theme, theme.lift, glowAt(i)), cardStyles[i]]}
                 pointerEvents={f === showing ? 'auto' : 'none'}
               >
                 <Frost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>

@@ -294,25 +294,59 @@ const black: Theme = {
 // light lands. An even halo all round reads as "something blurred and
 // unclear" rather than as light; giving the blur a direction is what
 // makes the eye call it light.
-export function liftStyle(theme: Theme, how: Lift | 'none' = theme.lift): ViewStyle {
+//
+// `strength` is how much of it there is, 0 to 1 - and it exists because
+// a lift has to be able to CROSS FADE. In the dock's stack the light
+// belongs to whichever card is in front, and that changes during a
+// swipe: at the very end of the settle the glow used to hop from one
+// card to the other in a single frame ("світіння ніби стрибком
+// перескакує з одної на іншу"). Two cards lit at once, one rising and
+// one dying, is what makes that a hand-over rather than a jump.
+//
+// Faded in the COLOUR, not on the view: an opacity on a whole card
+// would take its contents with it, and an elevation shadow on
+// Android needs a solid background to cast from, so a transparent
+// glow layer of its own would silently lose the white theme's shadow.
+export function liftStyle(theme: Theme, how: Lift | 'none' = theme.lift, strength = 1): ViewStyle {
+  if (strength <= 0) return {};
+  const k = Math.min(1, strength);
   if (how === 'glow') {
     const g = theme.glow;
     return {
-      boxShadow: `0px 0px ${g.nearRadius * 2}px ${g.near}, 0px ${g.drop}px ${g.farRadius}px ${g.far}`,
+      boxShadow: `0px 0px ${g.nearRadius * 2}px ${fade(g.near, k)}, 0px ${g.drop}px ${g.farRadius}px ${fade(g.far, k)}`,
     } as ViewStyle;
   }
   if (how === 'shadow') {
     return {
       shadowColor: '#111827',
-      shadowOpacity: 0.18,
+      shadowOpacity: 0.18 * k,
       shadowRadius: 14,
       shadowOffset: { width: 0, height: 8 },
-      elevation: 6,
+      elevation: Math.round(6 * k),
     };
   }
   // 'blur' (the colour theme) and 'none': the glass itself is what parts
   // it from the screen, and a shadow under it only muddies the blur.
   return {};
+}
+
+// The alpha of a colour, scaled. Handles the two spellings the theme
+// actually uses - `rgba(r,g,b,a)` and `#rrggbb` - and leaves anything
+// else alone rather than guessing.
+function fade(colour: string, k: number): string {
+  if (k >= 1) return colour;
+  const rgba = colour.match(/^rgba?\(([^)]+)\)$/);
+  if (rgba) {
+    const parts = rgba[1].split(',').map((v) => v.trim());
+    const a = parts.length > 3 ? parseFloat(parts[3]) : 1;
+    return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${(a * k).toFixed(3)})`;
+  }
+  if (/^#[0-9a-fA-F]{6}$/.test(colour)) {
+    const v = colour.slice(1);
+    const [r, g, b] = [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16));
+    return `rgba(${r}, ${g}, ${b}, ${k.toFixed(3)})`;
+  }
+  return colour;
 }
 
 export const THEMES: Record<ThemeKey, Theme> = { colour, white, black };
