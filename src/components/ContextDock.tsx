@@ -525,8 +525,18 @@ export default function ContextDock() {
       const h = gCardH.value;
       const at = slotPlace(i, gVisual.value, n, h);
       const rest = slotPlace(i, gRest.value, n, h);
+      // A HARD FLOOR under `rest.s`. This ratio is a division, and
+      // `rest` is only ever RIGHT when `gRest` matches what `commit`
+      // last told React - which a race could still get wrong for one
+      // frame even with that race closed elsewhere, and a scale ratio
+      // is not a placement that is merely off when its denominator is:
+      // it is a control that fills the screen, "збільшується... дістає
+      // до обох кнопок збоку". Nothing here should ever be able to do
+      // that, whatever the two numbers going into it turn out to be.
+      const safeRestS = Math.max(rest.s, 0.5);
+      const scale = Math.min(Math.max(at.s / safeRestS, 0.5), 2);
       return {
-        transform: [{ translateY: (at.y - rest.y) / rest.s }, { scale: at.s / rest.s }],
+        transform: [{ translateY: (at.y - rest.y) / safeRestS }, { scale }],
       };
     });
   const slotStyles = [delta(0), delta(1), delta(2)];
@@ -543,7 +553,19 @@ export default function ContextDock() {
   // that value - this simply never fires, the inner views keep their
   // step, the outer never moved, and the picture is still right. It
   // degrades into being correct rather than into being stuck.
+  // Guarded against a drag that is ALREADY running by the time this
+  // fires. Without the guard, a swipe started right after the previous
+  // one's commit - before this very effect had run for that commit -
+  // would have this barge in mid-drag: slamming `gesture` back to 0 and
+  // `gRest` to a value that has nothing to do with where the new drag
+  // actually started, which is the jump the user caught, "стрибком
+  // збільшується". The drag itself already knows how to seed `gRest`
+  // correctly when it begins (see `begin`, below) - this effect's job
+  // is only ever the hand-over BETWEEN drags, never a correction mid-
+  // way through one.
+  const dragActive = useRef(false);
   useLayoutEffect(() => {
+    if (dragActive.current) return;
     gRest.value = faceIndex;
     gesture.value = 0;
   }, [faceIndex, ringSize, gRest, gesture]);
@@ -570,11 +592,19 @@ export default function ContextDock() {
       // say the cards are exactly where the outer views already put
       // them - so the difference starts at nothing and nothing jumps.
       begin: () => {
+        dragActive.current = true;
         gRing.value = ringSizeRef.current;
         gCardH.value = cardHRef.current;
-        gRest.value = faceIndexRef.current;
-        gVisual.value = faceIndexRef.current;
-        dragBase.value = faceIndexRef.current;
+        // From `gVisual` itself, NOT `faceIndexRef` - the ref is a
+        // plain JS variable, only ever updated during a RENDER, and a
+        // touch landing before React has re-rendered from the
+        // PREVIOUS swipe's commit would read it stale. `gVisual` has
+        // no such gap: a completed settle lands it EXACTLY on its
+        // target on the UI thread itself, correct the instant it
+        // happens, answerable to nothing on the JS side.
+        const at = gVisual.value;
+        gRest.value = at;
+        dragBase.value = at;
         gesture.value = 1;
         setSwiping(true);
         armBackstop(4000);
@@ -611,6 +641,7 @@ export default function ContextDock() {
       // coming to end it at all.
       commit: (next: DockFace, to: number) => {
         if (backstop.current) clearTimeout(backstop.current);
+        dragActive.current = false;
         commitRef.current(next);
         setLifting(null);
         setSwiping(false);
@@ -620,6 +651,7 @@ export default function ContextDock() {
       // arrangement the outer views never left.
       settle: () => {
         if (backstop.current) clearTimeout(backstop.current);
+        dragActive.current = false;
         setLifting(null);
         gesture.value = 0;
         setSwiping(false);
