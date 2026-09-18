@@ -255,8 +255,11 @@ export default function ContextDock() {
   const BACK_Y = 10;
   // How high the front card rises at the peak of its arc before coming
   // back down onto the back spot - a real "лift and flip", not a
-  // straight climb that would have to reverse direction awkwardly.
-  const RISE_F = 0.32;
+  // straight climb that would have to reverse direction awkwardly. A
+  // full card's height: short of that, the drag never visibly clears
+  // the dock's own top edge - "картка навіть не дотягується до
+  // верхнього краю дока".
+  const RISE_F = 1.0;
   // FRONT: rises to a peak around the midpoint, then comes back DOWN
   // onto the back card's own resting transform - one continuous arc,
   // not a rise-then-teleport. BACK: the exact reverse, growing from the
@@ -293,12 +296,14 @@ export default function ContextDock() {
         // system itself uses just below here.
         .onUpdate((e) => {
           if (facesRef.current.length < 2) return;
-          // Capped well short of 1 - the drag previews the RISE, release
+          // Capped short of 1 - the drag previews the RISE, release
           // decides whether it ever completes the DESCENT onto the back
           // spot. Letting a drag alone reach 1 would settle the flip
-          // before the finger ever lifted.
+          // before the finger ever lifted. High enough now (with
+          // RISE_F=1) that the card visibly clears the dock's own top
+          // edge well before the cap.
           const dragged = Math.max(0, -e.translationY) / cardHRef.current;
-          morph.value = Math.min(0.55, dragged);
+          morph.value = Math.min(0.85, dragged);
         })
         .onEnd((e) => {
           const ring = facesRef.current;
