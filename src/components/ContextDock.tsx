@@ -507,6 +507,26 @@ export default function ContextDock() {
   // debug strip only - the cards themselves are placed by the animated
   // style below and by nothing else.
   const restStyles = [0, 1, 2].map((i) => slotTransform(i, faceIndex, ringSize, CARD_H, 0));
+  // TEMPORARY - a rolling log of what the dock decided, and when,
+  // measured from the moment the screen changed. The two seconds in
+  // question are hard to photograph; this way one screenshot taken
+  // afterwards carries the whole sequence. Out with the strip above it.
+  const trail0 = useRef<{ t0: number; lines: string[] }>({ t0: Date.now(), lines: [] });
+  const lastLine = useRef('');
+  const screenKeyPrev = useRef(screenKey);
+  if (screenKeyPrev.current !== screenKey) {
+    screenKeyPrev.current = screenKey;
+    trail0.current = { t0: Date.now(), lines: [] };
+    lastLine.current = '';
+  }
+  {
+    const line = `${showing}/${ringSize}/${faceIndex}/${own ? own.kind : '-'}/${actions?.length ?? 0}`;
+    if (line !== lastLine.current) {
+      lastLine.current = line;
+      const at = Date.now() - trail0.current.t0;
+      trail0.current.lines = [...trail0.current.lines, `+${at}ms ${line}`].slice(-5);
+    }
+  }
   // Three, always: the ring is at most three cards, and a hook cannot be
   // called in a loop whose length changes between renders.
   const slot0 = useAnimatedStyle(() =>
@@ -976,7 +996,7 @@ export default function ContextDock() {
         <Text style={styles.debugText}>
           {`ring=${ringSize} idx=${faceIndex} showing=${showing} swiping=${swiping ? 1 : 0} flux=${tabsInFlux ? 1 : 0}\nown=${own ? own.kind : '-'} act=${actions?.length ?? 0} leave=${showLeave ? 1 : 0} bottom=${bottomInset} key=${screenKey.slice(-6)}\nfaces=[${faces.join(',')}] restY=${faces
             .map((_, i) => Math.round((restStyles[i].transform[0] as { translateY: number }).translateY * 100) / 100)
-            .join('/')}`}
+            .join('/')}\n${trail0.current.lines.join('\n')}`}
         </Text>
       </View>
       <View
