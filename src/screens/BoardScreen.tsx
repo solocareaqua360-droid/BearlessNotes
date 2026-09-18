@@ -125,6 +125,27 @@ const SHAPE_MIN = 48;
 // same kind of stand-in APPROX_CARD_HEIGHT is, and used for the same two
 // things: aiming an arrow at it, and hit-testing.
 const SHAPE_TEXT_HEIGHT = 34;
+// A STEP, never a free number - the request was "make it readable from
+// across the board", not fine typographic control, and a stepper is
+// what a corner grip already does for size (see clampShapeSize) rather
+// than a slider or a numeric field neither input method here suits.
+const SHAPE_TEXT_SIZES = [12, 14, 16, 20, 26, 32];
+const SHAPE_TEXT_SIZE_DEFAULT = 16;
+const SHAPE_LABEL_SIZE_DEFAULT = 14;
+function stepTextSize(current: number, dir: 1 | -1): number {
+  const at = SHAPE_TEXT_SIZES.findIndex((v) => v >= current);
+  const i = at < 0 ? SHAPE_TEXT_SIZES.length - 1 : at;
+  const next = Math.max(0, Math.min(SHAPE_TEXT_SIZES.length - 1, i + dir));
+  return SHAPE_TEXT_SIZES[next];
+}
+// The fill is the outline's own colour, much weaker - so a shape stays
+// describable by one colour instead of two. 'none' when the user has
+// not turned the wash on, which keeps every shape made before this an
+// outline, exactly as it drew before.
+function shapeFillFor(shape: BoardShape, stroke: string, theme: Theme): string {
+  if (!shape.filled) return 'none';
+  return mutedForTheme(stroke, theme, 0.88);
+}
 const SHAPE_MAX = 900;
 const clampShapeSize = (v: number) => Math.round(Math.max(SHAPE_MIN, Math.min(SHAPE_MAX, v)));
 // What each kind is born as. A square and a circle are born square and
@@ -1099,12 +1120,17 @@ function ShapeBody({
   width,
   height,
   stroke,
+  fill,
   ink,
 }: {
   shape: BoardShape;
   width: number;
   height: number;
   stroke: string;
+  // 'none', or the same colour as the outline at a fraction of it - see
+  // shapeFillFor. Kept as one prop rather than recomputed per element so
+  // every element in one shape agrees.
+  fill: string;
   ink: string;
 }) {
   const styles = useStyles(makeStyles);
@@ -1113,6 +1139,7 @@ function ShapeBody({
   // Half the stroke sits outside the path, so every shape is drawn
   // inset by that much or its outline is clipped by its own box.
   const i = SHAPE_STROKE / 2;
+  const fontSize = shape.fontSize ?? (shape.kind === 'text' ? SHAPE_TEXT_SIZE_DEFAULT : SHAPE_LABEL_SIZE_DEFAULT);
   return (
     <>
       {shape.kind !== 'text' && (
@@ -1124,7 +1151,7 @@ function ShapeBody({
               width={w - SHAPE_STROKE}
               height={h - SHAPE_STROKE}
               rx={10}
-              fill="none"
+              fill={fill}
               stroke={stroke}
               strokeWidth={SHAPE_STROKE}
             />
@@ -1135,7 +1162,7 @@ function ShapeBody({
               cy={h / 2}
               rx={w / 2 - i}
               ry={h / 2 - i}
-              fill="none"
+              fill={fill}
               stroke={stroke}
               strokeWidth={SHAPE_STROKE}
             />
@@ -1143,7 +1170,7 @@ function ShapeBody({
           {shape.kind === 'triangle' && (
             <Polygon
               points={`${w / 2},${i} ${w - i},${h - i} ${i},${h - i}`}
-              fill="none"
+              fill={fill}
               stroke={stroke}
               strokeWidth={SHAPE_STROKE}
               strokeLinejoin="round"
@@ -1152,7 +1179,7 @@ function ShapeBody({
           {shape.kind === 'diamond' && (
             <Polygon
               points={`${w / 2},${i} ${w - i},${h / 2} ${w / 2},${h - i} ${i},${h / 2}`}
-              fill="none"
+              fill={fill}
               stroke={stroke}
               strokeWidth={SHAPE_STROKE}
               strokeLinejoin="round"
@@ -1168,7 +1195,7 @@ function ShapeBody({
         <Text
           style={[
             styles.shapeText,
-            { color: shape.kind === 'text' ? shape.color ?? ink : ink },
+            { color: shape.kind === 'text' ? shape.color ?? ink : ink, fontSize },
             shape.kind === 'text' && styles.shapeTextLoose,
           ]}
         >
@@ -1301,6 +1328,7 @@ function DraggableShape({
           width={width}
           height={height ?? 0}
           stroke={shape.color ?? theme.canvas.inkMuted}
+          fill={shapeFillFor(shape, shape.color ?? theme.canvas.inkMuted, theme)}
           ink={theme.canvas.ink}
         />
         {isSelected && shape.kind !== 'text' && (
@@ -2735,6 +2763,16 @@ export default function BoardScreen() {
     setShapes((prev) => prev.map((sh) => (sh.id === id ? { ...sh, color: colour } : sh)));
   }
 
+  function toggleShapeFilled(id: string) {
+    setShapes((prev) => prev.map((sh) => (sh.id === id ? { ...sh, filled: !sh.filled } : sh)));
+  }
+
+  function stepShapeTextSize(shape: BoardShape, dir: 1 | -1) {
+    const current = shape.fontSize ?? (shape.kind === 'text' ? SHAPE_TEXT_SIZE_DEFAULT : SHAPE_LABEL_SIZE_DEFAULT);
+    const next = stepTextSize(current, dir);
+    setShapes((prev) => prev.map((sh) => (sh.id === shape.id ? { ...sh, fontSize: next } : sh)));
+  }
+
   function deleteShape(id: string) {
     setShapes((prev) => prev.filter((sh) => sh.id !== id));
     setConnections((prev) => prev.filter((c) => c.fromCardId !== id && c.toCardId !== id));
@@ -2895,25 +2933,90 @@ export default function BoardScreen() {
       ? { icon: 'add-outline', onPress: () => setAddSheetVisible(true) }
       : null
   );
+  // A CARD SELECTION IS AN ACTIONS CARD, the same as on every other
+  // database (Documents/Files/Photos/Links) - it used to be its own
+  // floating capsule instead, which is what left the dock showing one
+  // idle "Рух" button directly above a second, unrelated menu:
+  // "у нас впливає ціле окреме меню, і при цьому пустує док з однієї
+  // многофункціональної кнопки". The dock already knows how to hold a
+  // variable, scrolling list of actions with a word under each icon -
+  // this was simply the one screen that had never been moved onto it.
   useDockActions(
     boardFocused
-      ? [
-          {
-            // One button cycling move -> select -> connect, each with its
-            // own icon, as it was in the capsule.
-            key: 'tool',
-            icon:
-              canvasTool === 'select'
-                ? 'mc:selection-drag'
-                : canvasTool === 'connect'
-                  ? 'mc:vector-line'
-                  : 'mc:cursor-move',
-            label:
-              canvasTool === 'select' ? 'Вибір' : canvasTool === 'connect' ? 'Звʼязок' : 'Рух',
-            active: canvasTool !== 'move',
-            onPress: toggleCanvasTool,
-          },
-        ]
+      ? selectedCardIds.size > 0
+        ? [
+            { key: 'cancel', icon: 'close-outline', label: 'Вийти', onPress: clearSelection },
+            ...(onlySelectedCard
+              ? [
+                  {
+                    key: 'copy',
+                    icon: 'copy-outline',
+                    label: 'Копіювати',
+                    onPress: () => copyCardText(onlySelectedCard),
+                  },
+                ]
+              : []),
+            ...(onlySelectedDocumentCard
+              ? [
+                  {
+                    key: 'openText',
+                    icon: 'reader-outline',
+                    label: 'Текст',
+                    onPress: () => openCardText(onlySelectedDocumentCard),
+                  },
+                  {
+                    key: 'editDoc',
+                    icon: 'create-outline',
+                    label: 'Редагувати',
+                    onPress: () => editDocumentCard(onlySelectedDocumentCard),
+                  },
+                ]
+              : []),
+            ...(selectionHasConnections
+              ? [
+                  {
+                    key: 'disconnect',
+                    icon: 'mc:vector-line',
+                    label: 'Відʼєднати',
+                    onPress: disconnectSelectedCards,
+                  },
+                ]
+              : []),
+            ...(onlySelectedImageCard
+              ? [
+                  {
+                    key: 'natural',
+                    icon: onlySelectedImageCard.imageNatural ? 'mc:crop-square' : 'mc:image-size-select-actual',
+                    label: onlySelectedImageCard.imageNatural ? 'Однакові' : 'Свої пропорції',
+                    onPress: () => toggleImageNatural(onlySelectedImageCard),
+                  },
+                  {
+                    key: 'bare',
+                    icon: onlySelectedImageCard.imageBare ? 'text-outline' : 'image-outline',
+                    label: onlySelectedImageCard.imageBare ? 'З підписом' : 'Без підпису',
+                    onPress: () => toggleImageBare(onlySelectedImageCard),
+                  },
+                ]
+              : []),
+            { key: 'delete', icon: 'trash-outline', label: 'Видалити', onPress: deleteSelectedCards },
+          ]
+        : [
+            {
+              // One button cycling move -> select -> connect, each with
+              // its own icon, as it was in the capsule.
+              key: 'tool',
+              icon:
+                canvasTool === 'select'
+                  ? 'mc:selection-drag'
+                  : canvasTool === 'connect'
+                    ? 'mc:vector-line'
+                    : 'mc:cursor-move',
+              label:
+                canvasTool === 'select' ? 'Вибір' : canvasTool === 'connect' ? 'Звʼязок' : 'Рух',
+              active: canvasTool !== 'move',
+              onPress: toggleCanvasTool,
+            },
+          ]
       : null
   );
 
@@ -3114,6 +3217,39 @@ export default function BoardScreen() {
                 <MaterialCommunityIcons name="format-text" size={18} color="#fff" />
                 <Text style={styles.selectionBarActionLabel}>Текст</Text>
               </Pressable>
+              {/* A step, not a slider - see SHAPE_TEXT_SIZES. Two taps
+                  either side of the label rather than one button, so
+                  each press is one clear step instead of a cycle whose
+                  current value has to be read off a changing icon. */}
+              <View style={styles.textSizeGroup}>
+                <Pressable
+                  hitSlop={6}
+                  onPress={() => stepShapeTextSize(selectedShape, -1)}
+                >
+                  <Ionicons name="remove" size={16} color="#fff" />
+                </Pressable>
+                <Text style={styles.selectionBarActionLabel}>Розмір</Text>
+                <Pressable
+                  hitSlop={6}
+                  onPress={() => stepShapeTextSize(selectedShape, 1)}
+                >
+                  <Ionicons name="add" size={16} color="#fff" />
+                </Pressable>
+              </View>
+              {selectedShape.kind !== 'text' && (
+                <Pressable
+                  style={styles.selectionBarAction}
+                  hitSlop={6}
+                  onPress={() => toggleShapeFilled(selectedShape.id)}
+                >
+                  <Ionicons
+                    name={selectedShape.filled ? 'color-fill' : 'color-fill-outline'}
+                    size={18}
+                    color="#fff"
+                  />
+                  <Text style={styles.selectionBarActionLabel}>Заливка</Text>
+                </Pressable>
+              )}
               <View style={styles.selectionBarDivider} />
               {/* The outline's colour. The first swatch is "no colour" -
                   the theme's own quiet ink, which is what a shape is
@@ -3152,95 +3288,10 @@ export default function BoardScreen() {
           </View>
         ) : null}
 
-        {selectedCardIds.size > 0 ? (
-          // Compact, content-hugging, centred capsule - same look as the
-          // shared BulkActionBar component (Documents/Files/Photos/Links'
-          // own multi-select bar), kept local rather than reusing that
-          // component directly since its action set (tag/group/copy)
-          // doesn't apply to board cards.
-          <View style={[styles.selectionBarWrap, { bottom: dockClear + bottomInset }]} pointerEvents="box-none">
-            <View style={styles.selectionBarCapsule}>
-              <Text style={styles.selectionBarCount}>{selectedCardIds.size}</Text>
-              <View style={styles.selectionBarDivider} />
-              {!!onlySelectedCard && (
-                <Pressable
-                  style={styles.selectionBarAction}
-                  hitSlop={6}
-                  onPress={() => copyCardText(onlySelectedCard)}
-                >
-                  <Ionicons name="copy-outline" size={18} color="#fff" />
-                  <Text style={styles.selectionBarActionLabel}>Копіювати</Text>
-                </Pressable>
-              )}
-              {!!onlySelectedDocumentCard && (
-                <Pressable
-                  style={styles.selectionBarAction}
-                  hitSlop={6}
-                  onPress={() => openCardText(onlySelectedDocumentCard)}
-                >
-                  <Ionicons name="reader-outline" size={18} color="#fff" />
-                  <Text style={styles.selectionBarActionLabel}>Текст</Text>
-                </Pressable>
-              )}
-              {onlySelectedDocumentCard && (
-                <Pressable
-                  style={styles.selectionBarAction}
-                  hitSlop={6}
-                  onPress={() => editDocumentCard(onlySelectedDocumentCard)}
-                >
-                  <Ionicons name="create-outline" size={18} color="#fff" />
-                  <Text style={styles.selectionBarActionLabel}>Редагувати</Text>
-                </Pressable>
-              )}
-              {selectionHasConnections && (
-                <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={disconnectSelectedCards}>
-                  <MaterialCommunityIcons name="vector-line" size={18} color="#fff" />
-                  <Text style={styles.selectionBarActionLabel}>Відʼєднати</Text>
-                </Pressable>
-              )}
-              {!!onlySelectedImageCard && (
-                <Pressable
-                  style={styles.selectionBarAction}
-                  hitSlop={6}
-                  onPress={() => toggleImageNatural(onlySelectedImageCard)}
-                >
-                  <MaterialCommunityIcons
-                    name={onlySelectedImageCard.imageNatural ? 'crop-square' : 'image-size-select-actual'}
-                    size={18}
-                    color="#fff"
-                  />
-                  <Text style={styles.selectionBarActionLabel}>
-                    {onlySelectedImageCard.imageNatural ? 'Однакові' : 'Свої пропорції'}
-                  </Text>
-                </Pressable>
-              )}
-              {!!onlySelectedImageCard && (
-                <Pressable
-                  style={styles.selectionBarAction}
-                  hitSlop={6}
-                  onPress={() => toggleImageBare(onlySelectedImageCard)}
-                >
-                  <Ionicons
-                    name={onlySelectedImageCard.imageBare ? 'text-outline' : 'image-outline'}
-                    size={18}
-                    color="#fff"
-                  />
-                  <Text style={styles.selectionBarActionLabel}>
-                    {onlySelectedImageCard.imageBare ? 'З підписом' : 'Без підпису'}
-                  </Text>
-                </Pressable>
-              )}
-              <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={clearSelection}>
-                <Ionicons name="close" size={18} color="#fff" />
-                <Text style={styles.selectionBarActionLabel}>Скасувати</Text>
-              </Pressable>
-              <Pressable style={styles.selectionBarAction} hitSlop={6} onPress={deleteSelectedCards}>
-                <Ionicons name="trash-outline" size={18} color="#fff" />
-                <Text style={styles.selectionBarActionLabel}>Видалити</Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
+        {/* Selection actions moved onto the DOCK's actions card - see
+            useDockActions above. This floating capsule used to duplicate
+            it, leaving the dock showing one idle button directly above a
+            second, unrelated menu. */}
 
         {/* «Меню», where the right button was pressed. Every row calls
             exactly what the selection bar calls - the card is selected
@@ -3721,13 +3772,20 @@ const makeStyles = (theme: Theme) =>
       paddingVertical: 4,
     },
     shapeText: {
-      fontSize: 14,
+      // Size comes from the shape itself now (see SHAPE_TEXT_SIZES) - a
+      // static default here would win the moment the array below puts
+      // it after the inline style.
       fontFamily: FONT_SEMIBOLD,
       textAlign: 'center',
     },
     shapeTextLoose: {
-      fontSize: 16,
       textAlign: 'left',
+    },
+    textSizeGroup: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 4,
     },
     shapeSwatch: {
       width: 18,
@@ -3930,12 +3988,6 @@ const makeStyles = (theme: Theme) =>
       shadowOffset: { width: 0, height: 6 },
       shadowRadius: 16,
       elevation: 8,
-    },
-    selectionBarCount: {
-      fontSize: 14,
-      fontWeight: '800',
-      fontFamily: FONT_EXTRABOLD,
-      color: '#fff',
     },
     selectionBarDivider: {
       width: 1,

@@ -439,9 +439,18 @@ export interface BoardShape {
   height: number;
   // Words written inside the outline - or, for 'text', the whole thing.
   text?: string;
-  // The outline's own colour. The fill is the same colour, much weaker,
-  // so one value describes the shape.
+  // The outline's own colour. The fill (see `filled`) is the same
+  // colour, much weaker, so one value describes the shape.
   color?: string;
+  // Off by default - an outline reads as a container, which is the more
+  // common use ("розкласти по групах"); on, the shape gets a soft wash of
+  // its own colour so it reads as a filled block instead.
+  filled?: boolean;
+  // Absent means the size the shape was born with. A step in
+  // SHAPE_TEXT_SIZES (BoardScreen), never a free number - the point the
+  // user raised was being unable to make a label read from across the
+  // board, not fine typographic control.
+  fontSize?: number;
 }
 
 export interface BoardItem {
