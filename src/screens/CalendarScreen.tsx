@@ -614,17 +614,11 @@ export default function CalendarScreen() {
   const [dockFace, setDockFace] = useNavDockFace();
   const publishToDock = useNavDockPublisher();
   const pickDay = useCallback((key: string) => selectDay(parseDateKey(key)), []);
-  // TEMPORARY - DISABLED FOR A TEST. The user's own request: cap the
-  // calendar's ring at two cards (actions, desks) instead of three, for
-  // one build, to see whether the third card - this one, published by
-  // an effect entirely separate from the actions and beads effects
-  // above - is what the ring-settling bug actually needs to show up.
-  //
-  // useEffect(() => {
-  //   if (!publishToDock || !calendarFocused) return;
-  //   publishToDock({ kind: 'strip', icon: 'calendar-outline', items: stripItems, selected: selectedKeyForDock, onPick: pickDay });
-  //   return () => publishToDock(null);
-  // }, [publishToDock, calendarFocused, stripItems, selectedKeyForDock, pickDay]);
+  useEffect(() => {
+    if (!publishToDock || !calendarFocused) return;
+    publishToDock({ kind: 'strip', icon: 'calendar-outline', items: stripItems, selected: selectedKeyForDock, onPick: pickDay });
+    return () => publishToDock(null);
+  }, [publishToDock, calendarFocused, stripItems, selectedKeyForDock, pickDay]);
 
   function jumpToToday() {
     selectDay(new Date());

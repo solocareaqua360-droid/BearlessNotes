@@ -259,46 +259,15 @@ export default function ContextDock() {
   // an extra sliver that should not have been there: "док... опущений
   // трохи нижче... і тому... сіпається вниз", only ever after a swipe.
   const tabsInFlux = useNavDockTabsInFlux();
-  // THE SCREEN'S OWN CONTEXT DOES NOT ARRIVE IN ONE PIECE.
-  //
-  // A screen like the calendar publishes what it stands in, what it can
-  // do, and its two fixed beads through THREE SEPARATE effects - each
-  // its own hook, each its own dependency list. Regaining focus does
-  // not run them as one commit: React fires each effect in turn, and
-  // each one that changes the shared dock state is a render of its own
-  // - the ring growing 1, then 2, then 3 across genuinely separate
-  // frames, not a stale read of one. The user's own question named it
-  // exactly: "чи може бути проблема в асиметричності кількості доків на
-  // екранах" - the screens that publish the most independent pieces are
-  // the ones with the most intermediate, incomplete rings to flash
-  // through on the way to the real one.
-  //
-  // So: hold the ring at DESKS - the one card that needs nothing this
-  // screen has published - for a short window after the SCREEN itself
-  // changes, the same way `tabsInFlux` already holds it during a swipe
-  // whose settle has not reached react-navigation yet. Long enough for
-  // a handful of effects to each get their own render; short enough
-  // that nobody sees it as a delay rather than as a switch.
+  // A settling window was tried here and was a mistake of its own: it
+  // held BOTH the context and the actions back for 150ms after a
+  // screen change, which made the ring fall from two cards to one and
+  // climb back - the user's log caught it exactly, `+0ms desks/2/1/-/4`
+  // then `+0ms desks/1/0/-/0` then `+157ms desks/2/1/-/4`. The first
+  // render after the screen changed was ALREADY correct; the collapse
+  // after it was mine. Removed.
   const screenKey = useScreenKey();
-  const [settling, setSettling] = useState(false);
-  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const screenKeyPrevRef = useRef(screenKey);
-  if (screenKeyPrevRef.current !== screenKey) {
-    screenKeyPrevRef.current = screenKey;
-    if (settleTimer.current) clearTimeout(settleTimer.current);
-    if (!settling) setSettling(true);
-    settleTimer.current = setTimeout(() => {
-      settleTimer.current = null;
-      setSettling(false);
-    }, 150);
-  }
-  useEffect(
-    () => () => {
-      if (settleTimer.current) clearTimeout(settleTimer.current);
-    },
-    []
-  );
-  const suppress = tabsInFlux || settling;
+  const suppress = tabsInFlux;
   const own = suppress ? null : ownPublished;
   const dock = hidden ? desksCard : (own ?? desksCard);
   // The way out of the SCREEN, which is true even at a database's root,
@@ -1019,7 +988,7 @@ export default function ContextDock() {
           Remove once that is found and fixed. */}
       <View style={[styles.debugHud, { top: insets.top + 4 }]} pointerEvents="none">
         <Text style={styles.debugText}>
-          {`ring=${ringSize} idx=${faceIndex} PROG=${progress.value} G=${gesture.value} RI=${restIndexSV.value} RN=${ringRestSV.value} settle=${settling?1:0} flux=${tabsInFlux?1:0}\nown=${own ? own.kind : '-'} act=${actions?.length ?? 0} leave=${showLeave ? 1 : 0} bottom=${bottomInset} key=${screenKey.slice(-6)}\nfaces=[${faces.join(',')}] restY=${faces
+          {`ring=${ringSize} idx=${faceIndex} PROG=${progress.value} G=${gesture.value} RI=${restIndexSV.value} RN=${ringRestSV.value} flux=${tabsInFlux?1:0}\nown=${own ? own.kind : '-'} act=${actions?.length ?? 0} leave=${showLeave ? 1 : 0} bottom=${bottomInset} key=${screenKey.slice(-6)}\nfaces=[${faces.join(',')}] restY=${faces
             .map((_, i) => Math.round((restStyles[i].transform[0] as { translateY: number }).translateY * 100) / 100)
             .join('/')}\n${dockTrail.current.lines.join('\n')}`}
         </Text>
