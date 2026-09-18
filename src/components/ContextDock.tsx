@@ -399,16 +399,58 @@ export default function ContextDock() {
   // was built.
   const cardHSV = useSharedValue(CARD_H);
   const ringSV = useSharedValue(1);
-  // Before the frame is shown, not after it. These three carry the
-  // resting arrangement to the only writer that reaches the view, so
-  // the later they land the longer the cards stand somewhere they no
-  // longer belong.
+  // Whether a swipe owns these values right now - the finger on the
+  // card, or the release animation still running after it lifted. The
+  // one and only thing allowed to hold off the assertion below.
+  const draggingRef = useRef(false);
+  const animatingRef = useRef(false);
+  // A HARD TIME LIMIT on how long a swipe may hold off the assertion.
+  //
+  // Every bug in this file that took days to find had the same shape: a
+  // flag meant to be lowered by a callback, and a path where that
+  // callback never ran. The release animations here last 220 and 260ms.
+  // Past that, whatever was supposed to lower this has not, and waiting
+  // any longer only means a card left standing where React never put
+  // it. Nothing here may be the only way this flag comes down.
+  const backstop = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const armBackstop = (ms: number) => {
+    if (backstop.current) clearTimeout(backstop.current);
+    backstop.current = setTimeout(() => {
+      backstop.current = null;
+      draggingRef.current = false;
+      animatingRef.current = false;
+      setSwiping(false);
+    }, ms);
+  };
+  useEffect(
+    () => () => {
+      if (backstop.current) clearTimeout(backstop.current);
+    },
+    []
+  );
+  // ASSERTED ON EVERY RENDER, with no dependency list at all.
+  //
+  // Reanimated is the only writer that reaches these views, and it
+  // reads these three values - so whenever they are stale, the cards
+  // stand somewhere React never asked for, and nothing puts them right.
+  // They used to be carried over by effects keyed on what they were
+  // made of, which only fires when that thing CHANGES. The user caught
+  // exactly the gap that leaves: two screenshots of the calendar,
+  // seconds apart, with identical numbers in the debug strip - idx=2,
+  // showing=desks, restY=10/20/0 - and two completely different cards
+  // drawn in front. React's answer never moved; the values feeding the
+  // placement were a step behind it, and no dependency had changed to
+  // say so.
+  //
+  // Keyed on nothing, this cannot happen: after every render that is
+  // not a swipe's own, what Reanimated reads is what React just
+  // decided. Writing a value it already holds costs nothing.
   useLayoutEffect(() => {
+    if (draggingRef.current || animatingRef.current) return;
     cardHSV.value = CARD_H;
-  }, [CARD_H, cardHSV]);
-  useLayoutEffect(() => {
     ringSV.value = ringSize;
-  }, [ringSize, ringSV]);
+    progress.value = faceIndex;
+  });
   // Where every card rests, said in plain style objects React commits
   // along with the cards themselves.
   // ONE WRITER PLACES THESE CARDS, AND IT IS REANIMATED.
@@ -459,15 +501,14 @@ export default function ContextDock() {
   // reachable through something whose identity never changes.
   const commitRef = useRef<(f: DockFace) => void>(() => {});
   commitRef.current = setFace;
-  // Whether a finger is actually on the dock right now - the ONLY thing
-  // that is allowed to stop the safety net below from correcting things.
-  const draggingRef = useRef(false);
   const hand = useMemo(
     () => ({
       // A swipe has begun: pin the animated placement to exactly where
       // the cards are resting, then let it take over.
       begin: () => {
         draggingRef.current = true;
+        animatingRef.current = true;
+        armBackstop(4000);
         dragBase.value = faceIndexRef.current;
         progress.value = faceIndexRef.current;
         setSwiping(true);
@@ -494,6 +535,7 @@ export default function ContextDock() {
       // not left for a swipe that may not come for a while.
       end: () => {
         draggingRef.current = false;
+        armBackstop(600);
       },
       // `setSwiping(false)` here is UNCONDITIONAL, not a response to
       // `setFace` having changed anything - `setFace(next)` is a no-op,
@@ -504,6 +546,8 @@ export default function ContextDock() {
       // one call in the whole cycle that is not allowed to depend on
       // anything else having worked.
       commit: (next: DockFace) => {
+        if (backstop.current) clearTimeout(backstop.current);
+        animatingRef.current = false;
         commitRef.current(next);
         setSwiping(false);
       },
@@ -512,6 +556,8 @@ export default function ContextDock() {
       // ever calls `setFace`, so nothing else would ever ask for a
       // render either; this is the only thing that ends it.
       settle: () => {
+        if (backstop.current) clearTimeout(backstop.current);
+        animatingRef.current = false;
         setSwiping(false);
       },
     }),
@@ -531,10 +577,7 @@ export default function ContextDock() {
   // has no such trap: it is a plain value computed fresh every render,
   // never state, so there is no value it can equal that suppresses the
   // next render, and this effect never has a target it can miss.
-  useLayoutEffect(() => {
-    if (draggingRef.current) return;
-    progress.value = faceIndex;
-  }, [faceIndex, progress]);
+
   const swipe = useMemo(
     () =>
       Gesture.Pan()
@@ -549,6 +592,13 @@ export default function ContextDock() {
         // cycle, so there is nothing to remember about which way is
         // which. Down does nothing on purpose; it is the direction the
         // system itself uses just below here.
+        // ALWAYS runs, where onEnd does not: a gesture the pager takes
+        // over mid-drag is cancelled, not ended. The finger flag is what
+        // holds off the assertion above, so it is not allowed to depend
+        // on a callback that has any way of being skipped.
+        .onFinalize(() => {
+          draggingRef.current = false;
+        })
         .onStart(() => {
           // On ACTIVATION, not on touch-down: the animated style only
           // needs to exist once something is actually being dragged.
