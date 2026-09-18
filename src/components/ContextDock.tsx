@@ -346,8 +346,6 @@ export default function ContextDock() {
   // Read through a ref inside the gesture, which is built once: the
   // gesture must not be rebuilt when the face changes, or it stops
   // activating.
-  const faceRef = useRef(face);
-  faceRef.current = face;
   // Keyed on the SCREEN and on the CONTEXT, because neither alone is
   // early enough or reliable enough on its own. The screen key is read
   // off the navigation state through a subscription and can arrive a
@@ -558,8 +556,35 @@ export default function ContextDock() {
           hand.settleStarted();
           if (committed) {
             hapticButtonDown();
-            const at = ring.indexOf(faceRef.current);
-            const next = ring[(at + 1) % ring.length] ?? ring[0];
+            // WHERE THE STEP IS COUNTED FROM, and why it is not the
+            // stored face any more.
+            //
+            // `face` is one value shared by every screen, and a ring
+            // is a list that each screen writes for itself. The two
+            // disagree constantly - a face carried in from another
+            // desk is not in this one's ring at all, and right after a
+            // swipe the stored one has not caught up with the swipe
+            // that just happened. Counting the step from it therefore
+            // counted from the wrong card: a quick second swipe read
+            // the same stale name and picked the SAME target again,
+            // which is the options card coming up twice in a row -
+            // "свайп знову функції".
+            //
+            // `base` has neither problem. It is a POSITION in the ring
+            // rather than a name, so it cannot refer to a card this
+            // screen does not have; and it is stepped on the UI thread
+            // the instant a swipe commits, so it is never behind one.
+            // It is also the exact number the animation itself runs
+            // on, which means the card that arrives is always the card
+            // the motion was carrying.
+            //
+            // That is also the answer to whether the rings have to be
+            // made the same size everywhere: they do not. Nothing here
+            // needs to know how many cards another screen had - only
+            // where this ring stands right now, and how long it is.
+            const len = ring.length;
+            const at = ((Math.round(base.value) % len) + len) % len;
+            const next = ring[(at + 1) % len] ?? ring[0];
             drag.value = withTiming(
               1,
               { duration: 260, easing: Easing.inOut(Easing.cubic) },
