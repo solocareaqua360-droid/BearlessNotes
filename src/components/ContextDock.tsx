@@ -111,8 +111,15 @@ const BEHIND_EDGE = 3;
 // is PERIODIC: progress 2 and progress 0 in a ring of two give every
 // card the same place, to the pixel. So resetting progress to the front
 // card's index - whenever React gets round to it - cannot be seen.
-const BACK_SCALE = 0.94;
-const BACK_Y = 10;
+// Turned down together, on the user's own report that the card behind
+// was showing far more of itself than a hint - "нижній док занадто
+// видається з-під верхнього". Whatever the exact mechanism, both
+// numbers only ever push the back card FURTHER behind the front one's
+// own edge; there is no way turning them down further reveals more of
+// it. If a real peek is still too large after this, the two constants
+// are cleared and the cause is somewhere else.
+const BACK_SCALE = 0.85;
+const BACK_Y = 4;
 // How high the departing card rises at the peak of its arc. A full card
 // height: short of that the drag never visibly clears the dock's own top
 // edge - "картка навіть не дотягується до верхнього краю дока".
