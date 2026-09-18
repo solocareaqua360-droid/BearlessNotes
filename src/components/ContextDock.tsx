@@ -117,9 +117,9 @@ const BACK_Y = 10;
 // height: short of that the drag never visibly clears the dock's own top
 // edge - "картка навіть не дотягується до верхнього краю дока".
 const RISE_F = 1.0;
-// `eps` is a hundredth of a point, added to translateY and nothing else
-// - see the settle nudge where it is passed in. Always 0 on the UI
-// thread's own path.
+// `eps` is a hundredth of a point added to translateY and to nothing
+// else - see the settle nudge at its only call site. The UI thread's own
+// path always passes 0.
 function slotTransform(i: number, f: number, n: number, cardH: number, eps: number = 0) {
   'worklet';
   const k = Math.floor(f);
@@ -408,31 +408,32 @@ export default function ContextDock() {
   useEffect(() => {
     ringSV.value = ringSize;
   }, [ringSize, ringSV]);
-  // WHY THE RESTING STYLE CARRIES A HUNDREDTH OF A POINT.
+  // Where every card rests, said in plain style objects React commits
+  // along with the cards themselves.
+  // A HUNDREDTH OF A POINT, and the only reason it exists.
   //
-  // Two different things write this view's transform: React, through
-  // the plain style below, and Reanimated, which writes straight to the
-  // native view without telling React. They are not supposed to
-  // overlap - the animated style is only attached while a swipe runs -
-  // but a mapper run already queued on the UI thread can land AFTER the
-  // style has been detached, and nothing ever revokes it: Reanimated
-  // does not restore anything when a style comes off. The card then
-  // shows whatever that last write said, for good.
+  // Two things write this view's transform: React, through the plain
+  // resting style, and Reanimated, which writes straight to the native
+  // view without telling React. They are not meant to overlap - the
+  // animated style is attached only while a swipe runs - but a mapper
+  // run already queued on the UI thread can land AFTER the style has
+  // come off, and Reanimated restores nothing when it does. The card
+  // then keeps that last write for good.
   //
-  // That is the sink, measured off the user's own two screenshots: the
-  // beads beside the dock had not moved by a single pixel, while the
-  // card had gone down 26px and its contents had drawn in by 14px each
-  // side - a scale of exactly 0.94, BACK_SCALE, which is to say the
-  // card was wearing the BACK card's transform while every number in
-  // React said it was the front one.
+  // Measured off the user's own two screenshots, one sound and one
+  // sunk: the beads beside the dock had not moved by a pixel, the card
+  // had gone down 26 and drawn its contents in by 14 each side - a
+  // scale of 0.94 about its centre, which is BACK_SCALE. The card was
+  // wearing the BACK card's transform on a ring of one, where there is
+  // no back card at all.
   //
-  // React cannot fix that on its own, because React's idea of the last
-  // value it sent is unchanged - so it diffs, finds nothing, and sends
-  // nothing. The nudge makes sure there IS something to find: it flips
-  // between 0 and 0.01 every time a swipe settles, so the transform
-  // React commits at that moment is never equal to the one it committed
-  // before, and therefore always reaches the view - carrying the
-  // correct resting placement with it.
+  // React cannot correct that by itself: its record of the last value
+  // it sent is unchanged, so it diffs, finds nothing, and sends
+  // nothing. This flips between 0 and 0.01 every time a swipe settles,
+  // so the transform React commits then is never equal to the one
+  // before it, and therefore always reaches the view - carrying the
+  // right resting placement with it. Nothing else about the swipe
+  // changes; this only makes React's existing answer actually arrive.
   const [settleNudge, setSettleNudge] = useState(0);
   const restStyles = [0, 1, 2].map((i) =>
     slotTransform(i, faceIndex, ringSize, CARD_H, settleNudge % 2 === 1 ? 0.01 : 0)
@@ -447,8 +448,6 @@ export default function ContextDock() {
   const [swiping, setSwiping] = useState(false);
   const faceIndexRef = useRef(faceIndex);
   faceIndexRef.current = faceIndex;
-  const ringSizeRef = useRef(ringSize);
-  ringSizeRef.current = ringSize;
   // The gesture is built once, so everything it reaches has to be
   // reachable through something whose identity never changes.
   const commitRef = useRef<(f: DockFace) => void>(() => {});
@@ -456,13 +455,6 @@ export default function ContextDock() {
   // Whether a finger is actually on the dock right now - the ONLY thing
   // that is allowed to stop the safety net below from correcting things.
   const draggingRef = useRef(false);
-  const settleAgain = useRef<number | null>(null);
-  useEffect(
-    () => () => {
-      if (settleAgain.current !== null) cancelAnimationFrame(settleAgain.current);
-    },
-    []
-  );
   const hand = useMemo(
     () => ({
       // A swipe has begun: pin the animated placement to exactly where
@@ -506,50 +498,21 @@ export default function ContextDock() {
       // anything else having worked.
       commit: (next: DockFace) => {
         commitRef.current(next);
-        hand.finish();
+        setSwiping(false);
+      setSettleNudge((n) => n + 1);
       },
       // The cancelled path - dragged, released short of the threshold,
       // settled back onto the very card it started from. Nothing here
       // ever calls `setFace`, so nothing else would ever ask for a
       // render either; this is the only thing that ends it.
       settle: () => {
-        hand.finish();
-      },
-      // Everything that ends a swipe goes through here, and it does the
-      // two halves in this order on purpose. First the shared values go
-      // back to the resting answer, so the LAST thing Reanimated writes
-      // to the view - including any run already queued on the UI thread
-      // - is the right placement rather than wherever an interrupted
-      // animation happened to stop. Only then does the animated style
-      // come off, with the nudge alongside it so React's own commit
-      // definitely reaches the view too. Either writer landing last now
-      // leaves the same picture.
-      finish: () => {
-        ringSV.value = ringSizeRef.current;
-        cardHSV.value = cardHRef.current;
-        progress.value = faceIndexRef.current;
         setSwiping(false);
-        setSettleNudge((n) => n + 1);
-        // And once more two frames later. A mapper run queued on the UI
-        // thread before the style came off can still land AFTER React's
-        // own commit, and whichever of the two writes last is what
-        // stays on screen. Nudging again once those frames have gone by
-        // means React always gets the last word, whatever the UI thread
-        // was still finishing.
-        if (settleAgain.current !== null) cancelAnimationFrame(settleAgain.current);
-        settleAgain.current = requestAnimationFrame(() => {
-          settleAgain.current = requestAnimationFrame(() => {
-            settleAgain.current = null;
-            setSettleNudge((n) => n + 1);
-          });
-        });
+      setSettleNudge((n) => n + 1);
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
-  const handRef = useRef(hand);
-  handRef.current = hand;
   // THE SAFETY NET. Whatever `faceIndex` the CURRENT screen's ring
   // actually resolves to - for any reason: a screen change, a commit
   // that landed, a commit that turned out to be a no-op because `face`
@@ -565,8 +528,10 @@ export default function ContextDock() {
   // next render, and this effect never has a target it can miss.
   useEffect(() => {
     if (draggingRef.current) return;
-    handRef.current.finish();
-  }, [faceIndex]);
+    progress.value = faceIndex;
+    setSwiping(false);
+    setSettleNudge((n) => n + 1);
+  }, [faceIndex, progress]);
   const swipe = useMemo(
     () =>
       Gesture.Pan()
