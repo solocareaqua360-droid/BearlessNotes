@@ -151,6 +151,14 @@ const FROST_BLUR = 60;
 const FROST_TINT = 0.55;
 // The lighter mark on the thing you are on.
 const HERE_FILL = 'rgba(255,255,255,0.16)';
+// How much smaller than its own button the "here" circle sits. At the
+// button's own size its rim ran right up to the card's top and bottom
+// edge - the exact edge the card BEHIND this one peeks out through when
+// it is the one sliding back, so the rim was the first thing that
+// sliver showed: "видно краю... біле коло вибраного екрану". Pulled in
+// a few points, its rim clears the card's own edge with room to spare,
+// whichever card this happens to be.
+const HERE_SHRINK = 6;
 // Sizes as FRACTIONS OF THE SCREEN'S WIDTH, read off the reference and
 // our own dock side by side at the same pixel scale. Not points: every
 // guess at this phone's density was wrong, and a dock sized in points
@@ -218,6 +226,18 @@ export default function ContextDock() {
     rowHeight: { height: CARD_BUTTON, borderRadius: CARD_BUTTON / 2 },
   };
   const insets = useSafeAreaInsets();
+  // NEVER LOWER THAN THE BEST READING SEEN. Android's own insets can
+  // under-report `bottom` for a frame or two right after a screen
+  // change - not this app's measurement, the platform's - and every
+  // screen shares this one dock, so a dip on ANY screen briefly drags
+  // it down everywhere: "док... опущений трохи нижче... сіпається
+  // вниз... а коли знову на інші столи, то док передає їм своє
+  // положення". A monotonic maximum cannot be wrong in the direction
+  // that shows: it can only ever hold the dock at the best position
+  // already confirmed, never invent a new one.
+  const stableBottomRef = useRef(insets.bottom);
+  if (insets.bottom > stableBottomRef.current) stableBottomRef.current = insets.bottom;
+  const bottomInset = stableBottomRef.current;
   // Three cards, and they are three because of the one thing a
   // navigation dock must never do: the desks used to vanish the moment
   // you stepped into a folder or opened the calendar - "навігація між
@@ -629,7 +649,7 @@ export default function ContextDock() {
                       {desk.active ? (
                         <View style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: DESK / 2 }]}>
                           <Svg width={DESK} height={DESK} style={StyleSheet.absoluteFill} pointerEvents="none">
-                            <Circle cx={DESK / 2} cy={DESK / 2} r={DESK / 2} fill={HERE_FILL} />
+                            <Circle cx={DESK / 2} cy={DESK / 2} r={DESK / 2 - HERE_SHRINK} fill={HERE_FILL} />
                           </Svg>
                           <Ionicons name={desk.icon as keyof typeof Ionicons.glyphMap} size={22} color={theme.glass.ink} />
                         </View>
@@ -666,17 +686,28 @@ export default function ContextDock() {
                       <Text style={[styles.stripLabel, item.anchor && styles.stripLabelAnchor, { color: ink }]}>
                         {item.label}
                       </Text>
-                      {!!item.sub && <Text style={[styles.stripSub, { color: ink }]}>{item.sub}</Text>}
-                      {!!item.marks?.length && (
-                        <View style={styles.stripMarks}>
-                          {item.marks.map((mark, i) => (
+                      {/* Between the number and the weekday now, not
+                          pinned to the card's own bottom edge - down
+                          there they sat in exactly the strip the card
+                          BEHIND this one peeks out through, so a stray
+                          dot was the first thing that sliver showed:
+                          "з країв дока не було видно". A row in the
+                          normal flow, the same width as everything
+                          else in this cell, cannot sit at an edge it
+                          is not part of. Always reserves the room
+                          (`minHeight`) whether or not this day HAS a
+                          mark, so a plain day does not sit taller than
+                          a marked one and shove the weekday down. */}
+                      <View style={styles.stripMarks}>
+                        {!!item.marks?.length &&
+                          item.marks.map((mark, i) => (
                             <View
                               key={`${mark}-${i}`}
                               style={[styles.stripMark, { backgroundColor: mark === 'accent' ? STRIP_MARK_ACCENT : theme.glass.ink }]}
                             />
                           ))}
-                        </View>
-                      )}
+                      </View>
+                      {!!item.sub && <Text style={[styles.stripSub, { color: ink }]}>{item.sub}</Text>}
                     </>
                   );
                   return (
@@ -771,7 +802,7 @@ export default function ContextDock() {
   return (
     <GlassPortal>
       <View
-        style={[styles.wrap, { bottom: DOCK_BOTTOM + insets.bottom, paddingHorizontal: EDGE_INSET }]}
+        style={[styles.wrap, { bottom: DOCK_BOTTOM + bottomInset, paddingHorizontal: EDGE_INSET }]}
         pointerEvents="box-none"
       >
         <View
@@ -1055,10 +1086,11 @@ const styles = StyleSheet.create({
     fontFamily: FONT_REGULAR,
   },
   stripMarks: {
-    position: 'absolute',
-    bottom: 3,
     flexDirection: 'row',
     gap: 3,
+    minHeight: 5,
+    marginTop: 2,
+    alignItems: 'center',
   },
   stripMark: {
     width: 3.5,
