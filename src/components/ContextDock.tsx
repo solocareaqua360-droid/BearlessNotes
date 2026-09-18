@@ -1,6 +1,7 @@
 import { ReactNode, useMemo, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleProp, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming, Easing } from 'react-native-reanimated';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { openCapture } from './CaptureWindow';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -221,6 +222,39 @@ export default function ContextDock() {
   faceRef.current = face;
   const facesRef = useRef(faces);
   facesRef.current = faces;
+  const cardHRef = useRef(CARD_H);
+  cardHRef.current = CARD_H;
+  // The morph - the whole reason this is a swipe and not a tap. 0 is at
+  // rest. Negative is the CURRENT card leaving, travelling up and out;
+  // positive is the NEXT one arriving, travelling up FROM BELOW into
+  // rest - one sign convention, so both halves of the cycle read as the
+  // same upward motion through the stack rather than two different
+  // effects stitched together. A cross-fade was tried for the card->page
+  // move once and judged "дешево" - a morph has to change SHAPE, not
+  // just opacity, or it reads as nothing happening at all.
+  const morph = useSharedValue(0);
+  // What the live drag is allowed to preview before release decides
+  // anything - capped short of a full exit, so letting go mid-drag with
+  // nothing decided has something to spring back FROM.
+  const DRAG_CAP = 0.55;
+  function commitSwap(next: DockFace) {
+    setFace(next);
+    // The old card is fully gone (morph settled at -1); the new one
+    // starts exactly as far below rest as the old one finished above it,
+    // an instant, invisible jump (opacity is 0 at both ends) that keeps
+    // the whole cycle travelling in the one direction the gesture asked
+    // for.
+    morph.value = 1;
+    morph.value = withTiming(0, { duration: 260, easing: Easing.out(Easing.cubic) });
+  }
+  const swipeStyle = useAnimatedStyle(() => {
+    const m = morph.value;
+    const cardH = cardHRef.current;
+    return {
+      transform: [{ translateY: m * cardH * 0.6 }, { scale: 1 - Math.min(1, Math.abs(m)) * 0.08 }],
+      opacity: 1 - Math.min(1, Math.abs(m) / 0.55),
+    };
+  });
   const swipe = useMemo(
     () =>
       Gesture.Pan()
@@ -235,15 +269,29 @@ export default function ContextDock() {
         // cycle, so there is nothing to remember about which way is
         // which. Down does nothing on purpose; it is the direction the
         // system itself uses just below here.
+        .onUpdate((e) => {
+          if (facesRef.current.length < 2) return;
+          const dragged = Math.max(0, -e.translationY) / cardHRef.current;
+          morph.value = -Math.min(DRAG_CAP, dragged);
+        })
         .onEnd((e) => {
-          if (e.translationY > -10) return;
-          // One card on per swipe, round the ring - a stack of three
-          // walks with one direction just as a stack of two did.
           const ring = facesRef.current;
-          if (ring.length < 2) return;
-          hapticButtonDown();
-          const at = ring.indexOf(faceRef.current);
-          setFace(ring[(at + 1) % ring.length] ?? ring[0]);
+          // Short of two cards there is nothing to cycle to - let the
+          // drag itself (already capped) spring back below.
+          const committed = ring.length >= 2 && e.translationY < -10;
+          if (committed) {
+            hapticButtonDown();
+            const at = ring.indexOf(faceRef.current);
+            const next = ring[(at + 1) % ring.length] ?? ring[0];
+            // Finish leaving, THEN swap - the swap has to land after the
+            // card is actually gone, or the new content flashes in under
+            // the old one still animating out.
+            morph.value = withTiming(-1, { duration: 140, easing: Easing.in(Easing.cubic) }, (finished) => {
+              if (finished) runOnJS(commitSwap)(next);
+            });
+          } else {
+            morph.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.cubic) });
+          }
         }),
     []
   );
@@ -406,6 +454,7 @@ export default function ContextDock() {
               кружечок... зроби загальним доком". What it is - a leave, or
               one day something else - is still open; where it stands is
               settled. */}
+          <Animated.View style={swipeStyle}>
           <Frost style={[styles.front, dims.card]} radius={CARD_H / 2}>
           {showLeave && (
             <Pressable onPress={stepOut} style={[styles.leave, { height: CARD_H }]}>
@@ -673,6 +722,7 @@ export default function ContextDock() {
           )}
           </View>
           </Frost>
+          </Animated.View>
           </View>
           </GestureDetector>
           {beads.right ? <Bead bead={beads.right} theme={theme} size={BEAD} /> : <View style={[styles.beadSlot, dims.bead]} />}
