@@ -1,3 +1,5 @@
+import type { ViewStyle } from 'react-native';
+
 // The theme contract: ROLES, never colours.
 //
 // A screen says what a surface IS - the ground, a card on it, the ink on
@@ -276,6 +278,42 @@ const black: Theme = {
   // grey fog rather than as light.
   glow: { near: 'rgba(226,232,240,0.55)', far: 'rgba(191,219,254,0.18)', nearRadius: 2, farRadius: 22, drop: 10 },
 };
+
+// HOW A SURFACE PARTS FROM WHAT IS BEHIND IT, as one style.
+//
+// Lives here rather than in GlassDrop because the glow is not a
+// property of that one component: it is the black theme's whole answer
+// to contrast. The user, looking at the two pills that still carried it
+// (the editor's corner capsule and the Полотно pill - the last two
+// pieces of pre-dock chrome, which is exactly why they were the only
+// things still glowing): "це світіння просто божественне, воно
+// розбавляє чорну тему... тема стає живою".
+//
+// Glow is TWO shadows, never one: a tight bright one right at the shape
+// (the source's own edge) and a wide soft one offset DOWN, where the
+// light lands. An even halo all round reads as "something blurred and
+// unclear" rather than as light; giving the blur a direction is what
+// makes the eye call it light.
+export function liftStyle(theme: Theme, how: Lift | 'none' = theme.lift): ViewStyle {
+  if (how === 'glow') {
+    const g = theme.glow;
+    return {
+      boxShadow: `0px 0px ${g.nearRadius * 2}px ${g.near}, 0px ${g.drop}px ${g.farRadius}px ${g.far}`,
+    } as ViewStyle;
+  }
+  if (how === 'shadow') {
+    return {
+      shadowColor: '#111827',
+      shadowOpacity: 0.18,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 6,
+    };
+  }
+  // 'blur' (the colour theme) and 'none': the glass itself is what parts
+  // it from the screen, and a shadow under it only muddies the blur.
+  return {};
+}
 
 export const THEMES: Record<ThemeKey, Theme> = { colour, white, black };
 export const THEME_ORDER: ThemeKey[] = ['colour', 'white', 'black'];

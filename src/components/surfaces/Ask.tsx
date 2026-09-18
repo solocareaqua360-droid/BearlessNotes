@@ -1,3 +1,4 @@
+import { useLift } from '../../theme/ThemeProvider';
 import { useEffect, useState } from 'react';
 import { Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -98,6 +99,10 @@ export function AskHost() {
   // left up goes down - and while it is going, the window is centred in
   // what the keyboard still covers, not under it.
   const keyboardHeight = useKeyboardHeight();
+  // What parts this window from the screen behind it - the glow in the
+  // black theme, a shadow in the white one, nothing in the colour one,
+  // where the glass already does the job.
+  const lift = useLift();
   useEffect(() => {
     if (current) Keyboard.dismiss();
   }, [current]);
@@ -132,7 +137,7 @@ export function AskHost() {
     // closes and the hardware back button all come with the layer.
     <GlassLayer visible onClose={() => answer('cancel')} intensity={60}>
       <View style={[styles.frame, { paddingBottom: keyboardHeight }]} pointerEvents="box-none">
-      <View style={styles.card}>
+      <View style={[styles.card, lift]}>
         <Text style={styles.title}>{current.title}</Text>
         {!!current.message && <Text style={styles.message}>{current.message}</Text>}
 

@@ -8,7 +8,7 @@ import { BlurView } from 'expo-blur';
 import Svg, { Circle } from 'react-native-svg';
 import { useBlurTarget } from './GlassTarget';
 import { GlassPortal } from './GlassPortal';
-import { useTheme } from '../theme/ThemeProvider';
+import { useLift, useTheme } from '../theme/ThemeProvider';
 import { hapticButtonDown } from '../utils/haptics';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -425,6 +425,20 @@ export default function ContextDock() {
     []
   );
   const cardStyles = [0, 1, 2].map((i) => slotTransform(i, pos, ringSize, CARD_H));
+  // HOW THE DOCK PARTS FROM THE SCREEN. In the black theme that is the
+  // glow, and the glow is the whole reason this is here: the two pills
+  // that still wore it were the editor's pre-dock chrome, the last two
+  // things in the app that had never been moved onto the dock - so
+  // everything that DID move lost it, silently. "Воно розбавляє чорну
+  // тему просто прекрасно... тема стає живою."
+  //
+  // Only the FRONT card takes it. A stack of three lit cards is the
+  // same mistake as a stack of three glass rims - the sliver of a back
+  // card is seven points tall, and a halo on it reads as fog, not as a
+  // second light. Same reason the reference draws the cards behind as
+  // plain bands.
+  const lift = useLift();
+  const ringFloor = Math.floor(pos);
   // The gesture is built once, so what it calls has to be reachable
   // through something whose identity never changes.
   const commitRef = useRef<(f: DockFace) => void>(() => {});
@@ -839,7 +853,7 @@ export default function ContextDock() {
               drifted: two beads on documents, one on the calendar, and
               the same control sat in a different spot on each - "док
               зміщений відносно того що є на екрані документів". */}
-          {beads.left ? <Bead bead={beads.left} theme={theme} size={BEAD} /> : <View style={[styles.beadSlot, dims.bead]} />}
+          {beads.left ? <Bead bead={beads.left} theme={theme} lift={lift} size={BEAD} /> : <View style={[styles.beadSlot, dims.bead]} />}
           <GestureDetector gesture={swipe}>
           <View
             style={[
@@ -867,7 +881,12 @@ export default function ContextDock() {
               // where it stands. No second layer to keep in step.
               <View
                 key={f}
-                style={[styles.cardLayer, dims.card, cardStyles[i]]}
+                style={[
+                  styles.cardLayer,
+                  dims.card,
+                  (((i - ringFloor) % ringSize) + ringSize) % ringSize === 0 && lift,
+                  cardStyles[i],
+                ]}
                 pointerEvents={f === showing ? 'auto' : 'none'}
               >
                 <Frost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
@@ -877,7 +896,7 @@ export default function ContextDock() {
             ))}
           </View>
           </GestureDetector>
-          {beads.right ? <Bead bead={beads.right} theme={theme} size={BEAD} /> : <View style={[styles.beadSlot, dims.bead]} />}
+          {beads.right ? <Bead bead={beads.right} theme={theme} lift={lift} size={BEAD} /> : <View style={[styles.beadSlot, dims.bead]} />}
         </View>
       </View>
     </GlassPortal>
@@ -918,14 +937,26 @@ function Frost({
   );
 }
 
-function Bead({ bead, theme, size }: { bead: DockBead; theme: ReturnType<typeof useTheme>; size: number }) {
+function Bead({
+  bead,
+  theme,
+  lift,
+  size,
+}: {
+  bead: DockBead;
+  theme: ReturnType<typeof useTheme>;
+  // Passed in rather than read here: a bead is drawn twice per dock and
+  // the row above already knows the answer.
+  lift: ViewStyle;
+  size: number;
+}) {
   return (
     <Pressable
       onPress={bead.onPress}
       onLongPress={bead.onLongPress}
       style={{ width: size, height: size, overflow: 'visible' }}
     >
-      <Frost style={[styles.bead, { width: size, height: size }]} radius={size / 2}>
+      <Frost style={[styles.bead, { width: size, height: size }, lift]} radius={size / 2}>
         <Ionicons
           name={bead.icon as keyof typeof Ionicons.glyphMap}
           size={21}

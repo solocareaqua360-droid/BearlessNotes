@@ -4,7 +4,8 @@ import { StatusBar } from 'expo-status-bar';
 import { doc, onSnapshot } from '../firestore';
 import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
-import { DEFAULT_THEME_KEY, THEMES, type Theme, type ThemeKey } from './tokens';
+import { DEFAULT_THEME_KEY, THEMES, liftStyle, type Lift, type Theme, type ThemeKey } from './tokens';
+import type { ViewStyle } from 'react-native';
 import { colorForDocument } from '../utils/documentColor';
 
 // Which theme is on, and how a screen asks for it.
@@ -100,6 +101,15 @@ export function useThemeChoice() {
 //   const styles = useStyles((t) => StyleSheet.create({
 //     card: { backgroundColor: t.surface, borderColor: t.edge.hairline },
 //   }));
+// The theme's own answer to "lift this off the ground", ready to drop
+// into a style array. `how` overrides it for the rare surface that must
+// not lift (a card BEHIND another one in a stack, where three glows
+// read as fog rather than as three lit objects).
+export function useLift(how?: Lift | 'none'): ViewStyle {
+  const theme = useTheme();
+  return useMemo(() => liftStyle(theme, how ?? theme.lift), [theme, how]);
+}
+
 export function useStyles<T>(factory: (theme: Theme) => T): T {
   const theme = useTheme();
   return useMemo(() => factory(theme), [theme]);

@@ -5,7 +5,7 @@ import { BlurView } from 'expo-blur';
 import Svg, { Defs, LinearGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { useTheme } from '../theme/ThemeProvider';
 import { useBlurTarget, useInsideBlurTarget } from './GlassTarget';
-import type { Lift } from '../theme/tokens';
+import { liftStyle, type Lift } from '../theme/tokens';
 
 // A drop of liquid glass, in whatever shape it is asked for.
 //
@@ -119,7 +119,7 @@ export default function GlassDrop({
 
   return (
     <View
-      style={[{ borderRadius: radius }, liftStyle(how, theme.glow), style]}
+      style={[{ borderRadius: radius }, liftStyle(theme, how), style]}
       onLayout={(e) => {
         const { width, height } = e.nativeEvent.layout;
         setBox((prev) => (prev && prev.width === width && prev.height === height ? prev : { width, height }));
@@ -236,37 +236,6 @@ const VIGNETTE_RINGS = [
   { inset: 4.5, width: 3, opacity: 0.28 },
   { inset: 8, width: 4, opacity: 0.12 },
 ];
-
-// How the drop parts from its ground.
-//
-// 'glow' is two shadows, never one: a tight bright one right at the shape
-// - the source's own edge - and a wide soft one offset DOWN, where the
-// light lands. An even halo all round reads as "something blurred and
-// unclear" rather than as light; giving the blur a direction is what
-// makes the eye call it light. The user's own observation, and it is how
-// light actually behaves.
-function liftStyle(
-  how: Lift | 'none',
-  glow: { near: string; far: string; nearRadius: number; farRadius: number; drop: number }
-): ViewStyle {
-  if (how === 'glow') {
-    return {
-      boxShadow: `0px 0px ${glow.nearRadius * 2}px ${glow.near}, 0px ${glow.drop}px ${glow.farRadius}px ${glow.far}`,
-    } as ViewStyle;
-  }
-  if (how === 'shadow') {
-    return {
-      shadowColor: '#111827',
-      shadowOpacity: 0.18,
-      shadowRadius: 14,
-      shadowOffset: { width: 0, height: 8 },
-      elevation: 6,
-    };
-  }
-  // 'blur' (the colour theme) and 'none': the glass itself is what parts
-  // it from the screen, and a shadow under it only muddies the blur.
-  return {};
-}
 
 // An icon standing ON a drop of glass.
 //
