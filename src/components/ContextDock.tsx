@@ -205,6 +205,14 @@ export default function ContextDock() {
       ? 'desks'
       : (faces[0] ?? 'context');
   const stacked = faces.length > 1;
+  // The card the swipe reveals - always ONE ahead of the front, in the
+  // same ring order stepping the gesture already walks. Rendered at
+  // rest, permanently, underneath the front card: nothing about it
+  // animates on its own, because it does not need to - lifting the
+  // front card off is what shows it, exactly like sliding the top card
+  // off a real stack uncovers the one under it.
+  const queued: DockFace | null =
+    faces.length > 1 ? faces[(faces.indexOf(showing) + 1) % faces.length] ?? null : null;
   // How many cards are BEHIND the one in front, drawn as that many
   // edges - the stack says its own depth instead of leaving you to
   // guess how far round the ring you are.
@@ -233,26 +241,18 @@ export default function ContextDock() {
   // move once and judged "дешево" - a morph has to change SHAPE, not
   // just opacity, or it reads as nothing happening at all.
   const morph = useSharedValue(0);
-  // What the live drag is allowed to preview before release decides
-  // anything - capped short of a full exit, so letting go mid-drag with
-  // nothing decided has something to spring back FROM.
-  const DRAG_CAP = 0.55;
   function commitSwap(next: DockFace) {
     setFace(next);
-    // The old card is fully gone (morph settled at -1); the new one
-    // starts exactly as far below rest as the old one finished above it,
-    // an instant, invisible jump (opacity is 0 at both ends) that keeps
-    // the whole cycle travelling in the one direction the gesture asked
-    // for.
-    morph.value = 1;
-    morph.value = withTiming(0, { duration: 260, easing: Easing.out(Easing.cubic) });
+    morph.value = 0;
   }
+  // Only the card in FRONT ever moves - the one underneath is static,
+  // sitting exactly at rest the whole time. Lifting the front one off is
+  // what reveals it, the same way sliding the top card off a real stack
+  // uncovers the one under it - not a fade, an actual uncovering.
   const swipeStyle = useAnimatedStyle(() => {
-    const m = morph.value;
     const cardH = cardHRef.current;
     return {
-      transform: [{ translateY: m * cardH * 0.6 }, { scale: 1 - Math.min(1, Math.abs(m)) * 0.08 }],
-      opacity: 1 - Math.min(1, Math.abs(m) / 0.55),
+      transform: [{ translateY: -morph.value * cardH }, { scale: 1 - Math.min(1, morph.value) * 0.04 }],
     };
   });
   const swipe = useMemo(
@@ -271,22 +271,25 @@ export default function ContextDock() {
         // system itself uses just below here.
         .onUpdate((e) => {
           if (facesRef.current.length < 2) return;
+          // A touch of resistance past a full card's height, so a very
+          // long drag does not send it flying arbitrarily far.
           const dragged = Math.max(0, -e.translationY) / cardHRef.current;
-          morph.value = -Math.min(DRAG_CAP, dragged);
+          morph.value = Math.min(1.15, dragged);
         })
         .onEnd((e) => {
           const ring = facesRef.current;
-          // Short of two cards there is nothing to cycle to - let the
-          // drag itself (already capped) spring back below.
-          const committed = ring.length >= 2 && e.translationY < -10;
+          // A real swipe, not a nudge - distance OR a fast enough flick,
+          // same as any carousel. Short of two cards there is nothing to
+          // cycle to.
+          const committed = ring.length >= 2 && (e.translationY < -40 || e.velocityY < -600);
           if (committed) {
             hapticButtonDown();
             const at = ring.indexOf(faceRef.current);
             const next = ring[(at + 1) % ring.length] ?? ring[0];
-            // Finish leaving, THEN swap - the swap has to land after the
-            // card is actually gone, or the new content flashes in under
-            // the old one still animating out.
-            morph.value = withTiming(-1, { duration: 140, easing: Easing.in(Easing.cubic) }, (finished) => {
+            // Finish rising clear, THEN swap - the swap has to land once
+            // the card has actually cleared the frame, or the change of
+            // content is seen mid-flight instead of once it settles.
+            morph.value = withTiming(1, { duration: 150, easing: Easing.out(Easing.cubic) }, (finished) => {
               if (finished) runOnJS(commitSwap)(next);
             });
           } else {
@@ -382,6 +385,190 @@ export default function ContextDock() {
   // way out is riding at its left edge. The card does not grow, so the
   // buttons give: at full size a fifth thing simply scrolled off the end
   // of the card, which is where the "..." went on the custom database.
+  // One card's whole content, parameterised by WHICH face it draws -
+  // called twice now (see queued/showing below) instead of once, so the
+  // swipe can uncover a real card sitting underneath instead of an empty
+  // sliver. `showLeave` is the same regardless of which face this draws:
+  // it is about whether this SCREEN has a way out, not about which card
+  // is showing.
+  function renderCard(f: DockFace) {
+    return (
+      <>
+        {showLeave && (
+          <Pressable onPress={stepOut} style={[styles.leave, { height: CARD_H }]}>
+            <Ionicons name="chevron-back" size={24} color={theme.glass.ink} />
+            <View style={[styles.leaveRule, { backgroundColor: theme.glass.inkMuted, opacity: 0.4 }]} />
+          </Pressable>
+        )}
+        <View style={styles.face}>
+          {f === 'desks' && desks && (
+            desks.collapsed ? (
+              <View style={[styles.dotsShell, dims.card]}>
+                <Pressable style={styles.dotsRow} onLongPress={openCapture} delayLongPress={400}>
+                  {desks.desks.map((desk) => (
+                    <Pressable
+                      key={desk.key}
+                      hitSlop={6}
+                      onPress={desk.onPress}
+                      onLongPress={openCapture}
+                      delayLongPress={400}
+                    >
+                      <View
+                        style={[
+                          styles.dot,
+                          { backgroundColor: desk.active ? theme.glass.ink : theme.glass.inkMuted },
+                          desk.active && styles.dotActive,
+                        ]}
+                      />
+                    </Pressable>
+                  ))}
+                </Pressable>
+              </View>
+            ) : (
+              <View style={[styles.shell, dims.card]}>
+                <Pressable style={[styles.actionRow, styles.spread]} onLongPress={openCapture} delayLongPress={400}>
+                  {desks.desks.map((desk) => (
+                    <Pressable key={desk.key} onPress={desk.onPress} onLongPress={openCapture} delayLongPress={400}>
+                      {desk.active ? (
+                        <View style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: DESK / 2 }]}>
+                          <Svg width={DESK} height={DESK} style={StyleSheet.absoluteFill} pointerEvents="none">
+                            <Circle cx={DESK / 2} cy={DESK / 2} r={DESK / 2} fill={HERE_FILL} />
+                          </Svg>
+                          <Ionicons name={desk.icon as keyof typeof Ionicons.glyphMap} size={22} color={theme.glass.ink} />
+                        </View>
+                      ) : (
+                        <View style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: DESK / 2 }]}>
+                          <Ionicons name={desk.icon as keyof typeof Ionicons.glyphMap} size={22} color={theme.glass.ink} />
+                        </View>
+                      )}
+                    </Pressable>
+                  ))}
+                </Pressable>
+              </View>
+            )
+          )}
+
+          {f === 'context' && strip && (
+            <View style={[styles.shell, dims.card]}>
+              <ScrollView
+                ref={stripRef}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.stripViewport}
+                onLayout={(e) => {
+                  const width = e.nativeEvent.layout.width;
+                  setStripWidth(width);
+                  stripRef.current?.scrollTo({ x: stripOffsetFor(width), animated: false });
+                }}
+              >
+                {strip.items.map((item) => {
+                  const current = item.key === strip.selected;
+                  const ink = item.anchor ? theme.accent : current ? theme.glass.ink : theme.glass.inkMuted;
+                  const body = (
+                    <>
+                      <Text style={[styles.stripLabel, item.anchor && styles.stripLabelAnchor, { color: ink }]}>
+                        {item.label}
+                      </Text>
+                      {!!item.sub && <Text style={[styles.stripSub, { color: ink }]}>{item.sub}</Text>}
+                      {!!item.marks?.length && (
+                        <View style={styles.stripMarks}>
+                          {item.marks.map((mark, i) => (
+                            <View
+                              key={`${mark}-${i}`}
+                              style={[styles.stripMark, { backgroundColor: mark === 'accent' ? STRIP_MARK_ACCENT : theme.glass.ink }]}
+                            />
+                          ))}
+                        </View>
+                      )}
+                    </>
+                  );
+                  return (
+                    <Pressable key={item.key} onPress={() => strip.onPick(item.key)}>
+                      {current ? (
+                        <View style={[styles.stripItem, dims.rowHeight, styles.here]}>{body}</View>
+                      ) : (
+                        <View style={[styles.stripItem, dims.rowHeight]}>{body}</View>
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+
+          {f === 'context' && trail && (
+            <View style={[styles.shell, styles.trailShell, dims.card]}>
+              <View style={[styles.trailRow, dims.rowHeight]}>
+                <ScrollView ref={trailRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.trailStrip}>
+                  <View ref={targets?.('')} collapsable={false}>
+                    <Pressable onPress={() => trail.onGo('')} style={styles.trailRoot}>
+                      <Ionicons name={icon} size={19} color={theme.glass.ink} />
+                    </Pressable>
+                  </View>
+                  {trail.crumbs.map((segment, index) => {
+                    const isLast = index === trail.crumbs.length - 1;
+                    const target = trail.crumbs.slice(0, index + 1).join('/');
+                    return (
+                      <View key={target} style={styles.trailPair}>
+                        <Ionicons name="chevron-forward" size={13} color={theme.glass.inkMuted} />
+                        {isLast ? (
+                          <View style={[styles.trailCurrent, { borderRadius: CARD_BUTTON / 2 }, styles.here]}>
+                            <Text style={[styles.trailLabel, styles.trailLabelCurrent, { color: theme.glass.ink }]} numberOfLines={1}>
+                              {segment}
+                            </Text>
+                          </View>
+                        ) : (
+                          <View ref={targets?.(target)} collapsable={false}>
+                            <Pressable onPress={() => trail.onGo(target)} style={styles.trailSegment}>
+                              <Text style={[styles.trailLabel, { color: theme.glass.inkMuted }]} numberOfLines={1}>
+                                {segment}
+                              </Text>
+                            </Pressable>
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            </View>
+          )}
+
+          {f === 'actions' && !!actions?.length && (
+            <View style={[styles.shell, styles.actionsShell, dims.card]}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionRow}>
+                {actions.map((action) => (
+                  <Pressable
+                    key={action.key}
+                    onPress={() => {
+                      action.onPress();
+                      if (action.closesStack) setFace('context');
+                    }}
+                    onLongPress={action.onLongPress}
+                    style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: DESK / 2 }, action.active && styles.actionButtonActive]}
+                  >
+                    {action.icon.startsWith('mc:') ? (
+                      <MaterialCommunityIcons
+                        name={action.icon.slice(3) as keyof typeof MaterialCommunityIcons.glyphMap}
+                        size={21}
+                        color={action.active ? theme.accent : theme.glass.ink}
+                      />
+                    ) : (
+                      <Ionicons name={action.icon as keyof typeof Ionicons.glyphMap} size={21} color={action.active ? theme.accent : theme.glass.ink} />
+                    )}
+                    {!!action.badge && (
+                      <Ionicons name={action.badge as keyof typeof Ionicons.glyphMap} size={12} color={theme.glass.ink} style={styles.badge} />
+                    )}
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+        </View>
+      </>
+    );
+  }
+
   const DESK = Math.min(CARD_BUTTON, Math.floor((cardWidth - CARD_PAD * 2 - (showLeave ? LEAVE_W : 0)) / 4));
 
   return (
@@ -448,280 +635,24 @@ export default function ContextDock() {
               </View>
             )}
 
-          {/* ONE piece of glass for the front card. The way out used to be
-              a bead of its own beside the stack - the user asked for it
-              inside the common block instead: "не виділяй його в окремий
-              кружечок... зроби загальним доком". What it is - a leave, or
-              one day something else - is still open; where it stands is
-              settled. */}
-          <Animated.View style={swipeStyle}>
-          <Frost style={[styles.front, dims.card]} radius={CARD_H / 2}>
-          {showLeave && (
-            <Pressable onPress={stepOut} style={[styles.leave, { height: CARD_H }]}>
-              {/* A back chevron and nothing else. It used to carry the
-                  icon of the thing it was leaving, at full size with a
-                  tiny chevron beside it - and inside the card that read
-                  as one more button about the list: "кнопка виходу ніяк
-                  не відображає те що саме вона виконує функцію виходу".
-                  A database's own icon is said by the card behind it. */}
-              <Ionicons name="chevron-back" size={24} color={theme.glass.ink} />
-              <View style={[styles.leaveRule, { backgroundColor: theme.glass.inkMuted, opacity: 0.4 }]} />
-            </Pressable>
-          )}
-          <View style={styles.face}>
-          {showing === 'desks' && desks && (
-            desks.collapsed ? (
-              // The dots a home screen uses to say which page you are on
-              // - still a way to get there, and still what "collapsed"
-              // has meant here since the user first asked for it.
-              <View style={[styles.dotsShell, dims.card]}>
-                <Pressable
-                  style={styles.dotsRow}
-                  onLongPress={openCapture}
-                  delayLongPress={400}
-                >
-                  {desks.desks.map((desk) => (
-                    <Pressable
-                      key={desk.key}
-                      hitSlop={6}
-                      onPress={desk.onPress}
-                      onLongPress={openCapture}
-                      delayLongPress={400}
-                    >
-                      <View
-                        style={[
-                          styles.dot,
-                          { backgroundColor: desk.active ? theme.glass.ink : theme.glass.inkMuted },
-                          desk.active && styles.dotActive,
-                        ]}
-                      />
-                    </Pressable>
-                  ))}
-                </Pressable>
-              </View>
-            ) : (
-              <View style={[styles.shell, dims.card]}>
-                <Pressable
-                  style={[styles.actionRow, styles.spread]}
-                  onLongPress={openCapture}
-                  delayLongPress={400}
-                >
-                  {desks.desks.map((desk) => (
-                    <Pressable
-                      key={desk.key}
-                      onPress={desk.onPress}
-                      onLongPress={openCapture}
-                      delayLongPress={400}
-                    >
-                      {desk.active ? (
-                        // A lens over the bar, not a pane: the tab you
-                        // are on, marked the way this dock marks
-                        // everything you are on.
-                        <View style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: DESK / 2 }]}>
-                          {/* A real circle. The View's own borderRadius -
-                              999, then half the size, then anything - kept
-                              coming up a rounded SQUARE on Android for the
-                              desk you are on. An SVG circle has no radius
-                              to get wrong. */}
-                          <Svg width={DESK} height={DESK} style={StyleSheet.absoluteFill} pointerEvents="none">
-                            <Circle cx={DESK / 2} cy={DESK / 2} r={DESK / 2} fill={HERE_FILL} />
-                          </Svg>
-                          <Ionicons
-                            name={desk.icon as keyof typeof Ionicons.glyphMap}
-                            size={22}
-                            color={theme.glass.ink}
-                          />
-                        </View>
-                      ) : (
-                        <View style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: DESK / 2 }]}>
-                          <Ionicons
-                            name={desk.icon as keyof typeof Ionicons.glyphMap}
-                            size={22}
-                            color={theme.glass.ink}
-                          />
-                        </View>
-                      )}
-                    </Pressable>
-                  ))}
-                </Pressable>
-              </View>
-            )
-          )}
-
-          {showing === 'context' && strip && (
-            <View style={[styles.shell, dims.card]}>
-              <ScrollView
-                ref={stripRef}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.stripViewport}
-                onLayout={(e) => {
-                  const width = e.nativeEvent.layout.width;
-                  setStripWidth(width);
-                  // A scroller that has just appeared is at zero. Put it
-                  // where it belongs in the same frame, unanimated - it was
-                  // not on screen a moment ago, so there is nothing to
-                  // travel from.
-                  stripRef.current?.scrollTo({ x: stripOffsetFor(width), animated: false });
-                }}
-              >
-                {strip.items.map((item) => {
-                  const current = item.key === strip.selected;
-                  // The lens is the day you PICKED, riding in the middle;
-                  // TODAY is said in colour instead. Two sentences, not
-                  // two claims on the same one.
-                  const ink = item.anchor
-                    ? theme.accent
-                    : current
-                      ? theme.glass.ink
-                      : theme.glass.inkMuted;
-                  const body = (
-                    <>
-                      <Text style={[styles.stripLabel, item.anchor && styles.stripLabelAnchor, { color: ink }]}>
-                        {item.label}
-                      </Text>
-                      {!!item.sub && <Text style={[styles.stripSub, { color: ink }]}>{item.sub}</Text>}
-                      {/* The user's own two marks, and their own reason
-                          for them: "дуже маленькі, але вони мене дуже
-                          рятують. Це теж про навігацію." */}
-                      {!!item.marks?.length && (
-                        <View style={styles.stripMarks}>
-                          {item.marks.map((mark, i) => (
-                            <View
-                              key={`${mark}-${i}`}
-                              style={[
-                                styles.stripMark,
-                                { backgroundColor: mark === 'accent' ? STRIP_MARK_ACCENT : theme.glass.ink },
-                              ]}
-                            />
-                          ))}
-                        </View>
-                      )}
-                    </>
-                  );
-                  return (
-                    <Pressable key={item.key} onPress={() => strip.onPick(item.key)}>
-                      {current ? (
-                        <View style={[styles.stripItem, dims.rowHeight, styles.here]}>{body}</View>
-                      ) : (
-                        <View style={[styles.stripItem, dims.rowHeight]}>{body}</View>
-                      )}
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
+          {/* Two pieces of glass, not one - the queued card sits at rest
+              underneath, permanently, so lifting the front one off
+              genuinely UNCOVERS it rather than swapping in once the
+              front has already gone: "за нею повинна проступати інша
+              картка... а зараз під нею нічого". What either of them is -
+              a leave, or one day something else - is still open; where
+              it stands is settled. */}
+          {queued && (
+            <View style={[styles.cardLayer, dims.card]} pointerEvents="none">
+              <Frost style={[styles.front, dims.card]} radius={CARD_H / 2}>
+                {renderCard(queued)}
+              </Frost>
             </View>
           )}
-
-          {showing === 'context' && trail && (
-            <View style={[styles.shell, styles.trailShell, dims.card]}>
-              <View style={[styles.trailRow, dims.rowHeight]}>
-                <ScrollView
-                  ref={trailRef}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.trailStrip}
-                >
-                  {/* The root, as the database's own icon: one press,
-                      one meaning, and it still says which database these
-                      folders belong to now that the bead has gone. */}
-                  <View ref={targets?.('')} collapsable={false}>
-                    <Pressable onPress={() => trail.onGo('')} style={styles.trailRoot}>
-                      <Ionicons name={icon} size={19} color={theme.glass.ink} />
-                    </Pressable>
-                  </View>
-                  {trail.crumbs.map((segment, index) => {
-                    const isLast = index === trail.crumbs.length - 1;
-                    const target = trail.crumbs.slice(0, index + 1).join('/');
-                    return (
-                      <View key={target} style={styles.trailPair}>
-                        <Ionicons name="chevron-forward" size={13} color={theme.glass.inkMuted} />
-                        {isLast ? (
-                          // Where you are, in the lens the dock marks the
-                          // desk you are on with. No target: a card is
-                          // already here.
-                          <View style={[styles.trailCurrent, { borderRadius: CARD_BUTTON / 2 }, styles.here]}>
-                            <Text
-                              style={[styles.trailLabel, styles.trailLabelCurrent, { color: theme.glass.ink }]}
-                              numberOfLines={1}
-                            >
-                              {segment}
-                            </Text>
-                          </View>
-                        ) : (
-                          <View ref={targets?.(target)} collapsable={false}>
-                            <Pressable onPress={() => trail.onGo(target)} style={styles.trailSegment}>
-                              <Text
-                                style={[styles.trailLabel, { color: theme.glass.inkMuted }]}
-                                numberOfLines={1}
-                              >
-                                {segment}
-                              </Text>
-                            </Pressable>
-                          </View>
-                        )}
-                      </View>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-            </View>
-          )}
-
-          {showing === 'actions' && !!actions?.length && (
-            <View style={[styles.shell, styles.actionsShell, dims.card]}>
-              {/* Scrolls, like the path does. A screen with five things
-                  its list can be done TO is not a screen with a design
-                  problem - the card simply holds what fits and the rest
-                  is a thumb away. */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.actionRow}
-              >
-                {actions.map((action) => (
-                  <Pressable
-                    key={action.key}
-                    onPress={() => {
-                      action.onPress();
-                      // Done in one press: the path comes back by itself.
-                      if (action.closesStack) setFace('context');
-                    }}
-                    onLongPress={action.onLongPress}
-                    style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: DESK / 2 }, action.active && styles.actionButtonActive]}
-                  >
-                    {/* An "mc:" prefix names a MaterialCommunityIcons
-                        glyph instead - the board's three canvas tools are
-                        drawn there and nowhere else, and their icons are
-                        what the user already knows them by. */}
-                    {action.icon.startsWith('mc:') ? (
-                      <MaterialCommunityIcons
-                        name={action.icon.slice(3) as keyof typeof MaterialCommunityIcons.glyphMap}
-                        size={21}
-                        color={action.active ? theme.accent : theme.glass.ink}
-                      />
-                    ) : (
-                      <Ionicons
-                        name={action.icon as keyof typeof Ionicons.glyphMap}
-                        size={21}
-                        color={action.active ? theme.accent : theme.glass.ink}
-                      />
-                    )}
-                    {!!action.badge && (
-                      <Ionicons
-                        name={action.badge as keyof typeof Ionicons.glyphMap}
-                        size={12}
-                        color={theme.glass.ink}
-                        style={styles.badge}
-                      />
-                    )}
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </View>
-          )}
-          </View>
-          </Frost>
+          <Animated.View style={[styles.cardLayer, dims.card, swipeStyle]}>
+            <Frost style={[styles.front, dims.card]} radius={CARD_H / 2}>
+              {renderCard(showing)}
+            </Frost>
           </Animated.View>
           </View>
           </GestureDetector>
@@ -807,6 +738,15 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  // The two overlapping layers a card transition stands in - absolutely
+  // positioned so QUEUED and the animated FRONT sit exactly on top of
+  // each other at rest, one hiding the other completely.
+  cardLayer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
   },
   front: {
     width: '100%',
