@@ -422,50 +422,83 @@ export default function ContextDock() {
   // reachable through something whose identity never changes.
   const commitRef = useRef<(f: DockFace) => void>(() => {});
   commitRef.current = setFace;
-  const pending = useRef<DockFace | null>(null);
-  const showingRef = useRef(showing);
-  showingRef.current = showing;
+  // Whether a finger is actually on the dock right now - the ONLY thing
+  // that is allowed to stop the safety net below from correcting things.
+  const draggingRef = useRef(false);
   const hand = useMemo(
     () => ({
       // A swipe has begun: pin the animated placement to exactly where
       // the cards are resting, then let it take over.
       begin: () => {
+        draggingRef.current = true;
         dragBase.value = faceIndexRef.current;
         progress.value = faceIndexRef.current;
         setSwiping(true);
       },
-      // Asked for, not done: the animated style stays on until React is
-      // actually holding the new front card. Taking it off any earlier
-      // would drop the cards back onto the OLD resting places for a
-      // frame, which is the flash all over again.
-      commit: (next: DockFace) => {
-        // Nothing to wait for if the card asked for is the one already
-        // in front - there would be no change of `showing` to hear.
-        if (next === showingRef.current) {
-          pending.current = null;
-          setSwiping(false);
-          return;
-        }
-        pending.current = next;
-        commitRef.current(next);
+      // The finger has already lifted, whichever way this resolves -
+      // said here, in `onEnd` itself, rather than waited for out of
+      // either outcome below. It used to live inside `commit`/`done`,
+      // each reached only from ITS OWN withTiming callback's `finished`
+      // - true exactly when NOTHING interrupted that animation. A
+      // finger lifting and the screen changing underneath it in the
+      // same beat both count as "the animation is now pointless", and
+      // BOTH cancel it (a plain `.value = x` write, which the safety
+      // net below performs, does exactly that) - which means `finished`
+      // comes back false and NEITHER callback ever ran. That is the
+      // whole bug: `swiping` stayed true and `progress` stayed frozen
+      // at wherever the animation was cut off, on a screen the ring
+      // might not even still have that face in - "док... опуститься,
+      // якщо гортати доки на сусідніх столах", fixed only by the very
+      // next swipe, because starting one is the one thing here that
+      // writes `progress` unconditionally. Ending the drag here, before
+      // either branch even starts its animation, means the safety net
+      // is already armed for the whole time that animation runs - so a
+      // screen change during it is corrected on its own next render,
+      // not left for a swipe that may not come for a while.
+      end: () => {
+        draggingRef.current = false;
       },
-      // Nothing was committed, so resting and animated already agree.
-      done: () => {
-        pending.current = null;
+      // `setSwiping(false)` here is UNCONDITIONAL, not a response to
+      // `setFace` having changed anything - `setFace(next)` is a no-op,
+      // scheduling no render at all, exactly when `face` already held
+      // `next` (the sticky-desks reset on a screen change can leave it
+      // there on its own). A no-op is silent: nothing else was ever
+      // going to ask for another render on its behalf, so this is the
+      // one call in the whole cycle that is not allowed to depend on
+      // anything else having worked.
+      commit: (next: DockFace) => {
+        commitRef.current(next);
+        setSwiping(false);
+      },
+      // The cancelled path - dragged, released short of the threshold,
+      // settled back onto the very card it started from. Nothing here
+      // ever calls `setFace`, so nothing else would ever ask for a
+      // render either; this is the only thing that ends it.
+      settle: () => {
         setSwiping(false);
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
+  // THE SAFETY NET. Whatever `faceIndex` the CURRENT screen's ring
+  // actually resolves to - for any reason: a screen change, a commit
+  // that landed, a commit that turned out to be a no-op because `face`
+  // already held that value - is where the dock belongs, full stop.
+  // Runs on every render `faceIndex` changes, which is every render
+  // that could possibly need this, UNLIKE waiting on `showing` to
+  // change (the earlier design): `setFace` is React state, and setting
+  // it to a value it already holds schedules no re-render at all - so
+  // an effect keyed on the state that update was supposed to produce
+  // could wait forever for a render that was never coming. `faceIndex`
+  // has no such trap: it is a plain value computed fresh every render,
+  // never state, so there is no value it can equal that suppresses the
+  // next render, and this effect never has a target it can miss.
   useEffect(() => {
-    // Any change of the front card ends the swipe, not only the one the
-    // swipe asked for: whatever React has landed on, its resting style
-    // is the honest answer from here on.
-    if (!pending.current) return;
-    pending.current = null;
+    if (draggingRef.current) return;
+    progress.value = faceIndex;
     setSwiping(false);
-  }, [showing]);
+  }, [faceIndex, progress]);
   const swipe = useMemo(
     () =>
       Gesture.Pan()
@@ -502,6 +535,7 @@ export default function ContextDock() {
           // same as any carousel. Short of two cards there is nothing to
           // cycle to.
           const committed = ring.length >= 2 && (e.translationY < -40 || e.velocityY < -600);
+          hand.end();
           if (committed) {
             hapticButtonDown();
             const at = ring.indexOf(faceRef.current);
@@ -509,20 +543,29 @@ export default function ContextDock() {
             // Carry the SAME arc on to its end - down onto the back
             // spot - THEN swap, once both cards have actually arrived
             // where a swap would be invisible, rather than mid-flight.
+            // If the ring changes under this before it finishes, the
+            // safety net above corrects `progress` and `swiping` on its
+            // own next render - this callback running or not running is
+            // no longer the only way either of those gets set right.
             progress.value = withTiming(
               dragBase.value + 1,
               { duration: 260, easing: Easing.inOut(Easing.cubic) },
               (finished) => {
+                // Interrupted or not, SOMETHING here has to ask React
+                // for a render - `commit` on the normal path, `settle`
+                // when this animation was cut short by a fresh gesture
+                // or a screen change taking `progress` for itself
+                // before this one finished. Either call ends with the
+                // same unconditional `setSwiping(false)`.
                 if (finished) runOnJS(hand.commit)(next);
+                else runOnJS(hand.settle)();
               }
             );
           } else {
             progress.value = withTiming(
               dragBase.value,
               { duration: 220, easing: Easing.out(Easing.cubic) },
-              (finished) => {
-                if (finished) runOnJS(hand.done)();
-              }
+              () => runOnJS(hand.settle)()
             );
           }
         }),
