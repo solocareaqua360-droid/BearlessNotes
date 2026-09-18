@@ -197,7 +197,14 @@ const colour: Theme = {
     lane: 'rgba(17,24,39,0.05)',
     laneEdge: 'rgba(17,24,39,0.12)',
   },
-  lift: 'blur',
+  // Was 'blur' - "the glass itself does the lifting, a shadow only
+  // muddies it" - true for a card ON the glass, but it left the dock
+  // with NONE of the light black's own dock got: "кольорова здається
+  // якоюсь такою собі в порівнянні з відполірованою чорною". Same
+  // mechanism, tuned to this theme's own amber instead of borrowing
+  // black's cool white/blue - the accent lights itself, not a
+  // colourless imitation of another theme's glow.
+  lift: 'glow',
   glass: {
     blur: 60,
     blurTint: 'dark',
@@ -212,94 +219,102 @@ const colour: Theme = {
     ink: '#DCDCE2',
     inkMuted: '#9C9CA6',
   },
-  glow: { near: 'rgba(255,255,255,0.25)', far: 'rgba(255,255,255,0.10)', nearRadius: 2, farRadius: 14, drop: 6 },
+  glow: { near: 'rgba(245,199,126,0.45)', far: 'rgba(216,148,92,0.18)', nearRadius: 2, farRadius: 16, drop: 8 },
 };
 
 // White: not a flat sheet of paper. The user asked for the drifting
 // clouds to stay, bleached until they are almost nothing, so there is
 // still something under the glass for it to be glass OVER.
+// REBUILT WARM (2026-09-18) - the cool version above shipped and the
+// user's verdict, once it was actually in front of them, was the
+// opposite of the plan's own bet: "біла здається брудною... на білому
+// фоні текст, лінії - все це розмивається в сіру пляму, як брудний
+// снig". The plan had gone cool on purpose ("blue reads as white,
+// yellow reads as warm") - a reasonable-sounding rule that turned out
+// wrong on a real screen. Cool ground + cool navy ink + a plain grey
+// accent are all the SAME family with only lightness between them,
+// which is exactly the recipe for one smudged wash instead of paper
+// with ink on it.
+//
+// The fix the user pointed at themselves - Claude's own chat surface:
+// "не ідеальне біле, є щось схоже на бежеве, але воно гармонійно
+// складається в купу". Not pure white, WARM throughout, one undertone
+// carried from the ground through the ink to the accent - that
+// consistency is what reads as clean, not the lightness.
 const white: Theme = {
   key: 'white',
   name: 'Біла',
   scheme: 'light',
   backdrop: 'clouds',
-  // The reference's ground is not white with a hint of colour: it is a
-  // soft out-of-focus wash edge to edge, and the WINDOWS on it are what
-  // stay white. So the ground is a pale cool grey the blooms fully cover
-  // - a sky, a cold mint, a grey lilac at full strength - and every card
-  // and drop reads as a milk-white window standing on it.
-  clouds: ['#9FC1DD', '#B5D2D3', '#BEC5E0'],
+  // Warm sand/blush/cream, not sky-blue - a wash the ground and the
+  // ink both agree with, rather than one cool layer under warm paper.
+  clouds: ['#E8D9BE', '#E3C7B3', '#DCCFC0'],
   cloudStrength: 1,
-  ground: '#E7EDF2',
-  // A shade off the ground on purpose: in white and black the record
-  // cards lose their own colours (the user's call - "білий означає
-  // білий скрізь"), so the only thing left telling a card from the page
-  // is this step and the shadow under it. Equal to the ground they
-  // would simply disappear.
-  // Opaque on purpose, after a try at letting the wash show through: on
-  // Android an elevation shadow is drawn as if the view were solid and
-  // shows THROUGH a translucent fill - a darker band inside every edge
-  // and a lighter rectangle in the middle, which is exactly what the
-  // user saw. A card takes its colour from being white on a coloured
-  // ground, not from the ground leaking into it.
-  surface: '#FBFCFE',
-  raised: '#FFFFFF',
-  ink: { primary: '#111827', muted: '#6B7280', faint: '#9CA3AF' },
-  // Graphite, not the warm amber: colour in this theme is for danger.
-  accent: '#374151',
-  danger: '#DC2626',
-  edge: { hairline: 'rgba(17,24,39,0.10)', strong: 'rgba(17,24,39,0.18)' },
+  ground: '#EFE8DD',
+  // A shade off the ground, same reason as before - only the step and
+  // the shadow tell a card from the page - just warm now, so the card
+  // reads as brighter paper rather than a colder rectangle on it.
+  surface: '#FBF8F2',
+  raised: '#FFFEFB',
+  // A warm near-black - the SAME undertone the colour theme's own
+  // ground (#2A2522) already carries, so "white" and "colour" read as
+  // dialects of one app rather than two different ones. Navy-black
+  // (#111827) was the other half of the muddiness: cool ink on a warm
+  // page fights the page instead of sitting on it.
+  ink: { primary: '#2B2621', muted: '#7C7166', faint: '#AEA599' },
+  // Still neutral, not the colour theme's amber - danger stays the
+  // only colour here, per the user's own earlier call - but warm and
+  // DARKER than ink.muted rather than a mid-grey that sat right next
+  // to it and vanished into it. Espresso, not graphite.
+  accent: '#4A3C2E',
+  danger: '#C2410C',
+  edge: { hairline: 'rgba(43,32,20,0.10)', strong: 'rgba(43,32,20,0.20)' },
   paper: {
-    fill: '#FFFFFF',
-    ink: '#111827',
-    inkMuted: '#6B7280',
-    inkFaint: '#9CA3AF',
-    edge: '#E5E7EB',
-    tint: '#F3F4F6',
-    selected: '#EFF6FF',
+    fill: '#FFFEFB',
+    ink: '#2B2621',
+    inkMuted: '#7C7166',
+    inkFaint: '#AEA599',
+    edge: '#E7DFD2',
+    tint: '#F3EDE2',
+    selected: '#F5E9D9',
   },
   // The ladder runs the other way up here - the card is the brightest
   // thing and the canvas is a shade of desk under it. A white card on a
   // white canvas would have no edge at all.
   canvas: {
-    ground: '#EDEFF2',
-    card: '#FFFFFF',
-    edge: '#DDE1E7',
-    edgeActive: '#8AB4FF',
-    ink: '#111827',
-    inkMuted: '#6B7280',
-    inkFaint: '#9CA3AF',
-    fab: '#111827',
-    fabInk: '#FFFFFF',
-    lane: 'rgba(17,24,39,0.05)',
-    laneEdge: 'rgba(17,24,39,0.12)',
+    ground: '#EAE2D5',
+    card: '#FFFEFB',
+    edge: '#DED3C1',
+    edgeActive: '#B5793E',
+    ink: '#2B2621',
+    inkMuted: '#7C7166',
+    inkFaint: '#AEA599',
+    fab: '#2B2621',
+    fabInk: '#FFFEFB',
+    lane: 'rgba(43,32,20,0.05)',
+    laneEdge: 'rgba(43,32,20,0.12)',
   },
   lift: 'shadow',
   // On white almost nothing can come from the fill - white glass on a
   // white ground has no contrast to spend. So the body stays thin and
-  // faintly cool (the reference's "white/lavender"), and everything the
-  // eye reads comes from the edge: a bright contour, a rim inside it,
-  // and a vignette strong enough to actually be seen.
+  // warm (cream, not the old "white/lavender"), and everything the eye
+  // reads comes from the edge: a bright contour, a rim inside it, and a
+  // vignette strong enough to actually be seen.
   glass: {
-    // A lighter blur with a NEUTRAL tint: expo-blur's 'light' tint lays
-    // its own white over the picture, and with a 62% body on top the
-    // drops stood on a white backing that let none of the blue through -
-    // the user's words. The body is a third now; the edge (specular, rim,
-    // vignette) is what says "glass", and the wash shows through it.
     blur: 28,
     blurTint: 'default',
-    body: '#FBFCFF',
+    body: '#FDFAF4',
     opacity: 0.34,
     specular: '#FFFFFF',
     specularIntensity: 1,
     rim: '#FFFFFF',
     rimOpacity: 0.9,
-    vignette: '#111827',
+    vignette: '#2B2621',
     vignetteIntensity: 0.22,
-    ink: '#6E6E76',
-    inkMuted: '#9A9AA2',
+    ink: '#847A6E',
+    inkMuted: '#ACA294',
   },
-  glow: { near: 'rgba(17,24,39,0.12)', far: 'rgba(17,24,39,0.10)', nearRadius: 2, farRadius: 18, drop: 8 },
+  glow: { near: 'rgba(43,32,20,0.12)', far: 'rgba(43,32,20,0.10)', nearRadius: 2, farRadius: 18, drop: 8 },
 };
 
 // Black: outlines and glow, the opposite of shadows. The outline does
