@@ -14,6 +14,7 @@ import { hapticButtonDown } from '../utils/haptics';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { DOCK_BOTTOM, dockCardHeight } from '../navigation/dockGeometry';
+import { navigationRef } from '../navigationRef';
 import {
   DockBead,
   DockFace,
@@ -40,6 +41,40 @@ import {
 // and the tab bar stands aside while it is showing (see
 // useNavDockHasContext). One control, drawn in one place, whatever screen
 // is underneath.
+// WHICH SCREEN IS IN FRONT, as one string.
+//
+// The dock does not stand inside the navigator - it is a sibling of it,
+// drawn over everything - so useNavigationState has no navigator to ask.
+// The container's own ref does, and it is the same ref on both builds.
+// The screen you are actually looking at is the leaf at the end of the
+// chain of active routes: the tab inside the stack inside the root.
+function leafRouteKey(): string {
+  if (!navigationRef.isReady()) return '';
+  let state: any = navigationRef.getRootState();
+  let key = '';
+  while (state && typeof state.index === 'number' && state.routes?.[state.index]) {
+    const route = state.routes[state.index];
+    key = route.key;
+    state = route.state;
+  }
+  return key;
+}
+
+function useScreenKey(): string {
+  const [key, setKey] = useState(leafRouteKey);
+  useEffect(() => {
+    const read = () => setKey((prev) => {
+      const next = leafRouteKey();
+      return next === prev ? prev : next;
+    });
+    // The container may have settled between this render and the
+    // subscription below.
+    read();
+    return navigationRef.addListener('state', read);
+  }, []);
+  return key;
+}
+
 const STRIP_ITEM = 38;
 const STRIP_VISIBLE = 5;
 const STRIP_WIDTH = STRIP_ITEM * STRIP_VISIBLE;
@@ -210,17 +245,6 @@ export default function ContextDock() {
   // Lives in the provider now - a screen has to be able to ask for the
   // path back when an action finishes somewhere else.
   const [face, setFace] = useNavDockFace();
-  // Back to where-you-are whenever a context arrives - changing screen,
-  // or stepping into folders from a root that had none. Watching the
-  // context's KIND was not enough: moving between two screens that both
-  // have no path (or both have a path) never changed it, so the stack
-  // stayed on whichever card it had been left on. That is the
-  // randomness the user reported - "ніколи не знаєш, як воно буде".
-  // Back to where-you-are when the SCREEN changes - which desk, which
-  // database, which shape - rather than only when a context appears.
-  // Now that the desks are a context too, "a context arrived" is almost
-  // always true and would never have reset anything.
-  const contextKey = dock ? `${dock.kind}:${dock.icon}` : '';
   // Which card a screen OPENS on. A path is worth seeing straight away -
   // it says where in the database you are standing. A calendar's days
   // are not: the calendar itself is already on the screen above, so the
@@ -233,7 +257,7 @@ export default function ContextDock() {
   // landed on the options card every time - "автоматично вмикається док
   // опцій".
   const opensOn: DockFace = !own ? 'desks' : own.kind === 'strip' ? 'desks' : 'context';
-  useEffect(() => setFace(opensOn), [contextKey, opensOn, setFace]);
+  const screenKey = useScreenKey();
   // The cards this screen actually has, in the order they are wanted:
   // what you are in, what you can do in it, where else you could be. A
   // card with nothing on it is not a card and is simply not in the ring.
@@ -265,6 +289,32 @@ export default function ContextDock() {
   // activating (the whole reason the swipe did not exist at first).
   const faceRef = useRef(face);
   faceRef.current = face;
+  // WHAT SURVIVES A CHANGE OF SCREEN, and what does not.
+  //
+  // A card stays in front on the next screen only if it means the same
+  // thing there. The DESKS do: they are the same four places whatever
+  // you are standing on, and they are also the only way to reach
+  // another desk - drop them on arrival and every step between desks
+  // would cost a swipe to set up the next one. So they stay.
+  //
+  // The ACTIONS do not. The card looks identical and holds four
+  // completely different buttons, so the first press on the new screen
+  // is a press on something you did not mean. The contract already
+  // treats that card as a drawer opened for one thing - see
+  // DockAction's `closesStack`, which puts the context back the moment
+  // an action finishes - and a drawer that follows you between rooms is
+  // not a drawer. It gives way to whatever the new screen opens on.
+  //
+  // Keyed on the SCREEN, not on the context as it used to be. Two
+  // screens can carry contexts of the same kind and the same icon -
+  // files and photos both open on a path with a database's glyph - so
+  // the old key never changed between them and the reset simply did not
+  // happen. That is why this read as arbitrary rather than as sticky:
+  // it depended on which pair of screens you happened to walk between.
+  useEffect(() => {
+    if (faceRef.current === 'desks') return;
+    setFace(opensOn);
+  }, [screenKey, opensOn, setFace]);
   const facesRef = useRef(faces);
   facesRef.current = faces;
   const cardHRef = useRef(CARD_H);
