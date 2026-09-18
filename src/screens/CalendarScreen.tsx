@@ -59,7 +59,7 @@ import { useBlurTarget } from '../components/GlassTarget';
 import SaveRing from '../components/SaveRing';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import ScreenBackdrop from '../components/ScreenBackdrop';
-import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import Menu from '../components/surfaces/Menu';
 
 const ACCENT = '#3B82F6';

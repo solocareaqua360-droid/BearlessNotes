@@ -42,7 +42,7 @@ import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { BlurView } from 'expo-blur';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
-import { RAIL_CLEARANCE , railClear } from '../constants/rail';
+import { railClear } from '../constants/rail';
 import { ask, confirm } from '../components/surfaces/Ask';
 
 const ACCENT = '#8B5CF6';
@@ -268,10 +268,13 @@ export default function BoardsListScreen({
   // Same rule as a database's card grid: a tile stays near 300dp and the
   // grid takes as many columns as fit - two on a phone, more on a wide
   // screen. The content column caps the width it divides.
-  // 20 of padding on the left and the rail's clearance on the right -
-  // the tile width is an exact number of pixels, so it has to be worked
-  // out from the SAME margins the grid actually uses, or the last column
-  // ends up under the buttons.
+  // The tile width is an exact number of pixels, so it has to be worked
+  // out from the SAME margins the grid actually uses. It reads 20 here
+  // because the grid keeps 10 a side (railClear at the call site) - and
+  // this is where the rail's removal was really felt: the sides were
+  // 20 + 90, so two tiles worked out from a screen minus 20 could never
+  // fit in a screen minus 110, and the row wrapped to one column every
+  // time. "Сітка квадратів в один ряд хоча могла бути в два ряди."
   const gridWidth = Math.min(windowWidth, MAX_CONTENT_WIDTH) - 20;
   const tileColumns = Math.max(2, Math.min(4, Math.floor(gridWidth / 300)));
   const tileWidth = Math.floor((gridWidth - 12 * (tileColumns - 1)) / tileColumns);
@@ -686,10 +689,9 @@ const makeStyles = (t: Theme) =>
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
-    paddingLeft: 20,
-    // Clear of the rail, like the row list. paddingBottom comes from the
-    // dock's own real height at the call site - see dockGeometry.
-    paddingRight: RAIL_CLEARANCE,
+    // The sides come from railClear at the call site, and so must the
+    // number the tile width is divided out of - see gridWidth above.
+    // paddingBottom comes from the dock's own real height there too.
   },
   // Room for the bulk-action bar while choosing, so the last board can
   // still be scrolled out from under it.
@@ -725,12 +727,7 @@ const makeStyles = (t: Theme) =>
     width: '49%',
   },
   list: {
-    paddingLeft: 20,
-    // The rail stands at the right edge; the rows stop short of it rather
-    // than running under it - the same clearance the calendar keeps.
-    // paddingBottom comes from the dock's own real height at the call
-    // site - see dockGeometry.
-    paddingRight: RAIL_CLEARANCE,
+    // Sides and paddingBottom both come from the call site.
     gap: 10,
   },
   row: {

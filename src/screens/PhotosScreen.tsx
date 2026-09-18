@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
-import { RAIL_CLEARANCE , railClear } from '../constants/rail';
+import { railClear } from '../constants/rail';
 import {
   ActivityIndicator,
   Image,

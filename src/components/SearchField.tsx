@@ -4,7 +4,6 @@ import { Ionicons } from '@expo/vector-icons';
 import GlassDrop, { GlassIcon } from './GlassDrop';
 import { useTheme } from '../theme/ThemeProvider';
 import { FONT_REGULAR } from '../utils/fonts';
-import { RAIL_CLEARANCE } from '../constants/rail';
 
 // The one search field in the app.
 //
@@ -24,10 +23,8 @@ import { RAIL_CLEARANCE } from '../constants/rail';
 // pill itself stretched the full width and only its text moved in, and
 // the glass ran off the edge of the screen.
 
-export function searchFieldSides(railSide: 'left' | 'right', base: number = 20) {
-  return railSide === 'left'
-    ? { marginLeft: RAIL_CLEARANCE, marginRight: base }
-    : { marginLeft: base, marginRight: RAIL_CLEARANCE };
+export function searchFieldSides(_railSide: 'left' | 'right', base: number = 20) {
+  return { marginHorizontal: base };
 }
 
 export default function SearchField({

@@ -18,21 +18,20 @@ export const NAV_GAP = 6;
 export const NAV_BOTTOM = 24;
 export const RAIL_WIDTH = NAV_BUTTON + NAV_PADDING * 2;
 
-// How much of the screen's width a rail-era capsule claimed - what a row
-// running along the head or the foot still has to stay clear of on the
-// two screens that have not moved to the dock.
-export const RAIL_CLEARANCE = RAIL_RIGHT + RAIL_WIDTH + RAIL_GAP;
-
-// The side of a list that has to stay clear of that capsule.
+// What a list keeps clear of at its sides. PLAIN, EQUAL PADDING NOW -
+// there is no side rail any more, so there is nothing to stand out of
+// the way of. It used to hand one side 90pt: the rail's own width plus
+// its insets, reserved unconditionally, about a quarter of a phone
+// screen. That was the rail's real cost and it outlived the rail by a
+// day - "сітка квадратів в один ряд хоча могла бути в два ряди і папки
+// не до кінця екрану розтягнуті".
 //
-// In a pane the rail stands on the window's OUTER edge, which is the
-// left one - and the clearance stayed where it was, so the cards ran
-// under the buttons on one side and left a wide empty margin on the
-// other. `base` is what that side keeps when the rail is not on it.
-export function railClear(railSide: 'left' | 'right', base: number) {
-  return railSide === 'left'
-    ? { paddingLeft: RAIL_CLEARANCE, paddingRight: base }
-    : { paddingLeft: base, paddingRight: RAIL_CLEARANCE };
+// The signature keeps its first argument, ignored, so that the dozen
+// call sites do not each have to be rewritten to say the same thing.
+// Same shape as `shellClear` in PlainScreenShell, which lost its rail
+// first.
+export function railClear(_railSide: 'left' | 'right', base: number) {
+  return { paddingHorizontal: base };
 }
 
 // Where a toast at the foot of the screen may actually stand.
@@ -45,11 +44,15 @@ export function railClear(railSide: 'left' | 'right', base: number) {
 // not merely cover it - they took its taps. The action sat at the
 // toast's right END, exactly in the rail's column, which is why
 // "Скасувати" did nothing on any screen.
-export function toastClear(railSide: 'left' | 'right', insetBottom: number) {
+export function toastClear(_railSide: 'left' | 'right', insetBottom: number) {
   return {
+    // The dock is still down there and is still drawn above this, so the
+    // height stands. What went is the COLUMN the rail used to run down
+    // one side: the action sat at the toast's far end, in that column,
+    // and now there is nothing there to sit under.
     bottom: insetBottom + NAV_BOTTOM + RAIL_WIDTH + 12,
-    left: railSide === 'left' ? RAIL_CLEARANCE : 16,
-    right: railSide === 'left' ? 16 : RAIL_CLEARANCE,
+    left: 16,
+    right: 16,
   };
 }
 

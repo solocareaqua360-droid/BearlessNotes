@@ -59,7 +59,7 @@ import DownloadToast from '../components/DownloadToast';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import FilePreviewWorker from '../components/FilePreviewWorker';
 import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
-import { CAPSULE_DROP, CHROME_TOP, RAIL_CLEARANCE, RAIL_RIGHT , railClear } from '../constants/rail';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT , railClear } from '../constants/rail';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
 import CardCarryOverlay from '../components/CardCarryOverlay';
