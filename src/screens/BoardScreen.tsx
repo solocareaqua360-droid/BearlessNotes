@@ -86,7 +86,7 @@ import DocumentEditorScreen from './DocumentEditorScreen';
 import { useCanvasWheel } from '../hooks/useCanvasWheel';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { useContextMenu } from '../hooks/useContextMenu';
-import Menu from '../components/surfaces/Menu';
+import Menu, { MENU_WIDTH } from '../components/surfaces/Menu';
 import { FONT_BOLD, FONT_EXTRABOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_ISLAND, GLASS_TEXT_FAINT, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
@@ -1428,6 +1428,8 @@ export default function BoardScreen() {
   const [shapes, setShapes] = useState<BoardShape[]>([]);
   const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
   const [draggedShapeId, setDraggedShapeId] = useState<string | null>(null);
+  // Whether the align/arrange list is open - see alignSelectedCards.
+  const [alignMenuVisible, setAlignMenuVisible] = useState(false);
   const [shapeSheetVisible, setShapeSheetVisible] = useState(false);
   const [editingShape, setEditingShape] = useState<BoardShape | null>(null);
   const [columns, setColumns] = useState<BoardColumn[]>([]);
@@ -2002,6 +2004,10 @@ export default function BoardScreen() {
   // board is doing right now: lit while there is a selection to work with
   // - including while it is being carried - and out again the moment
   // there is not.
+  useEffect(() => {
+    if (selectedCardIds.size < 2) setAlignMenuVisible(false);
+  }, [selectedCardIds]);
+
   const clearSelection = useCallback(() => {
     setSelectedShapeId(null);
     setSelectedCardIds(new Set());
@@ -2672,6 +2678,83 @@ export default function BoardScreen() {
     deleteCards(selectedCardIds);
   }
 
+  // ALIGN AND ARRANGE. Plain state edits, not a gesture - each selected
+  // card's x/y just becomes a different number, and the same effect
+  // that already catches a REMOTE change (see DraggableCard's own
+  // reportedX/Y) is what carries it onto the canvas smoothly; nothing
+  // here has to touch a shared value directly.
+  type AlignEdge = 'left' | 'right' | 'top' | 'bottom' | 'centerX' | 'centerY';
+  function alignSelectedCards(edge: AlignEdge) {
+    setAlignMenuVisible(false);
+    if (selectedCardIds.size < 2) return;
+    const targets = cards.filter((c) => selectedCardIds.has(c.id));
+    const box = (c: BoardCard) => ({
+      left: c.x,
+      right: c.x + widthInColumn(c),
+      top: c.y,
+      bottom: c.y + heightOf(c, cardHeights),
+    });
+    const boxes = targets.map(box);
+    const minLeft = Math.min(...boxes.map((b) => b.left));
+    const maxRight = Math.max(...boxes.map((b) => b.right));
+    const minTop = Math.min(...boxes.map((b) => b.top));
+    const maxBottom = Math.max(...boxes.map((b) => b.bottom));
+    const centerX = (minLeft + maxRight) / 2;
+    const centerY = (minTop + maxBottom) / 2;
+    setCards((prev) =>
+      prev.map((c) => {
+        if (!selectedCardIds.has(c.id)) return c;
+        const w = widthInColumn(c);
+        const h = heightOf(c, cardHeights);
+        switch (edge) {
+          case 'left':
+            return { ...c, x: minLeft };
+          case 'right':
+            return { ...c, x: maxRight - w };
+          case 'top':
+            return { ...c, y: minTop };
+          case 'bottom':
+            return { ...c, y: maxBottom - h };
+          case 'centerX':
+            return { ...c, x: centerX - w / 2 };
+          case 'centerY':
+            return { ...c, y: centerY - h / 2 };
+        }
+      })
+    );
+  }
+
+  // "Розкласти сіткою." Reading order (top to bottom, left to right as
+  // the cards stand NOW), packed into a near-square grid of UNIFORM
+  // cells - the widest and tallest of the selection, so nothing
+  // overlaps whatever the mix of card kinds. Anchored on the
+  // selection's own top-left corner, so the tidy stays where the mess
+  // was rather than jumping to the world's centre.
+  const GRID_ARRANGE_GAP = 24;
+  function arrangeSelectedGrid() {
+    setAlignMenuVisible(false);
+    if (selectedCardIds.size < 2) return;
+    const targets = cards.filter((c) => selectedCardIds.has(c.id));
+    const originX = Math.min(...targets.map((c) => c.x));
+    const originY = Math.min(...targets.map((c) => c.y));
+    const cellW = Math.max(...targets.map((c) => widthInColumn(c))) + GRID_ARRANGE_GAP;
+    const cellH = Math.max(...targets.map((c) => heightOf(c, cardHeights))) + GRID_ARRANGE_GAP;
+    const columns = Math.ceil(Math.sqrt(targets.length));
+    const ordered = [...targets].sort((a, b) => a.y - b.y || a.x - b.x);
+    const nextById = new Map(
+      ordered.map((c, i) => [
+        c.id,
+        { x: originX + (i % columns) * cellW, y: originY + Math.floor(i / columns) * cellH },
+      ])
+    );
+    setCards((prev) =>
+      prev.map((c) => {
+        const next = nextById.get(c.id);
+        return next ? { ...c, ...next } : c;
+      })
+    );
+  }
+
   function disconnectSelectedCards() {
     setConnections((prev) =>
       prev.filter((c) => !selectedCardIds.has(c.fromCardId) && !selectedCardIds.has(c.toCardId))
@@ -2946,6 +3029,17 @@ export default function BoardScreen() {
       ? selectedCardIds.size > 0
         ? [
             { key: 'cancel', icon: 'close-outline', label: 'Вийти', onPress: clearSelection },
+            ...(selectedCardIds.size >= 2
+              ? [
+                  {
+                    key: 'align',
+                    icon: 'mc:align-horizontal-left',
+                    label: 'Вирівняти',
+                    active: alignMenuVisible,
+                    onPress: () => setAlignMenuVisible((v) => !v),
+                  },
+                ]
+              : []),
             ...(onlySelectedCard
               ? [
                   {
@@ -3303,6 +3397,40 @@ export default function BoardScreen() {
             useDockActions above. This floating capsule used to duplicate
             it, leaving the dock showing one idle button directly above a
             second, unrelated menu. */}
+
+        {/* Align/arrange, opened from the dock's "Вирівняти" action -
+            "виділив кілька - «вирівняти по лівому краю / розкласти
+            сіткою». Зараз усе руками." A short list rather than seven
+            more icons crowding the dock's own action row. */}
+        <Menu
+          visible={alignMenuVisible}
+          onClose={() => setAlignMenuVisible(false)}
+          style={{
+            position: 'absolute',
+            left: windowWidth / 2 - MENU_WIDTH / 2,
+            top: windowHeight - dockClear - bottomInset - 340,
+          }}
+          entries={[
+            { kind: 'section', label: 'Вирівняти' },
+            { label: 'Ліворуч', icon: 'arrow-back-outline', onPress: () => alignSelectedCards('left') },
+            {
+              label: 'По центру (гор.)',
+              icon: 'swap-horizontal-outline',
+              onPress: () => alignSelectedCards('centerX'),
+            },
+            { label: 'Праворуч', icon: 'arrow-forward-outline', onPress: () => alignSelectedCards('right') },
+            { kind: 'rule' },
+            { label: 'Вгору', icon: 'arrow-up-outline', onPress: () => alignSelectedCards('top') },
+            {
+              label: 'По центру (верт.)',
+              icon: 'swap-vertical-outline',
+              onPress: () => alignSelectedCards('centerY'),
+            },
+            { label: 'Вниз', icon: 'arrow-down-outline', onPress: () => alignSelectedCards('bottom') },
+            { kind: 'rule' },
+            { label: 'Розкласти сіткою', icon: 'grid-outline', onPress: arrangeSelectedGrid },
+          ]}
+        />
 
         {/* «Меню», where the right button was pressed. Every row calls
             exactly what the selection bar calls - the card is selected
