@@ -44,6 +44,7 @@ import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler
 import Animated, {
   runOnJS,
   scrollTo,
+  useAnimatedReaction,
   useAnimatedRef,
   useAnimatedStyle,
   useSharedValue,
@@ -1358,25 +1359,23 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // with no show behind it is a real dismissal; keyboardDidShow above
       // cancels this.
       //
-      // `setKeyboardHeight(0)` moved INTO this same deferred window
-      // (used to fire eagerly, one line above where this comment used to
-      // start) - it gates the toolbar's mount, the Полотно/select-mode
-      // dock's, the caret-follows-typing scroll and a couple of position
-      // reads besides, and every one of them flickered for the same
-      // reason the pill did: a spurious hide-then-show used to zero it
-      // and put it back within a moment, and none of those five places
-      // had any way to tell that apart from a real dismissal. Tying it
-      // to the SAME decision this block already makes for "is this
-      // block still being edited" fixes all five at once, at the cost
-      // already discussed: a genuine dismissal now takes up to 400ms to
-      // register everywhere that reads it - by then `keyboardSV` (this
-      // comment's own first paragraph) has already animated down close
-      // to 0 in real time, so what lingers is a collapsed pill sitting
-      // near the bottom edge, not a full-height one floating mid-screen.
+      // `setKeyboardHeight(0)` is eager again. It spent one commit
+      // inside the deferred block below, to stop a spurious hide from
+      // flickering everything that reads it - but the price was the
+      // Полотно/select-mode dock arriving 400ms late after an ordinary
+      // dismissal, which was immediately visible. Those two are the
+      // only readers that were ever visible on this path, and they now
+      // take `keyboardOpen` (derived from the frame handler's own live
+      // height - see its own comment) instead, which crosses at the
+      // right instant without a timer and never crosses spuriously.
+      // What still reads `keyboardHeight` after them - the caret-
+      // follows-typing scroll, an embedded-mode capsule offset, the
+      // scroll safety net - wants the plain event value, and a
+      // momentarily wrong one costs them nothing visible.
+      setKeyboardHeight(0);
       if (deactivateTimeoutRef.current) clearTimeout(deactivateTimeoutRef.current);
       deactivateTimeoutRef.current = setTimeout(() => {
         deactivateTimeoutRef.current = null;
-        setKeyboardHeight(0);
         const activeId = focusedBlockIdRef.current;
         if (activeId) {
           inputRefs.current[activeId]?.blur();
@@ -1611,6 +1610,25 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const bottomSpacerStyle = useAnimatedStyle(() => ({
     height: Math.max(160, keyboardSV.value + 80 + EDITOR_TOOLBAR_HEIGHT),
   }));
+  // "Is the keyboard up", taken from the one value that has been proved
+  // clean (the frame handler's own live height) rather than from the
+  // event listeners. Everything that used to read `keyboardHeight` for
+  // this question - most visibly the Полотно/select-mode dock, which
+  // shows only with the keyboard down - now reads this instead, because
+  // `keyboardHeight`'s own reset had to be delayed by 400ms to survive
+  // Android's spurious hide during the recent-apps gesture, and that
+  // delay was plainly visible as the dock arriving late after an
+  // ordinary dismissal. This crosses the moment the keyboard actually
+  // passes the threshold on its own animation - no timer - and during
+  // the spurious gesture the frame handler never fires at all, so it
+  // never crosses spuriously either.
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  useAnimatedReaction(
+    () => keyboardSV.value > 48,
+    (open, previous) => {
+      if (open !== previous) runOnJS(setKeyboardOpen)(open);
+    }
+  );
   // The pinned toolbar rides on the live height, so it comes up (and goes
   // down) glued to the keyboard's top edge rather than appearing at the
   // final position ahead of it.
@@ -3283,7 +3301,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           Gone too while blocks are selected - that is this same slot's
           OTHER face now, see selectedIds.size below, not a second thing
           competing with it for the foot of the screen. */}
-      {!embedded && editorFocused && keyboardHeight <= 0 && selectedIds.size === 0 && (
+      {!embedded && editorFocused && !keyboardOpen && selectedIds.size === 0 && (
         <GlassPortal>
           <View
             style={[styles.docDock, { bottom: NAV_BOTTOM + editorInsets.bottom }]}
@@ -3341,7 +3359,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           was never going to hold five labelled buttons. Replaces the
           old flat dark capsule (still used in embedded/CalendarScreen
           contexts, which have no Полотно dock to share a slot with). */}
-      {!embedded && editorFocused && keyboardHeight <= 0 && selectedIds.size > 0 && (
+      {!embedded && editorFocused && !keyboardOpen && selectedIds.size > 0 && (
         <GlassPortal>
           <View
             style={[styles.docDock, { bottom: NAV_BOTTOM + editorInsets.bottom }]}
