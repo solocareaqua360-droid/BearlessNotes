@@ -1,1 +1,1 @@
-export { useKeyboardHandler as useEditorKeyboard } from 'react-native-keyboard-controller';
+export { useKeyboardHandler as useEditorKeyboard, useKeyboardState } from 'react-native-keyboard-controller';

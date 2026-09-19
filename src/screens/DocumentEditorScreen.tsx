@@ -50,7 +50,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { useEditorKeyboard } from '../hooks/useEditorKeyboard';
+import { useEditorKeyboard, useKeyboardState } from '../hooks/useEditorKeyboard';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   collection,
@@ -1446,6 +1446,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // keyboard then move as one motion, the way iOS does it. The old pass
   // stays as a safety net (it no-ops within a few px of the target).
   const keyboardSV = useSharedValue(0); // live keyboard height, mid-animation
+  // A THIRD "final word" on top of the two already here (the frame-by-
+  // frame handler below, and keyboardDidShow's own correction) - the
+  // user found, reproducibly every time, that switching to another app
+  // and back leaves the pinned toolbar floating above the keyboard with
+  // a gap. Neither existing mechanism is tied to the app's own
+  // foreground/background lifecycle, so whichever one last wrote
+  // `keyboardSV` before backgrounding can be left stale through the
+  // round trip. `useKeyboardState` is the controller's own canonical
+  // reactive state rather than a raw platform event, and re-syncing to
+  // it here is the same "no-ops once already correct" shape as the
+  // other two - it only ever does anything when they were wrong.
+  const controllerKeyboardHeight = useKeyboardState((s) => s.height);
+  useEffect(() => {
+    keyboardSV.value = controllerKeyboardHeight;
+  }, [controllerKeyboardHeight]);
   const syncBaseOffset = useSharedValue(0);
   const syncShift = useSharedValue(0);
   // The active input's bottom edge (screen coords) and the list offset at

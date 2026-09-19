@@ -9,7 +9,7 @@ import GlassDrop from './GlassDrop';
 import { useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { GLASS_EDGE, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
-import { NAV_BUTTON, NAV_GAP, NAV_PADDING } from '../constants/rail';
+import { NAV_GAP } from '../constants/rail';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 
 // Kept as fixed crayons, not the theme's own accent or its card palette:
@@ -20,17 +20,34 @@ import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 const TEXT_COLORS = ['#111827', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
 const HIGHLIGHT_COLORS = ['#FEF08A', '#BBF7D0', '#BFDBFE', '#FBCFE8', '#E9D5FF'];
 
+// Near-opaque, overriding the theme's own (0.05-0.55, tuned for a
+// capsule floating over a mostly-still screen). This one floats over
+// the exact text being read and scrolled underneath it while it types
+// - the user's own report, with a screenshot: the theme's translucency
+// let that scrolling text show straight through, unlike every other
+// face of this dock, which sit over calmer ground.
+const GLASS_OPACITY = 0.94;
+
 export type ToolbarSelection = { blockId: string; start: number; end: number };
 
-// The pill's real height - NAV_BUTTON tall inside, NAV_PADDING all
-// round, same as every other face of this dock (docDock, the
-// select-mode bar). Computed rather than a separate literal: the
-// screen needs this exact number too (the list's bottom padding and
-// the "scroll the focused block into view" maths both reserve exactly
-// this much room above the keyboard), and the one time this bar's own
-// height and that reserved space drifted apart, the next block's text
-// showed through the gap.
-export const EDITOR_TOOLBAR_HEIGHT = NAV_BUTTON + NAV_PADDING * 2;
+// Its OWN button size, smaller than the rest of this dock's NAV_BUTTON
+// (48) - measured against the user's own complaint, on-device, that the
+// glass version came out taller than the flat bar it replaced and
+// covered noticeably more text. This bar sits directly over the block
+// being typed in, where every extra pixel of height is a line of text
+// the writer can no longer see while they write it; the Полотно/
+// select-mode faces of this dock sit over calmer ground and can afford
+// to be roomier. 36 + 4 padding each side = 44 - the flat bar's own old
+// height, restored exactly rather than guessed at again.
+const TOOLBAR_BUTTON = 36;
+const TOOLBAR_PADDING = 4;
+
+// Computed, not a separate literal: the screen needs this exact number
+// too (the list's bottom padding and the "scroll the focused block into
+// view" maths both reserve exactly this much room above the keyboard),
+// and the one time this bar's own height and that reserved space
+// drifted apart, the next block's text showed through the gap.
+export const EDITOR_TOOLBAR_HEIGHT = TOOLBAR_BUTTON + TOOLBAR_PADDING * 2;
 
 type Props = {
   // The block actions apply to. null means no block is focused (e.g. the
@@ -96,7 +113,7 @@ export default function EditorToolbar({
   if (activeSelection) {
     return (
       <View style={styles.shellWrap}>
-        <GlassDrop style={styles.shell}>
+        <GlassDrop style={styles.shell} glassOpacity={GLASS_OPACITY}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -141,7 +158,7 @@ export default function EditorToolbar({
 
   return (
     <View style={styles.shellWrap}>
-      <GlassDrop style={styles.shell}>
+      <GlassDrop style={styles.shell} glassOpacity={GLASS_OPACITY}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -185,16 +202,14 @@ export default function EditorToolbar({
 }
 
 const makeStyles = (t: Theme) => StyleSheet.create({
-  // Centers the pill and caps its width - the exact same shape as
-  // docDock/docDockShell (documentEditorStyles.ts), reproduced here
-  // rather than imported so this component stays self-contained; the
-  // shared constants (NAV_PADDING/NAV_GAP/NAV_BUTTON) are what actually
-  // keep the two pixel-identical.
+  // The same PILL SHAPE as docDock/docDockShell (centred, capped
+  // width, GlassDrop) - but its own, smaller size: see TOOLBAR_BUTTON's
+  // own comment for why this one can't afford NAV_BUTTON's 48.
   shellWrap: {
     alignItems: 'center',
   },
   shell: {
-    padding: NAV_PADDING,
+    padding: TOOLBAR_PADDING,
     maxWidth: '88%',
   },
   formatRow: {
@@ -213,8 +228,8 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     paddingHorizontal: 4,
   },
   iconButton: {
-    width: NAV_BUTTON,
-    height: NAV_BUTTON,
+    width: TOOLBAR_BUTTON,
+    height: TOOLBAR_BUTTON,
     alignItems: 'center',
     justifyContent: 'center',
   },
