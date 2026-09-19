@@ -835,8 +835,15 @@ export default function ContextDock() {
     // into the room the split opened up on every layer, attaching or
     // not, since nothing else would be there to share that space with
     // on a back layer.
+    // A SEPARATE style, never `styles.face` with overrides bolted on.
+    // `flex: 1` in React Native is three things - flexGrow 1, flexShrink
+    // 1 AND flexBasis 0% - and overriding only the first two leaves the
+    // basis at zero, which is exactly what shipped: the ring's own zone
+    // collapsed to no width at all, its icons overflowed it (nothing
+    // clips without overflow:hidden) and landed on top of the actions -
+    // "на документах та дошках іконки наклались".
     const faceStyle = showSplitActions
-      ? [styles.face, { flexGrow: 0, flexShrink: 0, width: faceWidthWhenSplit }]
+      ? [styles.faceFixed, { width: faceWidthWhenSplit }]
       : styles.face;
     return (
       <>
@@ -1412,6 +1419,14 @@ const styles = StyleSheet.create({
   },
   face: {
     flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  // The same thing at a WIDTH THAT IS SAID, for when the split gives
+  // this zone a neighbour to share the card with. Deliberately not
+  // `face` plus overrides - see renderCard's own comment on what that
+  // cost.
+  faceFixed: {
     minWidth: 0,
     justifyContent: 'center',
   },
