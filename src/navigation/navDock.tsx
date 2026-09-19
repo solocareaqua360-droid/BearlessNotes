@@ -193,6 +193,19 @@ type Value = {
   // So it is DECLARED by the screen, not inferred.
   prefersActions: boolean;
   publishPrefersActions: (prefers: boolean) => void;
+  // Whether the screen showing wants the stack WIDER than usual.
+  //
+  // The user's own idea, for the note's select mode: nine actions in a
+  // row that holds four is a lot of scrolling, and the room is right
+  // there - a note publishes no beads, so the two slots either side of
+  // the stack stand empty the whole time. Declared while the selection
+  // lasts, the card grows into them and shrinks back after.
+  //
+  // It is a MORPH in the sense this project means it (see the card-to-
+  // page note in the navigation plan): the shape changes, the object
+  // does not. Nothing fades into anything.
+  wide: boolean;
+  publishWide: (wide: boolean) => void;
 };
 
 const NavDockContext = createContext<Value | null>(null);
@@ -301,6 +314,10 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
   const publishPrefersActions = useCallback((next: boolean) => {
     setPrefersActions((prev) => (prev === next ? prev : next));
   }, []);
+  const [wide, setWide] = useState(false);
+  const publishWide = useCallback((next: boolean) => {
+    setWide((prev) => (prev === next ? prev : next));
+  }, []);
   // A new context is a new question, so a context stepped out of does not
   // stay stepped out of once you have gone somewhere else.
   const contextKey = context ? `${context.kind}:${context.icon}` : '';
@@ -327,6 +344,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       publishTabsInFlux,
       prefersActions,
       publishPrefersActions,
+      wide,
+      publishWide,
     }),
     [
       face,
@@ -347,6 +366,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       publishTabsInFlux,
       prefersActions,
       publishPrefersActions,
+      wide,
+      publishWide,
     ]
   );
   return <NavDockContext.Provider value={value}>{children}</NavDockContext.Provider>;
@@ -545,6 +566,22 @@ export function useDockOpensOnActions(prefers: boolean) {
 
 export function useNavDockPrefersActions(): boolean {
   return useContext(NavDockContext)?.prefersActions ?? false;
+}
+
+// See `wide`. Published while focused and cleared on the way out, so a
+// screen left mid-selection does not hand the next one a stretched dock.
+export function useDockWide(wide: boolean) {
+  const publish = useContext(NavDockContext)?.publishWide;
+  const focused = useIsFocused();
+  useEffect(() => {
+    if (!publish) return;
+    publish(focused && wide);
+    return () => publish(false);
+  }, [publish, focused, wide]);
+}
+
+export function useNavDockWide(): boolean {
+  return useContext(NavDockContext)?.wide ?? false;
 }
 
 // What a screen calls when an action has FINISHED somewhere else - a

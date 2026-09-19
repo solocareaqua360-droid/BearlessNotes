@@ -26,6 +26,7 @@ import {
   useNavDockLeave,
   useNavDockOwnContext,
   useNavDockPrefersActions,
+  useNavDockWide,
   useNavDockTabsInFlux,
   useNavDockTargets,
 } from '../navigation/navDock';
@@ -221,6 +222,9 @@ export default function ContextDock() {
   // folder deep the path card shrank to a single word and the whole row
   // bunched up on the left. A card is four buttons wide whatever it
   // holds: the width between the beads, every time, on every screen.
+  // The card at REST, with both bead slots standing. `cardWidthNow`
+  // below is the one anything drawn actually uses - it grows into those
+  // slots while a screen asks for a wider dock (see `stretch`).
   const cardWidth = rowWidth - BEAD * 2 - GAP * 2;
   // A desk button is the biggest circle FOUR of which fit in the card
   // side by side - and never more than the card's own inner height.
@@ -439,6 +443,57 @@ export default function ContextDock() {
     []
   );
   const cardStyles = [0, 1, 2].map((i) => slotTransform(i, pos, ringSize, CARD_H));
+  // THE STRETCH, 0..1 - see useDockWide. The user's idea: while a note
+  // has blocks selected its card carries nine actions, and the room for
+  // them is already standing empty, because a note publishes no beads
+  // and an empty bead slot is kept rather than closed up (so the dock
+  // sits in the same place on every screen).
+  //
+  // Only where there is actually nothing in those slots. A real bead is
+  // a fixed circle with an icon in it; shrinking one would squeeze the
+  // icon out of its own capsule, and hiding it would take away a control
+  // the screen asked for. No bead, no conflict.
+  //
+  // Animated on the SAME hand-rolled clock as the stack's own settle,
+  // deliberately: this file has exactly one animation mechanism and
+  // everything that reads a number reads it from React state on the same
+  // frame. A Reanimated shared value here would be a second clock, and
+  // the widths, the button sizes and the card positions would each be
+  // right on a different one.
+  const wideWanted = useNavDockWide() && !beads.left && !beads.right;
+  const [stretch, setStretch] = useState(wideWanted ? 1 : 0);
+  const stretchRaf = useRef<number | null>(null);
+  const stretchRef = useRef(stretch);
+  stretchRef.current = stretch;
+  useEffect(() => {
+    const to = wideWanted ? 1 : 0;
+    const from = stretchRef.current;
+    if (from === to) return;
+    if (stretchRaf.current !== null) cancelAnimationFrame(stretchRaf.current);
+    const t0 = Date.now();
+    const step = () => {
+      const k = Math.min(1, (Date.now() - t0) / 220);
+      // Same ease-out shape the stack settles with: quick away from the
+      // old width, slow into the new one.
+      const e = 1 - Math.pow(1 - k, 3);
+      setStretch(from + (to - from) * e);
+      if (k < 1) {
+        stretchRaf.current = requestAnimationFrame(step);
+        return;
+      }
+      stretchRaf.current = null;
+    };
+    stretchRaf.current = requestAnimationFrame(step);
+    return () => {
+      if (stretchRaf.current !== null) cancelAnimationFrame(stretchRaf.current);
+      stretchRaf.current = null;
+    };
+  }, [wideWanted]);
+  // What the bead slots give up, and what the card takes. Continuous in
+  // `stretch`, so every frame of the morph is a real width rather than a
+  // step between two of them.
+  const beadSlotW = BEAD * (1 - stretch);
+  const cardWidthNow = rowWidth - beadSlotW * 2 - GAP * 2;
   // HOW THE DOCK PARTS FROM THE SCREEN. In the black theme that is the
   // glow, and the glow is the whole reason this is here: the two pills
   // that still wore it were the editor's pre-dock chrome, the last two
@@ -862,12 +917,12 @@ export default function ContextDock() {
     );
   }
 
-  const DESK = Math.min(CARD_BUTTON, Math.floor((cardWidth - CARD_PAD * 2 - (showLeave ? LEAVE_W : 0)) / 4));
+  const DESK = Math.min(CARD_BUTTON, Math.floor((cardWidthNow - CARD_PAD * 2 - (showLeave ? LEAVE_W : 0)) / 4));
   // An action button carries a word, so unlike a desk it is not a
   // circle and takes the full quarter of the card. Divided by four
   // whatever the count, so the buttons are the same size on a screen
   // with two actions and on one with four.
-  const ACT_W = Math.max(DESK, Math.floor((cardWidth - CARD_PAD * 2 - (showLeave ? LEAVE_W : 0)) / 4));
+  const ACT_W = Math.max(DESK, Math.floor((cardWidthNow - CARD_PAD * 2 - (showLeave ? LEAVE_W : 0)) / 4));
   const ACT_ICON = 19;
 
   return (
@@ -894,7 +949,11 @@ export default function ContextDock() {
               drifted: two beads on documents, one on the calendar, and
               the same control sat in a different spot on each - "док
               зміщений відносно того що є на екрані документів". */}
-          {beads.left ? <Bead bead={beads.left} theme={theme} lift={lift} size={BEAD} /> : <View style={[styles.beadSlot, dims.bead]} />}
+          {beads.left ? (
+            <Bead bead={beads.left} theme={theme} lift={lift} size={BEAD} />
+          ) : (
+            <View style={[styles.beadSlot, dims.bead, { width: beadSlotW }]} />
+          )}
           <GestureDetector gesture={swipe}>
           <View
             style={[
@@ -906,7 +965,7 @@ export default function ContextDock() {
               // alignItems) in a taller row, it dropped toward the
               // middle instead of sitting flush at the top: "док
               // змістився вниз".
-              { width: cardWidth, height: CARD_H + BEHIND_EDGE * 2, paddingBottom: BEHIND_EDGE * 2 },
+              { width: cardWidthNow, height: CARD_H + BEHIND_EDGE * 2, paddingBottom: BEHIND_EDGE * 2 },
             ]}
           >
             {/* Every card this screen's stack holds, mounted once and
@@ -932,7 +991,11 @@ export default function ContextDock() {
             ))}
           </View>
           </GestureDetector>
-          {beads.right ? <Bead bead={beads.right} theme={theme} lift={lift} size={BEAD} /> : <View style={[styles.beadSlot, dims.bead]} />}
+          {beads.right ? (
+            <Bead bead={beads.right} theme={theme} lift={lift} size={BEAD} />
+          ) : (
+            <View style={[styles.beadSlot, dims.bead, { width: beadSlotW }]} />
+          )}
         </View>
       </View>
     </GlassPortal>

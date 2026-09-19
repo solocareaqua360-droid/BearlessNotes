@@ -145,6 +145,7 @@ import {
   useDockActions,
   useDockLeave,
   useDockOpensOnActions,
+  useDockWide,
   useDockShowContext,
   useNavDockFace,
 } from '../navigation/navDock';
@@ -1810,6 +1811,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // for a list at its root, wrong here, where the actions are the whole
   // reason this note stopped drawing a dock of its own.
   useDockOpensOnActions(!embedded);
+  // ...and, while blocks are selected, to STRETCH. The user's own idea:
+  // the selection's row carries nine actions where a card holds four,
+  // and the room is already there - a note publishes no beads, so the
+  // slots either side of the stack stand empty the whole time. The card
+  // grows into them for as long as the selection lasts.
+  useDockWide(!embedded && isSelectMode);
   const showActions = () => setDockFace('actions');
   const dockLive = !embedded && editorFocused && !keyboardOpen;
   useDockActions(
