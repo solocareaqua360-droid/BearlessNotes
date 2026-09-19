@@ -481,16 +481,38 @@ export default function ContextDock() {
     : own.kind === 'strip'
       ? 'desks'
       : 'context';
+  // Whether the ring has anything ELSE for actions to be split FROM.
+  //
+  // `desksCard` is null on every screen pushed above the tab navigator -
+  // a database opened from "Більше", a board, a NOTE - because the tab
+  // bar that publishes it is not the focused route there (see
+  // FloatingIslandTabBar's own `tabsFocused`). At such a screen's own
+  // root, `own` is null too (no path yet), so both halves of `dock` are
+  // null at once. Pulling 'actions' out of the ring in THAT state left
+  // nothing for the split's zone to attach to (it grows onto the ring's
+  // OWN front layer - see `attach` below) and nothing for `showLeave`'s
+  // chevron either, since both are drawn inside a ring layer: the whole
+  // dock vanished down to its two beads - "в базах взагалі док на
+  // внутрішньому дисплеї пропав".
+  //
+  // So a split zone is only worth having when it is actually splitting
+  // FROM something. With nothing else in the ring, actions simply stays
+  // there as its one member - exactly what narrow mode has always done,
+  // and the reason this never showed up as a bug on the note itself: a
+  // note has no context of its own either, so its own actions
+  // (Полотно/Референси) were never pulled out to begin with.
+  const ringHasOtherContent = !!own || !!desksCard;
   // The cards this screen actually has, in the order they are wanted:
   // what you are in, what you can do in it, where else you could be. A
   // card with nothing on it is not a card and is simply not in the ring.
   //
   // 'actions' drops out of the ring on the split - the front layer
   // carries it permanently instead (see `showSplitActions` below), and
-  // the same thing reachable two ways is not a feature.
+  // the same thing reachable two ways is not a feature - but only when
+  // there IS a front layer for it to move onto (`ringHasOtherContent`).
   const faces: DockFace[] = [
     ...(own ? (['context'] as DockFace[]) : []),
-    ...(actions?.length && !splitActive ? (['actions'] as DockFace[]) : []),
+    ...(actions?.length && !(splitActive && ringHasOtherContent) ? (['actions'] as DockFace[]) : []),
     ...(desksCard ? (['desks'] as DockFace[]) : []),
   ];
   // When the card asked for is not in this screen's ring, fall back to
@@ -921,8 +943,16 @@ export default function ContextDock() {
   // above zero - otherwise the zone would unmount the instant a screen
   // with no actions arrived, and there would be nothing left on screen
   // for the shrink to happen to.
+  //
+  // ALSO gated on `ringHasOtherContent` - see `faces`'s own comment.
+  // Without it this zone would try to attach to a ring that has nothing
+  // else in it and nowhere to attach, on the exact screens (a pushed
+  // database or note at its own root) where `faces` already keeps
+  // 'actions' in the ring instead of pulling it out.
   const showSplitActions =
-    (splitActionsCount > 0 || actionsEased > 0.5 || dividerEased > 0.5) && (splitActive || split > 0.001);
+    ringHasOtherContent &&
+    (splitActionsCount > 0 || actionsEased > 0.5 || dividerEased > 0.5) &&
+    (splitActive || split > 0.001);
   // The ring's own content, confined to exactly this width whenever a
   // split exists anywhere on this screen - see renderCard's own comment
   // on why every layer needs this, not only the one attaching the zone.
