@@ -1335,8 +1335,16 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     });
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
       cancelDismissFallback();
-      setKeyboardHeight(0);
-      keyboardSV.value = 0;
+      setDbgSource('hide');
+      // NOT reset here any more (2026-09-19): `keyboardSV` is the frame
+      // handler's alone now (onMove/onEnd, confirmed clean by direct
+      // measurement) - on a REAL dismissal those already carry it down
+      // to 0 in real time, live with the keyboard's own animation, so
+      // forcing it here was always redundant on a genuine close and was
+      // the exact line that made the pill snap during Android's
+      // recent-apps gesture's spurious hide (see the two diagnostic
+      // rounds above this comment for the measurements).
+      //
       // Back-gesture dismissal hides the keyboard WITHOUT blurring the
       // EditText on Android, so the active block would otherwise stay a
       // live input with the keyboard down - the one place a swipe still
@@ -1349,9 +1357,26 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // that hide killed the block that had just been tapped. Only a hide
       // with no show behind it is a real dismissal; keyboardDidShow above
       // cancels this.
+      //
+      // `setKeyboardHeight(0)` moved INTO this same deferred window
+      // (used to fire eagerly, one line above where this comment used to
+      // start) - it gates the toolbar's mount, the Полотно/select-mode
+      // dock's, the caret-follows-typing scroll and a couple of position
+      // reads besides, and every one of them flickered for the same
+      // reason the pill did: a spurious hide-then-show used to zero it
+      // and put it back within a moment, and none of those five places
+      // had any way to tell that apart from a real dismissal. Tying it
+      // to the SAME decision this block already makes for "is this
+      // block still being edited" fixes all five at once, at the cost
+      // already discussed: a genuine dismissal now takes up to 400ms to
+      // register everywhere that reads it - by then `keyboardSV` (this
+      // comment's own first paragraph) has already animated down close
+      // to 0 in real time, so what lingers is a collapsed pill sitting
+      // near the bottom edge, not a full-height one floating mid-screen.
       if (deactivateTimeoutRef.current) clearTimeout(deactivateTimeoutRef.current);
       deactivateTimeoutRef.current = setTimeout(() => {
         deactivateTimeoutRef.current = null;
+        setKeyboardHeight(0);
         const activeId = focusedBlockIdRef.current;
         if (activeId) {
           inputRefs.current[activeId]?.blur();
