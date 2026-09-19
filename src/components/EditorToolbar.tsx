@@ -30,6 +30,13 @@ const GLASS_OPACITY = 0.94;
 
 export type ToolbarSelection = { blockId: string; start: number; end: number };
 
+// What the bar offers on the canvas: the actions that CONVERT the block
+// under the caret, and nothing that inserts a new one. Same list, same
+// order, same icons as on the page - a button must not change meaning
+// between two views of one document.
+const CANVAS_ACTION_KEYS: BlockAction[] = ['heading', 'bulleted', 'numbered', 'checkbox', 'code'];
+const CANVAS_ACTIONS = BLOCK_ACTIONS.filter((a) => CANVAS_ACTION_KEYS.includes(a.key));
+
 // Its OWN button size, smaller than the rest of this dock's NAV_BUTTON
 // (48) - measured against the user's own complaint, on-device, that the
 // glass version came out taller than the flat bar it replaced and
@@ -65,6 +72,13 @@ type Props = {
   onRedo: () => void;
   onApplyMarker: (open: string, close: string) => void;
   onApplyColor: (kind: 'c' | 'h', hex: string) => void;
+  // On the canvas the insert actions stand down. They put a NEW block
+  // after the focused one, and "after" is a word the page has and the
+  // canvas does not - a card has a place on a surface, and the canvas's
+  // own "+" is what knows where to put one. What is left is the half
+  // that acts on the card you are already typing in: undo/redo, the
+  // type conversions, and the whole format row.
+  canvas?: boolean;
 };
 
 // The editor's one toolbar, pinned above the keyboard whenever a block is
@@ -99,6 +113,7 @@ export default function EditorToolbar({
   onRedo,
   onApplyMarker,
   onApplyColor,
+  canvas,
 }: Props) {
   // Same glass pill as the docDock below the block list - the
   // navigation redesign's second step, folding what used to be a flat
@@ -184,7 +199,7 @@ export default function EditorToolbar({
             <Ionicons name="arrow-redo-outline" size={22} color={canRedo ? GLASS_TEXT : GLASS_TEXT_FAINT} />
           </Pressable>
           <View style={styles.divider} />
-          {BLOCK_ACTIONS.map((action) => (
+          {(canvas ? CANVAS_ACTIONS : BLOCK_ACTIONS).map((action) => (
             <Pressable
               key={action.key}
               style={styles.iconButton}

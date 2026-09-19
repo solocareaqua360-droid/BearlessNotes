@@ -386,7 +386,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   useEffect(() => {
     if (!canvasMode) setReferencePanelOpen(false);
   }, [canvasMode]);
-  const [canvasEditing, setCanvasEditing] = useState(false);
+  // WHICH card is being typed into on the canvas, not just whether one
+  // is. The id is what the "/" toolbar needs: the canvas edits the very
+  // same Block objects the page does, so once this screen knows which
+  // one, the toolbar it already has works there too.
+  const [canvasEditingId, setCanvasEditingId] = useState<string | null>(null);
+  const canvasEditing = canvasEditingId !== null;
   // The arrows between cards on the canvas - a keyed map, see
   // DocumentItem.canvasLinks. Saved with the document, like everything
   // else on this screen.
@@ -1555,7 +1560,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // writers). A momentary bad frame in that value is at most a single
   // frame of position jitter - nothing for React to mount or unmount
   // over, so there is nothing left to flash.
-  const isToolbarVisible = focusedBlockId !== null;
+  // A block being typed into, on EITHER surface. The canvas reports the
+  // card's own id now (see canvasEditingId), and since both surfaces
+  // edit the same Block objects, the same bar acts on either one.
+  const toolbarBlockId = focusedBlockId ?? canvasEditingId;
+  const isToolbarVisible = toolbarBlockId !== null;
   toolbarHeightRef.current = isToolbarVisible ? EDITOR_TOOLBAR_HEIGHT : 0;
 
   // Keyboard-synced scroll. The post-keyboard pass below
@@ -2108,6 +2117,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
 
   // Drives the formatting toolbar: it only shows for a real (non-empty)
   // selection, since there's nothing to apply Bold/Italic/etc. to otherwise.
+  // One register of live text fields, by block id - written by the
+  // page's rows and by the canvas's cards alike, read by the formatting
+  // when it has to put the caret back after rewriting the text.
+  function registerInputRef(id: string, ref: TextInput | null) {
+    inputRefs.current[id] = ref;
+  }
+
   function handleBlockSelectionChange(id: string, start: number, end: number) {
     setActiveSelection(start === end ? null : { blockId: id, start, end });
   }
@@ -3878,7 +3894,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       {canvasMode && !embedded && (
         <DocumentCanvas
           ref={canvasApiRef}
-          onEditingChange={setCanvasEditing}
+          onEditingChange={(id) => {
+            setCanvasEditingId(id);
+            // A card let go of takes its selection with it, or the
+            // format row would stay up over nothing.
+            if (id === null) setActiveSelection(null);
+          }}
+          // The same two handlers the page's own rows use - one register
+          // of fields by block id, one selection in display coordinates.
+          // Nothing about formatting had to be taught the canvas; it had
+          // to be given the block id.
+          onSelectionChange={handleBlockSelectionChange}
+          onInputRef={registerInputRef}
           links={canvasLinks}
           onAdd={addToCanvas}
           // Arrows have a direction now - it is what says which end of a
@@ -4094,9 +4121,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           allTags={tags}
           onOpenCustomRow={openCustomRowBlock}
           onOpenCustomView={openCustomViewBlock}
-          onInputRef={(id, ref) => {
-            inputRefs.current[id] = ref;
-          }}
+          onInputRef={registerInputRef}
           paperColor={paperColor}
         />
 
@@ -4391,7 +4416,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             : {})}
         >
           <EditorToolbar
-            focusedBlockId={focusedBlockId}
+            canvas={canvasMode}
+            focusedBlockId={toolbarBlockId}
             activeSelection={activeSelection}
             onBlockAction={handleBlockAction}
             canUndo={canUndo}

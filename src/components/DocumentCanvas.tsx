@@ -208,6 +208,8 @@ function DocumentCanvasInner({
   onChangeText,
   onOpenBlock,
   onEditingChange,
+  onSelectionChange,
+  onInputRef,
   links,
   onToggleLink,
   onAdd,
@@ -220,9 +222,21 @@ function DocumentCanvasInner({
   // the canvas is just another keyboard pointed at it.
   onChangeText: (id: string, text: string) => void;
   onOpenBlock: (id: string) => void;
-  // So the screen can offer its own way out while a card is being typed
-  // into - see DocumentCanvasHandle.
-  onEditingChange?: (editing: boolean) => void;
+  // WHICH card is being typed into, or null. It used to be a plain
+  // boolean, for the screen's own way out; it carries the id now because
+  // the "/" toolbar has to know which block its buttons are about. The
+  // canvas edits the very same Block objects the page does - see
+  // onChangeText's own comment - so once the screen knows the id,
+  // everything that toolbar does already works.
+  onEditingChange?: (id: string | null) => void;
+  // The card's own text selection, reported in the same shape the page's
+  // blocks report theirs, so the format row has something to act on.
+  onSelectionChange?: (id: string, start: number, end: number) => void;
+  // The card's TextInput, handed to the screen's own register. That is
+  // what lets the formatting put the caret back where it was: the page's
+  // applyMarkerToSelection looks the field up by block id, and the canvas
+  // is just another keyboard pointed at the same block.
+  onInputRef?: (id: string, node: TextInput | null) => void;
   // The arrows, and the one gesture that makes and unmakes them.
   links: Record<string, CanvasLink>;
   onToggleLink: (from: string, to: string) => void;
@@ -403,7 +417,7 @@ function DocumentCanvasInner({
   useImperativeHandle(ref, () => ({ stopEditing, screenToSurface }));
 
   useEffect(() => {
-    onEditingChange?.(editingId !== null);
+    onEditingChange?.(editingId);
   }, [editingId, onEditingChange]);
 
   // Back ends the typing before it ends anything else. Without this the
@@ -789,6 +803,8 @@ function DocumentCanvasInner({
                 onHeight={reportHeight}
                 onMove={onMoveBlock}
                 onChangeText={onChangeText}
+                onSelectionChange={onSelectionChange}
+                onInputRef={onInputRef}
                 onEdit={(id, x, y, caretIndex) => {
                   setEditingId(id);
                   setEditingCaret(caretIndex);
@@ -936,6 +952,8 @@ function CanvasCard({
   onHeight,
   onMove,
   onChangeText,
+  onSelectionChange,
+  onInputRef,
   onEdit,
   onOpen,
 }: {
@@ -976,6 +994,8 @@ function CanvasCard({
   onHeight: (id: string, height: number) => void;
   onMove: (id: string, x: number, y: number) => void;
   onChangeText: (id: string, text: string) => void;
+  onSelectionChange?: (id: string, start: number, end: number) => void;
+  onInputRef?: (id: string, node: TextInput | null) => void;
   onEdit: (id: string, x: number, y: number, caretIndex: number | null) => void;
   onDone: () => void;
   onOpen: (id: string) => void;
@@ -1185,6 +1205,12 @@ function CanvasCard({
           <TextInput
             ref={(node) => {
               inputRef.current = node;
+              // Into the screen's own register too, under this block's
+              // id - see onInputRef. The page's formatting looks a field
+              // up by id to put the caret back after it rewrites the
+              // text, and the canvas's field has to be findable the same
+              // way or the caret would jump to the end on every marker.
+              onInputRef?.(block.id, node);
               // On mount too: the field is created already holding the
               // whole block's text.
               autoGrowInput(node);
@@ -1206,6 +1232,9 @@ function CanvasCard({
             multiline
             value={block.text}
             onChangeText={(text) => onChangeText(block.id, text)}
+            onSelectionChange={(e) =>
+              onSelectionChange?.(block.id, e.nativeEvent.selection.start, e.nativeEvent.selection.end)
+            }
             placeholder="Текст"
             placeholderTextColor={theme.canvas.inkFaint}
             style={styles.cardInput}
