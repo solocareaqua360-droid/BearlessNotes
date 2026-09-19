@@ -14,6 +14,8 @@ import * as LegacyFileSystem from 'expo-file-system/legacy';
 import GlassLayer from './GlassLayer';
 import { getPexelsKey, subscribeToPexelsKey } from '../utils/pexelsKey';
 import { StockPhoto, StockSource, searchStockPhotos } from '../utils/stockPhotos';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import {
   GLASS_BODY_BLURRED,
@@ -48,6 +50,8 @@ export default function StockPhotoPicker({
   // A local file, handed back exactly like a gallery pick would be.
   onPicked: (uri: string) => void;
 }) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const keyboardHeight = useKeyboardHeight();
   // Which library is being searched. Openverse needs no key at all, so
   // the sheet opens working; Pexels appears as a second chip only for
@@ -149,10 +153,15 @@ export default function StockPhotoPicker({
             {(['open', 'pexels'] as StockSource[]).map((option) => (
               <Pressable
                 key={option}
-                style={[styles.sourceChip, source === option && styles.sourceChipOn]}
+                style={[
+                  styles.sourceChip,
+                  source === option && { backgroundColor: theme.accent, borderColor: theme.accent },
+                ]}
                 onPress={() => setSource(option)}
               >
-                <Text style={[styles.sourceLabel, source === option && styles.sourceLabelOn]}>
+                <Text
+                  style={[styles.sourceLabel, source === option && { color: theme.onAccent }]}
+                >
                   {option === 'open' ? 'Відкриті' : 'Pexels'}
                 </Text>
               </Pressable>
@@ -214,7 +223,7 @@ export default function StockPhotoPicker({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   frame: SHEET_FRAME,
   sheet: {
     ...SHEET_WINDOW,
@@ -265,17 +274,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 14,
   },
-  sourceChipOn: {
-    backgroundColor: '#F5C77E',
-    borderColor: '#F5C77E',
-  },
   sourceLabel: {
     fontSize: 13,
     fontFamily: FONT_SEMIBOLD,
     color: GLASS_TEXT_MUTED,
-  },
-  sourceLabelOn: {
-    color: '#171310',
   },
   grid: {
     paddingBottom: 24,

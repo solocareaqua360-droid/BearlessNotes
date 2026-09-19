@@ -14,22 +14,29 @@ import { RootStackParamList } from '../navigation';
 import { TaggableKind } from '../types';
 import { useTags, itemsCollectionForKind, parseUsedInKey } from '../hooks/useTags';
 import ContentColumn from '../components/ContentColumn';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { SectionKey, Theme } from '../theme/tokens';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const documentsCollection = collection(db, 'documents');
 
-const KIND_ICON: Record<string, { icon: keyof typeof Ionicons.glyphMap; color: string }> = {
-  file: { icon: 'document-outline', color: '#8B5CF6' },
-  photo: { icon: 'image-outline', color: '#EC4899' },
-  'link-video': { icon: 'videocam-outline', color: '#EF4444' },
-  'link-geo': { icon: 'location-outline', color: '#16A34A' },
-  'link-other': { icon: 'link-outline', color: '#3B82F6' },
-  document: { icon: 'document-text-outline', color: '#3B82F6' },
+// Which section each kind of row belongs to - so a row here takes
+// exactly the colour its own screen would give it, rather than an
+// independent literal nobody kept in step (this used to be violet for
+// "file" while Files itself was blue). The three link kinds share one
+// colour: LinksScreen itself draws no distinction between them either.
+const KIND_SECTION: Record<string, { icon: keyof typeof Ionicons.glyphMap; section: SectionKey }> = {
+  file: { icon: 'document-outline', section: 'files' },
+  photo: { icon: 'image-outline', section: 'photos' },
+  'link-video': { icon: 'videocam-outline', section: 'links' },
+  'link-geo': { icon: 'location-outline', section: 'links' },
+  'link-other': { icon: 'link-outline', section: 'links' },
+  document: { icon: 'document-text-outline', section: 'documents' },
 };
-// Every custom database shares this one fallback (KIND_ICON has no entry
-// per database id) - good enough here since this screen only needs an
-// icon/color to draw a row, not the database's own identity.
-const CUSTOM_ROW_ICON = { icon: 'grid-outline' as const, color: '#F97316' };
+// Every custom database shares this one fallback (KIND_SECTION has no
+// entry per database id) - good enough here since this screen only
+// needs an icon/colour to draw a row, not the database's own identity.
+const CUSTOM_ROW_ICON = { icon: 'grid-outline' as const, section: 'custom' as SectionKey };
 
 type ResolvedItem = {
   key: string;
@@ -49,6 +56,8 @@ type Props = NativeStackScreenProps<RootStackParamList, 'TagItems'>;
 export default function TagItemsScreen({ route }: Props) {
   const { tagId } = route.params;
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const { tags, attachTag } = useTags();
   const [items, setItems] = useState<ResolvedItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -123,7 +132,7 @@ export default function TagItemsScreen({ route }: Props) {
       <ContentColumn>
         <View style={styles.headerRow}>
           <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={22} color="#111827" />
+            <Ionicons name="chevron-back" size={22} color={theme.ink.primary} />
           </Pressable>
           <View style={[styles.headerIcon, { backgroundColor: `${tag.color}1F` }]}>
             <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={17} color={tag.color} />
@@ -141,11 +150,12 @@ export default function TagItemsScreen({ route }: Props) {
         ) : (
           <ScrollView contentContainerStyle={styles.list}>
             {items.map((item) => {
-              const info = KIND_ICON[item.kind] ?? CUSTOM_ROW_ICON;
+              const info = KIND_SECTION[item.kind] ?? CUSTOM_ROW_ICON;
+              const color = theme.sections[info.section];
               return (
                 <Pressable key={item.key} style={styles.row} onPress={() => openItem(item)}>
-                  <View style={[styles.rowIcon, { backgroundColor: `${info.color}1A` }]}>
-                    <Ionicons name={info.icon} size={17} color={info.color} />
+                  <View style={[styles.rowIcon, { backgroundColor: `${color}1A` }]}>
+                    <Ionicons name={info.icon} size={17} color={color} />
                   </View>
                   <Text style={styles.rowLabel} numberOfLines={1}>
                     {item.title}
@@ -155,7 +165,7 @@ export default function TagItemsScreen({ route }: Props) {
             })}
 
             <Pressable style={styles.createRow} onPress={createTaggedDocument}>
-              <Ionicons name="add" size={18} color="#3B82F6" />
+              <Ionicons name="add" size={18} color={theme.sections.documents} />
               <Text style={styles.createLabel}>Створити новий документ з тегом "{tag.path}"</Text>
             </Pressable>
           </ScrollView>
@@ -166,10 +176,10 @@ export default function TagItemsScreen({ route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: t.ground,
   },
   headerRow: {
     flexDirection: 'row',
@@ -189,13 +199,13 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: '#111827',
+    color: t.ink.primary,
     flexShrink: 1,
   },
   subtitle: {
     fontSize: 12,
     fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
+    color: t.ink.faint,
     paddingLeft: 68,
     paddingTop: 4,
     paddingBottom: 12,
@@ -208,7 +218,7 @@ const styles = StyleSheet.create({
   emptyLabel: {
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: '#6B7280',
+    color: t.ink.muted,
   },
   list: {
     paddingHorizontal: 20,
@@ -219,7 +229,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: t.surface,
     borderRadius: 14,
     padding: 10,
   },
@@ -234,14 +244,14 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: t.ink.primary,
   },
   createRow: {
     marginTop: 6,
     borderRadius: 14,
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: '#D1D5DB',
+    borderColor: t.edge.strong,
     padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -250,7 +260,7 @@ const styles = StyleSheet.create({
   },
   createLabel: {
     fontSize: 14,
-    color: '#3B82F6',
+    color: t.sections.documents,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
   },

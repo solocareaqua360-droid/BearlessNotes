@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { toastClear } from '../constants/rail';
+import { useTheme } from '../theme/ThemeProvider';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 
 // `actionLabel` defaults to "Скасувати" (its original, only job) - Files/
@@ -20,13 +21,20 @@ export default function UndoToast({
   railSide?: 'left' | 'right';
 }) {
   const insets = useSafeAreaInsets();
+  // The pill itself stays a fixed dark chip in every theme, matching
+  // the ordinary Snackbar convention - it has to read clearly over
+  // whatever screen it lands on, light or dark canvas alike, so it does
+  // not follow the app's own ground. Only the action text ties to the
+  // scheme, the same way a Snackbar's action is usually the app's own
+  // brand colour rather than a fixed blue nobody chose.
+  const accent = useTheme().accent;
   return (
     <View style={[styles.toast, toastClear(railSide, insets.bottom)]}>
       <Text style={styles.message} numberOfLines={1}>
         {message}
       </Text>
       <Pressable hitSlop={8} onPress={onUndo}>
-        <Text style={styles.undo}>{actionLabel ?? 'Скасувати'}</Text>
+        <Text style={[styles.undo, { color: accent }]}>{actionLabel ?? 'Скасувати'}</Text>
       </Pressable>
     </View>
   );
@@ -55,6 +63,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: '#60A5FA',
   },
 });

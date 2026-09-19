@@ -5,8 +5,15 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { BLOCK_ACTIONS, BlockAction, BlockActionIcon } from './blockActions';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 
+// Kept as fixed crayons, not the theme's own accent or its card palette:
+// these colour the NOTE'S OWN TEXT, sitting on `paper` (always light,
+// every theme), and a highlighter needs to stay a pale wash whatever the
+// interface scheme is doing - unlike a card fill or a section colour,
+// nothing here is app chrome.
 const TEXT_COLORS = ['#111827', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
 const HIGHLIGHT_COLORS = ['#FEF08A', '#BBF7D0', '#BFDBFE', '#FBCFE8', '#E9D5FF'];
 
@@ -69,6 +76,11 @@ export default function EditorToolbar({
   onApplyMarker,
   onApplyColor,
 }: Props) {
+  // The bar sits directly above the note's own text - PAPER, not the
+  // app's chrome surface, since paper is the one thing that stays a
+  // light sheet in every theme (see the canvas/paper note in tokens.ts).
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   if (!focusedBlockId) return null;
 
   if (activeSelection) {
@@ -128,7 +140,7 @@ export default function EditorToolbar({
         disabled={!canUndo}
         onPress={onUndo}
       >
-        <Ionicons name="arrow-undo-outline" size={22} color={canUndo ? '#111827' : '#D1D5DB'} />
+        <Ionicons name="arrow-undo-outline" size={22} color={canUndo ? theme.paper.ink : theme.paper.inkFaint} />
       </Pressable>
       <Pressable
         style={styles.iconButton}
@@ -137,7 +149,7 @@ export default function EditorToolbar({
         disabled={!canRedo}
         onPress={onRedo}
       >
-        <Ionicons name="arrow-redo-outline" size={22} color={canRedo ? '#111827' : '#D1D5DB'} />
+        <Ionicons name="arrow-redo-outline" size={22} color={canRedo ? theme.paper.ink : theme.paper.inkFaint} />
       </Pressable>
       <View style={styles.formatDivider} />
       {BLOCK_ACTIONS.map((action) => (
@@ -148,22 +160,22 @@ export default function EditorToolbar({
           accessibilityRole="button"
           onPress={() => onBlockAction(action.key, focusedBlockId)}
         >
-          <BlockActionIcon entry={action} size={22} color="#111827" />
+          <BlockActionIcon entry={action} size={22} color={theme.paper.ink} />
         </Pressable>
       ))}
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   formatToolbar: {
     flexGrow: 0,
     // Pinned above the keyboard rather than sitting under the header, so
     // the divider faces up and the row needs its own opaque background -
     // block text scrolls underneath it now.
-    backgroundColor: '#fff',
+    backgroundColor: t.paper.fill,
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    borderTopColor: t.paper.edge,
   },
   formatToolbarContent: {
     flexDirection: 'row',
@@ -190,14 +202,14 @@ const styles = StyleSheet.create({
   formatButtonLabel: {
     fontSize: 17,
     fontFamily: FONT_REGULAR,
-    color: '#111827',
+    color: t.paper.ink,
     minWidth: 20,
     textAlign: 'center',
   },
   formatDivider: {
     width: 1,
     height: 20,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: t.paper.edge,
   },
   colorSwatch: {
     width: 22,

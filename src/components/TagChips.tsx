@@ -1,6 +1,9 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Tag } from '../types';
+import { useStyles } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
+import { GLASS_EDGE, GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { FONT_MEDIUM, FONT_REGULAR } from '../utils/fonts';
 
 type Props = {
@@ -28,6 +31,7 @@ type Props = {
 // there's no separate "remove" tap target on a chip itself, matching the
 // mockup (TagChipsRow.dc.html).
 export default function TagChips({ tags, onPress, glass, max }: Props) {
+  const styles = useStyles(makeStyles);
   const shown = max === undefined ? tags : tags.slice(0, max);
   const hidden = tags.length - shown.length;
   return (
@@ -38,7 +42,11 @@ export default function TagChips({ tags, onPress, glass, max }: Props) {
           style={[styles.chip, glass ? styles.chipGlass : { backgroundColor: `${tag.color}1A` }]}
           onPress={onPress}
         >
-          <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={12} color={glass ? '#fff' : tag.color} />
+          <Ionicons
+            name={tag.icon as keyof typeof Ionicons.glyphMap}
+            size={12}
+            color={glass ? GLASS_TEXT : tag.color}
+          />
           <Text style={[styles.chipLabel, glass ? styles.chipLabelGlass : { color: tag.color }]} numberOfLines={1}>
             {tag.path.split('/').pop()}
           </Text>
@@ -50,24 +58,24 @@ export default function TagChips({ tags, onPress, glass, max }: Props) {
         </Pressable>
       )}
       <Pressable style={[styles.addChip, glass && styles.addChipGlass]} onPress={onPress}>
-        <Ionicons name="add" size={12} color={glass ? 'rgba(255,255,255,0.75)' : '#9CA3AF'} />
+        <Ionicons name="add" size={12} color={glass ? GLASS_TEXT_MUTED : styles.addChipLabel.color} />
         <Text style={[styles.addChipLabel, glass && styles.addChipLabelGlass]}>папка</Text>
       </Pressable>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
   },
   chipMore: {
-    backgroundColor: 'rgba(107,114,128,0.14)',
+    backgroundColor: t.edge.hairline,
   },
   chipMoreLabel: {
-    color: '#6B7280',
+    color: t.ink.muted,
   },
   chip: {
     flexDirection: 'row',
@@ -83,14 +91,19 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     fontFamily: FONT_MEDIUM,
   },
+  // The dark-glass look shared with every other floating capsule
+  // (GlassLayer sheets, the dock) - offered for rows sitting on a
+  // colourful card fill, where a per-tag pastel would clash. GLASS_*
+  // rather than the app theme's own `glass` role, matching the sheets
+  // this same look is drawn from - see constants/glass.ts.
   chipGlass: {
-    backgroundColor: 'rgba(20,20,20,0.35)',
+    backgroundColor: GLASS_ISLAND,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
+    borderColor: GLASS_EDGE,
     borderRadius: 999,
   },
   chipLabelGlass: {
-    color: '#fff',
+    color: GLASS_TEXT,
   },
   addChip: {
     flexDirection: 'row',
@@ -98,21 +111,21 @@ const styles = StyleSheet.create({
     gap: 3,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: '#D1D5DB',
+    borderColor: t.edge.strong,
     borderRadius: 8,
     paddingVertical: 3,
     paddingHorizontal: 8,
   },
   addChipGlass: {
-    borderColor: 'rgba(255,255,255,0.4)',
+    borderColor: GLASS_EDGE,
     borderRadius: 999,
   },
   addChipLabelGlass: {
-    color: 'rgba(255,255,255,0.75)',
+    color: GLASS_TEXT_MUTED,
   },
   addChipLabel: {
     fontSize: 11,
     fontFamily: FONT_REGULAR,
-    color: '#9CA3AF',
+    color: t.ink.faint,
   },
 });

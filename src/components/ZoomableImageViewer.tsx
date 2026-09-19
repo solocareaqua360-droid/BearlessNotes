@@ -4,6 +4,8 @@ import AttachmentImage from './AttachmentImage';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 import { SketchElement } from '../types';
 
@@ -66,6 +68,13 @@ export default function ZoomableImageViewer({
   sketchWidth,
   sketchHeight,
 }: Props) {
+  // The backdrop, icons and action bar stay dark chrome in every theme -
+  // a photo viewer, like a camera app, is deliberately theme-invariant
+  // (the same reasoning as the canvas being paper in every theme). Only
+  // the badge, which stands for "in the app" rather than "on the
+  // photo", takes the scheme's own accent.
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(0);
@@ -218,8 +227,8 @@ export default function ZoomableImageViewer({
               <View>
                 <Ionicons name={action.icon} size={20} color={action.color ?? '#fff'} />
                 {!!action.badge && action.badge > 1 && (
-                  <View style={styles.actionBadge}>
-                    <Text style={styles.actionBadgeLabel}>{action.badge}</Text>
+                  <View style={[styles.actionBadge, { backgroundColor: theme.accent }]}>
+                    <Text style={[styles.actionBadgeLabel, { color: theme.onAccent }]}>{action.badge}</Text>
                   </View>
                 )}
               </View>
@@ -235,7 +244,7 @@ export default function ZoomableImageViewer({
 // Far enough that a pinch that drifted sideways is not a page turn.
 const SWIPE_DISTANCE = 70;
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   pageButton: {
     position: 'absolute',
     top: '46%',
@@ -305,7 +314,6 @@ const styles = StyleSheet.create({
     minWidth: 15,
     height: 15,
     borderRadius: 8,
-    backgroundColor: '#3B82F6',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 3,
