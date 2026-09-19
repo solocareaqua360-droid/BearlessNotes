@@ -58,6 +58,25 @@ export function isValidHex(value: string): boolean {
 //
 // Rec. 601 weights, the same ones every "is this text readable on this
 // colour" check uses - good enough here, and cheap.
+// The same Rec. 601 measure, but of a colour that already exists rather
+// than of a hue at full saturation. This is what decides whether the
+// ink ON a colour has to be dark or light - the one calculation that
+// makes an automatically generated accent safe to put a label on.
+export function perceivedBrightness(hex: string): number {
+  const clean = hex.replace('#', '');
+  const full = clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16) / 255);
+  return 0.299 * r + 0.587 * g + 0.114 * b;
+}
+
+// `#RRGGBB` plus an alpha, as the `rgba()` string React Native wants.
+export function withAlpha(hex: string, alpha: number): string {
+  const clean = hex.replace('#', '');
+  const full = clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 export function perceivedHueBrightness(h: number): number {
   const hex = hslToHex(h, 100, 50).replace('#', '');
   const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);

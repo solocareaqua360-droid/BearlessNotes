@@ -7,6 +7,7 @@ import { useLift } from '../theme/ThemeProvider';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_BODY_BLURRED, GLASS_EDGE, GLASS_TEXT, GLASS_TEXT_MUTED, SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
 import { hexToHsl, hslToHex, toneCorrectedLightness } from '../utils/color';
+import type { SchemeKind } from '../theme/scheme';
 
 // Picking a gradient the way Paletton does: one base hue dragged around
 // a wheel, and the rest of the stops follow it by a SCHEME rather than
@@ -16,7 +17,10 @@ import { hexToHsl, hslToHex, toneCorrectedLightness } from '../utils/color';
 // the per-stop picker rather than sitting beside it ("хочу тільки цей
 // новий спосіб").
 
-export type SchemeKind = 'complementary' | 'triad' | 'analogous' | 'mono';
+// Declared with the theme rather than here: the same four families now
+// also drive the whole interface's colour (themeFromScheme), and one
+// list of them is the point.
+export type { SchemeKind };
 
 const SCHEMES: { id: SchemeKind; label: string; offsets: number[] }[] = [
   // Four offsets each, used up to whatever the stop count is. A scheme
