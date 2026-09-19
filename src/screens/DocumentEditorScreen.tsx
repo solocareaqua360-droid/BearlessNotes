@@ -3930,6 +3930,36 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             onApplyMarker={applyMarkerToSelection}
             onApplyColor={applyColorToSelection}
           />
+          {/* TEMPORARY - the mystery resisted two guesses in a row, so
+              per the project's own rule for exactly this ("put numbers
+              on screen rather than theorising"), this reads out the
+              JS-visible values behind the pill's position: `kb` is the
+              plain RN Keyboard event's own height, `ctrl` is react-
+              native-keyboard-controller's reactive useKeyboardState
+              height, `inset` is the safe-area bottom inset - added
+              after the user's own lead: on the Fold's INNER (tablet)
+              screen specifically, the system's own gesture-bar strip
+              may sit below whatever height the keyboard itself reports,
+              which `bottom: keyboardSV.value` (deliberately, see its
+              own comment) never adds back in - that would draw exactly
+              as a white strip / gap the size of that bar, on the inner
+              screen only. Reproduce it (fold/unfold or switch apps),
+              read the numbers, report them back - then this comes out. */}
+          <Text
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              top: -20,
+              alignSelf: 'center',
+              fontSize: 11,
+              color: '#fff',
+              backgroundColor: 'rgba(0,0,0,0.6)',
+              paddingHorizontal: 6,
+              borderRadius: 4,
+            }}
+          >
+            kb:{keyboardHeight} ctrl:{Math.round(controllerKeyboardHeight)} inset:{Math.round(editorInsets.bottom)}
+          </Text>
         </Animated.View>
       )}
 
