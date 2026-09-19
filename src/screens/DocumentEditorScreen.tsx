@@ -1671,13 +1671,27 @@ function BlockRow({
       {content}
       {/* On the right. Hidden where the sheet runs under the rail (the
           calendar's daily note) - but never while selecting: there it is
-          the checkbox, and the only thing showing what is picked. */}
-      {(!hideHandle || isSelectMode) && (
+          the checkbox, and the only thing showing what is picked.
+
+          Outside select mode it is drawn ONLY on the block being
+          written in, and as an overlay rather than a column. The
+          reasoning, from measuring rather than guessing: this Pressable
+          is `disabled` outside select mode, so the handle was never the
+          drag target - the whole row is (see SortableBlockRow), and the
+          calendar's daily note has run without it for months. It was a
+          SIGN, and a sign repeated down every row cost 32pt of every
+          line for nothing. One sign, where the user is already looking,
+          says the same thing.
+
+          Absolute rather than in the row, because a handle that joined
+          the layout on focus would reflow the text of the block being
+          typed in - the one row where a jump is least acceptable. */}
+      {(!hideHandle || isSelectMode) && (isSelectMode || isActive) && (
         <Pressable
           hitSlop={8}
           disabled={!isSelectMode}
           onPress={() => onToggleSelected(item.id)}
-          style={styles.dragHandle}
+          style={[styles.dragHandle, !isSelectMode && styles.dragHandleFloating]}
         >
           <Ionicons
             name={isSelectMode ? (isSelected ? 'checkmark-circle' : 'ellipse-outline') : 'reorder-two-outline'}
@@ -6263,6 +6277,15 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   },
   dragHandle: {
     padding: 6,
+  },
+  // The handle over the active block: out of the layout, so it costs
+  // the line no width, and faint enough to read as a hint rather than
+  // as a control sitting on the text.
+  dragHandleFloating: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    opacity: 0.6,
   },
   // Says the recogniser is working, and how far it has got - it takes
   // seconds, and silence would read as nothing happening.
