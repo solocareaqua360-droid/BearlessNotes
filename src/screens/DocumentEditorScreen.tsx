@@ -1568,6 +1568,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // "sits with a gap" report, not a fix for it. Kept as a comment, not
   // code, so this exact theory is not re-tried.
   const controllerKeyboardHeight = useKeyboardState((s) => s.height);
+  // Mirrored into a ref for the resume resync below, whose AppState
+  // listener is registered once and would otherwise close over the very
+  // first render's value forever.
+  const controllerKeyboardHeightRef = useRef(0);
+  controllerKeyboardHeightRef.current = controllerKeyboardHeight;
   // TEMPORARY - which of the three writers of keyboardSV/keyboardHeight
   // fired last, and with what value, so the app-switch dip (measured:
   // exactly `inset.bottom` below the steady value) can be pinned on one
@@ -1681,7 +1686,25 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       resumeTimer = setTimeout(() => {
         resumeTimer = null;
         if (!appActiveRef.current) return;
-        const height = Keyboard.isVisible() ? Keyboard.metrics()?.height ?? 0 : 0;
+        // WHETHER there is a keyboard is RN's question to answer - it is
+        // the API that tracks the window, and `isVisible()` is the one
+        // reading that is unambiguous either way.
+        //
+        // HOW TALL it is, is not. Measured twice on-device, both times
+        // exact: RN's own number comes in lower than reality by exactly
+        // `insets.bottom` (323 against a true 338, 336 against 351),
+        // because it reports the keyboard against a window that already
+        // has the nav-bar inset taken out of it. Trusting it here put the
+        // bar 15px down behind the keyboard - the user's screenshot,
+        // `last:resume:323 inset:15`, and the same trap already written
+        // down in the project memory on 2026-09-10 against
+        // `keyboardDidShow`. keyboard-controller measures the IME's own
+        // animation instead and had the true height all along; in steady
+        // state the two agree, so the larger is right whenever they
+        // don't.
+        const height = Keyboard.isVisible()
+          ? Math.max(Keyboard.metrics()?.height ?? 0, controllerKeyboardHeightRef.current)
+          : 0;
         keyboardSV.value = height;
         setKeyboardHeight(height);
         setDbgSource(`resume:${Math.round(height)}`);
