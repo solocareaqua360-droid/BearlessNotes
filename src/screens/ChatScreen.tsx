@@ -406,7 +406,7 @@ export default function ChatScreen() {
 
   return (
     <View style={styles.container}>
-      <ScreenBackdrop id="chatBg" colors={['#705648', '#69736E', '#000000']} />
+      <ScreenBackdrop id="chatBg" />
       <ContentColumn>
         <View style={{ height: insets.top + CHROME_TOP + 8 }} />
         {isSearching && (

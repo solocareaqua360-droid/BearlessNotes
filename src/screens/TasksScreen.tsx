@@ -1014,7 +1014,7 @@ export default function TasksScreen() {
 
   return (
     <View style={styles.container}>
-      <ScreenBackdrop id="tasksBg" colors={['#705648', '#69736E', '#000000']} />
+      <ScreenBackdrop id="tasksBg" />
 
       <ContentColumn>
         {/* The band the status bar and the rail's top capsule stand in.

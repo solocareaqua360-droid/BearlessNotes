@@ -27,7 +27,7 @@ export default function PlainScreenShell({
 
   return (
     <View style={styles.container}>
-      <ScreenBackdrop id={id} colors={['#705648', '#69736E', '#000000']} />
+      <ScreenBackdrop id={id} />
       <ContentColumn>
         {/* The band the status bar stands in - the dock carries the way
             out now, at the foot of the screen, not a capsule up here. */}

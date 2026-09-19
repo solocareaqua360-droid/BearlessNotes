@@ -38,6 +38,12 @@ export type Theme = {
   // because blue reads as white and yellow reads as warm.
   clouds: [string, string, string];
   cloudStrength: number;
+  // The STATIC ramp under the clouds - top to bottom, never moves,
+  // never fades with cloudStrength. Every screen used to pass this
+  // triple in themselves (ScreenBackdrop's own `colors` prop) and every
+  // one of them passed the SAME three hex values - eight copies of one
+  // constant, never actually varied per screen. It belongs here.
+  wash: [string, string, string];
   // The screen itself, a panel on it, and something floating over that.
   ground: string;
   surface: string;
@@ -171,9 +177,21 @@ const colour: Theme = {
   key: 'colour',
   name: 'Кольорова',
   scheme: 'dark',
-  backdrop: 'plain',
+  // Back to 'gradient' - not the old blotchy drifting clouds (still off,
+  // see cloudStrength above), but the STATIC ramp underneath them,
+  // which was always a separate layer. See `wash`.
+  backdrop: 'gradient',
   clouds: ['#2A2522', '#2A2522', '#2A2522'],
   cloudStrength: 0,
+  // The blotchy DRIFTING clouds are gone for good (see the note above
+  // `lift: 'glow'`) - this is a different, calmer thing: one STILL
+  // gradient, warm at the top fading to the theme's own dark ground at
+  // the foot, mixed from the accent the same way the dock's own lift
+  // now is, rather than the old brown/grey/black every screen
+  // duplicated: "хочу... градієнтне тло замість суцільного кольору" -
+  // the aesthetic the user pointed at (Pinterest's "Still Ground"
+  // reference) as the origin this theme should return to.
+  wash: ['#C98A52', '#7A5A42', '#2A2522'],
   ground: '#2A2522',
   surface: 'rgba(255,255,255,0.07)',
   raised: 'rgba(24,21,19,0.42)',
@@ -274,6 +292,9 @@ const white: Theme = {
   // ink both agree with, rather than one cool layer under warm paper.
   clouds: ['#E8D9BE', '#E3C7B3', '#DCCFC0'],
   cloudStrength: 1,
+  // backdrop is 'clouds' here, not 'gradient' - wash is never drawn,
+  // kept equal to ground so nothing could show through by accident.
+  wash: ['#EFE8DD', '#EFE8DD', '#EFE8DD'],
   ground: '#EFE8DD',
   // A shade off the ground, same reason as before - only the step and
   // the shadow tell a card from the page - just warm now, so the card
@@ -351,6 +372,8 @@ const black: Theme = {
   backdrop: 'plain',
   clouds: ['#000000', '#000000', '#000000'],
   cloudStrength: 0,
+  // backdrop is 'plain' here - wash is never drawn.
+  wash: ['#000000', '#000000', '#000000'],
   ground: '#000000',
   surface: '#0E0F12',
   raised: '#16171B',

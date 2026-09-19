@@ -66,7 +66,7 @@ export default function SearchScreen() {
           bleached clouds in white, plain black in black. This screen
           drew its own fixed gradient and stood in the colour theme
           whatever the setting said. */}
-      <ScreenBackdrop id="searchBg" colors={['#705648', '#69736E', '#000000']} />
+      <ScreenBackdrop id="searchBg" />
 
       <ContentColumn>
         {/* The way back sits in the search row itself: this screen is one

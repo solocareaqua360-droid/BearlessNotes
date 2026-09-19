@@ -500,7 +500,7 @@ export default function DatabaseChrome<T extends { id: string }>({
       {/* The same fixed gradient every screen stands on. 1px bled past
           every edge - windowWidth/Height can round to a hair less than the
           real screen, leaving a sliver of white at an edge otherwise. */}
-      <ScreenBackdrop id="databaseBg" colors={['#705648', '#69736E', '#000000']} scrollY={pull.scrollY} />
+      <ScreenBackdrop id="databaseBg" scrollY={pull.scrollY} />
 
 
       {splitting ? (

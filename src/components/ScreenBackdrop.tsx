@@ -40,13 +40,11 @@ const DRIFT = 0.55;
 
 export default function ScreenBackdrop({
   id,
-  colors,
   scrollY,
 }: {
   // A gradient's id has to be unique in the document - each screen passes
   // its own, as they did when every screen drew this itself.
   id: string;
-  colors: [string, string, string];
   // Absent (a screen with no list of its own) - the clouds simply stand
   // still, and the screen is the gradient it always was.
   scrollY?: SharedValue<number>;
@@ -64,10 +62,12 @@ export default function ScreenBackdrop({
   const width = own?.width ?? window.width;
   const height = own?.height ?? window.height;
   const stripHeight = height + TILE * 2;
-  // White and black answer for their own ground; only the colour theme
-  // lets each screen keep the gradient it was written with.
+  // `wash` USED to be a prop every screen passed in - eight call sites,
+  // one identical literal each time, never actually varied by screen.
+  // It is the theme's own now (see tokens.ts); only 'gradient' themes
+  // draw it, everyone else stands on a flat `ground`.
   const ramp: [string, string, string] =
-    theme.backdrop === 'gradient' ? colors : [theme.ground, theme.ground, theme.ground];
+    theme.backdrop === 'gradient' ? theme.wash : [theme.ground, theme.ground, theme.ground];
   // How much of a cloud survives. Bleached almost away in white; gone in
   // black.
   const cloud = theme.cloudStrength;

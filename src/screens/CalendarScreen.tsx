@@ -912,7 +912,7 @@ export default function CalendarScreen() {
           regardless - it's the embedded DocumentEditorScreen's own opaque
           white background, painted over this, not a separate override
           here. */}
-      <ScreenBackdrop id="calendarBg" colors={['#705648', '#69736E', '#000000']} />
+      <ScreenBackdrop id="calendarBg" />
 
       <View style={[styles.headerRow, { paddingTop: headerPadTop }]}>
         <View

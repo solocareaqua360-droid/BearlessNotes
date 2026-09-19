@@ -910,7 +910,7 @@ export default function DocumentsScreen({
       {/* 1px bled past every edge - windowWidth/Height can round to a hair
           less than the actual screen, leaving a sliver of the default
           white background visible at an edge otherwise. */}
-      <ScreenBackdrop id="documentsBg" colors={['#705648', '#69736E', '#000000']} scrollY={pull.scrollY} />
+      <ScreenBackdrop id="documentsBg" scrollY={pull.scrollY} />
 
       {/* One column on a phone, two on a Fold's inner screen: the list keeps
           its own width and the open document takes the rest. Everything

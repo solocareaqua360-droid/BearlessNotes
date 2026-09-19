@@ -1121,7 +1121,7 @@ export default function DatabasesScreen() {
           bleached clouds in white, plain black in black. This screen
           drew its own fixed gradient and stood in the colour theme
           whatever the setting said. */}
-      <ScreenBackdrop id="databasesBg" colors={['#705648', '#69736E', '#000000']} />
+      <ScreenBackdrop id="databasesBg" />
       {/* The rail, as on every other screen: right edge, same width, same
           glass, hanging from the same line. Through the portal for the
           blur, so it withdraws when this screen isn't the one on show. */}
