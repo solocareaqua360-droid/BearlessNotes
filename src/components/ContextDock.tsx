@@ -278,6 +278,47 @@ function useEase01(wanted: boolean, ms: number): number {
   return value;
 }
 
+// The same clock as useEase01, aimed at an arbitrary NUMBER instead of
+// at 0-or-1: what a width has to ride when its target can be any value
+// and can change again mid-flight (a screen with four actions, then one
+// with none, then one with nine). Each new target restarts from
+// wherever the value actually is, so an interrupted move never jumps
+// back to where the last one began.
+function useEaseTo(target: number, ms: number): number {
+  const [value, setValue] = useState(target);
+  const raf = useRef<number | null>(null);
+  const ref = useRef(value);
+  ref.current = value;
+  useEffect(() => {
+    const from = ref.current;
+    // Half a point is under a pixel on every density this runs at -
+    // close enough to be the same number, and stopping here is what
+    // keeps a settled value from re-animating on every render.
+    if (Math.abs(from - target) < 0.5) {
+      if (from !== target) setValue(target);
+      return;
+    }
+    if (raf.current !== null) cancelAnimationFrame(raf.current);
+    const t0 = Date.now();
+    const step = () => {
+      const k = Math.min(1, (Date.now() - t0) / ms);
+      const e = 1 - Math.pow(1 - k, 3);
+      setValue(from + (target - from) * e);
+      if (k < 1) {
+        raf.current = requestAnimationFrame(step);
+        return;
+      }
+      raf.current = null;
+    };
+    raf.current = requestAnimationFrame(step);
+    return () => {
+      if (raf.current !== null) cancelAnimationFrame(raf.current);
+      raf.current = null;
+    };
+  }, [target, ms]);
+  return value;
+}
+
 export default function ContextDock() {
   const theme = useTheme();
   const { width: windowW } = useWindowDimensions();
@@ -407,6 +448,7 @@ export default function ContextDock() {
   // either. A hook goes at the top, with the other hooks, always.
   const lastSplitCountRef = useRef(0);
   if (!suppress) lastSplitCountRef.current = actionsPublished?.length ?? 0;
+
   // What never changes stands beside the stack and does not move: search
   // on the left, creating on the right. The user's own arrangement, and
   // Samsung's own reasoning - a pile of cards is for what changes.
@@ -775,6 +817,92 @@ export default function ContextDock() {
     return () => clearTimeout(id);
   }, [stripIndex, stripWidth]);
 
+  // Only appears where it has a job nobody else has: at a database's
+  // root, where it leaves the database, and on the calendar, which has
+  // no root to walk to and is simply put away. Inside folders the first
+  // crumb already goes to the root, and two buttons for one job is what
+  // the user rightly refused.
+  const showLeave = !trail && !!leave;
+  // THE SPLIT'S OWN GEOMETRY - see this file's own comment above
+  // `useEase01` for the whole design. Nothing here touches
+  // BEAD/CARD_H/GAP/ACT_W: those stay pinned to their phone-capped
+  // values, and the extra room buys more of the SAME-SIZED buttons,
+  // never bigger ones.
+  //
+  // Its own button width, not ACT_W: ACT_W subtracts room for the leave
+  // chevron (which lives on the ring's own end, never here) from the
+  // ring's own card width. Sharing it would make every button here a
+  // few points narrower than it needs to be.
+  const ACT_W_SPLIT = Math.floor((cardWidth - CARD_PAD * 2) / 4);
+  const ACTION_GROUP_GAP = 24;
+  // The horizontal room reserved for the divider between the ring's own
+  // content and the actions zone, at FULL split - see splitDivider's
+  // own comment for why the visible LINE never scales even though this
+  // space does.
+  const DIVIDER_SPACE = 17;
+  // How many actions this half is drawing, frozen through a desk-switch
+  // swipe rather than read live off the suppressed `actions` above.
+  //
+  // `actions` is deliberately blanked while `tabsInFlux` - correct for
+  // the RING, whose own logical width never changes regardless of which
+  // face it holds, so blank content there is invisible until the swipe
+  // settles. This is not like that: this layer's own WIDTH comes from
+  // this count, and a live drag (screenshot: "в доці баз даних один
+  // док - якщо звужувати анімацією при пролистуванні з сусіднього
+  // екрана, то як?") would otherwise snap it to zero and yank the whole
+  // row narrower for the length of every desk-switch, landing screen or
+  // not. Held at its last real value until the swipe settles, then it
+  // steps to the truth in one frame - a blank frosted zone for that one
+  // beat, never a moving one.
+  // The ref itself lives ABOVE the early return - see its own comment
+  // there. Only the plain derived value is read here.
+  const splitActionsCount = suppress ? lastSplitCountRef.current : (actions?.length ?? 0);
+  // How wide the actions zone needs to be to show every action without
+  // scrolling - the content deciding the width, never the other way
+  // round (the same rule that already sizes the ring's own card: "a
+  // card is four buttons wide whatever it holds", answered here for a
+  // row instead of a fixed count).
+  const splitActionsNeeded =
+    splitActionsCount > 0
+      ? splitActionsCount * ACT_W_SPLIT + Math.floor((splitActionsCount - 1) / 4) * ACTION_GROUP_GAP + CARD_PAD * 2
+      : 0;
+  // How much MORE room the real window actually has beyond today's
+  // phone-capped row - `windowW` here is deliberately NOT run through
+  // the PHONE_W cap, because this is exactly the number that cap exists
+  // to keep away from BEAD/CARD_H/ACT_W above.
+  const splitRoomAvailable = Math.max(0, windowW - edgeInsetNow * 2 - rowWidthNow - DIVIDER_SPACE);
+  // Never more than what the actions actually need - an empty screen
+  // does not get an aimlessly wide dock just because the window is
+  // enormous.
+  const splitActionsFullWidth = Math.min(splitActionsNeeded, splitRoomAvailable);
+  // EASED, not just multiplied by `split`.
+  //
+  // `split` only moves when the WINDOW changes shape, and that is not
+  // the only thing that changes this width. The number of actions does
+  // too - walking from the boards to the databases (four actions to
+  // none) and entering bulk-edit (which publishes a shorter list) both
+  // change it while the window stands perfectly still. Sized straight
+  // off the count, those landed in a single frame: "до баз даних
+  // анімація не доходить, він просто є", and "робить цей перехід
+  // ривком". So the TARGET width is what eases, and `split` scales the
+  // eased value - two independent reasons to move, one continuous
+  // number each, neither fighting the other.
+  const actionsEased = useEaseTo(splitActionsFullWidth, 220);
+  const dividerEased = useEaseTo(splitActionsCount > 0 ? DIVIDER_SPACE : 0, 220);
+  const dividerSpaceNow = dividerEased * split;
+  const splitActionsWidthNow = actionsEased * split;
+  // Whether the split is worth drawing at all. It stays "on" while
+  // either eased value is still unwinding, not only while the count is
+  // above zero - otherwise the zone would unmount the instant a screen
+  // with no actions arrived, and there would be nothing left on screen
+  // for the shrink to happen to.
+  const showSplitActions =
+    (splitActionsCount > 0 || actionsEased > 0.5 || dividerEased > 0.5) && (splitActive || split > 0.001);
+  // The ring's own content, confined to exactly this width whenever a
+  // split exists anywhere on this screen - see renderCard's own comment
+  // on why every layer needs this, not only the one attaching the zone.
+  const faceWidthWhenSplit = cardWidthNow - (showLeave ? LEAVE_W : 0);
+
   if (!dock && !leave && !actions?.length && !beads.left && !beads.right) return null;
 
   // The way out, as a bead of its own beside the pill rather than a
@@ -807,7 +935,7 @@ export default function ContextDock() {
   // which has no root to walk to and is simply put away. Inside folders
   // the first crumb already goes to the root, and two buttons for one
   // job is what the user rightly refused.
-  const showLeave = !trail && !!leave;
+  // Moved up with the split's geometry - see it above the early return.
   // What it carries: the thing it is LEAVING, when there is one.
   const icon = ((leave?.icon ?? dock?.icon) as keyof typeof Ionicons.glyphMap) ?? 'ellipse-outline';
   // Four buttons fit in the card - desks OR actions - whether or not the
@@ -1061,70 +1189,7 @@ export default function ContextDock() {
   const ACT_W = Math.floor((cardWidth - CARD_PAD * 2 - (showLeave ? LEAVE_W : 0)) / 4);
   const ACT_ICON = 19;
 
-  // THE SPLIT'S OWN GEOMETRY - see this file's own comment above
-  // `useEase01` for the whole design. Nothing here touches
-  // BEAD/CARD_H/GAP/ACT_W: those stay pinned to their phone-capped
-  // values, and the extra room buys more of the SAME-SIZED buttons,
-  // never bigger ones.
-  //
-  // Its own button width, not ACT_W: ACT_W subtracts room for the leave
-  // chevron (which lives on the ring's own end, never here) from the
-  // ring's own card width. Sharing it would make every button here a
-  // few points narrower than it needs to be.
-  const ACT_W_SPLIT = Math.floor((cardWidth - CARD_PAD * 2) / 4);
-  const ACTION_GROUP_GAP = 24;
-  // The horizontal room reserved for the divider between the ring's own
-  // content and the actions zone, at FULL split - see splitDivider's
-  // own comment for why the visible LINE never scales even though this
-  // space does.
-  const DIVIDER_SPACE = 17;
-  // How many actions this half is drawing, frozen through a desk-switch
-  // swipe rather than read live off the suppressed `actions` above.
-  //
-  // `actions` is deliberately blanked while `tabsInFlux` - correct for
-  // the RING, whose own logical width never changes regardless of which
-  // face it holds, so blank content there is invisible until the swipe
-  // settles. This is not like that: this layer's own WIDTH comes from
-  // this count, and a live drag (screenshot: "в доці баз даних один
-  // док - якщо звужувати анімацією при пролистуванні з сусіднього
-  // екрана, то як?") would otherwise snap it to zero and yank the whole
-  // row narrower for the length of every desk-switch, landing screen or
-  // not. Held at its last real value until the swipe settles, then it
-  // steps to the truth in one frame - a blank frosted zone for that one
-  // beat, never a moving one.
-  // The ref itself lives ABOVE the early return - see its own comment
-  // there. Only the plain derived value is read here.
-  const splitActionsCount = suppress ? lastSplitCountRef.current : (actions?.length ?? 0);
-  // How wide the actions zone needs to be to show every action without
-  // scrolling - the content deciding the width, never the other way
-  // round (the same rule that already sizes the ring's own card: "a
-  // card is four buttons wide whatever it holds", answered here for a
-  // row instead of a fixed count).
-  const splitActionsNeeded =
-    splitActionsCount > 0
-      ? splitActionsCount * ACT_W_SPLIT + Math.floor((splitActionsCount - 1) / 4) * ACTION_GROUP_GAP + CARD_PAD * 2
-      : 0;
-  // How much MORE room the real window actually has beyond today's
-  // phone-capped row - `windowW` here is deliberately NOT run through
-  // the PHONE_W cap, because this is exactly the number that cap exists
-  // to keep away from BEAD/CARD_H/ACT_W above.
-  const splitRoomAvailable = Math.max(0, windowW - edgeInsetNow * 2 - rowWidthNow - DIVIDER_SPACE);
-  // Never more than what the actions actually need - an empty screen
-  // does not get an aimlessly wide dock just because the window is
-  // enormous.
-  const splitActionsFullWidth = Math.min(splitActionsNeeded, splitRoomAvailable);
-  // Live values, continuous in `split` - every frame of the fold/unfold
-  // transition is a real width, never a jump between two of them.
-  const dividerSpaceNow = DIVIDER_SPACE * split;
-  const splitActionsWidthNow = splitActionsFullWidth * split;
-  // Whether the split is worth drawing at all - kept "on" through the
-  // very end of a CLOSING transition (split still > 0) so it shrinks
-  // away rather than vanishing mid-animation.
-  const showSplitActions = splitActionsCount > 0 && (splitActive || split > 0.001);
-  // The ring's own content, confined to exactly this width whenever a
-  // split exists anywhere on this screen - see renderCard's own comment
-  // on why every layer needs this, not only the one attaching the zone.
-  const faceWidthWhenSplit = cardWidthNow - (showLeave ? LEAVE_W : 0);
+
 
   return (
     <GlassPortal>
