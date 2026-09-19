@@ -47,6 +47,17 @@ const HIGHLIGHT_COLORS = ['#FEF08A', '#BBF7D0', '#BFDBFE', '#FBCFE8', '#E9D5FF']
 // on-device. It is dense enough that nothing reads through it, and its
 // ink is the theme's `glass.ink`, so the pair cannot come apart in any
 // theme. One material, one place it is defined.
+//
+// WITHOUT ITS LIVE BLUR, though - `blur={false}`, and the reason is
+// this bar specifically. It rides the keyboard's own live height, so
+// its position changes on every frame of the keyboard's animation,
+// directly over the text being typed. `dimezisBlurView` re-captures
+// and re-blurs what is beneath it, so a surface that moves every frame
+// makes it do that every frame. Tapping into any text field - a note,
+// or the calendar's daily note, folded or not - froze the app until
+// Android killed it: "зависає і потім закривається". The colour recipe
+// is unchanged; only the live layer is gone, and the fill is denser to
+// do that layer's job on its own.
 
 export type ToolbarSelection = { blockId: string; start: number; end: number };
 
@@ -152,7 +163,7 @@ export default function EditorToolbar({
   if (activeSelection) {
     return (
       <View style={styles.shellWrap}>
-        <DockFrost style={styles.shell} radius={SHELL_RADIUS}>
+        <DockFrost style={styles.shell} radius={SHELL_RADIUS} blur={false}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -197,7 +208,7 @@ export default function EditorToolbar({
 
   return (
     <View style={styles.shellWrap}>
-      <DockFrost style={styles.shell} radius={SHELL_RADIUS}>
+      <DockFrost style={styles.shell} radius={SHELL_RADIUS} blur={false}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}

@@ -27,9 +27,16 @@ import { useTheme } from '../theme/ThemeProvider';
 const FROST_BLUR = 60;
 const FROST_TINT = 0.55;
 
+// How solid the fill gets when the live blur is off - see `blur`. High
+// enough that the text underneath does not read through it, which is
+// the whole reason the editor's bar wanted a dense material in the
+// first place.
+const FLAT_TINT = 0.97;
+
 export default function DockFrost({
   style,
   radius,
+  blur = true,
   children,
 }: {
   style?: StyleProp<ViewStyle>;
@@ -39,6 +46,22 @@ export default function DockFrost({
   // the dock's "you are here" disc came up a rounded SQUARE until
   // something happened to redraw it.
   radius: number;
+  // OFF for anything that MOVES every frame.
+  //
+  // `dimezisBlurView` is a real-time blur: it re-captures and re-blurs
+  // the view hierarchy beneath it, and a surface that changes position
+  // on every frame makes it do that on every frame. The editor's "/"
+  // bar is exactly that - it rides the keyboard's own live height, so
+  // its `bottom`, `opacity` and `translateY` all move together while
+  // the keyboard animates, directly over the text being scrolled and
+  // typed. That combination froze the app on a tap into any text field,
+  // in a note and in the calendar's daily note alike, until Android
+  // killed it: "зависає і потім закривається".
+  //
+  // A still surface can afford the live blur. A moving one takes the
+  // same colour recipe without it, one shade denser - same material,
+  // same file, no second recipe to keep in step.
+  blur?: boolean;
   children?: ReactNode;
 }) {
   const theme = useTheme();
@@ -55,17 +78,22 @@ export default function DockFrost({
   // `glass.opacity` is the token actually meant for this - a real dark
   // fill independent of what is behind the blur.
   const tintColor = theme.key === 'colour' ? theme.glass.body : theme.surface;
-  const tintOpacity = theme.key === 'colour' ? theme.glass.opacity : FROST_TINT;
+  // Without the blur underneath it, the fill is the only thing standing
+  // between the content and whatever is behind - so it carries the
+  // whole job itself.
+  const tintOpacity = blur ? (theme.key === 'colour' ? theme.glass.opacity : FROST_TINT) : FLAT_TINT;
   return (
     <View style={[style, { borderRadius: radius, overflow: 'hidden' }]}>
-      <BlurView
-        intensity={FROST_BLUR}
-        tint="dark"
-        blurMethod="dimezisBlurView"
-        blurTarget={blurTarget ?? undefined}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
+      {blur && (
+        <BlurView
+          intensity={FROST_BLUR}
+          tint="dark"
+          blurMethod="dimezisBlurView"
+          blurTarget={blurTarget ?? undefined}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+      )}
       <View
         style={[StyleSheet.absoluteFill, { backgroundColor: tintColor, opacity: tintOpacity }]}
         pointerEvents="none"
