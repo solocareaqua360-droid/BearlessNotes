@@ -262,6 +262,12 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
+    // Centres the glass pill EditorToolbar now draws instead of the old
+    // edge-to-edge bar. Nothing about `bottom` changes - that stays
+    // `keyboardSV.value` alone (see pinnedToolbarStyle's own comment on
+    // why an inset there once cost a gap the next block's text showed
+    // through) - this only decides how its CHILD sits inside the row.
+    alignItems: 'center',
   },
   // Embedded (CalendarScreen): no header and no title/tags block eating
   // the top (calendar days have neither), so the block list needs its own

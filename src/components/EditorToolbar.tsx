@@ -5,8 +5,11 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { BLOCK_ACTIONS, BlockAction, BlockActionIcon } from './blockActions';
-import { useStyles, useTheme } from '../theme/ThemeProvider';
+import GlassDrop from './GlassDrop';
+import { useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
+import { GLASS_EDGE, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
+import { NAV_BUTTON, NAV_GAP, NAV_PADDING } from '../constants/rail';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 
 // Kept as fixed crayons, not the theme's own accent or its card palette:
@@ -19,11 +22,15 @@ const HIGHLIGHT_COLORS = ['#FEF08A', '#BBF7D0', '#BFDBFE', '#FBCFE8', '#E9D5FF']
 
 export type ToolbarSelection = { blockId: string; start: number; end: number };
 
-// Content (~24px) plus the row's own vertical padding. The screen needs
-// this number too - the bar is pinned over the block list, so the list's
-// bottom padding and the "scroll the focused block into view" maths both
-// have to reserve exactly this much room above the keyboard.
-export const EDITOR_TOOLBAR_HEIGHT = 44;
+// The pill's real height - NAV_BUTTON tall inside, NAV_PADDING all
+// round, same as every other face of this dock (docDock, the
+// select-mode bar). Computed rather than a separate literal: the
+// screen needs this exact number too (the list's bottom padding and
+// the "scroll the focused block into view" maths both reserve exactly
+// this much room above the keyboard), and the one time this bar's own
+// height and that reserved space drifted apart, the next block's text
+// showed through the gap.
+export const EDITOR_TOOLBAR_HEIGHT = NAV_BUTTON + NAV_PADDING * 2;
 
 type Props = {
   // The block actions apply to. null means no block is focused (e.g. the
@@ -76,140 +83,152 @@ export default function EditorToolbar({
   onApplyMarker,
   onApplyColor,
 }: Props) {
-  // The bar sits directly above the note's own text - PAPER, not the
-  // app's chrome surface, since paper is the one thing that stays a
-  // light sheet in every theme (see the canvas/paper note in tokens.ts).
-  const theme = useTheme();
+  // Same glass pill as the docDock below the block list - the
+  // navigation redesign's second step, folding what used to be a flat
+  // full-width bar (paper-coloured, a hard top border) into the one
+  // floating capsule the Полотно dock and the select-mode bar already
+  // share. It still rides the keyboard's own live height exactly as
+  // before (see pinnedToolbarStyle in DocumentEditorScreen.tsx) - only
+  // what it LOOKS like changed here, never how it tracks the keyboard.
   const styles = useStyles(makeStyles);
   if (!focusedBlockId) return null;
 
   if (activeSelection) {
     return (
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.formatToolbar}
-        contentContainerStyle={styles.formatToolbarContent}
-        keyboardShouldPersistTaps="always"
-      >
-        <Pressable hitSlop={6} accessibilityLabel="Жирний" onPress={() => onApplyMarker('**', '**')}>
-          <Text style={[styles.formatButtonLabel, { fontFamily: FONT_BOLD }]}>Ж</Text>
-        </Pressable>
-        <Pressable hitSlop={6} accessibilityLabel="Курсив" onPress={() => onApplyMarker('*', '*')}>
-          <Text style={[styles.formatButtonLabel, { fontStyle: 'italic' }]}>К</Text>
-        </Pressable>
-        <Pressable hitSlop={6} accessibilityLabel="Підкреслений" onPress={() => onApplyMarker('__', '__')}>
-          <Text style={[styles.formatButtonLabel, { textDecorationLine: 'underline' }]}>П</Text>
-        </Pressable>
-        <Pressable hitSlop={6} accessibilityLabel="Закреслений" onPress={() => onApplyMarker('~~', '~~')}>
-          <Text style={[styles.formatButtonLabel, { textDecorationLine: 'line-through' }]}>С</Text>
-        </Pressable>
-        <View style={styles.formatDivider} />
-        {TEXT_COLORS.map((color) => (
-          <Pressable
-            key={color}
-            hitSlop={6}
-            accessibilityLabel="Колір тексту"
-            onPress={() => onApplyColor('c', color)}
+      <View style={styles.shellWrap}>
+        <GlassDrop style={styles.shell}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.formatRow}
+            keyboardShouldPersistTaps="always"
           >
-            <View style={[styles.colorSwatch, { backgroundColor: color }]} />
-          </Pressable>
-        ))}
-        <View style={styles.formatDivider} />
-        {HIGHLIGHT_COLORS.map((color) => (
-          <Pressable key={color} hitSlop={6} accessibilityLabel="Маркер" onPress={() => onApplyColor('h', color)}>
-            <View style={[styles.colorSwatch, styles.highlightSwatch, { backgroundColor: color }]} />
-          </Pressable>
-        ))}
-      </ScrollView>
+            <Pressable style={styles.iconButton} hitSlop={6} accessibilityLabel="Жирний" onPress={() => onApplyMarker('**', '**')}>
+              <Text style={[styles.formatButtonLabel, { fontFamily: FONT_BOLD }]}>Ж</Text>
+            </Pressable>
+            <Pressable style={styles.iconButton} hitSlop={6} accessibilityLabel="Курсив" onPress={() => onApplyMarker('*', '*')}>
+              <Text style={[styles.formatButtonLabel, { fontStyle: 'italic' }]}>К</Text>
+            </Pressable>
+            <Pressable style={styles.iconButton} hitSlop={6} accessibilityLabel="Підкреслений" onPress={() => onApplyMarker('__', '__')}>
+              <Text style={[styles.formatButtonLabel, { textDecorationLine: 'underline' }]}>П</Text>
+            </Pressable>
+            <Pressable style={styles.iconButton} hitSlop={6} accessibilityLabel="Закреслений" onPress={() => onApplyMarker('~~', '~~')}>
+              <Text style={[styles.formatButtonLabel, { textDecorationLine: 'line-through' }]}>С</Text>
+            </Pressable>
+            <View style={styles.divider} />
+            {TEXT_COLORS.map((color) => (
+              <Pressable
+                key={color}
+                style={styles.iconButton}
+                hitSlop={6}
+                accessibilityLabel="Колір тексту"
+                onPress={() => onApplyColor('c', color)}
+              >
+                <View style={[styles.colorSwatch, { backgroundColor: color }]} />
+              </Pressable>
+            ))}
+            <View style={styles.divider} />
+            {HIGHLIGHT_COLORS.map((color) => (
+              <Pressable key={color} style={styles.iconButton} hitSlop={6} accessibilityLabel="Маркер" onPress={() => onApplyColor('h', color)}>
+                <View style={[styles.colorSwatch, styles.highlightSwatch, { backgroundColor: color }]} />
+              </Pressable>
+            ))}
+          </ScrollView>
+        </GlassDrop>
+      </View>
     );
   }
 
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={styles.formatToolbar}
-      contentContainerStyle={styles.iconRowContent}
-      keyboardShouldPersistTaps="always"
-    >
-      <Pressable
-        style={styles.iconButton}
-        accessibilityLabel="Скасувати"
-        accessibilityRole="button"
-        disabled={!canUndo}
-        onPress={onUndo}
-      >
-        <Ionicons name="arrow-undo-outline" size={22} color={canUndo ? theme.paper.ink : theme.paper.inkFaint} />
-      </Pressable>
-      <Pressable
-        style={styles.iconButton}
-        accessibilityLabel="Повторити"
-        accessibilityRole="button"
-        disabled={!canRedo}
-        onPress={onRedo}
-      >
-        <Ionicons name="arrow-redo-outline" size={22} color={canRedo ? theme.paper.ink : theme.paper.inkFaint} />
-      </Pressable>
-      <View style={styles.formatDivider} />
-      {BLOCK_ACTIONS.map((action) => (
-        <Pressable
-          key={action.key}
-          style={styles.iconButton}
-          accessibilityLabel={action.label}
-          accessibilityRole="button"
-          onPress={() => onBlockAction(action.key, focusedBlockId)}
+    <View style={styles.shellWrap}>
+      <GlassDrop style={styles.shell}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.iconRow}
+          keyboardShouldPersistTaps="always"
         >
-          <BlockActionIcon entry={action} size={22} color={theme.paper.ink} />
-        </Pressable>
-      ))}
-    </ScrollView>
+          <Pressable
+            style={styles.iconButton}
+            accessibilityLabel="Скасувати"
+            accessibilityRole="button"
+            disabled={!canUndo}
+            onPress={onUndo}
+          >
+            <Ionicons name="arrow-undo-outline" size={22} color={canUndo ? GLASS_TEXT : GLASS_TEXT_FAINT} />
+          </Pressable>
+          <Pressable
+            style={styles.iconButton}
+            accessibilityLabel="Повторити"
+            accessibilityRole="button"
+            disabled={!canRedo}
+            onPress={onRedo}
+          >
+            <Ionicons name="arrow-redo-outline" size={22} color={canRedo ? GLASS_TEXT : GLASS_TEXT_FAINT} />
+          </Pressable>
+          <View style={styles.divider} />
+          {BLOCK_ACTIONS.map((action) => (
+            <Pressable
+              key={action.key}
+              style={styles.iconButton}
+              accessibilityLabel={action.label}
+              accessibilityRole="button"
+              onPress={() => onBlockAction(action.key, focusedBlockId)}
+            >
+              <BlockActionIcon entry={action} size={22} color={GLASS_TEXT} />
+            </Pressable>
+          ))}
+        </ScrollView>
+      </GlassDrop>
+    </View>
   );
 }
 
 const makeStyles = (t: Theme) => StyleSheet.create({
-  formatToolbar: {
-    flexGrow: 0,
-    // Pinned above the keyboard rather than sitting under the header, so
-    // the divider faces up and the row needs its own opaque background -
-    // block text scrolls underneath it now.
-    backgroundColor: t.paper.fill,
-    borderTopWidth: 1,
-    borderTopColor: t.paper.edge,
+  // Centers the pill and caps its width - the exact same shape as
+  // docDock/docDockShell (documentEditorStyles.ts), reproduced here
+  // rather than imported so this component stays self-contained; the
+  // shared constants (NAV_PADDING/NAV_GAP/NAV_BUTTON) are what actually
+  // keep the two pixel-identical.
+  shellWrap: {
+    alignItems: 'center',
   },
-  formatToolbarContent: {
+  shell: {
+    padding: NAV_PADDING,
+    maxWidth: '88%',
+  },
+  formatRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 18,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    gap: NAV_GAP,
+    paddingHorizontal: 8,
   },
   // Icons-only row: the buttons carry their own touch area instead of
   // relying on hitSlop, so neighbours can sit close without their targets
   // overlapping.
-  iconRowContent: {
+  iconRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
+    gap: NAV_GAP,
+    paddingHorizontal: 4,
   },
   iconButton: {
-    width: 44,
-    height: EDITOR_TOOLBAR_HEIGHT,
+    width: NAV_BUTTON,
+    height: NAV_BUTTON,
     alignItems: 'center',
     justifyContent: 'center',
   },
   formatButtonLabel: {
     fontSize: 17,
     fontFamily: FONT_REGULAR,
-    color: t.paper.ink,
+    color: GLASS_TEXT,
     minWidth: 20,
     textAlign: 'center',
   },
-  formatDivider: {
+  divider: {
     width: 1,
     height: 20,
-    backgroundColor: t.paper.edge,
+    backgroundColor: GLASS_EDGE,
   },
   colorSwatch: {
     width: 22,
@@ -218,6 +237,6 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   },
   highlightSwatch: {
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: GLASS_EDGE,
   },
 });
