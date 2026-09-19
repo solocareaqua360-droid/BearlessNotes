@@ -1804,7 +1804,26 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       if (closePane) closePane();
       else navigation.goBack();
     },
-    !embedded
+    // NOT while blocks are selected. The user reported that the chevron's
+    // first press in select mode ends the selection instead of leaving
+    // the note, and the second one leaves - textbook layered-back
+    // behaviour, except that this handler has no such layer and nothing
+    // wraps the note on a phone. The mechanism was NOT found, and this
+    // is not a guess at it: it is the rule that makes the question moot.
+    //
+    // ONE EXIT PER MODE. While a selection is up, ✕ ends it - that is
+    // what it is for, and it says so in a word. A second control beside
+    // it that also means "out of something" has to be aimed at and
+    // thought about, which is the same "дві кнопки одна функція" the
+    // user refused when the dock's own bead duplicated a crumb. It costs
+    // nothing: leaving the selection is one press, and the chevron is
+    // back the instant it ends.
+    //
+    // It also gives back LEAVE_W to the row the user wanted more icons
+    // in. If the chevron ever misbehaves OUTSIDE select mode, the cause
+    // this did not find is still there - say so rather than assuming it
+    // went with the symptom.
+    !embedded && !isSelectMode
   );
   // ...and to OPEN on them. A note has no context of its own, and the
   // dock's standing rule for that case is to open on the desks - right
