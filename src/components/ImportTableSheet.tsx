@@ -195,7 +195,14 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
   // The bytes may not be on this device (a file restored from a backup, or
   // shared from another one) - pulled back from its Drive copy first, the
   // same way a thumbnail would be.
-  async function useStoredFile(file: { fileUri: string; fileName: string; title?: string; driveFileId?: string }) {
+  // NOT a hook, despite what the name used to say. The `use` prefix
+  // made react-hooks/rules-of-hooks report it as a hook called inside a
+  // callback - and that is the one rule that would have caught the
+  // crash of 2026-09-19 (a useRef below an early return in ContextDock:
+  // white screen, twice) if this repo ran it. A permanent false alarm
+  // on the one rule worth listening to is worse than no rule at all, so
+  // the name says what it actually is instead.
+  async function importStoredFile(file: { fileUri: string; fileName: string; title?: string; driveFileId?: string }) {
     setBusy(true);
     const available = await ensureLocalFile(file.fileUri, file.driveFileId).catch(() => false);
     setBusy(false);
@@ -378,7 +385,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
                         key={f.id}
                         style={styles.storedRow}
                         disabled={busy}
-                        onPress={() => useStoredFile(f)}
+                        onPress={() => importStoredFile(f)}
                       >
                         <Ionicons name="document-outline" size={18} color={accent} />
                         <Text style={styles.storedLabel} numberOfLines={1}>

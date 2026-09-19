@@ -389,6 +389,24 @@ export default function ContextDock() {
   // and whatever stands beside the stack does not move at all.
   const actionsPublished = useNavDockActions();
   const actions = suppress ? null : actionsPublished;
+  // HOW MANY ACTIONS THE SPLIT IS SIZED FOR, frozen through a
+  // desk-switch swipe - the value is used far below, but the hook
+  // belongs HERE.
+  //
+  // THIS IS WHAT CRASHED THE APP, TWICE (2026-09-19). It sat beside the
+  // rest of the split's arithmetic, a few hundred lines down - which is
+  // AFTER `if (!dock && !leave && ...) return null`. So the dock called
+  // ten hooks on a screen with something to show and nine on a screen
+  // with nothing, and React tears the whole tree down the instant those
+  // two renders meet: "Rendered more hooks than during the previous
+  // render". ContextDock is mounted above the crash boundary, so what
+  // reached the user was a white screen and the app exiting to the home
+  // screen, with nothing in the app's own error overlay to read - which
+  // sent two rounds of debugging at the styling instead. tsc cannot see
+  // this, and this repo has no eslint config for react-hooks to see it
+  // either. A hook goes at the top, with the other hooks, always.
+  const lastSplitCountRef = useRef(0);
+  if (!suppress) lastSplitCountRef.current = actionsPublished?.length ?? 0;
   // What never changes stands beside the stack and does not move: search
   // on the left, creating on the right. The user's own arrangement, and
   // Samsung's own reasoning - a pile of cards is for what changes.
@@ -1067,8 +1085,8 @@ export default function ContextDock() {
   // not. Held at its last real value until the swipe settles, then it
   // steps to the truth in one frame - a blank frosted zone for that one
   // beat, never a moving one.
-  const lastSplitCountRef = useRef(0);
-  if (!suppress) lastSplitCountRef.current = actionsPublished?.length ?? 0;
+  // The ref itself lives ABOVE the early return - see its own comment
+  // there. Only the plain derived value is read here.
   const splitActionsCount = suppress ? lastSplitCountRef.current : (actions?.length ?? 0);
   // How wide the actions zone needs to be to show every action without
   // scrolling - the content deciding the width, never the other way
