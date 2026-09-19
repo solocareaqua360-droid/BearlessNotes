@@ -1,7 +1,7 @@
-// Small, dependency-free HSL <-> hex conversion for ColorPickerSheet -
-// three sliders (hue/saturation/lightness) need to read and write the
-// same colour a plain hex field edits, so both directions have to be
-// exact and cheap enough to run on every drag frame.
+// Small, dependency-free HSL <-> hex conversion for the colour wheel
+// (ColorSchemeSheet) - a scheme rotates hues while each stop keeps its
+// own saturation and lightness, so both directions have to be exact
+// and cheap enough to run on every frame of a drag around the ring.
 
 export function hexToHsl(hex: string): { h: number; s: number; l: number } {
   const clean = hex.replace('#', '');

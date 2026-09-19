@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import * as ImagePicker from 'expo-image-picker';
@@ -9,7 +9,6 @@ import StockPhotoPicker from '../components/StockPhotoPicker';
 import {
   ActivityIndicator,
   Image,
-  PanResponder,
   PixelRatio,
   Pressable,
   ScrollView,
@@ -58,7 +57,8 @@ import {
 import { THEMES, THEME_ORDER, type ThemeKey } from '../theme/tokens';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import RenamePrompt from '../components/RenamePrompt';
-import ColorPickerSheet from '../components/ColorPickerSheet';
+import ColorSchemeSheet from '../components/ColorSchemeSheet';
+import GradientSlider from '../components/GradientSlider';
 
 // The app's own warm action colour (the one RenamePrompt's save button
 // and the browser's sign-in use), not the system blue this screen was
@@ -91,59 +91,6 @@ function formatUpdateTime(date: Date | null): string {
   if (!date) return '—';
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}, ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-// A plain 0-100 slider - nothing like it exists elsewhere in this app
-// yet, so it lives here rather than as a shared component until a
-// second caller actually needs one. PanResponder rather than
-// gesture-handler: one drag, no competing scroll/swipe to arbitrate
-// against, the same reasoning SketchEditor's own toolbar drag uses.
-function BlurSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  const theme = useTheme();
-  const [trackWidth, setTrackWidth] = useState(0);
-  const valueRef = useRef(value);
-  valueRef.current = value;
-  const responder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderMove: (e) => {
-        if (trackWidth <= 0) return;
-        const x = e.nativeEvent.locationX;
-        onChange(Math.round(Math.max(0, Math.min(1, x / trackWidth)) * 100));
-      },
-    })
-  ).current;
-  return (
-    <View
-      style={{ height: 32, justifyContent: 'center' }}
-      onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
-      {...responder.panHandlers}
-    >
-      <View style={{ height: 4, borderRadius: 2, backgroundColor: theme.edge.hairline }}>
-        <View
-          style={{
-            height: 4,
-            borderRadius: 2,
-            width: `${value}%`,
-            backgroundColor: theme.ink.primary,
-          }}
-        />
-      </View>
-      <View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          left: `${value}%`,
-          marginLeft: -8,
-          width: 16,
-          height: 16,
-          borderRadius: 8,
-          backgroundColor: theme.ink.primary,
-        }}
-      />
-    </View>
-  );
 }
 
 export default function SettingsScreen() {
@@ -199,7 +146,7 @@ export default function SettingsScreen() {
   // body, list titles) gets a generous range since those containers
   // simply grow taller; ui (dock/menu chrome - tight, fixed-size rows)
   // gets a narrow one, since that is where an icon stops fitting beside
-  // its word. BOTH sliders are 0-100 like BlurSlider already is; the
+  // its word. BOTH sliders are 0-100 here; the
   // mapping to the real range happens only at the read/write edges.
   const { fontScale, setFontScale } = useFontScaleSettings();
   const toSliderPct = (value: number, range: [number, number]) =>
@@ -217,7 +164,7 @@ export default function SettingsScreen() {
   const [gradientBlur, setGradientBlur] = useState(
     backdropSettings.override?.type === 'gradient' ? backdropSettings.override.blur : 0
   );
-  const [editingStopIndex, setEditingStopIndex] = useState<number | null>(null);
+  const [schemeOpen, setSchemeOpen] = useState(false);
   const [pickingBackdropImage, setPickingBackdropImage] = useState(false);
   const [searchingBackdropImage, setSearchingBackdropImage] = useState(false);
   // The same two doors the note's own cover and the tile board's own
@@ -266,16 +213,6 @@ export default function SettingsScreen() {
   function updateGradientBlur(blur: number) {
     setGradientBlur(blur);
     saveGradient(gradientColors, blur);
-  }
-
-  function addGradientStop() {
-    if (gradientColors.length >= 4) return;
-    saveGradient([...gradientColors, '#8A8A8A']);
-  }
-
-  function removeGradientStop() {
-    if (gradientColors.length <= 2) return;
-    saveGradient(gradientColors.slice(0, -1));
   }
 
   // Same compress step every image picker in this app already uses
@@ -922,39 +859,37 @@ export default function SettingsScreen() {
 
           {backdropMode === 'gradient' && (
             <>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+              <Pressable
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' }}
+                onPress={() => setSchemeOpen(true)}
+              >
                 {gradientColors.map((c, i) => (
-                  <Pressable key={i} onPress={() => setEditingStopIndex(i)}>
-                    <View
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 20,
-                        backgroundColor: c,
-                        borderWidth: 1,
-                        borderColor: 'rgba(255,255,255,0.3)',
-                      }}
-                    />
-                  </Pressable>
+                  <View
+                    key={i}
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      backgroundColor: c,
+                      borderWidth: 1,
+                      borderColor: 'rgba(255,255,255,0.3)',
+                    }}
+                  />
                 ))}
-                <Pressable
-                  style={[styles.backdropStopButton, gradientColors.length >= 4 && styles.backdropStopButtonOff]}
-                  onPress={addGradientStop}
-                  disabled={gradientColors.length >= 4}
-                >
-                  <Ionicons name="add" size={16} color={theme.ink.primary} />
-                </Pressable>
-                <Pressable
-                  style={[styles.backdropStopButton, gradientColors.length <= 2 && styles.backdropStopButtonOff]}
-                  onPress={removeGradientStop}
-                  disabled={gradientColors.length <= 2}
-                >
-                  <Ionicons name="remove" size={16} color={theme.ink.primary} />
-                </Pressable>
-              </View>
-              <Text style={styles.cardHint}>Торкнись кружечка, щоб відкрити вибір кольору. Від 2 до 4 кольорів.</Text>
+              </Pressable>
+              <Pressable style={styles.checkButton} onPress={() => setSchemeOpen(true)}>
+                <Text style={styles.checkLabel}>Підібрати схему</Text>
+              </Pressable>
+              <Text style={styles.cardHint}>
+                Кольори підбираються на колі за схемою - компліментарна, триада, аналогова чи монохромна. Насиченість і
+                світлота налаштовуються окремо для кожного кольору.
+              </Text>
               <Text style={[styles.cardHint, { marginTop: 14 }]}>Розмиття поверх градієнта (матове скло)</Text>
-              <BlurSlider value={gradientBlur} onChange={updateGradientBlur} />
+              <GradientSlider
+                value={gradientBlur / 100}
+                stops={['rgba(255,255,255,0.12)', theme.ink.primary]}
+                onChange={(v) => updateGradientBlur(Math.round(v * 100))}
+              />
             </>
           )}
 
@@ -968,9 +903,10 @@ export default function SettingsScreen() {
                     resizeMode="cover"
                   />
                   <Text style={[styles.cardHint, { marginTop: 8 }]}>Рівень розмиття (матове скло)</Text>
-                  <BlurSlider
-                    value={backdropSettings.override.blur}
-                    onChange={updateBackdropBlur}
+                  <GradientSlider
+                    value={backdropSettings.override.blur / 100}
+                    stops={['rgba(255,255,255,0.12)', theme.ink.primary]}
+                    onChange={(v) => updateBackdropBlur(Math.round(v * 100))}
                   />
                   <Pressable
                     style={styles.checkButton}
@@ -1035,9 +971,12 @@ export default function SettingsScreen() {
           <Text style={[styles.cardBody, { fontSize: Math.round(16 * fontScale.text), marginTop: 6 }]}>
             Зразок тексту нотатки
           </Text>
-          <BlurSlider
-            value={toSliderPct(fontScale.text, TEXT_SCALE_RANGE)}
-            onChange={(pct) => setFontScale({ ...fontScale, text: fromSliderPct(pct, TEXT_SCALE_RANGE) })}
+          <GradientSlider
+            value={toSliderPct(fontScale.text, TEXT_SCALE_RANGE) / 100}
+            stops={['rgba(255,255,255,0.12)', theme.ink.primary]}
+            onChange={(v) =>
+              setFontScale({ ...fontScale, text: fromSliderPct(Math.round(v * 100), TEXT_SCALE_RANGE) })
+            }
           />
 
           <Text style={[styles.cardHint, { marginTop: 16 }]}>
@@ -1049,9 +988,12 @@ export default function SettingsScreen() {
               Пошук
             </Text>
           </View>
-          <BlurSlider
-            value={toSliderPct(fontScale.ui, UI_SCALE_RANGE)}
-            onChange={(pct) => setFontScale({ ...fontScale, ui: fromSliderPct(pct, UI_SCALE_RANGE) })}
+          <GradientSlider
+            value={toSliderPct(fontScale.ui, UI_SCALE_RANGE) / 100}
+            stops={['rgba(255,255,255,0.12)', theme.ink.primary]}
+            onChange={(v) =>
+              setFontScale({ ...fontScale, ui: fromSliderPct(Math.round(v * 100), UI_SCALE_RANGE) })
+            }
           />
         </View>
         )}
@@ -1088,18 +1030,13 @@ export default function SettingsScreen() {
         }}
       />
 
-      <ColorPickerSheet
-        visible={editingStopIndex !== null}
-        title={`Колір ${(editingStopIndex ?? 0) + 1}`}
-        initialColor={editingStopIndex !== null ? gradientColors[editingStopIndex] : '#705648'}
-        onCancel={() => setEditingStopIndex(null)}
-        onSave={(hex) => {
-          const i = editingStopIndex;
-          setEditingStopIndex(null);
-          if (i === null) return;
-          const next = [...gradientColors];
-          next[i] = hex;
-          saveGradient(next);
+      <ColorSchemeSheet
+        visible={schemeOpen}
+        initialColors={gradientColors}
+        onCancel={() => setSchemeOpen(false)}
+        onSave={(colors) => {
+          setSchemeOpen(false);
+          saveGradient(colors);
         }}
       />
 
@@ -1234,18 +1171,6 @@ const makeStyles = (t: Theme) =>
   },
   themeChipLabelOn: {
     color: t.ink.primary,
-  },
-  backdropStopButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
-  },
-  backdropStopButtonOff: {
-    opacity: 0.35,
   },
   backdropImagePreview: {
     width: '100%',
