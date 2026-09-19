@@ -1934,6 +1934,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // видалення буде видно тільки після прокручування доку". The
           // one button you must not hit by accident is the one you have
           // to travel to.
+          //
+          // NONE of them on the canvas: "в режимі полотна нам потрібен
+          // сторінка та референси". The canvas is a different surface
+          // with a different job - there is no block list to pick from,
+          // no paper to colour, and the two buttons that do still make
+          // sense there (export, delete) are not worth the other three
+          // being present and inert. A control that cannot act is one
+          // you read and dismiss every time, which is the same rule
+          // «Референси» already follows in the other direction.
+          ...(canvasMode
+            ? []
+            : [
           {
             key: 'select',
             icon: 'checkmark-circle-outline',
@@ -1979,6 +1991,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             label: 'Видалити',
             onPress: confirmDeleteDocument,
           },
+              ]),
         ]
   );
   // The pinned toolbar rides on the live height, so it comes up (and goes
