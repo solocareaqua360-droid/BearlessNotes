@@ -335,6 +335,15 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     lineHeight: 22,
     includeFontPadding: false,
   },
+  // See BlockRow's own comment on the invisible measurement twin.
+  measureTwin: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    opacity: 0,
+    pointerEvents: 'none',
+  },
   // Its own ground, so a block of code is plainly not prose.
   codeBlock: {
     backgroundColor: t.paper.tint,
