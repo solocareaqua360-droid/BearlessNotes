@@ -1,13 +1,12 @@
-import { ReactNode, useLayoutEffect, useMemo, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleProp, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
+import { useLayoutEffect, useMemo, useEffect, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { openCapture } from './CaptureWindow';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
 import Svg, { Circle } from 'react-native-svg';
-import { useBlurTarget } from './GlassTarget';
 import { GlassPortal } from './GlassPortal';
+import DockFrost from './DockFrost';
 import { useLift, useTheme } from '../theme/ThemeProvider';
 import { liftStyle } from '../theme/tokens';
 import { hapticButtonDown } from '../utils/haptics';
@@ -166,8 +165,6 @@ function slotTransform(i: number, f: number, n: number, cardH: number) {
 // construction with one deliberate difference - the tint is never
 // opaque, whatever the theme's surface is, because a dock that is a
 // solid slab is not frosted glass in any theme.
-const FROST_BLUR = 60;
-const FROST_TINT = 0.55;
 // The lighter mark on the thing you are on.
 const HERE_FILL = 'rgba(255,255,255,0.16)';
 // How much smaller than its own button the "here" circle sits. At the
@@ -1004,9 +1001,9 @@ export default function ContextDock() {
                 style={[styles.cardLayer, dims.card, liftStyle(theme, theme.lift, glowAt(i)), cardStyles[i]]}
                 pointerEvents={f === showing ? 'auto' : 'none'}
               >
-                <Frost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
+                <DockFrost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
                   {renderCard(f)}
-                </Frost>
+                </DockFrost>
               </View>
             ))}
           </View>
@@ -1026,48 +1023,9 @@ export default function ContextDock() {
 // own beside the stack.
 // The drawer's two layers, clipped round. `radius` is always half of a
 // size the view already has - never 999 (see dims).
-function Frost({
-  style,
-  radius,
-  children,
-}: {
-  style?: StyleProp<ViewStyle>;
-  radius: number;
-  children?: ReactNode;
-}) {
-  const theme = useTheme();
-  const blurTarget = useBlurTarget();
-  // `surface` is opaque dark fill in black/white (a real tint the blur
-  // can lean on) but a near-transparent WHITE highlight in colour
-  // (rgba(255,255,255,0.07), meant to lighten the theme's own dark
-  // ground - a different job). Layered here at 55% it added nothing in
-  // colour, so the capsule's darkness came ENTIRELY from BlurView's own
-  // "dark" tint - which on this device blurred the backdrop's own
-  // light warm gradient into a light capsule instead, and the glass
-  // ink colours (built for a dark one) vanished into it: "відображення
-  // тексту на календарі... не видно в кольоровій темі". `glass.body`/
-  // `glass.opacity` is the token actually meant for this - a real dark
-  // fill (#181513 at 42%) independent of what is behind the blur.
-  const tintColor = theme.key === 'colour' ? theme.glass.body : theme.surface;
-  const tintOpacity = theme.key === 'colour' ? theme.glass.opacity : FROST_TINT;
-  return (
-    <View style={[style, { borderRadius: radius, overflow: 'hidden' }]}>
-      <BlurView
-        intensity={FROST_BLUR}
-        tint="dark"
-        blurMethod="dimezisBlurView"
-        blurTarget={blurTarget ?? undefined}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
-      <View
-        style={[StyleSheet.absoluteFill, { backgroundColor: tintColor, opacity: tintOpacity }]}
-        pointerEvents="none"
-      />
-      {children}
-    </View>
-  );
-}
+// Frost moved to its own file (DockFrost) so the editor's "/" toolbar
+// can wear the same material instead of a second recipe of its own -
+// see DockFrost's comment for what that second recipe cost.
 
 function Bead({
   bead,
@@ -1088,7 +1046,7 @@ function Bead({
       onLongPress={bead.onLongPress}
       style={{ width: size, height: size, overflow: 'visible' }}
     >
-      <Frost style={[styles.bead, { width: size, height: size }, lift]} radius={size / 2}>
+      <DockFrost style={[styles.bead, { width: size, height: size }, lift]} radius={size / 2}>
         <Ionicons
           name={bead.icon as keyof typeof Ionicons.glyphMap}
           size={21}
@@ -1102,7 +1060,7 @@ function Bead({
             style={styles.badge}
           />
         )}
-      </Frost>
+      </DockFrost>
     </Pressable>
   );
 }

@@ -5,10 +5,18 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { BLOCK_ACTIONS, BlockAction, BlockActionIcon } from './blockActions';
-import GlassDrop from './GlassDrop';
-import { useStyles } from '../theme/ThemeProvider';
+import DockFrost from './DockFrost';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
-import { GLASS_EDGE, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
+// GLASS_TEXT and friends are GONE from this file (2026-09-19). They are
+// fixed values for DARK glass - white ink, a white hairline - and this
+// bar's own shell is near-opaque theme glass, which in the white theme
+// is a pale pill. White icons on a pale pill are not faint, they are
+// absent: the user's screenshot showed the bar standing over the text
+// with nothing legible on it at all. `theme.glass.ink` is the role for
+// exactly this - "the ink of a control STANDING on the glass, which is
+// not the ink of the page" - and the dock beside it was already reading
+// it, which is why the dock stayed visible while this did not.
 import { NAV_GAP } from '../constants/rail';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 
@@ -20,13 +28,25 @@ import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 const TEXT_COLORS = ['#111827', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
 const HIGHLIGHT_COLORS = ['#FEF08A', '#BBF7D0', '#BFDBFE', '#FBCFE8', '#E9D5FF'];
 
-// Near-opaque, overriding the theme's own (0.05-0.55, tuned for a
-// capsule floating over a mostly-still screen). This one floats over
-// the exact text being read and scrolled underneath it while it types
-// - the user's own report, with a screenshot: the theme's translucency
-// let that scrolling text show straight through, unlike every other
-// face of this dock, which sit over calmer ground.
-const GLASS_OPACITY = 0.94;
+// THIS BAR IS MADE OF THE DOCK, not of GlassDrop with its numbers
+// turned up (2026-09-19).
+//
+// It wore GlassDrop at glassOpacity 0.94, raised from the theme's own
+// because the user reported - with a screenshot - that the scrolling
+// text underneath showed straight through it, unlike every other face
+// of this dock, which sit over calmer ground. Two things were wrong with
+// that answer. In the WHITE theme it makes a pale pill, and the icons
+// on it were fixed white constants, so the bar was there and held
+// nothing legible: "слеш панель невидно". And in the BLACK theme it is
+// worse than pale - that theme's glass BODY is #FFFFFF at 5%, so raising
+// its opacity makes a white slab, which is a trap this project has
+// already sprung once and written down.
+//
+// DockFrost is the material the dock is actually made of - the tags
+// drawer's two layers, picked by the user's own eye and confirmed
+// on-device. It is dense enough that nothing reads through it, and its
+// ink is the theme's `glass.ink`, so the pair cannot come apart in any
+// theme. One material, one place it is defined.
 
 export type ToolbarSelection = { blockId: string; start: number; end: number };
 
@@ -55,6 +75,9 @@ const TOOLBAR_PADDING = 4;
 // and the one time this bar's own height and that reserved space
 // drifted apart, the next block's text showed through the gap.
 export const EDITOR_TOOLBAR_HEIGHT = TOOLBAR_BUTTON + TOOLBAR_PADDING * 2;
+// Half the bar's own height, said out loud rather than left as 999 - see
+// DockFrost's `radius`.
+const SHELL_RADIUS = EDITOR_TOOLBAR_HEIGHT / 2;
 
 type Props = {
   // The block actions apply to. null means no block is focused (e.g. the
@@ -123,12 +146,13 @@ export default function EditorToolbar({
   // before (see pinnedToolbarStyle in DocumentEditorScreen.tsx) - only
   // what it LOOKS like changed here, never how it tracks the keyboard.
   const styles = useStyles(makeStyles);
+  const theme = useTheme();
   if (!focusedBlockId) return null;
 
   if (activeSelection) {
     return (
       <View style={styles.shellWrap}>
-        <GlassDrop style={styles.shell} glassOpacity={GLASS_OPACITY}>
+        <DockFrost style={styles.shell} radius={SHELL_RADIUS}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -166,14 +190,14 @@ export default function EditorToolbar({
               </Pressable>
             ))}
           </ScrollView>
-        </GlassDrop>
+        </DockFrost>
       </View>
     );
   }
 
   return (
     <View style={styles.shellWrap}>
-      <GlassDrop style={styles.shell} glassOpacity={GLASS_OPACITY}>
+      <DockFrost style={styles.shell} radius={SHELL_RADIUS}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -187,7 +211,7 @@ export default function EditorToolbar({
             disabled={!canUndo}
             onPress={onUndo}
           >
-            <Ionicons name="arrow-undo-outline" size={22} color={canUndo ? GLASS_TEXT : GLASS_TEXT_FAINT} />
+            <Ionicons name="arrow-undo-outline" size={22} color={canUndo ? theme.glass.ink : theme.glass.inkMuted} />
           </Pressable>
           <Pressable
             style={styles.iconButton}
@@ -196,7 +220,7 @@ export default function EditorToolbar({
             disabled={!canRedo}
             onPress={onRedo}
           >
-            <Ionicons name="arrow-redo-outline" size={22} color={canRedo ? GLASS_TEXT : GLASS_TEXT_FAINT} />
+            <Ionicons name="arrow-redo-outline" size={22} color={canRedo ? theme.glass.ink : theme.glass.inkMuted} />
           </Pressable>
           <View style={styles.divider} />
           {(canvas ? CANVAS_ACTIONS : BLOCK_ACTIONS).map((action) => (
@@ -207,11 +231,11 @@ export default function EditorToolbar({
               accessibilityRole="button"
               onPress={() => onBlockAction(action.key, focusedBlockId)}
             >
-              <BlockActionIcon entry={action} size={22} color={GLASS_TEXT} />
+              <BlockActionIcon entry={action} size={22} color={theme.glass.ink} />
             </Pressable>
           ))}
         </ScrollView>
-      </GlassDrop>
+      </DockFrost>
     </View>
   );
 }
@@ -251,14 +275,15 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   formatButtonLabel: {
     fontSize: 17,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.glass.ink,
     minWidth: 20,
     textAlign: 'center',
   },
   divider: {
     width: 1,
     height: 20,
-    backgroundColor: GLASS_EDGE,
+    backgroundColor: t.glass.inkMuted,
+    opacity: 0.4,
   },
   colorSwatch: {
     width: 22,
@@ -267,6 +292,6 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   },
   highlightSwatch: {
     borderWidth: 1,
-    borderColor: GLASS_EDGE,
+    borderColor: t.glass.inkMuted,
   },
 });
