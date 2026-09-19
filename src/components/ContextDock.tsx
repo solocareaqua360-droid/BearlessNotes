@@ -931,6 +931,19 @@ function Frost({
 }) {
   const theme = useTheme();
   const blurTarget = useBlurTarget();
+  // `surface` is opaque dark fill in black/white (a real tint the blur
+  // can lean on) but a near-transparent WHITE highlight in colour
+  // (rgba(255,255,255,0.07), meant to lighten the theme's own dark
+  // ground - a different job). Layered here at 55% it added nothing in
+  // colour, so the capsule's darkness came ENTIRELY from BlurView's own
+  // "dark" tint - which on this device blurred the backdrop's own
+  // light warm gradient into a light capsule instead, and the glass
+  // ink colours (built for a dark one) vanished into it: "відображення
+  // тексту на календарі... не видно в кольоровій темі". `glass.body`/
+  // `glass.opacity` is the token actually meant for this - a real dark
+  // fill (#181513 at 42%) independent of what is behind the blur.
+  const tintColor = theme.key === 'colour' ? theme.glass.body : theme.surface;
+  const tintOpacity = theme.key === 'colour' ? theme.glass.opacity : FROST_TINT;
   return (
     <View style={[style, { borderRadius: radius, overflow: 'hidden' }]}>
       <BlurView
@@ -942,7 +955,7 @@ function Frost({
         pointerEvents="none"
       />
       <View
-        style={[StyleSheet.absoluteFill, { backgroundColor: theme.surface, opacity: FROST_TINT }]}
+        style={[StyleSheet.absoluteFill, { backgroundColor: tintColor, opacity: tintOpacity }]}
         pointerEvents="none"
       />
       {children}
