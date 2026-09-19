@@ -191,6 +191,11 @@ const BEAD_F = 0.111;
 
 const GAP_F = 0.037;
 const INSET_F = 0.076;
+// What the inset narrows to while a screen asks for a wider dock. The
+// user's measure, not a guess: "можна на всю ширину тексту" - a note's
+// own text starts about a sixteenth of the screen in, and at rest the
+// dock stands a good deal further in than that.
+const INSET_WIDE_F = 0.045;
 const CARD_PAD = 2;
 // ...but of a PHONE's width, never of whatever screen this happens to be.
 // A fraction of the screen is the right answer to "how big on a phone"
@@ -493,7 +498,12 @@ export default function ContextDock() {
   // `stretch`, so every frame of the morph is a real width rather than a
   // step between two of them.
   const beadSlotW = BEAD * (1 - stretch);
-  const cardWidthNow = rowWidth - beadSlotW * 2 - GAP * 2;
+  // The row moves closer to the screen's edges too, so the stretch is
+  // worth another half a button on each side rather than only the beads'
+  // room.
+  const edgeInsetNow = Math.round(screenW * (INSET_F + (INSET_WIDE_F - INSET_F) * stretch));
+  const rowWidthNow = screenW - edgeInsetNow * 2;
+  const cardWidthNow = rowWidthNow - beadSlotW * 2 - GAP * 2;
   // HOW THE DOCK PARTS FROM THE SCREEN. In the black theme that is the
   // glow, and the glow is the whole reason this is here: the two pills
   // that still wore it were the editor's pre-dock chrome, the last two
@@ -922,13 +932,22 @@ export default function ContextDock() {
   // circle and takes the full quarter of the card. Divided by four
   // whatever the count, so the buttons are the same size on a screen
   // with two actions and on one with four.
-  const ACT_W = Math.max(DESK, Math.floor((cardWidthNow - CARD_PAD * 2 - (showLeave ? LEAVE_W : 0)) / 4));
+  // A quarter of the card AT REST - deliberately not of the live width.
+  // This was wrong on the first try and the user counted it: sized off
+  // the live width, every button grew exactly as fast as the card did,
+  // so a visibly wider dock still showed the same four icons ("він став
+  // ширшим але показує 4 іконки"). Fixed, the stretch buys what it was
+  // meant to buy - more buttons in view, the same size as always.
+  //
+  // A DESK button still divides the LIVE width just above, because four
+  // desks are meant to span the card whatever width it has.
+  const ACT_W = Math.floor((cardWidth - CARD_PAD * 2 - (showLeave ? LEAVE_W : 0)) / 4);
   const ACT_ICON = 19;
 
   return (
     <GlassPortal>
       <View
-        style={[styles.wrap, { bottom: DOCK_BOTTOM + bottomInset, paddingHorizontal: EDGE_INSET }]}
+        style={[styles.wrap, { bottom: DOCK_BOTTOM + bottomInset, paddingHorizontal: edgeInsetNow }]}
         pointerEvents="box-none"
       >
         <View
@@ -942,7 +961,7 @@ export default function ContextDock() {
             // so a row that grew with its slivers pushed the front card
             // UP - a hair higher on the screens with more cards behind,
             // which read as a different dock on every desk.
-            { width: rowWidth, gap: GAP, height: CARD_H + BEHIND_EDGE * 2, overflow: 'visible' },
+            { width: rowWidthNow, gap: GAP, height: CARD_H + BEHIND_EDGE * 2, overflow: 'visible' },
           ]}
         >
           {/* A missing bead keeps its place. Without this the stack
