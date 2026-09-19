@@ -18,6 +18,11 @@ const WRAP_PADDING = 6; // vertical, top and bottom, see ContextDock's `wrap`
 // a menu standing above it on a Fold or in the browser clears the dock's
 // REAL height, not a phone-sized guess.
 const PHONE_W = 430;
+// How far the dock's row stands in from each edge, as a fraction of the
+// screen - ContextDock's own INSET_F, moved here for the same reason
+// every other number in this file is here: a panel that wants to be as
+// wide as the dock has to read the dock's width, not a copy of it.
+const INSET_F = 0.076;
 
 export function dockCardHeight(windowWidth: number): number {
   return Math.round(Math.min(windowWidth, PHONE_W) * CARD_F);
@@ -39,4 +44,22 @@ export function dockClearance(windowWidth: number, gap: number = 12): number {
 export function useDockClearance(gap?: number): number {
   const { width } = useWindowDimensions();
   return dockClearance(width, gap);
+}
+
+// The dock's row, edge to edge - what a panel matching its width should
+// be, and where its left edge falls. The user's own ask, and the reason
+// it belongs here rather than being measured by eye: a panel dropping
+// out of the dock reads as the same object only while the two agree to
+// the pixel, and they cannot agree if each works its own width out.
+export function dockEdgeInset(windowWidth: number): number {
+  return Math.round(Math.min(windowWidth, PHONE_W) * INSET_F);
+}
+
+export function dockRowWidth(windowWidth: number): number {
+  return Math.min(windowWidth, PHONE_W) - dockEdgeInset(windowWidth) * 2;
+}
+
+export function useDockRowWidth(): number {
+  const { width } = useWindowDimensions();
+  return dockRowWidth(width);
 }

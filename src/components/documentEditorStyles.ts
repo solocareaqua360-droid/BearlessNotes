@@ -144,6 +144,11 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     elevation: 10,
     zIndex: 6,
   },
+  // The panel's own rows, inside the scroll view that keeps them from
+  // being clipped by its ceiling.
+  exportMenuScroll: {
+    paddingBottom: 2,
+  },
   coverSwatches: {
     flexDirection: 'row',
     flexWrap: 'wrap',

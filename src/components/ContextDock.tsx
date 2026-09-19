@@ -13,7 +13,7 @@ import { liftStyle } from '../theme/tokens';
 import { hapticButtonDown } from '../utils/haptics';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { DOCK_BOTTOM, dockCardHeight } from '../navigation/dockGeometry';
+import { DOCK_BOTTOM, dockCardHeight, dockEdgeInset, dockRowWidth } from '../navigation/dockGeometry';
 import { navigationRef } from '../navigationRef';
 import {
   DockBead,
@@ -190,7 +190,8 @@ const LEAVE_W = 36;
 const BEAD_F = 0.111;
 
 const GAP_F = 0.037;
-const INSET_F = 0.076;
+// INSET_F now lives in dockGeometry, so a panel that wants to be as wide
+// as the dock reads the dock's own number instead of a copy of it.
 // What the inset narrows to while a screen asks for a wider dock. The
 // user's measure, not a guess: "можна на всю ширину тексту" - a note's
 // own text starts about a sixteenth of the screen in, and at rest the
@@ -217,12 +218,12 @@ export default function ContextDock() {
   const BEAD = Math.round(screenW * BEAD_F);
   const CARD_BUTTON = CARD_H - CARD_PAD * 2;
   const GAP = Math.round(screenW * GAP_F);
-  const EDGE_INSET = Math.round(screenW * INSET_F);
+  const EDGE_INSET = dockEdgeInset(windowW);
   // The row's width is SAID, not left to flex: it was settling at
   // three-quarters of the screen and nobody could tell why. On a screen
   // wider than a phone this is narrower than the window, and the wrap
   // below centres it.
-  const rowWidth = screenW - EDGE_INSET * 2;
+  const rowWidth = dockRowWidth(windowW);
   // And so is the CARD'S. Left to flex it hugged its content - one
   // folder deep the path card shrank to a single word and the whole row
   // bunched up on the left. A card is four buttons wide whatever it
@@ -501,7 +502,7 @@ export default function ContextDock() {
   // The row moves closer to the screen's edges too, so the stretch is
   // worth another half a button on each side rather than only the beads'
   // room.
-  const edgeInsetNow = Math.round(screenW * (INSET_F + (INSET_WIDE_F - INSET_F) * stretch));
+  const edgeInsetNow = Math.round(EDGE_INSET + (screenW * INSET_WIDE_F - EDGE_INSET) * stretch);
   const rowWidthNow = screenW - edgeInsetNow * 2;
   const cardWidthNow = rowWidthNow - beadSlotW * 2 - GAP * 2;
   // HOW THE DOCK PARTS FROM THE SCREEN. In the black theme that is the

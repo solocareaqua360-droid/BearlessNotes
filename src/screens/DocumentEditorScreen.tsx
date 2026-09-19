@@ -143,9 +143,8 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import {
   useDockActions,
-  useDockLeave,
+  useDockBeads,
   useDockOpensOnActions,
-  useDockWide,
   useDockShowContext,
   useNavDockFace,
 } from '../navigation/navDock';
@@ -153,7 +152,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_DANGER, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
-import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
+import { dockRowWidth, useDockClearance } from '../navigation/dockGeometry';
 import SaveRing from '../components/SaveRing';
 
 // The rail's capsule stood on its end is RAIL_WIDTH across; lying down on
@@ -291,10 +291,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // ran straight through the title and the first blocks, which is the one
   // thing the rail must never do on the side the text starts from.
   const railHorizontal = railLeft !== undefined;
-  const menuSide =
-    railLeft !== undefined
-      ? { left: railLeft + RAIL_WIDTH + 8 }
-      : { right: railRight + RAIL_WIDTH + 8 };
+  // The "…" panel used to open BESIDE the rail, so it needed to know
+  // which edge the rail stood on. It drops out of the dock now and is as
+  // wide as the dock, so it has no side to pick.
 
   // A document with nothing in it is not a document. Anything a block can
   // carry counts, not just text - an image or an embedded row with no
@@ -1606,7 +1605,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // the keyboard-sync math below, and a value that doesn't re-render when
   // the window actually changes is the same trap that broke the calendar's
   // week strip twice (see CalendarScreen's PLATE_MARGIN comment).
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   useEffect(() => {
     if (focusedBlockId === null) activeInputBottomSV.value = -1;
   }, [focusedBlockId]);
@@ -1782,6 +1781,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // Which card of the stack is in front. Select mode turns the dock's
   // page to the actions itself and the ✕ turns it back - the stack is
   // the note's select-mode bar now, not a bar of its own.
+  // How far above the bottom edge anything has to start to clear the
+  // dock - read off the dock's own geometry, never guessed.
+  const menuClearance = useDockClearance();
   const showContext = useDockShowContext();
   const [, setDockFace] = useNavDockFace();
   // The way out, in the dock's own leave bead - the top-right capsule's
@@ -1790,52 +1792,60 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // there is nothing left open. Back walking straight out of the note
   // while the reference drawer stood open is what left it with no way to
   // close at all.
-  useDockLeave(
-    'document-text-outline',
-    () => {
-      if (canvasEditing) {
-        canvasApiRef.current?.stopEditing();
-        return;
-      }
-      if (referencePanelOpen) {
-        setReferencePanelOpen(false);
-        return;
-      }
-      if (closePane) closePane();
-      else navigation.goBack();
-    },
-    // NOT while blocks are selected. The user reported that the chevron's
-    // first press in select mode ends the selection instead of leaving
-    // the note, and the second one leaves - textbook layered-back
-    // behaviour, except that this handler has no such layer and nothing
-    // wraps the note on a phone. The mechanism was NOT found, and this
-    // is not a guess at it: it is the rule that makes the question moot.
-    //
-    // ONE EXIT PER MODE. While a selection is up, ✕ ends it - that is
-    // what it is for, and it says so in a word. A second control beside
-    // it that also means "out of something" has to be aimed at and
-    // thought about, which is the same "дві кнопки одна функція" the
-    // user refused when the dock's own bead duplicated a crumb. It costs
-    // nothing: leaving the selection is one press, and the chevron is
-    // back the instant it ends.
-    //
-    // It also gives back LEAVE_W to the row the user wanted more icons
-    // in. If the chevron ever misbehaves OUTSIDE select mode, the cause
-    // this did not find is still there - say so rather than assuming it
-    // went with the symptom.
-    !embedded && !isSelectMode
+  // The way out of the note, as its OWN ROUND BUTTON at the left of the
+  // row - the user's ask, and it replaces the chevron that used to ride
+  // inside the card. A bead is the dock's slot for what never changes,
+  // which is exactly what leaving is: it means the same thing whether
+  // you are on the page, on the canvas or picking blocks, so it has no
+  // business moving with the cards that do change.
+  //
+  // It also ends the chevron's own trouble, unexplained to the last:
+  // its first press while selecting ended the selection instead of
+  // leaving. A separate round button beside the card cannot be confused
+  // with ✕ inside it, by the hand or by anything else.
+  //
+  // One step at a time, exactly as the corner capsule's arrow does it:
+  // put the text down, then shut the drawer, and leave the note only
+  // once there is nothing left open. Back walking straight out while
+  // the reference drawer stood open is what left it with no way to
+  // close at all.
+  useDockBeads(
+    !embedded
+      ? {
+          icon: 'arrow-back-outline',
+          onPress: () => {
+            if (canvasEditing) {
+              canvasApiRef.current?.stopEditing();
+              return;
+            }
+            if (referencePanelOpen) {
+              setReferencePanelOpen(false);
+              return;
+            }
+            if (closePane) closePane();
+            else navigation.goBack();
+          },
+        }
+      : null,
+    null
   );
   // ...and to OPEN on them. A note has no context of its own, and the
   // dock's standing rule for that case is to open on the desks - right
   // for a list at its root, wrong here, where the actions are the whole
   // reason this note stopped drawing a dock of its own.
   useDockOpensOnActions(!embedded);
-  // ...and, while blocks are selected, to STRETCH. The user's own idea:
-  // the selection's row carries nine actions where a card holds four,
-  // and the room is already there - a note publishes no beads, so the
-  // slots either side of the stack stand empty the whole time. The card
-  // grows into them for as long as the selection lasts.
-  useDockWide(!embedded && isSelectMode);
+  // NOT wider while selecting, though the dock can be (useDockWide, and
+  // it was declared here for one round). The user's own call once they
+  // saw it: the row keeps its width and the last buttons are reached by
+  // scrolling - "док не розширювати і тоді видалення буде видно тільки
+  // після прокручування доку". A dock that changes width between modes
+  // is also a dock that stands in two places, which is the thing this
+  // whole design has been holding still.
+  //
+  // The mechanism stays in ContextDock: it is declared, not inferred, so
+  // nothing happens unless a screen asks. The note no longer asks - and
+  // could not anyway, now that it publishes a bead (the stretch only
+  // runs where both bead slots are genuinely empty).
   const showActions = () => setDockFace('actions');
   const dockLive = !embedded && editorFocused && !keyboardOpen;
   useDockActions(
@@ -1917,6 +1927,58 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                 },
               ]
             : []),
+          // Everything below came out of the "…" menu at the user's own
+          // request, in the order they are reached for: picking blocks
+          // most, throwing the note away least. Past the four a card
+          // shows, and deliberately so - "док не розширювати і тоді
+          // видалення буде видно тільки після прокручування доку". The
+          // one button you must not hit by accident is the one you have
+          // to travel to.
+          {
+            key: 'select',
+            icon: 'checkmark-circle-outline',
+            label: 'Вибір',
+            onPress: () => {
+              setExportMenuOpen(false);
+              toggleSelectMode();
+              showActions();
+            },
+          },
+          // «Вигляд» is a cover, a row of gradients and a paper colour -
+          // a panel, not a button, so what moves into the dock is the
+          // WAY IN to it. The panel itself stays what it is.
+          {
+            key: 'look',
+            icon: 'color-palette-outline',
+            label: 'Вигляд',
+            active: exportMenuOpen,
+            onPress: () => setExportMenuOpen((v) => !v),
+          },
+          {
+            key: 'group',
+            icon: 'folder-outline',
+            label: 'Група',
+            active: !!groupId,
+            onPress: () => {
+              setExportMenuOpen(false);
+              setGroupPickerVisible(true);
+            },
+          },
+          {
+            key: 'export',
+            icon: 'share-outline',
+            label: 'Експорт',
+            onPress: () => {
+              setExportMenuOpen(false);
+              askExport();
+            },
+          },
+          {
+            key: 'trash',
+            icon: 'trash-outline',
+            label: 'Видалити',
+            onPress: confirmDeleteDocument,
+          },
         ]
   );
   // The pinned toolbar rides on the live height, so it comes up (and goes
@@ -3264,6 +3326,23 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     setIsSelectMode(false);
   }
 
+  // «Експорт» is one button in the dock and two possible files, so the
+  // button asks. Through the app's own Ask surface rather than a raw
+  // Alert, and in the same shape the scanner already uses for "Як фото
+  // / Як PDF" - one question, the answers as the actions.
+  function askExport() {
+    ask({
+      title: 'Експортувати нотатку',
+      actions: [
+        { id: 'pdf', label: 'У PDF' },
+        { id: 'txt', label: 'У TXT' },
+      ],
+    }).then((id) => {
+      if (id === 'pdf') exportAsPdf();
+      else if (id === 'txt') exportAsTxt();
+    });
+  }
+
   function toggleSelectMode() {
     setIsSelectMode((prev) => !prev);
     setSelectedIds(new Set());
@@ -3640,8 +3719,23 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         <View
           style={[
             styles.exportMenuPanel,
-            { top: railTop ?? editorInsets.top + CHROME_TOP + CAPSULE_DROP },
-            menuSide,
+            {
+              // As wide as the dock, and standing on it. The user's own
+              // proposal - "панель буде випадати шириною в док... щоб
+              // було гармонійно" - and the width is READ from the dock's
+              // own geometry rather than measured by eye, because two
+              // things only read as one object while they agree to the
+              // pixel. It used to hang off the rail in the top-right
+              // corner, which is where its button used to be.
+              width: dockRowWidth(windowWidth),
+              left: Math.round((windowWidth - dockRowWidth(windowWidth)) / 2),
+              bottom: menuClearance,
+              // Never taller than the room above the dock. The rows it
+              // holds are what you set ONCE, so scrolling to them costs
+              // nothing - being clipped by a panel with overflow hidden
+              // would cost everything below the fold.
+              maxHeight: windowHeight - menuClearance - editorInsets.top - 24,
+            },
           ]}
         >
           <BlurView
@@ -3652,6 +3746,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             style={StyleSheet.absoluteFill}
             pointerEvents="none"
           />
+          <RNScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.exportMenuScroll}
+          >
           <Text style={styles.exportMenuLabel}>Вигляд</Text>
           {/* «Полотно»/«Сторінка» and «Референси» used to stand here.
               They are the two things you press many times in one sitting,
@@ -3752,6 +3850,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             <Ionicons name="trash-outline" size={17} color={GLASS_DANGER} />
             <Text style={[styles.exportMenuRowLabel, { color: GLASS_DANGER }]}>Видалити документ</Text>
           </Pressable>
+          </RNScrollView>
         </View>
         </GlassPortal>
       )}
