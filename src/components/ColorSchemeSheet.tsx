@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import GlassLayer from './GlassLayer';
 import GradientSlider from './GradientSlider';
+import ColorWheel from './ColorWheel';
 import { useLift } from '../theme/ThemeProvider';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_BODY_BLURRED, GLASS_EDGE, GLASS_TEXT, GLASS_TEXT_MUTED, SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
@@ -28,7 +29,9 @@ const SCHEMES: { id: SchemeKind; label: string; offsets: number[] }[] = [
   // is what the per-stop lightness is FOR: two stops on the same hue at
   // different lightness is how Paletton's own extra swatches work.
   { id: 'complementary', label: 'Компліментарна', offsets: [0, 180, 0, 180] },
+  { id: 'split', label: 'Роздільна', offsets: [0, 150, 210, 150] },
   { id: 'triad', label: 'Триада', offsets: [0, 120, 240, 120] },
+  { id: 'square', label: 'Тетрадна', offsets: [0, 90, 180, 270] },
   { id: 'analogous', label: 'Аналогова', offsets: [0, 30, -30, 60] },
   { id: 'mono', label: 'Монохромна', offsets: [0, 0, 0, 0] },
 ];
@@ -38,38 +41,6 @@ const SCHEMES: { id: SchemeKind; label: string; offsets: number[] }[] = [
 // for one stop to leave the family.
 const DEV_LIMIT = 20;
 const clampDev = (v: number) => Math.max(-DEV_LIMIT, Math.min(DEV_LIMIT, Math.round(v)));
-
-const WHEEL = 220;
-const RING_OUTER = WHEEL / 2;
-const RING_INNER = WHEEL / 2 - 26;
-// One wedge every 5 degrees: fine enough that the ring reads as a
-// continuous spectrum, coarse enough that it is 72 paths and not 360.
-const WEDGE = 5;
-
-function wedgePath(startDeg: number, endDeg: number): string {
-  const c = WHEEL / 2;
-  const toXY = (deg: number, r: number) => {
-    const rad = ((deg - 90) * Math.PI) / 180;
-    return [c + r * Math.cos(rad), c + r * Math.sin(rad)];
-  };
-  const [x1, y1] = toXY(startDeg, RING_OUTER);
-  const [x2, y2] = toXY(endDeg, RING_OUTER);
-  const [x3, y3] = toXY(endDeg, RING_INNER);
-  const [x4, y4] = toXY(startDeg, RING_INNER);
-  return `M ${x1} ${y1} A ${RING_OUTER} ${RING_OUTER} 0 0 1 ${x2} ${y2} L ${x3} ${y3} A ${RING_INNER} ${RING_INNER} 0 0 0 ${x4} ${y4} Z`;
-}
-
-const RING = Array.from({ length: 360 / WEDGE }, (_, i) => ({
-  d: wedgePath(i * WEDGE, (i + 1) * WEDGE + 0.5),
-  fill: hslToHex(i * WEDGE, 85, 55),
-}));
-
-function dotPosition(hue: number): { x: number; y: number } {
-  const c = WHEEL / 2;
-  const r = (RING_OUTER + RING_INNER) / 2;
-  const rad = ((hue - 90) * Math.PI) / 180;
-  return { x: c + r * Math.cos(rad), y: c + r * Math.sin(rad) };
-}
 
 export default function ColorSchemeSheet({
   visible,
@@ -129,25 +100,6 @@ export default function ColorSchemeSheet({
     hslToHex(hueAt(i), tone.s, toneCorrectedLightness(hueAt(i), tone.l + dev[i]));
   const colors = Array.from({ length: count }, (_, i) => colorAt(i));
 
-  // Dragging anywhere on the wheel turns the WHOLE scheme: the angle
-  // under the finger becomes the base hue and every other stop keeps
-  // its offset from it. That is the thing a wheel is for - the
-  // relationships hold while the whole set rotates.
-  const setHueFromTouch = useRef((x: number, y: number) => {});
-  setHueFromTouch.current = (x: number, y: number) => {
-    const c = WHEEL / 2;
-    const deg = (Math.atan2(y - c, x - c) * 180) / Math.PI + 90;
-    setBaseHue(Math.round(((deg % 360) + 360) % 360));
-  };
-  const wheelResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (e) => setHueFromTouch.current(e.nativeEvent.locationX, e.nativeEvent.locationY),
-      onPanResponderMove: (e) => setHueFromTouch.current(e.nativeEvent.locationX, e.nativeEvent.locationY),
-    })
-  ).current;
-
   function setDeviation(next: number) {
     setDev((prev) => prev.map((v, i) => (i === selected ? clampDev(next) : v)));
   }
@@ -165,29 +117,14 @@ export default function ColorSchemeSheet({
               phone, and without this the whole footer sat off the
               bottom of the screen: "я не бачу кнопки застосування". */}
           <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
-          <View style={styles.wheelWrap} {...wheelResponder.panHandlers}>
-            <Svg width={WHEEL} height={WHEEL}>
-              {RING.map((w, i) => (
-                <Path key={i} d={w.d} fill={w.fill} />
-              ))}
-              {/* Every stop as a dot ON the ring, at its own hue - the
-                  whole point of a wheel over a strip is seeing the
-                  angles between them at a glance. */}
-              {colors.map((c, i) => {
-                const p = dotPosition(hueAt(i));
-                return (
-                  <Circle
-                    key={i}
-                    cx={p.x}
-                    cy={p.y}
-                    r={i === selected ? 11 : 8}
-                    fill={c}
-                    stroke={i === selected ? '#fff' : 'rgba(0,0,0,0.45)'}
-                    strokeWidth={i === selected ? 3 : 1.5}
-                  />
-                );
-              })}
-            </Svg>
+          <View style={styles.wheelWrap}>
+            {/* Every stop as a dot ON the ring, at its own hue - the
+                whole point of a wheel over a strip is seeing the
+                angles between them at a glance. */}
+            <ColorWheel
+              dots={colors.map((c, i) => ({ hue: hueAt(i), color: c, active: i === selected }))}
+              onHue={setBaseHue}
+            />
           </View>
 
           <View style={styles.schemeRow}>
@@ -311,8 +248,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   wheelWrap: {
-    width: WHEEL,
-    height: WHEEL,
     alignSelf: 'center',
   },
   schemeRow: {

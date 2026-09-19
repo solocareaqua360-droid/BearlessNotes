@@ -29,7 +29,7 @@ import { THEMES, type SectionKey, type Theme } from './tokens';
 // finished ("теми чорна та біла в нас в принципі готові") and this
 // function never touches them.
 
-export type SchemeKind = 'complementary' | 'triad' | 'analogous' | 'mono';
+export type SchemeKind = 'complementary' | 'split' | 'triad' | 'square' | 'analogous' | 'mono';
 
 export type ColourScheme = {
   kind: SchemeKind;
@@ -61,9 +61,29 @@ export const DEFAULT_SCHEME: ColourScheme = { kind: 'triad', hue: 37, sat: 86, l
 
 // Where the hues sit relative to the base. Same four families as the
 // wheel already offers.
+// Where the hues sit relative to the base.
+//
+// The wider families (square, and triad before it) are here for a
+// reason that is specific to this app rather than to colour theory:
+// there are ELEVEN sections to name. Two anchors means six of them
+// share one hue and part only by a twenty-degree fan; four anchors
+// means three do. More anchors is more identity per section.
+//
+// Tetradic is usually the hardest harmony to keep under control,
+// because two complementary pairs at full freedom will fight. That
+// warning does not apply here: every stop already shares one
+// saturation and one perceptually corrected lightness band, and per-
+// colour freedom is exactly what this model does not have. What is
+// left of the risk is a wheel that can look like a rainbow, which the
+// user can see in the preview and simply not choose.
 const ANCHORS: Record<SchemeKind, number[]> = {
   complementary: [0, 180],
+  // The gentlest way to get three well-parted hues: the complement is
+  // avoided and its two neighbours taken instead, so nothing sits
+  // directly opposite anything.
+  split: [0, 150, 210],
   triad: [0, 120, 240],
+  square: [0, 90, 180, 270],
   analogous: [0, 30, -30, 60],
   mono: [0],
 };

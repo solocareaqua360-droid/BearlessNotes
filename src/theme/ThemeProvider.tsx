@@ -5,6 +5,7 @@ import { doc, onSnapshot } from '../firestore';
 import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { DEFAULT_THEME_KEY, THEMES, liftStyle, type Lift, type Theme, type ThemeKey } from './tokens';
+import { SCHEME_LUM_RANGE, SCHEME_SAT_RANGE, themeFromScheme, type ColourScheme } from './scheme';
 import type { ViewStyle } from 'react-native';
 import { colorForDocument } from '../utils/documentColor';
 
@@ -19,7 +20,25 @@ import { colorForDocument } from '../utils/documentColor';
 const CACHE_KEY = 'appearance:theme';
 const BACKDROP_CACHE_KEY = 'appearance:backdrop';
 const FONT_SCALE_CACHE_KEY = 'appearance:fontScale';
+const SCHEME_CACHE_KEY = 'appearance:colourScheme';
 const PREFS_DOC = 'appearance';
+
+// The user's own colour scheme, or null for the theme as it ships.
+// COLOUR ONLY - black and white are finished and this never reaches
+// them ("теми чорна та біла в нас в принципі готові"), which is also
+// why it is one scheme and not one per theme.
+function isColourScheme(value: unknown): value is ColourScheme {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  const kinds = ['complementary', 'triad', 'analogous', 'mono'];
+  return (
+    typeof v.kind === 'string' &&
+    kinds.includes(v.kind) &&
+    typeof v.hue === 'number' &&
+    typeof v.sat === 'number' &&
+    typeof v.lum === 'number'
+  );
+}
 
 // Two independent knobs, not one - the user's own read of the risk:
 // "не так, щоб у мене потім в іконки не влазило". `text` is for what
@@ -89,6 +108,8 @@ type ThemeContextValue = {
   setBackdropSettings: (next: BackdropSettings) => void;
   fontScale: FontScaleSettings;
   setFontScale: (next: FontScaleSettings) => void;
+  colourScheme: ColourScheme | null;
+  setColourScheme: (next: ColourScheme | null) => void;
 };
 
 const ThemeContext = createContext<ThemeContextValue>({
@@ -99,6 +120,8 @@ const ThemeContext = createContext<ThemeContextValue>({
   setBackdropSettings: () => {},
   fontScale: DEFAULT_FONT_SCALE,
   setFontScale: () => {},
+  colourScheme: null,
+  setColourScheme: () => {},
 });
 
 function isThemeKey(value: unknown): value is ThemeKey {
@@ -123,6 +146,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [themeKey, setKey] = useState<ThemeKey>(DEFAULT_THEME_KEY);
   const [backdropSettings, setBackdropState] = useState<BackdropSettings>(DEFAULT_BACKDROP_SETTINGS);
   const [fontScale, setFontScaleState] = useState<FontScaleSettings>(DEFAULT_FONT_SCALE);
+  const [colourScheme, setSchemeState] = useState<ColourScheme | null>(null);
 
   // The cache first, so the first frame is already right.
   useEffect(() => {
@@ -143,6 +167,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         if (!stored) return;
         const parsed = JSON.parse(stored);
         if (isFontScaleSettings(parsed)) setFontScaleState(parsed);
+      })
+      .catch(() => undefined);
+    AsyncStorage.getItem(SCHEME_CACHE_KEY)
+      .then((stored) => {
+        if (!stored) return;
+        const parsed = JSON.parse(stored);
+        if (parsed === null) return;
+        if (isColourScheme(parsed)) setSchemeState(parsed);
       })
       .catch(() => undefined);
   }, []);
@@ -171,15 +203,33 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
             setFontScaleState(scale);
             AsyncStorage.setItem(FONT_SCALE_CACHE_KEY, JSON.stringify(scale)).catch(() => undefined);
           }
+          // `null` is a real answer here, not a missing one - it is how
+          // "повернути стандартну" travels to the other device - so
+          // this reads the field's PRESENCE rather than its truth.
+          if ('colourScheme' in (snapshot.data() ?? {})) {
+            const picked = snapshot.data()?.colourScheme;
+            const next = isColourScheme(picked) ? picked : null;
+            setSchemeState(next);
+            AsyncStorage.setItem(SCHEME_CACHE_KEY, JSON.stringify(next)).catch(() => undefined);
+          }
         },
         () => undefined
       ),
     []
   );
 
+  // The scheme builds the COLOUR theme and nothing else. White and
+  // black are finished, so they are handed back untouched however the
+  // wheel is set - and the memo means a scheme is rebuilt when it
+  // changes, not on every render of every screen.
+  const theme = useMemo<Theme>(
+    () => (themeKey === 'colour' && colourScheme ? themeFromScheme(colourScheme) : THEMES[themeKey]),
+    [themeKey, colourScheme]
+  );
+
   const value = useMemo<ThemeContextValue>(
     () => ({
-      theme: THEMES[themeKey],
+      theme,
       themeKey,
       setThemeKey: (next: ThemeKey) => {
         // On screen at once, remembered locally, and only then sent -
@@ -201,8 +251,22 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         AsyncStorage.setItem(FONT_SCALE_CACHE_KEY, JSON.stringify(clamped)).catch(() => undefined);
         setDoc(doc(db, 'settings', PREFS_DOC), { fontScale: clamped }, { merge: true }).catch(() => undefined);
       },
+      colourScheme,
+      setColourScheme: (next: ColourScheme | null) => {
+        // Clamped HERE as well as inside themeFromScheme: what gets
+        // written to the account should already be a legal scheme, so
+        // a value out of range cannot outlive one version of the app.
+        const safe: ColourScheme | null = next && {
+          ...next,
+          sat: Math.min(SCHEME_SAT_RANGE[1], Math.max(SCHEME_SAT_RANGE[0], next.sat)),
+          lum: Math.min(SCHEME_LUM_RANGE[1], Math.max(SCHEME_LUM_RANGE[0], next.lum)),
+        };
+        setSchemeState(safe);
+        AsyncStorage.setItem(SCHEME_CACHE_KEY, JSON.stringify(safe)).catch(() => undefined);
+        setDoc(doc(db, 'settings', PREFS_DOC), { colourScheme: safe }, { merge: true }).catch(() => undefined);
+      },
     }),
-    [themeKey, backdropSettings, fontScale]
+    [theme, themeKey, backdropSettings, fontScale, colourScheme]
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
@@ -231,6 +295,13 @@ export function useActiveBackdropOverride(): BackdropOverride | null {
   const { theme, backdropSettings } = useContext(ThemeContext);
   if (!backdropSettings.override) return null;
   return backdropSettings.appliesTo.includes(theme.key) ? backdropSettings.override : null;
+}
+
+// The interface scheme - Settings' own read/write pair. Everything
+// else just reads the theme it produced.
+export function useColourScheme() {
+  const { colourScheme, setColourScheme } = useContext(ThemeContext);
+  return { colourScheme, setColourScheme };
 }
 
 // The Settings screen's own read/write pair.

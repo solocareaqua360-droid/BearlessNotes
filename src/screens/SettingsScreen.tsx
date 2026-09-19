@@ -47,6 +47,7 @@ import { chooseDownloadFolder, currentDownloadFolder } from '../utils/downloadTo
 import { getPexelsKey, setPexelsKey } from '../utils/pexelsKey';
 import { getGeminiKey, setGeminiKey } from '../utils/geminiKey';
 import {
+  useColourScheme,
   useThemeChoice,
   useBackdropSettings,
   useFontScaleSettings,
@@ -58,6 +59,7 @@ import { THEMES, THEME_ORDER, type ThemeKey } from '../theme/tokens';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import RenamePrompt from '../components/RenamePrompt';
 import ColorSchemeSheet from '../components/ColorSchemeSheet';
+import InterfaceSchemeSheet from '../components/InterfaceSchemeSheet';
 import GradientSlider from '../components/GradientSlider';
 
 // The app's own warm action colour (the one RenamePrompt's save button
@@ -165,6 +167,8 @@ export default function SettingsScreen() {
     backdropSettings.override?.type === 'gradient' ? backdropSettings.override.blur : 0
   );
   const [schemeOpen, setSchemeOpen] = useState(false);
+  const [interfaceSchemeOpen, setInterfaceSchemeOpen] = useState(false);
+  const { colourScheme, setColourScheme } = useColourScheme();
   const [pickingBackdropImage, setPickingBackdropImage] = useState(false);
   const [searchingBackdropImage, setSearchingBackdropImage] = useState(false);
   // The same two doors the note's own cover and the tile board's own
@@ -547,6 +551,26 @@ export default function SettingsScreen() {
             Кольорова - сьогоднішній вигляд. Біла й чорна поки що тільки вибираються: екрани
             переводяться на них зрізами, і кожен зріз я показую окремо.
           </Text>
+        </View>
+        )}
+
+        {/* Only offered on the colour theme, and that is not a
+            limitation to apologise for: white and black are finished
+            and a scheme would undo them. */}
+        {section === 'appearance' && themeKey === 'colour' && (
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="color-palette-outline" size={22} color={ACCENT} />
+            <Text style={styles.cardTitle}>Кольори інтерфейсу</Text>
+          </View>
+          <Text style={styles.cardHint}>
+            {colourScheme
+              ? 'Своя схема. Акцент, фон і кольори розділів побудовані з неї.'
+              : 'Стандартна схема кольорової теми.'}
+          </Text>
+          <Pressable style={styles.checkButton} onPress={() => setInterfaceSchemeOpen(true)}>
+            <Text style={styles.checkLabel}>Підібрати схему</Text>
+          </Pressable>
         </View>
         )}
 
@@ -1050,6 +1074,20 @@ export default function SettingsScreen() {
         onSave={(colors) => {
           setSchemeOpen(false);
           saveGradient(colors);
+        }}
+      />
+
+      <InterfaceSchemeSheet
+        visible={interfaceSchemeOpen}
+        initial={colourScheme}
+        onCancel={() => setInterfaceSchemeOpen(false)}
+        onSave={(next) => {
+          setInterfaceSchemeOpen(false);
+          setColourScheme(next);
+        }}
+        onReset={() => {
+          setInterfaceSchemeOpen(false);
+          setColourScheme(null);
         }}
       />
 
