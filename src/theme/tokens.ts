@@ -158,13 +158,22 @@ export type Theme = {
 // Today's look, unchanged - every value here is one the app already
 // draws, so the colour theme is a photograph of where we started rather
 // than a new design.
+// The drifting amber/sea-green/violet clouds are GONE (2026-09-19) -
+// three competing hue families were doing the same job the dock's own
+// glow already does now, and doing it worse: "компліментарні, але
+// стільки плям і все зливається, жодних акцентів". Black proved the
+// case first - no clouds at all, "light on black is the glow on the
+// drops" - and once colour got its own glow too (the same evening),
+// the backdrop had nothing left to earn its keep with. Flat now, the
+// same `ground` colour repeated, exactly the way black's own plain
+// backdrop works.
 const colour: Theme = {
   key: 'colour',
   name: 'Кольорова',
   scheme: 'dark',
-  backdrop: 'gradient',
-  clouds: ['#D8945C', '#7FB0A6', '#9182C4'],
-  cloudStrength: 1,
+  backdrop: 'plain',
+  clouds: ['#2A2522', '#2A2522', '#2A2522'],
+  cloudStrength: 0,
   ground: '#2A2522',
   surface: 'rgba(255,255,255,0.07)',
   raised: 'rgba(24,21,19,0.42)',
