@@ -1446,21 +1446,22 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // keyboard then move as one motion, the way iOS does it. The old pass
   // stays as a safety net (it no-ops within a few px of the target).
   const keyboardSV = useSharedValue(0); // live keyboard height, mid-animation
-  // A THIRD "final word" on top of the two already here (the frame-by-
-  // frame handler below, and keyboardDidShow's own correction) - the
-  // user found, reproducibly every time, that switching to another app
-  // and back leaves the pinned toolbar floating above the keyboard with
-  // a gap. Neither existing mechanism is tied to the app's own
-  // foreground/background lifecycle, so whichever one last wrote
-  // `keyboardSV` before backgrounding can be left stale through the
-  // round trip. `useKeyboardState` is the controller's own canonical
-  // reactive state rather than a raw platform event, and re-syncing to
-  // it here is the same "no-ops once already correct" shape as the
-  // other two - it only ever does anything when they were wrong.
+  // TRIED AND REVERTED (2026-09-19): a third "final word" here, resyncing
+  // `keyboardSV` from react-native-keyboard-controller's own reactive
+  // `useKeyboardState`, on the theory that switching apps left one of
+  // the other two writers stale. Measured on-device instead of guessed
+  // a third time: at the exact instant of the app-switcher swipe,
+  // `useKeyboardState`'s height reads exactly `inset.bottom` HIGHER than
+  // the plain RN Keyboard event's own height (336 vs 351, 323 vs 338 -
+  // both a 15px gap, both matching the safe-area inset exactly). In
+  // steady state the two already agree. So this resync was never a
+  // no-op the way the other two correctors are: right when the glitch
+  // happens, it wrote a value inflated by exactly the nav-bar inset into
+  // the position the pill uses with NO inset added elsewhere (see
+  // pinnedToolbarStyle's own comment on why) - it was the cause of the
+  // "sits with a gap" report, not a fix for it. Kept as a comment, not
+  // code, so this exact theory is not re-tried.
   const controllerKeyboardHeight = useKeyboardState((s) => s.height);
-  useEffect(() => {
-    keyboardSV.value = controllerKeyboardHeight;
-  }, [controllerKeyboardHeight]);
   const syncBaseOffset = useSharedValue(0);
   const syncShift = useSharedValue(0);
   // The active input's bottom edge (screen coords) and the list offset at
