@@ -29,7 +29,15 @@ const PREFS_DOC = 'appearance';
 // decides which themes see it; a theme left out draws its own built-in
 // backdrop exactly as before.
 export type BackdropOverride =
-  | { type: 'gradient'; colors: string[] } // 2 to 4 hex stops, top to bottom
+  | {
+      type: 'gradient';
+      colors: string[]; // 2 to 4 hex stops, top to bottom
+      // "для градієнту поверх нього потрібен блюр з регулюванням сили
+      // повзунком" - a frosted-glass wash over the gradient itself, 0
+      // to 100, drawn as a BlurView the same way the dock's own Frost
+      // material blurs whatever is behind it.
+      blur: number;
+    }
   | {
       type: 'image';
       // A STABLE local path (not the picker's own temp file - see
@@ -76,7 +84,10 @@ function isBackdropSettings(value: unknown): value is BackdropSettings {
   if (!Array.isArray(v.appliesTo) || !v.appliesTo.every(isThemeKey)) return false;
   if (v.override === null) return true;
   const o = v.override as Record<string, unknown>;
-  if (o?.type === 'gradient') return Array.isArray(o.colors) && o.colors.every((c) => typeof c === 'string');
+  if (o?.type === 'gradient')
+    return (
+      Array.isArray(o.colors) && o.colors.every((c) => typeof c === 'string') && typeof o.blur === 'number'
+    );
   if (o?.type === 'image') return typeof o.uri === 'string' && typeof o.blur === 'number';
   return false;
 }

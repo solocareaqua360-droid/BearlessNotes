@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Image, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { BlurView } from 'expo-blur';
 import Animated, { SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Pattern, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { useActiveBackdropOverride, useTheme } from '../theme/ThemeProvider';
@@ -174,6 +175,24 @@ export default function ScreenBackdrop({
           <Rect width={width} height={stripHeight} fill={`url(#${id}-tile)`} />
         </Svg>
       </Animated.View>
+
+      {/* "для градієнту поверх нього потрібен блюр з регулюванням сили
+          повзунком" - a frosted wash over the custom gradient only (the
+          built-in theme washes stay crisp, nobody asked for those to
+          soften). No `blurTarget` here on purpose: this is the very
+          bottom layer of the screen, not a floating thing reaching for
+          content behind it, so there is nothing to hand it a target for
+          - on Android that means expo-blur's own honest fallback, a
+          plain translucent wash rather than a true blur; iOS blurs the
+          gradient for real. */}
+      {override?.type === 'gradient' && override.blur > 0 && (
+        <BlurView
+          intensity={Math.round((override.blur / 100) * 100)}
+          tint="dark"
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+      )}
         </>
       )}
     </View>

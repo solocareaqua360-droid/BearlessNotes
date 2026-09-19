@@ -51,6 +51,7 @@ import { useThemeChoice, useBackdropSettings, type BackdropOverride } from '../t
 import { THEMES, THEME_ORDER, type ThemeKey } from '../theme/tokens';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import RenamePrompt from '../components/RenamePrompt';
+import ColorPickerSheet from '../components/ColorPickerSheet';
 
 // The app's own warm action colour (the one RenamePrompt's save button
 // and the browser's sign-in use), not the system blue this screen was
@@ -182,6 +183,9 @@ export default function SettingsScreen() {
   const [gradientColors, setGradientColors] = useState<string[]>(
     backdropSettings.override?.type === 'gradient' ? backdropSettings.override.colors : ['#705648', '#69736E']
   );
+  const [gradientBlur, setGradientBlur] = useState(
+    backdropSettings.override?.type === 'gradient' ? backdropSettings.override.blur : 0
+  );
   const [editingStopIndex, setEditingStopIndex] = useState<number | null>(null);
   const [pickingBackdropImage, setPickingBackdropImage] = useState(false);
   const [searchingBackdropImage, setSearchingBackdropImage] = useState(false);
@@ -210,7 +214,10 @@ export default function SettingsScreen() {
   // shows the real picture rather than the mode's own placeholder.
   useEffect(() => {
     setBackdropMode(backdropSettings.override?.type ?? 'default');
-    if (backdropSettings.override?.type === 'gradient') setGradientColors(backdropSettings.override.colors);
+    if (backdropSettings.override?.type === 'gradient') {
+      setGradientColors(backdropSettings.override.colors);
+      setGradientBlur(backdropSettings.override.blur);
+    }
   }, [backdropSettings.override]);
 
   function toggleBackdropTheme(key: ThemeKey) {
@@ -220,9 +227,14 @@ export default function SettingsScreen() {
     setBackdropSettings({ ...backdropSettings, appliesTo });
   }
 
-  function saveGradient(colors: string[]) {
+  function saveGradient(colors: string[], blur = gradientBlur) {
     setGradientColors(colors);
-    setBackdropSettings({ ...backdropSettings, override: { type: 'gradient', colors } });
+    setBackdropSettings({ ...backdropSettings, override: { type: 'gradient', colors, blur } });
+  }
+
+  function updateGradientBlur(blur: number) {
+    setGradientBlur(blur);
+    saveGradient(gradientColors, blur);
   }
 
   function addGradientStop() {
@@ -869,7 +881,9 @@ export default function SettingsScreen() {
                   <Ionicons name="remove" size={16} color={theme.ink.primary} />
                 </Pressable>
               </View>
-              <Text style={styles.cardHint}>Торкнись кружечка, щоб змінити його колір (hex). Від 2 до 4 кольорів.</Text>
+              <Text style={styles.cardHint}>Торкнись кружечка, щоб відкрити вибір кольору. Від 2 до 4 кольорів.</Text>
+              <Text style={[styles.cardHint, { marginTop: 14 }]}>Розмиття поверх градієнта (матове скло)</Text>
+              <BlurSlider value={gradientBlur} onChange={updateGradientBlur} />
             </>
           )}
 
@@ -966,22 +980,15 @@ export default function SettingsScreen() {
         }}
       />
 
-      <RenamePrompt
+      <ColorPickerSheet
         visible={editingStopIndex !== null}
         title={`Колір ${(editingStopIndex ?? 0) + 1}`}
-        initialValue={editingStopIndex !== null ? gradientColors[editingStopIndex] : ''}
-        placeholder="#RRGGBB"
+        initialColor={editingStopIndex !== null ? gradientColors[editingStopIndex] : '#705648'}
         onCancel={() => setEditingStopIndex(null)}
-        onSave={(value) => {
+        onSave={(hex) => {
           const i = editingStopIndex;
           setEditingStopIndex(null);
           if (i === null) return;
-          const trimmed = value.trim();
-          const hex = trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
-          if (!/^#[0-9A-Fa-f]{6}$/.test(hex)) {
-            notify('Не той формат', 'Колір - шість шістнадцяткових цифр, наприклад #705648.');
-            return;
-          }
           const next = [...gradientColors];
           next[i] = hex;
           saveGradient(next);
