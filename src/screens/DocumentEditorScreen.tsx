@@ -260,6 +260,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const editorBlurTarget = useBlurTarget();
   const editorFocused = useIsFocused();
   const editorInsets = useSafeAreaInsets();
+  // Read inside the keyboardDidShow listener below, which is set up once
+  // ([] deps) - a direct closure over `editorInsets` there would freeze
+  // it at whatever it was on mount, the exact "moves between views" trap
+  // this app's Fold-screen memory already names once. A ref kept fresh
+  // every render is the fix that memory settled on elsewhere.
+  const editorInsetsBottomRef = useRef(editorInsets.bottom);
+  editorInsetsBottomRef.current = editorInsets.bottom;
   const railRight = 'pane' in props ? (props.railRight ?? RAIL_RIGHT) : RAIL_RIGHT;
   const railLeft = 'pane' in props ? props.railLeft : undefined;
   const railTop = 'pane' in props ? props.railTop : undefined;
@@ -1302,12 +1309,33 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         clearTimeout(deactivateTimeoutRef.current);
         deactivateTimeoutRef.current = null;
       }
-      setKeyboardHeight(e.endCoordinates.height);
-      setDbgSource(`show:${Math.round(e.endCoordinates.height)}`);
+      const height = e.endCoordinates.height;
+      // Measured on-device (2026-09-19): Android's app-switcher swipe
+      // fires a SPURIOUS keyboardDidShow mid-gesture, reporting a height
+      // exactly `insets.bottom` lower than the real one - 323 vs the true
+      // 338, a 15px gap matching the safe-area inset, captured twice, both
+      // times exact. The frame-by-frame handler (onStart/onMove/onEnd)
+      // never showed this - tagged separately and ruled out by the same
+      // measurement - so only this listener needed the guard.
+      //
+      // The signature that tells a spurious show apart from a real one:
+      // the keyboard is ALREADY up (keyboardSV.value > 0, i.e. this isn't
+      // the keyboard's first appearance) AND the new height lands within
+      // a few px of the old one MINUS the inset. A genuine resize (a
+      // different IME, rotation) has no reason to land on that one exact
+      // number, so this only ever discards the spurious case - worst case
+      // elsewhere, a real tiny height change waits one more frame for
+      // onMove/onEnd (already confirmed clean) to apply it instead.
+      const previousHeight = keyboardSV.value;
+      const looksSpurious =
+        previousHeight > 0 && Math.abs(previousHeight - height - editorInsetsBottomRef.current) < 3;
+      if (looksSpurious) return;
+      setKeyboardHeight(height);
+      setDbgSource(`show:${Math.round(height)}`);
       // RN's events stay the final word on the toolbar's resting position,
       // in case the frame-by-frame handler didn't run (older Android).
-      keyboardSV.value = e.endCoordinates.height;
-      scheduleScrollAdjust(e.endCoordinates.height);
+      keyboardSV.value = height;
+      scheduleScrollAdjust(height);
     });
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
       cancelDismissFallback();
