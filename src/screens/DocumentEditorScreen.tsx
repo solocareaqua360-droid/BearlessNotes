@@ -1303,6 +1303,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         deactivateTimeoutRef.current = null;
       }
       setKeyboardHeight(e.endCoordinates.height);
+      setDbgSource(`show:${Math.round(e.endCoordinates.height)}`);
       // RN's events stay the final word on the toolbar's resting position,
       // in case the frame-by-frame handler didn't run (older Android).
       keyboardSV.value = e.endCoordinates.height;
@@ -1462,6 +1463,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // "sits with a gap" report, not a fix for it. Kept as a comment, not
   // code, so this exact theory is not re-tried.
   const controllerKeyboardHeight = useKeyboardState((s) => s.height);
+  // TEMPORARY - which of the three writers of keyboardSV/keyboardHeight
+  // fired last, and with what value, so the app-switch dip (measured:
+  // exactly `inset.bottom` below the steady value) can be pinned on one
+  // of them instead of guessed at again.
+  const [dbgSource, setDbgSource] = useState('');
   const syncBaseOffset = useSharedValue(0);
   const syncShift = useSharedValue(0);
   // The active input's bottom edge (screen coords) and the list offset at
@@ -1494,6 +1500,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       onStart: (e) => {
         'worklet';
         syncShift.value = 0;
+        runOnJS(setDbgSource)(`start:${Math.round(e.height)}`);
         if (e.progress !== 1) return; // closing - nothing to bring into view
         runOnJS(setKeyboardHeight)(e.height);
         // Title, or nothing measured yet: the safety net handles it.
@@ -1511,6 +1518,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       onMove: (e) => {
         'worklet';
         keyboardSV.value = e.height;
+        runOnJS(setDbgSource)(`move:${Math.round(e.height)}`);
         if (syncShift.value > 0) {
           scrollTo(scrollViewRef, 0, syncBaseOffset.value + syncShift.value * e.progress, false);
         }
@@ -1518,6 +1526,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       onEnd: (e) => {
         'worklet';
         keyboardSV.value = e.height;
+        runOnJS(setDbgSource)(`end:${Math.round(e.height)}`);
         if (syncShift.value > 0) {
           scrollTo(scrollViewRef, 0, syncBaseOffset.value + syncShift.value, false);
           syncShift.value = 0;
@@ -3931,21 +3940,19 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             onApplyMarker={applyMarkerToSelection}
             onApplyColor={applyColorToSelection}
           />
-          {/* TEMPORARY - the mystery resisted two guesses in a row, so
-              per the project's own rule for exactly this ("put numbers
-              on screen rather than theorising"), this reads out the
-              JS-visible values behind the pill's position: `kb` is the
-              plain RN Keyboard event's own height, `ctrl` is react-
-              native-keyboard-controller's reactive useKeyboardState
-              height, `inset` is the safe-area bottom inset - added
-              after the user's own lead: on the Fold's INNER (tablet)
-              screen specifically, the system's own gesture-bar strip
-              may sit below whatever height the keyboard itself reports,
-              which `bottom: keyboardSV.value` (deliberately, see its
-              own comment) never adds back in - that would draw exactly
-              as a white strip / gap the size of that bar, on the inner
-              screen only. Reproduce it (fold/unfold or switch apps),
-              read the numbers, report them back - then this comes out. */}
+          {/* TEMPORARY - confirmed by measurement (not the resync that
+              was tried and reverted): switching to the app-switcher
+              gesture makes the LIVE keyboard height itself dip by
+              exactly `inset.bottom` for a moment - 338 steady, 323 at
+              the swipe, a 15px gap matching the safe-area inset every
+              time. `keyboardSV`/`keyboardHeight` have THREE writers
+              (keyboardDidShow, the frame handler's onStart, its onMove/
+              onEnd), and `kb`/`last` alone can't say which one produced
+              the dip - only that one of them did. `last` now tags every
+              write with its source and value, so the next capture at
+              the exact swipe moment names the culprit instead of just
+              the symptom. Reproduce it, read `last` at that instant,
+              report it back - then this comes out. */}
           <Text
             pointerEvents="none"
             style={{
@@ -3959,7 +3966,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               borderRadius: 4,
             }}
           >
-            kb:{keyboardHeight} ctrl:{Math.round(controllerKeyboardHeight)} inset:{Math.round(editorInsets.bottom)}
+            kb:{keyboardHeight} inset:{Math.round(editorInsets.bottom)} last:{dbgSource}
           </Text>
         </Animated.View>
       )}
