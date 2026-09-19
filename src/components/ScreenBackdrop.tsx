@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Image, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, { SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Pattern, RadialGradient, Rect, Stop } from 'react-native-svg';
-import { useTheme } from '../theme/ThemeProvider';
+import { useActiveBackdropOverride, useTheme } from '../theme/ThemeProvider';
+import { useCachedAttachment } from '../hooks/useCachedAttachment';
 
 // What every screen stands on, and what the glass has to blur.
 //
@@ -58,19 +59,28 @@ export default function ScreenBackdrop({
   // first layout, so nothing flashes white.
   const theme = useTheme();
   const window = useWindowDimensions();
+  const override = useActiveBackdropOverride();
   const [own, setOwn] = useState<{ width: number; height: number } | null>(null);
   const width = own?.width ?? window.width;
   const height = own?.height ?? window.height;
   const stripHeight = height + TILE * 2;
-  // `wash` USED to be a prop every screen passed in - eight call sites,
-  // one identical literal each time, never actually varied by screen.
-  // It is the theme's own now (see tokens.ts); only 'gradient' themes
-  // draw it, everyone else stands on a flat `ground`.
-  const ramp: [string, string, string] =
-    theme.backdrop === 'gradient' ? theme.wash : [theme.ground, theme.ground, theme.ground];
+  // A custom GRADIENT stands in for `wash` entirely, whatever the theme
+  // would otherwise have drawn - 2 to 4 stops, evenly spaced, and no
+  // clouds on top of it (the whole point was the user's OWN colours,
+  // not this file adding its own drift to them).
+  const ramp: string[] =
+    override?.type === 'gradient'
+      ? override.colors
+      : theme.backdrop === 'gradient'
+        ? theme.wash
+        : [theme.ground, theme.ground, theme.ground];
   // How much of a cloud survives. Bleached almost away in white; gone in
-  // black.
-  const cloud = theme.cloudStrength;
+  // black; gone entirely once a custom backdrop of either kind is on.
+  const cloud = override ? 0 : theme.cloudStrength;
+  const imageStatus = useCachedAttachment(
+    override?.type === 'image' ? override.uri : undefined,
+    override?.type === 'image' ? override.driveFileId : undefined
+  );
 
   const style = useAnimatedStyle(() => {
     // Modulo the tile: at one tile of travel the strip is exactly back
@@ -92,6 +102,22 @@ export default function ScreenBackdrop({
         setOwn((prev) => (prev && prev.width === w && prev.height === h ? prev : { width: w, height: h }));
       }}
     >
+      {/* A custom IMAGE replaces the whole rest of this view - still, no
+          drift, blurred by the OS's own native blurRadius rather than a
+          BlurView (nothing to composite it over here, and blurRadius on
+          a plain Image is the same trick a note's own cover could use if
+          it ever wanted one). Falls back to the flat ground colour above
+          while it is still downloading from Drive on a fresh device. */}
+      {override?.type === 'image' && imageStatus === 'ready' && (
+        <Image
+          source={{ uri: override.uri }}
+          blurRadius={Math.round((override.blur / 100) * 30)}
+          resizeMode="cover"
+          style={StyleSheet.absoluteFill}
+        />
+      )}
+      {!(override?.type === 'image') && (
+        <>
       {/* The gradient stays where it is: it is the screen's own colour,
           top to bottom, and it must not slide with the clouds. 1px bled
           past every edge - the window size can round to a hair less than
@@ -99,9 +125,21 @@ export default function ScreenBackdrop({
       <Svg width={width + 2} height={height + 2} style={styles.bleed} pointerEvents="none">
         <Defs>
           <LinearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0.03" stopColor={ramp[0]} />
-            <Stop offset="0.52" stopColor={ramp[1]} />
-            <Stop offset="1" stopColor={ramp[2]} />
+            {/* Evenly spaced, however many stops there are - the built-in
+                theme washes keep their old 0.03/0.52/1 spacing (a slight
+                lean toward the top) by being three exactly; a custom
+                gradient of 2-4 stops spaces itself out plainly instead,
+                since there is no "middle" to lean toward for an even
+                count. */}
+            {ramp.length === 3
+              ? [
+                  <Stop key={0} offset="0.03" stopColor={ramp[0]} />,
+                  <Stop key={1} offset="0.52" stopColor={ramp[1]} />,
+                  <Stop key={2} offset="1" stopColor={ramp[2]} />,
+                ]
+              : ramp.map((c, i) => (
+                  <Stop key={i} offset={ramp.length > 1 ? i / (ramp.length - 1) : 0} stopColor={c} />
+                ))}
           </LinearGradient>
         </Defs>
         <Rect width={width + 2} height={height + 2} fill={`url(#${id})`} />
@@ -136,6 +174,8 @@ export default function ScreenBackdrop({
           <Rect width={width} height={stripHeight} fill={`url(#${id}-tile)`} />
         </Svg>
       </Animated.View>
+        </>
+      )}
     </View>
   );
 }

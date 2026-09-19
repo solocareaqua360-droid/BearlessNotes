@@ -1,8 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
+import * as ImagePicker from 'expo-image-picker';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import * as LegacyFileSystem from 'expo-file-system/legacy';
+import { backupFileToDrive } from '../utils/googleDrive';
+import StockPhotoPicker from '../components/StockPhotoPicker';
 import {
   ActivityIndicator,
+  Image,
+  PanResponder,
   PixelRatio,
   Pressable,
   ScrollView,
@@ -40,9 +47,9 @@ import { STALE_AFTER_DAYS, localAttachmentUsage } from '../utils/attachmentCache
 import { chooseDownloadFolder, currentDownloadFolder } from '../utils/downloadToFolder';
 import { getPexelsKey, setPexelsKey } from '../utils/pexelsKey';
 import { getGeminiKey, setGeminiKey } from '../utils/geminiKey';
-import { useThemeChoice } from '../theme/ThemeProvider';
-import { THEMES, THEME_ORDER } from '../theme/tokens';
-import { confirm, notify } from '../components/surfaces/Ask';
+import { useThemeChoice, useBackdropSettings, type BackdropOverride } from '../theme/ThemeProvider';
+import { THEMES, THEME_ORDER, type ThemeKey } from '../theme/tokens';
+import { ask, confirm, notify } from '../components/surfaces/Ask';
 import RenamePrompt from '../components/RenamePrompt';
 
 // The app's own warm action colour (the one RenamePrompt's save button
@@ -68,6 +75,59 @@ function formatUpdateTime(date: Date | null): string {
   if (!date) return '—';
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}, ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+// A plain 0-100 slider - nothing like it exists elsewhere in this app
+// yet, so it lives here rather than as a shared component until a
+// second caller actually needs one. PanResponder rather than
+// gesture-handler: one drag, no competing scroll/swipe to arbitrate
+// against, the same reasoning SketchEditor's own toolbar drag uses.
+function BlurSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const theme = useTheme();
+  const [trackWidth, setTrackWidth] = useState(0);
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const responder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderMove: (e) => {
+        if (trackWidth <= 0) return;
+        const x = e.nativeEvent.locationX;
+        onChange(Math.round(Math.max(0, Math.min(1, x / trackWidth)) * 100));
+      },
+    })
+  ).current;
+  return (
+    <View
+      style={{ height: 32, justifyContent: 'center' }}
+      onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
+      {...responder.panHandlers}
+    >
+      <View style={{ height: 4, borderRadius: 2, backgroundColor: theme.edge.hairline }}>
+        <View
+          style={{
+            height: 4,
+            borderRadius: 2,
+            width: `${value}%`,
+            backgroundColor: theme.ink.primary,
+          }}
+        />
+      </View>
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          left: `${value}%`,
+          marginLeft: -8,
+          width: 16,
+          height: 16,
+          borderRadius: 8,
+          backgroundColor: theme.ink.primary,
+        }}
+      />
+    </View>
+  );
 }
 
 export default function SettingsScreen() {
@@ -109,6 +169,145 @@ export default function SettingsScreen() {
   useEffect(() => {
     getGeminiKey().then(setGeminiKeyState);
   }, []);
+
+  // The custom backdrop - see BackdropOverride (ThemeProvider). Local
+  // draft state, same reason RenamePrompt's own field is local: writing
+  // every keystroke/drag to Firestore would be both slow and noisy, so
+  // this only calls setBackdropSettings when a change is actually
+  // finished (a colour chosen, a stop added/removed, a slider released).
+  const { backdropSettings, setBackdropSettings } = useBackdropSettings();
+  const [backdropMode, setBackdropMode] = useState<'default' | 'gradient' | 'image'>(
+    backdropSettings.override?.type ?? 'default'
+  );
+  const [gradientColors, setGradientColors] = useState<string[]>(
+    backdropSettings.override?.type === 'gradient' ? backdropSettings.override.colors : ['#705648', '#69736E']
+  );
+  const [editingStopIndex, setEditingStopIndex] = useState<number | null>(null);
+  const [pickingBackdropImage, setPickingBackdropImage] = useState(false);
+  const [searchingBackdropImage, setSearchingBackdropImage] = useState(false);
+  // The same two doors the note's own cover and the tile board's own
+  // backgrounds already open - see StockPhotoPicker/pickCoverImage. A
+  // plain effect rather than calling ask() straight from the render
+  // body, which would fire a fresh question on every re-render while
+  // the flag stayed true.
+  useEffect(() => {
+    if (!pickingBackdropImage) return;
+    ask({
+      title: 'Звідки взяти зображення?',
+      actions: [
+        { id: 'gallery', label: 'Галерея', icon: 'images-outline' },
+        { id: 'stock', label: 'Пошук зображень', icon: 'search-outline' },
+      ],
+    }).then((answer) => {
+      setPickingBackdropImage(false);
+      if (answer === 'gallery') pickBackdropImageFromGallery();
+      else if (answer === 'stock') setSearchingBackdropImage(true);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickingBackdropImage]);
+  const [backdropBusy, setBackdropBusy] = useState(false);
+  // Kept in sync with whatever's already saved, so re-opening Settings
+  // shows the real picture rather than the mode's own placeholder.
+  useEffect(() => {
+    setBackdropMode(backdropSettings.override?.type ?? 'default');
+    if (backdropSettings.override?.type === 'gradient') setGradientColors(backdropSettings.override.colors);
+  }, [backdropSettings.override]);
+
+  function toggleBackdropTheme(key: ThemeKey) {
+    const appliesTo = backdropSettings.appliesTo.includes(key)
+      ? backdropSettings.appliesTo.filter((k) => k !== key)
+      : [...backdropSettings.appliesTo, key];
+    setBackdropSettings({ ...backdropSettings, appliesTo });
+  }
+
+  function saveGradient(colors: string[]) {
+    setGradientColors(colors);
+    setBackdropSettings({ ...backdropSettings, override: { type: 'gradient', colors } });
+  }
+
+  function addGradientStop() {
+    if (gradientColors.length >= 4) return;
+    saveGradient([...gradientColors, '#8A8A8A']);
+  }
+
+  function removeGradientStop() {
+    if (gradientColors.length <= 2) return;
+    saveGradient(gradientColors.slice(0, -1));
+  }
+
+  // Same compress step every image picker in this app already uses
+  // (DocumentEditorScreen/PhotosScreen each have their own copy) - a
+  // multi-megabyte photo shouldn't sit in Firestore's settings doc at
+  // full camera resolution just to be a blurred backdrop.
+  async function compressBackdropImage(uri: string, width: number, height: number): Promise<string> {
+    const MAX_DIMENSION = 1600;
+    try {
+      const longest = Math.max(width, height);
+      let context = ImageManipulator.manipulate(uri);
+      if (longest > MAX_DIMENSION) {
+        const scale = MAX_DIMENSION / longest;
+        context = context.resize({ width: Math.round(width * scale), height: Math.round(height * scale) });
+      }
+      const rendered = await context.renderAsync();
+      const saved = await rendered.saveAsync({ compress: 0.7, format: SaveFormat.JPEG });
+      return saved.uri;
+    } catch {
+      return uri;
+    }
+  }
+
+  // A STABLE path, not the picker's own temp file - so useCachedAttachment
+  // (ScreenBackdrop) can restore the SAME uri from Drive on a device that
+  // never picked an image itself. One file, always this name: a new pick
+  // simply overwrites it.
+  async function setBackdropImage(sourceUri: string, width: number, height: number) {
+    setBackdropBusy(true);
+    try {
+      const compressed = await compressBackdropImage(sourceUri, width, height);
+      const stableUri = `${LegacyFileSystem.documentDirectory}app-backdrop.jpg`;
+      await LegacyFileSystem.copyAsync({ from: compressed, to: stableUri }).catch(async () => {
+        // copyAsync refuses to overwrite on some platforms - delete first.
+        await LegacyFileSystem.deleteAsync(stableUri, { idempotent: true });
+        await LegacyFileSystem.copyAsync({ from: compressed, to: stableUri });
+      });
+      const override: BackdropOverride = {
+        type: 'image',
+        uri: stableUri,
+        blur: backdropSettings.override?.type === 'image' ? backdropSettings.override.blur : 40,
+      };
+      setBackdropSettings({ ...backdropSettings, override });
+      setBackdropMode('image');
+      // Backed up quietly, after the picture is already on screen - the
+      // same order tile backgrounds and photo uploads already use.
+      backupFileToDrive(stableUri, 'app-backdrop.jpg', 'image/jpeg', 'Files').then((uploaded) => {
+        if (uploaded) {
+          setBackdropSettings({
+            ...backdropSettings,
+            override: { ...override, driveFileId: uploaded.fileId },
+          });
+        }
+      });
+    } catch (e) {
+      notify('Не вдалося встановити фон', (e as Error).message);
+    } finally {
+      setBackdropBusy(false);
+    }
+  }
+
+  async function pickBackdropImageFromGallery() {
+    setPickingBackdropImage(false);
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    await setBackdropImage(asset.uri, asset.width, asset.height);
+  }
+
+  function updateBackdropBlur(blur: number) {
+    if (backdropSettings.override?.type !== 'image') return;
+    setBackdropSettings({ ...backdropSettings, override: { ...backdropSettings.override, blur } });
+  }
 
   useEffect(() => {
     currentDownloadFolder().then(setDownloadFolder).catch(() => {});
@@ -596,6 +795,144 @@ export default function SettingsScreen() {
             </>
           )}
         </View>
+
+        {/* "хочу можливість вибирати і налаштовувати кольоровий градієнт
+            фону від 2 до 4 кольорів переходу. також хочу мати можливість
+            поставити свою картинку на фон і задати їй рівень блюру.
+            також можна вибрати через галочки в яких з тем застосовувати
+            цей фон а в якій залишити стандартний." One override, not one
+            per theme - see BackdropOverride/ThemeProvider. */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="color-palette-outline" size={22} color={ACCENT} />
+            <Text style={styles.cardTitle}>Фон застосунку</Text>
+          </View>
+          <Text style={styles.cardHint}>
+            Свій фон замість того, що дає тема - градієнт із власними кольорами або картинка з розмиттям.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+            {(
+              [
+                { id: 'default', label: 'Стандартний' },
+                { id: 'gradient', label: 'Градієнт' },
+                { id: 'image', label: 'Зображення' },
+              ] as const
+            ).map((opt) => (
+              <Pressable
+                key={opt.id}
+                style={[styles.themeChip, backdropMode === opt.id && styles.themeChipOn]}
+                onPress={() => {
+                  setBackdropMode(opt.id);
+                  if (opt.id === 'default') {
+                    setBackdropSettings({ ...backdropSettings, override: null });
+                  } else if (opt.id === 'gradient' && backdropSettings.override?.type !== 'gradient') {
+                    saveGradient(gradientColors);
+                  }
+                }}
+              >
+                <Text style={[styles.themeChipLabel, backdropMode === opt.id && styles.themeChipLabelOn]}>
+                  {opt.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          {backdropMode === 'gradient' && (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+                {gradientColors.map((c, i) => (
+                  <Pressable key={i} onPress={() => setEditingStopIndex(i)}>
+                    <View
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 20,
+                        backgroundColor: c,
+                        borderWidth: 1,
+                        borderColor: 'rgba(255,255,255,0.3)',
+                      }}
+                    />
+                  </Pressable>
+                ))}
+                <Pressable
+                  style={[styles.backdropStopButton, gradientColors.length >= 4 && styles.backdropStopButtonOff]}
+                  onPress={addGradientStop}
+                  disabled={gradientColors.length >= 4}
+                >
+                  <Ionicons name="add" size={16} color={theme.ink.primary} />
+                </Pressable>
+                <Pressable
+                  style={[styles.backdropStopButton, gradientColors.length <= 2 && styles.backdropStopButtonOff]}
+                  onPress={removeGradientStop}
+                  disabled={gradientColors.length <= 2}
+                >
+                  <Ionicons name="remove" size={16} color={theme.ink.primary} />
+                </Pressable>
+              </View>
+              <Text style={styles.cardHint}>Торкнись кружечка, щоб змінити його колір (hex). Від 2 до 4 кольорів.</Text>
+            </>
+          )}
+
+          {backdropMode === 'image' && (
+            <>
+              {backdropSettings.override?.type === 'image' ? (
+                <>
+                  <Image
+                    source={{ uri: backdropSettings.override.uri }}
+                    style={styles.backdropImagePreview}
+                    resizeMode="cover"
+                  />
+                  <Text style={[styles.cardHint, { marginTop: 8 }]}>Рівень розмиття (матове скло)</Text>
+                  <BlurSlider
+                    value={backdropSettings.override.blur}
+                    onChange={updateBackdropBlur}
+                  />
+                  <Pressable
+                    style={styles.checkButton}
+                    onPress={() => setPickingBackdropImage(true)}
+                    disabled={backdropBusy}
+                  >
+                    <Text style={styles.checkLabel}>Змінити зображення</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <Pressable
+                  style={styles.connectButton}
+                  onPress={() => setPickingBackdropImage(true)}
+                  disabled={backdropBusy}
+                >
+                  {backdropBusy ? (
+                    <ActivityIndicator color="#111827" />
+                  ) : (
+                    <Text style={styles.connectLabel}>Вибрати зображення</Text>
+                  )}
+                </Pressable>
+              )}
+            </>
+          )}
+
+          {backdropMode !== 'default' && (
+            <>
+              <Text style={[styles.cardHint, { marginTop: 14 }]}>Застосувати цей фон у темах:</Text>
+              <View style={{ gap: 8, marginTop: 6 }}>
+                {THEME_ORDER.map((key) => (
+                  <Pressable
+                    key={key}
+                    style={styles.backdropThemeRow}
+                    onPress={() => toggleBackdropTheme(key)}
+                  >
+                    <Ionicons
+                      name={backdropSettings.appliesTo.includes(key) ? 'checkbox' : 'square-outline'}
+                      size={20}
+                      color={backdropSettings.appliesTo.includes(key) ? ACCENT : theme.ink.muted}
+                    />
+                    <Text style={styles.cardBody}>{THEMES[key].name}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          )}
+        </View>
         </ScrollView>
       </ContentColumn>
 
@@ -626,6 +963,43 @@ export default function SettingsScreen() {
           if (!trimmed) return;
           await setGeminiKey(trimmed);
           setGeminiKeyState(trimmed);
+        }}
+      />
+
+      <RenamePrompt
+        visible={editingStopIndex !== null}
+        title={`Колір ${(editingStopIndex ?? 0) + 1}`}
+        initialValue={editingStopIndex !== null ? gradientColors[editingStopIndex] : ''}
+        placeholder="#RRGGBB"
+        onCancel={() => setEditingStopIndex(null)}
+        onSave={(value) => {
+          const i = editingStopIndex;
+          setEditingStopIndex(null);
+          if (i === null) return;
+          const trimmed = value.trim();
+          const hex = trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
+          if (!/^#[0-9A-Fa-f]{6}$/.test(hex)) {
+            notify('Не той формат', 'Колір - шість шістнадцяткових цифр, наприклад #705648.');
+            return;
+          }
+          const next = [...gradientColors];
+          next[i] = hex;
+          saveGradient(next);
+        }}
+      />
+
+      <StockPhotoPicker
+        visible={searchingBackdropImage}
+        onClose={() => setSearchingBackdropImage(false)}
+        onPicked={(uri) => {
+          setSearchingBackdropImage(false);
+          Image.getSize(
+            uri,
+            (width, height) => {
+              setBackdropImage(uri, width, height);
+            },
+            () => notify('Не вдалося встановити фон', 'Не визначився розмір зображення')
+          );
         }}
       />
     </View>
@@ -745,6 +1119,30 @@ const makeStyles = (t: Theme) =>
   },
   themeChipLabelOn: {
     color: t.ink.primary,
+  },
+  backdropStopButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  backdropStopButtonOff: {
+    opacity: 0.35,
+  },
+  backdropImagePreview: {
+    width: '100%',
+    height: 100,
+    borderRadius: 12,
+    marginTop: 10,
+    backgroundColor: t.surface,
+  },
+  backdropThemeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   checkButton: {
     borderWidth: 1,
