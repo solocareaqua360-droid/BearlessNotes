@@ -21,6 +21,35 @@ export type ThemeKey = 'colour' | 'white' | 'black';
 // theme can hold, so a card only ever has to say "lift me".
 export type Lift = 'shadow' | 'glow' | 'blur';
 
+// THE SECTIONS OF THE APP, each with a colour of its own.
+//
+// This was already true before it had a name: an audit of every colour
+// literal in the app (2026-09-19) found THIRTEEN separate
+// `const ACCENT = '#...'` declarations, and they split cleanly in two.
+// Nine were deliberate - Задачі green, Фото pink, Посилання teal,
+// Дошки violet - a section identity the user has been reading for
+// months. The other four were the SAME leftover blue (#3B82F6) in
+// shared sheets and pickers that nobody ever chose; those are just
+// `theme.accent` and are being replaced as such.
+//
+// Naming the nine is what lets a colour scheme ever drive them: the
+// scheme hands out hues IN THIS ORDER, so the user picks a harmony and
+// not eleven separate colours. That is the whole mechanism behind
+// "людина, крутячи повзунки, не може зробити не красиво" - there are
+// no per-section knobs to get wrong.
+export type SectionKey =
+  | 'documents'
+  | 'tasks'
+  | 'files'
+  | 'photos'
+  | 'links'
+  | 'boards'
+  | 'databases'
+  | 'custom'
+  | 'groups'
+  | 'calendar'
+  | 'settings';
+
 export type Theme = {
   key: ThemeKey;
   name: string;
@@ -56,8 +85,36 @@ export type Theme = {
   // the user was explicit that white and black mean white and black
   // everywhere, databases included.
   accent: string;
+  // The ink of something standing ON the accent - a filled button's
+  // label, the glyph in a filled chip. It was `#fff` written by hand in
+  // dozens of places, which is only correct while the accent happens to
+  // be dark. The colour theme's accent is a LIGHT amber and the white
+  // theme's is espresso, so the two need opposite answers, and a scheme
+  // that moves the accent has to be able to move this with it.
+  onAccent: string;
   danger: string;
+  // Danger had a partner in the data all along (the kanban's own
+  // columns) but never in the contract, so every screen that needed
+  // "this went well" reached for a literal green.
+  success: string;
+  warning: string;
+  // A PICKED row, an active filter, the tab you are on - in the app's
+  // own chrome. `paper.selected` already existed but only ever meant a
+  // selected BLOCK inside a note; everything else wrote `#EFF6FF`, a
+  // 10% wash of the leftover blue, fifteen times over.
+  selected: string;
+  // The dim behind a modal. Eight different spellings of it were in
+  // use - rgba(20,20,20,0.35), rgba(17,24,39,0.45), rgba(0,0,0,0.5) -
+  // which is why sheets never quite matched each other.
+  scrim: string;
+  // A text field's own well. Not `surface`: a field has to read as
+  // something you can type INTO, which on a light theme means a step
+  // DOWN from the card it sits on while every other surface steps up.
+  field: { fill: string; ink: string; placeholder: string; edge: string };
   edge: { hairline: string; strong: string };
+  // Each section's own colour - see SectionKey. A theme holds the whole
+  // record rather than a function, so a scheme can replace it wholesale.
+  sections: Record<SectionKey, string>;
   // The sheet a note is read on, and what is written on it. A role of
   // its own, not `surface`: in the colour theme the note's paper is white
   // over a dark ground (it always was), so the two cannot be one value.
@@ -194,6 +251,33 @@ const CANVAS_LIGHT = {
   laneEdge: 'rgba(43,32,20,0.12)',
 };
 
+// THE NINE SECTION COLOURS, exactly as they are on screen today.
+//
+// Shared by all three themes on purpose, the same way CANVAS_LIGHT is:
+// these were file-level constants, so they have ALWAYS been the same
+// colour in every theme, and white and black are finished - "теми
+// чорна та біла в нас в принципі готові". Lifting them into the
+// contract must not repaint a single pixel of either. When a scheme
+// starts driving them it will replace the COLOUR theme's copy alone.
+//
+// `databases` and `links` are the same teal today. That is a real
+// collision, not a transcription error - left as it is here so this
+// step stays invisible, and it is one of the things a scheme fixes for
+// free, since a harmony hands out eleven distinct hues by construction.
+const SECTIONS: Record<SectionKey, string> = {
+  documents: '#BE7657',
+  tasks: '#4E9A6B',
+  files: '#0EA5E9',
+  photos: '#EC4899',
+  links: '#14B8A6',
+  boards: '#8B5CF6',
+  databases: '#14B8A6',
+  custom: '#A05C7B',
+  groups: '#69736E',
+  calendar: '#3B82F6',
+  settings: '#F5C77E',
+};
+
 const colour: Theme = {
   key: 'colour',
   name: 'Кольорова',
@@ -218,8 +302,23 @@ const colour: Theme = {
   raised: 'rgba(24,21,19,0.42)',
   ink: { primary: '#fff', muted: 'rgba(255,255,255,0.62)', faint: 'rgba(255,255,255,0.3)' },
   accent: '#F5C77E',
+  // The amber is LIGHT - white on it is unreadable, so the ink on a
+  // filled button here is the theme's own ground.
+  onAccent: '#2A2522',
   danger: '#FB7185',
+  success: '#6FBF8B',
+  warning: '#E8A33D',
+  // A wash of this theme's own accent, not a blue one.
+  selected: 'rgba(245,199,126,0.16)',
+  scrim: 'rgba(20,17,15,0.55)',
+  field: {
+    fill: 'rgba(255,255,255,0.07)',
+    ink: '#FFFFFF',
+    placeholder: 'rgba(255,255,255,0.38)',
+    edge: 'rgba(255,255,255,0.22)',
+  },
   edge: { hairline: 'rgba(255,255,255,0.22)', strong: 'rgba(255,255,255,0.4)' },
+  sections: SECTIONS,
   paper: {
     fill: '#FFFFFF',
     ink: '#111827',
@@ -328,8 +427,18 @@ const white: Theme = {
   // DARKER than ink.muted rather than a mid-grey that sat right next
   // to it and vanished into it. Espresso, not graphite.
   accent: '#4A3C2E',
+  onAccent: '#FFFEFB',
   danger: '#C2410C',
+  success: '#3F7D53',
+  warning: '#B45309',
+  // The same warm cream `paper.selected` already uses - one answer for
+  // "this one is picked" wherever it is asked.
+  selected: '#F5E9D9',
+  scrim: 'rgba(43,32,20,0.35)',
+  // A step DOWN from the card, not up - see the role's own note.
+  field: { fill: '#F3EDE2', ink: '#2B2621', placeholder: '#AEA599', edge: '#E7DFD2' },
   edge: { hairline: 'rgba(43,32,20,0.10)', strong: 'rgba(43,32,20,0.20)' },
+  sections: SECTIONS,
   paper: {
     fill: '#FFFEFB',
     ink: '#2B2621',
@@ -385,8 +494,20 @@ const black: Theme = {
   raised: '#16171B',
   ink: { primary: '#FFFFFF', muted: 'rgba(255,255,255,0.62)', faint: 'rgba(255,255,255,0.32)' },
   accent: '#E5E7EB',
+  onAccent: '#0E0F12',
   danger: '#FB7185',
+  success: '#4ADE80',
+  warning: '#FBBF24',
+  selected: 'rgba(255,255,255,0.10)',
+  scrim: 'rgba(0,0,0,0.60)',
+  field: {
+    fill: '#16171B',
+    ink: '#FFFFFF',
+    placeholder: 'rgba(255,255,255,0.32)',
+    edge: 'rgba(255,255,255,0.18)',
+  },
   edge: { hairline: 'rgba(255,255,255,0.18)', strong: 'rgba(255,255,255,0.45)' },
+  sections: SECTIONS,
   paper: {
     fill: '#0E0F12',
     ink: '#ECEDEF',
