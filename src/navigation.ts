@@ -77,7 +77,12 @@ export type RootStackParamList = {
   // The temporary, cross-database counterpart to Tags (see the Group type).
   Groups: undefined;
   TagItems: { tagId: string };
-  Settings: undefined;
+  // Absent -> the menu (list of sections, phone-settings style). A
+  // section pushes a SECOND instance of this same screen with its own
+  // param, rather than being a separate route - one component, one big
+  // shared block of state/logic (Drive, theme, keys...) that would
+  // otherwise have to be threaded across five files for no real gain.
+  Settings: { section?: 'account' | 'appearance' | 'integrations' | 'about' } | undefined;
   // Pushed from the search icon on DocumentsScreen - no longer a bottom
   // tab (see FloatingIslandTabBar).
   Search: undefined;

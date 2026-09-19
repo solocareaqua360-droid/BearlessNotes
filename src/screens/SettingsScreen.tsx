@@ -20,7 +20,7 @@ import {
 } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 // Safe to import here: the native module is already in every build of this
 // app (that's what makes OTA updates work at all), so this adds nothing
@@ -58,6 +58,14 @@ import ColorPickerSheet from '../components/ColorPickerSheet';
 // left with.
 const ACCENT = '#F5C77E';
 const DANGER = '#EF4444';
+
+const SECTION_TITLES: Record<'menu' | 'account' | 'appearance' | 'integrations' | 'about', string> = {
+  menu: 'Налаштування',
+  account: 'Обліковий запис',
+  appearance: 'Зовнішній вигляд',
+  integrations: 'Інтеграції',
+  about: 'Про застосунок',
+};
 const driveStatsDoc = doc(db, 'settings', 'driveStats');
 
 // 0 decimals under 10 (looks odd as "3.0 МБ"), 1 decimal otherwise - matches
@@ -135,6 +143,9 @@ export default function SettingsScreen() {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  // Absent -> the menu; present -> just that section's cards. See
+  // navigation.ts's own comment on why this is one screen, not five.
+  const section = useRoute<RouteProp<RootStackParamList, 'Settings'>>().params?.section;
   const { themeKey, setThemeKey } = useThemeChoice();
   const [accountEmail, setAccountEmail] = useState<string | null>(auth.currentUser?.email ?? null);
   const [authBusy, setAuthBusy] = useState(false);
@@ -509,8 +520,37 @@ export default function SettingsScreen() {
           <Pressable hitSlop={8} onPress={() => navigation.goBack()}>
             <Ionicons name="chevron-back" size={24} color="#fff" />
           </Pressable>
-          <Text style={styles.header}>Налаштування</Text>
+          <Text style={styles.header}>{SECTION_TITLES[section ?? 'menu']}</Text>
         </View>
+
+        {/* No section chosen yet - the menu itself, phone-settings style:
+            "думаю, що меню це налаштувань треба розділити, як воно вже є
+            в телефоні". Each row pushes a SECOND instance of this exact
+            screen with its own `section` param - see navigation.ts - so
+            the back chevron above returns here for free, no extra
+            wiring. */}
+        {!section && (
+          <View style={styles.menuList}>
+            {(
+              [
+                { id: 'account', icon: 'person-circle-outline', label: 'Обліковий запис' },
+                { id: 'appearance', icon: 'color-palette-outline', label: 'Зовнішній вигляд' },
+                { id: 'integrations', icon: 'key-outline', label: 'Інтеграції' },
+                { id: 'about', icon: 'information-circle-outline', label: 'Про застосунок' },
+              ] as const
+            ).map((row) => (
+              <Pressable
+                key={row.id}
+                style={styles.menuRow}
+                onPress={() => navigation.push('Settings', { section: row.id })}
+              >
+                <Ionicons name={row.icon} size={22} color={ACCENT} />
+                <Text style={styles.menuRowLabel}>{row.label}</Text>
+                <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.4)" />
+              </Pressable>
+            ))}
+          </View>
+        )}
 
         {/* The account everything belongs to - and, in the same card, the
             files that belong to it. These were two cards, "Обліковий
@@ -527,6 +567,7 @@ export default function SettingsScreen() {
             conversion: the switch works and is remembered; the screens
             themselves are converted to the contract after it, one weight
             at a time. */}
+        {section === 'appearance' && (
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Ionicons name="color-filter-outline" size={22} color={ACCENT} />
@@ -550,7 +591,9 @@ export default function SettingsScreen() {
             переводяться на них зрізами, і кожен зріз я показую окремо.
           </Text>
         </View>
+        )}
 
+        {section === 'account' && (
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Ionicons name="person-circle-outline" size={22} color={ACCENT} />
@@ -687,7 +730,9 @@ export default function SettingsScreen() {
             </>
           )}
         </View>
+        )}
 
+        {section === 'about' && (
         <View style={[styles.card, styles.updateCard]}>
           <View style={styles.cardHeader}>
             <Ionicons name="cloud-download-outline" size={22} color={ACCENT} />
@@ -716,7 +761,9 @@ export default function SettingsScreen() {
             )}
           </Pressable>
         </View>
+        )}
 
+        {section === 'integrations' && (
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Ionicons name="image-outline" size={22} color={ACCENT} />
@@ -761,7 +808,9 @@ export default function SettingsScreen() {
             </>
           )}
         </View>
+        )}
 
+        {section === 'integrations' && (
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Ionicons name="sparkles-outline" size={22} color={ACCENT} />
@@ -807,6 +856,7 @@ export default function SettingsScreen() {
             </>
           )}
         </View>
+        )}
 
         {/* "хочу можливість вибирати і налаштовувати кольоровий градієнт
             фону від 2 до 4 кольорів переходу. також хочу мати можливість
@@ -814,6 +864,7 @@ export default function SettingsScreen() {
             також можна вибрати через галочки в яких з тем застосовувати
             цей фон а в якій залишити стандартний." One override, not one
             per theme - see BackdropOverride/ThemeProvider. */}
+        {section === 'appearance' && (
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Ionicons name="color-palette-outline" size={22} color={ACCENT} />
@@ -947,6 +998,7 @@ export default function SettingsScreen() {
             </>
           )}
         </View>
+        )}
         </ScrollView>
       </ContentColumn>
 
@@ -1150,6 +1202,27 @@ const makeStyles = (t: Theme) =>
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  menuList: {
+    gap: 10,
+    marginBottom: 20,
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: 'rgba(24,21,19,0.42)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  menuRowLabel: {
+    flex: 1,
+    fontSize: 16,
+    fontFamily: FONT_SEMIBOLD,
+    color: '#fff',
   },
   checkButton: {
     borderWidth: 1,

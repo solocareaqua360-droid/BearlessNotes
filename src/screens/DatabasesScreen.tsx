@@ -198,7 +198,11 @@ export default function DatabasesScreen() {
   // where the old capsule kept it, on the right.
   useDockBeads(
     databasesFocused ? { icon: 'search-outline', onPress: () => navigation.navigate('Search') } : null,
-    databasesFocused ? { icon: 'ellipsis-horizontal-outline', onPress: () => navigation.navigate('Settings') } : null
+    // A gear now, not "...": "туди навіть іконку можна повісити з
+    // шестеренкою, щоб було зрозуміло, що це налаштування" - now that
+    // Settings is a real menu of sections (see SettingsScreen), the
+    // glyph that opens it should say so too.
+    databasesFocused ? { icon: 'settings-outline', onPress: () => navigation.navigate('Settings') } : null
   );
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
