@@ -65,6 +65,7 @@ import { useDockActions, useDockBeads, useDockLeave, useDockShowContext } from '
 import UndoToast from '../components/UndoToast';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
+import { CARRY_BIN_PATH } from '../hooks/useCardCarry';
 import GroupSections from '../components/GroupSections';
 import {
   documentMatchesQuery,
@@ -268,6 +269,12 @@ export default function DocumentsScreen({
     path: explorer.path,
     folders: explorer.folders,
     moveItem: explorer.moveItem,
+    // The bin row under the folders takes a dropped card now - the
+    // file-manager gesture the user asked for by pointing at that exact
+    // row. Both halves are this screen's, because "in the bin" is a
+    // field here and undoing it is not a move back to anywhere.
+    binItem: (item) => confirmDeleteDocument(item.id),
+    unbinItem: (item) => restoreDocument(item.id),
     items: documents,
     isSelectMode,
     selectedIds,
@@ -1240,7 +1247,13 @@ export default function DocumentsScreen({
                   ))}
                   {/* The bin, at the root of the explorer, after the
                       folders - where a file manager keeps it. */}
-                  {explorer.active && explorer.path === '' && trashed.length > 0 && (
+                  {explorer.active && explorer.path === '' && (trashed.length > 0 || !!carrying.carry.ghost) && (
+                    // A drop target like any folder row, registered under
+                    // the one path no folder can have (CARRY_BIN_PATH).
+                    // Shown while a card is IN HAND even when the bin is
+                    // empty: otherwise the very first thing anyone tries
+                    // to throw away has nowhere to be thrown.
+                    <View ref={carrying.carry.registerFolder(CARRY_BIN_PATH)} collapsable={false}>
                     <Pressable
                       style={[styles.folderRow, styles.trashFolderRow, folderRowWidth !== undefined && { width: folderRowWidth }]}
                       onPress={() => setTrashOpen(true)}
@@ -1257,6 +1270,7 @@ export default function DocumentsScreen({
                       </View>
                       <Ionicons name="chevron-forward" size={18} color={theme.ink.faint} />
                     </Pressable>
+                    </View>
                   )}
                 </View>
               ) : null
@@ -1272,6 +1286,21 @@ export default function DocumentsScreen({
             // What else is in this group - see GroupSections. Only under
             // the real list: a search or the stickers tab is not a group's
             // view of itself.
+            // A folder that holds nothing SAYS so. Without it an empty
+            // folder and a folder still loading look identical - the
+            // user's own reason, and it is about the next person as much
+            // as themselves: "щоб я або людина яка користується в
+            // майбутньому застосунком не плуталась". Only inside a
+            // folder: the root with nothing in it is a new install, not
+            // a place someone walked into by mistake.
+            ListEmptyComponent={
+              explorer.active && explorer.path !== '' && !trashOpen ? (
+                <View style={styles.emptyFolder}>
+                  <Ionicons name="folder-open-outline" size={30} color={theme.ink.faint} />
+                  <Text style={styles.emptyLabel}>Папка порожня</Text>
+                </View>
+              ) : null
+            }
             ListFooterComponent={
               <GroupSections
                 groupId={list.selectedGroupId}
@@ -1340,6 +1369,7 @@ export default function DocumentsScreen({
         )}
 
         {carrying.movedToast && <UndoToast message={carrying.toastMessage} onUndo={carrying.undoMove} />}
+        {carrying.binnedToast && <UndoToast message={carrying.binToastMessage} onUndo={carrying.undoBin} />}
         {/* The floating note while one is being carried into a folder -
             see useCardCarry. Always mounted, invisible until then. */}
         <CardCarryOverlay
@@ -1838,7 +1868,17 @@ const makeStyles = (t: Theme) =>
     marginTop: 16,
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: 'rgba(255,255,255,0.85)',
+    // Was a hard white. This label sits on the PAGE, not on glass, and
+    // the page is near-white in two of the three themes - so "Нічого не
+    // знайдено" was white on white and the screen simply looked broken.
+    color: t.ink.muted,
+  },
+  // The message inside an empty folder. Its own block rather than
+  // emptyState's, which is sized for a whole blank screen.
+  emptyFolder: {
+    alignItems: 'center',
+    paddingTop: 40,
+    paddingBottom: 24,
   },
   emptySearch: {
     flex: 1,

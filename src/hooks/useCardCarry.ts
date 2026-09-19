@@ -60,14 +60,29 @@ export type CarryGhost<T> = {
   y: number;
 };
 
+// The bin's own "path". A folder path can be any string a user types,
+// and '' already means the root - so this is a character no path can
+// contain rather than a word one might. Exported because the screen
+// drawing the bin row registers it under this, and useCardCarry is the
+// only thing that knows what it means.
+export const CARRY_BIN_PATH = '\u0000bin';
+
 export function useCardCarry<T extends { id: string }>({
   moveItem,
+  binItems,
   scrollBy,
   onMoved,
+  onBinned,
   onPickUp,
   currentPath,
 }: {
   moveItem: (item: T, destination: string | null) => Promise<void>;
+  // Dropping onto the BIN, where a screen has one. A folder path names a
+  // place to put something; the bin is not a place, so it gets its own
+  // handler rather than a magic destination moveItem would have to learn
+  // to recognise. Screens without a bin simply do not pass it, and the
+  // target never registers.
+  binItems?: (items: T[]) => Promise<void>;
   // Where the explorer is standing RIGHT NOW - which is where a card
   // dropped on nothing in particular lands. A file manager works that
   // way: you walk to the folder you want and let go, and dropping
@@ -83,6 +98,7 @@ export function useCardCarry<T extends { id: string }>({
   // drop) - `origin` is what the caller's own undo toast needs to put
   // the item back exactly where it was.
   onMoved?: (items: T[], destination: string | null, origin: string) => void;
+  onBinned?: (items: T[]) => void;
   // Fires the instant a carry begins, with what was picked up. Exists for
   // a caller whose own "drop on nothing" fallback (currentPath) has no
   // single fixed answer - the kanban board, where it has to be THIS
@@ -278,7 +294,7 @@ export function useCardCarry<T extends { id: string }>({
         }
       });
     });
-  }, [moveItem, onMoved]);
+  }, [moveItem, binItems, onMoved, onBinned]);
 
   // Where the card actually landed: the folder row or crumb it was let go
   // over, and otherwise the folder being SHOWN - walking there with the
@@ -287,6 +303,18 @@ export function useCardCarry<T extends { id: string }>({
   function settle(items: T[], matched: string | null | undefined) {
     const target = matched === undefined ? pathRef.current : matched;
     const origin = originRef.current;
+    // The bin is a row in the same list as the folders and registers the
+    // same way, so it arrives here as a path like any other - and then
+    // stops being one. The user asked for the file-manager gesture they
+    // already know: "хочу перетягувати файли в кошик як це реалізовано
+    // на Mac або на Windows", pointing at the bin row the explorer
+    // already draws under the folders.
+    if (target === CARRY_BIN_PATH) {
+      if (!binItems) return;
+      hapticDrop();
+      binItems(items).then(() => onBinned?.(items));
+      return;
+    }
     if (target === origin) {
       hapticWarning();
       return;

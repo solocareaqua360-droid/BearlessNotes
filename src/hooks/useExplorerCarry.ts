@@ -27,6 +27,8 @@ export function useExplorerCarry<T extends { id: string }>({
   path,
   folders,
   moveItem,
+  binItem,
+  unbinItem,
   items,
   isSelectMode,
   selectedIds,
@@ -38,6 +40,11 @@ export function useExplorerCarry<T extends { id: string }>({
   path: string;
   folders: { fullPath: string; name: string }[];
   moveItem: (item: T, destination: string | null) => Promise<void>;
+  // The bin, where the screen has one. Both halves are the screen's,
+  // because "binned" means a different field in every database and
+  // undoing it is not a move back to anywhere.
+  binItem?: (item: T) => Promise<void>;
+  unbinItem?: (item: T) => Promise<void>;
   // Everything in the database - what a bulk group is drawn from, and
   // what undo looks a moved record up in.
   items: T[];
@@ -54,6 +61,10 @@ export function useExplorerCarry<T extends { id: string }>({
   const scrollYRef = useRef<SharedValue<number> | null>(null);
   const scrollTargetRef = useRef<{ y: number; at: number } | null>(null);
   const [movedToast, setMovedToast] = useState<{ ids: string[]; origin: string; folderName: string } | null>(null);
+  // Binned by dropping, and undoable the same way a move is - the bin is
+  // reversible for 30 days anyway, but a card let go a centimetre off
+  // target should not cost a trip into the bin to fix.
+  const [binnedToast, setBinnedToast] = useState<{ ids: string[] } | null>(null);
 
   const carry = useCardCarry<T>({
     currentPath: path,
@@ -78,6 +89,17 @@ export function useExplorerCarry<T extends { id: string }>({
       if ('scrollToOffset' in list) list.scrollToOffset({ offset: next, animated: false });
       else list.scrollTo({ y: next, animated: false });
     },
+    binItems: binItem
+      ? (dropped) =>
+          dropped.reduce<Promise<unknown>>(
+            (run, one) => run.then(() => binItem(one)),
+            Promise.resolve()
+          ) as Promise<void>
+      : undefined,
+    onBinned: (binned) => {
+      setBinnedToast({ ids: binned.map((one) => one.id) });
+      onMoved?.();
+    },
     onMoved: (moved, destination, origin) => {
       const folderName =
         folders.find((f) => f.fullPath === destination)?.name ?? (destination ?? '').split('/').pop() ?? '';
@@ -96,6 +118,24 @@ export function useExplorerCarry<T extends { id: string }>({
     const id = setTimeout(() => setMovedToast(null), 4000);
     return () => clearTimeout(id);
   }, [movedToast]);
+
+  useEffect(() => {
+    if (!binnedToast) return;
+    const id = setTimeout(() => setBinnedToast(null), 4000);
+    return () => clearTimeout(id);
+  }, [binnedToast]);
+
+  function undoBin() {
+    if (!binnedToast || !unbinItem) return;
+    // Looked up in `items` would fail here, unlike undoMove: a binned
+    // record has left the list this hook is given. The ids are enough -
+    // the screen's own unbinItem takes one.
+    binnedToast.ids.reduce<Promise<unknown>>(
+      (run, id) => run.then(() => unbinItem({ id } as T)),
+      Promise.resolve()
+    );
+    setBinnedToast(null);
+  }
 
   // The one gesture, on the LIST rather than on a row - see useCardCarry.
   // A quick swipe fails it before the long press elapses, so the list
@@ -203,10 +243,20 @@ export function useExplorerCarry<T extends { id: string }>({
     scrollYRef,
     movedToast,
     undoMove,
+    binnedToast,
+    undoBin,
     toastMessage: movedToast
       ? movedToast.ids.length > 1
         ? `Переміщено ${movedToast.ids.length} в «${movedToast.folderName}»`
         : `Переміщено в «${movedToast.folderName}»`
+      : '',
+    // One toast component per screen, so the two messages take turns in
+    // it - they cannot both be true, since a card lands in exactly one
+    // place.
+    binToastMessage: binnedToast
+      ? binnedToast.ids.length > 1
+        ? `У кошику ${binnedToast.ids.length}`
+        : 'У кошику'
       : '',
   };
 }
