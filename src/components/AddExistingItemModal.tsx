@@ -1,0 +1,895 @@
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
+import { useEffect, useState } from 'react';
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+// gesture-handler's ScrollView, not the core RN one: on Android a drag that
+// starts on a TextInput never reaches an RN ScrollView's scroll recognition,
+// so a sheet with a search/name field only scrolled when a finger happened to
+// land between rows. Same fix, same reason, as FieldsEditorSheet.
+import { ScrollView } from 'react-native-gesture-handler';
+import { Ionicons } from '@expo/vector-icons';
+import AttachmentImage from './AttachmentImage';
+import { doc, onSnapshot } from '../firestore';
+import { db } from '../firebase';
+import { ownedQuery } from '../utils/owned';
+import { Block, CustomDatabase, CustomDatabaseRow, CustomDatabaseView, SketchElement } from '../types';
+import {
+  blockFromCustomRow,
+  blockFromCustomView,
+  blockFromFile,
+  blockFromLink,
+  blockFromPhoto,
+  blockFromSticker,
+} from '../utils/copyToNote';
+import { rowTitleOf } from '../utils/customRowDisplay';
+import { labelForBlock } from '../utils/objectClipboard';
+import {
+  GLASS_BACKDROP,
+  GLASS_BODY_BLURRED,
+  GLASS_LINE,
+  GLASS_TEXT,
+  GLASS_TEXT_FAINT,
+  GLASS_TEXT_MUTED,
+  SHEET_BACKDROP,
+  SHEET_WINDOW,
+} from '../constants/glass';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+import GlassLayer from './GlassLayer';
+import ReferenceBlockPreview from './ReferenceBlockPreview';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+
+// Every listener gets one of these. A read the rules refuse does not come
+// back as an empty snapshot - it THROWS, and it throws asynchronously,
+// where no error boundary can reach it. React Native answers a fatal by
+// taking the JS root down, which leaves Android's own empty window on the
+// screen and nothing to report but "білий екран". See
+// src/utils/fatalErrors.ts, and the standing rule in CLAUDE.md.
+const listenerFailed = (where: string) => (error: unknown) =>
+  console.warn(`AddExistingItemModal: ${where} listener failed`, error);
+// GLASS_BODY_BLURRED without its transparency - see styles.dockedRoot.
+const GLASS_BODY_OPAQUE = '#181513';
+const STICKER_YELLOW = '#FBE97A';
+// Newest first, done here rather than by the query. Every read in this
+// file goes through ownedQuery now, which narrows by owner - and an
+// equality filter with an orderBy on another field is what needs a
+// composite index, the one thing this app avoids everywhere.
+function newestFirst(a: { data(): Record<string, unknown> }, b: { data(): Record<string, unknown> }) {
+  return ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0);
+}
+
+function byName(a: { name?: string }, b: { name?: string }) {
+  return String(a.name ?? '').localeCompare(String(b.name ?? ''));
+}
+
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+// What a block reads as in the reference list - its own text if it has
+// one (a paragraph, a heading, a quote...), labelForBlock's word for
+// anything else (a photo, a file, a link...).
+function labelForDocBlock(b: Block): string {
+  const text = (b.text ?? '').trim();
+  return text || labelForBlock(b);
+}
+
+// Links split into video/geo/other exactly like LinksScreen's own tabs
+// (see LinksScreen.tsx's categoryOf) - they're one Firestore collection but
+// three different-feeling databases in the rest of the app, so lumping them
+// into one "Посилання" tab here would be the one place in the app where
+// that split doesn't hold. 'document' only ever shows up when the caller
+// opts in via `includeDocuments` (see Props) - DocumentEditorScreen's own
+// use of this modal never does, since a document can't nest as a block
+// inside another document.
+type Tab = 'file' | 'photo' | 'video' | 'geo' | 'other' | 'document' | 'sticker' | 'customDb';
+
+type FileRow = {
+  id: string;
+  fileUri: string;
+  fileName: string;
+  mimeType?: string;
+  title?: string;
+  createdAt?: number;
+  driveFileId?: string;
+  driveBytes?: number;
+};
+type PhotoRow = {
+  id: string;
+  imageUri: string;
+  imageFit?: 'contain' | 'cover';
+  title?: string;
+  createdAt?: number;
+  driveFileId?: string;
+  driveBytes?: number;
+};
+type LinkRow = { id: string; url: string; title?: string; imageUrl?: string; siteName?: string };
+type DocumentRow = { id: string; title: string };
+type StickerRow = {
+  id: string;
+  type: 'paragraph' | 'image' | 'sketch';
+  text?: string;
+  imageUri?: string;
+  driveFileId?: string;
+  driveBytes?: number;
+  sketchElements?: SketchElement[];
+  sketchWidth?: number;
+  sketchHeight?: number;
+  createdAt?: number;
+  trashed?: boolean;
+};
+
+function labelForSticker(s: StickerRow): string {
+  if (s.type === 'paragraph') return s.text || 'Порожній стікер';
+  if (s.type === 'image') return 'Фото-стікер';
+  return 'Малюнок-стікер';
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
+// Identical to LinksScreen.tsx's own categoryOf - kept as its own copy
+// rather than shared, same as that file's fileIconFor/fileIconColorFor
+// duplicates elsewhere, since the two call sites have nothing else in
+// common.
+function categoryOf(link: LinkRow): 'video' | 'geo' | 'other' {
+  const siteName = link.siteName ?? '';
+  if (siteName.includes('YouTube') || siteName.includes('TikTok')) return 'video';
+  if (siteName === 'Геоточка') return 'geo';
+  return 'other';
+}
+
+type Props = {
+  visible: boolean;
+  onPick: (block: Block) => void;
+  onClose: () => void;
+  // File/photo blocks reuse the record's OWN id (see blockFromFile/
+  // blockFromPhoto) - picking one already present in this document would
+  // put two blocks on the same id in the same list, a real React key
+  // collision, not just a harmless duplicate. Links always get a fresh id
+  // (blockFromLink), so they're never excluded here - re-adding one is just
+  // a redundant card, not a collision.
+  excludeIds?: Set<string>;
+  // Adds a "Документи" tab (regular documents, daily notes excluded - same
+  // filter DocumentsScreen/SearchScreen/CopyToNoteModal use) and routes a
+  // pick through `onPickDocument` instead of `onPick`, since a document
+  // reference isn't a `Block` - only BoardScreen sets this.
+  includeDocuments?: boolean;
+  onPickDocument?: (item: DocumentRow) => void;
+  // Adds a "Бази" tab (rows of the user's own databases, as 'dbRow'
+  // blocks). Opt-in because the board can't render that block type yet -
+  // only DocumentEditorScreen sets it.
+  includeCustomDatabases?: boolean;
+  // DOCKED: the same browser without the sheet around it - no backdrop,
+  // no handle, no title, sized by whatever holds it. The reference panel
+  // beside the canvas is this one browser standing open rather than a
+  // second copy of it: there is exactly one place in the app that knows
+  // how to list every database, and this is it.
+  docked?: boolean;
+  // Hands out each row's own node, so something outside can tell what is
+  // under a finger - the reference panel's drag (see useReferenceDrag).
+  // `build` is the very block a tap on that row would have inserted.
+  rowRef?: (id: string, build: () => Block, label: string) => ((node: View | null) => void) | undefined;
+};
+
+// The reverse direction of CopyToNoteModal (Files/Photos/Links → a note) -
+// this is "a note → an existing Files/Photos/Links item", triggered from
+// the "/" menu. Picking a row inserts a block referencing that SAME
+// underlying record (blockFromFile/blockFromPhoto/blockFromLink, the exact
+// helpers CopyToNoteModal already uses) rather than creating a duplicate.
+export default function AddExistingItemModal({
+  visible,
+  onPick,
+  onClose,
+  excludeIds,
+  includeDocuments,
+  onPickDocument,
+  includeCustomDatabases,
+  docked,
+  rowRef,
+}: Props) {
+  const accent = useTheme().accent;
+  const styles = useStyles(makeStyles);
+  const keyboardHeight = useKeyboardHeight();
+  const [tab, setTab] = useState<Tab>('file');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [files, setFiles] = useState<FileRow[]>([]);
+  const [photos, setPhotos] = useState<PhotoRow[]>([]);
+  const [links, setLinks] = useState<LinkRow[]>([]);
+  const [documents, setDocuments] = useState<DocumentRow[]>([]);
+  const [stickers, setStickers] = useState<StickerRow[]>([]);
+  // The "Бази" tab is two levels deep: pick a database, then one of its
+  // rows. One tab rather than a tab per database, since there's no upper
+  // bound on how many the user creates.
+  const [customDatabases, setCustomDatabases] = useState<CustomDatabase[]>([]);
+  const [customRows, setCustomRows] = useState<CustomDatabaseRow[]>([]);
+  const [customViews, setCustomViews] = useState<CustomDatabaseView[]>([]);
+  const [openDatabaseId, setOpenDatabaseId] = useState<string | null>(null);
+  // The 'document' tab's own second level, docked-mode only (see the
+  // 'document' rows below): open ONE document and browse its blocks
+  // read-only, rather than picking the document as a whole
+  // (onPickDocument, BoardScreen's own use of this tab).
+  const [openDocId, setOpenDocId] = useState<string | null>(null);
+  const [openDocTitle, setOpenDocTitle] = useState('');
+  const [openDocBlocks, setOpenDocBlocks] = useState<Block[]>([]);
+
+  useEffect(() => {
+    if (!visible) return;
+    return onSnapshot(ownedQuery('files'), (snapshot) => {
+      setFiles([...snapshot.docs].sort(newestFirst).map((d) => ({ id: d.id, ...(d.data() as Omit<FileRow, 'id'>) })));
+    }, listenerFailed('files'));
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    return onSnapshot(ownedQuery('photos'), (snapshot) => {
+      setPhotos([...snapshot.docs].sort(newestFirst).map((d) => ({ id: d.id, ...(d.data() as Omit<PhotoRow, 'id'>) })));
+    }, listenerFailed('photos'));
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    return onSnapshot(ownedQuery('links'), (snapshot) => {
+      setLinks([...snapshot.docs].sort(newestFirst).map((d) => ({ id: d.id, ...(d.data() as Omit<LinkRow, 'id'>) })));
+    }, listenerFailed('links'));
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    // Trashed is filtered client-side (same "avoid a composite index"
+    // convention used everywhere else in this app) rather than a
+    // `where('trashed','==',false)` query.
+    return onSnapshot(ownedQuery('stickers'), (snapshot) => {
+      setStickers(
+        [...snapshot.docs]
+          .sort(newestFirst)
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<StickerRow, 'id'>) }))
+          .filter((s) => !s.trashed)
+      );
+    }, listenerFailed('stickers'));
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible || !includeCustomDatabases) return;
+    return onSnapshot(ownedQuery('customDatabases'), (snapshot) => {
+      setCustomDatabases(
+        snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabase, 'id'>) })).sort(byName)
+      );
+    }, listenerFailed('customDatabases'));
+  }, [visible, includeCustomDatabases]);
+
+  useEffect(() => {
+    if (!visible || !openDatabaseId) return;
+    // Filtered client-side by databaseId, same "avoid a composite index"
+    // convention CustomDatabaseScreen's own rows query follows.
+    return onSnapshot(ownedQuery('customDatabaseRows'), (snapshot) => {
+      setCustomRows(
+        [...snapshot.docs]
+          .sort(newestFirst)
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabaseRow, 'id'>) }))
+          .filter((r) => r.databaseId === openDatabaseId)
+      );
+    }, listenerFailed('customDatabaseRows'));
+  }, [visible, openDatabaseId]);
+
+  useEffect(() => {
+    if (!visible || !openDatabaseId) return;
+    return onSnapshot(ownedQuery('customDatabaseViews'), (snapshot) => {
+      setCustomViews(
+        snapshot.docs
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabaseView, 'id'>) }))
+          .filter((v) => v.databaseId === openDatabaseId)
+      );
+    }, listenerFailed('customDatabaseViews'));
+  }, [visible, openDatabaseId]);
+
+  useEffect(() => {
+    if (!visible || !includeDocuments) return;
+    return onSnapshot(ownedQuery('documents'), (snapshot) => {
+      setDocuments(
+        [...snapshot.docs]
+          .sort(newestFirst)
+          .filter((d) => !d.data().calendarDate && !d.data().deletedAt)
+          .map((d) => ({ id: d.id, title: (d.data().title as string) || 'Без назви' }))
+      );
+    }, listenerFailed('documents'));
+  }, [visible, includeDocuments]);
+
+  useEffect(() => {
+    if (!visible) {
+      setSearchQuery('');
+      setTab('file');
+      setOpenDatabaseId(null);
+      setOpenDocId(null);
+    }
+  }, [visible]);
+
+  // The document opened for its blocks - read-only, nothing here ever
+  // writes to it. A checkbox block is left out on purpose: it doubles as
+  // a Tasks record keyed by the block's OWN id, and a bare clone would
+  // either collide with it or silently fork a second, disconnected task -
+  // real handling for that is its own piece of work, not this one.
+  useEffect(() => {
+    if (!visible || !openDocId) return;
+    return onSnapshot(doc(db, 'documents', openDocId), (snapshot) => {
+      const data = snapshot.data();
+      if (!data) return;
+      setOpenDocTitle((data.title as string) || 'Без назви');
+      const blocks = ((data.blocks as Block[]) ?? []).filter((b) => (b.type ?? 'paragraph') !== 'checkbox');
+      setOpenDocBlocks(blocks);
+    }, listenerFailed('document blocks'));
+  }, [visible, openDocId]);
+
+  const needle = searchQuery.trim().toLowerCase();
+  const filteredFiles = files.filter(
+    (f) => !excludeIds?.has(f.id) && (f.title || f.fileName).toLowerCase().includes(needle)
+  );
+  const filteredPhotos = photos.filter(
+    (p) => !excludeIds?.has(p.id) && (p.title || 'Без назви').toLowerCase().includes(needle)
+  );
+  const searchedLinks = links.filter((l) => (l.title || hostnameOf(l.url)).toLowerCase().includes(needle));
+  const filteredVideoLinks = searchedLinks.filter((l) => categoryOf(l) === 'video');
+  const filteredGeoLinks = searchedLinks.filter((l) => categoryOf(l) === 'geo');
+  const filteredOtherLinks = searchedLinks.filter((l) => categoryOf(l) === 'other');
+  const filteredDocuments = documents.filter((d) => d.title.toLowerCase().includes(needle));
+  // Same id-collision guard as files/photos - a sticker reuses its own
+  // record's id (see blockFromSticker), so re-picking one already present
+  // in this document would put two blocks on the same id.
+  const filteredStickers = stickers.filter(
+    (s) => !excludeIds?.has(s.id) && labelForSticker(s).toLowerCase().includes(needle)
+  );
+  const openDatabase = customDatabases.find((d) => d.id === openDatabaseId) ?? null;
+  const filteredDatabases = customDatabases.filter((d) => (d.name || 'База').toLowerCase().includes(needle));
+  // Same id-collision guard as files/photos/stickers - a row block reuses
+  // the row's own id (blockFromCustomRow).
+  const filteredCustomRows = customRows.filter(
+    (r) => !excludeIds?.has(r.id) && rowTitleOf(openDatabase, r).toLowerCase().includes(needle)
+  );
+  // Same id-collision guard - a view block reuses the view's own id
+  // (blockFromCustomView).
+  const filteredCustomViews = customViews.filter(
+    (v) => !excludeIds?.has(v.id) && (v.name || 'Вигляд').toLowerCase().includes(needle)
+  );
+
+  const body = (
+        <>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            style={styles.tabRow}
+            contentContainerStyle={styles.tabRowContent}
+          >
+            <Pressable style={[styles.tab, tab === 'file' && styles.tabActive]} onPress={() => setTab('file')}>
+              <Text style={[styles.tabLabel, tab === 'file' && styles.tabLabelActive]}>Файли</Text>
+            </Pressable>
+            <Pressable style={[styles.tab, tab === 'photo' && styles.tabActive]} onPress={() => setTab('photo')}>
+              <Text style={[styles.tabLabel, tab === 'photo' && styles.tabLabelActive]}>Зображення</Text>
+            </Pressable>
+            <Pressable style={[styles.tab, tab === 'video' && styles.tabActive]} onPress={() => setTab('video')}>
+              <Text style={[styles.tabLabel, tab === 'video' && styles.tabLabelActive]}>YouTube / TikTok</Text>
+            </Pressable>
+            <Pressable style={[styles.tab, tab === 'geo' && styles.tabActive]} onPress={() => setTab('geo')}>
+              <Text style={[styles.tabLabel, tab === 'geo' && styles.tabLabelActive]}>Геоточки</Text>
+            </Pressable>
+            <Pressable style={[styles.tab, tab === 'other' && styles.tabActive]} onPress={() => setTab('other')}>
+              <Text style={[styles.tabLabel, tab === 'other' && styles.tabLabelActive]}>Посилання</Text>
+            </Pressable>
+            <Pressable style={[styles.tab, tab === 'sticker' && styles.tabActive]} onPress={() => setTab('sticker')}>
+              <Text style={[styles.tabLabel, tab === 'sticker' && styles.tabLabelActive]}>Стікери</Text>
+            </Pressable>
+            {includeCustomDatabases && (
+              <Pressable style={[styles.tab, tab === 'customDb' && styles.tabActive]} onPress={() => setTab('customDb')}>
+                <Text style={[styles.tabLabel, tab === 'customDb' && styles.tabLabelActive]}>Бази</Text>
+              </Pressable>
+            )}
+            {includeDocuments && (
+              <Pressable style={[styles.tab, tab === 'document' && styles.tabActive]} onPress={() => setTab('document')}>
+                <Text style={[styles.tabLabel, tab === 'document' && styles.tabLabelActive]}>Документи</Text>
+              </Pressable>
+            )}
+          </ScrollView>
+
+          <View style={styles.searchRow}>
+            <Ionicons name="search" size={14} color={GLASS_TEXT_FAINT} />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Пошук за назвою"
+              placeholderTextColor={GLASS_TEXT_FAINT}
+              style={styles.searchInput}
+            />
+          </View>
+
+          {/* Reading a whole document means scrolling a long way from the
+              top, so the way back cannot be a row up there. */}
+          {tab === 'document' && openDocId && (
+            <Pressable style={styles.docHeader} onPress={() => setOpenDocId(null)}>
+              <Ionicons name="chevron-back" size={16} color={GLASS_TEXT_MUTED} />
+              <Text style={styles.docHeaderTitle} numberOfLines={1}>
+                {openDocTitle}
+              </Text>
+            </Pressable>
+          )}
+
+          <ScrollView style={[styles.list, docked && styles.listDocked]} keyboardShouldPersistTaps="handled">
+            {tab === 'file' &&
+              (filteredFiles.length === 0 ? (
+                <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
+              ) : (
+                filteredFiles.map((f) => (
+                  <View ref={rowRef?.(`file-${f.id}`, () => blockFromFile(f), (f.title || f.fileName))} collapsable={false}>
+                  <Pressable key={f.id} style={styles.row} onPress={() => onPick(blockFromFile(f))}>
+                    <View style={styles.docIcon}>
+                      <Ionicons name="document-outline" size={18} color={accent} />
+                    </View>
+                    <Text style={styles.rowText} numberOfLines={1}>
+                      {f.title || f.fileName}
+                    </Text>
+                  </Pressable>
+                  </View>
+                ))
+              ))}
+
+            {tab === 'photo' &&
+              (filteredPhotos.length === 0 ? (
+                <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
+              ) : (
+                filteredPhotos.map((p) => (
+                  <View ref={rowRef?.(`photo-${p.id}`, () => blockFromPhoto(p), (p.title || 'Без назви'))} collapsable={false}>
+                  <Pressable key={p.id} style={styles.row} onPress={() => onPick(blockFromPhoto(p))}>
+                    <AttachmentImage uri={p.imageUri} driveFileId={p.driveFileId} style={styles.thumb} />
+                    <Text style={styles.rowText} numberOfLines={1}>
+                      {p.title || 'Без назви'}
+                    </Text>
+                  </Pressable>
+                  </View>
+                ))
+              ))}
+
+            {tab === 'video' &&
+              (filteredVideoLinks.length === 0 ? (
+                <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
+              ) : (
+                filteredVideoLinks.map((l) => (
+                  <View ref={rowRef?.(`video-${l.id}`, () => blockFromLink(l), (l.title || hostnameOf(l.url)))} collapsable={false}>
+                  <Pressable key={l.id} style={styles.row} onPress={() => onPick(blockFromLink(l))}>
+                    {l.imageUrl ? (
+                      <Image source={{ uri: l.imageUrl }} style={styles.thumb} resizeMode="cover" resizeMethod="resize" />
+                    ) : (
+                      <View style={styles.docIcon}>
+                        <Ionicons name="videocam-outline" size={18} color={accent} />
+                      </View>
+                    )}
+                    <Text style={styles.rowText} numberOfLines={1}>
+                      {l.title || hostnameOf(l.url)}
+                    </Text>
+                  </Pressable>
+                  </View>
+                ))
+              ))}
+
+            {tab === 'geo' &&
+              (filteredGeoLinks.length === 0 ? (
+                <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
+              ) : (
+                filteredGeoLinks.map((l) => (
+                  <View ref={rowRef?.(`geo-${l.id}`, () => blockFromLink(l), (l.title || hostnameOf(l.url)))} collapsable={false}>
+                  <Pressable key={l.id} style={styles.row} onPress={() => onPick(blockFromLink(l))}>
+                    <View style={styles.docIcon}>
+                      <Ionicons name="location-outline" size={18} color={accent} />
+                    </View>
+                    <Text style={styles.rowText} numberOfLines={1}>
+                      {l.title || hostnameOf(l.url)}
+                    </Text>
+                  </Pressable>
+                  </View>
+                ))
+              ))}
+
+            {tab === 'other' &&
+              (filteredOtherLinks.length === 0 ? (
+                <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
+              ) : (
+                filteredOtherLinks.map((l) => (
+                  <View ref={rowRef?.(`other-${l.id}`, () => blockFromLink(l), (l.title || hostnameOf(l.url)))} collapsable={false}>
+                  <Pressable key={l.id} style={styles.row} onPress={() => onPick(blockFromLink(l))}>
+                    {l.imageUrl ? (
+                      <Image source={{ uri: l.imageUrl }} style={styles.thumb} resizeMode="cover" resizeMethod="resize" />
+                    ) : (
+                      <View style={styles.docIcon}>
+                        <Ionicons name="link-outline" size={18} color={accent} />
+                      </View>
+                    )}
+                    <Text style={styles.rowText} numberOfLines={1}>
+                      {l.title || hostnameOf(l.url)}
+                    </Text>
+                  </Pressable>
+                  </View>
+                ))
+              ))}
+
+            {tab === 'sticker' &&
+              (filteredStickers.length === 0 ? (
+                <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
+              ) : (
+                filteredStickers.map((s) => (
+                  <View ref={rowRef?.(`sticker-${s.id}`, () => blockFromSticker(s), labelForSticker(s))} collapsable={false}>
+                  <Pressable key={s.id} style={styles.row} onPress={() => onPick(blockFromSticker(s))}>
+                    {s.type === 'image' && s.imageUri ? (
+                      <AttachmentImage uri={s.imageUri} driveFileId={s.driveFileId} style={[styles.thumb, { backgroundColor: STICKER_YELLOW }]} />
+                    ) : (
+                      <View style={[styles.docIcon, { backgroundColor: STICKER_YELLOW }]}>
+                        <Ionicons
+                          name={s.type === 'sketch' ? 'brush-outline' : 'reader-outline'}
+                          size={18}
+                          color="#8a7a1f"
+                        />
+                      </View>
+                    )}
+                    <Text style={styles.rowText} numberOfLines={1}>
+                      {labelForSticker(s)}
+                    </Text>
+                  </Pressable>
+                  </View>
+                ))
+              ))}
+
+            {/* rowRef present = the reference panel, which wants blocks
+                OUT of a document, not the document itself - BoardScreen's
+                own use of this tab (onPickDocument, no rowRef) is
+                untouched. */}
+            {tab === 'document' && !openDocId &&
+              (filteredDocuments.length === 0 ? (
+                <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
+              ) : (
+                filteredDocuments.map((d) => (
+                  <Pressable
+                    key={d.id}
+                    style={styles.row}
+                    onPress={() => (rowRef ? setOpenDocId(d.id) : onPickDocument?.(d))}
+                  >
+                    <View style={styles.docIcon}>
+                      <Ionicons name="document-text-outline" size={18} color={accent} />
+                    </View>
+                    <Text style={styles.rowText} numberOfLines={1}>
+                      {d.title}
+                    </Text>
+                    {rowRef && <Ionicons name="chevron-forward" size={16} color={GLASS_TEXT_FAINT} />}
+                  </Pressable>
+                ))
+              ))}
+
+            {/* The second level: one document's own blocks, read-only.
+                Drawn as the DOCUMENT - see ReferenceBlockPreview - rather
+                than as one clipped line each: what this panel is for is
+                recognising a piece and taking it, and a first line can
+                only be guessed at. Every block is still its own drag
+                source; the card around it is what says so. */}
+            {tab === 'document' && openDocId && (() => {
+              const rows = openDocBlocks.filter((b) => labelForDocBlock(b).toLowerCase().includes(needle));
+              if (rows.length === 0) return <Text style={styles.emptyLabel}>Нічого не знайдено</Text>;
+              // A numbered list counts within its own run, the way the
+              // document itself numbers it - not from the top of the note.
+              let run = 0;
+              return rows.map((b, i) => {
+                const type = b.type ?? 'paragraph';
+                run = type === 'numbered' ? (i > 0 && (rows[i - 1].type ?? 'paragraph') === 'numbered' ? run + 1 : 0) : 0;
+                const build = () => ({ ...b, id: generateId(), createdAt: Date.now() });
+                return (
+                  <View
+                    key={b.id}
+                    ref={rowRef?.(`block-${b.id}`, build, labelForDocBlock(b))}
+                    collapsable={false}
+                    style={styles.blockCard}
+                  >
+                    <ReferenceBlockPreview block={b} index={run} />
+                  </View>
+                );
+              });
+            })()}
+
+            {/* Two levels: the databases themselves, then the rows of
+                whichever one was opened. The back row is what returns to
+                the list rather than a second "Бази" tap. */}
+            {tab === 'customDb' && !openDatabase &&
+              (filteredDatabases.length === 0 ? (
+                <Text style={styles.emptyLabel}>Ще немає власних баз</Text>
+              ) : (
+                filteredDatabases.map((d) => (
+                  <Pressable key={d.id} style={styles.row} onPress={() => setOpenDatabaseId(d.id)}>
+                    <View style={styles.docIcon}>
+                      <Ionicons
+                        name={(d.icon as keyof typeof Ionicons.glyphMap) || 'grid-outline'}
+                        size={18}
+                        color={accent}
+                      />
+                    </View>
+                    <Text style={styles.rowText} numberOfLines={1}>
+                      {d.name || 'База'}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={16} color={GLASS_TEXT_FAINT} />
+                  </Pressable>
+                ))
+              ))}
+
+            {tab === 'customDb' && openDatabase && (
+              <>
+                <Pressable style={styles.row} onPress={() => setOpenDatabaseId(null)}>
+                  <Ionicons name="chevron-back" size={16} color={GLASS_TEXT_MUTED} />
+                  <Text style={[styles.rowText, styles.backRowText]} numberOfLines={1}>
+                    {openDatabase.name || 'База'}
+                  </Text>
+                </Pressable>
+                {/* Saved views first, under their own label - a live,
+                    filtered slice of the database is a coarser, more
+                    useful thing to embed than one row, so it leads. */}
+                {filteredCustomViews.length > 0 && (
+                  <>
+                    <Text style={styles.sectionLabel}>Вигляди</Text>
+                    {filteredCustomViews.map((v) => {
+                      const build = () =>
+                        blockFromCustomView({
+                          id: v.id,
+                          databaseId: openDatabase.id,
+                          name: v.name || 'Вигляд',
+                          createdAt: v.createdAt,
+                        });
+                      return (
+                      <View key={v.id} ref={rowRef?.(`view-${v.id}`, build, v.name || 'Вигляд')} collapsable={false}>
+                      <Pressable style={styles.row} onPress={() => onPick(build())}>
+                        <View style={styles.docIcon}>
+                          <Ionicons name="bookmark-outline" size={18} color={accent} />
+                        </View>
+                        <Text style={styles.rowText} numberOfLines={1}>
+                          {v.name || 'Вигляд'}
+                        </Text>
+                      </Pressable>
+                      </View>
+                      );
+                    })}
+                    <Text style={styles.sectionLabel}>Записи</Text>
+                  </>
+                )}
+                {filteredCustomRows.length === 0 ? (
+                  <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
+                ) : (
+                  filteredCustomRows.map((r) => {
+                    const build = () =>
+                      blockFromCustomRow({
+                        id: r.id,
+                        databaseId: openDatabase.id,
+                        title: rowTitleOf(openDatabase, r),
+                        createdAt: r.createdAt,
+                      });
+                    return (
+                    <View key={r.id} ref={rowRef?.(`row-${r.id}`, build, rowTitleOf(openDatabase, r))} collapsable={false}>
+                    <Pressable style={styles.row} onPress={() => onPick(build())}>
+                      <View style={styles.docIcon}>
+                        <Ionicons name="grid-outline" size={18} color={accent} />
+                      </View>
+                      <Text style={styles.rowText} numberOfLines={1}>
+                        {rowTitleOf(openDatabase, r)}
+                      </Text>
+                    </Pressable>
+                    </View>
+                    );
+                  })
+                )}
+              </>
+            )}
+          </ScrollView>
+        </>
+  );
+
+  if (docked) {
+    return (
+      <View style={styles.dockedRoot}>
+        {body}
+      </View>
+    );
+  }
+
+  return (
+    <GlassLayer visible={visible} onClose={onClose}>
+      {/* Backdrop as a SIBLING behind the sheet, not its parent - as a
+          parent it took the RN touch responder for every drag that did
+          not land on a deeper child, which is what kept the list from
+          scrolling. A tap outside still closes it. */}
+      <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={styles.sheet}>
+          <View style={styles.handle} />
+          <Text style={styles.title}>Додати з бази даних</Text>
+          {body}
+        </View>
+      </View>
+    </GlassLayer>
+  );
+
+}
+
+const makeStyles = (t: Theme) => StyleSheet.create({
+  // Docked: fills whatever holds it - the reference panel decides the
+  // actual width/height, this just gives the tab row and the list
+  // somewhere to stack in.
+  //
+  // The ground has to be the SHEET'S OWN, and OPAQUE. Every label and
+  // icon in this browser is GLASS_TEXT (white) because the sheet it was
+  // written for floats on a dark translucent body over a blurred screen.
+  // Docked, it stands on the note's own paper instead - which is white -
+  // so anything translucent here washes out to white and takes every
+  // white letter with it. That was the blank white panel.
+  dockedRoot: {
+    flex: 1,
+    paddingTop: 8,
+    paddingHorizontal: 12,
+    backgroundColor: GLASS_BODY_OPAQUE,
+  },
+  backdrop: {
+    ...SHEET_BACKDROP,
+  },
+  sheet: {
+    backgroundColor: GLASS_BODY_BLURRED,
+    ...SHEET_WINDOW,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 28,
+    maxHeight: '75%',
+  },
+  handle: {
+    width: 36,
+    height: 4,
+    backgroundColor: GLASS_LINE,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: '700',
+    fontFamily: FONT_BOLD,
+    color: GLASS_TEXT,
+    marginBottom: 10,
+  },
+  // Horizontally scrollable now that links split into three tabs of their
+  // own (video/geo/other) alongside Files/Photos - five tabs no longer fit
+  // a fixed-width flex row.
+  tabRow: {
+    marginBottom: 10,
+    // Docked, this row stands in a column as tall as the screen, and a
+    // ScrollView with nothing said about it takes the room that is going
+    // - which stretched six tabs into six columns half a screen high.
+    // Its height is its content's, here and in the sheet alike.
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  tabRowContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tab: {
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: GLASS_LINE,
+  },
+  tabActive: {
+    backgroundColor: t.accent,
+  },
+  tabLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT_MUTED,
+  },
+  tabLabelActive: {
+    color: '#fff',
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: GLASS_LINE,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 4,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT,
+  },
+  emptyLabel: {
+    fontSize: 13,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT_FAINT,
+    textAlign: 'center',
+    paddingVertical: 16,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: FONT_BOLD,
+    color: GLASS_TEXT_FAINT,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    paddingTop: 10,
+    paddingBottom: 2,
+    paddingHorizontal: 2,
+  },
+  list: {
+    maxHeight: 320,
+  },
+  // Docked, the panel is as tall as the screen - the sheet's own cap on
+  // how far the list may grow is the wrong rule there.
+  listDocked: {
+    flex: 1,
+    maxHeight: 10000,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+  },
+  docIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: t.selected,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Real preview - photos, YouTube/TikTok thumbnails, and any "other" link
+  // with an Open Graph image all share this, same size as docIcon so a row
+  // doesn't jump around switching between an icon and an image.
+  thumb: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: GLASS_LINE,
+  },
+  backRowText: {
+    color: GLASS_TEXT_MUTED,
+    fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
+  },
+  rowText: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT,
+  },
+  // One block of another document. Faint ground and a radius rather than
+  // a separator: this is a thing you pick UP, and it has to look like one
+  // piece even when it is six lines of text.
+  blockCard: {
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  docHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+  },
+  docHeaderTitle: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    fontFamily: FONT_BOLD,
+    color: GLASS_TEXT_MUTED,
+  },
+});

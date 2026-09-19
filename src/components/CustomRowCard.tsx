@@ -1,0 +1,347 @@
+import { ReactNode } from 'react';
+import { useRecordColour } from '../theme/ThemeProvider';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Tag } from '../types';
+import { RowDisplay } from '../utils/customRowDisplay';
+import { useAttachmentSource } from '../hooks/useAttachmentSource';
+import { FIELD_TYPE_ICON } from './FieldsEditorSheet';
+import TagChips from './TagChips';
+import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+
+// A square thumbnail for a resolved relation target - same
+// checking/ready/missing states as PhotosScreen's own PhotoThumb, without
+// the tag row/select-mode chrome that only makes sense on that grid.
+export function RelationThumb({
+  uri,
+  driveFileId,
+  size,
+  radius = 6,
+  fill,
+}: {
+  uri: string;
+  driveFileId?: string;
+  // Ignored when `fill` is set - the thumbnail then takes its parent's
+  // size instead, which is what a grid tile's cover needs (a fixed square
+  // would just be cropped by the tile rather than scaled to it).
+  size?: number;
+  radius?: number;
+  fill?: boolean;
+}) {
+  // A link's preview picture is already an address on the internet -
+  // there is no local copy to look for and no Drive copy to fetch, and
+  // asking the cache about it answers "missing" and draws a cloud with a
+  // line through it over a perfectly good thumbnail.
+  const isRemote = /^https?:/i.test(uri);
+  // Otherwise through useAttachmentSource, because a cover needs an
+  // ADDRESS and not just a verdict - the stored path is a file on the
+  // phone, which a browser may not open, so the web half fetches the Drive
+  // copy instead. Same reasoning as the editor's image blocks.
+  const { status, source } = useAttachmentSource(isRemote ? undefined : uri, driveFileId, false);
+  const shown = isRemote ? 'ready' : status;
+  return (
+    <View
+      style={[
+        styles.thumbWrap,
+        fill ? styles.thumbFill : { width: size, height: size, borderRadius: radius },
+      ]}
+    >
+      {shown === 'ready' ? (
+        <Image source={{ uri: source ?? uri }} style={styles.thumbImage} resizeMode="cover" resizeMethod="resize" />
+      ) : (
+        <View style={[styles.thumbImage, styles.thumbStatus]}>
+          {shown === 'missing' ? (
+            <Ionicons name="cloud-offline-outline" size={Math.round((size ?? 48) * 0.45)} color="#9CA3AF" />
+          ) : (
+            <ActivityIndicator color="#9CA3AF" size="small" />
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
+type Props = {
+  // Only used to pick the card's colour, so the same row keeps the same
+  // shade everywhere it appears (its own database, a document, later the
+  // board) - same colorForDocument every other card in the app uses.
+  rowId: string;
+  display: RowDisplay;
+  tags: Tag[];
+  onPress?: () => void;
+  onLongPress?: () => void;
+  onTagPress?: () => void;
+  // How many documents embed this row as a card. Shown as a chip so it's
+  // visible without opening the row's menu; omitted where the question
+  // doesn't arise - inside a document, the answer is "this one".
+  documentCount?: number;
+  // The trailing control - the select checkbox / "..." menu on the database
+  // screen, nothing when the card is embedded elsewhere.
+  right?: ReactNode;
+};
+
+// One custom-database row as a card. Deliberately one shared component
+// rather than a copy per screen: it's rendered in its own database's list,
+// as a block inside a document, and (later) as a board card - a redesign
+// has to land in all three at once, which only a single component gives.
+export default function CustomRowCard({
+  rowId,
+  display,
+  tags,
+  onPress,
+  onLongPress,
+  onTagPress,
+  documentCount,
+  right,
+}: Props) {
+  const recordColour = useRecordColour();
+  const { background, text, textMuted } = recordColour(rowId);
+  return (
+    <View style={[styles.row, { backgroundColor: background }]}>
+      <Pressable
+        style={styles.rowTap}
+        onPress={onPress}
+        onLongPress={onLongPress}
+        disabled={!onPress && !onLongPress}
+      >
+        {display.cover !== undefined &&
+          (display.cover?.thumbUri ? (
+            <RelationThumb uri={display.cover.thumbUri} driveFileId={display.cover.driveFileId} size={56} radius={12} />
+          ) : (
+            <View style={styles.coverPlaceholder}>
+              <Ionicons name="image-outline" size={20} color="#9CA3AF" />
+            </View>
+          ))}
+        <View style={styles.rowBody}>
+          <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
+            {display.title}
+          </Text>
+          {(display.chips.length > 0 || !!documentCount) && (
+            <View style={styles.rowFieldChips}>
+              {display.chips.map(({ field, shown }) => (
+                <View key={field.id} style={styles.rowFieldChip}>
+                  <Ionicons name={FIELD_TYPE_ICON[field.type]} size={11} color={textMuted} />
+                  <Text style={[styles.rowFieldChipValue, { color: textMuted }]} numberOfLines={1}>
+                    {shown}
+                  </Text>
+                </View>
+              ))}
+              {!!documentCount && (
+                <View style={styles.rowFieldChip}>
+                  <Ionicons name="document-text-outline" size={11} color={textMuted} />
+                  <Text style={[styles.rowFieldChipValue, { color: textMuted }]}>{documentCount}</Text>
+                </View>
+              )}
+            </View>
+          )}
+          {tags.length > 0 && (
+            <View style={styles.rowMeta}>
+              <TagChips tags={tags} onPress={onTagPress ?? onPress ?? (() => {})} glass />
+            </View>
+          )}
+        </View>
+      </Pressable>
+      {right}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    borderRadius: 14,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(176,176,176,0.5)',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  rowTap: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 12,
+  },
+  rowBody: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+    justifyContent: 'center',
+  },
+  rowTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
+  },
+  rowFieldChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 2,
+  },
+  rowFieldChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    maxWidth: '100%',
+  },
+  rowFieldChipValue: {
+    fontSize: 12,
+    fontFamily: FONT_REGULAR,
+    flexShrink: 1,
+  },
+  rowMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  coverPlaceholder: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  thumbWrap: {
+    overflow: 'hidden',
+    backgroundColor: '#F3F4F6',
+  },
+  thumbFill: {
+    width: '100%',
+    height: '100%',
+  },
+  thumbImage: {
+    width: '100%',
+    height: '100%',
+  },
+  thumbStatus: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
+
+// The same row as a grid tile: the cover image is the whole point of this
+// view (it's what the cover field exists for), so it leads, with the
+// title and a couple of values under it. A database with no cover field
+// still works - the tile just carries text, on the row's own colour.
+export function CustomRowGridCard({
+  rowId,
+  display,
+  onPress,
+  onLongPress,
+  documentCount,
+  right,
+  width,
+}: {
+  rowId: string;
+  display: RowDisplay;
+  onPress?: () => void;
+  onLongPress?: () => void;
+  documentCount?: number;
+  right?: ReactNode;
+  // An exact width from the caller, which is the only place that knows how
+  // much room the grid has and how many columns fit in it. Without one the
+  // tile falls back to half a row, the two-column layout this grid had
+  // before any of them were measured.
+  width?: number;
+}) {
+  const recordColour = useRecordColour();
+  const { background, text, textMuted } = recordColour(rowId);
+  const hasCover = display.cover !== undefined;
+  return (
+    <Pressable
+      style={[gridStyles.tile, width !== undefined && { width }, { backgroundColor: background }]}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      disabled={!onPress && !onLongPress}
+    >
+      {hasCover &&
+        (display.cover?.thumbUri ? (
+          <View style={gridStyles.coverWrap}>
+            <RelationThumb uri={display.cover.thumbUri} driveFileId={display.cover.driveFileId} fill />
+          </View>
+        ) : (
+          <View style={[gridStyles.coverWrap, gridStyles.coverEmpty]}>
+            <Ionicons name="image-outline" size={26} color="rgba(255,255,255,0.5)" />
+          </View>
+        ))}
+      <View style={gridStyles.body}>
+        <Text style={[gridStyles.title, { color: text }]} numberOfLines={2}>
+          {display.title}
+        </Text>
+        {display.chips.map(({ field, shown }) => (
+          <View key={field.id} style={gridStyles.chip}>
+            <Ionicons name={FIELD_TYPE_ICON[field.type]} size={11} color={textMuted} />
+            <Text style={[gridStyles.chipValue, { color: textMuted }]} numberOfLines={1}>
+              {shown}
+            </Text>
+          </View>
+        ))}
+        {!!documentCount && (
+          <View style={gridStyles.chip}>
+            <Ionicons name="document-text-outline" size={11} color={textMuted} />
+            <Text style={[gridStyles.chipValue, { color: textMuted }]}>{documentCount}</Text>
+          </View>
+        )}
+      </View>
+      {right !== undefined && <View style={gridStyles.corner}>{right}</View>}
+    </Pressable>
+  );
+}
+
+const gridStyles = StyleSheet.create({
+  tile: {
+    width: '47%',
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(176,176,176,0.5)',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  // 1.5 instead of a square 1 - a third shorter, so the cover reads as a
+  // banner over the card's own text rather than the whole tile.
+  coverWrap: {
+    width: '100%',
+    aspectRatio: 1.5,
+    overflow: 'hidden',
+  },
+  coverEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  body: {
+    padding: 10,
+    gap: 4,
+  },
+  title: {
+    fontSize: 14,
+    fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  chipValue: {
+    fontSize: 12,
+    fontFamily: FONT_REGULAR,
+    flexShrink: 1,
+  },
+  corner: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+  },
+});

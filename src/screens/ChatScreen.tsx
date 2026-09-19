@@ -1,0 +1,763 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FileRow, LinkRow, PhotoRow } from '../components/ItemCards';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useIsFocused } from '@react-navigation/native';
+import ScreenBackdrop from '../components/ScreenBackdrop';
+import ContentColumn from '../components/ContentColumn';
+import RenamePrompt from '../components/RenamePrompt';
+import SaveDestinationSheet from '../components/SaveDestinationSheet';
+import SearchField from '../components/SearchField';
+import Menu from '../components/surfaces/Menu';
+import { ChatAttachment } from '../utils/chatAttach';
+import { categoryFromSiteName } from '../utils/linkCategory';
+import * as Clipboard from 'expo-clipboard';
+import { ask, confirm, notify } from '../components/surfaces/Ask';
+import { openCapture } from '../components/CaptureWindow';
+import { askGemini } from '../utils/gemini';
+import { getGeminiKey } from '../utils/geminiKey';
+import { useDockActions, useDockBeads, useDockLeave, useDockShowContext } from '../navigation/navDock';
+import { CHROME_TOP } from '../constants/rail';
+import { useDockClearance } from '../navigation/dockGeometry';
+import {
+  ChatMessage,
+  deleteChatMessage,
+  editChatMessage,
+  markChatMessageTask,
+  markChatMessagesUsed,
+  sendGeminiReply,
+  watchChat,
+} from '../utils/chat';
+import {
+  appendBlocksToToday,
+  clipBlocksToNote,
+  copyObjectsToNote,
+  createTaskInToday,
+} from '../utils/copyToNote';
+import { formatShortDate } from '../utils/dateLocale';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { Block } from '../types';
+import { RootStackParamList } from '../navigation';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import { mutedForTheme, type Theme } from '../theme/tokens';
+
+
+// The history side of «загальний чат». The capture window is where things
+// go IN; this is where they are read back and harvested. Nothing is ever
+// consumed: a message gathered into a note stays here with a line saying
+// which note took it - the user's own rule, and the reason they are not
+// troubled by the history growing forever.
+
+type Row =
+  | { kind: 'day'; key: string; label: string }
+  | { kind: 'message'; key: string; message: ChatMessage };
+
+// The groups the filter offers - the user's own words: "фото, youtube,
+// геоточка, посилання", plus files, which the capture window can attach
+// too. A video sits under a 'file' record (see chatAttach), so telling
+// it apart from a real file needs its mime type.
+type AttachmentGroup = 'photo' | 'video' | 'geo' | 'link' | 'file';
+
+function attachmentGroup(item: ChatAttachment): AttachmentGroup {
+  if (item.kind === 'photo') return 'photo';
+  if (item.kind === 'file') return (item.mimeType ?? '').startsWith('video/') ? 'video' : 'file';
+  const category = categoryFromSiteName(item.siteName);
+  return category === 'geo' ? 'geo' : category === 'video' ? 'video' : 'link';
+}
+
+function attachmentLabel(item: ChatAttachment): string {
+  if (item.kind === 'photo') return 'Зображення';
+  if (item.kind === 'file') return item.name;
+  return item.title || item.url;
+}
+
+const FILTER_LABELS: Record<AttachmentGroup, string> = {
+  photo: 'Фото',
+  video: 'Відео',
+  geo: 'Геоточки',
+  link: 'Посилання',
+  file: 'Файли',
+};
+const FILTER_ICONS: Record<AttachmentGroup, keyof typeof Ionicons.glyphMap> = {
+  photo: 'image-outline',
+  video: 'videocam-outline',
+  geo: 'location-outline',
+  link: 'link-outline',
+  file: 'document-outline',
+};
+
+function newBlockId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+export default function ChatScreen() {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
+  const insets = useSafeAreaInsets();
+  const dockClear = useDockClearance();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const isFocused = useIsFocused();
+  const showContext = useDockShowContext();
+  const listRef = useRef<FlatList<Row>>(null);
+
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Which messages are on their way somewhere - one from its own menu, or
+  // everything chosen in select mode. The destination sheet and the name
+  // prompt both read this, so one path serves both.
+  const [sending, setSending] = useState<string[] | null>(null);
+  const [naming, setNaming] = useState(false);
+  const [editing, setEditing] = useState<ChatMessage | null>(null);
+  // The id of the message currently awaiting a Gemini answer, so its own
+  // bubble can show that instead of the whole screen locking up - Gemini
+  // takes a few seconds and the rest of the chat stays usable while it
+  // does.
+  const [askingId, setAskingId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  // null = every message; 'any' = only ones carrying something;
+  // otherwise one of the groups the user asked for - "фільтр по
+  // вкладеннях (з групуванням фото, youtube, геоточка, посилання)".
+  const [filterKind, setFilterKind] = useState<AttachmentGroup | 'any' | null>(null);
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+
+  useEffect(
+    () =>
+      watchChat(setMessages, (e) => notify('Чат не завантажився', e.message)),
+    []
+  );
+
+  const needle = searchQuery.trim().toLowerCase();
+  function messageMatchesFilter(message: ChatMessage): boolean {
+    if (!filterKind) return true;
+    const groups = (message.attachments ?? []).map(attachmentGroup);
+    return filterKind === 'any' ? groups.length > 0 : groups.includes(filterKind);
+  }
+  function messageMatchesSearch(message: ChatMessage): boolean {
+    if (!needle) return true;
+    if (message.text.toLowerCase().includes(needle)) return true;
+    return (message.attachments ?? []).some((a) => attachmentLabel(a).toLowerCase().includes(needle));
+  }
+  const visibleMessages = useMemo(
+    () => messages.filter((m) => messageMatchesFilter(m) && messageMatchesSearch(m)),
+    [messages, filterKind, needle]
+  );
+
+  // Day headings, in the order a chat is read: oldest at the top, today
+  // at the bottom, where the newest thing said always is.
+  const rows = useMemo(() => {
+    const out: Row[] = [];
+    let lastDay = '';
+    visibleMessages.forEach((message) => {
+      const date = new Date(message.createdAt);
+      const day = date.toDateString();
+      if (day !== lastDay) {
+        lastDay = day;
+        out.push({ kind: 'day', key: `day-${day}`, label: formatShortDate(date) });
+      }
+      out.push({ kind: 'message', key: message.id, message });
+    });
+    return out;
+  }, [visibleMessages]);
+
+  useDockLeave('chatbubbles-outline', () => navigation.goBack());
+  useDockBeads(
+    isFocused
+      ? {
+          icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
+          active: isSelectMode,
+          onPress: () => {
+            setSelected(new Set());
+            setIsSelectMode((prev) => !prev);
+            if (isSelectMode) showContext();
+          },
+        }
+      : null,
+    isFocused ? { icon: 'mic-outline', onPress: openCapture } : null
+  );
+  useDockActions(
+    !isFocused
+      ? null
+      : isSelectMode
+        ? selected.size > 0
+          ? [
+              {
+                key: 'note',
+                icon: 'document-text-outline',
+                label: 'У нотатку',
+                onPress: () => setSending([...selected]),
+                closesStack: true,
+              },
+              {
+                key: 'delete',
+                icon: 'trash-outline',
+                label: 'Видалити',
+                onPress: () => deleteChosen(),
+                closesStack: true,
+              },
+            ]
+          : null
+        : [
+            {
+              key: 'search',
+              icon: isSearching ? 'close-outline' : 'search-outline',
+              label: 'Пошук',
+              active: isSearching,
+              onPress: () => {
+                if (isSearching) setSearchQuery('');
+                setIsSearching((v) => !v);
+              },
+            },
+            {
+              key: 'filter',
+              icon: 'funnel-outline',
+              label: 'Фільтр',
+              active: filterKind !== null,
+              onPress: () => setFilterMenuOpen((v) => !v),
+            },
+          ]
+  );
+
+  // Straight to the newest, every time - a chat is read from its end.
+  useEffect(() => {
+    if (rows.length === 0) return;
+    const id = setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 0);
+    return () => clearTimeout(id);
+  }, [rows.length]);
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // The messages on their way somewhere, as blocks. New ids: the message
+  // stays in the chat, so what lands in the note is a copy of it.
+  function blocksFor(ids: string[]): { chosen: ChatMessage[]; blocks: Block[] } {
+    const chosen = messages.filter((m) => ids.includes(m.id));
+    return {
+      chosen,
+      blocks: chosen.map((m) => ({
+        id: newBlockId(),
+        text: m.text,
+        type: 'paragraph' as const,
+        createdAt: m.createdAt,
+      })),
+    };
+  }
+
+  function doneSending() {
+    setSending(null);
+    setNaming(false);
+    setSelected(new Set());
+    setIsSelectMode(false);
+  }
+
+  // Into a note that already exists, or into today's - the two that need
+  // no name. A new one asks for one first (see gatherIntoNewNote).
+  async function sendInto(where: 'today' | { id: string; title: string }) {
+    const ids = sending ?? [];
+    const { chosen, blocks } = blocksFor(ids);
+    if (chosen.length === 0) return doneSending();
+    setBusy(true);
+    try {
+      const documentId =
+        where === 'today'
+          ? await appendBlocksToToday(blocks, [])
+          : await copyObjectsToNote(where.id, blocks, []);
+      const title = where === 'today' ? `Сьогодні · ${formatShortDate(new Date())}` : where.title;
+      await markChatMessagesUsed(chosen.map((m) => m.id), documentId, title);
+      doneSending();
+      navigation.navigate('Editor', { documentId });
+    } catch (e) {
+      notify('Не збереглося', (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function gatherIntoNewNote(title: string) {
+    const ids = sending ?? [];
+    const { chosen, blocks } = blocksFor(ids);
+    if (chosen.length === 0) return doneSending();
+    setBusy(true);
+    try {
+      const name = title.trim() || 'Без назви';
+      const documentId = await clipBlocksToNote(name, blocks);
+      // The message stays where it is and says where it went.
+      await markChatMessagesUsed(chosen.map((m) => m.id), documentId, name);
+      doneSending();
+      navigation.navigate('Editor', { documentId, offerBoard: true });
+    } catch (e) {
+      notify('Не збереглося', (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Everything one message can become, in the menu every list in this app
+  // opens on a long press.
+  async function openMessageMenu(message: ChatMessage) {
+    const choice = await ask({
+      title: message.text.length > 60 ? `${message.text.slice(0, 60)}…` : message.text,
+      actions: [
+        { id: 'copy', label: 'Копіювати', icon: 'copy-outline' },
+        { id: 'edit', label: 'Виправити', icon: 'pencil-outline' },
+        { id: 'note', label: 'У нотатку…', icon: 'document-text-outline' },
+        { id: 'task', label: 'Зробити справою', icon: 'checkbox-outline' },
+        // Gemini's own words are not asked about again by default - a
+        // reply of a reply is a rabbit hole nobody asked this screen to
+        // dig, and "ask" simply isn't offered on one.
+        ...(message.from !== 'gemini'
+          ? [{ id: 'ask' as const, label: 'Запитати Gemini', icon: 'sparkles-outline' as const }]
+          : []),
+        { id: 'select', label: 'Вибрати кілька', icon: 'checkmark-circle-outline' },
+        { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' as const },
+      ],
+    });
+    if (choice === 'copy') await Clipboard.setStringAsync(message.text);
+    else if (choice === 'edit') setEditing(message);
+    else if (choice === 'note') setSending([message.id]);
+    else if (choice === 'task') makeTask(message);
+    else if (choice === 'ask') await askGeminiFor(message);
+    else if (choice === 'select') {
+      setIsSelectMode(true);
+      setSelected(new Set([message.id]));
+    } else if (choice === 'delete') {
+      const sure = await confirm({
+        title: 'Видалити повідомлення?',
+        message: 'Це єдине, що справді прибирає його з чату.',
+        confirmLabel: 'Видалити',
+      });
+      if (sure) await deleteChatMessage(message.id).catch((e: Error) => notify('Не вдалося', e.message));
+    }
+  }
+
+  // "Спитати" - the ONE optional thing Gemini does here, per the plan.
+  // No key configured is not an error, it is the expected first state:
+  // point at Settings rather than failing silently or nagging on every
+  // message.
+  async function askGeminiFor(message: ChatMessage) {
+    if (!message.text.trim()) return;
+    const key = await getGeminiKey();
+    if (!key) {
+      const goSettings = await confirm({
+        title: 'Немає ключа Gemini',
+        message: 'Додай безкоштовний ключ у Налаштуваннях, щоб Gemini міг відповідати на повідомлення.',
+        confirmLabel: 'Налаштування',
+      });
+      if (goSettings) navigation.navigate('Settings');
+      return;
+    }
+    setAskingId(message.id);
+    try {
+      const answer = await askGemini(message.text, key);
+      await sendGeminiReply(answer, message.id);
+    } catch (e) {
+      notify('Gemini не відповів', (e as Error).message);
+    } finally {
+      setAskingId((current) => (current === message.id ? null : current));
+    }
+  }
+
+  // A checkbox in TODAY's daily note - which is where every task in this
+  // app lives, so it shows up in the calendar's day and in Справи at once.
+  async function makeTask(message: ChatMessage) {
+    try {
+      const { taskId, documentId } = await createTaskInToday(message.text);
+      await markChatMessageTask(message.id, taskId, documentId);
+    } catch (e) {
+      notify('Не вдалося створити справу', (e as Error).message);
+    }
+  }
+
+  async function deleteChosen() {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    const sure = await confirm({
+      title: ids.length === 1 ? 'Видалити повідомлення?' : `Видалити ${ids.length} повідомлень?`,
+      message: 'Це єдине, що справді прибирає їх з чату.',
+      confirmLabel: 'Видалити',
+    });
+    if (!sure) return;
+    try {
+      await Promise.all(ids.map((id) => deleteChatMessage(id)));
+      setSelected(new Set());
+      setIsSelectMode(false);
+    } catch (e) {
+      notify('Не вдалося', (e as Error).message);
+    }
+  }
+
+  async function saveEdit(text: string) {
+    const message = editing;
+    setEditing(null);
+    if (!message || !text.trim()) return;
+    await editChatMessage(message.id, text).catch((e: Error) => notify('Не збереглося', e.message));
+  }
+
+  return (
+    <View style={styles.container}>
+      <ScreenBackdrop id="chatBg" />
+      <ContentColumn>
+        <View style={{ height: insets.top + CHROME_TOP + 8 }} />
+        {isSearching && (
+          <SearchField
+            autoFocus
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Пошук у чаті"
+            onClose={() => {
+              setSearchQuery('');
+              setIsSearching(false);
+            }}
+            style={styles.searchRow}
+          />
+        )}
+
+        {messages.length === 0 ? (
+          <View style={styles.empty}>
+            <Ionicons name="chatbubbles-outline" size={32} color={theme.ink.faint} />
+            <Text style={styles.emptyLabel}>Поки порожньо</Text>
+            <Text style={styles.emptyHint}>
+              Затисніть док будь-де в застосунку і скажіть, що думаєте
+            </Text>
+          </View>
+        ) : rows.length === 0 ? (
+          <View style={styles.empty}>
+            <Ionicons name="search-outline" size={32} color={theme.ink.faint} />
+            <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
+            {filterKind !== null && (
+              <Pressable onPress={() => setFilterKind(null)}>
+                <Text style={[styles.emptyHint, { color: theme.accent }]}>Скинути фільтр</Text>
+              </Pressable>
+            )}
+          </View>
+        ) : (
+          <FlatList
+            ref={listRef}
+            data={rows}
+            keyExtractor={(row) => row.key}
+            contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }]}
+            onScrollToIndexFailed={() => {}}
+            renderItem={({ item }) => {
+              if (item.kind === 'day') {
+                return (
+                  <View style={styles.dayRow}>
+                    <Text style={styles.dayLabel}>{item.label}</Text>
+                  </View>
+                );
+              }
+              const message = item.message;
+              const used = Object.entries(message.usedIn ?? {});
+              const picked = selected.has(message.id);
+              const fromGemini = message.from === 'gemini';
+              return (
+                <Pressable
+                  style={[
+                    styles.bubble,
+                    fromGemini && styles.bubbleGemini,
+                    picked && { borderColor: theme.accent },
+                  ]}
+                  onPress={() => (isSelectMode ? toggle(message.id) : undefined)}
+                  onLongPress={() => {
+                    if (isSelectMode) return;
+                    openMessageMenu(message);
+                  }}
+                >
+                  {fromGemini && (
+                    <View style={styles.geminiLabel}>
+                      <Ionicons name="sparkles" size={12} color={theme.accent} />
+                      <Text style={[styles.geminiLabelText, { color: theme.accent }]}>Gemini</Text>
+                    </View>
+                  )}
+                  {/* Each attachment is drawn as the CARD ITS OWN DATABASE
+                      draws it - the same component «Посилання», «Файли»
+                      and «Зображення» use, so a video arrives with its
+                      preview: "в чаті повинен бути вигляд картки з бази
+                      даних". It is the same record, not a copy, so
+                      touching it goes to where it lives. */}
+                  {(message.attachments ?? []).map((item, index) => (
+                    <View key={`${item.kind}-${item.id}-${index}`} style={styles.attachment}>
+                      {item.kind === 'photo' ? (
+                        <PhotoRow
+                          photo={{ id: item.id, imageUri: item.uri, documentIds: [], tagIds: [] }}
+                          tags={[]}
+                          onPress={() =>
+                            isSelectMode ? toggle(message.id) : navigation.navigate('Photos')
+                          }
+                        />
+                      ) : item.kind === 'file' ? (
+                        <FileRow
+                          file={{ id: item.id, fileName: item.name, fileUri: item.uri, tagIds: [] }}
+                          tags={[]}
+                          onPress={() =>
+                            isSelectMode ? toggle(message.id) : navigation.navigate('Files')
+                          }
+                        />
+                      ) : (
+                        <LinkRow
+                          link={{
+                            id: item.id,
+                            url: item.url,
+                            title: item.title,
+                            siteName: item.siteName,
+                            imageUrl: item.imageUrl,
+                            tagIds: [],
+                          }}
+                          tags={[]}
+                          onPress={() => {
+                            if (isSelectMode) return toggle(message.id);
+                            Linking.openURL(item.url).catch(() => {});
+                          }}
+                        />
+                      )}
+                    </View>
+                  ))}
+                  {!!message.text && <Text style={styles.bubbleText}>{message.text}</Text>}
+                  {askingId === message.id && (
+                    <View style={styles.askingRow}>
+                      <ActivityIndicator size="small" color={theme.ink.muted} />
+                      <Text style={styles.askingLabel}>Gemini думає…</Text>
+                    </View>
+                  )}
+                  <View style={styles.bubbleFoot}>
+                    <Text style={styles.bubbleTime}>
+                      {new Date(message.createdAt).toLocaleTimeString('uk-UA', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </Text>
+                    {Object.entries(message.tasks ?? {}).map(([taskId]) => (
+                      <Pressable
+                        key={taskId}
+                        style={styles.usedChip}
+                        onPress={() => navigation.navigate('Tasks')}
+                      >
+                        <Ionicons name="checkbox-outline" size={11} color={theme.accent} />
+                        <Text style={[styles.usedLabel, { color: theme.accent }]}>Справа</Text>
+                      </Pressable>
+                    ))}
+                    {used.map(([documentId, documentTitle]) => (
+                      <Pressable
+                        key={documentId}
+                        style={styles.usedChip}
+                        onPress={() => navigation.navigate('Editor', { documentId })}
+                      >
+                        <Ionicons name="document-text-outline" size={11} color={theme.accent} />
+                        <Text style={[styles.usedLabel, { color: theme.accent }]} numberOfLines={1}>
+                          {documentTitle}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  {isSelectMode && (
+                    <View style={styles.tick}>
+                      <Ionicons
+                        name={picked ? 'checkmark-circle' : 'ellipse-outline'}
+                        size={20}
+                        color={picked ? theme.accent : theme.ink.faint}
+                      />
+                    </View>
+                  )}
+                </Pressable>
+              );
+            }}
+          />
+        )}
+      </ContentColumn>
+
+      {/* Above the dock, where the button that opens it lives - the same
+          spot every other database's own menus stand in. */}
+      <Menu
+        visible={filterMenuOpen}
+        onClose={() => setFilterMenuOpen(false)}
+        style={{ position: 'absolute', right: 16, bottom: dockClear + insets.bottom }}
+        entries={[
+          ...(filterKind !== null
+            ? [
+                {
+                  label: 'Скинути фільтр',
+                  icon: 'close-outline' as const,
+                  onPress: () => setFilterKind(null),
+                },
+                { kind: 'rule' as const },
+              ]
+            : []),
+          {
+            label: 'Усі вкладення',
+            icon: 'attach-outline' as const,
+            checked: filterKind === 'any',
+            onPress: () => setFilterKind('any'),
+          },
+          ...(['photo', 'video', 'geo', 'link', 'file'] as AttachmentGroup[]).map((kind) => ({
+            label: FILTER_LABELS[kind],
+            icon: FILTER_ICONS[kind],
+            checked: filterKind === kind,
+            onPress: () => setFilterKind(kind),
+          })),
+        ]}
+      />
+
+      {/* Where the chosen messages go. Notes only: a message is text, and
+          what it becomes is a note - putting it straight on a board is
+          what the note's own offer is for. */}
+      <SaveDestinationSheet
+        visible={!!sending && !naming}
+        notesOnly
+        title={sending && sending.length > 1 ? `${sending.length} повідомлень у…` : 'Повідомлення у…'}
+        onPickToday={() => sendInto('today')}
+        onPickNew={() => setNaming(true)}
+        onPickExisting={(documentId, documentTitle) => sendInto({ id: documentId, title: documentTitle })}
+        onClose={() => setSending(null)}
+      />
+
+      <RenamePrompt
+        visible={naming}
+        title="Нотатка з думок"
+        initialValue={`Думки · ${formatShortDate(new Date())}`}
+        placeholder="Назва нотатки"
+        busy={busy}
+        onCancel={() => {
+          setNaming(false);
+          setSending(null);
+        }}
+        onSave={gatherIntoNewNote}
+      />
+
+      <RenamePrompt
+        visible={!!editing}
+        multiline
+        title="Виправити"
+        initialValue={editing?.text ?? ''}
+        placeholder="Текст повідомлення"
+        onCancel={() => setEditing(null)}
+        onSave={saveEdit}
+      />
+    </View>
+  );
+}
+
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+    },
+    list: {
+      paddingHorizontal: 20,
+      paddingTop: 8,
+      gap: 8,
+    },
+    searchRow: {
+      marginHorizontal: 20,
+      marginBottom: 8,
+    },
+    dayRow: {
+      alignItems: 'center',
+      paddingVertical: 10,
+    },
+    dayLabel: {
+      fontSize: 12,
+      fontFamily: FONT_SEMIBOLD,
+      color: t.ink.muted,
+    },
+    bubble: {
+      backgroundColor: t.surface,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: 'transparent',
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      gap: 6,
+    },
+    // A tint, not a whole second style - the shape of the bubble stays
+    // the same, only WHO wrote it changes. Same reasoning as everywhere
+    // else colour is used sparingly in this app: one accent, spent on
+    // purpose.
+    bubbleGemini: {
+      borderColor: t.accent,
+      backgroundColor: mutedForTheme(t.accent, t, 0.85),
+    },
+    geminiLabel: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    geminiLabelText: {
+      fontSize: 11,
+      fontFamily: FONT_SEMIBOLD,
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    },
+    askingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    askingLabel: {
+      fontSize: 13,
+      fontFamily: FONT_REGULAR,
+      color: t.ink.muted,
+    },
+    bubbleText: {
+      fontSize: 16,
+      lineHeight: 22,
+      fontFamily: FONT_REGULAR,
+      color: t.ink.primary,
+    },
+    attachment: {
+      marginBottom: 2,
+    },
+    bubbleFoot: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    bubbleTime: {
+      fontSize: 11,
+      fontFamily: FONT_REGULAR,
+      color: t.ink.faint,
+    },
+    usedChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      maxWidth: 200,
+    },
+    usedLabel: {
+      fontSize: 11,
+      fontFamily: FONT_SEMIBOLD,
+    },
+    tick: {
+      position: 'absolute',
+      right: 10,
+      top: 10,
+    },
+    empty: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingHorizontal: 40,
+    },
+    emptyLabel: {
+      fontSize: 16,
+      fontFamily: FONT_BOLD,
+      color: t.ink.primary,
+    },
+    emptyHint: {
+      fontSize: 13,
+      fontFamily: FONT_REGULAR,
+      color: t.ink.muted,
+      textAlign: 'center',
+    },
+  });

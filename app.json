@@ -1,0 +1,117 @@
+{
+  "expo": {
+    "name": "mindEva",
+    "slug": "bearless-notes",
+    "version": "1.0.0",
+    "scheme": "mindeva",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "mindEva використовує Face ID для захисту застосунку від стороннього доступу"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0F1839",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "resizeableActivity": true,
+      "predictiveBackGestureEnabled": false,
+      "softwareKeyboardLayoutMode": "resize",
+      "package": "com.bearlessnotes.notes",
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.USE_EXACT_ALARM",
+        "android.permission.USE_FULL_SCREEN_INTENT",
+        "android.permission.VIBRATE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-dev-client",
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth",
+      [
+        "react-native-document-scanner-plugin",
+        {
+          "cameraPermission": "mindEva потребує доступу до камери, щоб сканувати документи"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0F1839",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200
+        }
+      ],
+      "expo-notifications",
+      "expo-audio",
+      [
+        "expo-share-intent",
+        {
+          "androidIntentFilters": [
+            "*/*"
+          ],
+          "androidMultiIntentFilters": [
+            "image/*",
+            "video/*",
+            "*/*"
+          ]
+        }
+      ],
+      "./plugins/withAlarmRingActivity.js",
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "Sticker",
+              "label": "Стікер mindEva",
+              "description": "Один стікер на робочому столі",
+              "minWidth": "160dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 3,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "widgetFeatures": "reconfigurable"
+            }
+          ]
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "mindEva потребує мікрофона, щоб записати вашу думку голосом",
+          "speechRecognitionPermission": "mindEva перетворює сказане на текст, щоб не довелося друкувати",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "862729ab-f7db-43fc-9615-ec489deeb26d"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/862729ab-f7db-43fc-9615-ec489deeb26d"
+    }
+  }
+}
