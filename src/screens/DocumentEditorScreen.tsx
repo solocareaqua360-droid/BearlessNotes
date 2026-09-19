@@ -1359,7 +1359,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // toggling the toolbar's visibility and scheduling the scroll
       // safety net below.
       setKeyboardHeight(height);
-      setDbgSource(`show:${Math.round(height)}`);
       scheduleScrollAdjust(height);
     });
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
@@ -1370,7 +1369,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // actually ends the editing session, and it is not what happened.
       if (!appActiveRef.current) return;
       cancelDismissFallback();
-      setDbgSource('hide');
       // NOT reset here any more (2026-09-19): `keyboardSV` is the frame
       // handler's alone now (onMove/onEnd, confirmed clean by direct
       // measurement) - on a REAL dismissal those already carry it down
@@ -1573,11 +1571,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // first render's value forever.
   const controllerKeyboardHeightRef = useRef(0);
   controllerKeyboardHeightRef.current = controllerKeyboardHeight;
-  // TEMPORARY - which of the three writers of keyboardSV/keyboardHeight
-  // fired last, and with what value, so the app-switch dip (measured:
-  // exactly `inset.bottom` below the steady value) can be pinned on one
-  // of them instead of guessed at again.
-  const [dbgSource, setDbgSource] = useState('');
   const syncBaseOffset = useSharedValue(0);
   const syncShift = useSharedValue(0);
   // The active input's bottom edge (screen coords) and the list offset at
@@ -1611,7 +1604,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         'worklet';
         if (appActiveSV.value === 0) return; // see onMove
         syncShift.value = 0;
-        runOnJS(setDbgSource)(`start:${Math.round(e.height)}`);
         if (e.progress !== 1) return; // closing - nothing to bring into view
         runOnJS(setKeyboardHeight)(e.height);
         // Title, or nothing measured yet: the safety net handles it.
@@ -1636,7 +1628,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         // really did go away meanwhile, the resync on return says so.
         if (appActiveSV.value === 0) return;
         keyboardSV.value = e.height;
-        runOnJS(setDbgSource)(`move:${Math.round(e.height)}`);
         if (syncShift.value > 0) {
           scrollTo(scrollViewRef, 0, syncBaseOffset.value + syncShift.value * e.progress, false);
         }
@@ -1645,7 +1636,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         'worklet';
         if (appActiveSV.value === 0) return; // see onMove
         keyboardSV.value = e.height;
-        runOnJS(setDbgSource)(`end:${Math.round(e.height)}`);
         if (syncShift.value > 0) {
           scrollTo(scrollViewRef, 0, syncBaseOffset.value + syncShift.value, false);
           syncShift.value = 0;
@@ -1707,7 +1697,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           : 0;
         keyboardSV.value = height;
         setKeyboardHeight(height);
-        setDbgSource(`resume:${Math.round(height)}`);
         if (height === 0) deactivateActiveInput();
       }, 250);
     });
@@ -4176,34 +4165,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             onApplyMarker={applyMarkerToSelection}
             onApplyColor={applyColorToSelection}
           />
-          {/* TEMPORARY - confirmed by measurement (not the resync that
-              was tried and reverted): switching to the app-switcher
-              gesture makes the LIVE keyboard height itself dip by
-              exactly `inset.bottom` for a moment - 338 steady, 323 at
-              the swipe, a 15px gap matching the safe-area inset every
-              time. `keyboardSV`/`keyboardHeight` have THREE writers
-              (keyboardDidShow, the frame handler's onStart, its onMove/
-              onEnd), and `kb`/`last` alone can't say which one produced
-              the dip - only that one of them did. `last` now tags every
-              write with its source and value, so the next capture at
-              the exact swipe moment names the culprit instead of just
-              the symptom. Reproduce it, read `last` at that instant,
-              report it back - then this comes out. */}
-          <Text
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              top: -20,
-              alignSelf: 'center',
-              fontSize: 11,
-              color: '#fff',
-              backgroundColor: 'rgba(0,0,0,0.6)',
-              paddingHorizontal: 6,
-              borderRadius: 4,
-            }}
-          >
-            kb:{keyboardHeight} inset:{Math.round(editorInsets.bottom)} last:{dbgSource}
-          </Text>
         </Animated.View>
       )}
 
