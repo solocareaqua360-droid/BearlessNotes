@@ -76,7 +76,7 @@ import RenamePrompt from '../components/RenamePrompt';
 import DocumentTagsBlock from '../components/DocumentTagsBlock';
 import SketchEditor from '../components/SketchEditor';
 import EditorToolbar, { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolbar';
-import { BLOCK_ACTIONS, BlockAction } from '../components/blockActions';
+import { BLOCK_ACTIONS, BlockAction, BlockActionIcon } from '../components/blockActions';
 import { clearCopiedObject, getCopiedObject, useCopiedObject } from '../utils/objectClipboard';
 import { backupFileToDrive } from '../utils/googleDrive';
 import { ensureFileIsHere, openFileExternally } from '../utils/openFileExternally';
@@ -150,6 +150,19 @@ import SaveRing from '../components/SaveRing';
 // a pane's left edge it is this tall - 19 of padding above and below a
 // 24px icon, inside the 1px border. What the title has to clear there.
 const HORIZONTAL_CAPSULE_HEIGHT = 19 * 2 + 24 + 2;
+
+// The subset of BLOCK_ACTIONS that make sense applied to a whole GROUP
+// of selected blocks at once - a type flip with no side effect on the
+// document's own array length or contents. The rest of BLOCK_ACTIONS
+// (image/camera/file/scan/sketch/table/existing) each open an
+// interactive picker for ONE target and have no honest bulk meaning;
+// divider is left out too - converting several blocks to dividers at
+// once would also mean splicing a new empty block in after each one
+// (see convertBlockType's own divider branch), which is a different,
+// more surprising shape of change than the plain flips here.
+const SELECT_FORMAT_ACTIONS = BLOCK_ACTIONS.filter((a) =>
+  (['heading', 'bulleted', 'numbered', 'checkbox', 'code'] as BlockAction[]).includes(a.key)
+);
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -2831,6 +2844,27 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     setSelectedIds(new Set());
   }
 
+  // Format while selecting, without a keyboard or a single focused
+  // block - the "/" toolbar's own convertBlockType only ever knew one
+  // target. Same toggle-back-to-paragraph rule per block as that one
+  // (tapping the icon a second time on an already-numbered block
+  // un-numbers it), applied across every selected id in one state
+  // update and one undo step, rather than one per block. Selection and
+  // select mode stay on afterwards - formatting is something you do
+  // WHILE picking blocks, not a reason to leave that mode.
+  function convertSelectedBlocks(type: BlockType) {
+    if (selectedIds.size === 0) return;
+    snapshotBeforeChange();
+    setBlocks((prev) =>
+      prev.map((b) => {
+        if (!selectedIds.has(b.id)) return b;
+        const currentType = b.type ?? 'paragraph';
+        const nextType = currentType === type ? 'paragraph' : type;
+        return buildBlock(b.id, nextType, b.text);
+      })
+    );
+  }
+
   useImperativeHandle(ref, () => ({ toggleSelectMode }));
 
   useEffect(() => {
@@ -3127,8 +3161,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           Gone while the keyboard is up: the formatting toolbar owns the
           foot of the screen then, and two things in one place is exactly
           the confusion this is meant to remove. On the canvas there is no
-          keyboard, so the main use is untouched. */}
-      {!embedded && editorFocused && keyboardHeight <= 0 && (
+          keyboard, so the main use is untouched.
+
+          Gone too while blocks are selected - that is this same slot's
+          OTHER face now, see selectedIds.size below, not a second thing
+          competing with it for the foot of the screen. */}
+      {!embedded && editorFocused && keyboardHeight <= 0 && selectedIds.size === 0 && (
         <GlassPortal>
           <View
             style={[styles.docDock, { bottom: NAV_BOTTOM + editorInsets.bottom }]}
@@ -3169,6 +3207,61 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   </Pressable>
                 )}
               </View>
+            </GlassDrop>
+          </View>
+        </GlassPortal>
+      )}
+
+      {/* Same slot, same glass shell as the dock above - the user's own
+          steer, on seeing it: keep this material if it fits the new
+          interface, drop the shape for good if it does not. It fits:
+          selecting blocks and browsing Полотно never happen at once, so
+          the two sharing one pill costs nothing and reads as one dock
+          that changes its mind rather than two different controls.
+
+          Icon-only and scrollable - see docDockIconBtn - because
+          formatting joined copy/note/delete here and a phone's width
+          was never going to hold five labelled buttons. Replaces the
+          old flat dark capsule (still used in embedded/CalendarScreen
+          contexts, which have no Полотно dock to share a slot with). */}
+      {!embedded && editorFocused && keyboardHeight <= 0 && selectedIds.size > 0 && (
+        <GlassPortal>
+          <View
+            style={[styles.docDock, { bottom: NAV_BOTTOM + editorInsets.bottom }]}
+            pointerEvents="box-none"
+          >
+            <GlassDrop style={styles.docDockShell}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyboardShouldPersistTaps="always"
+                contentContainerStyle={styles.docDockRow}
+              >
+                <View style={styles.docDockCount}>
+                  <Text style={styles.docDockCountLabel}>{selectedIds.size}</Text>
+                </View>
+                <View style={styles.docDockDivider} />
+                {SELECT_FORMAT_ACTIONS.map((entry) => (
+                  <Pressable
+                    key={entry.key}
+                    style={styles.docDockIconBtn}
+                    hitSlop={4}
+                    onPress={() => convertSelectedBlocks(entry.key as BlockType)}
+                  >
+                    <BlockActionIcon entry={entry} size={20} color={GLASS_TEXT} />
+                  </Pressable>
+                ))}
+                <View style={styles.docDockDivider} />
+                <Pressable style={styles.docDockIconBtn} hitSlop={4} onPress={copySelectedBlocks}>
+                  <GlassIcon name="copy-outline" size={20} />
+                </Pressable>
+                <Pressable style={styles.docDockIconBtn} hitSlop={4} onPress={clipSelectedToNote}>
+                  <GlassIcon name="document-text-outline" size={20} />
+                </Pressable>
+                <Pressable style={styles.docDockIconBtn} hitSlop={4} onPress={deleteSelectedBlocks}>
+                  <GlassIcon name="trash-outline" size={20} />
+                </Pressable>
+              </ScrollView>
             </GlassDrop>
           </View>
         </GlassPortal>
@@ -3552,13 +3645,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       </ScrollView>
       )}
 
-      {selectedIds.size > 0 && (
-        // Same floating dark-glass capsule as BulkActionBar (Files/Photos/
-        // Links/Documents) - this screen has its own bespoke select-mode
-        // bar instead of that shared component (blocks aren't tag/group-
-        // able the way those rows are), but it was still a plain in-flow
-        // row with no capsule styling, and floated right under the
-        // edit-mode pencil FAB below.
+      {embedded && selectedIds.size > 0 && (
+        // Embedded only (CalendarScreen's daily note) - there is no
+        // Полотно dock there to share a slot with (that dock is
+        // !embedded-only, since CalendarScreen owns its own header
+        // capsule), so this stays the plain dark capsule it always was.
+        // The regular document editor's own select mode now shares the
+        // docDock slot above instead - see selectedIds.size there.
         <View
           style={[
             styles.selectedActionsWrap,

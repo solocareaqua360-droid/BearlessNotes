@@ -111,6 +111,40 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     fontFamily: FONT_SEMIBOLD,
     color: GLASS_TEXT,
   },
+  // Select mode's own row, in the SAME shell/position as the Полотно
+  // dock (the two never show at once - see selectedIds.size) rather
+  // than the flat dark capsule it used to be. Icon-only, no label: with
+  // format actions added alongside copy/note/delete there are too many
+  // to keep every one labelled and still fit a phone width, and a
+  // horizontal scroll (see the JSX) is the honest way to admit that
+  // rather than shrinking everything until it stops being tappable.
+  docDockIconBtn: {
+    width: NAV_BUTTON,
+    height: NAV_BUTTON,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+  },
+  docDockDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    marginHorizontal: 2,
+  },
+  docDockCount: {
+    minWidth: NAV_BUTTON,
+    height: NAV_BUTTON,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  docDockCountLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    fontFamily: FONT_BOLD,
+    color: GLASS_TEXT,
+  },
   editorRail: {
     position: 'absolute',
     // `right` is set inline - in two panes it is the pane's edge, not the
