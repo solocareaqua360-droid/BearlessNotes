@@ -934,6 +934,19 @@ export default function SettingsScreen() {
 
           {backdropMode !== 'default' && (
             <>
+              {/* An explicit way back, not only the "Стандартний" chip
+                  above - "хотілось би кнопку застосувати і повернутись
+                  до стандартного". Applying happens in the sheet; this
+                  is the other half of that sentence. */}
+              <Pressable
+                style={styles.disconnectButton}
+                onPress={() => {
+                  setBackdropMode('default');
+                  setBackdropSettings({ ...backdropSettings, override: null });
+                }}
+              >
+                <Text style={styles.disconnectLabel}>Повернути стандартний фон</Text>
+              </Pressable>
               <Text style={[styles.cardHint, { marginTop: 14 }]}>Застосувати цей фон у темах:</Text>
               <View style={{ gap: 8, marginTop: 6 }}>
                 {THEME_ORDER.map((key) => (

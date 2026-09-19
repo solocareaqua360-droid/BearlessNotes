@@ -45,3 +45,29 @@ export function hslToHex(h: number, s: number, l: number): string {
 export function isValidHex(value: string): boolean {
   return /^#[0-9A-Fa-f]{6}$/.test(value);
 }
+
+// WHY "the same lightness" is not the same lightness.
+//
+// HSL's L is a number, not a perception: pure yellow at L=50 reads far
+// brighter than pure blue at L=50. A scheme whose stops all sit at one
+// nominal L therefore still looks uneven - which is exactly the thing
+// that makes a set stop reading as one family ("інакше гармонія
+// рушиться"). So the shared tone is corrected PER HUE before it is
+// drawn: hues the eye finds bright are pulled down, dark ones pushed
+// up, and the set lands on one PERCEIVED tone rather than one number.
+//
+// Rec. 601 weights, the same ones every "is this text readable on this
+// colour" check uses - good enough here, and cheap.
+export function perceivedHueBrightness(h: number): number {
+  const hex = hslToHex(h, 100, 50).replace('#', '');
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  return 0.299 * r + 0.587 * g + 0.114 * b;
+}
+
+// `strength` is how much of the difference to take out - 0 leaves HSL's
+// own uneven lightness alone, 100 would flatten every hue to the same
+// perceived brightness and lose the colours' own character with it.
+export function toneCorrectedLightness(h: number, l: number, strength = 20): number {
+  const corrected = l + (0.5 - perceivedHueBrightness(h)) * strength;
+  return Math.max(4, Math.min(96, Math.round(corrected)));
+}
