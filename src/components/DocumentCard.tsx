@@ -1,6 +1,6 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CoverGradientView, coverById, defaultCoverFor } from '../theme/covers';
-import { useRecordColour } from '../theme/ThemeProvider';
+import { useRecordColour, useTextScale } from '../theme/ThemeProvider';
 import { Ionicons } from '@expo/vector-icons';
 import AttachmentImage from './AttachmentImage';
 import { PreviewChecklistItem, TextMatch, formatUpdatedAt } from '../utils/documentPreview';
@@ -123,6 +123,10 @@ function PreviewBody({
   // text is.
   textLines?: number;
 }) {
+  // Same rule as the title's own scaling above - only the LIST row's
+  // plain-text preview, never the grid card's (fixed-height tile).
+  const textScale = useTextScale();
+  const scaledPreview = compact ? null : { fontSize: Math.round(15 * textScale), lineHeight: Math.round(21 * textScale) };
   if (checklistItems.length > 0) {
     return (
       <View style={styles.checklist}>
@@ -161,7 +165,7 @@ function PreviewBody({
     return (
       <HighlightedLine
         match={bodyMatch}
-        style={[compact ? styles.previewCompact : styles.preview, { color: mutedColor }]}
+        style={[compact ? styles.previewCompact : styles.preview, { color: mutedColor }, scaledPreview]}
         highlightStyle={styles.highlight}
         numberOfLines={textLines}
       />
@@ -169,7 +173,10 @@ function PreviewBody({
   }
   if (!previewText) return null;
   return (
-    <Text style={[compact ? styles.previewCompact : styles.preview, { color: mutedColor }]} numberOfLines={textLines}>
+    <Text
+      style={[compact ? styles.previewCompact : styles.preview, { color: mutedColor }, scaledPreview]}
+      numberOfLines={textLines}
+    >
       {previewText}
     </Text>
   );
@@ -275,6 +282,13 @@ export default function DocumentCard({
   const recordColour = useRecordColour();
   const { background, text, textMuted } = recordColour(id);
   const isGrid = layout === 'grid';
+  // "Розмір тексту" - only the LIST row's own size, never the grid
+  // card's: `titleCompact`'s line height is measured against elsewhere
+  // (EXPANDED_TEXT_LINES, a fixed-height tile), and scaling it would be
+  // exactly the "iconography stops fitting" risk the user named. The
+  // list row has no such fixed box to overflow.
+  const textScale = useTextScale();
+  const scaledTitle = isGrid ? null : { fontSize: Math.round(18 * textScale) };
   // A list row keeps its own square placeholder regardless (a small
   // thumbnail beside text reads as "no photo yet", not as reserved cover
   // space) - only the grid card's top-of-card image slot goes away
@@ -290,11 +304,11 @@ export default function DocumentCard({
   const titleNode = titleMatch ? (
     <HighlightedLine
       match={titleMatch}
-      style={[isGrid ? styles.titleCompact : styles.title, { color: text }]}
+      style={[isGrid ? styles.titleCompact : styles.title, { color: text }, scaledTitle]}
       highlightStyle={styles.highlight}
     />
   ) : (
-    <Text style={[isGrid ? styles.titleCompact : styles.title, { color: text }]} numberOfLines={2}>
+    <Text style={[isGrid ? styles.titleCompact : styles.title, { color: text }, scaledTitle]} numberOfLines={2}>
       {title || 'Без назви'}
     </Text>
   );

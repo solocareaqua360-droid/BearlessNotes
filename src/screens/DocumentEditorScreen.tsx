@@ -119,7 +119,7 @@ import { hapticDrop, hapticPickUp, hapticSnapTick, hapticToggle } from '../utils
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
-import { useRecordColour, useStyles, useTheme } from '../theme/ThemeProvider';
+import { useRecordColour, useStyles, useTextScale, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import type { colorForDocument } from '../utils/documentColor';
 import { useDownloadToast } from '../hooks/useDownloadToast';
@@ -1066,6 +1066,26 @@ function BlockRow({
   // just like it already did over the icon column.
   const canEditText = isActive && !isSelectMode;
 
+  // "Розмір тексту" - the reading scale, applied here rather than baked
+  // into `styles.blockInput`/`heading1..3`: those come from a
+  // theme-only `useStyles` factory, and a note's own body is exactly
+  // the flexible, multi-line surface the user's own plan named first -
+  // "починаємо з текстів для читання". A heading keeps its OWN base
+  // size scaled, not the paragraph's, or the level would collapse into
+  // paragraph text at anything but 1x.
+  const textScale = useTextScale();
+  const scaledTextStyle = (() => {
+    const base =
+      (item.type ?? 'paragraph') === 'heading'
+        ? item.headingLevel === 1
+          ? { fontSize: 26, lineHeight: 32 }
+          : item.headingLevel === 3
+            ? { fontSize: 18, lineHeight: 24 }
+            : { fontSize: 21, lineHeight: 27 }
+        : { fontSize: 16, lineHeight: 22 };
+    return { fontSize: Math.round(base.fontSize * textScale), lineHeight: Math.round(base.lineHeight * textScale) };
+  })();
+
   // Kept alongside the ref the screen collects, purely so the field can be
   // grown to its text - see autoGrowInput. On a phone this effect does
   // nothing at all; in a browser it is the difference between a block and
@@ -1539,6 +1559,7 @@ function BlockRow({
           // A sticker is yellow in every theme, so its ink stays dark
           // even where the paper's ink has gone white.
           item.isSticker && styles.stickerInk,
+          type !== 'code' && scaledTextStyle,
         ]}
         multiline
       />
@@ -1558,7 +1579,7 @@ function BlockRow({
           onTextLayout={(e) => {
             lockedLinesRef.current = e.nativeEvent.lines;
           }}
-          style={[styles.blockDisplayText, headingStyle, item.checked && styles.checkedText]}
+          style={[styles.blockDisplayText, headingStyle, item.checked && styles.checkedText, scaledTextStyle]}
         >
           {item.text ? (
             <FormattedText

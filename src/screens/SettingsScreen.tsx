@@ -47,7 +47,14 @@ import { STALE_AFTER_DAYS, localAttachmentUsage } from '../utils/attachmentCache
 import { chooseDownloadFolder, currentDownloadFolder } from '../utils/downloadToFolder';
 import { getPexelsKey, setPexelsKey } from '../utils/pexelsKey';
 import { getGeminiKey, setGeminiKey } from '../utils/geminiKey';
-import { useThemeChoice, useBackdropSettings, type BackdropOverride } from '../theme/ThemeProvider';
+import {
+  useThemeChoice,
+  useBackdropSettings,
+  useFontScaleSettings,
+  TEXT_SCALE_RANGE,
+  UI_SCALE_RANGE,
+  type BackdropOverride,
+} from '../theme/ThemeProvider';
 import { THEMES, THEME_ORDER, type ThemeKey } from '../theme/tokens';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import RenamePrompt from '../components/RenamePrompt';
@@ -187,6 +194,19 @@ export default function SettingsScreen() {
   // every keystroke/drag to Firestore would be both slow and noisy, so
   // this only calls setBackdropSettings when a change is actually
   // finished (a colour chosen, a stop added/removed, a slider released).
+  // "Розмір тексту" / "Розмір інтерфейсу" - two independent scales, per
+  // the plan discussed and agreed: text (reading surfaces - a note's
+  // body, list titles) gets a generous range since those containers
+  // simply grow taller; ui (dock/menu chrome - tight, fixed-size rows)
+  // gets a narrow one, since that is where an icon stops fitting beside
+  // its word. BOTH sliders are 0-100 like BlurSlider already is; the
+  // mapping to the real range happens only at the read/write edges.
+  const { fontScale, setFontScale } = useFontScaleSettings();
+  const toSliderPct = (value: number, range: [number, number]) =>
+    Math.round(((value - range[0]) / (range[1] - range[0])) * 100);
+  const fromSliderPct = (pct: number, range: [number, number]) =>
+    Math.round((range[0] + (pct / 100) * (range[1] - range[0])) * 100) / 100;
+
   const { backdropSettings, setBackdropSettings } = useBackdropSettings();
   const [backdropMode, setBackdropMode] = useState<'default' | 'gradient' | 'image'>(
     backdropSettings.override?.type ?? 'default'
@@ -999,6 +1019,42 @@ export default function SettingsScreen() {
           )}
         </View>
         )}
+
+        {/* "хочу можливість збільшувати шрифти, але не так, щоб у мене
+            потім в іконки не влазило... окремо для карток, для меню" -
+            two scales, never one, agreed in discussion before this was
+            built. See useTextScale/useUiScale. */}
+        {section === 'appearance' && (
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="text-outline" size={22} color={ACCENT} />
+            <Text style={styles.cardTitle}>Розмір шрифту</Text>
+          </View>
+
+          <Text style={styles.cardHint}>Розмір тексту, який ти читаєш - тіло нотатки, назви в списку документів.</Text>
+          <Text style={[styles.cardBody, { fontSize: Math.round(16 * fontScale.text), marginTop: 6 }]}>
+            Зразок тексту нотатки
+          </Text>
+          <BlurSlider
+            value={toSliderPct(fontScale.text, TEXT_SCALE_RANGE)}
+            onChange={(pct) => setFontScale({ ...fontScale, text: fromSliderPct(pct, TEXT_SCALE_RANGE) })}
+          />
+
+          <Text style={[styles.cardHint, { marginTop: 16 }]}>
+            Розмір інтерфейсу - слова в доку й меню. Діапазон вужчий навмисно, щоб слово не наїжджало на іконку поруч.
+          </Text>
+          <View style={styles.uiScalePreviewRow}>
+            <Ionicons name="search-outline" size={17} color={theme.ink.primary} />
+            <Text style={[styles.uiScalePreviewLabel, { fontSize: Math.round(11 * fontScale.ui) }]} numberOfLines={1}>
+              Пошук
+            </Text>
+          </View>
+          <BlurSlider
+            value={toSliderPct(fontScale.ui, UI_SCALE_RANGE)}
+            onChange={(pct) => setFontScale({ ...fontScale, ui: fromSliderPct(pct, UI_SCALE_RANGE) })}
+          />
+        </View>
+        )}
         </ScrollView>
       </ContentColumn>
 
@@ -1202,6 +1258,21 @@ const makeStyles = (t: Theme) =>
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  uiScalePreviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  uiScalePreviewLabel: {
+    fontFamily: FONT_SEMIBOLD,
+    color: t.ink.primary,
   },
   menuList: {
     gap: 10,

@@ -18,7 +18,30 @@ import { colorForDocument } from '../utils/documentColor';
 // agree without either being told twice.
 const CACHE_KEY = 'appearance:theme';
 const BACKDROP_CACHE_KEY = 'appearance:backdrop';
+const FONT_SCALE_CACHE_KEY = 'appearance:fontScale';
 const PREFS_DOC = 'appearance';
+
+// Two independent knobs, not one - the user's own read of the risk:
+// "не так, щоб у мене потім в іконки не влазило". `text` is for what
+// is READ (a note's body, a list's titles) - flexible containers that
+// simply grow taller, so the range is generous. `ui` is for chrome
+// (the dock, menus) - tight, fixed-size rows where a word sits next to
+// an icon of a size that never changes, so the range stays narrow and
+// only ever touches the WORD, never the icon beside it.
+export type FontScaleSettings = { text: number; ui: number };
+export const TEXT_SCALE_RANGE: [number, number] = [0.9, 1.5];
+export const UI_SCALE_RANGE: [number, number] = [0.9, 1.15];
+const DEFAULT_FONT_SCALE: FontScaleSettings = { text: 1, ui: 1 };
+
+function clampScale(value: number, range: [number, number]): number {
+  return Math.min(range[1], Math.max(range[0], value));
+}
+
+function isFontScaleSettings(value: unknown): value is FontScaleSettings {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.text === 'number' && typeof v.ui === 'number';
+}
 
 // A user-chosen backdrop, replacing whatever the theme itself would
 // draw - on request: "хочу можливість вибирати і налаштовувати
@@ -64,6 +87,8 @@ type ThemeContextValue = {
   setThemeKey: (next: ThemeKey) => void;
   backdropSettings: BackdropSettings;
   setBackdropSettings: (next: BackdropSettings) => void;
+  fontScale: FontScaleSettings;
+  setFontScale: (next: FontScaleSettings) => void;
 };
 
 const ThemeContext = createContext<ThemeContextValue>({
@@ -72,6 +97,8 @@ const ThemeContext = createContext<ThemeContextValue>({
   setThemeKey: () => {},
   backdropSettings: DEFAULT_BACKDROP_SETTINGS,
   setBackdropSettings: () => {},
+  fontScale: DEFAULT_FONT_SCALE,
+  setFontScale: () => {},
 });
 
 function isThemeKey(value: unknown): value is ThemeKey {
@@ -95,6 +122,7 @@ function isBackdropSettings(value: unknown): value is BackdropSettings {
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [themeKey, setKey] = useState<ThemeKey>(DEFAULT_THEME_KEY);
   const [backdropSettings, setBackdropState] = useState<BackdropSettings>(DEFAULT_BACKDROP_SETTINGS);
+  const [fontScale, setFontScaleState] = useState<FontScaleSettings>(DEFAULT_FONT_SCALE);
 
   // The cache first, so the first frame is already right.
   useEffect(() => {
@@ -108,6 +136,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         if (!stored) return;
         const parsed = JSON.parse(stored);
         if (isBackdropSettings(parsed)) setBackdropState(parsed);
+      })
+      .catch(() => undefined);
+    AsyncStorage.getItem(FONT_SCALE_CACHE_KEY)
+      .then((stored) => {
+        if (!stored) return;
+        const parsed = JSON.parse(stored);
+        if (isFontScaleSettings(parsed)) setFontScaleState(parsed);
       })
       .catch(() => undefined);
   }, []);
@@ -130,6 +165,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           if (isBackdropSettings(backdrop)) {
             setBackdropState(backdrop);
             AsyncStorage.setItem(BACKDROP_CACHE_KEY, JSON.stringify(backdrop)).catch(() => undefined);
+          }
+          const scale = snapshot.data()?.fontScale;
+          if (isFontScaleSettings(scale)) {
+            setFontScaleState(scale);
+            AsyncStorage.setItem(FONT_SCALE_CACHE_KEY, JSON.stringify(scale)).catch(() => undefined);
           }
         },
         () => undefined
@@ -154,8 +194,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         AsyncStorage.setItem(BACKDROP_CACHE_KEY, JSON.stringify(next)).catch(() => undefined);
         setDoc(doc(db, 'settings', PREFS_DOC), { backdrop: next }, { merge: true }).catch(() => undefined);
       },
+      fontScale,
+      setFontScale: (next: FontScaleSettings) => {
+        const clamped = { text: clampScale(next.text, TEXT_SCALE_RANGE), ui: clampScale(next.ui, UI_SCALE_RANGE) };
+        setFontScaleState(clamped);
+        AsyncStorage.setItem(FONT_SCALE_CACHE_KEY, JSON.stringify(clamped)).catch(() => undefined);
+        setDoc(doc(db, 'settings', PREFS_DOC), { fontScale: clamped }, { merge: true }).catch(() => undefined);
+      },
     }),
-    [themeKey, backdropSettings]
+    [themeKey, backdropSettings, fontScale]
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
@@ -184,6 +231,23 @@ export function useActiveBackdropOverride(): BackdropOverride | null {
   const { theme, backdropSettings } = useContext(ThemeContext);
   if (!backdropSettings.override) return null;
   return backdropSettings.appliesTo.includes(theme.key) ? backdropSettings.override : null;
+}
+
+// The Settings screen's own read/write pair.
+export function useFontScaleSettings() {
+  const { fontScale, setFontScale } = useContext(ThemeContext);
+  return { fontScale, setFontScale };
+}
+
+// What everything ELSE actually calls - a screen doing
+// `fontSize: 16 * useTextScale()` never has to know the setting's
+// shape or its clamp range.
+export function useTextScale(): number {
+  return useContext(ThemeContext).fontScale.text;
+}
+
+export function useUiScale(): number {
+  return useContext(ThemeContext).fontScale.ui;
 }
 
 // What makes converting a file mechanical: the same StyleSheet.create a
