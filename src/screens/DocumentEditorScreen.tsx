@@ -1623,9 +1623,37 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // insets.bottom higher than where content was actually being scrolled
   // clear to, leaving a gap of exactly that height between the bar and
   // the keyboard with the next block's text showing through it.
-  const pinnedToolbarStyle = useAnimatedStyle(() => ({
-    bottom: keyboardSV.value,
-  }));
+  // The bar's own presence is CONTINUOUS now, not a mount decision
+  // (2026-09-19, after three fixes that each traded one artifact for
+  // another). Keying the mount off `focusedBlockId` stopped the flash
+  // during Android's recent-apps gesture, but left the other half of
+  // the problem: `focusedBlockId` is only cleared by the 400ms
+  // deferred block in keyboardDidHide, so on an ordinary dismissal the
+  // bar rode the keyboard down and then SAT at the bottom edge, plainly
+  // visible, until that timer fired. Same delay as before, moved to a
+  // different variable.
+  //
+  // So it no longer waits for anything to decide it is gone: it fades
+  // and slides out as a pure function of the keyboard's own live
+  // height. At 0 it is fully transparent and pushed its whole height
+  // below the bottom edge; by ~48px of keyboard it is fully in place.
+  // On a real dismissal that reaches zero in step with the keyboard's
+  // own animation - zero added latency, because there is no timer in
+  // the path at all. During the spurious gesture the frame handler
+  // never fires, `keyboardSV` never moves, and so this never changes
+  // either: nothing to flash.
+  //
+  // Web has no keyboard events to drive any of it, so it keeps the bar
+  // plainly visible whenever a block is focused, exactly as before.
+  const pinnedToolbarStyle = useAnimatedStyle(() => {
+    if (Platform.OS === 'web') return { bottom: keyboardSV.value, opacity: 1, transform: [] };
+    const shown = Math.min(1, Math.max(0, keyboardSV.value / 48));
+    return {
+      bottom: keyboardSV.value,
+      opacity: shown,
+      transform: [{ translateY: (1 - shown) * (EDITOR_TOOLBAR_HEIGHT + 24) }],
+    };
+  });
 
   function scrollFocusedBlockIntoView(currentKeyboardHeight: number) {
     const id = focusedBlockIdRef.current;
