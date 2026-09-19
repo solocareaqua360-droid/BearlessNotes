@@ -25,7 +25,6 @@ import {
   useNavDockFace,
   useNavDockHidden,
   useNavDockLeave,
-  useNavDockNoSplit,
   useNavDockOwnContext,
   useNavDockPrefersActions,
   useNavDockWide,
@@ -323,13 +322,11 @@ export default function ContextDock() {
   const theme = useTheme();
   const { width: windowW } = useWindowDimensions();
   const { isTwoPane } = useResponsiveLayout();
-  // Whether the FOCUSED screen refuses the split outright -
-  // CalendarScreen's own case (see its own comment on useDockNoSplit).
-  const noSplit = useNavDockNoSplit();
-  // THE one flag everything below reads instead of `isTwoPane` alone -
-  // a screen that refuses the split is a screen the split has never
-  // heard of, not a wide screen with an empty half.
-  const splitActive = isTwoPane && !noSplit;
+  // Kept as its own name rather than `isTwoPane` read directly
+  // everywhere: this is "does the split apply here", and it has already
+  // had a second condition once (a per-screen opt-out, for the calendar,
+  // until the strip itself turned out to be the thing that had to go).
+  const splitActive = isTwoPane;
   // 0..1, eased - a live fold/unfold is the one case this boolean can
   // flip WHILE the app is on screen, and a discrete cut from "no
   // actions here" to "actions widened in" would be exactly the kind of
