@@ -214,11 +214,22 @@ const colour: Theme = {
   // black's cool white/blue - the accent lights itself, not a
   // colourless imitation of another theme's glow.
   lift: 'glow',
+  // `body` USED TO BE DARKER than `ground` (#181513 on #2A2522, blending
+  // to something darker than the ground itself) - fine while a moving
+  // backdrop gave the dock constant visual noise to be seen against, a
+  // real problem the moment the backdrop went flat: "докм здається
+  // пласким... тут ніби недороблено". A dock is a raised surface; the
+  // same rule the canvas ladder and both other themes already follow -
+  // lighter than what it stands on, never the same or darker - had
+  // simply never been checked here, because there was always something
+  // shifting behind it to hide the miss. Warmer AND lighter now: (42,
+  // 37, 34) ground blends to (60, 52, 46) at this body/opacity, a real
+  // step up rather than a sink.
   glass: {
     blur: 60,
     blurTint: 'dark',
-    body: '#181513',
-    opacity: 0.42,
+    body: '#4A4038',
+    opacity: 0.55,
     specular: '#FFFFFF',
     specularIntensity: 0.8,
     rim: '#FFFFFF',
