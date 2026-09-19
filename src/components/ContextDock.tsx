@@ -25,6 +25,7 @@ import {
   useNavDockFace,
   useNavDockHidden,
   useNavDockLeave,
+  useNavDockNoSplit,
   useNavDockOwnContext,
   useNavDockPrefersActions,
   useNavDockWide,
@@ -292,14 +293,28 @@ export default function ContextDock() {
   const theme = useTheme();
   const { width: windowW } = useWindowDimensions();
   const { isTwoPane } = useResponsiveLayout();
+  // Whether the FOCUSED screen refuses the split outright - read here,
+  // ahead of everything the split touches, rather than down where the
+  // rest of what a screen publishes is read. CalendarScreen's own case:
+  // its window is exactly as wide, but a permanent half would duplicate
+  // chrome the calendar grid already shows in full - see its own
+  // comment on useDockNoSplit.
+  const noSplit = useNavDockNoSplit();
+  // THE one flag everything below reads instead of `isTwoPane` alone -
+  // a screen that refuses the split is a screen the split has never
+  // heard of, not a wide screen with an empty half. Getting this wrong
+  // would have been its own bug: 'actions' dropping out of the ring
+  // (below) BECAUSE the window is wide, with no permanent half ever
+  // taking its place, leaving a screen's own actions unreachable.
+  const splitActive = isTwoPane && !noSplit;
   // 0..1, eased - see useEase01's own comment on why this is not just
-  // `isTwoPane` read straight: a live fold/unfold is the one case where
-  // this boolean actually flips WHILE the app is on screen, and a
+  // `splitActive` read straight: a live fold/unfold is the one case
+  // where this boolean actually flips WHILE the app is on screen, and a
   // discrete cut from "one card" to "two panels" on that flip is
   // precisely the kind of jump this whole night has been removing
   // elsewhere. 260ms matches the swipe's own commit duration - the
   // dock's existing "how long a settle takes" answer, not a new guess.
-  const split = useEase01(isTwoPane, 260);
+  const split = useEase01(splitActive, 260);
   const CARD_H = dockCardHeight(windowW);
   const screenW = Math.min(windowW, 430);
   const BEAD = Math.round(screenW * BEAD_F);
@@ -423,7 +438,7 @@ export default function ContextDock() {
   // instead of left to that fallback, because the actions row is simply
   // always visible in wide mode regardless of which ring face fronts it.
   const opensOn: DockFace = !own
-    ? prefersActions && !isTwoPane
+    ? prefersActions && !splitActive
       ? 'actions'
       : 'desks'
     : own.kind === 'strip'
@@ -439,7 +454,7 @@ export default function ContextDock() {
   // swipe untouched either way - the user's own answer when asked.
   const faces: DockFace[] = [
     ...(own ? (['context'] as DockFace[]) : []),
-    ...(actions?.length && !isTwoPane ? (['actions'] as DockFace[]) : []),
+    ...(actions?.length && !splitActive ? (['actions'] as DockFace[]) : []),
     ...(desksCard ? (['desks'] as DockFace[]) : []),
   ];
   // When the card asked for is not in this screen's ring, fall back to
@@ -572,7 +587,7 @@ export default function ContextDock() {
   // mechanisms - the exact kind of doubled-up width logic that produced
   // the "wider dock, same four buttons" bug this stretch itself already
   // fixed once.
-  const wideWanted = useNavDockWide() && !beads.left && !beads.right && !isTwoPane;
+  const wideWanted = useNavDockWide() && !beads.left && !beads.right && !splitActive;
   const [stretch, setStretch] = useState(wideWanted ? 1 : 0);
   const stretchRaf = useRef<number | null>(null);
   const stretchRef = useRef(stretch);
@@ -1012,13 +1027,30 @@ export default function ContextDock() {
   // own idea, applied everywhere a row of actions is drawn (see
   // ActionGroups).
   const ACTION_GROUP_GAP = 24;
-  // The gap between the ring's own card and this half - a real, visible
-  // gap rather than the two frosted panels touching pixel to pixel,
-  // which is what actually happens here (see this file's own comment on
-  // why "one block" is two DockFrost panels standing close rather than
-  // a single shared one).
-  const HALVES_GAP = 10;
-  const splitActionsCount = actions?.length ?? 0;
+  // The gap between the ring's own card and this half - ZERO. The user
+  // saw the first version of this ("доки два а не один") and was right:
+  // a visible gap between two rounded pills reads as two objects
+  // however close they stand. Touching, with the seam between them
+  // handled by corner radius instead (see `ringRightRadius` below), is
+  // what actually reads as one block with two zones.
+  const HALVES_GAP = 0;
+  // How many actions this half is drawing, frozen through a desk-switch
+  // swipe rather than read live off the suppressed `actions` above.
+  //
+  // `actions` is deliberately blanked while `tabsInFlux` - correct for
+  // the RING, whose own card never changes width regardless of which
+  // face it holds, so the blank content is invisible until the swipe
+  // settles. This half is not like that: its WIDTH comes from this
+  // count, and a live drag on a database's root (screenshot: "в доці
+  // баз даних один док - якщо звужувати анімацією при пролистуванні з
+  // сусіднього екрана, то як?") would otherwise snap it to zero and
+  // yank the whole row narrower for the length of every desk-switch,
+  // landing screen or not. Held at its last real value until the
+  // swipe settles, then it updates in one step - a blank frosted box
+  // for that one beat, never a moving one.
+  const lastSplitCountRef = useRef(0);
+  if (!suppress) lastSplitCountRef.current = actionsPublished?.length ?? 0;
+  const splitActionsCount = suppress ? lastSplitCountRef.current : (actions?.length ?? 0);
   // How wide this half needs to be to show every action without
   // scrolling - the content deciding the width, never the other way
   // round (the same rule that already sizes the ring's own card: "a
@@ -1046,7 +1078,16 @@ export default function ContextDock() {
   // Whether the half is worth mounting at all - kept mounted through the
   // very end of a CLOSING transition (split still > 0) so it shrinks
   // away rather than vanishing mid-animation.
-  const showSplitActions = splitActionsCount > 0 && (isTwoPane || split > 0.001);
+  const showSplitActions = splitActionsCount > 0 && (splitActive || split > 0.001);
+  // How much the ring's own RIGHT corner has softened toward square -
+  // zero on a screen with no split half at all (a lone desks pill stays
+  // a normal capsule, exactly as the database-list screen's own
+  // screenshot showed), following `split` once one exists. Continuous,
+  // so the two halves fuse at the same rate the actions half grows into
+  // the space - never a corner popping from round to square in one
+  // frame.
+  const halfPresence = splitActionsCount > 0 ? split : 0;
+  const ringRightRadius = Math.round((CARD_H / 2) * (1 - halfPresence));
 
   return (
     <GlassPortal>
@@ -1122,7 +1163,30 @@ export default function ContextDock() {
                 style={[styles.cardLayer, dims.card, liftStyle(theme, theme.lift, glowAt(i)), cardStyles[i]]}
                 pointerEvents={f === showing ? 'auto' : 'none'}
               >
-                <DockFrost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
+                <DockFrost
+                  style={[
+                    styles.front,
+                    styles.cardEdge,
+                    dims.card,
+                    // The right corner alone softens toward square as a
+                    // split half appears beside it - see `halfPresence`.
+                    // A specific corner key set here survives DockFrost's
+                    // own uniform `radius` prop below (it only fills in
+                    // corners nothing more specific already claimed).
+                    //
+                    // The right EDGE loses its own hairline the moment a
+                    // half stands flush against it - two hairlines
+                    // touching read as one line slightly thicker than
+                    // everywhere else on the same pill, the one seam
+                    // this fuse was meant to hide.
+                    {
+                      borderTopRightRadius: ringRightRadius,
+                      borderBottomRightRadius: ringRightRadius,
+                      borderRightWidth: halfPresence > 0 ? 0 : StyleSheet.hairlineWidth,
+                    },
+                  ]}
+                  radius={CARD_H / 2}
+                >
                   {renderCard(f)}
                 </DockFrost>
               </View>
@@ -1131,25 +1195,53 @@ export default function ContextDock() {
           </GestureDetector>
           {/* THE SPLIT'S OWN PERMANENT HALF - see this file's own
               comment above `useEase01`. A second DockFrost standing
-              close to the ring's card rather than a child inside it
-              (see why in that same comment); width and left margin are
-              both continuous in `split`, so a fold or unfold is a real
-              width every frame, never a jump between two of them. */}
-          {showSplitActions && !!actions && (
+              flush against the ring's card (see `HALVES_GAP`) rather
+              than a child inside it (see why in the comment above
+              `useEase01`); width and left margin are both continuous in
+              `split`, so a fold or unfold is a real width every frame,
+              never a jump between two of them.
+
+              Mounted on `showSplitActions` (the FROZEN count) alone,
+              never on `!!actions` too - actions itself goes null for the
+              length of a desk-switch swipe (see `splitActionsCount`'s
+              own comment), and gating the whole View on it would
+              collapse this half's width exactly then, which is the bug
+              being fixed. Its CONTENT is what waits for real data - an
+              empty frosted box for that one beat, never a moving one.
+              Same lift as the ring's own front card, fading in with
+              `split` rather than snapping to full strength, and its
+              LEFT corner squared always (it has no "round" state to
+              return to - it either isn't there, or it is one zone of
+              the block the ring's card is the other zone of). */}
+          {showSplitActions && (
             <View
-              style={[styles.splitActions, { width: splitActionsWidthNow, height: CARD_H, marginLeft: splitGapNow }]}
+              style={[
+                styles.splitActions,
+                { width: splitActionsWidthNow, height: CARD_H, marginLeft: splitGapNow },
+                liftStyle(theme, theme.lift, split),
+              ]}
             >
-              <DockFrost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionRow}>
-                  <ActionGroups
-                    actions={actions}
-                    buttonWidth={ACT_W_SPLIT}
-                    buttonHeight={CARD_BUTTON}
-                    iconSize={ACT_ICON}
-                    theme={theme}
-                    onDone={() => {}}
-                  />
-                </ScrollView>
+              <DockFrost
+                style={[
+                  styles.front,
+                  styles.cardEdge,
+                  dims.card,
+                  { borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeftWidth: 0 },
+                ]}
+                radius={CARD_H / 2}
+              >
+                {!!actions && (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionRow}>
+                    <ActionGroups
+                      actions={actions}
+                      buttonWidth={ACT_W_SPLIT}
+                      buttonHeight={CARD_BUTTON}
+                      iconSize={ACT_ICON}
+                      theme={theme}
+                      onDone={() => {}}
+                    />
+                  </ScrollView>
+                )}
               </DockFrost>
             </View>
           )}
