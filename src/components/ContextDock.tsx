@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 import { GlassPortal } from './GlassPortal';
 import DockFrost from './DockFrost';
+import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { useLift, useTheme } from '../theme/ThemeProvider';
 import { liftStyle } from '../theme/tokens';
 import { hapticButtonDown } from '../utils/haptics';
@@ -15,6 +16,7 @@ import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { DOCK_BOTTOM, dockCardHeight, dockEdgeInset, dockRowWidth } from '../navigation/dockGeometry';
 import { navigationRef } from '../navigationRef';
 import {
+  DockAction,
   DockBead,
   DockFace,
   useNavDockActions,
@@ -23,6 +25,7 @@ import {
   useNavDockFace,
   useNavDockHidden,
   useNavDockLeave,
+  useNavDockNoSplit,
   useNavDockOwnContext,
   useNavDockPrefersActions,
   useNavDockWide,
@@ -207,9 +210,91 @@ const CARD_PAD = 2;
 // 430 is wider than any phone in portrait, so no phone is touched.
 
 
+// THE FOLD/TABLET SPLIT, rebuilt 2026-09-19 after the first version
+// crashed the app on the user's real device with a white screen and no
+// catchable JS error (see the project memory
+// android-native-crash-no-stack) - meaning a native-level failure, most
+// likely the first version's own asymmetric per-corner border radius +
+// per-side border width + a SECOND independent `boxShadow` application,
+// stacked together on a View also carrying a live animated width. None
+// of that combination is proven safe, and this session cannot get a
+// stack trace to confirm which part of it actually broke, so all of it
+// is gone rather than patched.
+//
+// This version does not build a second frosted panel at all. The
+// actions row is drawn AS PART OF the ring's own front-showing
+// DockFrost, widened for that one layer alone - one View, one border,
+// one radius, one lift, exactly the ones that view already had before
+// this feature existed. "One block" stops being something to fake with
+// two panels standing close together; there is only ever one.
+//
+// WHAT SIGNAL DECIDES IT: not "is this a Fold" - that needs a native
+// posture API this project does not have, and a phone is a phone
+// whatever brand it is. `useResponsiveLayout`'s `isTwoPane` is the SAME
+// width test the documents/calendar screens already use for their own
+// two-pane layouts, measured off this exact device (704x933dp at its
+// own display-zoom setting).
+//
+// WHAT SPLITS: only the RING loses a member. The ring itself
+// (context <-> desks) keeps its swipe exactly as it is either way -
+// only 'actions' stops being reachable two ways, since the widened
+// front layer now carries it permanently.
+//
+// WHAT DOES NOT SCALE: BEAD/CARD_H/ACT_W/GAP stay pinned to their
+// PHONE_W-capped values in both layouts. The extra width buys more
+// BUTTONS at their existing size, never bigger ones (see ACT_W's own
+// comment).
+function useEase01(wanted: boolean, ms: number): number {
+  const [value, setValue] = useState(wanted ? 1 : 0);
+  const raf = useRef<number | null>(null);
+  const ref = useRef(value);
+  ref.current = value;
+  useEffect(() => {
+    const to = wanted ? 1 : 0;
+    const from = ref.current;
+    if (from === to) return;
+    if (raf.current !== null) cancelAnimationFrame(raf.current);
+    const t0 = Date.now();
+    const step = () => {
+      const k = Math.min(1, (Date.now() - t0) / ms);
+      // Ease-out cube, the same shape the stack settles with and the
+      // note's own stretch already used: quick away from the old value,
+      // slow into the new one.
+      const e = 1 - Math.pow(1 - k, 3);
+      setValue(from + (to - from) * e);
+      if (k < 1) {
+        raf.current = requestAnimationFrame(step);
+        return;
+      }
+      raf.current = null;
+    };
+    raf.current = requestAnimationFrame(step);
+    return () => {
+      if (raf.current !== null) cancelAnimationFrame(raf.current);
+      raf.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wanted]);
+  return value;
+}
+
 export default function ContextDock() {
   const theme = useTheme();
   const { width: windowW } = useWindowDimensions();
+  const { isTwoPane } = useResponsiveLayout();
+  // Whether the FOCUSED screen refuses the split outright -
+  // CalendarScreen's own case (see its own comment on useDockNoSplit).
+  const noSplit = useNavDockNoSplit();
+  // THE one flag everything below reads instead of `isTwoPane` alone -
+  // a screen that refuses the split is a screen the split has never
+  // heard of, not a wide screen with an empty half.
+  const splitActive = isTwoPane && !noSplit;
+  // 0..1, eased - a live fold/unfold is the one case this boolean can
+  // flip WHILE the app is on screen, and a discrete cut from "no
+  // actions here" to "actions widened in" would be exactly the kind of
+  // jump this whole night has been removing elsewhere. 260ms matches
+  // the swipe's own commit duration.
+  const split = useEase01(splitActive, 260);
   const CARD_H = dockCardHeight(windowW);
   const screenW = Math.min(windowW, 430);
   const BEAD = Math.round(screenW * BEAD_F);
@@ -327,8 +412,13 @@ export default function ContextDock() {
   // one. It is a declaration and not a new inference on purpose: every
   // other screen with actions and no context keeps opening on the desks.
   const prefersActions = useNavDockPrefersActions();
+  // On the split, 'actions' is never a ring member (see `faces` below),
+  // so opening "on" it would fail the ring's own faces.includes(face)
+  // test and fall back to desks anyway - said here instead of left to
+  // that fallback, because the actions row is simply always visible in
+  // split mode regardless of which ring face fronts it.
   const opensOn: DockFace = !own
-    ? prefersActions
+    ? prefersActions && !splitActive
       ? 'actions'
       : 'desks'
     : own.kind === 'strip'
@@ -337,9 +427,13 @@ export default function ContextDock() {
   // The cards this screen actually has, in the order they are wanted:
   // what you are in, what you can do in it, where else you could be. A
   // card with nothing on it is not a card and is simply not in the ring.
+  //
+  // 'actions' drops out of the ring on the split - the front layer
+  // carries it permanently instead (see `showSplitActions` below), and
+  // the same thing reachable two ways is not a feature.
   const faces: DockFace[] = [
     ...(own ? (['context'] as DockFace[]) : []),
-    ...(actions?.length ? (['actions'] as DockFace[]) : []),
+    ...(actions?.length && !splitActive ? (['actions'] as DockFace[]) : []),
     ...(desksCard ? (['desks'] as DockFace[]) : []),
   ];
   // When the card asked for is not in this screen's ring, fall back to
@@ -463,7 +557,12 @@ export default function ContextDock() {
   // frame. A Reanimated shared value here would be a second clock, and
   // the widths, the button sizes and the card positions would each be
   // right on a different one.
-  const wideWanted = useNavDockWide() && !beads.left && !beads.right;
+  // NOT while the split is active - that stretch answers "can this one
+  // card eat into empty bead space", relevant only on a phone-width row
+  // with nowhere else to put more buttons. On the split the actions row
+  // already gets real room from the widened front layer, so doing both
+  // at once would be the same case handled twice.
+  const wideWanted = useNavDockWide() && !beads.left && !beads.right && !splitActive;
   const [stretch, setStretch] = useState(wideWanted ? 1 : 0);
   const stretchRaf = useRef<number | null>(null);
   const stretchRef = useRef(stretch);
@@ -703,7 +802,24 @@ export default function ContextDock() {
   // it. `showLeave` is the same regardless of which face this draws:
   // it is about whether this SCREEN has a way out, not about which card
   // is showing.
-  function renderCard(f: DockFace) {
+  //
+  // `attach` is true for exactly one call per render - the layer that
+  // is currently FRONT (f === showing, see the call site) - and it is
+  // the only one that grows the split's actions zone onto its own end.
+  // Every OTHER layer (a back layer, mostly hidden behind this one)
+  // still renders at the ring's own logical width; the room the split
+  // opened up simply sits blank behind it, inside the same frost, never
+  // a second one.
+  function renderCard(f: DockFace, attach: boolean) {
+    // Confined to the ring's own logical width whenever a split exists
+    // ANYWHERE on this screen - not only on the attaching layer. Left
+    // as plain `flex: 1` (today's exact behaviour) it would stretch
+    // into the room the split opened up on every layer, attaching or
+    // not, since nothing else would be there to share that space with
+    // on a back layer.
+    const faceStyle = showSplitActions
+      ? [styles.face, { flexGrow: 0, flexShrink: 0, width: faceWidthWhenSplit }]
+      : styles.face;
     return (
       <>
         {showLeave && (
@@ -712,7 +828,7 @@ export default function ContextDock() {
             <View style={[styles.leaveRule, { backgroundColor: theme.glass.inkMuted, opacity: 0.4 }]} />
           </Pressable>
         )}
-        <View style={styles.face}>
+        <View style={faceStyle}>
           {f === 'desks' && desks && (
             desks.collapsed ? (
               <View style={[styles.dotsShell, dims.card]}>
@@ -860,67 +976,45 @@ export default function ContextDock() {
           {f === 'actions' && !!actions?.length && (
             <View style={[styles.shell, styles.actionsShell, dims.card]}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionRow}>
-                {actions.map((action) => (
-                  <Pressable
-                    key={action.key}
-                    onPress={() => {
-                      action.onPress();
-                      if (action.closesStack) setFace('context');
-                    }}
-                    onLongPress={action.onLongPress}
-                    style={[
-                      styles.actionButton,
-                      { width: ACT_W, height: CARD_BUTTON, borderRadius: Math.round(CARD_BUTTON / 3) },
-                      action.active && styles.actionButtonActive,
-                    ]}
-                  >
-                    {/* Icon over word. The button is a quarter of the
-                        card wide and the whole card tall, so the word
-                        gets one line and no more - a label that wrapped
-                        would push the icon off centre and make one
-                        button taller than its neighbours. */}
-                    {action.icon.startsWith('mc:') ? (
-                      <MaterialCommunityIcons
-                        name={action.icon.slice(3) as keyof typeof MaterialCommunityIcons.glyphMap}
-                        size={ACT_ICON}
-                        color={action.active ? theme.accent : theme.glass.ink}
-                      />
-                    ) : (
-                      <Ionicons name={action.icon as keyof typeof Ionicons.glyphMap} size={ACT_ICON} color={action.active ? theme.accent : theme.glass.ink} />
-                    )}
-                    {!!action.label && (
-                      <Text
-                        numberOfLines={1}
-                        // A safety net, not a licence for long words: a
-                        // label one letter too wide shrinks rather than
-                        // ending in an ellipsis, which would hide the
-                        // very thing the label was added for.
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.75}
-                        style={[styles.actionLabel, { color: action.active ? theme.accent : theme.glass.ink }]}
-                      >
-                        {action.label}
-                      </Text>
-                    )}
-                    {!!action.badge && (
-                      <Ionicons name={action.badge as keyof typeof Ionicons.glyphMap} size={12} color={theme.glass.ink} style={styles.badge} />
-                    )}
-                    {/* A number in the badge's own corner instead of a
-                        glyph - how many things this action is about to
-                        act on. The two never appear together: a count
-                        belongs to acting on a selection, a glyph badge
-                        to creating something. */}
-                    {action.count !== undefined && (
-                      <Text style={[styles.badge, styles.countBadge, { color: theme.glass.ink }]}>
-                        {action.count}
-                      </Text>
-                    )}
-                  </Pressable>
-                ))}
+                <ActionGroups actions={actions} buttonWidth={ACT_W} buttonHeight={CARD_BUTTON} iconSize={ACT_ICON} theme={theme} onDone={() => setFace('context')} />
               </ScrollView>
             </View>
           )}
         </View>
+        {/* THE SPLIT'S OWN ROOM, grown onto the end of this ONE layer -
+            never a second frost, never a second border, never a second
+            shadow. `attach` is only ever true for the layer that is
+            currently front (see the call site), so exactly one of these
+            is ever mounted with real width at a time. The divider's
+            reserved space and the actions zone's own width both scale
+            with `split` in lockstep with the container's own width
+            (both grown by exactly `dividerSpaceNow + splitActionsWidthNow`
+            - see the call site) - `face`'s own fixed width above plus
+            this divider plus the actions zone always sum to exactly
+            this layer's own container width, at every frame of the
+            transition, never a pixel short or a pixel over. */}
+        {attach && showSplitActions && (
+          <>
+            {/* The reserved SPACE scales with `split` (0..DIVIDER_SPACE);
+                the LINE inside it never does - it is always the same
+                hairline, centred, clipped by the reserved box so nothing
+                pokes out while that box is still small. Two different
+                things sharing one name would have been the mistake:
+                widening the line itself, at DIVIDER_SPACE (~17px), would
+                have drawn a soft rectangle instead of a rule even once
+                fully open. */}
+            <View style={[styles.splitDivider, { width: dividerSpaceNow }]}>
+              <View style={[styles.splitDividerLine, { backgroundColor: theme.glass.inkMuted }]} />
+            </View>
+            <View style={{ width: splitActionsWidthNow, height: CARD_H, justifyContent: 'center' }}>
+              {!!actions && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionRow}>
+                  <ActionGroups actions={actions} buttonWidth={ACT_W_SPLIT} buttonHeight={CARD_BUTTON} iconSize={ACT_ICON} theme={theme} onDone={() => {}} />
+                </ScrollView>
+              )}
+            </View>
+          </>
+        )}
       </>
     );
   }
@@ -942,6 +1036,71 @@ export default function ContextDock() {
   const ACT_W = Math.floor((cardWidth - CARD_PAD * 2 - (showLeave ? LEAVE_W : 0)) / 4);
   const ACT_ICON = 19;
 
+  // THE SPLIT'S OWN GEOMETRY - see this file's own comment above
+  // `useEase01` for the whole design. Nothing here touches
+  // BEAD/CARD_H/GAP/ACT_W: those stay pinned to their phone-capped
+  // values, and the extra room buys more of the SAME-SIZED buttons,
+  // never bigger ones.
+  //
+  // Its own button width, not ACT_W: ACT_W subtracts room for the leave
+  // chevron (which lives on the ring's own end, never here) from the
+  // ring's own card width. Sharing it would make every button here a
+  // few points narrower than it needs to be.
+  const ACT_W_SPLIT = Math.floor((cardWidth - CARD_PAD * 2) / 4);
+  const ACTION_GROUP_GAP = 24;
+  // The horizontal room reserved for the divider between the ring's own
+  // content and the actions zone, at FULL split - see splitDivider's
+  // own comment for why the visible LINE never scales even though this
+  // space does.
+  const DIVIDER_SPACE = 17;
+  // How many actions this half is drawing, frozen through a desk-switch
+  // swipe rather than read live off the suppressed `actions` above.
+  //
+  // `actions` is deliberately blanked while `tabsInFlux` - correct for
+  // the RING, whose own logical width never changes regardless of which
+  // face it holds, so blank content there is invisible until the swipe
+  // settles. This is not like that: this layer's own WIDTH comes from
+  // this count, and a live drag (screenshot: "в доці баз даних один
+  // док - якщо звужувати анімацією при пролистуванні з сусіднього
+  // екрана, то як?") would otherwise snap it to zero and yank the whole
+  // row narrower for the length of every desk-switch, landing screen or
+  // not. Held at its last real value until the swipe settles, then it
+  // steps to the truth in one frame - a blank frosted zone for that one
+  // beat, never a moving one.
+  const lastSplitCountRef = useRef(0);
+  if (!suppress) lastSplitCountRef.current = actionsPublished?.length ?? 0;
+  const splitActionsCount = suppress ? lastSplitCountRef.current : (actions?.length ?? 0);
+  // How wide the actions zone needs to be to show every action without
+  // scrolling - the content deciding the width, never the other way
+  // round (the same rule that already sizes the ring's own card: "a
+  // card is four buttons wide whatever it holds", answered here for a
+  // row instead of a fixed count).
+  const splitActionsNeeded =
+    splitActionsCount > 0
+      ? splitActionsCount * ACT_W_SPLIT + Math.floor((splitActionsCount - 1) / 4) * ACTION_GROUP_GAP + CARD_PAD * 2
+      : 0;
+  // How much MORE room the real window actually has beyond today's
+  // phone-capped row - `windowW` here is deliberately NOT run through
+  // the PHONE_W cap, because this is exactly the number that cap exists
+  // to keep away from BEAD/CARD_H/ACT_W above.
+  const splitRoomAvailable = Math.max(0, windowW - edgeInsetNow * 2 - rowWidthNow - DIVIDER_SPACE);
+  // Never more than what the actions actually need - an empty screen
+  // does not get an aimlessly wide dock just because the window is
+  // enormous.
+  const splitActionsFullWidth = Math.min(splitActionsNeeded, splitRoomAvailable);
+  // Live values, continuous in `split` - every frame of the fold/unfold
+  // transition is a real width, never a jump between two of them.
+  const dividerSpaceNow = DIVIDER_SPACE * split;
+  const splitActionsWidthNow = splitActionsFullWidth * split;
+  // Whether the split is worth drawing at all - kept "on" through the
+  // very end of a CLOSING transition (split still > 0) so it shrinks
+  // away rather than vanishing mid-animation.
+  const showSplitActions = splitActionsCount > 0 && (splitActive || split > 0.001);
+  // The ring's own content, confined to exactly this width whenever a
+  // split exists anywhere on this screen - see renderCard's own comment
+  // on why every layer needs this, not only the one attaching the zone.
+  const faceWidthWhenSplit = cardWidthNow - (showLeave ? LEAVE_W : 0);
+
   return (
     <GlassPortal>
       <View
@@ -959,7 +1118,12 @@ export default function ContextDock() {
             // so a row that grew with its slivers pushed the front card
             // UP - a hair higher on the screens with more cards behind,
             // which read as a different dock on every desk.
-            { width: rowWidthNow, gap: GAP, height: CARD_H + BEHIND_EDGE * 2, overflow: 'visible' },
+            {
+              width: rowWidthNow + (showSplitActions ? dividerSpaceNow + splitActionsWidthNow : 0),
+              gap: GAP,
+              height: CARD_H + BEHIND_EDGE * 2,
+              overflow: 'visible',
+            },
           ]}
         >
           {/* A missing bead keeps its place. Without this the stack
@@ -982,7 +1146,11 @@ export default function ContextDock() {
               // alignItems) in a taller row, it dropped toward the
               // middle instead of sitting flush at the top: "док
               // змістився вниз".
-              { width: cardWidthNow, height: CARD_H + BEHIND_EDGE * 2, paddingBottom: BEHIND_EDGE * 2 },
+              {
+                width: cardWidthNow + (showSplitActions ? dividerSpaceNow + splitActionsWidthNow : 0),
+                height: CARD_H + BEHIND_EDGE * 2,
+                paddingBottom: BEHIND_EDGE * 2,
+              },
             ]}
           >
             {/* Every card this screen's stack holds, mounted once and
@@ -1002,7 +1170,7 @@ export default function ContextDock() {
                 pointerEvents={f === showing ? 'auto' : 'none'}
               >
                 <DockFrost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
-                  {renderCard(f)}
+                  {renderCard(f, f === showing)}
                 </DockFrost>
               </View>
             ))}
@@ -1026,6 +1194,124 @@ export default function ContextDock() {
 // Frost moved to its own file (DockFrost) so the editor's "/" toolbar
 // can wear the same material instead of a second recipe of its own -
 // see DockFrost's comment for what that second recipe cost.
+
+// One action button - pulled out of renderCard's own actions branch so
+// the split's own zone draws the exact same button rather than a
+// second, drifting copy of the same JSX.
+function ActionButton({
+  action,
+  width,
+  height,
+  iconSize,
+  theme,
+  onDone,
+}: {
+  action: DockAction;
+  width: number;
+  height: number;
+  iconSize: number;
+  theme: ReturnType<typeof useTheme>;
+  onDone: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={() => {
+        action.onPress();
+        if (action.closesStack) onDone();
+      }}
+      onLongPress={action.onLongPress}
+      style={[
+        styles.actionButton,
+        { width, height, borderRadius: Math.round(height / 3) },
+        action.active && styles.actionButtonActive,
+      ]}
+    >
+      {/* Icon over word. The button is a quarter of the card wide and
+          the whole card tall, so the word gets one line and no more - a
+          label that wrapped would push the icon off centre and make one
+          button taller than its neighbours. */}
+      {action.icon.startsWith('mc:') ? (
+        <MaterialCommunityIcons
+          name={action.icon.slice(3) as keyof typeof MaterialCommunityIcons.glyphMap}
+          size={iconSize}
+          color={action.active ? theme.accent : theme.glass.ink}
+        />
+      ) : (
+        <Ionicons name={action.icon as keyof typeof Ionicons.glyphMap} size={iconSize} color={action.active ? theme.accent : theme.glass.ink} />
+      )}
+      {!!action.label && (
+        <Text
+          numberOfLines={1}
+          // A safety net, not a licence for long words: a label one
+          // letter too wide shrinks rather than ending in an ellipsis,
+          // which would hide the very thing the label was added for.
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
+          style={[styles.actionLabel, { color: action.active ? theme.accent : theme.glass.ink }]}
+        >
+          {action.label}
+        </Text>
+      )}
+      {!!action.badge && (
+        <Ionicons name={action.badge as keyof typeof Ionicons.glyphMap} size={12} color={theme.glass.ink} style={styles.badge} />
+      )}
+      {/* A number in the badge's own corner instead of a glyph - how
+          many things this action is about to act on. The two never
+          appear together: a count belongs to acting on a selection, a
+          glyph badge to creating something. */}
+      {action.count !== undefined && (
+        <Text style={[styles.badge, styles.countBadge, { color: theme.glass.ink }]}>{action.count}</Text>
+      )}
+    </Pressable>
+  );
+}
+
+// Actions grouped four at a time, a thin divider between groups - the
+// user's own idea for telling a long row apart: "групування по 4 і
+// розділення відстанню повинно нівелювати плутанину з великою
+// кількістю іконок". The same grouping the editor's own toolbar already
+// draws between undo/redo and the block types, applied here to
+// whatever a screen happens to publish - the narrow ring's own actions
+// face benefits from it exactly as much as the split's own zone does,
+// and a note's nine actions were the case that asked for it first.
+function ActionGroups({
+  actions,
+  buttonWidth,
+  buttonHeight,
+  iconSize,
+  theme,
+  onDone,
+}: {
+  actions: DockAction[];
+  buttonWidth: number;
+  buttonHeight: number;
+  iconSize: number;
+  theme: ReturnType<typeof useTheme>;
+  onDone: () => void;
+}) {
+  const groups: DockAction[][] = [];
+  for (let i = 0; i < actions.length; i += 4) groups.push(actions.slice(i, i + 4));
+  return (
+    <>
+      {groups.map((group, gi) => (
+        <View key={group[0]?.key ?? gi} style={styles.actionGroup}>
+          {gi > 0 && <View style={[styles.actionGroupDivider, { backgroundColor: theme.glass.inkMuted }]} />}
+          {group.map((action) => (
+            <ActionButton
+              key={action.key}
+              action={action}
+              width={buttonWidth}
+              height={buttonHeight}
+              iconSize={iconSize}
+              theme={theme}
+              onDone={onDone}
+            />
+          ))}
+        </View>
+      ))}
+    </>
+  );
+}
 
 function Bead({
   bead,
@@ -1111,6 +1397,20 @@ const styles = StyleSheet.create({
     minWidth: 0,
     justifyContent: 'center',
   },
+  // The reserved space between the ring's own content and the split's
+  // actions zone - see where it is used for why its width is set
+  // inline and this only supplies the clipping and the centring.
+  splitDivider: {
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  splitDividerLine: {
+    width: StyleSheet.hairlineWidth,
+    height: 22,
+    opacity: 0.35,
+  },
   leave: {
     width: LEAVE_W,
     flexShrink: 0,
@@ -1144,6 +1444,19 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  // A group of (up to) four buttons - no gap WITHIN the group, since
+  // ACT_W already divides the card's width evenly across them; the
+  // divider between groups carries all the separation.
+  actionGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionGroupDivider: {
+    width: 1,
+    height: 22,
+    marginHorizontal: 8,
+    opacity: 0.35,
   },
   spread: {
     justifyContent: 'space-between',

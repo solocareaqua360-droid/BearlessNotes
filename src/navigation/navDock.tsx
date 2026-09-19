@@ -206,6 +206,13 @@ type Value = {
   // does not. Nothing fades into anything.
   wide: boolean;
   publishWide: (wide: boolean) => void;
+  // Whether the screen showing wants the Fold/tablet split to leave it
+  // alone even though the window is wide - CalendarScreen's own case:
+  // "календарний вигляд нам в розгорнутому стані не потрібен бо там вже
+  // є календар". The day strip's own swipe stays exactly as it is
+  // either way; this only refuses the PERMANENT second half.
+  noSplit: boolean;
+  publishNoSplit: (noSplit: boolean) => void;
 };
 
 const NavDockContext = createContext<Value | null>(null);
@@ -318,6 +325,10 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
   const publishWide = useCallback((next: boolean) => {
     setWide((prev) => (prev === next ? prev : next));
   }, []);
+  const [noSplit, setNoSplit] = useState(false);
+  const publishNoSplit = useCallback((next: boolean) => {
+    setNoSplit((prev) => (prev === next ? prev : next));
+  }, []);
   // A new context is a new question, so a context stepped out of does not
   // stay stepped out of once you have gone somewhere else.
   const contextKey = context ? `${context.kind}:${context.icon}` : '';
@@ -346,6 +357,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       publishPrefersActions,
       wide,
       publishWide,
+      noSplit,
+      publishNoSplit,
     }),
     [
       face,
@@ -368,6 +381,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       publishPrefersActions,
       wide,
       publishWide,
+      noSplit,
+      publishNoSplit,
     ]
   );
   return <NavDockContext.Provider value={value}>{children}</NavDockContext.Provider>;
@@ -582,6 +597,21 @@ export function useDockWide(wide: boolean) {
 
 export function useNavDockWide(): boolean {
   return useContext(NavDockContext)?.wide ?? false;
+}
+
+// See `noSplit`. Published while focused, cleared on the way out.
+export function useDockNoSplit(noSplit: boolean) {
+  const publish = useContext(NavDockContext)?.publishNoSplit;
+  const focused = useIsFocused();
+  useEffect(() => {
+    if (!publish) return;
+    publish(focused && noSplit);
+    return () => publish(false);
+  }, [publish, focused, noSplit]);
+}
+
+export function useNavDockNoSplit(): boolean {
+  return useContext(NavDockContext)?.noSplit ?? false;
 }
 
 // What a screen calls when an action has FINISHED somewhere else - a

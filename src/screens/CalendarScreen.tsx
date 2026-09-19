@@ -39,7 +39,7 @@ import { useDayHistory } from '../hooks/useDayHistory';
 import DayHistoryList from '../components/DayHistoryList';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { DockMark, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useNavDockPublisher } from '../navigation/navDock';
+import { DockMark, useDockActions, useDockBeads, useDockNoSplit, useDockShowContext, useNavDockFace, useNavDockPublisher } from '../navigation/navDock';
 import {
   MONTH_FULL,
   WEEKDAY_SHORT,
@@ -559,6 +559,15 @@ export default function CalendarScreen() {
         }
       : null
   );
+  // NOT the Fold/tablet split, even on a wide window - the user's own
+  // catch: "календарний вигляд нам в розгорнутому стані не потрібен бо
+  // там вже є календар тепер". The month grid is already on screen at
+  // that width (`monthOpen = isTwoPane || ...` above), so a permanent
+  // second half showing Фільтр/Вибір would be chrome duplicating what
+  // the screen already shows in full. The day strip itself is
+  // unaffected - it still exists and still cycles by swipe, exactly as
+  // it always has.
+  useDockNoSplit(calendarFocused && isTwoPane);
   useDockActions(
     calendarFocused
       ? [
