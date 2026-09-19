@@ -173,6 +173,27 @@ export type Theme = {
 // the backdrop had nothing left to earn its keep with. Flat now, the
 // same `ground` colour repeated, exactly the way black's own plain
 // backdrop works.
+// THE CANVAS IS PAPER, NOT A THEME. A note or a board is a light sheet
+// on a table in every theme - the ladder used to darken with the app
+// around it (see the long history in the themes memory), and the
+// user's own reversal of that: "все таки білий фон, головне щоб
+// акценти кольорами розставлені були". One set of numbers, shared by
+// all three themes, so the canvas can never again drift out of step
+// with itself between them.
+const CANVAS_LIGHT = {
+  ground: '#EAE2D5',
+  card: '#FFFEFB',
+  edge: '#DED3C1',
+  edgeActive: '#B5793E',
+  ink: '#2B2621',
+  inkMuted: '#7C7166',
+  inkFaint: '#AEA599',
+  fab: '#2B2621',
+  fabInk: '#FFFEFB',
+  lane: 'rgba(43,32,20,0.05)',
+  laneEdge: 'rgba(43,32,20,0.12)',
+};
+
 const colour: Theme = {
   key: 'colour',
   name: 'Кольорова',
@@ -208,22 +229,17 @@ const colour: Theme = {
     tint: '#F3F4F6',
     selected: '#EFF6FF',
   },
-  // Transparent on purpose: today the canvas has no ground of its own and
-  // shows the editor's, and the colour theme is a photograph of where we
-  // started. Every other value here is the literal this file replaced.
-  canvas: {
-    ground: 'transparent',
-    card: '#FFFFFF',
-    edge: '#E5E7EB',
-    edgeActive: '#8AB4FF',
-    ink: '#111827',
-    inkMuted: '#6B7280',
-    inkFaint: '#9CA3AF',
-    fab: '#111827',
-    fabInk: '#FFFFFF',
-    lane: 'rgba(17,24,39,0.05)',
-    laneEdge: 'rgba(17,24,39,0.12)',
-  },
+  // REVERSED 2026-09-19: the canvas is a light sheet in EVERY theme now,
+  // not a dark ladder of its own - "все таки білий фон, головне щоб
+  // акценти кольорами розставлені були". A note or a board is paper on
+  // a table, same as `paper` already is in every theme; the app's own
+  // chrome around it (dock, tabs) is free to stay whatever theme is on,
+  // but the surface things are actually drawn on reads as one material
+  // everywhere, so colour is what the shapes and cards carry, not what
+  // the ground behind them argues back with. Literally CANVAS_LIGHT
+  // (see below) - same value object as white's own canvas, not a
+  // separate palette to keep in step by hand.
+  canvas: CANVAS_LIGHT,
   // Was 'blur' - "the glass itself does the lifting, a shadow only
   // muddies it" - true for a card ON the glass, but it left the dock
   // with NONE of the light black's own dock got: "кольорова здається
@@ -325,20 +341,10 @@ const white: Theme = {
   },
   // The ladder runs the other way up here - the card is the brightest
   // thing and the canvas is a shade of desk under it. A white card on a
-  // white canvas would have no edge at all.
-  canvas: {
-    ground: '#EAE2D5',
-    card: '#FFFEFB',
-    edge: '#DED3C1',
-    edgeActive: '#B5793E',
-    ink: '#2B2621',
-    inkMuted: '#7C7166',
-    inkFaint: '#AEA599',
-    fab: '#2B2621',
-    fabInk: '#FFFEFB',
-    lane: 'rgba(43,32,20,0.05)',
-    laneEdge: 'rgba(43,32,20,0.12)',
-  },
+  // white canvas would have no edge at all. Shared with every other
+  // theme now (CANVAS_LIGHT) - white just happens to be where these
+  // numbers were first worked out.
+  canvas: CANVAS_LIGHT,
   lift: 'shadow',
   // On white almost nothing can come from the fill - white glass on a
   // white ground has no contrast to spend. So the body stays thin and
@@ -390,25 +396,12 @@ const black: Theme = {
     tint: 'rgba(255,255,255,0.06)',
     selected: 'rgba(255,255,255,0.10)',
   },
-  // The ladder: ground #0E0F12 -> canvas #141519 -> card #1E2025, each
-  // a small step up, none of them black and none of them white. The "+"
-  // is a dark disc with light ink rather than a light disc, which on
-  // this ground would be a lamp.
-  canvas: {
-    ground: '#141519',
-    card: '#1E2025',
-    edge: '#2C2F36',
-    edgeActive: '#7FA8F0',
-    ink: '#ECEDEF',
-    inkMuted: 'rgba(236,237,239,0.62)',
-    inkFaint: 'rgba(236,237,239,0.38)',
-    fab: '#2C2F36',
-    fabInk: '#ECEDEF',
-    // Light, not dark: a dark wash on a dark canvas is nothing at all,
-    // which is how the board's columns disappeared.
-    lane: 'rgba(255,255,255,0.05)',
-    laneEdge: 'rgba(255,255,255,0.12)',
-  },
+  // The dark ladder that used to live here (ground #0E0F12 -> canvas
+  // #141519 -> card #1E2025) is gone - same reversal as colour's, see
+  // its own note above. CANVAS_LIGHT everywhere; the black theme's own
+  // darkness stays exactly where it always was, on the CHROME around
+  // the canvas, not on the sheet itself.
+  canvas: CANVAS_LIGHT,
   lift: 'glow',
   // The one the user called bad, and the reason was the milky wash: a
   // bright fill and a bright ring all the way round turn a button on
@@ -514,10 +507,20 @@ export const DEFAULT_THEME_KEY: ThemeKey = 'colour';
 // user's read of the databases screen, and it was right. Blended most of
 // the way into the theme's surface it stays recognisable and stops
 // competing.
-export function mutedForTheme(colour: string, theme: Theme, amount = 0.62): string {
+// `target` overrides what the colour blends TOWARD - defaults to the
+// app's own chrome surface (tags, tile backgrounds - things that sit on
+// whatever the theme's ordinary surface is), but the canvas is its own
+// light sheet in every theme now (see CANVAS_LIGHT) and content drawn
+// ON it (stickies, shape fills) has to blend toward `canvas.card`
+// instead, or a black-theme sticky would mute toward a dark chrome
+// colour while sitting on a light page.
+export function mutedForTheme(colour: string, theme: Theme, amount = 0.62, target?: string): string {
   // The action tile carries no colour at all - it must pass through
-  // untouched, not crash the screen (it did, once).
-  if (!colour || theme.key === 'colour') return colour;
+  // untouched, not crash the screen (it did, once). The colour theme's
+  // OWN records stay full-saturation by default (its whole point) -
+  // but a caller that passes an explicit `target` (the canvas, which is
+  // no longer this theme's private dark ground) means it regardless.
+  if (!colour || (theme.key === 'colour' && !target)) return colour;
   const hex = (c: string) => {
     const v = c.replace('#', '');
     const full = v.length === 3 ? v.split('').map((d) => d + d).join('') : v;
@@ -525,7 +528,8 @@ export function mutedForTheme(colour: string, theme: Theme, amount = 0.62): stri
   };
   if (!colour.startsWith('#')) return colour;
   const [r, g, b] = hex(colour);
-  const [sr, sg, sb] = hex(theme.surface.startsWith('#') ? theme.surface : '#FFFFFF');
+  const targetColour = target ?? theme.surface;
+  const [sr, sg, sb] = hex(targetColour.startsWith('#') ? targetColour : '#FFFFFF');
   const mix = (a: number, b2: number) => Math.round(a + (b2 - a) * amount);
   return `#${[mix(r, sr), mix(g, sg), mix(b, sb)].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 }

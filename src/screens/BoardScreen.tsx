@@ -144,7 +144,7 @@ function stepTextSize(current: number, dir: 1 | -1): number {
 // outline, exactly as it drew before.
 function shapeFillFor(shape: BoardShape, stroke: string, theme: Theme): string {
   if (!shape.filled) return 'none';
-  return mutedForTheme(stroke, theme, 0.88);
+  return mutedForTheme(stroke, theme, 0.88, theme.canvas.card);
 }
 const SHAPE_MAX = 900;
 const clampShapeSize = (v: number) => Math.round(Math.max(SHAPE_MIN, Math.min(SHAPE_MAX, v)));
@@ -1015,7 +1015,7 @@ function DraggableCard({
           <View
             style={[
               styles.stickyCard,
-              { backgroundColor: mutedForTheme(card.color ?? STICKY_COLORS[0], theme, STICKY_MUTE) },
+              { backgroundColor: mutedForTheme(card.color ?? STICKY_COLORS[0], theme, STICKY_MUTE, theme.canvas.card) },
             ]}
           >
             <Text style={styles.stickyText} numberOfLines={6}>
@@ -1214,6 +1214,7 @@ function DraggableShape({
   posX,
   posY,
   onDragStart,
+  dragEnabled,
   canvasScale,
   canvasPanGesture,
   canvasHoldGesture,
@@ -1229,6 +1230,14 @@ function DraggableShape({
   posX: SharedValue<number>;
   posY: SharedValue<number>;
   onDragStart: (id: string) => void;
+  // false in 'connect' mode - same reason DraggableCard has this: a
+  // shape's own pan `.blocksExternalGesture(canvasPanGesture)` alone
+  // was not enough to guarantee the canvas's connect-drag wins (two
+  // competing Pan gestures, not a Pan racing a Tap) - "блоки не
+  // поєднуються звʼязками" turned out to be exactly this, shapes never
+  // got the explicit `.enabled()` gate cards already needed for the
+  // same reason.
+  dragEnabled: boolean;
   canvasScale: SharedValue<number>;
   canvasPanGesture: ReturnType<typeof Gesture.Pan>;
   canvasHoldGesture: ReturnType<typeof Gesture.LongPress>;
@@ -1257,6 +1266,7 @@ function DraggableShape({
   const resizeBase = useRef({ width: 0, height: 0 });
 
   const panGesture = Gesture.Pan()
+    .enabled(dragEnabled)
     .blocksExternalGesture(canvasPanGesture)
     .onStart(() => {
       runOnJS(onDragStart)(shape.id);
@@ -2762,10 +2772,6 @@ export default function BoardScreen() {
     clearSelection();
   }
 
-  function toggleCanvasTool() {
-    setCanvasTool((prev) => (prev === 'move' ? 'select' : prev === 'select' ? 'connect' : 'move'));
-  }
-
   function saveEditingText() {
     if (editingCard) {
       setCards((prev) => prev.map((c) => (c.id === editingCard.id ? { ...c, text: editingText } : c)));
@@ -3095,20 +3101,33 @@ export default function BoardScreen() {
             { key: 'delete', icon: 'trash-outline', label: 'Видалити', onPress: deleteSelectedCards },
           ]
         : [
+            // Three separate buttons now, not one cycled through - "чому
+            // їх всі не розмістити на доці? а не проклацувати одну
+            // кнопку - це ж нелогічно". The card was already sized for
+            // four (ACT_W divides by 4 regardless of count), so the old
+            // single button just left three slots sitting empty beside
+            // it - every mode was ALREADY drawing the width, none of
+            // them were drawing the button.
             {
-              // One button cycling move -> select -> connect, each with
-              // its own icon, as it was in the capsule.
-              key: 'tool',
-              icon:
-                canvasTool === 'select'
-                  ? 'mc:selection-drag'
-                  : canvasTool === 'connect'
-                    ? 'mc:vector-line'
-                    : 'mc:cursor-move',
-              label:
-                canvasTool === 'select' ? 'Вибір' : canvasTool === 'connect' ? 'Звʼязок' : 'Рух',
-              active: canvasTool !== 'move',
-              onPress: toggleCanvasTool,
+              key: 'move',
+              icon: 'mc:cursor-move',
+              label: 'Рух',
+              active: canvasTool === 'move',
+              onPress: () => setCanvasTool('move'),
+            },
+            {
+              key: 'select',
+              icon: 'mc:selection-drag',
+              label: 'Вибір',
+              active: canvasTool === 'select',
+              onPress: () => setCanvasTool('select'),
+            },
+            {
+              key: 'connect',
+              icon: 'mc:vector-line',
+              label: 'Звʼязок',
+              active: canvasTool === 'connect',
+              onPress: () => setCanvasTool('connect'),
             },
           ]
       : null
@@ -3170,6 +3189,7 @@ export default function BoardScreen() {
                   posX={positionFor(shape.id, shape.x, shape.y).x}
                   posY={positionFor(shape.id, shape.x, shape.y).y}
                   onDragStart={setDraggedShapeId}
+                  dragEnabled={canvasTool !== 'connect'}
                   canvasScale={scale}
                   canvasPanGesture={canvasBlockingGesture}
                   canvasHoldGesture={holdToSelectGesture}
@@ -3749,7 +3769,7 @@ export default function BoardScreen() {
                       styles.textEditColorSwatch,
                       // Muted the same way the card will be, or the
                       // swatch promises a colour the board never shows.
-                      { backgroundColor: mutedForTheme(color, theme, STICKY_MUTE) },
+                      { backgroundColor: mutedForTheme(color, theme, STICKY_MUTE, theme.canvas.card) },
                       editingCard.color === color && styles.textEditColorSwatchActive,
                     ]}
                   />
