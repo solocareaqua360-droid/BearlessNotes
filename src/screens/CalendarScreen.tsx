@@ -39,7 +39,7 @@ import { useDayHistory } from '../hooks/useDayHistory';
 import DayHistoryList from '../components/DayHistoryList';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { DockMark, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useNavDockPublisher } from '../navigation/navDock';
+import { DockMark, useDockActions, useDockBeads, useDockNoSplit, useDockShowContext, useNavDockFace, useNavDockPublisher } from '../navigation/navDock';
 import {
   MONTH_FULL,
   WEEKDAY_SHORT,
@@ -559,6 +559,15 @@ export default function CalendarScreen() {
         }
       : null
   );
+  // NOT the Fold/tablet split, even on a wide window - the user's own
+  // catch: "календарний вигляд нам в розгорнутому стані не потрібен бо
+  // там вже є календар тепер". The month grid is already on screen at
+  // that width (`monthOpen = isTwoPane || ...` above), so a permanent
+  // second half showing Фільтр/Вибір would be chrome duplicating what
+  // the screen already shows in full. The day strip itself is
+  // unaffected - it still exists and still cycles by swipe, exactly as
+  // it always has.
+  useDockNoSplit(calendarFocused && isTwoPane);
   useDockActions(
     calendarFocused
       ? [
@@ -618,23 +627,11 @@ export default function CalendarScreen() {
   const [dockFace, setDockFace] = useNavDockFace();
   const publishToDock = useNavDockPublisher();
   const pickDay = useCallback((key: string) => selectDay(parseDateKey(key)), []);
-  // NOT on a wide window. The strip is a scrubber for moving day to day
-  // when the month grid cannot be on screen - and at this width it IS
-  // on screen, right above (see `monthOpen`). Publishing it there put
-  // the same control in the dock twice over, which is what the user
-  // caught: "календарний вигляд нам в розгорнутому стані не потрібен бо
-  // там вже є календар". With no context of its own the calendar's dock
-  // becomes what every other screen's is at this width - the desks,
-  // with its own actions in the permanent zone beside them.
   useEffect(() => {
     if (!publishToDock || !calendarFocused) return;
-    if (isTwoPane) {
-      publishToDock(null);
-      return;
-    }
     publishToDock({ kind: 'strip', icon: 'calendar-outline', items: stripItems, selected: selectedKeyForDock, onPick: pickDay });
     return () => publishToDock(null);
-  }, [publishToDock, calendarFocused, isTwoPane, stripItems, selectedKeyForDock, pickDay]);
+  }, [publishToDock, calendarFocused, stripItems, selectedKeyForDock, pickDay]);
 
   function jumpToToday() {
     selectDay(new Date());
