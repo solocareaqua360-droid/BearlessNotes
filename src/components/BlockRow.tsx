@@ -651,34 +651,13 @@ export default function BlockRow({
         style={styles.blockInput}
         onPress={(e) => (isSelectMode ? onToggleSelected(item.id) : activateAtTouch(e))}
       >
-        {/* An invisible plain-text twin, measured instead of the real
-            one below. Android's onTextLayout is unreliable on a Text
-            whose CHILDREN are themselves Text elements - which
-            FormattedText always produces, even for one plain run with
-            no styling at all - and reports lines that don't match a
-            tap. DocumentCanvas's own version of this same tap (a bare
-            string as the Text's child, never FormattedText) has never
-            had the problem, which is what pointed at nested Text as
-            the cause rather than the maths in caretFromTextLayout.
-            Same style and the same stretched width as the real text,
-            so it wraps identically; out of the flow and invisible, so
-            nothing changes on screen. */}
         <Text
           ref={lockedTextRef}
           onTextLayout={(e) => {
             lockedLinesRef.current = e.nativeEvent.lines;
           }}
-          style={[
-            styles.blockDisplayText,
-            headingStyle,
-            item.checked && styles.checkedText,
-            scaledTextStyle,
-            styles.measureTwin,
-          ]}
+          style={[styles.blockDisplayText, headingStyle, item.checked && styles.checkedText, scaledTextStyle]}
         >
-          {plainTextOf(item.text) || ' '}
-        </Text>
-        <Text style={[styles.blockDisplayText, headingStyle, item.checked && styles.checkedText, scaledTextStyle]}>
           {item.text ? (
             <FormattedText
               segments={parseFormattedText(item.text)}
