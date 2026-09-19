@@ -78,7 +78,7 @@ import RenamePrompt from '../components/RenamePrompt';
 import DocumentTagsBlock from '../components/DocumentTagsBlock';
 import SketchEditor from '../components/SketchEditor';
 import EditorToolbar, { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolbar';
-import { BLOCK_ACTIONS, BlockAction, BlockActionIcon } from '../components/blockActions';
+import { BLOCK_ACTIONS, BlockAction } from '../components/blockActions';
 import { clearCopiedObject, getCopiedObject, useCopiedObject } from '../utils/objectClipboard';
 import { backupFileToDrive } from '../utils/googleDrive';
 import { ensureFileIsHere, openFileExternally } from '../utils/openFileExternally';
@@ -141,11 +141,18 @@ import StockPhotoPicker from '../components/StockPhotoPicker';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
+import {
+  useDockActions,
+  useDockLeave,
+  useDockOpensOnActions,
+  useDockShowContext,
+  useNavDockFace,
+} from '../navigation/navDock';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_DANGER, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
-import { CAPSULE_DROP, CHROME_TOP, NAV_BOTTOM, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
+import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import SaveRing from '../components/SaveRing';
 
 // The rail's capsule stood on its end is RAIL_WIDTH across; lying down on
@@ -165,6 +172,18 @@ const HORIZONTAL_CAPSULE_HEIGHT = 19 * 2 + 24 + 2;
 const SELECT_FORMAT_ACTIONS = BLOCK_ACTIONS.filter((a) =>
   (['heading', 'bulleted', 'numbered', 'checkbox', 'code'] as BlockAction[]).includes(a.key)
 );
+
+// The same actions, named for a button a quarter of a card wide. The
+// full names come from the "+" sheet, where there is a whole row each;
+// "Нумерований список" under an icon this size would shrink to the point
+// of being a grey smudge, which is worse than a shorter true word.
+const SELECT_FORMAT_LABELS: Partial<Record<BlockAction, string>> = {
+  heading: 'Заголовок',
+  bulleted: 'Список',
+  numbered: 'Нумерація',
+  checkbox: 'Чекбокс',
+  code: 'Код',
+};
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -1736,6 +1755,144 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       if (open !== previous) runOnJS(setKeyboardOpen)(open);
     }
   );
+
+  // «План навігації», the merge the whole plan was heading for: the note
+  // stops DRAWING a dock of its own and PUBLISHES what it can do, the way
+  // every other screen already does (useDockActions in DocumentsScreen is
+  // the model). One object on screen instead of two that resemble each
+  // other.
+  //
+  // It is not a re-skin. The note's own dock was built before the dock's
+  // look was measured off the user's Samsung reference, so it was the one
+  // surface still made of GlassDrop and still sized in POINTS - both of
+  // them against rules this project had already paid for ("the dock's
+  // material is the drawer's two layers, not GlassDrop"; "size the dock in
+  // fractions of screen width, never in points"). Publishing instead of
+  // drawing means those rules cannot be missed here again, because there
+  // is no second place they could be missed in.
+  //
+  // Same gates as the dock it replaces: not embedded (a note inside the
+  // calendar has no business owning the foot of the screen), only while
+  // this screen is the focused one, and NOT while the keyboard is up -
+  // the formatting toolbar owns the foot then, and two things in one
+  // place is the confusion this is meant to remove. Publishing null is
+  // exactly how a screen says "nothing here", so the gate is the value,
+  // not an early return.
+  // Which card of the stack is in front. Select mode turns the dock's
+  // page to the actions itself and the ✕ turns it back - the stack is
+  // the note's select-mode bar now, not a bar of its own.
+  const showContext = useDockShowContext();
+  const [, setDockFace] = useNavDockFace();
+  // The way out, in the dock's own leave bead - the top-right capsule's
+  // first button. One step at a time, exactly as that button did it: put
+  // the text down, then shut the drawer, and leave the note only once
+  // there is nothing left open. Back walking straight out of the note
+  // while the reference drawer stood open is what left it with no way to
+  // close at all.
+  useDockLeave(
+    'document-text-outline',
+    () => {
+      if (canvasEditing) {
+        canvasApiRef.current?.stopEditing();
+        return;
+      }
+      if (referencePanelOpen) {
+        setReferencePanelOpen(false);
+        return;
+      }
+      if (closePane) closePane();
+      else navigation.goBack();
+    },
+    !embedded
+  );
+  // ...and to OPEN on them. A note has no context of its own, and the
+  // dock's standing rule for that case is to open on the desks - right
+  // for a list at its root, wrong here, where the actions are the whole
+  // reason this note stopped drawing a dock of its own.
+  useDockOpensOnActions(!embedded);
+  const showActions = () => setDockFace('actions');
+  const dockLive = !embedded && editorFocused && !keyboardOpen;
+  useDockActions(
+    !dockLive
+      ? null
+      : isSelectMode
+      ? [
+          // The way out, and the count rides it: the ticks on the blocks
+          // say which are chosen, but not once they have scrolled past,
+          // and none of the three below is a button to press without
+          // knowing how many it is about to take.
+          {
+            key: 'cancel',
+            icon: 'close-outline',
+            label: 'Вийти',
+            count: selectedIds.size,
+            onPress: () => {
+              showContext();
+              toggleSelectMode();
+            },
+          },
+          // Formatting stays ONE tap, on the same card. Five buttons
+          // past the four a card fits, so the row scrolls - which is the
+          // honest way to admit there are more than fit, and far better
+          // than the alternative that was on the table: a «Тип» button
+          // opening a sheet, i.e. two taps for the thing the user
+          // explicitly asked to be able to do while picking blocks
+          // ("інколи блоки треба просто форматувати, наприклад зробити
+          // пронумерований список"). The long names are cut to one word
+          // each - a quarter of a card is no place for "Нумерований
+          // список".
+          ...SELECT_FORMAT_ACTIONS.map((entry) => ({
+            key: `type:${entry.key}`,
+            icon: entry.family === 'material-community' ? `mc:${entry.icon}` : entry.icon,
+            label: SELECT_FORMAT_LABELS[entry.key] ?? entry.label,
+            onPress: () => convertSelectedBlocks(entry.key as BlockType),
+          })),
+          {
+            key: 'copy',
+            icon: 'copy-outline',
+            label: 'Копія',
+            onPress: copySelectedBlocks,
+          },
+          {
+            key: 'clip',
+            icon: 'document-text-outline',
+            label: 'В нотатку',
+            onPress: clipSelectedToNote,
+          },
+          {
+            key: 'delete',
+            icon: 'trash-outline',
+            label: 'Видалити',
+            onPress: deleteSelectedBlocks,
+          },
+        ]
+      : [
+          // One button, two states - the app's own idea, already proven
+          // by the back arrow that becomes a checkmark. The label says
+          // where the press takes you, exactly as the "…" menu's row
+          // used to.
+          {
+            key: 'mode',
+            icon: canvasMode ? 'document-text-outline' : 'shapes-outline',
+            label: canvasMode ? 'Сторінка' : 'Полотно',
+            onPress: () => (canvasMode ? leaveCanvas() : setCanvasMode(true)),
+          },
+          // Only where it means something. References have no business on
+          // the page, and a control that cannot act is one you have to
+          // read and dismiss every time.
+          ...(canvasMode
+            ? [
+                {
+                  key: 'refs',
+                  icon: 'albums-outline',
+                  label: 'Референси',
+                  active: referencePanelOpen,
+                  onPress: () => setReferencePanelOpen((v) => !v),
+                },
+              ]
+            : []),
+        ]
+  );
   // The pinned toolbar rides on the live height, so it comes up (and goes
   // down) glued to the keyboard's top edge rather than appearing at the
   // final position ahead of it.
@@ -3086,6 +3243,29 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     setSelectedIds(new Set());
   }
 
+  // A block held and let go where it stood - see BlockList's
+  // onHoldWithoutDrag. The user's own design, and it retires the
+  // «Вибрати» row from the "…" menu: the way into select mode is now the
+  // gesture people already try on a list of things, and it arrives with
+  // the block you were holding already ticked, so the mode is never
+  // entered empty.
+  //
+  // Already in select mode: the hold is just another tick, which is what
+  // the tap does too - a hold that undid a selection would be a trap.
+  function selectFromHold(id: string) {
+    if (isSelectMode) {
+      toggleSelected(id);
+      return;
+    }
+    setIsSelectMode(true);
+    setSelectedIds(new Set([id]));
+    // And the dock turns its own page. The actions for a selection are
+    // on the stack's second card, and asking the user to swipe to the
+    // card they clearly just asked for would be the same "invisible
+    // exit" mistake the calendar context already taught this project.
+    showActions();
+  }
+
   // Format while selecting, without a keyboard or a single focused
   // block - the "/" toolbar's own convertBlockType only ever knew one
   // target. Same toggle-back-to-paragraph rule per block as that one
@@ -3381,134 +3561,51 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               <Pressable hitSlop={8} onPress={() => setExportMenuOpen((v) => !v)}>
                 <GlassIcon name="ellipsis-horizontal-outline" size={24} />
               </Pressable>
-              {/* The save indicator lives on this capsule's own outline -
-                  see SaveRing. Last child, so it draws over the blur. */}
+              {/* The save indicator STAYS on this capsule's outline,
+                  and this is the reason the capsule itself survives the
+                  merge rather than dissolving into the dock with its
+                  buttons.
+
+                  It was moved to the dock's front card for one round -
+                  bigger, more central, the same stadium shape - and the
+                  user stopped it before it shipped, with the argument
+                  that settles it: this thing fires on EVERY save, which
+                  is every few seconds of typing, and a light travelling
+                  round a capsule directly under the line being read is
+                  "новорічна гірлянда з відстані 50 сантиметрів 2
+                  години". The corner is not a worse place for it, it is
+                  the RIGHT place - "вона одночасно і в центрі і не в
+                  центрі уваги". Peripheral vision notices a change
+                  without the eye having to read it.
+
+                  Rule for anything ambient that repeats: the middle of
+                  the screen is for what you act on, the corner for what
+                  you only need to notice. Last child, so it draws over
+                  the blur. */}
               <SaveRing saving={saveStatus === 'saving'} />
             </GlassDrop>
           </View>
         </GlassPortal>
       )}
 
-      {/* The document's own dock. «План навігації», one level deeper: the
-          island vanishes when a note opens, and the reason written into
-          it was that there is nothing to navigate to - which stopped
-          being true the moment the dock came to mean "where you are and
-          what is worth doing here". A note has plenty of that, and it was
-          all crowded onto the right edge or buried in "…".
+      {/* The note's own dock USED TO STAND HERE, in two faces - the
+          Полотно/Референси row and the select-mode row. Both are gone
+          (2026-09-19): the note publishes what it can do and ContextDock
+          draws it, the way every other screen already worked.
 
-          Not a new control: the same pill, in the same place, at the same
-          height, holding this screen's context instead of the desks. It
-          costs the rail nothing - the room it stands in was empty.
+          It was the last surface still made of GlassDrop and still sized
+          in POINTS, both against rules this project had already paid for
+          - so it read as a different control standing in the same place
+          as the real dock. Publishing instead of drawing means there is
+          no second place those rules can be missed in.
 
-          Gone while the keyboard is up: the formatting toolbar owns the
-          foot of the screen then, and two things in one place is exactly
-          the confusion this is meant to remove. On the canvas there is no
-          keyboard, so the main use is untouched.
-
-          Gone too while blocks are selected - that is this same slot's
-          OTHER face now, see selectedIds.size below, not a second thing
-          competing with it for the foot of the screen. */}
-      {!embedded && editorFocused && !keyboardOpen && selectedIds.size === 0 && (
-        <GlassPortal>
-          <View
-            style={[styles.docDock, { bottom: NAV_BOTTOM + editorInsets.bottom }]}
-            pointerEvents="box-none"
-          >
-            <GlassDrop style={styles.docDockShell}>
-              <View style={styles.docDockRow}>
-                {/* One button, two states - the app's own idea, already
-                    proven by the back arrow that becomes a checkmark. The
-                    label says where the press takes you, exactly as the
-                    "…" menu's row used to. */}
-                <Pressable
-                  style={styles.docDockItem}
-                  onPress={() => (canvasMode ? leaveCanvas() : setCanvasMode(true))}
-                >
-                  <GlassIcon name={canvasMode ? 'document-text-outline' : 'shapes-outline'} size={20} />
-                  <Text style={styles.docDockLabel}>{canvasMode ? 'Сторінка' : 'Полотно'}</Text>
-                </Pressable>
-                {/* Only where it means something. References have no
-                    business on the page, and a control that cannot act is
-                    a control you have to read and dismiss every time. */}
-                {canvasMode && (
-                  <Pressable onPress={() => setReferencePanelOpen((v) => !v)}>
-                    {referencePanelOpen ? (
-                      // Open, marked with the same lens the island marks
-                      // the desk you are on with: one language for every
-                      // shape of this control.
-                      <GlassDrop style={styles.docDockItem} lift="none" blurAmount={0} convex>
-                        <GlassIcon name="albums-outline" size={20} />
-                        <Text style={styles.docDockLabel}>Референси</Text>
-                      </GlassDrop>
-                    ) : (
-                      <View style={styles.docDockItem}>
-                        <GlassIcon name="albums-outline" size={20} />
-                        <Text style={styles.docDockLabel}>Референси</Text>
-                      </View>
-                    )}
-                  </Pressable>
-                )}
-              </View>
-            </GlassDrop>
-          </View>
-        </GlassPortal>
-      )}
-
-      {/* Same slot, same glass shell as the dock above - the user's own
-          steer, on seeing it: keep this material if it fits the new
-          interface, drop the shape for good if it does not. It fits:
-          selecting blocks and browsing Полотно never happen at once, so
-          the two sharing one pill costs nothing and reads as one dock
-          that changes its mind rather than two different controls.
-
-          Icon-only and scrollable - see docDockIconBtn - because
-          formatting joined copy/note/delete here and a phone's width
-          was never going to hold five labelled buttons. Replaces the
-          old flat dark capsule (still used in embedded/CalendarScreen
-          contexts, which have no Полотно dock to share a slot with). */}
-      {!embedded && editorFocused && !keyboardOpen && selectedIds.size > 0 && (
-        <GlassPortal>
-          <View
-            style={[styles.docDock, { bottom: NAV_BOTTOM + editorInsets.bottom }]}
-            pointerEvents="box-none"
-          >
-            <GlassDrop style={styles.docDockShell}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                keyboardShouldPersistTaps="always"
-                contentContainerStyle={styles.docDockRow}
-              >
-                <View style={styles.docDockCount}>
-                  <Text style={styles.docDockCountLabel}>{selectedIds.size}</Text>
-                </View>
-                <View style={styles.docDockDivider} />
-                {SELECT_FORMAT_ACTIONS.map((entry) => (
-                  <Pressable
-                    key={entry.key}
-                    style={styles.docDockIconBtn}
-                    hitSlop={4}
-                    onPress={() => convertSelectedBlocks(entry.key as BlockType)}
-                  >
-                    <BlockActionIcon entry={entry} size={20} color={GLASS_TEXT} />
-                  </Pressable>
-                ))}
-                <View style={styles.docDockDivider} />
-                <Pressable style={styles.docDockIconBtn} hitSlop={4} onPress={copySelectedBlocks}>
-                  <GlassIcon name="copy-outline" size={20} />
-                </Pressable>
-                <Pressable style={styles.docDockIconBtn} hitSlop={4} onPress={clipSelectedToNote}>
-                  <GlassIcon name="document-text-outline" size={20} />
-                </Pressable>
-                <Pressable style={styles.docDockIconBtn} hitSlop={4} onPress={deleteSelectedBlocks}>
-                  <GlassIcon name="trash-outline" size={20} />
-                </Pressable>
-              </ScrollView>
-            </GlassDrop>
-          </View>
-        </GlassPortal>
-      )}
-
+          The select face's five block-type conversions moved onto the
+          actions card WITH everything else, past the four a card fits,
+          so that row scrolls. Deliberately: the alternative was a «Тип»
+          button opening a sheet, and that is two taps for the one thing
+          the user explicitly asked to be able to do while picking blocks.
+          A scrolling row admits there are more than fit; a sheet hides
+          them. */}
       {exportMenuOpen && <Pressable style={styles.exportMenuBackdrop} onPress={() => setExportMenuOpen(false)} />}
       {exportMenuOpen && (
         <GlassPortal>
@@ -3832,6 +3929,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // though someone had typed it.
           blocks={liveBlocks}
           onReorder={handleReorderBlocks}
+          onHoldWithoutDrag={selectFromHold}
           selectedIds={selectedIds}
           isSelectMode={isSelectMode}
           focusedBlockId={focusedBlockId}

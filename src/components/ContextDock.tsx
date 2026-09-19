@@ -25,6 +25,7 @@ import {
   useNavDockHidden,
   useNavDockLeave,
   useNavDockOwnContext,
+  useNavDockPrefersActions,
   useNavDockTabsInFlux,
   useNavDockTargets,
 } from '../navigation/navDock';
@@ -313,7 +314,19 @@ export default function ContextDock() {
   // Cleared of blame by the user's own test: disabled outright, every
   // remaining bug stayed exactly as present as before. Restored as it
   // was; whatever is left lives somewhere else in this file.
-  const opensOn: DockFace = !own ? 'desks' : own.kind === 'strip' ? 'desks' : 'context';
+  // ...unless the screen DECLARES otherwise. A note has no context of
+  // its own, so the rule above would open it on the desks - hiding the
+  // very buttons that moved into this dock when the note stopped drawing
+  // one. It is a declaration and not a new inference on purpose: every
+  // other screen with actions and no context keeps opening on the desks.
+  const prefersActions = useNavDockPrefersActions();
+  const opensOn: DockFace = !own
+    ? prefersActions
+      ? 'actions'
+      : 'desks'
+    : own.kind === 'strip'
+      ? 'desks'
+      : 'context';
   // The cards this screen actually has, in the order they are wanted:
   // what you are in, what you can do in it, where else you could be. A
   // card with nothing on it is not a card and is simply not in the ring.
@@ -829,6 +842,16 @@ export default function ContextDock() {
                     {!!action.badge && (
                       <Ionicons name={action.badge as keyof typeof Ionicons.glyphMap} size={12} color={theme.glass.ink} style={styles.badge} />
                     )}
+                    {/* A number in the badge's own corner instead of a
+                        glyph - how many things this action is about to
+                        act on. The two never appear together: a count
+                        belongs to acting on a selection, a glyph badge
+                        to creating something. */}
+                    {action.count !== undefined && (
+                      <Text style={[styles.badge, styles.countBadge, { color: theme.glass.ink }]}>
+                        {action.count}
+                      </Text>
+                    )}
                   </Pressable>
                 ))}
               </ScrollView>
@@ -1094,6 +1117,10 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  countBadge: {
+    fontSize: 11,
+    fontFamily: FONT_BOLD,
   },
   badge: {
     // Over the icon's own corner. It used to be measured from the

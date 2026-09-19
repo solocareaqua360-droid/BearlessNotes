@@ -15,6 +15,19 @@ type BlockListProps = {
   hideHandle?: boolean;
   blocks: Block[];
   onReorder: (blocks: Block[]) => void;
+  // A hold that never went anywhere. The drag gesture already waits out
+  // a long press before it activates, so by the time the finger lifts
+  // without having moved, the user has held a block and asked for
+  // something - and until now that something was nothing at all.
+  //
+  // The user's own design: that hold turns select mode on with this
+  // block already ticked. Two outcomes from ONE hold, told apart by what
+  // the hand does next rather than by how long it waits - hold and move
+  // is a drag, hold and let go is a selection. Nothing to learn and no
+  // threshold to feel for, which is exactly why this is not split by
+  // duration (a second, longer press would sit INSIDE the wait the drag
+  // already needs, and a slow hand would trip it on the way to dragging).
+  onHoldWithoutDrag?: (id: string) => void;
   selectedIds: Set<string>;
   isSelectMode: boolean;
   focusedBlockId: string | null;
@@ -54,6 +67,7 @@ type BlockListProps = {
 export default function BlockList({
   blocks,
   onReorder,
+  onHoldWithoutDrag,
   selectedIds,
   isSelectMode,
   focusedBlockId,
@@ -100,6 +114,8 @@ export default function BlockList({
   const rowLayouts = useRef<Record<string, { y: number; height: number }>>({});
   const blocksRef = useRef(blocks);
   blocksRef.current = blocks;
+  // Did this drag actually go anywhere? See onHoldWithoutDrag.
+  const dragMovedRef = useRef(false);
 
   function setInsertIndex(index: number | null) {
     insertIndexRef.current = index;
@@ -160,6 +176,13 @@ export default function BlockList({
   }
 
   function handleDragStart(anchorId: string, ids: string[]) {
+    // Reset per gesture - see onHoldWithoutDrag. Deliberately NOT a state
+    // update: select mode is entered on RELEASE, not here, because
+    // turning it on mid-gesture re-renders the row and recomposes the
+    // very gesture that is running (isSelectMode decides whether the
+    // TextInput's own handling is composed in), and a drag does not
+    // survive its own gesture being rebuilt under it.
+    dragMovedRef.current = false;
     hapticPickUp();
     setDraggingIds(ids);
     setDragAnchorId(anchorId);
@@ -174,6 +197,8 @@ export default function BlockList({
   }
 
   function handleDragUpdate(anchorId: string, ids: string[], translationY: number) {
+    // A few points of travel is a steady hand, not a drag.
+    if (Math.abs(translationY) > 6) dragMovedRef.current = true;
     const layout = rowLayouts.current[anchorId];
     if (!layout) return;
     const draggingSet = new Set(ids);
@@ -230,7 +255,11 @@ export default function BlockList({
     return anchorCenter - thisCenter;
   }
 
-  function handleDragEnd(ids: string[]) {
+  function handleDragEnd(anchorId: string, ids: string[]) {
+    // Held, and let go where it stood: the hold was a request to select,
+    // not to move. Safe here in a way it would not have been at the
+    // start - the gesture is over, so re-rendering the row costs nothing.
+    if (!dragMovedRef.current) onHoldWithoutDrag?.(anchorId);
     dropLineInset.value = withTiming(0, { duration: 200 });
     // A synthetic velocity makes the spring overshoot its target and settle
     // back even though it's often already resting there (no natural
@@ -285,7 +314,7 @@ export default function BlockList({
           onDragUpdate={(translationY) =>
             handleDragUpdate(item.id, dragGroupFor(item.id), translationY)
           }
-          onDragEnd={() => handleDragEnd(dragGroupFor(item.id))}
+          onDragEnd={() => handleDragEnd(item.id, dragGroupFor(item.id))}
           onToggleSelected={onToggleSelected}
           onToggleChecked={onToggleChecked}
           onOpenReminder={onOpenReminder}

@@ -123,6 +123,12 @@ export type DockAction = {
   // adds", which is how this app has drawn creation since the user asked
   // for it.
   badge?: string;
+  // A NUMBER over the icon's corner instead of a glyph - how many things
+  // the action is about to act on. The note's select mode needs it: the
+  // ticks on the blocks say which ones are chosen, but not once they
+  // have been scrolled past, and "delete" is not a button to press
+  // without knowing how many.
+  count?: number;
 };
 
 // The two things that stay OUT of the stack, as beads either side of it.
@@ -175,12 +181,28 @@ type Value = {
   // the one place that can see both the live page and the settled one.
   tabsInFlux: boolean;
   publishTabsInFlux: (inFlux: boolean) => void;
+  // Whether the screen showing wants the stack to OPEN on its actions.
+  //
+  // The default is deliberate and stays: a screen with no context of its
+  // own opens on the desks, because landing someone on the options by
+  // accident is a bug this project already had and fixed. A note is the
+  // one place where that default is wrong - its actions ARE its dock
+  // («Полотно»/«Сторінка», the selection's own four), the desks mean
+  // nothing while you are inside a document, and a note that opened on
+  // the desks would have hidden the very buttons this merge was for.
+  // So it is DECLARED by the screen, not inferred.
+  prefersActions: boolean;
+  publishPrefersActions: (prefers: boolean) => void;
 };
 
 const NavDockContext = createContext<Value | null>(null);
 
 function actionSignature(list: DockAction[] | null): string {
-  return list ? list.map((a) => `${a.key}:${a.icon}:${a.label ?? ''}:${a.badge ?? ''}:${a.active ? 1 : 0}`).join('|') : '';
+  return list
+    ? list
+        .map((a) => `${a.key}:${a.icon}:${a.label ?? ''}:${a.badge ?? ''}:${a.count ?? ''}:${a.active ? 1 : 0}`)
+        .join('|')
+    : '';
 }
 
 function beadSignature(beads: { left: DockBead | null; right: DockBead | null }): string {
@@ -275,6 +297,10 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
   const publishTabsInFlux = useCallback((inFlux: boolean) => {
     setTabsInFlux((prev) => (prev === inFlux ? prev : inFlux));
   }, []);
+  const [prefersActions, setPrefersActions] = useState(false);
+  const publishPrefersActions = useCallback((next: boolean) => {
+    setPrefersActions((prev) => (prev === next ? prev : next));
+  }, []);
   // A new context is a new question, so a context stepped out of does not
   // stay stepped out of once you have gone somewhere else.
   const contextKey = context ? `${context.kind}:${context.icon}` : '';
@@ -299,6 +325,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       setHidden,
       tabsInFlux,
       publishTabsInFlux,
+      prefersActions,
+      publishPrefersActions,
     }),
     [
       face,
@@ -317,6 +345,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       hidden,
       tabsInFlux,
       publishTabsInFlux,
+      prefersActions,
+      publishPrefersActions,
     ]
   );
   return <NavDockContext.Provider value={value}>{children}</NavDockContext.Provider>;
@@ -499,6 +529,22 @@ export function useDockBase(base: DockContext | null) {
 export function useNavDockFace(): [DockFace, (face: DockFace) => void] {
   const value = useContext(NavDockContext);
   return [value?.face ?? 'context', value?.setFace ?? (() => {})];
+}
+
+// See `prefersActions`. Published while focused, cleared on the way out,
+// so the preference never outlives the screen that holds it.
+export function useDockOpensOnActions(prefers: boolean) {
+  const publish = useContext(NavDockContext)?.publishPrefersActions;
+  const focused = useIsFocused();
+  useEffect(() => {
+    if (!publish) return;
+    publish(focused && prefers);
+    return () => publish(false);
+  }, [publish, focused, prefers]);
+}
+
+export function useNavDockPrefersActions(): boolean {
+  return useContext(NavDockContext)?.prefersActions ?? false;
 }
 
 // What a screen calls when an action has FINISHED somewhere else - a

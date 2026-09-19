@@ -80,71 +80,14 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
   // The column the editor's own controls stand in, at the right edge -
   // the same place, width and glass as the documents screen's rail. `top`
   // comes from the safe-area inset.
-  // The document's own dock - see where it is mounted. Its geometry is
-  // the island's own (constants/rail), so the two read as one control in
-  // two places rather than two bars that happen to look alike.
-  docDock: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  docDockShell: {
-    padding: NAV_PADDING,
-    maxWidth: '88%',
-  },
-  docDockRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: NAV_GAP,
-  },
-  docDockItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    height: NAV_BUTTON,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-  },
-  docDockLabel: {
-    fontSize: 14,
-    fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT,
-  },
-  // Select mode's own row, in the SAME shell/position as the Полотно
-  // dock (the two never show at once - see selectedIds.size) rather
-  // than the flat dark capsule it used to be. Icon-only, no label: with
-  // format actions added alongside copy/note/delete there are too many
-  // to keep every one labelled and still fit a phone width, and a
-  // horizontal scroll (see the JSX) is the honest way to admit that
-  // rather than shrinking everything until it stops being tappable.
-  docDockIconBtn: {
-    width: NAV_BUTTON,
-    height: NAV_BUTTON,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 999,
-  },
-  docDockDivider: {
-    width: 1,
-    height: 20,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    marginHorizontal: 2,
-  },
-  docDockCount: {
-    minWidth: NAV_BUTTON,
-    height: NAV_BUTTON,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  docDockCountLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
-  },
+  // The note's own dock had its styles here - docDock/docDockShell/
+  // docDockRow/docDockItem/docDockLabel and the select face's icon
+  // button, divider and count. All gone (2026-09-19): the note publishes
+  // its actions and ContextDock draws them. Worth remembering WHY rather
+  // than just that they went - they were sized in NAV_BUTTON/NAV_PADDING
+  // points and dressed in GlassDrop, and the real dock is sized in
+  // fractions of screen width and made of the tags drawer's two layers.
+  // A second place to draw a dock is a second place to get both wrong.
   editorRail: {
     position: 'absolute',
     // `right` is set inline - in two panes it is the pane's edge, not the
