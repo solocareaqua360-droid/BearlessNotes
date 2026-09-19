@@ -13,6 +13,7 @@ import {
   type SchemeKind,
 } from '../theme/scheme';
 import { hslToHex } from '../utils/color';
+import { contrastTextColor } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_EDGE, GLASS_TEXT, GLASS_TEXT_MUTED, SHEET_FRAME } from '../constants/glass';
 
@@ -143,6 +144,17 @@ export default function InterfaceSchemeSheet({
                   <View key={c} style={[styles.previewChip, { backgroundColor: c }]} />
                 ))}
               </View>
+              {/* The card fills, drawn as cards rather than as chips:
+                  they are the largest colour masses in the app and the
+                  only honest way to judge them is at something like
+                  their real size, with their own ink on them. */}
+              <View style={styles.previewCards}>
+                {preview.cards.map((c) => (
+                  <View key={c} style={[styles.previewCard, { backgroundColor: c }]}>
+                    <Text style={[styles.previewCardLabel, { color: contrastTextColor(c) }]}>Аа</Text>
+                  </View>
+                ))}
+              </View>
             </View>
             <Text style={styles.hint}>
               Світлота поверхонь не змінюється - її задає тема, а не повзунки. Ви обираєте, де на
@@ -212,6 +224,9 @@ const styles = StyleSheet.create({
   previewAccentLabel: { fontFamily: FONT_SEMIBOLD, fontSize: 13 },
   previewChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   previewChip: { width: 26, height: 26, borderRadius: 8 },
+  previewCards: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  previewCard: { width: 46, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  previewCardLabel: { fontFamily: FONT_SEMIBOLD, fontSize: 12 },
   hint: { fontFamily: FONT_REGULAR, fontSize: 11, color: GLASS_TEXT_MUTED, lineHeight: 16, marginTop: 10 },
   footer: {
     flexDirection: 'row',

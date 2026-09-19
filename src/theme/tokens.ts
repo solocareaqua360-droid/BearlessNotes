@@ -115,6 +115,12 @@ export type Theme = {
   // Each section's own colour - see SectionKey. A theme holds the whole
   // record rather than a function, so a scheme can replace it wholesale.
   sections: Record<SectionKey, string>;
+  // The fills a record card can take. The colour is picked from this
+  // list by a hash of the record's own id (documentColor.ts) - stable
+  // per record, so a list never flickers, and needing no Firestore
+  // field to backfill. A list rather than a rule for the same reason
+  // `sections` is one: a scheme replaces the whole thing at once.
+  cards: string[];
   // The sheet a note is read on, and what is written on it. A role of
   // its own, not `surface`: in the colour theme the note's paper is white
   // over a dark ground (it always was), so the two cannot be one value.
@@ -264,6 +270,24 @@ const CANVAS_LIGHT = {
 // collision, not a transcription error - left as it is here so this
 // step stays invisible, and it is one of the things a scheme fixes for
 // free, since a harmony hands out eleven distinct hues by construction.
+// The card fills as they ship. Lived in documentColor.ts as a module
+// constant; it is a theme value, and moving it here is what lets a
+// scheme replace it. Unchanged swatches, so nothing is repainted until
+// a scheme is actually applied - and shared by all three themes
+// because white and black never read it (colorForDocument hands those
+// two their own surface instead, deliberately).
+const CARD_FILLS = [
+  '#DAA587', // Теплий Бежевий
+  '#84B799', // М'який Шорсткий Зелений
+  '#BE7657', // Теплий Теракотовий
+  '#F8F8F8', // Майже Білий
+  '#69736E', // М'який Сірий Гекс
+  '#A0B4AF', // Блідо-М'ятний Зелений
+  '#E6EBE6', // Світло-Кремовий Зелений
+  '#556E78', // Глибокий Шорсткий Зелений
+  '#788782', // М'який Блідий Шорсткий Зелений
+];
+
 const SECTIONS: Record<SectionKey, string> = {
   documents: '#BE7657',
   tasks: '#4E9A6B',
@@ -319,6 +343,7 @@ const colour: Theme = {
   },
   edge: { hairline: 'rgba(255,255,255,0.22)', strong: 'rgba(255,255,255,0.4)' },
   sections: SECTIONS,
+  cards: CARD_FILLS,
   paper: {
     fill: '#FFFFFF',
     ink: '#111827',
@@ -439,6 +464,7 @@ const white: Theme = {
   field: { fill: '#F3EDE2', ink: '#2B2621', placeholder: '#AEA599', edge: '#E7DFD2' },
   edge: { hairline: 'rgba(43,32,20,0.10)', strong: 'rgba(43,32,20,0.20)' },
   sections: SECTIONS,
+  cards: CARD_FILLS,
   paper: {
     fill: '#FFFEFB',
     ink: '#2B2621',
@@ -508,6 +534,7 @@ const black: Theme = {
   },
   edge: { hairline: 'rgba(255,255,255,0.18)', strong: 'rgba(255,255,255,0.45)' },
   sections: SECTIONS,
+  cards: CARD_FILLS,
   paper: {
     fill: '#0E0F12',
     ink: '#ECEDEF',

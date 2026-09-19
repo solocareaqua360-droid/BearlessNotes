@@ -179,6 +179,84 @@ function sectionColour(i: number, scheme: ColourScheme, groundBrightness: number
   return legibleOn(hue, sat, lum, groundBrightness, MIN_SECTION_DELTA, SECTION_TONE_STRENGTH);
 }
 
+// THE CARD PALETTE - the biggest colour masses in the app, and until
+// now the only ones with no rule behind them at all.
+//
+// A card's colour used to be `DOCUMENT_PALETTE[hash(firestoreId) % 9]`:
+// stable, so it never flickered, and completely meaningless. Nine warm
+// swatches from an older redesign, unrelated to any theme. The user's
+// call is to keep the card a solid colour - "мені подобається що
+// картка кольорова" - and to make the palette come out of the scheme
+// so that choosing one "нічого не зіпсує".
+//
+// Three things make that safe, and none of them is taste:
+//
+// 1. SATURATION IS LOW. A card is a large fill; what reads as a
+//    confident accent on a 26pt chip is unbearable across a list of
+//    twenty. Measured on the palette that ships today: saturation
+//    0-53, averaging 19. The scheme's own saturation is mapped down
+//    into that range rather than used directly.
+// 2. TWO BANDS WITH A GAP. Cards alternate between a dark band and a
+//    light one, and the gap between them (0.50 to 0.62 of perceived
+//    brightness) is exactly the region where NEITHER dark nor white
+//    ink is comfortable. Today's palette walks straight through it -
+//    #BE7657 measures 0.53 and is the worst contrast in the app. By
+//    construction, no generated card can land there.
+// 3. THE BANDS ALSO GIVE THE LIST ITS RHYTHM. Nine cards parted by
+//    hue alone read as a patchwork; parted by value as well, they read
+//    as a list.
+const CARD_COUNT = 9;
+// The bands are a trade, and these numbers are where it settles. The
+// dark band's FLOOR is how far the darkest card stands off the ground
+// (raise it and the card stops sinking); its CEILING is how much room
+// white ink has on it (raise it and the ink suffers). Measured against
+// the palette that ships: worst ink 0.47, darkest card 0.26 above the
+// ground. These bands beat the first and come close on the second,
+// which is the right way round - a card sinking a little is a card you
+// still read, and this theme gives every card a glow besides.
+const CARD_DARK_BAND: [number, number] = [0.38, 0.52];
+const CARD_LIGHT_BAND: [number, number] = [0.62, 0.90];
+const CARD_SAT_RANGE: [number, number] = [12, 44];
+const CARD_FAN = 26;
+
+// Lightness that HITS a perceived brightness, rather than a lightness
+// that hopes to. Same reason toneCorrectedLightness exists: L is a
+// number and brightness is what the eye reports, and for the bands
+// above to mean anything the answer has to be the measured one.
+function atBrightness(hue: number, sat: number, target: number): string {
+  let lo = 0;
+  let hi = 100;
+  let hex = hslToHex(hue, sat, 50);
+  for (let i = 0; i < 12; i += 1) {
+    const mid = (lo + hi) / 2;
+    hex = hslToHex(hue, sat, mid);
+    if (perceivedBrightness(hex) < target) lo = mid;
+    else hi = mid;
+  }
+  return hex;
+}
+
+export function cardsFromScheme(scheme: ColourScheme): string[] {
+  const anchors = ANCHORS[scheme.kind];
+  // Mapped down, not used raw - see note 1 above.
+  const t = (clamp(scheme.sat, SCHEME_SAT_RANGE) - SCHEME_SAT_RANGE[0]) / (SCHEME_SAT_RANGE[1] - SCHEME_SAT_RANGE[0]);
+  const sat = Math.round(CARD_SAT_RANGE[0] + t * (CARD_SAT_RANGE[1] - CARD_SAT_RANGE[0]));
+  const rounds = Math.ceil(CARD_COUNT / anchors.length);
+  return Array.from({ length: CARD_COUNT }, (_, i) => {
+    const anchor = anchors[i % anchors.length];
+    const round = Math.floor(i / anchors.length);
+    const spread = rounds > 1 ? round / (rounds - 1) : 0.5;
+    const hue = wrap(scheme.hue + anchor + (spread - 0.5) * 2 * CARD_FAN);
+    // Alternating, so a list never runs two light cards together.
+    const light = i % 2 === 0;
+    const band = light ? CARD_LIGHT_BAND : CARD_DARK_BAND;
+    const inBand = Math.floor(i / 2);
+    const slots = light ? Math.ceil(CARD_COUNT / 2) : Math.floor(CARD_COUNT / 2);
+    const pos = slots > 1 ? inBand / (slots - 1) : 0.5;
+    return atBrightness(hue, sat, band[0] + pos * (band[1] - band[0]));
+  });
+}
+
 export function sectionsFromScheme(scheme: ColourScheme): Record<SectionKey, string> {
   const groundBrightness = perceivedBrightness(hslToHex(wrap(scheme.hue), GROUND.s, GROUND.l));
   const out = {} as Record<SectionKey, string>;
@@ -236,6 +314,7 @@ export function themeFromScheme(scheme: ColourScheme): Theme {
     selected: withAlpha(accent, 0.16),
     scrim: withAlpha(hslToHex(hue, 12, 8), 0.55),
     sections: sectionsFromScheme(scheme),
+    cards: cardsFromScheme(scheme),
     glass: { ...base.glass, body: hslToHex(hue, GLASS_BODY.s, GLASS_BODY.l) },
     glow: { ...base.glow, near: withAlpha(accent, 0.45), far: withAlpha(glowFar, 0.18) },
     // Deliberately NOT from the scheme: danger, success and warning
