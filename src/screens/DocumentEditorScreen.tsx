@@ -150,9 +150,9 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const ACCENT = '#3B82F6';
 // Палітра №3 (Теплий Теракотовий) - just for the edit-mode FAB, matching
-// DocumentsScreen's "+"; the rest of the editor keeps its own ACCENT.
+// DocumentsScreen's "+". Everything else in the editor takes the
+// theme's own accent, which a colour scheme can move.
 const EDIT_FAB_COLOR = '#BE7657';
 const DANGER = '#EF4444';
 const AUTOSAVE_DELAY_MS = 600;
@@ -1461,7 +1461,7 @@ function BlockRow({
         <View style={styles.linkCardCompact}>
           <Pressable disabled={isSelectMode} onPress={() => onOpenLink(url)} style={styles.linkCardCompactTap}>
             <View style={[styles.linkCompactIcon, isGeo && styles.linkCompactIconGeo]}>
-              <Ionicons name={isGeo ? 'location-outline' : 'link-outline'} size={18} color={isGeo ? '#16A34A' : ACCENT} />
+              <Ionicons name={isGeo ? 'location-outline' : 'link-outline'} size={18} color={isGeo ? '#16A34A' : theme.accent} />
             </View>
             <Text style={styles.linkCompactText} numberOfLines={1}>
               {item.linkTitle || item.linkSiteName || url}
@@ -1630,14 +1630,14 @@ function BlockRow({
             <Ionicons
               name={item.checked ? 'checkbox' : 'square-outline'}
               size={20}
-              color={item.checked ? ACCENT : theme.paper.inkFaint}
+              color={item.checked ? theme.accent : theme.paper.inkFaint}
             />
           </Pressable>
           {textField}
         </View>
         {!isSelectMode && (
           <Pressable style={styles.checkboxReminderRow} hitSlop={4} onPress={() => onOpenReminder(item.id)}>
-            <Ionicons name="alarm-outline" size={11} color={reminderLabel ? ACCENT : theme.paper.inkFaint} />
+            <Ionicons name="alarm-outline" size={11} color={reminderLabel ? theme.accent : theme.paper.inkFaint} />
             <Text style={[styles.checkboxReminderText, !reminderLabel && styles.checkboxReminderTextEmpty]}>
               {reminderLabel ?? 'Нагадування'}
             </Text>
@@ -1682,7 +1682,7 @@ function BlockRow({
           <Ionicons
             name={isSelectMode ? (isSelected ? 'checkmark-circle' : 'ellipse-outline') : 'reorder-two-outline'}
             size={isSelectMode ? 26 : 20}
-            color={isSelected ? ACCENT : theme.paper.inkFaint}
+            color={isSelected ? theme.accent : theme.paper.inkFaint}
           />
         </Pressable>
       )}
@@ -5028,7 +5028,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // blank flash.
     return (
       <View style={[styles.container, styles.loadingContainer, embedded && styles.containerEmbedded]}>
-        <ActivityIndicator color={ACCENT} />
+        <ActivityIndicator color={theme.accent} />
       </View>
     );
   }
@@ -5263,7 +5263,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           <Pressable style={styles.exportMenuRow} onPress={() => setPaperColorEnabled((v) => !v)}>
             <Ionicons name="color-palette-outline" size={17} color={GLASS_TEXT} />
             <Text style={styles.exportMenuRowLabel}>Колір паперу</Text>
-            {paperColorEnabled && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+            {paperColorEnabled && <Ionicons name="checkmark" size={18} color={theme.accent} />}
           </Pressable>
           <Text style={styles.exportMenuLabel}>Організація</Text>
           <Pressable
@@ -6167,7 +6167,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     borderColor: 'transparent',
   },
   coverSwatchOn: {
-    borderColor: ACCENT,
+    borderColor: t.accent,
   },
   coverSwatchFill: {
     flex: 1,
@@ -6372,7 +6372,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: ACCENT,
+    color: t.accent,
   },
   checkboxReminderTextEmpty: {
     color: t.paper.inkFaint,
@@ -6431,7 +6431,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: ACCENT,
+    backgroundColor: t.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -6478,7 +6478,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     borderRadius: 6,
   },
   tableCellSelected: {
-    borderColor: ACCENT,
+    borderColor: t.accent,
     borderWidth: 2,
     backgroundColor: t.paper.selected,
   },
@@ -6771,7 +6771,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     color: '#6B7280',
   },
   linkPromptSaveButton: {
-    backgroundColor: ACCENT,
+    backgroundColor: t.accent,
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 18,
@@ -6792,7 +6792,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     right: 8,
     height: 4,
     borderRadius: 2,
-    backgroundColor: ACCENT,
+    backgroundColor: t.accent,
   },
   addBlock: {
     flexDirection: 'row',
@@ -6823,7 +6823,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    backgroundColor: 'rgba(20,20,20,0.55)',
+    backgroundColor: t.scrim,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.35)',
     borderRadius: 24,

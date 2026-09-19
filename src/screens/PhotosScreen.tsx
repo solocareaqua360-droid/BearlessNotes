@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { withAlpha } from '../utils/color';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { railClear } from '../constants/rail';
@@ -68,10 +69,8 @@ import DownloadToast from '../components/DownloadToast';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 
-const ACCENT = '#EC4899';
 // The same half-strength tint the documents screen's add button takes -
 // the blur behind it is what separates it, so the colour only tints.
-const ACCENT_GLASS = 'rgba(236,72,153,0.55)';
 
 type JustAddedPhoto = { id: string; imageUri: string; createdAt: number };
 
@@ -106,6 +105,8 @@ type PhotoItem = {
 export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
   const { width: windowWidth } = useWindowDimensions();
   const theme = useTheme();
+  const accent = theme.sections.photos;
+  const accentGlass = withAlpha(accent, 0.55);
   const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
@@ -782,8 +783,8 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     <DatabaseChrome
       list={list}
       railSide={inPane ? 'left' : 'right'}
-      accent={ACCENT}
-      accentGlass={ACCENT_GLASS}
+      accent={accent}
+      accentGlass={accentGlass}
       onBack={() => navigation.goBack()}
       leaveIcon="image-outline"
       searchPlaceholder="Пошук фото за назвою"
@@ -987,7 +988,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
         ) : !trashOpen && itemsHere.length === 0 && explorer.folders.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
-              <Ionicons name="image-outline" size={32} color={ACCENT} />
+              <Ionicons name="image-outline" size={32} color={accent} />
             </View>
             <Text style={styles.emptyLabel}>{needle ? 'Нічого не знайдено' : 'Ще немає фото'}</Text>
             {!needle && (

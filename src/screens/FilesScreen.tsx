@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { withAlpha } from '../utils/color';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import {
@@ -64,10 +65,8 @@ import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 
-const ACCENT = '#0EA5E9';
 // The same half-strength tint the documents screen's add button takes -
 // the blur behind it is what separates it, so the colour only tints.
-const ACCENT_GLASS = 'rgba(14,165,233,0.55)';
 const DANGER = '#EF4444';
 
 
@@ -101,6 +100,8 @@ type FileItem = {
 
 export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
   const theme = useTheme();
+  const accent = theme.sections.files;
+  const accentGlass = withAlpha(accent, 0.55);
   const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   // Not two panes INSIDE a pane. Drawn in another screen's pane this
@@ -692,8 +693,8 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     <DatabaseChrome
       list={list}
       railSide={inPane ? 'left' : 'right'}
-      accent={ACCENT}
-      accentGlass={ACCENT_GLASS}
+      accent={accent}
+      accentGlass={accentGlass}
       onBack={() => navigation.goBack()}
       leaveIcon="document-outline"
       searchPlaceholder="Пошук файлів"
@@ -990,7 +991,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         !trashOpen && listedFiles.length === 0 && explorer.folders.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
-              <Ionicons name="document-outline" size={32} color={ACCENT} />
+              <Ionicons name="document-outline" size={32} color={accent} />
             </View>
             <Text style={styles.emptyLabel}>{needle ? 'Нічого не знайдено' : 'Ще немає файлів'}</Text>
             {!needle && (
@@ -1134,7 +1135,7 @@ const makeStyles = (t: Theme) =>
     gap: 12,
   },
   cardMenuBackdrop: {
-    backgroundColor: 'rgba(17,24,39,0.45)',
+    backgroundColor: t.scrim,
     ...SHEET_BACKDROP,
   },
   cardMenuSheet: {

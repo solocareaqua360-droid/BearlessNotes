@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CoverGradientView, defaultCoverFor } from '../theme/covers';
-import { useStyles } from '../theme/ThemeProvider';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import { withAlpha } from '../utils/color';
 import type { Theme } from '../theme/tokens';
 import { useRecordColour } from '../theme/ThemeProvider';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -45,10 +46,8 @@ import { useBlurTarget } from '../components/GlassTarget';
 import { railClear } from '../constants/rail';
 import { ask, confirm } from '../components/surfaces/Ask';
 
-const ACCENT = '#8B5CF6';
 // The "+" fill: the accent at half strength, since the blur behind it is
 // what separates it from the screen (see DatabaseChrome).
-const ACCENT_GLASS = 'rgba(139,92,246,0.5)';
 const boardsCollection = collection(db, 'boards');
 
 // List of "Дошка" boards. It WAS deliberately minimal next to Files,
@@ -61,6 +60,9 @@ export default function BoardsListScreen({
   inPane,
   standalone,
 }: { inPane?: boolean; standalone?: boolean } = {}) {
+  const theme = useTheme();
+  const accent = theme.sections.boards;
+  const accentGlass = withAlpha(accent, 0.55);
   const styles = useStyles(makeStyles);
   const recordColour = useRecordColour();
   const insets = useSafeAreaInsets();
@@ -467,8 +469,8 @@ export default function BoardsListScreen({
   return (
     <DatabaseChrome<BoardItem>
       list={list}
-      accent={ACCENT}
-      accentGlass={ACCENT_GLASS}
+      accent={accent}
+      accentGlass={accentGlass}
       // A tab's own root has nowhere to go back to and the island at its
       // foot; a COPY pushed over the tile board has a way back and no
       // island, like every other pushed screen.
@@ -575,7 +577,7 @@ export default function BoardsListScreen({
         ) : loadError ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
-              <Ionicons name="alert-circle-outline" size={32} color={ACCENT} />
+              <Ionicons name="alert-circle-outline" size={32} color={accent} />
             </View>
             <Text style={styles.emptyLabel}>Не вдалося прочитати дошки</Text>
             <Text style={styles.emptyHint}>{loadError}</Text>
@@ -586,7 +588,7 @@ export default function BoardsListScreen({
         boardsHere.length === 0 && explorer.folders.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
-              <Ionicons name="apps-outline" size={32} color={ACCENT} />
+              <Ionicons name="apps-outline" size={32} color={accent} />
             </View>
             <Text style={styles.emptyLabel}>{needle ? 'Нічого не знайдено' : 'Ще немає дощок'}</Text>
             <Text style={styles.emptyHint}>

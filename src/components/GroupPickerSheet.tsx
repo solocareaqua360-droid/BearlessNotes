@@ -1,3 +1,5 @@
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { useEffect, useState } from 'react';
 import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,7 +27,6 @@ import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 import { confirm } from './surfaces/Ask';
 
-const ACCENT = '#3B82F6';
 const GROUP_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
 const groupsCollection = collection(db, 'groups');
 
@@ -54,6 +55,8 @@ type Props = {
 // made while in Photos must not show up in Files or Links, so every group
 // carries a `kind` and every screen only ever queries/creates its own.
 export default function GroupPickerSheet({ visible, kind, groups, onPick, onClose }: Props) {
+  const accent = useTheme().accent;
+  const styles = useStyles(makeStyles);
   const [newGroupName, setNewGroupName] = useState('');
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingGroupName, setEditingGroupName] = useState('');
@@ -161,7 +164,7 @@ export default function GroupPickerSheet({ visible, kind, groups, onPick, onClos
               returnKeyType="done"
             />
             <Pressable hitSlop={8} onPress={addGroup}>
-              <Ionicons name="add-circle" size={26} color={ACCENT} />
+              <Ionicons name="add-circle" size={26} color={accent} />
             </Pressable>
           </View>
         </Pressable>
@@ -170,7 +173,7 @@ export default function GroupPickerSheet({ visible, kind, groups, onPick, onClos
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   backdrop: {
     ...SHEET_BACKDROP,
   },
@@ -227,7 +230,7 @@ const styles = StyleSheet.create({
     color: GLASS_TEXT,
     paddingVertical: 2,
     borderBottomWidth: 1,
-    borderBottomColor: ACCENT,
+    borderBottomColor: t.accent,
   },
   divider: {
     height: 1,

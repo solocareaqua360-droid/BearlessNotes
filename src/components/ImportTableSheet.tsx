@@ -1,3 +1,5 @@
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 // gesture-handler's ScrollView, not the core RN one: on Android a drag that
@@ -38,7 +40,6 @@ import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { ensureLocalFile } from '../utils/googleDrive';
 import { notify } from './surfaces/Ask';
 
-const ACCENT = '#3B82F6';
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -65,6 +66,8 @@ type Props = {
 // is the thing this exists to avoid, so the mapping step is deliberately
 // the only step that asks anything.
 export default function ImportTableSheet({ visible, targetDatabase, otherDatabases, onClose, onDone }: Props) {
+  const accent = useTheme().accent;
+  const styles = useStyles(makeStyles);
   const keyboardHeight = useKeyboardHeight();
   const [sheets, setSheets] = useState<ParsedSheet[] | null>(null);
   const [sheetIndex, setSheetIndex] = useState(0);
@@ -377,7 +380,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
                         disabled={busy}
                         onPress={() => useStoredFile(f)}
                       >
-                        <Ionicons name="document-outline" size={18} color={ACCENT} />
+                        <Ionicons name="document-outline" size={18} color={accent} />
                         <Text style={styles.storedLabel} numberOfLines={1}>
                           {f.title || f.fileName}
                         </Text>
@@ -410,7 +413,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
                 <Ionicons
                   name={hasHeaderRow ? 'checkbox' : 'square-outline'}
                   size={18}
-                  color={hasHeaderRow ? ACCENT : GLASS_TEXT_FAINT}
+                  color={hasHeaderRow ? accent : GLASS_TEXT_FAINT}
                 />
                 <Text style={styles.switchLabel}>Перший рядок це заголовки</Text>
               </Pressable>
@@ -579,7 +582,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   backdrop: {
     ...SHEET_BACKDROP,
   },
@@ -641,8 +644,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   chipActive: {
-    backgroundColor: '#EFF6FF',
-    borderColor: ACCENT,
+    backgroundColor: t.selected,
+    borderColor: t.accent,
   },
   chipLabel: {
     fontSize: 13,
@@ -650,7 +653,7 @@ const styles = StyleSheet.create({
     color: GLASS_TEXT,
   },
   chipLabelActive: {
-    color: ACCENT,
+    color: t.accent,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
   },
@@ -706,7 +709,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: ACCENT,
+    color: t.accent,
   },
   titleBadgePick: {
     fontSize: 11,
@@ -782,7 +785,7 @@ const styles = StyleSheet.create({
     color: GLASS_TEXT,
   },
   primaryButton: {
-    backgroundColor: ACCENT,
+    backgroundColor: t.accent,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',

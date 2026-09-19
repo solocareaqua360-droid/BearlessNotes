@@ -1,3 +1,5 @@
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { useEffect, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 // gesture-handler's ScrollView, not the core RN one: on Android a drag that
@@ -36,7 +38,6 @@ import GlassLayer from './GlassLayer';
 import ReferenceBlockPreview from './ReferenceBlockPreview';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
-const ACCENT = '#3B82F6';
 // Every listener gets one of these. A read the rules refuse does not come
 // back as an empty snapshot - it THROWS, and it throws asynchronously,
 // where no error boundary can reach it. React Native answers a fatal by
@@ -191,6 +192,8 @@ export default function AddExistingItemModal({
   docked,
   rowRef,
 }: Props) {
+  const accent = useTheme().accent;
+  const styles = useStyles(makeStyles);
   const keyboardHeight = useKeyboardHeight();
   const [tab, setTab] = useState<Tab>('file');
   const [searchQuery, setSearchQuery] = useState('');
@@ -422,7 +425,7 @@ export default function AddExistingItemModal({
                   <View ref={rowRef?.(`file-${f.id}`, () => blockFromFile(f), (f.title || f.fileName))} collapsable={false}>
                   <Pressable key={f.id} style={styles.row} onPress={() => onPick(blockFromFile(f))}>
                     <View style={styles.docIcon}>
-                      <Ionicons name="document-outline" size={18} color={ACCENT} />
+                      <Ionicons name="document-outline" size={18} color={accent} />
                     </View>
                     <Text style={styles.rowText} numberOfLines={1}>
                       {f.title || f.fileName}
@@ -459,7 +462,7 @@ export default function AddExistingItemModal({
                       <Image source={{ uri: l.imageUrl }} style={styles.thumb} resizeMode="cover" resizeMethod="resize" />
                     ) : (
                       <View style={styles.docIcon}>
-                        <Ionicons name="videocam-outline" size={18} color={ACCENT} />
+                        <Ionicons name="videocam-outline" size={18} color={accent} />
                       </View>
                     )}
                     <Text style={styles.rowText} numberOfLines={1}>
@@ -478,7 +481,7 @@ export default function AddExistingItemModal({
                   <View ref={rowRef?.(`geo-${l.id}`, () => blockFromLink(l), (l.title || hostnameOf(l.url)))} collapsable={false}>
                   <Pressable key={l.id} style={styles.row} onPress={() => onPick(blockFromLink(l))}>
                     <View style={styles.docIcon}>
-                      <Ionicons name="location-outline" size={18} color={ACCENT} />
+                      <Ionicons name="location-outline" size={18} color={accent} />
                     </View>
                     <Text style={styles.rowText} numberOfLines={1}>
                       {l.title || hostnameOf(l.url)}
@@ -499,7 +502,7 @@ export default function AddExistingItemModal({
                       <Image source={{ uri: l.imageUrl }} style={styles.thumb} resizeMode="cover" resizeMethod="resize" />
                     ) : (
                       <View style={styles.docIcon}>
-                        <Ionicons name="link-outline" size={18} color={ACCENT} />
+                        <Ionicons name="link-outline" size={18} color={accent} />
                       </View>
                     )}
                     <Text style={styles.rowText} numberOfLines={1}>
@@ -551,7 +554,7 @@ export default function AddExistingItemModal({
                     onPress={() => (rowRef ? setOpenDocId(d.id) : onPickDocument?.(d))}
                   >
                     <View style={styles.docIcon}>
-                      <Ionicons name="document-text-outline" size={18} color={ACCENT} />
+                      <Ionicons name="document-text-outline" size={18} color={accent} />
                     </View>
                     <Text style={styles.rowText} numberOfLines={1}>
                       {d.title}
@@ -603,7 +606,7 @@ export default function AddExistingItemModal({
                       <Ionicons
                         name={(d.icon as keyof typeof Ionicons.glyphMap) || 'grid-outline'}
                         size={18}
-                        color={ACCENT}
+                        color={accent}
                       />
                     </View>
                     <Text style={styles.rowText} numberOfLines={1}>
@@ -640,7 +643,7 @@ export default function AddExistingItemModal({
                       <View key={v.id} ref={rowRef?.(`view-${v.id}`, build, v.name || 'Вигляд')} collapsable={false}>
                       <Pressable style={styles.row} onPress={() => onPick(build())}>
                         <View style={styles.docIcon}>
-                          <Ionicons name="bookmark-outline" size={18} color={ACCENT} />
+                          <Ionicons name="bookmark-outline" size={18} color={accent} />
                         </View>
                         <Text style={styles.rowText} numberOfLines={1}>
                           {v.name || 'Вигляд'}
@@ -667,7 +670,7 @@ export default function AddExistingItemModal({
                     <View key={r.id} ref={rowRef?.(`row-${r.id}`, build, rowTitleOf(openDatabase, r))} collapsable={false}>
                     <Pressable style={styles.row} onPress={() => onPick(build())}>
                       <View style={styles.docIcon}>
-                        <Ionicons name="grid-outline" size={18} color={ACCENT} />
+                        <Ionicons name="grid-outline" size={18} color={accent} />
                       </View>
                       <Text style={styles.rowText} numberOfLines={1}>
                         {rowTitleOf(openDatabase, r)}
@@ -710,7 +713,7 @@ export default function AddExistingItemModal({
 
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   // Docked: fills whatever holds it - the reference panel decides the
   // actual width/height, this just gives the tab row and the list
   // somewhere to stack in.
@@ -778,7 +781,7 @@ const styles = StyleSheet.create({
     backgroundColor: GLASS_LINE,
   },
   tabActive: {
-    backgroundColor: ACCENT,
+    backgroundColor: t.accent,
   },
   tabLabel: {
     fontSize: 13,
@@ -842,7 +845,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 8,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: t.selected,
     alignItems: 'center',
     justifyContent: 'center',
   },

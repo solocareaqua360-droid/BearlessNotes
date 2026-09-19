@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { withAlpha } from '../utils/color';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { railClear } from '../constants/rail';
@@ -60,10 +61,8 @@ import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 
-const ACCENT = '#14B8A6';
 // The same half-strength tint the documents screen's add button takes -
 // the blur behind it is what separates it, so the colour only tints.
-const ACCENT_GLASS = 'rgba(20,184,166,0.55)';
 const DANGER = '#EF4444';
 const linksCollection = collection(db, 'links');
 
@@ -135,6 +134,8 @@ export default function LinksScreen({
   inPane,
 }: Partial<Props> & { category?: 'video' | 'geo' | 'other'; inPane?: boolean }) {
   const theme = useTheme();
+  const accent = theme.sections.links;
+  const accentGlass = withAlpha(accent, 0.55);
   const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const category = categoryProp ?? route?.params.category ?? 'other';
@@ -653,8 +654,8 @@ export default function LinksScreen({
     <DatabaseChrome
       list={list}
       railSide={inPane ? 'left' : 'right'}
-      accent={ACCENT}
-      accentGlass={ACCENT_GLASS}
+      accent={accent}
+      accentGlass={accentGlass}
       onBack={() => navigation.goBack()}
       leaveIcon="link-outline"
       searchPlaceholder="Пошук за назвою"
@@ -1015,7 +1016,7 @@ const makeStyles = (t: Theme) =>
     width: 72,
     height: 72,
     borderRadius: 20,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: t.selected,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1052,7 +1053,7 @@ const makeStyles = (t: Theme) =>
     gap: 12,
   },
   cardMenuBackdrop: {
-    backgroundColor: 'rgba(17,24,39,0.45)',
+    backgroundColor: t.scrim,
     ...SHEET_BACKDROP,
   },
   cardMenuSheet: {

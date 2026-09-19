@@ -65,7 +65,6 @@ import GradientSlider from '../components/GradientSlider';
 // The app's own warm action colour (the one RenamePrompt's save button
 // and the browser's sign-in use), not the system blue this screen was
 // left with.
-const ACCENT = '#F5C77E';
 const DANGER = '#EF4444';
 
 const SECTION_TITLES: Record<'menu' | 'account' | 'appearance' | 'integrations' | 'about', string> = {
@@ -97,6 +96,7 @@ function formatUpdateTime(date: Date | null): string {
 
 export default function SettingsScreen() {
   const theme = useTheme();
+  const accent = theme.sections.settings;
   const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   // Absent -> the menu; present -> just that section's cards. See
@@ -505,7 +505,7 @@ export default function SettingsScreen() {
                 style={styles.menuRow}
                 onPress={() => navigation.push('Settings', { section: row.id })}
               >
-                <Ionicons name={row.icon} size={22} color={ACCENT} />
+                <Ionicons name={row.icon} size={22} color={accent} />
                 <Text style={styles.menuRowLabel}>{row.label}</Text>
                 <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.4)" />
               </Pressable>
@@ -531,7 +531,7 @@ export default function SettingsScreen() {
         {section === 'appearance' && (
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Ionicons name="color-filter-outline" size={22} color={ACCENT} />
+            <Ionicons name="color-filter-outline" size={22} color={accent} />
             <Text style={styles.cardTitle}>Тема</Text>
           </View>
           <View style={styles.themeRow}>
@@ -560,7 +560,7 @@ export default function SettingsScreen() {
         {section === 'appearance' && themeKey === 'colour' && (
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Ionicons name="color-palette-outline" size={22} color={ACCENT} />
+            <Ionicons name="color-palette-outline" size={22} color={accent} />
             <Text style={styles.cardTitle}>Кольори інтерфейсу</Text>
           </View>
           <Text style={styles.cardHint}>
@@ -577,7 +577,7 @@ export default function SettingsScreen() {
         {section === 'account' && (
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Ionicons name="person-circle-outline" size={22} color={ACCENT} />
+            <Ionicons name="person-circle-outline" size={22} color={accent} />
             <Text style={styles.cardTitle}>Обліковий запис</Text>
           </View>
           <Text style={styles.cardBody}>
@@ -605,7 +605,7 @@ export default function SettingsScreen() {
           {claimStatus !== '' && <Text style={styles.cardHint}>{claimStatus}</Text>}
           <Pressable style={styles.checkButton} onPress={handleGoogleSignIn} disabled={authBusy}>
             {authBusy ? (
-              <ActivityIndicator color={ACCENT} />
+              <ActivityIndicator color={accent} />
             ) : (
               <Text style={styles.checkLabel}>{accountEmail ? 'Змінити акаунт' : 'Увійти через Google'}</Text>
             )}
@@ -632,7 +632,7 @@ export default function SettingsScreen() {
                   <Text style={styles.trafficLabel}>Не вдалося отримати дані про Диск</Text>
                 )}
                 <Pressable onPress={loadQuota} disabled={quotaLoading} hitSlop={8}>
-                  <Ionicons name="refresh-outline" size={15} color={ACCENT} />
+                  <Ionicons name="refresh-outline" size={15} color={accent} />
                 </Pressable>
               </View>
               {!!stats && stats.fileCount > 0 && (
@@ -693,7 +693,7 @@ export default function SettingsScreen() {
                 )}
               </Pressable>
               <Pressable style={styles.checkButton} onPress={handleCheckConnection} disabled={busy}>
-                {busy ? <ActivityIndicator color={ACCENT} /> : <Text style={styles.checkLabel}>Перевірити з'єднання</Text>}
+                {busy ? <ActivityIndicator color={accent} /> : <Text style={styles.checkLabel}>Перевірити з'єднання</Text>}
               </Pressable>
               <Pressable style={styles.disconnectButton} onPress={handleDisconnect} disabled={busy}>
                 <Text style={styles.disconnectLabel}>Відключити</Text>
@@ -716,7 +716,7 @@ export default function SettingsScreen() {
         {section === 'about' && (
         <View style={[styles.card, styles.updateCard]}>
           <View style={styles.cardHeader}>
-            <Ionicons name="cloud-download-outline" size={22} color={ACCENT} />
+            <Ionicons name="cloud-download-outline" size={22} color={accent} />
             <Text style={styles.cardTitle}>Версія застосунку</Text>
           </View>
           <Text style={styles.cardBody}>
@@ -736,7 +736,7 @@ export default function SettingsScreen() {
         </View>
         <Pressable style={styles.checkButton} onPress={handleCheckUpdate} disabled={updateBusy}>
             {updateBusy ? (
-              <ActivityIndicator color={ACCENT} />
+              <ActivityIndicator color={accent} />
             ) : (
               <Text style={styles.checkLabel}>Перевірити оновлення</Text>
             )}
@@ -747,7 +747,7 @@ export default function SettingsScreen() {
         {section === 'integrations' && (
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Ionicons name="image-outline" size={22} color={ACCENT} />
+            <Ionicons name="image-outline" size={22} color={accent} />
             <Text style={styles.cardTitle}>Пошук зображень</Text>
           </View>
           {pexelsKey ? (
@@ -794,7 +794,7 @@ export default function SettingsScreen() {
         {section === 'integrations' && (
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Ionicons name="sparkles-outline" size={22} color={ACCENT} />
+            <Ionicons name="sparkles-outline" size={22} color={accent} />
             <Text style={styles.cardTitle}>Gemini у чаті</Text>
           </View>
           {geminiKey ? (
@@ -848,7 +848,7 @@ export default function SettingsScreen() {
         {section === 'appearance' && (
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Ionicons name="color-palette-outline" size={22} color={ACCENT} />
+            <Ionicons name="color-palette-outline" size={22} color={accent} />
             <Text style={styles.cardTitle}>Фон застосунку</Text>
           </View>
           <Text style={styles.cardHint}>
@@ -982,7 +982,7 @@ export default function SettingsScreen() {
                     <Ionicons
                       name={backdropSettings.appliesTo.includes(key) ? 'checkbox' : 'square-outline'}
                       size={20}
-                      color={backdropSettings.appliesTo.includes(key) ? ACCENT : theme.ink.muted}
+                      color={backdropSettings.appliesTo.includes(key) ? accent : theme.ink.muted}
                     />
                     <Text style={styles.cardBody}>{THEMES[key].name}</Text>
                   </Pressable>
@@ -1000,7 +1000,7 @@ export default function SettingsScreen() {
         {section === 'appearance' && (
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Ionicons name="text-outline" size={22} color={ACCENT} />
+            <Ionicons name="text-outline" size={22} color={accent} />
             <Text style={styles.cardTitle}>Розмір шрифту</Text>
           </View>
 
@@ -1142,7 +1142,7 @@ const makeStyles = (t: Theme) =>
   },
   card: {
     marginHorizontal: 20,
-    backgroundColor: 'rgba(20,20,20,0.35)',
+    backgroundColor: t.scrim,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
@@ -1178,7 +1178,7 @@ const makeStyles = (t: Theme) =>
   inlineAction: {
     fontSize: 13,
     fontFamily: FONT_SEMIBOLD,
-    color: ACCENT,
+    color: t.sections.settings,
   },
   trafficLabel: {
     flex: 1,
@@ -1187,7 +1187,7 @@ const makeStyles = (t: Theme) =>
     color: t.ink.muted,
   },
   connectButton: {
-    backgroundColor: ACCENT,
+    backgroundColor: t.sections.settings,
     borderRadius: 10,
     paddingVertical: 10,
     alignItems: 'center',
@@ -1212,7 +1212,7 @@ const makeStyles = (t: Theme) =>
     borderColor: 'rgba(255,255,255,0.28)',
   },
   themeChipOn: {
-    borderColor: ACCENT,
+    borderColor: t.sections.settings,
     backgroundColor: 'rgba(245,199,126,0.16)',
   },
   themeChipLabel: {

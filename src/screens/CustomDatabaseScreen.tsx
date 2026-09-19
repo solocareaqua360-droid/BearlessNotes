@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { useRecordColour } from '../theme/ThemeProvider';
+import { useRecordColour, useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
+import { withAlpha } from '../utils/color';
 import {
   ActivityIndicator,
   Alert,
@@ -128,10 +130,8 @@ import { CHROME_TOP } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
 import Menu from '../components/surfaces/Menu';
 
-const ACCENT = '#A05C7B';
 // The foot the lists keep clear for the dock - DatabaseChrome's reckoning.
 // The same half-strength tint the documents screen's add button takes.
-const ACCENT_GLASS = 'rgba(160,92,123,0.55)';
 const DANGER = '#EF4444';
 
 function generateId(): string {
@@ -196,6 +196,10 @@ export default function CustomDatabaseScreen({
   databaseId: databaseIdProp,
   inPane,
 }: Partial<Props> & { databaseId?: string; inPane?: boolean }) {
+  const theme = useTheme();
+  const accent = theme.sections.custom;
+  const accentGlass = withAlpha(accent, 0.55);
+  const styles = useStyles(makeStyles);
   const recordColour = useRecordColour();
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
@@ -1244,7 +1248,7 @@ export default function CustomDatabaseScreen({
             </View>
           ))}
           <Pressable style={styles.backlinkAddRow} onPress={() => setBacklinkPickerFieldId(field.id)}>
-            <Ionicons name="add" size={16} color={ACCENT} />
+            <Ionicons name="add" size={16} color={accent} />
             <Text style={styles.backlinkAddLabel}>Додати</Text>
           </Pressable>
         </View>
@@ -1920,12 +1924,12 @@ export default function CustomDatabaseScreen({
                     <Ionicons
                       name="add-circle-outline"
                       size={15}
-                      color={activeView ? 'rgba(255,255,255,0.3)' : ACCENT}
+                      color={activeView ? 'rgba(255,255,255,0.3)' : accent}
                     />
                     <Text
                       style={[
                         styles.paramOptionLabel,
-                        { color: activeView ? 'rgba(255,255,255,0.3)' : ACCENT },
+                        { color: activeView ? 'rgba(255,255,255,0.3)' : accent },
                       ]}
                     >
                       Зберегти поточний
@@ -1959,7 +1963,7 @@ export default function CustomDatabaseScreen({
       ) : displayedRows.length === 0 ? (
         <View style={styles.emptyState}>
           <View style={styles.emptyIcon}>
-            <Ionicons name={readError ? 'lock-closed-outline' : 'grid-outline'} size={32} color={ACCENT} />
+            <Ionicons name={readError ? 'lock-closed-outline' : 'grid-outline'} size={32} color={accent} />
           </View>
           <Text style={styles.emptyLabel}>
             {readError ? 'Не вдалося прочитати записи' : needle ? 'Нічого не знайдено' : 'Ще немає записів'}
@@ -2595,6 +2599,8 @@ function OptionPickerSheet({
   onCreateOption: (label: string) => Promise<string>;
   onClose: () => void;
 }) {
+  const accent = useTheme().sections.custom;
+  const styles = useStyles(makeStyles);
   const isMulti = field.type === 'multiSelect';
   const keyboardHeight = useKeyboardHeight();
   const [search, setSearch] = useState('');
@@ -2666,8 +2672,8 @@ function OptionPickerSheet({
                     .catch(() => {});
                 }}
               >
-                <Ionicons name="add-circle-outline" size={18} color={ACCENT} />
-                <Text style={[styles.optionPickerLabel, { color: ACCENT }]} numberOfLines={1}>
+                <Ionicons name="add-circle-outline" size={18} color={accent} />
+                <Text style={[styles.optionPickerLabel, { color: accent }]} numberOfLines={1}>
                   Створити «{search.trim()}»
                 </Text>
               </Pressable>
@@ -2678,7 +2684,7 @@ function OptionPickerSheet({
                 <Pressable key={option.id} style={styles.optionPickerRow} onPress={() => choose(option.id)}>
                   <View style={[styles.optionDot, { backgroundColor: option.color }]} />
                   <Text style={styles.optionPickerLabel}>{option.label}</Text>
-                  {selected && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+                  {selected && <Ionicons name="checkmark" size={18} color={accent} />}
                 </Pressable>
               );
             })}
@@ -2739,6 +2745,8 @@ function RelationPickerSheet({
   keyboardHeight: number;
   onClose: () => void;
 }) {
+  const accent = useTheme().sections.custom;
+  const styles = useStyles(makeStyles);
   const [search, setSearch] = useState('');
   const isMulti = !!field.multiple;
   const selectedIds = Array.isArray(value) ? value : typeof value === 'string' && value ? [value] : [];
@@ -2812,7 +2820,7 @@ function RelationPickerSheet({
                   <Text style={styles.optionPickerLabel} numberOfLines={1}>
                     {nameOfLink(link)}
                   </Text>
-                  {selectedIds.includes(link.id) && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+                  {selectedIds.includes(link.id) && <Ionicons name="checkmark" size={18} color={accent} />}
                 </Pressable>
               ))}
               {filteredLinks.length === 0 && (
@@ -2863,7 +2871,7 @@ function RelationPickerSheet({
                   <Text style={styles.optionPickerLabel} numberOfLines={1}>
                     {nameOf(file)}
                   </Text>
-                  {selectedIds.includes(file.id) && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+                  {selectedIds.includes(file.id) && <Ionicons name="checkmark" size={18} color={accent} />}
                 </Pressable>
               ))}
               {filteredFiles.length === 0 && (
@@ -2906,7 +2914,7 @@ function RelationPickerSheet({
                     <RelationThumb uri={photo.imageUri} driveFileId={photo.driveFileId} size={72} radius={10} />
                     {selectedIds.includes(photo.id) && (
                       <View style={styles.relationPhotoCheck}>
-                        <Ionicons name="checkmark-circle" size={18} color={ACCENT} />
+                        <Ionicons name="checkmark-circle" size={18} color={accent} />
                       </View>
                     )}
                   </Pressable>
@@ -2966,8 +2974,8 @@ function RelationPickerSheet({
                     .catch(() => {});
                 }}
               >
-                <Ionicons name="add-circle-outline" size={18} color={ACCENT} />
-                <Text style={[styles.optionPickerLabel, { color: ACCENT }]} numberOfLines={1}>
+                <Ionicons name="add-circle-outline" size={18} color={accent} />
+                <Text style={[styles.optionPickerLabel, { color: accent }]} numberOfLines={1}>
                   Створити «{search.trim()}»
                 </Text>
               </Pressable>
@@ -2980,7 +2988,7 @@ function RelationPickerSheet({
               return (
                 <Pressable key={r.id} style={styles.optionPickerRow} onPress={() => choose(r.id)}>
                   <Text style={styles.optionPickerLabel}>{title}</Text>
-                  {selectedIds.includes(r.id) && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+                  {selectedIds.includes(r.id) && <Ionicons name="checkmark" size={18} color={accent} />}
                 </Pressable>
               );
             })}
@@ -3002,6 +3010,7 @@ function RelationPickerSheet({
 // TasksScreen's ReminderSheet, which also carries time-of-day and
 // notification scheduling this field type doesn't need.
 function MiniDatePicker({ value, onPick, onClose }: { value?: string; onPick: (key: string) => void; onClose: () => void }) {
+  const miniStyles = useStyles(makeMiniStyles);
   const initial = value ? parseDateKey(value) : new Date();
   const [visibleMonth, setVisibleMonth] = useState({ year: initial.getFullYear(), month: initial.getMonth() });
   const grid = getMonthGrid(visibleMonth.year, visibleMonth.month);
@@ -3066,7 +3075,7 @@ function MiniDatePicker({ value, onPick, onClose }: { value?: string; onPick: (k
   );
 }
 
-const miniStyles = StyleSheet.create({
+const makeMiniStyles = (t: Theme) => StyleSheet.create({
   // The layer draws the dim; this only centres the calendar in it.
   backdrop: {
     flex: 1,
@@ -3124,11 +3133,11 @@ const miniStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   dayCircleSelected: {
-    backgroundColor: ACCENT,
+    backgroundColor: t.sections.custom,
   },
   dayCircleToday: {
     borderWidth: 1.5,
-    borderColor: ACCENT,
+    borderColor: t.sections.custom,
   },
   dayNum: {
     fontSize: 13,
@@ -3162,6 +3171,7 @@ function SortOption({
   dir: 'asc' | 'desc';
   onPress: () => void;
 }) {
+  const styles = useStyles(makeStyles);
   return (
     <Pressable style={styles.paramOption} onPress={onPress}>
       {!!icon && <Ionicons name={icon} size={14} color={active ? '#fff' : 'rgba(255,255,255,0.7)'} />}
@@ -3173,7 +3183,7 @@ function SortOption({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -3184,13 +3194,13 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 999,
     overflow: 'hidden',
-    backgroundColor: ACCENT_GLASS,
+    backgroundColor: withAlpha(t.sections.custom, 0.55),
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 4,
-    shadowColor: ACCENT,
+    shadowColor: t.sections.custom,
     shadowOpacity: 0.5,
     shadowOffset: { width: 0, height: 3 },
     shadowRadius: 6,
@@ -3307,7 +3317,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: ACCENT,
+    color: t.sections.custom,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
     marginTop: 22,
@@ -3392,7 +3402,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: ACCENT,
+    backgroundColor: t.sections.custom,
     borderRadius: 999,
     paddingVertical: 8,
     paddingHorizontal: 14,
@@ -3461,7 +3471,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   relationDoneButton: {
-    backgroundColor: ACCENT,
+    backgroundColor: t.sections.custom,
     borderRadius: 12,
     paddingVertical: 13,
     alignItems: 'center',
@@ -3502,7 +3512,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: ACCENT,
+    color: t.sections.custom,
   },
   paramsScroll: {
     flexGrow: 0,
@@ -3532,7 +3542,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexShrink: 0,
     gap: 5,
-    backgroundColor: 'rgba(20,20,20,0.35)',
+    backgroundColor: t.scrim,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
     borderRadius: 999,
@@ -3725,7 +3735,7 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
   },
   backdrop: {
-    backgroundColor: 'rgba(17,24,39,0.45)',
+    backgroundColor: t.scrim,
     ...SHEET_BACKDROP,
   },
   // For the form that lives in a GlassLayer: the layer draws the dim.
@@ -3996,7 +4006,7 @@ const styles = StyleSheet.create({
     color: GLASS_TEXT_MUTED,
   },
   saveButton: {
-    backgroundColor: ACCENT,
+    backgroundColor: t.sections.custom,
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 18,
@@ -4009,7 +4019,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   cardMenuBackdrop: {
-    backgroundColor: 'rgba(17,24,39,0.45)',
+    backgroundColor: t.scrim,
     ...SHEET_BACKDROP,
   },
   cardMenuSheet: {

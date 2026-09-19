@@ -7,7 +7,6 @@ import { FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 
-const ACCENT = '#3B82F6';
 
 type Props = {
   tagIds: string[];
@@ -89,7 +88,7 @@ export default function DocumentTagsBlock({ tagIds, tags, onAttach, onDetach, on
             ))}
             {canCreate && (
               <Pressable style={styles.createRow} onPress={startCreate}>
-                <Ionicons name="add" size={14} color={ACCENT} />
+                <Ionicons name="add" size={14} color={theme.accent} />
                 <Text style={styles.createLabel}>створити папку "{query.trim()}"</Text>
               </Pressable>
             )}
@@ -204,7 +203,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   },
   createLabel: {
     fontSize: 13,
-    color: ACCENT,
+    color: t.accent,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
   },

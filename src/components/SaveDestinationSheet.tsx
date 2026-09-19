@@ -1,3 +1,5 @@
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 // gesture-handler's ScrollView, not the core RN one: on Android a drag that
@@ -21,7 +23,6 @@ import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
-const ACCENT = '#3B82F6';
 
 type PickableDocument = { id: string; title: string };
 type PickableBoard = { id: string; title: string };
@@ -74,6 +75,8 @@ export default function SaveDestinationSheet({
   onPickExistingBoard,
   onClose,
 }: Props) {
+  const accent = useTheme().accent;
+  const styles = useStyles(makeStyles);
   const keyboardHeight = useKeyboardHeight();
   const [documents, setDocuments] = useState<PickableDocument[]>([]);
   const [boards, setBoards] = useState<PickableBoard[]>([]);
@@ -137,7 +140,7 @@ export default function SaveDestinationSheet({
             {defaultLabel && onPickDefault && (
               <Pressable style={styles.row} onPress={onPickDefault}>
                 <View style={styles.actionIcon}>
-                  <Ionicons name="flash-outline" size={16} color={ACCENT} />
+                  <Ionicons name="flash-outline" size={16} color={accent} />
                 </View>
                 <Text style={[styles.rowText, styles.rowTextAction]}>{defaultLabel}</Text>
               </Pressable>
@@ -146,7 +149,7 @@ export default function SaveDestinationSheet({
             {!boardsOnly && onPickToday && (
               <Pressable style={styles.row} onPress={onPickToday}>
                 <View style={styles.actionIcon}>
-                  <Ionicons name="today-outline" size={16} color={ACCENT} />
+                  <Ionicons name="today-outline" size={16} color={accent} />
                 </View>
                 <Text style={[styles.rowText, styles.rowTextAction]}>Сьогодні</Text>
               </Pressable>
@@ -155,7 +158,7 @@ export default function SaveDestinationSheet({
             {!boardsOnly && onPickNew && (
               <Pressable style={styles.row} onPress={onPickNew}>
                 <View style={styles.actionIcon}>
-                  <Ionicons name="add" size={16} color={ACCENT} />
+                  <Ionicons name="add" size={16} color={accent} />
                 </View>
                 <Text style={[styles.rowText, styles.rowTextAction]}>Нова нотатка</Text>
               </Pressable>
@@ -180,7 +183,7 @@ export default function SaveDestinationSheet({
               filteredDocuments.map((d) => (
                 <Pressable key={d.id} style={styles.row} onPress={() => onPickExisting?.(d.id, d.title || 'Без назви')}>
                   <View style={styles.docIcon}>
-                    <Ionicons name="document-text-outline" size={16} color={ACCENT} />
+                    <Ionicons name="document-text-outline" size={16} color={accent} />
                   </View>
                   <Text style={styles.rowText} numberOfLines={1}>
                     {d.title || 'Без назви'}
@@ -195,7 +198,7 @@ export default function SaveDestinationSheet({
             <>
             <Pressable style={styles.row} onPress={() => onPickNewBoard?.()}>
               <View style={styles.actionIcon}>
-                <Ionicons name="add" size={16} color={ACCENT} />
+                <Ionicons name="add" size={16} color={accent} />
               </View>
               <Text style={[styles.rowText, styles.rowTextAction]}>Нова дошка</Text>
             </Pressable>
@@ -217,7 +220,7 @@ export default function SaveDestinationSheet({
               filteredBoards.map((b) => (
                 <Pressable key={b.id} style={styles.row} onPress={() => onPickExistingBoard?.(b.id)}>
                   <View style={styles.docIcon}>
-                    <Ionicons name="grid-outline" size={16} color={ACCENT} />
+                    <Ionicons name="grid-outline" size={16} color={accent} />
                   </View>
                   <Text style={styles.rowText} numberOfLines={1}>
                     {b.title || 'Без назви'}
@@ -234,7 +237,7 @@ export default function SaveDestinationSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   backdrop: {
     ...SHEET_BACKDROP,
   },
@@ -304,7 +307,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 8,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: t.selected,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -312,7 +315,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 8,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: t.selected,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -323,7 +326,7 @@ const styles = StyleSheet.create({
     color: GLASS_TEXT,
   },
   rowTextAction: {
-    color: ACCENT,
+    color: t.accent,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
   },

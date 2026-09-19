@@ -1,3 +1,5 @@
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { useEffect, useState } from 'react';
 import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 // gesture-handler's ScrollView, not the core RN one: on Android a drag that
@@ -24,7 +26,6 @@ import {
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
-const ACCENT = '#3B82F6';
 
 const KIND_LABELS: Record<string, string> = {
   board: 'Дошки',
@@ -77,12 +78,18 @@ export default function TagPicker({
   initialMode = 'list',
   initialPath = '',
 }: Props) {
+  const accent = useTheme().accent;
+  // The colours offered are the theme's own card palette, so a tag
+  // picked here can never leave the scheme - the user's condition:
+  // "навіть вибором кольору картки нічого не зіпсувати".
+  const swatches = useTheme().cards;
+  const styles = useStyles(makeStyles);
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<'list' | 'create'>('list');
   const [creatingPath, setCreatingPath] = useState('');
   const [iconQuery, setIconQuery] = useState('');
   const [selectedIcon, setSelectedIcon] = useState(TAG_ICONS[0]);
-  const [selectedColor, setSelectedColor] = useState(TAG_COLORS[0]);
+  const [selectedColor, setSelectedColor] = useState(swatches[0]);
   const [renamingTag, setRenamingTag] = useState<Tag | null>(null);
   const { hiddenIds, hideTag } = useHiddenTags(kind);
   // Same manual Keyboard-height tracking as TasksScreen's project-picker
@@ -106,7 +113,7 @@ export default function TagPicker({
         setCreatingPath(initialPath);
         setIconQuery('');
         setSelectedIcon(TAG_ICONS[0]);
-        setSelectedColor(TAG_COLORS[0]);
+        setSelectedColor(swatches[0]);
         setMode('create');
       } else {
         setMode('list');
@@ -138,7 +145,7 @@ export default function TagPicker({
     setCreatingPath(query.trim());
     setIconQuery('');
     setSelectedIcon(TAG_ICONS[0]);
-    setSelectedColor(TAG_COLORS[0]);
+    setSelectedColor(swatches[0]);
     setMode('create');
   }
 
@@ -223,7 +230,7 @@ export default function TagPicker({
 
                 {canCreate && (
                   <Pressable style={styles.createRow} onPress={startCreate}>
-                    <Ionicons name="add" size={18} color={ACCENT} />
+                    <Ionicons name="add" size={18} color={accent} />
                     <Text style={styles.createLabel}>Створити тег "{query.trim()}"</Text>
                   </Pressable>
                 )}
@@ -252,7 +259,7 @@ export default function TagPicker({
 
               <Text style={styles.sectionLabel}>КОЛІР</Text>
               <View style={styles.colorRow}>
-                {TAG_COLORS.map((color) => (
+                {swatches.map((color) => (
                   <Pressable
                     key={color}
                     style={[
@@ -320,7 +327,7 @@ export default function TagPicker({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   backdrop: {
     ...SHEET_BACKDROP,
   },
@@ -407,7 +414,7 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: ACCENT,
+    backgroundColor: t.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -432,7 +439,7 @@ const styles = StyleSheet.create({
   },
   createLabel: {
     fontSize: 15,
-    color: ACCENT,
+    color: t.accent,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
   },
@@ -457,7 +464,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: ACCENT,
+    color: t.accent,
   },
   createPreviewRow: {
     flexDirection: 'row',
@@ -541,13 +548,13 @@ const styles = StyleSheet.create({
   },
   typeChip: {
     borderRadius: 16,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: t.selected,
     paddingVertical: 6,
     paddingHorizontal: 14,
   },
   typeChipLabel: {
     fontSize: 13,
-    color: ACCENT,
+    color: t.accent,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
   },

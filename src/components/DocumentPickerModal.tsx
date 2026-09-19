@@ -1,3 +1,5 @@
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -12,7 +14,6 @@ import {
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 
-const ACCENT = '#3B82F6';
 
 export type PickableDocument = { id: string; title: string };
 
@@ -27,6 +28,8 @@ type Props = {
 // Shown when an object (link/photo/file) is used in more than one document -
 // its "go to document" icon opens this instead of navigating straight there.
 export default function DocumentPickerModal({ visible, subtitle, documents, onPick, onClose }: Props) {
+  const accent = useTheme().accent;
+  const styles = useStyles(makeStyles);
   return (
     <GlassLayer visible={visible} onClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
@@ -41,7 +44,7 @@ export default function DocumentPickerModal({ visible, subtitle, documents, onPi
           {documents.map((d) => (
             <Pressable key={d.id} style={styles.row} onPress={() => onPick(d.id)}>
               <View style={styles.docIcon}>
-                <Ionicons name="document-text-outline" size={16} color={ACCENT} />
+                <Ionicons name="document-text-outline" size={16} color={accent} />
               </View>
               <Text style={styles.rowText} numberOfLines={1}>
                 {d.title}
@@ -55,7 +58,7 @@ export default function DocumentPickerModal({ visible, subtitle, documents, onPi
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   backdrop: {
     ...SHEET_BACKDROP,
   },
@@ -97,7 +100,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 9,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: t.selected,
     alignItems: 'center',
     justifyContent: 'center',
   },

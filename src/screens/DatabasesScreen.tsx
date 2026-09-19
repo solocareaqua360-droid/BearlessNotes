@@ -93,7 +93,6 @@ const TILE_GAP_EDITING = 16;
 // The two colours this screen's own sheets speak in: the app's accent for
 // "this one is on", and the danger red for the one row that destroys
 // something.
-const ACCENT = '#14B8A6';
 const DANGER = '#FB7185';
 const tileSizesDoc = doc(db, 'settings', 'databaseTileSizes');
 const tileOrderDoc = doc(db, 'settings', 'databaseTileOrder');
@@ -187,6 +186,7 @@ function paneTargetFor(tile: Tile): PaneTarget | null {
 
 export default function DatabasesScreen() {
   const theme = useTheme();
+  const accent = theme.sections.databases;
   const styles = useStyles(makeStyles);
   const recordColour = useRecordColour();
   const databasesBlurTarget = useBlurTarget();
@@ -416,7 +416,7 @@ export default function DatabasesScreen() {
       const next: Record<string, string> = {};
       keys.forEach((key) => {
         if (deck.length === 0) {
-          deck = [...TAG_COLORS];
+          deck = [...theme.cards];
           // Fisher-Yates, so every ordering of the deck is as likely as
           // any other - a sort() with a random comparator is not a
           // shuffle and biases towards the order it started in.
@@ -1011,7 +1011,7 @@ export default function DatabasesScreen() {
     <>
               <Text style={styles.colorMenuTitle}>Плитка · {VIEW_LABEL[tileView]}</Text>
               <View style={styles.colorMenuRow}>
-                {TAG_COLORS.map((color) => (
+                {theme.cards.map((color) => (
                   <Pressable key={color} onPress={() => colorMenuKey && pickColor(colorMenuKey, color)}>
                     <View style={[styles.colorSwatch, { backgroundColor: color }]} />
                   </Pressable>
@@ -1309,7 +1309,7 @@ export default function DatabasesScreen() {
                       {group.name}
                     </Text>
                     <Text style={styles.pinCount}>{group.count}</Text>
-                    {on && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+                    {on && <Ionicons name="checkmark" size={18} color={accent} />}
                   </Pressable>
                 );
               })}
@@ -1330,7 +1330,7 @@ export default function DatabasesScreen() {
                       {tag.name}
                     </Text>
                     <Text style={styles.pinCount}>{tag.count}</Text>
-                    {on && <Ionicons name="checkmark" size={18} color={ACCENT} />}
+                    {on && <Ionicons name="checkmark" size={18} color={accent} />}
                   </Pressable>
                 );
               })}

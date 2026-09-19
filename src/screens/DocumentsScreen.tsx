@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { withAlpha } from '../utils/color';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import {
@@ -85,8 +86,7 @@ import { ask, confirm, notify } from '../components/surfaces/Ask';
 import TagEditSheet from '../components/TagEditSheet';
 
 // Палітра №3 (Теплий Теракотовий) - the create/edit action color across
-// this redesign; replaces the old blue ACCENT wherever this screen used it.
-const ACCENT = '#BE7657';
+// this redesign; replaces the old blue accent wherever this screen used it.
 const documentsCollection = collection(db, 'documents');
 const stickersCollection = collection(db, 'stickers');
 const STICKER_YELLOW = '#FBE97A';
@@ -94,7 +94,6 @@ const STICKER_DARK = '#4a3f05';
 // The rail's buttons are glass, so their own colours only tint what the
 // blur behind them already carries - at full strength they were solid
 // discs again.
-const ACCENT_GLASS = 'rgba(190,118,87,0.55)';
 const STICKER_GLASS = 'rgba(251,233,122,0.6)';
 // Exported so ShareIntentHandler can apply the same cap when a shared
 // text lands as a standalone sticker instead of through the FAB here.
@@ -127,6 +126,8 @@ export default function DocumentsScreen({
   standalone,
 }: { inPane?: boolean; standalone?: boolean } = {}) {
   const theme = useTheme();
+  const accent = theme.sections.documents;
+  const accentGlass = withAlpha(accent, 0.55);
   const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   // react-native-svg's own "100%" width/height on the root <Svg> doesn't
@@ -1145,14 +1146,14 @@ export default function DocumentsScreen({
           )
         ) : isLoading ? (
           <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
-            <ActivityIndicator color={ACCENT} />
+            <ActivityIndicator color={accent} />
           </View>
         ) : !trashOpen && explorer.visibleItems.length === 0 && explorer.folders.length === 0 && !(explorer.active && explorer.path) ? (
           <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
             {documents.length === 0 ? (
               <>
                 <Pressable style={styles.emptyIcon} onPress={createDocument}>
-                  <Ionicons name="document-text-outline" size={32} color={ACCENT} />
+                  <Ionicons name="document-text-outline" size={32} color={accent} />
                   <View style={styles.emptyBadge}>
                     <Ionicons name="add-outline" size={14} color="#fff" />
                   </View>
@@ -1357,7 +1358,7 @@ export default function DocumentsScreen({
         <Menu
           visible={sortMenuOpen}
           onClose={() => setSortMenuOpen(false)}
-          accent={ACCENT}
+          accent={accent}
           entries={[
             { kind: 'section', label: 'Сортування' },
             ...FIELD_ORDER.map((field) => ({
@@ -1827,7 +1828,7 @@ const makeStyles = (t: Theme) =>
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: ACCENT,
+    backgroundColor: t.sections.documents,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
@@ -1970,7 +1971,7 @@ const makeStyles = (t: Theme) =>
   // a solid disc with a light around it: the blur is what separates it
   // from the cards underneath, so the fill only has to tint.
   // Long-pressing the FAB switches it to sticker-creation mode - the color
-  // swap away from ACCENT is the only feedback the gesture has fired,
+  // swap away from t.sections.documents is the only feedback the gesture has fired,
   // since it fires while still held rather than on release.
   fabSticker: {
     backgroundColor: STICKER_GLASS,

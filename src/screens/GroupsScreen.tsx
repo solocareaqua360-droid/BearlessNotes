@@ -35,7 +35,6 @@ import { useTags } from '../hooks/useTags';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { confirm, notify } from '../components/surfaces/Ask';
 
-const ACCENT = '#69736E';
 const DANGER = '#EF4444';
 
 // The temporary, cross-database side of this app's two filing systems (see
@@ -46,6 +45,7 @@ const DANGER = '#EF4444';
 // no single database screen can show.
 export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
   const theme = useTheme();
+  const accent = theme.sections.groups;
   const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -153,7 +153,7 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
     const kinds = kindsOf(group);
     return (
       <Pressable key={group.id} style={styles.row} onPress={() => setOpenGroupId(group.id)}>
-        <View style={[styles.colorDot, { backgroundColor: group.color || ACCENT }]} />
+        <View style={[styles.colorDot, { backgroundColor: group.color || accent }]} />
         <View style={styles.rowBody}>
           <Text style={styles.rowTitle} numberOfLines={1}>
             {group.name}
@@ -208,7 +208,7 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
               {openGroup && (
                 <>
                   <View style={styles.sheetTitleRow}>
-                    <View style={[styles.colorDot, { backgroundColor: openGroup.color || ACCENT }]} />
+                    <View style={[styles.colorDot, { backgroundColor: openGroup.color || accent }]} />
                     <Text style={styles.sheetTitle} numberOfLines={1}>
                       {openGroup.name}
                     </Text>
@@ -297,7 +297,7 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
                       <Ionicons
                         name={on ? 'checkbox' : 'square-outline'}
                         size={18}
-                        color={on ? ACCENT : theme.ink.faint}
+                        color={on ? accent : theme.ink.faint}
                       />
                       <Text style={styles.itemTitle}>{labelForKind(kind, customDatabaseNames)}</Text>
                     </Pressable>
@@ -374,7 +374,7 @@ const makeStyles = (t: Theme) =>
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: 'rgba(20,20,20,0.35)',
+    backgroundColor: t.scrim,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
@@ -415,7 +415,7 @@ const makeStyles = (t: Theme) =>
     fontFamily: FONT_SEMIBOLD,
   },
   backdrop: {
-    backgroundColor: 'rgba(17,24,39,0.45)',
+    backgroundColor: t.scrim,
     ...SHEET_BACKDROP,
   },
   sheet: {

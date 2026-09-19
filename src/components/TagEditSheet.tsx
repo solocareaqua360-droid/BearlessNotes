@@ -1,3 +1,5 @@
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 // gesture-handler's ScrollView, not the core RN one: on Android a drag that
@@ -22,7 +24,6 @@ import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
-const ACCENT = '#3B82F6';
 
 type Props = {
   visible: boolean;
@@ -36,11 +37,14 @@ type Props = {
 // TagPicker.tsx), just pre-filled from an existing tag and always in edit
 // mode rather than reached only through a first assignment.
 export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) {
+  const accent = useTheme().accent;
+  const swatches = useTheme().cards;
+  const styles = useStyles(makeStyles);
   const keyboardHeight = useKeyboardHeight();
   const [path, setPath] = useState('');
   const [iconQuery, setIconQuery] = useState('');
   const [selectedIcon, setSelectedIcon] = useState(TAG_ICONS[0]);
-  const [selectedColor, setSelectedColor] = useState(TAG_COLORS[0]);
+  const [selectedColor, setSelectedColor] = useState(swatches[0]);
 
   useEffect(() => {
     if (visible && tag) {
@@ -97,7 +101,7 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
 
           <Text style={styles.sectionLabel}>КОЛІР</Text>
           <View style={styles.colorRow}>
-            {TAG_COLORS.map((color) => (
+            {swatches.map((color) => (
               <Pressable
                 key={color}
                 style={[styles.colorSwatch, { backgroundColor: color }, selectedColor === color && styles.colorSwatchSelected]}
@@ -140,7 +144,7 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   backdrop: {
     ...SHEET_BACKDROP,
   },
@@ -181,7 +185,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: ACCENT,
+    color: t.accent,
   },
   headerSaveDisabled: {
     color: '#BFDBFE',

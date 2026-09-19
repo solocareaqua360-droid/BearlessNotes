@@ -1,3 +1,5 @@
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 // gesture-handler's ScrollView, not the core RN one: on Android a drag that
@@ -21,7 +23,6 @@ import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
-const ACCENT = '#3B82F6';
 
 type PickableDocument = { id: string; title: string };
 
@@ -39,6 +40,8 @@ type Props = {
 // creation uses is SaveDestinationSheet, a separate component - this one
 // stays scoped to its own original job.
 export default function CopyToNoteModal({ visible, onPickExisting, onPickNew, onClose }: Props) {
+  const accent = useTheme().accent;
+  const styles = useStyles(makeStyles);
   const keyboardHeight = useKeyboardHeight();
   const [documents, setDocuments] = useState<PickableDocument[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -81,9 +84,9 @@ export default function CopyToNoteModal({ visible, onPickExisting, onPickNew, on
 
           <Pressable style={styles.row} onPress={onPickNew}>
             <View style={styles.newIcon}>
-              <Ionicons name="add" size={16} color={ACCENT} />
+              <Ionicons name="add" size={16} color={accent} />
             </View>
-            <Text style={[styles.rowText, { color: ACCENT, fontFamily: FONT_SEMIBOLD }]}>Новий документ</Text>
+            <Text style={[styles.rowText, { color: accent, fontFamily: FONT_SEMIBOLD }]}>Новий документ</Text>
           </Pressable>
 
           <View style={styles.searchRow}>
@@ -101,7 +104,7 @@ export default function CopyToNoteModal({ visible, onPickExisting, onPickNew, on
             {filteredDocuments.map((d) => (
               <Pressable key={d.id} style={styles.row} onPress={() => onPickExisting(d.id)}>
                 <View style={styles.docIcon}>
-                  <Ionicons name="document-text-outline" size={16} color={ACCENT} />
+                  <Ionicons name="document-text-outline" size={16} color={accent} />
                 </View>
                 <Text style={styles.rowText} numberOfLines={1}>
                   {d.title || 'Без назви'}
@@ -118,7 +121,7 @@ export default function CopyToNoteModal({ visible, onPickExisting, onPickNew, on
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   backdrop: {
     ...SHEET_BACKDROP,
   },
@@ -181,7 +184,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 8,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: t.selected,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -189,7 +192,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 8,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: t.selected,
     alignItems: 'center',
     justifyContent: 'center',
   },

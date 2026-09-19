@@ -1,3 +1,5 @@
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,7 +20,6 @@ import {
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
-const ACCENT = '#3B82F6';
 
 type BoardRow = { id: string; title: string };
 
@@ -50,6 +51,8 @@ export default function GroupImportSheet({
   onCancel,
   onConfirm,
 }: Props) {
+  const accent = useTheme().accent;
+  const styles = useStyles(makeStyles);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [step, setStep] = useState<'items' | 'board'>('items');
   const [boards, setBoards] = useState<BoardRow[]>([]);
@@ -153,7 +156,7 @@ export default function GroupImportSheet({
                             <Ionicons
                               name={on ? 'checkbox' : 'square-outline'}
                               size={18}
-                              color={on ? ACCENT : blocked ? GLASS_LINE : GLASS_TEXT_FAINT}
+                              color={on ? accent : blocked ? GLASS_LINE : GLASS_TEXT_FAINT}
                             />
                             <Text style={[styles.itemLabel, blocked && styles.itemLabelBlocked]} numberOfLines={1}>
                               {titleForItem(item)}
@@ -192,7 +195,7 @@ export default function GroupImportSheet({
             <ScrollView style={styles.list}>
               <Pressable style={styles.boardRow} onPress={() => onConfirm(chosenItems, { newBoard: true })}>
                 <View style={styles.boardIcon}>
-                  <Ionicons name="add" size={18} color={ACCENT} />
+                  <Ionicons name="add" size={18} color={accent} />
                 </View>
                 <Text style={styles.itemLabel} numberOfLines={1}>
                   Нова дошка "{groupName}"
@@ -205,7 +208,7 @@ export default function GroupImportSheet({
                   onPress={() => onConfirm(chosenItems, { boardId: board.id })}
                 >
                   <View style={styles.boardIcon}>
-                    <Ionicons name="apps-outline" size={18} color={ACCENT} />
+                    <Ionicons name="apps-outline" size={18} color={accent} />
                   </View>
                   <Text style={styles.itemLabel} numberOfLines={1}>
                     {board.title}
@@ -220,7 +223,7 @@ export default function GroupImportSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   backdrop: {
     ...SHEET_BACKDROP,
   },
@@ -277,7 +280,7 @@ const styles = StyleSheet.create({
     color: GLASS_TEXT_FAINT,
   },
   kindCountCapped: {
-    color: ACCENT,
+    color: t.accent,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
   },
@@ -315,7 +318,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: t.selected,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -335,7 +338,7 @@ const styles = StyleSheet.create({
     color: GLASS_TEXT_MUTED,
   },
   saveButton: {
-    backgroundColor: ACCENT,
+    backgroundColor: t.accent,
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 18,

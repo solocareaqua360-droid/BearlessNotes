@@ -1,3 +1,5 @@
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { useEffect, useRef, useState } from 'react';
 import {
   Keyboard,
@@ -35,7 +37,6 @@ import GlassLayer from './GlassLayer';
 import { LINK_CATEGORY_INFO, LinkCategory } from '../utils/linkCategory';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
-const ACCENT = '#3B82F6';
 // The palette this sheet is drawn in. It sits over the database screen's
 // own gradient, so it borrows that screen's glass language - a dark
 // translucent body with a hairline white edge - instead of the white card
@@ -123,6 +124,8 @@ export default function FieldsEditorSheet({
   onSave,
   onClose,
 }: Props) {
+  const accent = useTheme().accent;
+  const styles = useStyles(makeStyles);
   const [draft, setDraft] = useState<FieldDef[]>(fields);
   const [typeMenuFieldId, setTypeMenuFieldId] = useState<string | null>(null);
   // Which field's relation-target list ("Фото" vs another database) is
@@ -622,7 +625,7 @@ export default function FieldsEditorSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   backdrop: {
         ...SHEET_BACKDROP,
   },
@@ -699,7 +702,7 @@ const styles = StyleSheet.create({
     gap: 5,
     // The same glass pill as the capsules on the database screen behind
     // this sheet - same fill, same hairline, same radius.
-    backgroundColor: 'rgba(20,20,20,0.35)',
+    backgroundColor: t.scrim,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
     borderRadius: 999,
@@ -843,7 +846,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
-    backgroundColor: 'rgba(20,20,20,0.35)',
+    backgroundColor: t.scrim,
     paddingVertical: 11,
     paddingHorizontal: 20,
   },
@@ -854,7 +857,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.85)',
   },
   saveButton: {
-    backgroundColor: ACCENT,
+    backgroundColor: t.accent,
     borderRadius: 999,
     paddingVertical: 11,
     paddingHorizontal: 24,

@@ -62,7 +62,6 @@ import ScreenBackdrop from '../components/ScreenBackdrop';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import Menu from '../components/surfaces/Menu';
 
-const ACCENT = '#3B82F6';
 // calendarPlate carries its own marginHorizontal:16 on each side, so the
 // week strip's actual scrollable viewport is this much narrower than the
 // window - every page inside it (and the paging math that scrolls between
@@ -116,6 +115,7 @@ const FILLED_ROW_HEIGHT = ROW_HEIGHT + WEEKDAY_HEADER_HEIGHT;
 export default function CalendarScreen() {
   const styles = useStyles(makeStyles);
   const theme = useTheme();
+  const accent = theme.sections.calendar;
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   // Nested-navigator params from DiaryScreen's "open this sheet" - see
   // navigation.ts's Tabs type. Not typed through the tab navigator itself
@@ -1218,7 +1218,7 @@ export default function CalendarScreen() {
                     <Ionicons
                       name={task.checked ? 'checkbox' : 'square-outline'}
                       size={18}
-                      color={task.checked ? ACCENT : '#9CA3AF'}
+                      color={task.checked ? accent : '#9CA3AF'}
                     />
                   </Pressable>
                   <Text
@@ -1714,7 +1714,7 @@ const makeStyles = (t: Theme) =>
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 999,
-    backgroundColor: 'rgba(20,20,20,0.35)',
+    backgroundColor: t.scrim,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',
   },

@@ -60,11 +60,9 @@ import RenamePrompt from '../components/RenamePrompt';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { confirm, notify } from '../components/surfaces/Ask';
 
-const ACCENT = '#4E9A6B';
 // The foot the list keeps clear for the dock - the same reckoning
 // DatabaseChrome makes.
 const DANGER = '#EF4444';
-const PROJECT_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
 const tasksCollection = collection(db, 'tasks');
 const projectsCollection = collection(db, 'projects');
 
@@ -142,6 +140,7 @@ function kanbanColumnWidthFor(screenWidth: number): number {
 
 export default function TasksScreen() {
   const theme = useTheme();
+  const accent = theme.sections.tasks;
   const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -658,7 +657,9 @@ export default function TasksScreen() {
   async function addProject() {
     const name = newProjectName.trim();
     if (!name) return;
-    const color = PROJECT_COLORS[projects.length % PROJECT_COLORS.length];
+    // From the theme's card palette, so a new project cannot be
+    // handed a colour the scheme would never produce.
+    const color = theme.cards[projects.length % theme.cards.length];
     await addDoc(projectsCollection, { name, color });
     setNewProjectName('');
   }
@@ -742,7 +743,7 @@ export default function TasksScreen() {
           <Ionicons
             name={item.checked ? 'checkbox' : 'square-outline'}
             size={22}
-            color={item.checked ? ACCENT : 'rgba(255,255,255,0.45)'}
+            color={item.checked ? accent : 'rgba(255,255,255,0.45)'}
           />
         </Pressable>
         <Pressable
@@ -778,7 +779,7 @@ export default function TasksScreen() {
                   <Ionicons
                     name={item.reminderKind === 'notify' ? 'notifications-outline' : 'alarm-outline'}
                     size={11}
-                    color={ACCENT}
+                    color={accent}
                   />
                   <Text style={styles.reminderChipText}>{reminderLabel}</Text>
                 </View>
@@ -798,7 +799,7 @@ export default function TasksScreen() {
             <Ionicons
               name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
               size={20}
-              color={isSelected ? ACCENT : 'rgba(255,255,255,0.45)'}
+              color={isSelected ? accent : 'rgba(255,255,255,0.45)'}
             />
           </Pressable>
         )}
@@ -871,7 +872,7 @@ export default function TasksScreen() {
             <Ionicons
               name={task.checked ? 'checkbox' : 'square-outline'}
               size={20}
-              color={task.checked ? ACCENT : 'rgba(255,255,255,0.45)'}
+              color={task.checked ? accent : 'rgba(255,255,255,0.45)'}
             />
           </Pressable>
           <Pressable
@@ -898,7 +899,7 @@ export default function TasksScreen() {
                   <Ionicons
                     name={task.reminderKind === 'notify' ? 'notifications-outline' : 'alarm-outline'}
                     size={11}
-                    color={ACCENT}
+                    color={accent}
                   />
                   <Text style={styles.reminderChipText}>{reminderLabel}</Text>
                 </View>
@@ -980,7 +981,7 @@ export default function TasksScreen() {
   if (isLoading) {
     return (
       <View style={[styles.container, styles.emptyState]}>
-        <ActivityIndicator color={ACCENT} />
+        <ActivityIndicator color={accent} />
       </View>
     );
   }
@@ -990,7 +991,7 @@ export default function TasksScreen() {
       <View style={styles.container}>
         <View style={styles.emptyState}>
           <View style={styles.emptyIcon}>
-            <Ionicons name="checkbox-outline" size={32} color={ACCENT} />
+            <Ionicons name="checkbox-outline" size={32} color={accent} />
           </View>
           <Text style={styles.emptyLabel}>Немає справ</Text>
           <Text style={styles.emptyHint}>
@@ -1030,7 +1031,7 @@ export default function TasksScreen() {
           <>
             <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />
             <View style={[styles.menuPanel, { bottom: dockClear + insets.bottom }]}>
-              <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={ACCENT} />
+              <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={accent} />
             </View>
           </>
         )}
@@ -1164,7 +1165,7 @@ export default function TasksScreen() {
                   returnKeyType="done"
                 />
                 <Pressable hitSlop={8} onPress={addProject}>
-                  <Ionicons name="add-circle" size={26} color={ACCENT} />
+                  <Ionicons name="add-circle" size={26} color={accent} />
                 </Pressable>
               </View>
             </Pressable>
@@ -1412,13 +1413,13 @@ const makeStyles = (t: Theme) =>
     fontSize: 11.5,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: ACCENT,
+    color: t.sections.tasks,
   },
   rowDelete: {
     padding: 4,
   },
   modalBackdrop: {
-    backgroundColor: 'rgba(17,24,39,0.45)',
+    backgroundColor: t.scrim,
     ...SHEET_BACKDROP,
   },
   modalSheet: {
@@ -1491,7 +1492,7 @@ const makeStyles = (t: Theme) =>
     color: t.ink.primary,
     paddingVertical: 2,
     borderBottomWidth: 1,
-    borderBottomColor: ACCENT,
+    borderBottomColor: t.sections.tasks,
   },
   kanbanBoardScroll: {
     flex: 1,

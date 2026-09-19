@@ -1,3 +1,5 @@
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, Vibration, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,7 +24,6 @@ import {
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
-const ACCENT = '#3B82F6';
 const DANGER = GLASS_DANGER;
 
 type ReminderKind = 'notify' | 'alarm';
@@ -56,6 +57,8 @@ export default function ReminderSheet({
   onSave,
   onClear,
 }: Props) {
+  const accent = useTheme().accent;
+  const styles = useStyles(makeStyles);
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const d = new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
@@ -209,7 +212,7 @@ export default function ReminderSheet({
                   <Ionicons
                     name="notifications-outline"
                     size={15}
-                    color={kind === 'notify' ? ACCENT : GLASS_TEXT_MUTED}
+                    color={kind === 'notify' ? accent : GLASS_TEXT_MUTED}
                   />
                   <Text style={[styles.kindTabLabel, kind === 'notify' && styles.kindTabLabelActive]}>
                     Сповіщення
@@ -219,7 +222,7 @@ export default function ReminderSheet({
                   style={[styles.kindTab, kind === 'alarm' && styles.kindTabActive]}
                   onPress={() => setKind('alarm')}
                 >
-                  <Ionicons name="alarm-outline" size={15} color={kind === 'alarm' ? ACCENT : GLASS_TEXT_MUTED} />
+                  <Ionicons name="alarm-outline" size={15} color={kind === 'alarm' ? accent : GLASS_TEXT_MUTED} />
                   <Text style={[styles.kindTabLabel, kind === 'alarm' && styles.kindTabLabelActive]}>
                     Будильник
                   </Text>
@@ -237,21 +240,21 @@ export default function ReminderSheet({
             <View style={styles.stepperRow}>
               <View style={styles.stepper}>
                 <Pressable hitSlop={6} style={styles.stepperBtn} onPress={() => stepHour(-1)}>
-                  <Ionicons name="remove" size={22} color={ACCENT} />
+                  <Ionicons name="remove" size={22} color={accent} />
                 </Pressable>
                 <Text style={styles.stepperValue}>{pad2(hour)}</Text>
                 <Pressable hitSlop={6} style={styles.stepperBtn} onPress={() => stepHour(1)}>
-                  <Ionicons name="add" size={22} color={ACCENT} />
+                  <Ionicons name="add" size={22} color={accent} />
                 </Pressable>
               </View>
               <Text style={styles.stepperColon}>:</Text>
               <View style={styles.stepper}>
                 <Pressable hitSlop={6} style={styles.stepperBtn} onPress={() => stepMinute(-5)}>
-                  <Ionicons name="remove" size={22} color={ACCENT} />
+                  <Ionicons name="remove" size={22} color={accent} />
                 </Pressable>
                 <Text style={styles.stepperValue}>{pad2(minute)}</Text>
                 <Pressable hitSlop={6} style={styles.stepperBtn} onPress={() => stepMinute(5)}>
-                  <Ionicons name="add" size={22} color={ACCENT} />
+                  <Ionicons name="add" size={22} color={accent} />
                 </Pressable>
               </View>
             </View>
@@ -276,7 +279,7 @@ export default function ReminderSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   backdrop: {
     ...SHEET_BACKDROP,
   },
@@ -348,11 +351,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dayCircleSelected: {
-    backgroundColor: ACCENT,
+    backgroundColor: t.accent,
   },
   dayCircleToday: {
     borderWidth: 1.5,
-    borderColor: ACCENT,
+    borderColor: t.accent,
   },
   dayNum: {
     fontSize: 12.5,
@@ -408,8 +411,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(0,0,0,0.08)',
   },
   kindTabActive: {
-    backgroundColor: '#EFF6FF',
-    borderColor: ACCENT,
+    backgroundColor: t.selected,
+    borderColor: t.accent,
   },
   kindTabLabel: {
     fontSize: 12.5,
@@ -417,7 +420,7 @@ const styles = StyleSheet.create({
     color: GLASS_TEXT_MUTED,
   },
   kindTabLabelActive: {
-    color: ACCENT,
+    color: t.accent,
   },
   timeToggle: {
     paddingHorizontal: 12,
@@ -428,8 +431,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(0,0,0,0.08)',
   },
   timeToggleOn: {
-    backgroundColor: '#EFF6FF',
-    borderColor: ACCENT,
+    backgroundColor: t.selected,
+    borderColor: t.accent,
   },
   timeToggleText: {
     fontSize: 12.5,
@@ -438,7 +441,7 @@ const styles = StyleSheet.create({
     color: GLASS_TEXT_MUTED,
   },
   timeToggleTextOn: {
-    color: ACCENT,
+    color: t.accent,
   },
   stepperRow: {
     flexDirection: 'row',
@@ -461,7 +464,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#EFF6FF',
+    backgroundColor: t.selected,
   },
   stepperValue: {
     fontSize: 22,
@@ -513,7 +516,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: ACCENT,
+    backgroundColor: t.accent,
   },
   saveBtnText: {
     fontSize: 14,
