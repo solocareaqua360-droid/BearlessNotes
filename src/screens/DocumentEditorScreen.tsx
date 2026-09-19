@@ -1,6 +1,7 @@
 import { ForwardedRef, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   Dimensions,
   Image,
   Keyboard,
@@ -1284,6 +1285,28 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // See keyboardDidHide below - a hide that is NOT followed by a show.
   const deactivateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Is this app the one on screen right now? Every keyboard signal below
+  // is gated on it (2026-09-19).
+  //
+  // Leaving to the home screen or another app is not one clean event -
+  // it is a RACE between Android tearing the window's IME inset down and
+  // the activity being paused, and the user's own report is exactly what
+  // a race looks like from outside: "тепер баг не регулярний", the pill
+  // sometimes surviving the round trip and sometimes not. Worse, Android
+  // keeps the IME itself alive and RESTORES it when the app comes back,
+  // WITHOUT replaying the inset animation - so the frame handler, the
+  // pill's only position source, never learns the keyboard came back and
+  // leaves it at 0 under a keyboard that is plainly standing there.
+  //
+  // So the rule is not "guess which writer won the race" (three separate
+  // attempts at that have now been reverted) but "an app that is not on
+  // screen does not react to the keyboard at all, and asks again from
+  // scratch when it returns" - see the resync effect below useEditorKeyboard.
+  // A ref for the JS-thread listeners, a shared value for the worklets;
+  // they are written together and never separately.
+  const appActiveRef = useRef(true);
+  const appActiveSV = useSharedValue(1);
+
   // Expo Go's own manifest isn't affected by app.json's
   // android.softwareKeyboardLayoutMode, so the keyboard never resizes the
   // window here the way a real build's adjustResize would - the screen has
@@ -1298,6 +1321,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // positioned by hand from this height.
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      // Not on screen: nothing here means anything (see appActiveRef).
+      // Scrolling a block into view behind a home screen is the clearest
+      // case - by the time anyone looks, the measurement it scrolled to
+      // was taken against a window that was being torn down.
+      if (!appActiveRef.current) return;
       cancelDismissFallback();
       if (deactivateTimeoutRef.current) {
         clearTimeout(deactivateTimeoutRef.current);
@@ -1335,6 +1363,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       scheduleScrollAdjust(height);
     });
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      // Not on screen: a hide fired while the app is going away says
+      // nothing about whether the user is done typing - Android hides
+      // the IME as part of the transition and hands it straight back on
+      // return. Blurring the block on that would be the one thing that
+      // actually ends the editing session, and it is not what happened.
+      if (!appActiveRef.current) return;
       cancelDismissFallback();
       setDbgSource('hide');
       // NOT reset here any more (2026-09-19): `keyboardSV` is the frame
@@ -1376,14 +1410,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       if (deactivateTimeoutRef.current) clearTimeout(deactivateTimeoutRef.current);
       deactivateTimeoutRef.current = setTimeout(() => {
         deactivateTimeoutRef.current = null;
-        const activeId = focusedBlockIdRef.current;
-        if (activeId) {
-          inputRefs.current[activeId]?.blur();
-          focusedBlockIdRef.current = null;
-          setFocusedBlockId(null);
-          setActiveSelection(null);
-        }
-        setTitleActive(false);
+        deactivateActiveInput();
       }, 400);
     });
     return () => {
@@ -1434,6 +1461,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       clearTimeout(dismissFallbackRef.current);
       dismissFallbackRef.current = null;
     }
+  }
+
+  // Hand the active block (or the title) back to plain text: the keyboard
+  // is down, so nothing is being edited. Two callers - the deferred branch
+  // of keyboardDidHide, and the resync that runs when the app comes back
+  // to a keyboard that did not survive the trip.
+  function deactivateActiveInput() {
+    const activeId = focusedBlockIdRef.current;
+    if (activeId) {
+      inputRefs.current[activeId]?.blur();
+      focusedBlockIdRef.current = null;
+      setFocusedBlockId(null);
+      setActiveSelection(null);
+    }
+    setTitleActive(false);
   }
 
   function requestDismissFallback() {
@@ -1562,6 +1604,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     {
       onStart: (e) => {
         'worklet';
+        if (appActiveSV.value === 0) return; // see onMove
         syncShift.value = 0;
         runOnJS(setDbgSource)(`start:${Math.round(e.height)}`);
         if (e.progress !== 1) return; // closing - nothing to bring into view
@@ -1580,6 +1623,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       },
       onMove: (e) => {
         'worklet';
+        // Frozen while the app is off screen: this is the writer that
+        // carries the pill down to 0 during the exit transition, and
+        // nothing brings it back up afterwards because Android restores
+        // the IME without an animation. Holding the last on-screen value
+        // means a round trip has no effect at all - and if the keyboard
+        // really did go away meanwhile, the resync on return says so.
+        if (appActiveSV.value === 0) return;
         keyboardSV.value = e.height;
         runOnJS(setDbgSource)(`move:${Math.round(e.height)}`);
         if (syncShift.value > 0) {
@@ -1588,6 +1638,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       },
       onEnd: (e) => {
         'worklet';
+        if (appActiveSV.value === 0) return; // see onMove
         keyboardSV.value = e.height;
         runOnJS(setDbgSource)(`end:${Math.round(e.height)}`);
         if (syncShift.value > 0) {
@@ -1598,6 +1649,50 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     },
     [windowHeight]
   );
+  // The other half of the appActiveRef rule: everything above ignores the
+  // keyboard while the app is off screen, and this asks Android what is
+  // actually true the moment it comes back.
+  //
+  // Both answers matter equally. The IME usually survives the round trip
+  // (the user's own reading: "андроід не опускає клавіатуру в фоні") and
+  // is simply standing there on return with no animation to announce it -
+  // then the pill has to be put back at its real height. But sometimes the
+  // keyboard really is gone, and then the frozen value is stale-high and
+  // would leave the pill floating in the middle of the screen, which is a
+  // worse bug than the one this fixes - so a keyboard that is NOT there is
+  // written down to 0 just as deliberately, and the block deactivated the
+  // same way an ordinary dismissal would.
+  //
+  // Deferred one beat rather than read on the spot: at the instant
+  // AppState flips, Android has not necessarily finished restoring the
+  // IME, and a reading taken then says "no keyboard" about a keyboard that
+  // is a frame away from appearing.
+  useEffect(() => {
+    let resumeTimer: ReturnType<typeof setTimeout> | null = null;
+    const sub = AppState.addEventListener('change', (state) => {
+      const active = state === 'active';
+      appActiveRef.current = active;
+      appActiveSV.value = active ? 1 : 0;
+      if (resumeTimer) {
+        clearTimeout(resumeTimer);
+        resumeTimer = null;
+      }
+      if (!active) return;
+      resumeTimer = setTimeout(() => {
+        resumeTimer = null;
+        if (!appActiveRef.current) return;
+        const height = Keyboard.isVisible() ? Keyboard.metrics()?.height ?? 0 : 0;
+        keyboardSV.value = height;
+        setKeyboardHeight(height);
+        setDbgSource(`resume:${Math.round(height)}`);
+        if (height === 0) deactivateActiveInput();
+      }, 250);
+    });
+    return () => {
+      if (resumeTimer) clearTimeout(resumeTimer);
+      sub.remove();
+    };
+  }, []);
   // The room below the last block. Driven from the live keyboard height on
   // the UI thread rather than from keyboardHeight state: the synced scroll
   // above needs the content to already be tall enough on every frame of
