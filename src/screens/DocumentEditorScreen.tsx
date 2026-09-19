@@ -1482,7 +1482,22 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // left the laptop with no way to add a picture, a file or a record to
   // a note. There it shows whenever a block is being written in, pinned
   // to the bottom edge (keyboardSV is 0, so that is where it lands).
-  const isToolbarVisible = focusedBlockId !== null && (keyboardHeight > 0 || Platform.OS === 'web');
+  // Mounted for as long as a block is being edited - NOT gated on
+  // `keyboardHeight` any more (2026-09-19). That gate was the actual
+  // source of the flash-away-and-back bug: `keyboardHeight` is a
+  // discrete JS boolean-ish value written by event listeners that can
+  // themselves be spurious (Android's recent-apps gesture), so gating a
+  // MOUNT on it meant a single bad event was enough to unmount and
+  // remount the whole toolbar. `focusedBlockId` never flips on that
+  // kind of noise - only a deliberate tap in or out of a block changes
+  // it - so the toolbar now stays mounted the whole time, and its
+  // POSITION (bottom: keyboardSV.value, below) is the only thing that
+  // moves, continuously, frame by frame, off the one value already
+  // confirmed clean (the frame handler alone, see keyboardSV's own
+  // writers). A momentary bad frame in that value is at most a single
+  // frame of position jitter - nothing for React to mount or unmount
+  // over, so there is nothing left to flash.
+  const isToolbarVisible = focusedBlockId !== null;
   toolbarHeightRef.current = isToolbarVisible ? EDITOR_TOOLBAR_HEIGHT : 0;
 
   // Keyboard-synced scroll. The post-keyboard pass below
@@ -3948,15 +3963,23 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
 
       <VideoPlayerModal url={playingVideoUrl} onClose={() => setPlayingVideoUrl(null)} />
 
-      {/* Pinned directly above the keyboard, and only mounted while
-          isToolbarVisible - EditorToolbar itself only checks
-          focusedBlockId (title focus vs. a block), not the keyboard, so
-          without this the bar would just slide down to the bottom edge
-          and stay rendered there once the keyboard closes, instead of
-          disappearing with it. Confirmed on-device: keyboardDidHide does
-          fire reliably (this was mis-diagnosed as an event problem before
-          logging proved otherwise) - it was this render never having been
-          gated on it.
+      {/* Pinned directly above the keyboard, mounted for as long as
+          isToolbarVisible - which now means only `focusedBlockId !==
+          null` (see its own comment). It deliberately DOES sit at the
+          bottom edge and stay mounted for a moment after the keyboard
+          closes now, rather than unmounting the instant some event says
+          the keyboard is down: a whole night's investigation (2026-09-19)
+          traced a flash-away-and-back bug on Android's recent-apps
+          gesture to exactly the opposite design - gating this mount on
+          `keyboardHeight`, a value written by event listeners that can
+          themselves fire spuriously, meant one bad event was enough to
+          unmount and remount the entire bar. Keying the mount off
+          `focusedBlockId` instead - which only ever changes on a
+          deliberate tap in or out of a block - and leaving its POSITION
+          as the only continuously-animated thing (bottom: keyboardSV.value,
+          driven solely by the frame handler, confirmed immune to that
+          same gesture) means a bad frame is at most a pixel of jitter,
+          never something for React to mount or unmount over.
           The window does NOT resize under the keyboard here (measured
           on-device: window stays at the full screen height whether the
           keyboard is up or down, since edge-to-edge delivers the keyboard
