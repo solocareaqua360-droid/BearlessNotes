@@ -421,6 +421,18 @@ export default function TasksScreen() {
     );
   }, [tasks, projectFilter, sortPref, searchQuery]);
 
+  // The project chip only earns its keep where several projects are
+  // mixed together - once the tabs above already say which ONE project
+  // is on screen ("Всі"'s own selected pill, or "Без проєкту"'s), a chip
+  // repeating that on every row is exactly the duplicate the user asked
+  // to drop: "якщо я відкрию проект то вгорі є обрана карусель проектів
+  // і так все зрозуміло". Shown only on "Всі" (projectFilter === null).
+  const showProjectChip = projectFilter === null;
+  // A real, single project selected (not "Всі" and not "Без проєкту") -
+  // its own lists get to stand as section headers instead of a per-row
+  // chip repeating a name already grouped under.
+  const isProjectSpecific = projectFilter !== null && projectFilter !== UNASSIGNED_ID;
+
   // The task doc is a mirror (see DocumentEditorScreen's syncTasksForDocument) -
   // the block inside the source document's own `blocks` array field is the
   // real record, so every change here has to update both, not just this mirror.
@@ -968,7 +980,7 @@ export default function TasksScreen() {
     });
   }
 
-  function renderTaskRow(item: Task) {
+  function renderTaskRow(item: Task, opts: { showProjectChip: boolean; showListChip: boolean }) {
     const project = item.projectId ? projectsById[item.projectId] : undefined;
     const list = item.listId ? taskListsById[item.listId] : undefined;
     const isToday = isTaskToday(item, today);
@@ -998,23 +1010,37 @@ export default function TasksScreen() {
               {item.text}
             </Text>
             <View style={styles.chipsRow}>
-              <Pressable onPress={() => openProjectPicker(item.id)}>
-                <View
-                  style={[
-                    styles.chip,
-                    project ? { backgroundColor: `${project.color}1A` } : styles.chipEmpty,
-                  ]}
-                >
-                  <Text style={[styles.chipText, { color: project ? project.color : 'rgba(255,255,255,0.45)' }]}>
-                    {project ? project.name : 'Вхідні'}
-                  </Text>
-                </View>
-              </Pressable>
+              {/* Only where several projects are mixed on screen at once -
+                  see showProjectChip's own comment. */}
+              {opts.showProjectChip && (
+                <Pressable onPress={() => openProjectPicker(item.id)}>
+                  <View
+                    style={[
+                      styles.chip,
+                      project ? { backgroundColor: `${project.color}1A` } : styles.chipEmpty,
+                    ]}
+                  >
+                    <Ionicons
+                      name="cube-outline"
+                      size={11}
+                      color={project ? project.color : 'rgba(255,255,255,0.45)'}
+                    />
+                    <Text style={[styles.chipText, { color: project ? project.color : 'rgba(255,255,255,0.45)' }]}>
+                      {project ? project.name : 'Вхідні'}
+                    </Text>
+                  </View>
+                </Pressable>
+              )}
               {/* A list lives INSIDE a project - nothing to pick until the
-                  task has one, so the chip itself only exists then. */}
-              {project && (
+                  task has one, so the chip itself only exists then. Hidden
+                  once a single project's own view already groups tasks
+                  under the list's name as a section header (see
+                  isProjectSpecific) - showing both would say the same
+                  thing twice. */}
+              {project && opts.showListChip && (
                 <Pressable onPress={() => openListPicker(item.id)}>
                   <View style={[styles.chip, list ? { backgroundColor: `${list.color}1A` } : styles.chipEmpty]}>
+                    <Ionicons name="list-outline" size={11} color={list ? list.color : 'rgba(255,255,255,0.45)'} />
                     <Text style={[styles.chipText, { color: list ? list.color : 'rgba(255,255,255,0.45)' }]}>
                       {list ? list.name : 'Без списку'}
                     </Text>
@@ -1176,23 +1202,28 @@ export default function TasksScreen() {
     key: string;
     title: string | null;
     color: string | null;
-    icon?: 'star';
+    icon?: 'star' | 'list';
     unfinished: Task[];
     completed: Task[];
+    showProjectChip: boolean;
+    showListChip: boolean;
   }) {
+    const rowOpts = { showProjectChip: section.showProjectChip, showListChip: section.showListChip };
     return (
       <View key={section.key} style={styles.group}>
         {section.title && (
           <View style={styles.groupHeader}>
             {section.icon === 'star' ? (
               <Ionicons name="star" size={14} color={section.color ?? 'rgba(255,255,255,0.45)'} />
+            ) : section.icon === 'list' ? (
+              <Ionicons name="list-outline" size={14} color={section.color ?? 'rgba(255,255,255,0.45)'} />
             ) : (
               <View style={[styles.groupDot, { backgroundColor: section.color ?? 'rgba(255,255,255,0.45)' }]} />
             )}
             <Text style={[styles.groupTitle, { color: section.color ?? 'rgba(255,255,255,0.45)' }]}>{section.title}</Text>
           </View>
         )}
-        {section.unfinished.map((task) => renderTaskRow(task))}
+        {section.unfinished.map((task) => renderTaskRow(task, rowOpts))}
         {section.completed.length > 0 && (
           <>
             <Pressable style={styles.collapseToggle} onPress={() => toggleGroupExpanded(section.key)}>
@@ -1203,7 +1234,7 @@ export default function TasksScreen() {
               />
               <Text style={styles.collapseLabel}>Завершені ({section.completed.length})</Text>
             </Pressable>
-            {expandedGroups.has(section.key) && section.completed.map((task) => renderTaskRow(task))}
+            {expandedGroups.has(section.key) && section.completed.map((task) => renderTaskRow(task, rowOpts))}
           </>
         )}
       </View>
@@ -1247,13 +1278,20 @@ export default function TasksScreen() {
         </View>
         <View style={styles.kanbanCardBottom}>
           <View style={styles.chipsRow}>
-            <Pressable onPress={() => openProjectPicker(task.id)}>
-              <View style={[styles.chip, project ? { backgroundColor: `${project.color}1A` } : styles.chipEmpty]}>
-                <Text style={[styles.chipText, { color: project ? project.color : 'rgba(255,255,255,0.45)' }]}>
-                  {project ? project.name : 'Вхідні'}
-                </Text>
-              </View>
-            </Pressable>
+            {showProjectChip && (
+              <Pressable onPress={() => openProjectPicker(task.id)}>
+                <View style={[styles.chip, project ? { backgroundColor: `${project.color}1A` } : styles.chipEmpty]}>
+                  <Ionicons
+                    name="cube-outline"
+                    size={11}
+                    color={project ? project.color : 'rgba(255,255,255,0.45)'}
+                  />
+                  <Text style={[styles.chipText, { color: project ? project.color : 'rgba(255,255,255,0.45)' }]}>
+                    {project ? project.name : 'Вхідні'}
+                  </Text>
+                </View>
+              </Pressable>
+            )}
             {reminderLabel && (
               <Pressable onPress={() => openReminderPicker(task.id)}>
                 <View style={styles.reminderChip}>
@@ -1454,17 +1492,62 @@ export default function TasksScreen() {
               icon: 'star',
               unfinished: todayTasks.filter((t) => !t.checked),
               completed: todayTasks.filter((t) => t.checked),
+              showProjectChip,
+              showListChip: true,
             })}
 
           {todayTasks.length > 0 && <View style={styles.todayDivider} />}
 
-          {renderSection({
-            key: '__all__',
-            title: null,
-            color: null,
-            unfinished: filteredTasks.filter((t) => !t.checked && !isTaskToday(t, today)),
-            completed: filteredTasks.filter((t) => t.checked && !isTaskToday(t, today)),
-          })}
+          {(() => {
+            const rest = filteredTasks.filter((t) => !isTaskToday(t, today));
+            // Inside ONE project's own view, its lists stand as section
+            // headers - "також в проектах список іде окремим заголовком
+            // над справами" - so the per-row chip (redundant with the
+            // header) is dropped for these rows. Outside a single
+            // project's view a list still only ever makes sense per row,
+            // since lists from different projects can't share one header.
+            if (!isProjectSpecific) {
+              return renderSection({
+                key: '__all__',
+                title: null,
+                color: null,
+                unfinished: rest.filter((t) => !t.checked),
+                completed: rest.filter((t) => t.checked),
+                showProjectChip,
+                showListChip: true,
+              });
+            }
+            const listsHere = taskLists.filter((l) => l.projectId === projectFilter);
+            const unlisted = rest.filter((t) => !t.listId);
+            return (
+              <>
+                {listsHere.map((l) => {
+                  const inList = rest.filter((t) => t.listId === l.id);
+                  if (inList.length === 0) return null;
+                  return renderSection({
+                    key: `__list_${l.id}__`,
+                    title: l.name,
+                    color: l.color,
+                    icon: 'list',
+                    unfinished: inList.filter((t) => !t.checked),
+                    completed: inList.filter((t) => t.checked),
+                    showProjectChip: false,
+                    showListChip: false,
+                  });
+                })}
+                {unlisted.length > 0 &&
+                  renderSection({
+                    key: '__unlisted__',
+                    title: listsHere.length > 0 ? 'Без списку' : null,
+                    color: null,
+                    unfinished: unlisted.filter((t) => !t.checked),
+                    completed: unlisted.filter((t) => t.checked),
+                    showProjectChip: false,
+                    showListChip: false,
+                  })}
+              </>
+            );
+          })()}
 
           {filteredTasks.length === 0 && (
             <Text style={styles.emptyFilterLabel}>Немає справ із цим фільтром</Text>
@@ -1894,6 +1977,9 @@ const makeStyles = (t: Theme) =>
     gap: 6,
   },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     alignSelf: 'flex-start',
     paddingHorizontal: 9,
     paddingVertical: 3,
