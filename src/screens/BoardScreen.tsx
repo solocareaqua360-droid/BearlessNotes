@@ -511,25 +511,67 @@ function releaseFromColumn(card: BoardCard): BoardCard {
 // ids, and an id is an id.
 type BoardNode = { id: string; x: number; y: number; width: number; height: number };
 
-function connectionEndpoints(from: BoardNode, to: BoardNode) {
-  const fromCenterX = from.x + from.width / 2;
-  const toCenterX = to.x + to.width / 2;
-  const fromIsLeft = fromCenterX <= toCenterX;
+// Picks LEFT/RIGHT or TOP/BOTTOM by whichever is the shorter real hop -
+// the user's own ask: "лінії повинні вміти з'єднуватись не тільки збоку
+// але й згори, в залежності від найкоротшого маршруту". Marked as a
+// worklet so the SAME function serves both the resting curve (called
+// from plain JS, below) and the live straight-line drag (called from
+// LiveConnectionLine's own useAnimatedStyle) - one routing rule, not two
+// copies that could drift apart.
+//
+// The "gap" on an axis is the real distance between the two boxes' EDGES
+// on that axis, not their centres - two boxes that overlap in x but sit
+// one above the other have a horizontal gap of zero or less, whatever
+// their centres say, and the bigger of the two gaps is the pair of edges
+// actually worth crossing.
+function connectionEndpoints(
+  fromX: number,
+  fromY: number,
+  fromWidth: number,
+  fromHeight: number,
+  toX: number,
+  toY: number,
+  toWidth: number,
+  toHeight: number
+) {
+  'worklet';
+  const fromRight = fromX + fromWidth;
+  const fromBottom = fromY + fromHeight;
+  const toRight = toX + toWidth;
+  const toBottom = toY + toHeight;
+  const hGap = Math.max(fromX, toX) - Math.min(fromRight, toRight);
+  const vGap = Math.max(fromY, toY) - Math.min(fromBottom, toBottom);
+  if (hGap >= vGap) {
+    const fromIsLeft = fromX + fromWidth / 2 <= toX + toWidth / 2;
+    return {
+      x1: fromIsLeft ? fromRight : fromX,
+      y1: fromY + fromHeight / 2,
+      x2: fromIsLeft ? toX : toRight,
+      y2: toY + toHeight / 2,
+      vertical: false,
+    };
+  }
+  const fromIsAbove = fromY + fromHeight / 2 <= toY + toHeight / 2;
   return {
-    x1: fromIsLeft ? from.x + from.width : from.x,
-    // The measured height, matching what LiveConnectionLine uses - taking
-    // the rough constant here instead would make the line jump vertically
-    // the moment a drag ended on any card that isn't exactly that tall.
-    y1: from.y + from.height / 2,
-    x2: fromIsLeft ? to.x : to.x + to.width,
-    y2: to.y + to.height / 2,
+    x1: fromX + fromWidth / 2,
+    y1: fromIsAbove ? fromBottom : fromY,
+    x2: toX + toWidth / 2,
+    y2: fromIsAbove ? toY : toBottom,
+    vertical: true,
   };
 }
 
-// A mindmap S-curve: control points pushed straight out sideways from each
-// end, so the line leaves and arrives horizontally regardless of the
-// vertical distance between the two cards.
-function curvePath(x1: number, y1: number, x2: number, y2: number): string {
+// A mindmap S-curve: control points pushed straight out from each end,
+// sideways for a left/right connection or up-and-down for a top/bottom
+// one - so the line always leaves and arrives at a right angle to the
+// edge it's actually anchored on, whichever routing connectionEndpoints
+// picked.
+function curvePath(x1: number, y1: number, x2: number, y2: number, vertical: boolean): string {
+  if (vertical) {
+    const bend = Math.max(30, Math.abs(y2 - y1) / 2);
+    const direction = y2 >= y1 ? 1 : -1;
+    return `M ${x1} ${y1} C ${x1} ${y1 + bend * direction} ${x2} ${y2 - bend * direction} ${x2} ${y2}`;
+  }
   const bend = Math.max(30, Math.abs(x2 - x1) / 2);
   const direction = x2 >= x1 ? 1 : -1;
   return `M ${x1} ${y1} C ${x1 + bend * direction} ${y1} ${x2 - bend * direction} ${y2} ${x2} ${y2}`;
@@ -611,13 +653,10 @@ function LiveConnectionLine({ from, to }: { from: LiveEndpoint; to: LiveEndpoint
     const toY =
       to.posY.value + (to.offsetY?.value ?? 0) + (to.columnOffsetY?.value ?? 0) + (to.containerOffsetY?.value ?? 0);
 
-    // Same "leave from the side that faces the other card" rule the
-    // resting curve uses, so the line doesn't jump sides on release.
-    const fromIsLeft = fromX + from.width / 2 <= toX + to.width / 2;
-    const x1 = fromIsLeft ? fromX + from.width : fromX;
-    const y1 = fromY + from.height / 2;
-    const x2 = fromIsLeft ? toX : toX + to.width;
-    const y2 = toY + to.height / 2;
+    // Same routing rule the resting curve uses (connectionEndpoints,
+    // marked 'worklet' for exactly this call), so the line doesn't jump
+    // to a different pair of edges the moment the card is dropped.
+    const { x1, y1, x2, y2 } = connectionEndpoints(fromX, fromY, from.width, from.height, toX, toY, to.width, to.height);
 
     const dx = x2 - x1;
     const dy = y2 - y1;
@@ -3969,7 +4008,16 @@ export default function BoardScreen() {
                     />
                   );
                 }
-                const { x1, y1, x2, y2 } = connectionEndpoints(from, to);
+                const { x1, y1, x2, y2, vertical } = connectionEndpoints(
+                  from.x,
+                  from.y,
+                  from.width,
+                  from.height,
+                  to.x,
+                  to.y,
+                  to.width,
+                  to.height
+                );
                 const left = Math.min(x1, x2) - CONNECTION_PADDING;
                 const top = Math.min(y1, y2) - CONNECTION_PADDING;
                 const width = Math.abs(x2 - x1) + CONNECTION_PADDING * 2;
@@ -3983,7 +4031,7 @@ export default function BoardScreen() {
                     pointerEvents="none"
                   >
                     <Path
-                      d={curvePath(x1 - left, y1 - top, x2 - left, y2 - top)}
+                      d={curvePath(x1 - left, y1 - top, x2 - left, y2 - top, vertical)}
                       stroke={CONNECTION_COLOR}
                       strokeWidth={2}
                       fill="none"
