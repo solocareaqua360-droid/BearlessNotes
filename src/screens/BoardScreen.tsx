@@ -2360,6 +2360,16 @@ export default function BoardScreen() {
   }, [cardHeights, columns, isLoaded]);
 
   const pinchGesture = Gesture.Pinch()
+    // Re-reads the LIVE value at the moment this gesture actually begins,
+    // rather than trusting whatever the previous pinch's own onEnd left
+    // behind - something else can move `scale` in between (fitViewToBounds,
+    // for isolation or "показати на дошці") without going through this
+    // gesture at all, and onEnd is the only other place savedScale was
+    // ever written. Without this, pinching after one of those jumped
+    // straight back to wherever the board was before it moved.
+    .onStart(() => {
+      savedScale.value = scale.value;
+    })
     .onUpdate((e) => {
       scale.value = Math.min(MAX_SCALE, Math.max(MIN_SCALE, savedScale.value * e.scale));
     })
@@ -2373,6 +2383,14 @@ export default function BoardScreen() {
     // moved the board before the press could count. Now it has to travel
     // before it is a drag, which leaves room for the hold to win.
     .minDistance(12)
+    // Same resync as pinchGesture's own onStart, same reason: a fit-to-
+    // bounds pan (isolation, "показати на дошці") moves translateX/Y
+    // outside this gesture, and the next drag has to pick up from there,
+    // not from wherever the PREVIOUS drag happened to end.
+    .onStart(() => {
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+    })
     .onUpdate((e) => {
       translateX.value = savedTranslateX.value + e.translationX;
       translateY.value = savedTranslateY.value + e.translationY;
