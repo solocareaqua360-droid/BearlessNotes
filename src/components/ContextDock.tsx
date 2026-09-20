@@ -156,6 +156,52 @@ function slotTransform(i: number, f: number, n: number, cardH: number) {
     zIndex: p.z,
   };
 }
+// THE TWO-WAY SWAP - path replacing desks (or back), in one physical
+// card rather than two.
+//
+// The user's own finding: hold the swipe still on the wide dock and
+// two full pills sit stacked with a gap between them, not a card
+// replacing another - "требе переписати щоб шлях зʼявлявся замість
+// дока вікон... тут немає багу а чисто недописана кодом логіка". The
+// rise-and-arc treatment above was built for the narrow ring, where a
+// THIRD member (actions) makes "there's more, swipe" worth hinting at
+// with a physically separate card peeking out. A ring of exactly two
+// - context and desks, which is what's left once the split pulls
+// actions into its own permanent zone - has nothing to hint at: one
+// is simply replacing the other, and it should read as one object
+// changing, never two.
+//
+// So this ring shape gets its own visual: ONE card, standing still,
+// its own icons crossfading - the desk icons dissolving one at a time
+// while the path's crumbs draw in one at a time, exactly the sequence
+// the user asked for: "анімоване зникнення іконок столів по черзі...
+// справа наліво і потім домальовка кожної папки по черзі зліва
+// направо але відносно швидко". Departure and arrival split the same
+// `t` in half rather than running back to back, which is what keeps
+// the whole thing quick without either half feeling rushed on its own.
+//
+// A pure function of `t`, on the same "one clock" a card's own
+// position already is - holding the swipe anywhere now shows a
+// coherent frame of THIS sequence, the same way it already does for
+// the position-based cards.
+function staggerOut(t: number, index: number, count: number): number {
+  if (count <= 0) return 0;
+  // Right to left: the LAST icon is the first to go.
+  const order = count - 1 - index;
+  const per = 0.5 / count;
+  const start = order * per * 0.7;
+  const end = start + per * 1.3;
+  if (end <= start) return t < start ? 1 : 0;
+  return 1 - Math.max(0, Math.min(1, (t - start) / (end - start)));
+}
+function staggerIn(t: number, index: number, count: number): number {
+  if (count <= 0) return 0;
+  const per = 0.5 / count;
+  const start = 0.5 + index * per * 0.7;
+  const end = start + per * 1.3;
+  if (end <= start) return t > start ? 1 : 0;
+  return Math.max(0, Math.min(1, (t - start) / (end - start)));
+}
 // The dock is made of the TAGS DRAWER'S material - and now literally of
 // its LAYERS, not of GlassDrop dressed up to look like it. The drawer is
 // two flat things: a BlurView at 60, tinted dark in every theme, and a
@@ -1227,6 +1273,113 @@ export default function ContextDock() {
     );
   }
 
+  // Whether THIS screen's ring is exactly the two-way swap - a path and
+  // the desks, nothing else. `faces` only ever puts them in this order
+  // (context, then desks - see its own construction above), so checking
+  // the two positions directly is enough; no need to search the array.
+  const isTwoWaySwap = faces.length === 2 && faces[0] === 'context' && faces[1] === 'desks' && !!trail && !!desks;
+  // One card's whole content for the two-way swap - both rows always
+  // mounted, stacked on the SAME spot, each icon's own opacity is the
+  // only thing that moves. See staggerOut/staggerIn's own comment for
+  // the sequence and why it is a function of `t` rather than a timer.
+  function renderTwoWaySwap() {
+    const k = Math.floor(pos);
+    const t = pos - k;
+    // Which member of THIS two-member ring is in front right now -
+    // read off `pos` the exact way slotPlace does, so this never
+    // disagrees with where the cards would have been.
+    const frontIndex = ((k % 2) + 2) % 2;
+    const frontIsDesks = faces[frontIndex] === 'desks';
+    const deskCount = desks!.desks.length;
+    const crumbCount = trail!.crumbs.length + 1; // +1 for the root icon
+    const deskAlpha = (i: number) => (frontIsDesks ? staggerOut(t, i, deskCount) : staggerIn(t, i, deskCount));
+    const crumbAlpha = (i: number) => (frontIsDesks ? staggerIn(t, i, crumbCount) : staggerOut(t, i, crumbCount));
+    return (
+      <>
+        {showLeave && (
+          <Pressable onPress={stepOut} style={[styles.leave, { height: CARD_H }]}>
+            <Ionicons name="chevron-back" size={24} color={theme.glass.ink} />
+            <View style={[styles.leaveRule, { backgroundColor: theme.glass.inkMuted, opacity: 0.4 }]} />
+          </Pressable>
+        )}
+        <View style={showSplitActions ? [styles.faceFixed, { width: faceWidthWhenSplit }] : styles.face}>
+          {/* Both rows share this one spot - absoluteFill on the second
+              is what keeps them from pushing each other aside instead
+              of overlapping. */}
+          <View style={[styles.shell, dims.card]} pointerEvents={frontIsDesks ? 'auto' : 'none'}>
+            <Pressable style={[styles.actionRow, styles.spread]} onLongPress={openCapture} delayLongPress={400}>
+              {desks!.desks.map((desk, i) => (
+                <Pressable key={desk.key} onPress={desk.onPress} onLongPress={openCapture} delayLongPress={400} style={{ opacity: deskAlpha(i) }}>
+                  {desk.active ? (
+                    <View style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: DESK / 2 }]}>
+                      <Svg width={DESK} height={DESK} style={StyleSheet.absoluteFill} pointerEvents="none">
+                        <Circle cx={DESK / 2} cy={DESK / 2} r={DESK / 2 - HERE_SHRINK} fill={HERE_FILL} />
+                      </Svg>
+                      <Ionicons name={desk.icon as keyof typeof Ionicons.glyphMap} size={22} color={theme.glass.ink} />
+                    </View>
+                  ) : (
+                    <View style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: DESK / 2 }]}>
+                      <Ionicons name={desk.icon as keyof typeof Ionicons.glyphMap} size={22} color={theme.glass.ink} />
+                    </View>
+                  )}
+                </Pressable>
+              ))}
+            </Pressable>
+          </View>
+          <View style={[styles.shell, styles.trailShell, dims.card, StyleSheet.absoluteFill]} pointerEvents={frontIsDesks ? 'none' : 'auto'}>
+            <View style={[styles.trailRow, dims.rowHeight]}>
+              <ScrollView ref={trailRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.trailStrip}>
+                <View ref={targets?.('')} collapsable={false} style={{ opacity: crumbAlpha(0) }}>
+                  <Pressable onPress={() => trail!.onGo('')} style={styles.trailRoot}>
+                    <Ionicons name={icon} size={19} color={theme.glass.ink} />
+                  </Pressable>
+                </View>
+                {trail!.crumbs.map((segment, index) => {
+                  const isLast = index === trail!.crumbs.length - 1;
+                  const target = trail!.crumbs.slice(0, index + 1).join('/');
+                  return (
+                    <View key={target} style={[styles.trailPair, { opacity: crumbAlpha(index + 1) }]}>
+                      <Ionicons name="chevron-forward" size={13} color={theme.glass.inkMuted} />
+                      {isLast ? (
+                        <View style={[styles.trailCurrent, { borderRadius: CARD_BUTTON / 2 }, styles.here]}>
+                          <Text style={[styles.trailLabel, styles.trailLabelCurrent, { color: theme.glass.ink }]} numberOfLines={1}>
+                            {segment}
+                          </Text>
+                        </View>
+                      ) : (
+                        <View ref={targets?.(target)} collapsable={false}>
+                          <Pressable onPress={() => trail!.onGo(target)} style={styles.trailSegment}>
+                            <Text style={[styles.trailLabel, { color: theme.glass.inkMuted }]} numberOfLines={1}>
+                              {segment}
+                            </Text>
+                          </Pressable>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+        {showSplitActions && (
+          <>
+            <View style={[styles.splitDivider, { width: dividerSpaceNow }]}>
+              <View style={[styles.splitDividerLine, { backgroundColor: theme.glass.inkMuted }]} />
+            </View>
+            <View style={{ width: splitActionsWidthNow, height: CARD_H, justifyContent: 'center' }}>
+              {!!actions && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionRow}>
+                  <ActionGroups actions={actions} buttonWidth={ACT_W_SPLIT} buttonHeight={CARD_BUTTON} iconSize={ACT_ICON} theme={theme} onDone={() => {}} />
+                </ScrollView>
+              )}
+            </View>
+          </>
+        )}
+      </>
+    );
+  }
+
   const DESK = Math.min(CARD_BUTTON, Math.floor((cardWidthNow - CARD_PAD * 2 - (showLeave ? LEAVE_W : 0)) / 4));
   // An action button carries a word, so unlike a desk it is not a
   // circle and takes the full quarter of the card. Divided by four
@@ -1324,27 +1477,41 @@ export default function ContextDock() {
               },
             ]}
           >
-            {/* Every card this screen's stack holds, mounted once and
-                never moved from its own layer. Which one is in front,
-                which is peeking out below it, and which is on its way
-                over the top are all one number's doing - see
-                slotTransform. The cards behind used to be painted bars
-                standing in for cards that were not there; they are the
-                real ones now, which is what the user asked for:
-                "потрібно щоб це була справжня задня картка". */}
-            {faces.map((f, i) => (
-              // One view per card, one animated style, one source for
-              // where it stands. No second layer to keep in step.
-              <View
-                key={f}
-                style={[styles.cardLayer, dims.card, liftStyle(theme, theme.lift, glowAt(i)), cardStyles[i]]}
-                pointerEvents={f === showing ? 'auto' : 'none'}
-              >
+            {isTwoWaySwap ? (
+              /* THE TWO-WAY SWAP - path replacing desks, in one card
+                 that never moves. See staggerOut/staggerIn's own
+                 comment: a ring of exactly {context, desks} has
+                 nothing to hint "there's more" about, so it gets its
+                 own still card with crossfading content instead of the
+                 rise-and-arc treatment below. */
+              <View style={[styles.cardLayer, dims.card, liftStyle(theme, theme.lift, 1)]} pointerEvents="auto">
                 <DockFrost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
-                  {renderCard(f, f === showing)}
+                  {renderTwoWaySwap()}
                 </DockFrost>
               </View>
-            ))}
+            ) : (
+              /* Every card this screen's stack holds, mounted once and
+                  never moved from its own layer. Which one is in front,
+                  which is peeking out below it, and which is on its way
+                  over the top are all one number's doing - see
+                  slotTransform. The cards behind used to be painted bars
+                  standing in for cards that were not there; they are the
+                  real ones now, which is what the user asked for:
+                  "потрібно щоб це була справжня задня картка". */
+              faces.map((f, i) => (
+                // One view per card, one animated style, one source for
+                // where it stands. No second layer to keep in step.
+                <View
+                  key={f}
+                  style={[styles.cardLayer, dims.card, liftStyle(theme, theme.lift, glowAt(i)), cardStyles[i]]}
+                  pointerEvents={f === showing ? 'auto' : 'none'}
+                >
+                  <DockFrost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
+                    {renderCard(f, f === showing)}
+                  </DockFrost>
+                </View>
+              ))
+            )}
           </View>
           </GestureDetector>
           {beads.right ? (
