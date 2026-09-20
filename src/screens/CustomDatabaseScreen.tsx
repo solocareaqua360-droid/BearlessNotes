@@ -44,6 +44,7 @@ import { ownedQuery, setDoc } from '../utils/owned';
 import {
   GLASS_BODY_BLURRED,
   GLASS_CARD,
+  GLASS_DANGER,
   GLASS_LINE,
   GLASS_TEXT,
   GLASS_TEXT_FAINT,
@@ -2341,6 +2342,10 @@ export default function CustomDatabaseScreen({
             setDraftValue(datePickerField.id, picked);
             setDatePickerFieldId(null);
           }}
+          onClear={() => {
+            setDraftValue(datePickerField.id, '');
+            setDatePickerFieldId(null);
+          }}
           onClose={() => setDatePickerFieldId(null)}
         />
       )}
@@ -2417,6 +2422,10 @@ export default function CustomDatabaseScreen({
           value={dateRangeOf(rows.find((r) => r.id === cellPicker.rowId)?.values[cellPicker.field.id]) ?? undefined}
           onPick={(picked) => {
             writeRowValue(cellPicker.rowId, cellPicker.field.id, picked);
+            setCellPicker(null);
+          }}
+          onClear={() => {
+            writeRowValue(cellPicker.rowId, cellPicker.field.id, '');
             setCellPicker(null);
           }}
           onClose={() => setCellPicker(null)}
@@ -3035,20 +3044,23 @@ function dayWord(n: number): string {
 // return time - both steppers show together the moment it's on, whether
 // or not there's a separate end date.
 //
-// Neither switch confirms on its own tap any more, in either mode: a
-// mis-tap used to commit the whole pick immediately with no way back
-// short of reopening the picker ("натиснув неправильно... повинна бути
-// кнопка «Ок»") - now every tap and every stepper press only adjusts the
-// PENDING value, and the explicit "Ок" button is the only thing that
-// calls onPick. Plain single-day, no time, is the one case left that
-// still confirms on the tap itself - nothing to double-check there.
+// No tap confirms anything any more, in ANY mode, plain single-day
+// included: a mis-tap used to commit the whole pick immediately with no
+// way back short of reopening the picker ("натиснув неправильно... треба
+// кнопка «Ок» і кнопка закрити картку"). Every tap and every stepper
+// press only adjusts the PENDING value; the actions row at the foot is
+// the only thing that ever calls back - "Ок" (onPick), "Скасувати"
+// (onClose, discards whatever was pending), and "Очистити" (onClear,
+// shown only when the field already had a value, wipes it to empty).
 function MiniDatePicker({
   value,
   onPick,
+  onClear,
   onClose,
 }: {
   value?: string | DateRangeValue;
   onPick: (value: DateRangeValue) => void;
+  onClear: () => void;
   onClose: () => void;
 }) {
   const accent = useTheme().sections.custom;
@@ -3070,9 +3082,7 @@ function MiniDatePicker({
   const [endMinute, setEndMinute] = useState(() => (initialRange?.endTime ? Number(initialRange.endTime.split(':')[1]) : 0));
   const grid = getMonthGrid(visibleMonth.year, visibleMonth.month);
   const today = new Date();
-  // Once either the range or the time steppers are in play, nothing
-  // confirms on its own tap any more - see handleDayPress's own comment.
-  const needsConfirm = rangeMode || timeEnabled;
+  const hasExistingValue = !!initialRange;
 
   function changeMonth(delta: number) {
     setVisibleMonth((prev) => {
@@ -3098,17 +3108,14 @@ function MiniDatePicker({
     setEndMinute((m) => (m + delta + 60) % 60);
   }
 
+  // No tap confirms on its own any more, in ANY mode - a mis-tap used to
+  // commit the whole pick immediately, "натиснув неправильно" with no way
+  // back short of reopening the picker. Every tap here only adjusts the
+  // pending selection; the "Ок" button in the actions row below is the
+  // only thing that actually calls onPick, "Скасувати" the only thing
+  // that calls onClose, "Очистити" the only thing that calls onClear.
   function handleDayPress(key: string) {
     hapticSelectItem();
-    if (!needsConfirm) {
-      onPick({ start: key });
-      return;
-    }
-    // Neither range mode nor time confirms on its own tap any more - a
-    // mis-tap used to commit the whole pick immediately, "натиснув
-    // неправильно" with no way back except reopening the picker. Every
-    // tap here just adjusts the pending selection; the "Ок" button below
-    // is the only thing that actually calls onPick.
     if (!rangeMode) {
       setPendingStart(key);
       return;
@@ -3212,9 +3219,7 @@ function MiniDatePicker({
               {grid.slice(row * 7, row * 7 + 7).map(({ date, inMonth }) => {
                 const key = dateKey(date);
                 const isToday = isSameDay(date, today);
-                const isSelected = needsConfirm
-                  ? key === pendingStart || key === pendingEnd
-                  : dateRangeOf(value)?.start === key;
+                const isSelected = key === pendingStart || key === pendingEnd;
                 const isInRange =
                   rangeMode && !!pendingStart && !!pendingEnd && key > pendingStart && key < pendingEnd;
                 return (
@@ -3291,8 +3296,16 @@ function MiniDatePicker({
               </View>
             </View>
           )}
-          {needsConfirm && duration && <Text style={miniStyles.durationLabel}>Триває: {duration}</Text>}
-          {needsConfirm && (
+          {duration && <Text style={miniStyles.durationLabel}>Триває: {duration}</Text>}
+          <View style={miniStyles.actionsRow}>
+            {hasExistingValue && (
+              <Pressable style={miniStyles.clearBtn} onPress={onClear}>
+                <Text style={miniStyles.clearBtnLabel}>Очистити</Text>
+              </Pressable>
+            )}
+            <Pressable style={miniStyles.cancelBtn} onPress={onClose}>
+              <Text style={miniStyles.cancelBtnLabel}>Скасувати</Text>
+            </Pressable>
             <Pressable
               style={[miniStyles.confirmButton, !pendingStart && miniStyles.confirmButtonDisabled]}
               disabled={!pendingStart}
@@ -3300,7 +3313,7 @@ function MiniDatePicker({
             >
               <Text style={miniStyles.confirmButtonLabel}>Ок</Text>
             </Pressable>
-          )}
+          </View>
         </Pressable>
       </Pressable>
     </GlassLayer>
@@ -3320,7 +3333,11 @@ const makeMiniStyles = (t: Theme) => StyleSheet.create({
   // rest. Same body, same hairline edge as every other window now.
   card: {
     ...SHEET_WINDOW,
-    maxWidth: 340,
+    // Widened for the time steppers added later - two of them side by
+    // side (start/end, each its own hour+minute pair) no longer fit at
+    // the calendar's own original 340, and were clipping their last
+    // button off the edge.
+    maxWidth: 430,
     backgroundColor: GLASS_BODY_BLURRED,
     overflow: 'hidden',
     padding: 16,
@@ -3419,7 +3436,7 @@ const makeMiniStyles = (t: Theme) => StyleSheet.create({
     paddingVertical: 4,
   },
   timeStepperLabel: {
-    width: 78,
+    width: 92,
     fontSize: 13,
     fontFamily: FONT_REGULAR,
     color: GLASS_TEXT_MUTED,
@@ -3465,8 +3482,36 @@ const makeMiniStyles = (t: Theme) => StyleSheet.create({
     color: GLASS_TEXT_MUTED,
     textAlign: 'center',
   },
-  confirmButton: {
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     marginTop: 12,
+  },
+  clearBtn: {
+    paddingHorizontal: 4,
+    justifyContent: 'center',
+  },
+  clearBtnLabel: {
+    fontSize: 14,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_DANGER,
+  },
+  cancelBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 11,
+    borderRadius: 14,
+    backgroundColor: GLASS_CARD,
+  },
+  cancelBtnLabel: {
+    fontSize: 15,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT,
+  },
+  confirmButton: {
+    flex: 1,
     borderRadius: 14,
     paddingVertical: 11,
     alignItems: 'center',
