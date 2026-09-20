@@ -1973,6 +1973,12 @@ export default function BoardScreen() {
   const translateY = useSharedValue(0);
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
+  // The world point under the pinch's own focal (the midpoint between the
+  // two fingers), captured once when the pinch starts - see pinchGesture's
+  // own comment for why this is what keeps zoom anchored to the fingers
+  // instead of drifting toward the board's centre.
+  const pinchFocalWorldX = useSharedValue(0);
+  const pinchFocalWorldY = useSharedValue(0);
   // Shared by every selected card (see DraggableCard's isGroupDrag branch) -
   // whichever selected card is actually being dragged writes into this, and
   // every OTHER selected card reads the same live value in its own animated
@@ -2359,25 +2365,44 @@ export default function BoardScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cardHeights, columns, isLoaded]);
 
+  // Anchored to the pinch's own focal point (the midpoint between the two
+  // fingers), the way pinch-zoom works everywhere else - the world point
+  // under that focal is captured ONCE, in onStart, then every frame's
+  // translateX/Y is solved so that same world point stays under wherever
+  // the focal is NOW (it can drift a little as two fingers move, and this
+  // tracks that too, not just the distance between them). Before this it
+  // only ever changed `scale`, which zooms around the view's own default
+  // transform origin - the board's centre - so pinching anywhere else
+  // visibly dragged the board diagonally toward or away from the centre
+  // instead of staying under the fingers: the user's own read, confirmed.
   const pinchGesture = Gesture.Pinch()
-    // Re-reads the LIVE value at the moment this gesture actually begins,
-    // rather than trusting whatever the previous pinch's own onEnd left
-    // behind - something else can move `scale` in between (fitViewToBounds,
-    // for isolation or "показати на дошці") without going through this
-    // gesture at all, and onEnd is the only other place savedScale was
-    // ever written. Without this, pinching after one of those jumped
-    // straight back to wherever the board was before it moved.
-    .onStart(() => {
+    .onStart((e) => {
       savedScale.value = scale.value;
+      pinchFocalWorldX.value = (e.focalX - viewport.width / 2 - translateX.value) / scale.value + WORLD_CENTER;
+      pinchFocalWorldY.value = (e.focalY - viewport.height / 2 - translateY.value) / scale.value + WORLD_CENTER;
     })
     .onUpdate((e) => {
-      scale.value = Math.min(MAX_SCALE, Math.max(MIN_SCALE, savedScale.value * e.scale));
+      const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, savedScale.value * e.scale));
+      scale.value = nextScale;
+      translateX.value = e.focalX - viewport.width / 2 - (pinchFocalWorldX.value - WORLD_CENTER) * nextScale;
+      translateY.value = e.focalY - viewport.height / 2 - (pinchFocalWorldY.value - WORLD_CENTER) * nextScale;
     })
     .onEnd(() => {
       savedScale.value = scale.value;
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
     });
 
   const panGesture = Gesture.Pan()
+    // One finger only - two is a pinch (see canvasGesture's own
+    // Simultaneous(pinchGesture, panGesture)), and pinchGesture's own
+    // focal-tracking above already moves translateX/Y for a two-finger
+    // touch, scale changing or not. Letting this ALSO claim a two-finger
+    // touch meant both gestures wrote translateX/Y on the same frames,
+    // each from its own, different formula - fighting over the same
+    // value is what the diagonal drift actually was.
+    .minPointers(1)
+    .maxPointers(1)
     // A hold and a drag start the same way, and the canvas used to take
     // the very first pixel - so a hand that meant to hold had already
     // moved the board before the press could count. Now it has to travel
