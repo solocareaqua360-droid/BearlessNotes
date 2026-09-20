@@ -122,7 +122,7 @@ import {
   toggleFacet,
   viewMatchesState,
 } from '../utils/customRowQuery';
-import { MONTH_FULL, WEEKDAY_SHORT, dateKey, getMonthGrid, isSameDay, parseDateKey } from '../utils/dateLocale';
+import { MONTH_FULL, WEEKDAY_SHORT, addDays, dateKey, getMonthGrid, isSameDay, parseDateKey } from '../utils/dateLocale';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
@@ -141,12 +141,27 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-const VIEW_LABELS: Record<ViewMode, string> = { list: 'Список', cards: 'Картки', table: 'Таблиця' };
+const VIEW_LABELS: Record<ViewMode, string> = {
+  list: 'Список',
+  cards: 'Картки',
+  table: 'Таблиця',
+  schedule: 'Графік',
+};
 const VIEW_ICONS: Record<ViewMode, keyof typeof Ionicons.glyphMap> = {
   list: 'reorder-four-outline',
   cards: 'albums-outline',
   table: 'grid-outline',
+  schedule: 'calendar-outline',
 };
+// A day column's own width, and how tall one row of the grid stands -
+// the same two numbers decide the row-header column's height per record
+// (see renderSchedule) and each event card's span (a future step).
+const SCHEDULE_DAY_WIDTH = 64;
+const SCHEDULE_ROW_HEIGHT = 56;
+// How many days renderSchedule shows at once - a plain scrolling window
+// rather than a real calendar month, since the grid's own columns are
+// dates, not weeks; "сьогодні" always starts the window on first open.
+const SCHEDULE_WINDOW_DAYS = 60;
 // The card grid's own padding and gap, as numbers because the tile width is
 // computed from them (see gridTileWidth) as well as applied in the style.
 const CARD_GRID_PADDING = 20;
@@ -174,7 +189,7 @@ function titleColumnWidth(titles: string[], windowWidth: number): number {
 // keeps them in step.
 const TABLE_ROW_HEIGHT = 46;
 
-type ViewMode = 'list' | 'table' | 'cards';
+type ViewMode = 'list' | 'table' | 'cards' | 'schedule';
 // The three tabs of the parameters window. They were three buttons on the
 // rail and three anchored lists; the user's own call was that they are one
 // window with three tabs, "як менше основного екрану по центру" - the
@@ -235,6 +250,14 @@ export default function CustomDatabaseScreen({
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
+  // Which saved 'schedule' view is active, when viewMode is 'schedule' -
+  // needed because a schedule view carries real configuration
+  // (scheduleConfig) that viewMatchesState's own sort/filter comparison
+  // can't distinguish between two schedule views that happen to share the
+  // same leftover sort/filter state (irrelevant to either of them). Kept
+  // in the same prefs doc the rest of the view state already lives in.
+  const [scheduleViewId, setScheduleViewId] = useState<string | null>(null);
+  const [scheduleSetupVisible, setScheduleSetupVisible] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   // 'params' is the one window that carries sorting, filtering and
   // grouping on three tabs - they were three separate anchored lists, and
@@ -329,6 +352,14 @@ export default function CustomDatabaseScreen({
   // The header scrolls sideways only as a mirror of the body's own offset.
   const headerScrollRef = useRef<ScrollView>(null);
   const bodyScrollRef = useRef<ScrollView>(null);
+  // Same mirroring for the schedule grid's own date header vs. its
+  // horizontally-scrolling body - see renderSchedule.
+  const scheduleHeaderScrollRef = useRef<ScrollView>(null);
+  const scheduleBodyScrollRef = useRef<ScrollView>(null);
+  // Which date the schedule's own visible window starts at - "today" the
+  // first time it's opened this session, deliberately not persisted (a
+  // schedule always opens on today, the same way a calendar does).
+  const [scheduleWindowStart] = useState(() => dateKey(new Date()));
   // This Android build doesn't resize the window under the keyboard - it
   // arrives as an inset over the content, not a shrink - so a bottom sheet
   // needs to track its height itself and push up by that much, same as
@@ -573,6 +604,7 @@ export default function CustomDatabaseScreen({
     return onSnapshot(prefsDoc, (snapshot) => {
       const data = snapshot.data();
       setViewMode((data?.viewMode as ViewMode | undefined) ?? 'list');
+      setScheduleViewId((data?.scheduleViewId as string | undefined) ?? null);
       // Same two keys useSortPref writes on the other database screens, so
       // a sort chosen before this screen grew its own field-aware sorting
       // is still the sort it comes back with.
@@ -595,7 +627,14 @@ export default function CustomDatabaseScreen({
   // the render before it, and React ends the screen over it. That is what
   // crashed this screen the moment a database was opened.
   //
-  const activeView = savedViews.find((v) => viewMatchesState(v, viewMode, sortPref, filters)) ?? null;
+  // A schedule view is looked up by id, not by matching sort/filter state -
+  // its scheduleConfig is what actually distinguishes one from another,
+  // and two schedule views easily share the same leftover sort/filter
+  // values (neither one uses them).
+  const activeView =
+    viewMode === 'schedule'
+      ? (savedViews.find((v) => v.id === scheduleViewId) ?? null)
+      : (savedViews.find((v) => viewMatchesState(v, viewMode, sortPref, filters)) ?? null);
   // What the one parameters button has to say without words: how many of
   // the three are doing something. A sort is always in force, so it only
   // counts when it is not the default one this database opens with.
@@ -603,6 +642,16 @@ export default function CustomDatabaseScreen({
     filters.length +
     (groupFieldId ? 1 : 0) +
     (sortPref.field === DEFAULT_ROW_SORT.field && sortPref.dir === DEFAULT_ROW_SORT.dir ? 0 : 1);
+
+  // What a schedule view can be built from: a relation field that points
+  // at another database of records (a driver, a vehicle - the schedule's
+  // own rows), and a date field to span the columns with. Multi-target
+  // relations are left out - a schedule row is one record, and a field
+  // holding several would have no single row to pivot into.
+  const scheduleRelationFields = database?.fields.filter(
+    (f) => f.type === 'relation' && f.relationTarget?.kind === 'customDb' && !f.multiple
+  ) ?? [];
+  const scheduleDateFields = database?.fields.filter((f) => f.type === 'date') ?? [];
 
   // Everything this screen offered on the rail goes to the DOCK, as on
   // every database. Search on the left, a record on the right; and the
@@ -783,7 +832,16 @@ export default function CustomDatabaseScreen({
   function applySavedView(view: CustomDatabaseView) {
     setDoc(
       prefsDoc,
-      { viewMode: view.viewMode, sortField: view.sortField, sortDir: view.sortDir, rowFilters: view.filters ?? [] },
+      {
+        viewMode: view.viewMode,
+        sortField: view.sortField,
+        sortDir: view.sortDir,
+        rowFilters: view.filters ?? [],
+        // Cleared for every OTHER view, set for a schedule one - see
+        // activeView's own comment on why this can't be derived from
+        // sort/filter state the way the other three view modes are.
+        scheduleViewId: view.viewMode === 'schedule' ? view.id : deleteField(),
+      },
       { merge: true }
     );
     closeParamList();
@@ -802,6 +860,36 @@ export default function CustomDatabaseScreen({
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
+  }
+
+  // 'schedule' is never reached through changeViewMode/saveCurrentAsView -
+  // it has real configuration (which relation field supplies the rows,
+  // which date field spans the columns) that "the screen's current state"
+  // has no place to keep, so it only ever comes from this dedicated flow
+  // (see ScheduleViewSetupSheet) rather than from "save what's on screen
+  // right now" the other three view modes use.
+  async function createScheduleView(relationFieldId: string, dateFieldId: string, name: string) {
+    const relationField = database?.fields.find((f) => f.id === relationFieldId);
+    if (!relationField || relationField.relationTarget?.kind !== 'customDb') return;
+    setScheduleSetupVisible(false);
+    const id = generateId();
+    await setDoc(doc(db, 'customDatabaseViews', id), {
+      databaseId,
+      name: name.trim() || 'Графік',
+      viewMode: 'schedule',
+      sortField: sortPref.field,
+      sortDir: sortPref.dir,
+      filters: [],
+      scheduleConfig: {
+        rowDatabaseId: relationField.relationTarget.databaseId,
+        rowRelationFieldId: relationFieldId,
+        dateFieldId,
+      },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    await setDoc(prefsDoc, { viewMode: 'schedule', scheduleViewId: id }, { merge: true });
+    closeParamList();
   }
 
   async function renameSavedView(view: CustomDatabaseView, name: string) {
@@ -1560,6 +1648,118 @@ export default function CustomDatabaseScreen({
     );
   }
 
+  // Step 1 of the schedule view: the grid itself (sticky row-header
+  // column vs. a horizontally-scrolling stretch of date columns, cribbed
+  // from renderTable's own frozen-column/scroll-sync technique above) -
+  // no event cards yet (see BoardScreen's own connection-pull comment on
+  // why a feature like this ships in verifiable slices rather than all
+  // at once). Rows come from the OTHER database scheduleConfig points at
+  // (relatedRows), never from this database's own `rows`/`displayedRows` -
+  // a schedule with zero waybills yet should still show every driver's
+  // own empty row, not the generic "Ще немає записів" state.
+  function renderSchedule(config: NonNullable<CustomDatabaseView['scheduleConfig']>) {
+    const rowDatabase = relatedDatabases[config.rowDatabaseId] ?? null;
+    const rowRecords = relatedRows[config.rowDatabaseId] ?? [];
+    const windowStartDate = parseDateKey(scheduleWindowStart);
+    const days = Array.from({ length: SCHEDULE_WINDOW_DAYS }, (_, i) => addDays(windowStartDate, i));
+    const todayKey = dateKey(new Date());
+    const rowHeaderWidth = titleColumnWidth(rowRecords.map((r) => rowTitleOf(rowDatabase, r)), windowWidth);
+
+    if (!rowDatabase) {
+      return (
+        <View style={styles.emptyState}>
+          <Ionicons name="alert-circle-outline" size={32} color={accent} />
+          <Text style={styles.emptyLabel}>Базу для рядків не знайдено</Text>
+          <Text style={styles.emptyHint}>Можливо, її було видалено після створення цього графіка.</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.tableWrap}>
+        <View style={styles.tableHeaderRow}>
+          <View style={[styles.tableFrozenHeader, { width: rowHeaderWidth }]} />
+          <ScrollView
+            horizontal
+            ref={scheduleHeaderScrollRef}
+            scrollEnabled={false}
+            showsHorizontalScrollIndicator={false}
+          >
+            {days.map((d) => {
+              const key = dateKey(d);
+              const isToday = key === todayKey;
+              return (
+                <View
+                  key={key}
+                  style={[
+                    styles.scheduleDateHeaderCell,
+                    isToday && styles.scheduleDateHeaderCellToday,
+                    { width: SCHEDULE_DAY_WIDTH },
+                  ]}
+                >
+                  <Text style={styles.scheduleDateHeaderWeekday}>{WEEKDAY_SHORT[(d.getDay() + 6) % 7]}</Text>
+                  <Text style={styles.scheduleDateHeaderNum}>{d.getDate()}</Text>
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.tableBody}>
+          <View style={styles.tableBodyRow}>
+            <View style={[styles.tableFrozenColumn, { width: rowHeaderWidth }]}>
+              {rowRecords.map((row) => (
+                <Pressable
+                  key={row.id}
+                  style={[styles.scheduleRowHeaderCell, { width: rowHeaderWidth }]}
+                  onPress={() => navigation.navigate('CustomDatabase', { databaseId: config.rowDatabaseId, openRowId: row.id })}
+                >
+                  <Text style={styles.scheduleRowHeaderLabel} numberOfLines={1}>
+                    {rowTitleOf(rowDatabase, row)}
+                  </Text>
+                </Pressable>
+              ))}
+              {rowRecords.length === 0 && (
+                <View style={styles.scheduleRowHeaderCell}>
+                  <Text style={styles.emptyHint}>Немає записів</Text>
+                </View>
+              )}
+            </View>
+
+            <ScrollView
+              horizontal
+              ref={scheduleBodyScrollRef}
+              scrollEventThrottle={16}
+              onScroll={(e) =>
+                scheduleHeaderScrollRef.current?.scrollTo({ x: e.nativeEvent.contentOffset.x, animated: false })
+              }
+            >
+              <View>
+                {rowRecords.map((row) => (
+                  <View key={row.id} style={{ flexDirection: 'row' }}>
+                    {days.map((d) => {
+                      const key = dateKey(d);
+                      return (
+                        <View
+                          key={key}
+                          style={[
+                            styles.scheduleDayCell,
+                            key === todayKey && styles.scheduleDayCellToday,
+                            { width: SCHEDULE_DAY_WIDTH },
+                          ]}
+                        />
+                      );
+                    })}
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <Svg
@@ -1913,31 +2113,47 @@ export default function CustomDatabaseScreen({
                     );
                   })}
                   {savedViews.length > 0 && <View style={styles.paramDivider} />}
-                  {/* Saving is disabled while a view already matches -
-                      there would be nothing new to save, and two views
-                      with the same contents can't be told apart. */}
-                  <Pressable
-                    style={styles.paramOption}
-                    disabled={!!activeView}
-                    onPress={() => {
-                      closeParamList();
-                      setViewPrompt({ mode: 'new' });
-                    }}
-                  >
-                    <Ionicons
-                      name="add-circle-outline"
-                      size={15}
-                      color={activeView ? 'rgba(255,255,255,0.3)' : accent}
-                    />
-                    <Text
-                      style={[
-                        styles.paramOptionLabel,
-                        { color: activeView ? 'rgba(255,255,255,0.3)' : accent },
-                      ]}
+                  {/* "Current state" (sort/filters/mode) means nothing for
+                      a schedule - it has its own real configuration
+                      instead (see createScheduleView) - so this button
+                      only makes sense outside schedule mode, same reason
+                      it's already disabled while a view already matches. */}
+                  {viewMode !== 'schedule' && (
+                    <Pressable
+                      style={styles.paramOption}
+                      disabled={!!activeView}
+                      onPress={() => {
+                        closeParamList();
+                        setViewPrompt({ mode: 'new' });
+                      }}
                     >
-                      Зберегти поточний
-                    </Text>
-                  </Pressable>
+                      <Ionicons
+                        name="add-circle-outline"
+                        size={15}
+                        color={activeView ? 'rgba(255,255,255,0.3)' : accent}
+                      />
+                      <Text
+                        style={[
+                          styles.paramOptionLabel,
+                          { color: activeView ? 'rgba(255,255,255,0.3)' : accent },
+                        ]}
+                      >
+                        Зберегти поточний
+                      </Text>
+                    </Pressable>
+                  )}
+                  {scheduleRelationFields.length > 0 && scheduleDateFields.length > 0 && (
+                    <Pressable
+                      style={styles.paramOption}
+                      onPress={() => {
+                        closeParamList();
+                        setScheduleSetupVisible(true);
+                      }}
+                    >
+                      <Ionicons name="calendar-outline" size={15} color={accent} />
+                      <Text style={[styles.paramOptionLabel, { color: accent }]}>Створити графік</Text>
+                    </Pressable>
+                  )}
                 </>
               )}
             </ScrollView>
@@ -1959,7 +2175,13 @@ export default function CustomDatabaseScreen({
         </View>
       )}
 
-      {isLoading ? (
+      {viewMode === 'schedule' && activeView?.scheduleConfig ? (
+        // Its own branch, ahead of the loading/empty gates below: a
+        // schedule's rows come from ANOTHER database (relatedRows), so
+        // zero rows in THIS one (no waybills yet) must still show every
+        // driver's own empty row, not the generic "Ще немає записів".
+        renderSchedule(activeView.scheduleConfig)
+      ) : isLoading ? (
         <View style={styles.emptyState}>
           <ActivityIndicator color="#fff" />
         </View>
@@ -2070,6 +2292,14 @@ export default function CustomDatabaseScreen({
         onSave={(name) =>
           viewPrompt?.mode === 'rename' ? renameSavedView(viewPrompt.view, name) : saveCurrentAsView(name)
         }
+      />
+
+      <ScheduleViewSetupSheet
+        visible={scheduleSetupVisible}
+        relationFields={scheduleRelationFields}
+        dateFields={scheduleDateFields}
+        onCancel={() => setScheduleSetupVisible(false)}
+        onCreate={createScheduleView}
       />
 
       <ImportTableSheet
@@ -3526,7 +3756,151 @@ const makeMiniStyles = (t: Theme) => StyleSheet.create({
     fontFamily: FONT_SEMIBOLD,
     color: '#fff',
   },
+  scheduleTitle: {
+    fontSize: 17,
+    fontFamily: FONT_BOLD,
+    color: GLASS_TEXT,
+    marginBottom: 14,
+  },
+  scheduleSectionLabel: {
+    fontSize: 12,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT_FAINT,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 6,
+    marginTop: 12,
+  },
+  scheduleOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    marginBottom: 4,
+  },
+  scheduleOptionRowActive: {
+    backgroundColor: GLASS_CARD,
+  },
+  scheduleOptionLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT,
+  },
+  scheduleNameInput: {
+    marginTop: 12,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT,
+    backgroundColor: GLASS_CARD,
+  },
 });
+
+// Configures a brand-new 'schedule' view - see createScheduleView's own
+// comment for why this can't just be "save what's on screen right now"
+// the way the other three view modes work. Picks the one relation field
+// that supplies the schedule's rows and the one date field that spans
+// its columns, both from THIS database's own fields (never the target
+// database's) - both lists are pre-filtered by the caller to only the
+// eligible ones, so an empty state here never has to be drawn.
+function ScheduleViewSetupSheet({
+  visible,
+  relationFields,
+  dateFields,
+  onCancel,
+  onCreate,
+}: {
+  visible: boolean;
+  relationFields: FieldDef[];
+  dateFields: FieldDef[];
+  onCancel: () => void;
+  onCreate: (relationFieldId: string, dateFieldId: string, name: string) => void;
+}) {
+  const miniStyles = useStyles(makeMiniStyles);
+  const [relationFieldId, setRelationFieldId] = useState<string | null>(null);
+  const [dateFieldId, setDateFieldId] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const wasVisibleRef = useRef(false);
+
+  useEffect(() => {
+    if (visible && !wasVisibleRef.current) {
+      setRelationFieldId(relationFields[0]?.id ?? null);
+      setDateFieldId(dateFields[0]?.id ?? null);
+      setName('');
+    }
+    wasVisibleRef.current = visible;
+  }, [visible, relationFields, dateFields]);
+
+  if (!visible) return null;
+
+  return (
+    <GlassLayer visible={visible} onClose={onCancel}>
+      <Pressable style={miniStyles.backdrop} onPress={onCancel}>
+        <Pressable style={miniStyles.card} onPress={() => {}}>
+          <Text style={miniStyles.scheduleTitle}>Новий графік</Text>
+          <Text style={miniStyles.scheduleSectionLabel}>Рядки за полем</Text>
+          {relationFields.map((field) => (
+            <Pressable
+              key={field.id}
+              style={[miniStyles.scheduleOptionRow, field.id === relationFieldId && miniStyles.scheduleOptionRowActive]}
+              onPress={() => setRelationFieldId(field.id)}
+            >
+              <Ionicons
+                name={field.id === relationFieldId ? 'radio-button-on' : 'radio-button-off'}
+                size={18}
+                color={field.id === relationFieldId ? GLASS_TEXT : GLASS_TEXT_FAINT}
+              />
+              <Text style={miniStyles.scheduleOptionLabel} numberOfLines={1}>
+                {field.name}
+              </Text>
+            </Pressable>
+          ))}
+          <Text style={miniStyles.scheduleSectionLabel}>Дата</Text>
+          {dateFields.map((field) => (
+            <Pressable
+              key={field.id}
+              style={[miniStyles.scheduleOptionRow, field.id === dateFieldId && miniStyles.scheduleOptionRowActive]}
+              onPress={() => setDateFieldId(field.id)}
+            >
+              <Ionicons
+                name={field.id === dateFieldId ? 'radio-button-on' : 'radio-button-off'}
+                size={18}
+                color={field.id === dateFieldId ? GLASS_TEXT : GLASS_TEXT_FAINT}
+              />
+              <Text style={miniStyles.scheduleOptionLabel} numberOfLines={1}>
+                {field.name}
+              </Text>
+            </Pressable>
+          ))}
+          <TextInput
+            style={miniStyles.scheduleNameInput}
+            value={name}
+            onChangeText={setName}
+            placeholder="Назва графіка"
+            placeholderTextColor={GLASS_TEXT_FAINT}
+          />
+          <View style={miniStyles.actionsRow}>
+            <Pressable style={miniStyles.cancelBtn} onPress={onCancel}>
+              <Text style={miniStyles.cancelBtnLabel}>Скасувати</Text>
+            </Pressable>
+            <Pressable
+              style={[miniStyles.confirmButton, (!relationFieldId || !dateFieldId) && miniStyles.confirmButtonDisabled]}
+              disabled={!relationFieldId || !dateFieldId}
+              onPress={() => relationFieldId && dateFieldId && onCreate(relationFieldId, dateFieldId, name)}
+            >
+              <Text style={miniStyles.confirmButtonLabel}>Створити</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </GlassLayer>
+  );
+}
 
 // One row of the sort dropdown. Extracted only because the built-ins and
 // the database's own fields render identically and there are two lists of
@@ -4093,6 +4467,50 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 13,
     fontFamily: FONT_REGULAR,
     color: '#fff',
+  },
+  // The schedule grid's own row-header cell - reuses tableWrap/
+  // tableHeaderRow/tableFrozenHeader/tableFrozenColumn/tableBody/
+  // tableBodyRow wholesale (plain layout containers, nothing table-
+  // specific about them) and only needs its own cell styling.
+  scheduleRowHeaderCell: {
+    height: SCHEDULE_ROW_HEIGHT,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.12)',
+  },
+  scheduleRowHeaderLabel: {
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
+    color: '#fff',
+  },
+  scheduleDateHeaderCell: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+  },
+  scheduleDateHeaderCellToday: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 10,
+  },
+  scheduleDateHeaderWeekday: {
+    fontSize: 10,
+    fontFamily: FONT_REGULAR,
+    color: 'rgba(255,255,255,0.6)',
+  },
+  scheduleDateHeaderNum: {
+    fontSize: 14,
+    fontFamily: FONT_SEMIBOLD,
+    color: '#fff',
+  },
+  scheduleDayCell: {
+    height: SCHEDULE_ROW_HEIGHT,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  scheduleDayCellToday: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
   tableCellEmpty: {
     fontSize: 13,

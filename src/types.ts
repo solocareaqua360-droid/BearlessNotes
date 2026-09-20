@@ -797,12 +797,27 @@ export interface CustomDatabaseView {
   id: string;
   databaseId: string;
   name: string;
-  viewMode: 'list' | 'table' | 'cards';
+  viewMode: 'list' | 'table' | 'cards' | 'schedule';
   sortField: string;
   sortDir: 'asc' | 'desc';
   // Same array the screen stores in its prefs doc; a filter naming a field
   // that has since been deleted is ignored when the view is applied.
   filters: { fieldId: string; op: 'any' | 'filled' | 'empty'; values?: string[] }[];
+  // 'schedule' only - a Gantt-style grid pivoted off one of THIS
+  // database's own relation fields: `rowRelationFieldId` names which
+  // field points at the "row database" (`rowRelationFieldId`'s own
+  // relationTarget.databaseId, duplicated here as `rowDatabaseId` so the
+  // view doesn't have to look the field back up just to know its rows'
+  // source), and every row of THIS database whose relation is filled
+  // becomes an event spanning `dateFieldId`'s own date (or date range -
+  // see DateRangeValue) under that row. Nothing else about 'list'/
+  // 'table'/'cards' applies to this mode - sortField/filters are simply
+  // unused rather than repurposed.
+  scheduleConfig?: {
+    rowDatabaseId: string;
+    rowRelationFieldId: string;
+    dateFieldId: string;
+  };
   // documentId -> true for every document embedding this view as a 'dbView'
   // block, same shape/purpose as CustomDatabaseRow.usedInDocuments below.
   usedInDocuments?: Record<string, boolean>;
