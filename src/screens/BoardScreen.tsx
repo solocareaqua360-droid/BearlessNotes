@@ -231,6 +231,17 @@ const CONNECTION_COLOR = '#8B5CF6';
 // the stroke width itself aren't clipped by the little Svg canvas each
 // connection is drawn into.
 const CONNECTION_PADDING = 24;
+// A dragged card's own alignment guides, deliberately not the selection
+// blue or the connection purple - a third colour on the board would be
+// a fourth meaning to learn, so this borrows the one every design tool
+// already uses for the same job.
+const GUIDE_COLOR = '#FF3D9A';
+// How close an edge has to land, in SCREEN points regardless of zoom -
+// divided by canvasScale wherever it's actually compared, the same way
+// every other on-screen distance in this file is (see COLUMN_SNAP_MARGIN's
+// own use of canvasScale). A guide that only ever fired at one zoom level
+// would read as broken at every other one.
+const GUIDE_SNAP_DISTANCE = 6;
 
 const documentsCollection = collection(db, 'documents');
 
@@ -605,6 +616,42 @@ function LiveConnectionLine({ from, to }: { from: LiveEndpoint; to: LiveEndpoint
   return <Animated.View style={[styles.connectDraft, animatedStyle]} pointerEvents="none" />;
 }
 
+// The two dashed alignment guides - see GUIDE_COLOR. Drawn as a thin
+// bordered View spanning the whole world, moved into place with a
+// transform, for the same reason LiveConnectionLine is a straight View
+// rather than an Svg: a fixed canvas big enough for any position runs
+// into Android's own view-size limits, and a transform needs neither a
+// resize nor a re-measure to follow the drag. Mounted once at the board
+// level, never per card - only one card is ever dragged at a time, so
+// there is only ever one pair of lines to show.
+function AlignmentGuides({
+  guideVX,
+  guideVVisible,
+  guideHY,
+  guideHVisible,
+}: {
+  guideVX: SharedValue<number>;
+  guideVVisible: SharedValue<boolean>;
+  guideHY: SharedValue<number>;
+  guideHVisible: SharedValue<boolean>;
+}) {
+  const styles = useStyles(makeStyles);
+  const vStyle = useAnimatedStyle(() => ({
+    opacity: guideVVisible.value ? 1 : 0,
+    transform: [{ translateX: guideVX.value }],
+  }));
+  const hStyle = useAnimatedStyle(() => ({
+    opacity: guideHVisible.value ? 1 : 0,
+    transform: [{ translateY: guideHY.value }],
+  }));
+  return (
+    <>
+      <Animated.View style={[styles.guideLineV, vStyle]} pointerEvents="none" />
+      <Animated.View style={[styles.guideLineH, hStyle]} pointerEvents="none" />
+    </>
+  );
+}
+
 // A kanban lane, dragged by its own header. Same position architecture as
 // DraggableCard (the view's left/top pinned at 0, everything on an animated
 // transform), and the same shared-offset trick group drags use: this
@@ -892,6 +939,14 @@ type DraggableCardProps = {
   followsContainerDrag: boolean;
   containerOffsetX: SharedValue<number>;
   containerOffsetY: SharedValue<number>;
+  // Every card's bounds, and the board's own guide shared values - see
+  // GUIDE_COLOR. Only read while THIS card is the one being dragged
+  // (isGroupDrag false); a card's own entry is skipped by id.
+  allCardBounds: { id: string; x: number; y: number; width: number; height: number }[];
+  guideVX: SharedValue<number>;
+  guideVVisible: SharedValue<boolean>;
+  guideHY: SharedValue<number>;
+  guideHVisible: SharedValue<boolean>;
   // False while the canvas is in 'connect' mode: a drag starting on a card
   // has to reach the canvas's own connect gesture to draw a link, and this
   // card's Pan would otherwise win that touch (it blocksExternalGesture)
@@ -956,6 +1011,11 @@ function DraggableCard({
   followsContainerDrag,
   containerOffsetX,
   containerOffsetY,
+  allCardBounds,
+  guideVX,
+  guideVVisible,
+  guideHY,
+  guideHVisible,
   dragEnabled,
   onMeasure,
   onDragStart,
@@ -1026,6 +1086,12 @@ function DraggableCard({
   // card per frame instead of every card on the canvas.
   const [liveWidth, setLiveWidth] = useState<number | null>(null);
   const resizeBase = useRef(0);
+  // This card's own size, purely for the alignment guides below - a
+  // separate name from the render's own `cardWidth` further down (same
+  // expression) because that one is declared after this gesture, and a
+  // worklet closes over whatever is already in scope where it's built.
+  const cardWidthForGuides = liveWidth ?? widthInColumn(card);
+  const cardHeightForGuides = allCardBounds.find((b) => b.id === card.id)?.height ?? APPROX_CARD_HEIGHT;
   const panGesture = Gesture.Pan()
     .enabled(dragEnabled)
     .blocksExternalGesture(canvasPanGesture)
@@ -1053,9 +1119,70 @@ function DraggableCard({
           hoverReportedY.value = posY.value;
           runOnJS(onHover)(card.id, posX.value, posY.value);
         }
+        // ALIGNMENT GUIDES - entirely on this thread, no runOnJS: there
+        // is nothing here JS needs to decide, only two shared values to
+        // set. Every other card's LEFT, CENTRE and RIGHT edge (and TOP/
+        // MIDDLE/BOTTOM for the other axis) is compared against this
+        // card's own three; the closest match within GUIDE_SNAP_DISTANCE
+        // (in screen points, so divided by the live zoom) wins, and only
+        // one line per axis is ever shown - the same restraint a real
+        // design tool's guides use.
+        const threshold = GUIDE_SNAP_DISTANCE / canvasScale.value;
+        const myLeft = posX.value;
+        const myRight = posX.value + cardWidthForGuides;
+        const myCenterX = posX.value + cardWidthForGuides / 2;
+        const myTop = posY.value;
+        const myBottom = posY.value + cardHeightForGuides;
+        const myCenterY = posY.value + cardHeightForGuides / 2;
+        let bestVDistance = threshold;
+        let bestVX: number | null = null;
+        let bestHDistance = threshold;
+        let bestHY: number | null = null;
+        for (let i = 0; i < allCardBounds.length; i++) {
+          const other = allCardBounds[i];
+          if (other.id === card.id) continue;
+          const oLeft = other.x;
+          const oRight = other.x + other.width;
+          const oCenterX = other.x + other.width / 2;
+          const oTop = other.y;
+          const oBottom = other.y + other.height;
+          const oCenterY = other.y + other.height / 2;
+          for (const mx of [myLeft, myCenterX, myRight]) {
+            for (const ox of [oLeft, oCenterX, oRight]) {
+              const d = Math.abs(mx - ox);
+              if (d < bestVDistance) {
+                bestVDistance = d;
+                bestVX = ox;
+              }
+            }
+          }
+          for (const my of [myTop, myCenterY, myBottom]) {
+            for (const oy of [oTop, oCenterY, oBottom]) {
+              const d = Math.abs(my - oy);
+              if (d < bestHDistance) {
+                bestHDistance = d;
+                bestHY = oy;
+              }
+            }
+          }
+        }
+        if (bestVX !== null) {
+          guideVX.value = bestVX;
+          guideVVisible.value = true;
+        } else {
+          guideVVisible.value = false;
+        }
+        if (bestHY !== null) {
+          guideHY.value = bestHY;
+          guideHVisible.value = true;
+        } else {
+          guideHVisible.value = false;
+        }
       }
     })
     .onEnd(() => {
+      guideVVisible.value = false;
+      guideHVisible.value = false;
       if (isGroupDrag) {
         runOnJS(onGroupDragEnd)(groupOffsetX.value, groupOffsetY.value);
       } else {
@@ -1723,6 +1850,16 @@ export default function BoardScreen() {
   // containerDragMembers for how "inside it" is decided).
   const containerOffsetX = useSharedValue(0);
   const containerOffsetY = useSharedValue(0);
+  // A dragged card's own alignment guides - see GUIDE_COLOR. Written
+  // entirely on the UI thread from inside DraggableCard's own pan
+  // gesture (no runOnJS: there is nothing here JS needs to decide), read
+  // by AlignmentGuides below to draw the two dashed lines. One of each
+  // axis at a time - the CLOSEST match wins, same as a real design
+  // tool's guides never show more than one line per direction at once.
+  const guideVX = useSharedValue(0);
+  const guideVVisible = useSharedValue(false);
+  const guideHY = useSharedValue(0);
+  const guideHVisible = useSharedValue(false);
   // The marquee-selection rectangle, in world coordinates (same space as
   // card x/y) so it can be rendered inside the same transformed `world`
   // container the cards live in and compared against their x/y directly -
@@ -3245,6 +3382,18 @@ export default function BoardScreen() {
   // selected card, so all of their links go too.
   // Which shared offsets currently apply to this card, so a live line can
   // add exactly the same ones the card's own animated style does.
+  // Every card's own bounds, for a dragged card's alignment guides to
+  // compare itself against - see GUIDE_COLOR. Built once here rather
+  // than once per card: every DraggableCard reads the SAME array, and
+  // only the one actually being dragged ever does anything with it.
+  const cardBoundsForGuides = cards.map((c) => ({
+    id: c.id,
+    x: c.x,
+    y: c.y,
+    width: widthInColumn(c),
+    height: heightOf(c, cardHeights),
+  }));
+
   // Every box an arrow may end on, cards and furniture together, looked
   // up by the one thing a connection actually stores: an id.
   const nodeById = new Map<string, BoardNode>();
@@ -3657,6 +3806,11 @@ export default function BoardScreen() {
                     followsContainerDrag={draggingContainerId !== null && containerDragMembers.cardIds.has(card.id)}
                     containerOffsetX={containerOffsetX}
                     containerOffsetY={containerOffsetY}
+                    allCardBounds={cardBoundsForGuides}
+                    guideVX={guideVX}
+                    guideVVisible={guideVVisible}
+                    guideHY={guideHY}
+                    guideHVisible={guideHVisible}
                     dragEnabled={canvasTool !== 'connect'}
                     onMeasure={measureCard}
                     onDragStart={handleDragStart}
@@ -3679,6 +3833,14 @@ export default function BoardScreen() {
                 endX={connectEndX}
                 endY={connectEndY}
                 visible={connectVisible}
+              />
+              {/* On top of every card - a guide has to be seen over
+                  whatever it's aligning with. */}
+              <AlignmentGuides
+                guideVX={guideVX}
+                guideVVisible={guideVVisible}
+                guideHY={guideHY}
+                guideHVisible={guideHVisible}
               />
               <Animated.View style={[styles.marquee, marqueeAnimatedStyle]} pointerEvents="none" />
             </Animated.View>
@@ -4475,6 +4637,34 @@ const makeStyles = (theme: Theme) =>
       top: 0,
       height: 2,
       backgroundColor: CONNECTION_COLOR,
+    },
+    // A vertical guide spans the world's own full height, positioned by
+    // TRANSLATING it sideways into place - never by setting `left`,
+    // which would have to be measured against the current drag every
+    // frame instead of riding the same shared value the drag itself
+    // writes. Drawn as a dashed BORDER rather than a filled background,
+    // the standard lightweight way to get a dashed line out of a plain
+    // View - a filled Svg Line would need its own animated-props wiring
+    // to follow a Reanimated shared value.
+    guideLineV: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      width: 0,
+      height: WORLD_SIZE,
+      borderLeftWidth: 1.5,
+      borderStyle: 'dashed',
+      borderColor: GUIDE_COLOR,
+    },
+    guideLineH: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      width: WORLD_SIZE,
+      height: 0,
+      borderTopWidth: 1.5,
+      borderStyle: 'dashed',
+      borderColor: GUIDE_COLOR,
     },
     // left/top pinned at 0 on purpose - the column's world position rides
     // entirely on its animated transform, same as a card's.
