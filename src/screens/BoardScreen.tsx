@@ -25,6 +25,7 @@ import Animated, {
   SharedValue,
   useAnimatedStyle,
   useSharedValue,
+  withTiming,
 } from 'react-native-reanimated';
 import Svg, { Ellipse, Path, Polygon, Rect } from 'react-native-svg';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
@@ -106,6 +107,17 @@ import { ask, confirm } from '../components/surfaces/Ask';
 const AUTOSAVE_DELAY_MS = 600;
 const MIN_SCALE = 0.4;
 const MAX_SCALE = 3;
+// Isolation's own ceiling on fitting a chain into view - lower than the
+// pinch's own MAX_SCALE on purpose. A chain of one or two small objects
+// fit-to-bounds against the ordinary ceiling would blow up to fill the
+// whole screen at an absurd size; this caps how far "fit it in frame"
+// alone is allowed to zoom in, independent of how close a finger could
+// still pinch afterwards.
+const ISOLATE_MAX_SCALE = 1.6;
+// How much of the viewport a fitted chain actually fills - short of all
+// of it, so the isolated objects never sit flush against the screen's
+// own edges.
+const ISOLATE_FIT_FRACTION = 0.82;
 // A large fixed virtual canvas rather than an unbounded one - card x/y are
 // plain offsets from this world's own top-left, and the world container
 // itself starts centered on screen (see canvasSurface/world styles), so
@@ -777,6 +789,7 @@ function DraggableContainer({
   posX,
   posY,
   isDragging,
+  dimmed,
   canvasScale,
   canvasPanGesture,
   containerOffsetX,
@@ -795,6 +808,10 @@ function DraggableContainer({
   posX: SharedValue<number>;
   posY: SharedValue<number>;
   isDragging: boolean;
+  // True while isolation is active and this container is OUTSIDE the
+  // isolated chain - faded and untouchable, same treatment a card/shape
+  // gets (see their own `dimmed` prop).
+  dimmed: boolean;
   canvasScale: SharedValue<number>;
   canvasPanGesture: ReturnType<typeof Gesture.Pan>;
   containerOffsetX: SharedValue<number>;
@@ -879,7 +896,10 @@ function DraggableContainer({
     .runOnJS(true);
 
   return (
-    <Animated.View style={[styles.frame, { width, height }, animatedStyle]} pointerEvents="box-none">
+    <Animated.View
+      style={[styles.frame, { width, height, opacity: dimmed ? 0.28 : 1 }, animatedStyle]}
+      pointerEvents={dimmed ? 'none' : 'box-none'}
+    >
       <View style={[styles.frameLabelRow, { width }]}>
         <GestureDetector gesture={headerGesture}>
           <View style={styles.frameLabel}>
@@ -937,6 +957,9 @@ type DraggableCardProps = {
   canvasPanGesture: ReturnType<typeof Gesture.Pan>;
   isDragging: boolean;
   isSelected: boolean;
+  // True while isolation is active and this card is outside the
+  // isolated chain - faded and untouchable until isolation ends.
+  dimmed: boolean;
   // True while this card is being dragged AND it's part of a multi-card
   // selection - in that case the drag moves the whole selection together
   // (via the shared groupOffsetX/Y) instead of just this one card.
@@ -1020,6 +1043,7 @@ function DraggableCard({
   canvasPanGesture,
   isDragging,
   isSelected,
+  dimmed,
   isGroupDrag,
   groupOffsetX,
   groupOffsetY,
@@ -1327,7 +1351,9 @@ function DraggableCard({
           isDragging && styles.cardDragging,
           isSelected && styles.cardSelected,
           animatedStyle,
+          dimmed && { opacity: 0.28 },
         ]}
+        pointerEvents={dimmed ? 'none' : 'auto'}
       >
         {type === 'document' ? (
           <View style={styles.refCard}>
@@ -1562,6 +1588,7 @@ function DraggableShape({
   followsContainerDrag,
   containerOffsetX,
   containerOffsetY,
+  dimmed,
 }: {
   shape: BoardShape;
   isSelected: boolean;
@@ -1577,6 +1604,9 @@ function DraggableShape({
   followsContainerDrag: boolean;
   containerOffsetX: SharedValue<number>;
   containerOffsetY: SharedValue<number>;
+  // True while isolation is active and this shape is outside the
+  // isolated chain.
+  dimmed: boolean;
   // false in 'connect' mode - same reason DraggableCard has this: a
   // shape's own pan `.blocksExternalGesture(canvasPanGesture)` alone
   // was not enough to guarantee the canvas's connect-drag wins (two
@@ -1688,10 +1718,11 @@ function DraggableShape({
       <Animated.View
         style={[
           styles.shape,
-          { width, height },
+          { width, height, opacity: dimmed ? 0.28 : 1 },
           animatedStyle,
           isSelected && styles.shapeSelected,
         ]}
+        pointerEvents={dimmed ? 'none' : 'auto'}
       >
         <ShapeBody
           shape={shape}
@@ -1790,6 +1821,15 @@ export default function BoardScreen() {
   // to select worked, but it left the tool lit as though a mode had been
   // entered that nobody chose.
   const [canvasTool, setCanvasTool] = useState<'move' | 'select' | 'connect'>('move');
+  // Isolation is deliberately its OWN flag, not a fourth canvasTool - it
+  // is a lens over the whole board (dim/disable everything outside a
+  // chain), not a way of interacting with the canvas the way move/
+  // select/connect are, and it has to survive switching back to 'move'
+  // to actually work with the isolated chain afterwards. `isolateArmed`
+  // is the one-shot "next tap picks the chain" state; `isolatedIds` is
+  // the chain itself once picked (null = not isolated).
+  const [isolateArmed, setIsolateArmed] = useState(false);
+  const [isolatedIds, setIsolatedIds] = useState<Set<string> | null>(null);
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const [connections, setConnections] = useState<BoardConnection[]>([]);
   // The board's own furniture - see BoardShape. A list of its OWN, never
@@ -2343,6 +2383,90 @@ export default function BoardScreen() {
       if (exists) return prev;
       return [...prev, { id: generateId(), fromCardId: fromId, toCardId: target.id }];
     });
+  }
+
+  // Every id reachable from `startId` by following connections,
+  // transitively - "ланцюжок" is the whole connected component, not
+  // just direct neighbours. `connections`' own fromCardId/toCardId are
+  // generic node ids already (nodeAt already returns shapes and
+  // containers, not only cards - see nodeAt's own comment), so this
+  // walks cards, shapes and containers alike without needing to know
+  // which is which.
+  function connectedComponent(startId: string): Set<string> {
+    const adjacency = new Map<string, string[]>();
+    for (const c of connections) {
+      if (!adjacency.has(c.fromCardId)) adjacency.set(c.fromCardId, []);
+      if (!adjacency.has(c.toCardId)) adjacency.set(c.toCardId, []);
+      adjacency.get(c.fromCardId)!.push(c.toCardId);
+      adjacency.get(c.toCardId)!.push(c.fromCardId);
+    }
+    const visited = new Set<string>([startId]);
+    const queue = [startId];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      for (const next of adjacency.get(current) ?? []) {
+        if (!visited.has(next)) {
+          visited.add(next);
+          queue.push(next);
+        }
+      }
+    }
+    return visited;
+  }
+
+  // Pans and zooms so every id in `ids` fits on screen - see
+  // ISOLATE_MAX_SCALE's own comment for why this has a lower ceiling
+  // than the pinch gesture's own MAX_SCALE. Reads each id's bounds from
+  // nodeById, which already covers cards, shapes AND containers.
+  function fitViewToBounds(ids: Set<string>) {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    ids.forEach((id) => {
+      const node = nodeById.get(id);
+      if (!node) return;
+      minX = Math.min(minX, node.x);
+      minY = Math.min(minY, node.y);
+      maxX = Math.max(maxX, node.x + node.width);
+      maxY = Math.max(maxY, node.y + node.height);
+    });
+    if (!Number.isFinite(minX)) return;
+    const boxWidth = Math.max(1, maxX - minX);
+    const boxHeight = Math.max(1, maxY - minY);
+    const fitScale = Math.min(
+      (viewport.width * ISOLATE_FIT_FRACTION) / boxWidth,
+      (viewport.height * ISOLATE_FIT_FRACTION) / boxHeight
+    );
+    const nextScale = Math.min(ISOLATE_MAX_SCALE, Math.max(MIN_SCALE, fitScale));
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    scale.value = withTiming(nextScale, { duration: 320 });
+    translateX.value = withTiming(-(centerX - WORLD_CENTER) * nextScale, { duration: 320 });
+    translateY.value = withTiming(-(centerY - WORLD_CENTER) * nextScale, { duration: 320 });
+  }
+
+  // The tap that actually enters isolation, once armed - see
+  // isolateArmed's own comment. Any card, shape or container's own tap
+  // handler checks this first (see their call sites below) instead of
+  // doing its usual thing.
+  function pickIsolationAnchor(id: string) {
+    setIsolateArmed(false);
+    const ids = connectedComponent(id);
+    setIsolatedIds(ids);
+    fitViewToBounds(ids);
+  }
+
+  // The dock's own toggle: arm it (waiting for the next tap), or - if
+  // already isolated - leave isolation and let everything else on the
+  // board light back up. Pressing it again while armed but before
+  // anything is picked cancels the arm instead of doing nothing.
+  function toggleIsolation() {
+    if (isolatedIds !== null) {
+      setIsolatedIds(null);
+      return;
+    }
+    setIsolateArmed((armed) => !armed);
   }
 
   // Same screen->world conversion the marquee does, for the same reason -
@@ -3714,6 +3838,16 @@ export default function BoardScreen() {
               active: canvasTool === 'connect',
               onPress: () => setCanvasTool('connect'),
             },
+            // Not a canvasTool, deliberately - it's a lens, not a way of
+            // touching the canvas, so it stays lit through 'move' once a
+            // chain is picked (see isolatedIds's own comment).
+            {
+              key: 'isolate',
+              icon: 'mc:image-filter-center-focus',
+              label: 'Ізоляція',
+              active: isolateArmed || isolatedIds !== null,
+              onPress: toggleIsolation,
+            },
           ]
       : null
   );
@@ -3742,13 +3876,14 @@ export default function BoardScreen() {
                   posX={positionFor(frame.id, frame.x, frame.y).x}
                   posY={positionFor(frame.id, frame.x, frame.y).y}
                   isDragging={frame.id === draggingContainerId}
+                  dimmed={isolatedIds !== null && !isolatedIds.has(frame.id)}
                   canvasScale={scale}
                   canvasPanGesture={canvasBlockingGesture}
                   containerOffsetX={containerOffsetX}
                   containerOffsetY={containerOffsetY}
                   onDragStart={startContainerDrag}
                   onDragEnd={commitContainerDrag}
-                  onRename={setRenamingContainer}
+                  onRename={(c) => (isolateArmed ? pickIsolationAnchor(c.id) : setRenamingContainer(c))}
                   onDelete={confirmDeleteContainer}
                   onResize={resizeContainer}
                   onStepFontSize={stepContainerTextSize}
@@ -3800,7 +3935,7 @@ export default function BoardScreen() {
                   canvasScale={scale}
                   canvasPanGesture={canvasBlockingGesture}
                   canvasHoldGesture={holdToSelectGesture}
-                  onTap={(sh) => setSelectedShapeId((c) => (c === sh.id ? null : sh.id))}
+                  onTap={(sh) => (isolateArmed ? pickIsolationAnchor(sh.id) : setSelectedShapeId((c) => (c === sh.id ? null : sh.id)))}
                   onLongPress={(sh) => {
                     setSelectedShapeId(sh.id);
                     setEditingShape(sh);
@@ -3813,6 +3948,7 @@ export default function BoardScreen() {
                   followsContainerDrag={draggingContainerId !== null && containerDragMembers.shapeIds.has(shape.id)}
                   containerOffsetX={containerOffsetX}
                   containerOffsetY={containerOffsetY}
+                  dimmed={isolatedIds !== null && !isolatedIds.has(shape.id)}
                 />
               ))}
 
@@ -3899,10 +4035,11 @@ export default function BoardScreen() {
                     onDragStart={handleDragStart}
                     onDragEnd={commitCardDrag}
                     onGroupDragEnd={commitGroupDrag}
-                    onTap={handleCardTap}
+                    onTap={(c) => (isolateArmed ? pickIsolationAnchor(c.id) : handleCardTap(c))}
                     onLongPress={handleCardLongPress}
                     onResize={commitCardResize}
                     canvasHoldGesture={holdToSelectGesture}
+                    dimmed={isolatedIds !== null && !isolatedIds.has(card.id)}
                   />
                 );
               })}
