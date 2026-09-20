@@ -221,7 +221,14 @@ export default function ContextDock() {
       // The window alone cannot pay for this - cap what actions claim
       // so the content zone keeps the larger share of the base card
       // instead of the two splitting whatever falls short.
-      const sharedCap = Math.max(ACT_W + CARD_PAD * 2, Math.floor(cardWidth * 0.4));
+      //
+      // Rounded down to a WHOLE number of buttons, never a fraction of
+      // one: a cap that lands mid-button clips a label in half at the
+      // zone's own edge - "Поря[док]" - which reads as broken, not as
+      // "more to scroll to". A ScrollView's own natural preview of the
+      // next item already says that; a severed word does not need to.
+      const wholeButtons = Math.max(1, Math.floor((cardWidth * 0.4 - CARD_PAD * 2) / ACT_W));
+      const sharedCap = wholeButtons * ACT_W + CARD_PAD * 2;
       wanted = Math.min(wanted, sharedCap);
       extraNeeded = dividerSpace + wanted;
     }
