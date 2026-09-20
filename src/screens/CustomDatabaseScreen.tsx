@@ -69,7 +69,7 @@ import {
   RelationTarget,
 } from '../types';
 import { groupAppliesTo } from '../utils/groups';
-import { hapticSuccess } from '../utils/haptics';
+import { hapticSelectItem, hapticSnapTick, hapticSuccess, hapticToggle } from '../utils/haptics';
 import CustomRowCard, { CustomRowGridCard, RelationThumb } from '../components/CustomRowCard';
 import {
   buildRowDisplay,
@@ -3007,6 +3007,16 @@ function pad2(n: number): string {
   return String(n).padStart(2, '0');
 }
 
+// Standard Ukrainian noun pluralisation for "день" - 1 день, 2-4 дні
+// (except the 12-14 exception every ten shares), everything else днів.
+function dayWord(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'день';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'дні';
+  return 'днів';
+}
+
 // A minimal month-grid date picker built on this app's own dateLocale
 // utilities (no native/date-picker dependency) - close kin to
 // TasksScreen's ReminderSheet (same stepper pattern for the time-of-day
@@ -3072,19 +3082,24 @@ function MiniDatePicker({
   }
 
   function stepStartHour(delta: number) {
+    hapticSnapTick();
     setStartHour((h) => (h + delta + 24) % 24);
   }
   function stepStartMinute(delta: number) {
+    hapticSnapTick();
     setStartMinute((m) => (m + delta + 60) % 60);
   }
   function stepEndHour(delta: number) {
+    hapticSnapTick();
     setEndHour((h) => (h + delta + 24) % 24);
   }
   function stepEndMinute(delta: number) {
+    hapticSnapTick();
     setEndMinute((m) => (m + delta + 60) % 60);
   }
 
   function handleDayPress(key: string) {
+    hapticSelectItem();
     if (!needsConfirm) {
       onPick({ start: key });
       return;
@@ -3108,6 +3123,7 @@ function MiniDatePicker({
 
   function confirm() {
     if (!pendingStart) return;
+    hapticSuccess();
     const picked: DateRangeValue = { start: pendingStart };
     if (pendingEnd) picked.end = pendingEnd;
     if (timeEnabled) {
@@ -3116,6 +3132,27 @@ function MiniDatePicker({
     }
     onPick(picked);
   }
+
+  // "скільки днів займе цей діапазон... час має значення при
+  // підрахунку" - real elapsed time, not a calendar-day subtraction: a
+  // trip from 22:00 to 02:00 the next day is a few hours, not "2 days",
+  // and one from 08:00 to 18:00 the day after is over a day even though
+  // the calendar dates are only one apart.
+  const duration = (() => {
+    if (!pendingStart) return null;
+    const start = parseDateKey(pendingStart);
+    if (timeEnabled) start.setHours(startHour, startMinute, 0, 0);
+    const end = parseDateKey(pendingEnd ?? pendingStart);
+    if (timeEnabled) end.setHours(endHour, endMinute, 0, 0);
+    const ms = end.getTime() - start.getTime();
+    if (ms <= 0) return null;
+    const totalHours = Math.round(ms / 60000) / 60;
+    const days = Math.floor(totalHours / 24);
+    const hours = Math.round(totalHours - days * 24);
+    if (days === 0) return `${hours} год`;
+    if (hours === 0) return `${days} ${dayWord(days)}`;
+    return `${days} ${dayWord(days)} ${hours} год`;
+  })();
 
   return (
     <GlassLayer visible onClose={onClose}>
@@ -3135,7 +3172,9 @@ function MiniDatePicker({
           <Pressable
             style={miniStyles.rangeToggleRow}
             onPress={() => {
-              setRangeMode((v) => !v);
+              const next = !rangeMode;
+              hapticToggle(next);
+              setRangeMode(next);
               setPendingEnd(undefined);
             }}
           >
@@ -3146,7 +3185,14 @@ function MiniDatePicker({
             />
             <Text style={miniStyles.rangeToggleLabel}>Кінцева дата</Text>
           </Pressable>
-          <Pressable style={miniStyles.rangeToggleRow} onPress={() => setTimeEnabled((v) => !v)}>
+          <Pressable
+            style={miniStyles.rangeToggleRow}
+            onPress={() => {
+              const next = !timeEnabled;
+              hapticToggle(next);
+              setTimeEnabled(next);
+            }}
+          >
             <Ionicons
               name={timeEnabled ? 'checkbox' : 'square-outline'}
               size={18}
@@ -3203,21 +3249,21 @@ function MiniDatePicker({
                 <Text style={miniStyles.timeStepperLabel}>Виїзд</Text>
                 <View style={miniStyles.stepper}>
                   <Pressable hitSlop={6} style={miniStyles.stepperBtn} onPress={() => stepStartHour(-1)}>
-                    <Ionicons name="remove" size={18} color={accent} />
+                    <Ionicons name="remove" size={22} color={accent} />
                   </Pressable>
                   <Text style={miniStyles.stepperValue}>{pad2(startHour)}</Text>
                   <Pressable hitSlop={6} style={miniStyles.stepperBtn} onPress={() => stepStartHour(1)}>
-                    <Ionicons name="add" size={18} color={accent} />
+                    <Ionicons name="add" size={22} color={accent} />
                   </Pressable>
                 </View>
                 <Text style={miniStyles.stepperColon}>:</Text>
                 <View style={miniStyles.stepper}>
                   <Pressable hitSlop={6} style={miniStyles.stepperBtn} onPress={() => stepStartMinute(-5)}>
-                    <Ionicons name="remove" size={18} color={accent} />
+                    <Ionicons name="remove" size={22} color={accent} />
                   </Pressable>
                   <Text style={miniStyles.stepperValue}>{pad2(startMinute)}</Text>
                   <Pressable hitSlop={6} style={miniStyles.stepperBtn} onPress={() => stepStartMinute(5)}>
-                    <Ionicons name="add" size={18} color={accent} />
+                    <Ionicons name="add" size={22} color={accent} />
                   </Pressable>
                 </View>
               </View>
@@ -3225,26 +3271,27 @@ function MiniDatePicker({
                 <Text style={miniStyles.timeStepperLabel}>Повернення</Text>
                 <View style={miniStyles.stepper}>
                   <Pressable hitSlop={6} style={miniStyles.stepperBtn} onPress={() => stepEndHour(-1)}>
-                    <Ionicons name="remove" size={18} color={accent} />
+                    <Ionicons name="remove" size={22} color={accent} />
                   </Pressable>
                   <Text style={miniStyles.stepperValue}>{pad2(endHour)}</Text>
                   <Pressable hitSlop={6} style={miniStyles.stepperBtn} onPress={() => stepEndHour(1)}>
-                    <Ionicons name="add" size={18} color={accent} />
+                    <Ionicons name="add" size={22} color={accent} />
                   </Pressable>
                 </View>
                 <Text style={miniStyles.stepperColon}>:</Text>
                 <View style={miniStyles.stepper}>
                   <Pressable hitSlop={6} style={miniStyles.stepperBtn} onPress={() => stepEndMinute(-5)}>
-                    <Ionicons name="remove" size={18} color={accent} />
+                    <Ionicons name="remove" size={22} color={accent} />
                   </Pressable>
                   <Text style={miniStyles.stepperValue}>{pad2(endMinute)}</Text>
                   <Pressable hitSlop={6} style={miniStyles.stepperBtn} onPress={() => stepEndMinute(5)}>
-                    <Ionicons name="add" size={18} color={accent} />
+                    <Ionicons name="add" size={22} color={accent} />
                   </Pressable>
                 </View>
               </View>
             </View>
           )}
+          {needsConfirm && duration && <Text style={miniStyles.durationLabel}>Триває: {duration}</Text>}
           {needsConfirm && (
             <Pressable
               style={[miniStyles.confirmButton, !pendingStart && miniStyles.confirmButtonDisabled]}
@@ -3383,30 +3430,40 @@ const makeMiniStyles = (t: Theme) => StyleSheet.create({
   stepper: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
   },
+  // "вибір годин більш крупними елементами" - the user's own ask, applied
+  // to both the hour and the minute stepper for a consistent row rather
+  // than one obviously bigger than the other.
   stepperBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: GLASS_CARD,
   },
   stepperValue: {
-    fontSize: 15,
+    fontSize: 18,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
     fontVariant: ['tabular-nums'],
-    width: 26,
+    width: 30,
     textAlign: 'center',
   },
   stepperColon: {
-    fontSize: 15,
+    fontSize: 18,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
+  },
+  durationLabel: {
+    marginTop: 10,
+    fontSize: 13,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT_MUTED,
+    textAlign: 'center',
   },
   confirmButton: {
     marginTop: 12,
