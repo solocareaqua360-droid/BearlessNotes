@@ -31,7 +31,7 @@ import {
 } from '../firestore';
 import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
-import { Block, Project, Subtask } from '../types';
+import { Block, Project, Subtask, TaskList } from '../types';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import { hapticToggle } from '../utils/haptics';
 import { RootStackParamList } from '../navigation';
@@ -66,6 +66,7 @@ import { confirm, notify } from '../components/surfaces/Ask';
 const DANGER = '#EF4444';
 const tasksCollection = collection(db, 'tasks');
 const projectsCollection = collection(db, 'projects');
+const taskListsCollection = collection(db, 'taskLists');
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -87,6 +88,7 @@ type Task = {
   checked: boolean;
   documentId: string;
   projectId?: string;
+  listId?: string;
   todayMarkedDate?: string;
   kanbanStatus?: KanbanStatus;
   reminderDate?: string;
@@ -265,6 +267,12 @@ export default function TasksScreen() {
   const [newProjectName, setNewProjectName] = useState('');
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [editingProjectName, setEditingProjectName] = useState('');
+  // Same three, for the list picker - see TaskList. Scoped to whichever
+  // project the picked task already has (see openListPicker/assignTaskList).
+  const [listPickerTaskId, setListPickerTaskId] = useState<string | null>(null);
+  const [newTaskListName, setNewTaskListName] = useState('');
+  const [editingTaskListId, setEditingTaskListId] = useState<string | null>(null);
+  const [editingTaskListName, setEditingTaskListName] = useState('');
   // This device's Android build doesn't resize the window under the
   // keyboard (edge-to-edge delivers it as an inset, not a resize - already
   // confirmed on-device for the editor's pinned toolbar), so the project-
@@ -313,6 +321,7 @@ export default function TasksScreen() {
         checked: docSnapshot.data().checked,
         documentId: docSnapshot.data().documentId,
         projectId: docSnapshot.data().projectId,
+        listId: docSnapshot.data().listId,
         todayMarkedDate: docSnapshot.data().todayMarkedDate,
         kanbanStatus: docSnapshot.data().kanbanStatus,
         reminderDate: docSnapshot.data().reminderDate,
@@ -349,6 +358,30 @@ export default function TasksScreen() {
       );
     }, (e) => notify('Проєкти не завантажилися', e.message));
   }, []);
+
+  const [taskLists, setTaskLists] = useState<TaskList[]>([]);
+  useEffect(() => {
+    return onSnapshot(ownedQuery('taskLists'), (snapshot) => {
+      setTaskLists(
+        snapshot.docs
+          .map((docSnapshot) => ({
+            id: docSnapshot.id,
+            name: docSnapshot.data().name,
+            color: docSnapshot.data().color,
+            projectId: docSnapshot.data().projectId,
+          }))
+          .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
+      );
+    }, (e) => notify('Списки не завантажилися', e.message));
+  }, []);
+
+  const taskListsById = useMemo(() => {
+    const map: Record<string, TaskList> = {};
+    taskLists.forEach((l) => {
+      map[l.id] = l;
+    });
+    return map;
+  }, [taskLists]);
 
   const projectsById = useMemo(() => {
     const map: Record<string, Project> = {};
@@ -778,6 +811,58 @@ export default function TasksScreen() {
     });
   }
 
+  // Lists live INSIDE a project (see TaskList) - the picker only ever
+  // opens for a task that already has one, and only ever offers that
+  // same project's own lists.
+  function openListPicker(taskId: string) {
+    setNewTaskListName('');
+    setListPickerTaskId(taskId);
+  }
+
+  function assignTaskList(listId: string | null) {
+    const taskId = listPickerTaskId;
+    const task = tasks.find((t) => t.id === taskId);
+    setListPickerTaskId(null);
+    if (!task) return;
+    updateTaskBothSides(task, { listId: listId ?? deleteField() }, (b) => {
+      if (listId) return { ...b, listId };
+      const { listId: _drop, ...rest } = b;
+      return rest;
+    });
+  }
+
+  async function addTaskList(projectId: string) {
+    const name = newTaskListName.trim();
+    if (!name) return;
+    const color = theme.cards[taskLists.length % theme.cards.length];
+    await addDoc(taskListsCollection, { name, color, projectId });
+    setNewTaskListName('');
+  }
+
+  function startEditTaskList(list: TaskList) {
+    setEditingTaskListId(list.id);
+    setEditingTaskListName(list.name);
+  }
+
+  async function saveEditTaskList() {
+    const name = editingTaskListName.trim();
+    if (editingTaskListId && name) {
+      await updateDoc(doc(db, 'taskLists', editingTaskListId), { name });
+    }
+    setEditingTaskListId(null);
+  }
+
+  function confirmDeleteTaskList(list: TaskList) {
+    confirm({
+      title: 'Видалити список?',
+      message: `Справи зі списком "${list.name}" стануть без списку.`,
+      confirmLabel: 'Видалити',
+    }).then((yes) => {
+      if (!yes) return;
+      deleteDoc(doc(db, 'taskLists', list.id));
+    });
+  }
+
   function toggleGroupExpanded(key: string) {
     setExpandedGroups((prev) => {
       const next = new Set(prev);
@@ -824,6 +909,7 @@ export default function TasksScreen() {
 
   function renderTaskRow(item: Task) {
     const project = item.projectId ? projectsById[item.projectId] : undefined;
+    const list = item.listId ? taskListsById[item.listId] : undefined;
     const isToday = isTaskToday(item, today);
     const isSelected = selectedIds.has(item.id);
     const reminderLabel = formatReminderBadge(item);
@@ -863,6 +949,17 @@ export default function TasksScreen() {
                   </Text>
                 </View>
               </Pressable>
+              {/* A list lives INSIDE a project - nothing to pick until the
+                  task has one, so the chip itself only exists then. */}
+              {project && (
+                <Pressable onPress={() => openListPicker(item.id)}>
+                  <View style={[styles.chip, list ? { backgroundColor: `${list.color}1A` } : styles.chipEmpty]}>
+                    <Text style={[styles.chipText, { color: list ? list.color : 'rgba(255,255,255,0.45)' }]}>
+                      {list ? list.name : 'Без списку'}
+                    </Text>
+                  </View>
+                </Pressable>
+              )}
               {reminderLabel && (
                 <Pressable onPress={() => openReminderPicker(item.id)}>
                   <View style={styles.reminderChip}>
@@ -1367,6 +1464,89 @@ export default function TasksScreen() {
             </Pressable>
           </Pressable>
         </Modal>
+
+        {/* Scoped to whichever project the picked task already has -
+            a list means nothing without one. */}
+        {(() => {
+          const listPickerTask = tasks.find((t) => t.id === listPickerTaskId);
+          const listPickerProjectId = listPickerTask?.projectId;
+          const listsHere = listPickerProjectId
+            ? taskLists.filter((l) => l.projectId === listPickerProjectId)
+            : [];
+          return (
+            <Modal
+              visible={listPickerTaskId !== null}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setListPickerTaskId(null)}
+            >
+              <Pressable
+                style={[styles.modalBackdrop, { paddingBottom: keyboardHeight }]}
+                onPress={() => setListPickerTaskId(null)}
+              >
+                <Pressable style={styles.modalSheet} onPress={() => {}}>
+                  <View style={styles.modalHandle} />
+                  <Text style={styles.modalTitle}>Оберіть список</Text>
+
+                  <Pressable style={styles.modalRow} onPress={() => assignTaskList(null)}>
+                    <View style={[styles.modalDot, { backgroundColor: 'rgba(255,255,255,0.45)' }]} />
+                    <Text style={styles.modalRowText}>Без списку</Text>
+                  </Pressable>
+
+                  {listsHere.map((l) =>
+                    editingTaskListId === l.id ? (
+                      <View key={l.id} style={styles.modalRow}>
+                        <View style={[styles.modalDot, { backgroundColor: l.color }]} />
+                        <TextInput
+                          style={styles.modalRenameInput}
+                          value={editingTaskListName}
+                          onChangeText={setEditingTaskListName}
+                          autoFocus
+                          onSubmitEditing={saveEditTaskList}
+                          onBlur={saveEditTaskList}
+                          returnKeyType="done"
+                        />
+                      </View>
+                    ) : (
+                      <View key={l.id} style={styles.modalRow}>
+                        <Pressable style={styles.modalRowTap} onPress={() => assignTaskList(l.id)}>
+                          <View style={[styles.modalDot, { backgroundColor: l.color }]} />
+                          <Text style={styles.modalRowText}>{l.name}</Text>
+                        </Pressable>
+                        <Pressable hitSlop={8} onPress={() => startEditTaskList(l)}>
+                          <Ionicons name="pencil-outline" size={16} color="#9CA3AF" />
+                        </Pressable>
+                        <Pressable hitSlop={8} onPress={() => confirmDeleteTaskList(l)}>
+                          <Ionicons name="close" size={16} color="#9CA3AF" />
+                        </Pressable>
+                      </View>
+                    )
+                  )}
+
+                  {listPickerProjectId && (
+                    <>
+                      <View style={styles.modalDivider} />
+                      <View style={styles.modalAddRow}>
+                        <TextInput
+                          style={styles.modalInput}
+                          value={newTaskListName}
+                          onChangeText={setNewTaskListName}
+                          placeholder="Новий список"
+                          placeholderTextColor={theme.ink.faint}
+                          onSubmitEditing={() => addTaskList(listPickerProjectId)}
+                          returnKeyType="done"
+                        />
+                        <Pressable hitSlop={8} onPress={() => addTaskList(listPickerProjectId)}>
+                          <Ionicons name="add-circle" size={26} color={accent} />
+                        </Pressable>
+                      </View>
+                    </>
+                  )}
+                </Pressable>
+              </Pressable>
+            </Modal>
+          );
+        })()}
 
         <RenamePrompt
         visible={creating}

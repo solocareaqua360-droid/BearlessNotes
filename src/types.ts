@@ -160,6 +160,11 @@ export interface Block {
   // 'checkbox' blocks only - standard properties of the "справа" object
   // type (hardcoded, unlike a future user-defined type's properties).
   projectId?: string; // references a doc in the 'projects' collection
+  // 'checkbox' blocks only - references a doc in 'taskLists', which
+  // itself references the SAME project via its own projectId. Only
+  // meaningful alongside a matching projectId; a list picker has
+  // nothing to offer a task with no project yet.
+  listId?: string;
   // YYYY-MM-DD of the day it was marked "Сьогодні" - a mismatch with the
   // current date means "not today" without needing an active daily reset.
   todayMarkedDate?: string;
@@ -253,6 +258,19 @@ export interface Project {
   id: string;
   name: string;
   color: string;
+}
+
+// A sub-grouping INSIDE one project - same shape as Project, and a
+// manageable entity of its own (name, colour, rename, delete) by the
+// user's own choice, rather than a free-text tag. Scoped to exactly one
+// project via `projectId`: a list is meaningless without knowing which
+// project's own list it is, so a task can only be assigned one once it
+// already has a project.
+export interface TaskList {
+  id: string;
+  name: string;
+  color: string;
+  projectId: string;
 }
 
 // Same shape as Project, but a deliberately separate concept and Firestore

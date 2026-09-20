@@ -885,6 +885,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // anywhere in this document (this runs on every save, not just task
       // edits) silently wipes it back out of the mirror.
       if (b.projectId) taskDoc.projectId = b.projectId;
+      if (b.listId) taskDoc.listId = b.listId;
       if (b.todayMarkedDate) taskDoc.todayMarkedDate = b.todayMarkedDate;
       if (b.kanbanStatus) taskDoc.kanbanStatus = b.kanbanStatus;
       if (b.reminderDate) taskDoc.reminderDate = b.reminderDate;
