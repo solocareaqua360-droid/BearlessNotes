@@ -2395,6 +2395,19 @@ export default function BoardScreen() {
       pinchFocalWorldX.value = (e.focalX - viewport.width / 2 - translateX.value) / scale.value + WORLD_CENTER;
       pinchFocalWorldY.value = (e.focalY - viewport.height / 2 - translateY.value) / scale.value + WORLD_CENTER;
     })
+    // The jump the anchoring above didn't fix: the moment one of the two
+    // fingers actually lifts, the platform's own pinch detector (Android's
+    // ScaleGestureDetector underneath this) recomputes its focal from
+    // whichever touch is left - jumping from the true midpoint of two
+    // fingers to that one finger's own position, in a single ordinary
+    // onUpdate frame indistinguishable from a real one, no matter how the
+    // math in that frame is written. Ending the gesture right here, on the
+    // touch-up itself, stops it from ever reading that jumped focal at
+    // all - panGesture picks up the one remaining finger right after,
+    // cleanly, from its own onStart.
+    .onTouchesUp((e, state) => {
+      if (e.numberOfTouches < 2) state.end();
+    })
     .onUpdate((e) => {
       const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, savedScale.value * e.scale));
       scale.value = nextScale;
