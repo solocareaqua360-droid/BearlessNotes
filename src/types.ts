@@ -448,6 +448,13 @@ export interface BoardContainer {
   y: number;
   width: number;
   height: number;
+  // The label's own size - absent means SHAPE_LABEL_SIZE_DEFAULT
+  // (BoardScreen), a step in the SAME SHAPE_TEXT_SIZES scale a shape's
+  // text uses, on purpose: the user asked to compare sizes BY NUMBER
+  // rather than by eye, which only holds if every piece of board text
+  // is measured on one shared scale rather than each control inventing
+  // its own.
+  fontSize?: number;
 }
 
 export interface BoardShape {

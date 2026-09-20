@@ -156,6 +156,16 @@ function stepTextSize(current: number, dir: 1 | -1): number {
   const next = Math.max(0, Math.min(SHAPE_TEXT_SIZES.length - 1, i + dir));
   return SHAPE_TEXT_SIZES[next];
 }
+// The step itself, as "2/6" - the user's own ask: a number to compare
+// by, not a size to judge by eye ("щоб я не на око а по цифрах міг
+// порівнювати який розмір шрифту зараз вибраний"). Shown next to every
+// stepper that steps through SHAPE_TEXT_SIZES, so a shape's own text and
+// a container's title read on the one shared scale.
+function textSizeStepLabel(current: number): string {
+  const at = SHAPE_TEXT_SIZES.findIndex((v) => v >= current);
+  const i = at < 0 ? SHAPE_TEXT_SIZES.length - 1 : at;
+  return `${i + 1}/${SHAPE_TEXT_SIZES.length}`;
+}
 // The fill is the outline's own colour, much weaker - so a shape stays
 // describable by one colour instead of two. 'none' when the user has
 // not turned the wash on, which keeps every shape made before this an
@@ -721,6 +731,7 @@ function DraggableContainer({
   onRename,
   onDelete,
   onResize,
+  onStepFontSize,
 }: {
   container: BoardContainer;
   isDragging: boolean;
@@ -733,6 +744,7 @@ function DraggableContainer({
   onRename: (container: BoardContainer) => void;
   onDelete: (container: BoardContainer) => void;
   onResize: (id: string, width: number, height: number) => void;
+  onStepFontSize: (container: BoardContainer, dir: 1 | -1) => void;
 }) {
   const styles = useStyles(makeStyles);
   const posX = useSharedValue(container.x);
@@ -810,13 +822,35 @@ function DraggableContainer({
 
   return (
     <Animated.View style={[styles.frame, { width, height }, animatedStyle]} pointerEvents="box-none">
-      <GestureDetector gesture={headerGesture}>
-        <View style={styles.frameLabel}>
-          <Text style={styles.frameLabelText} numberOfLines={1}>
-            {container.title}
+      <View style={styles.frameLabelRow}>
+        <GestureDetector gesture={headerGesture}>
+          <View style={styles.frameLabel}>
+            <Text
+              style={[styles.frameLabelText, { fontSize: container.fontSize ?? SHAPE_LABEL_SIZE_DEFAULT }]}
+              numberOfLines={1}
+            >
+              {container.title}
+            </Text>
+          </View>
+        </GestureDetector>
+        {/* The user's own ask: a NUMBER to compare sizes by, not a guess
+            by eye - see textSizeStepLabel. A separate pill, never nested
+            inside the label's own GestureDetector - the label's Pan has
+            no minimum distance (see headerGesture), so a button living
+            inside that same touch area would lose its own tap to the
+            drag every time. */}
+        <View style={styles.frameSizeStepper}>
+          <Pressable hitSlop={6} onPress={() => onStepFontSize(container, -1)}>
+            <Ionicons name="remove" size={13} color="#fff" />
+          </Pressable>
+          <Text style={styles.frameSizeStepperText}>
+            {textSizeStepLabel(container.fontSize ?? SHAPE_LABEL_SIZE_DEFAULT)}
           </Text>
+          <Pressable hitSlop={6} onPress={() => onStepFontSize(container, 1)}>
+            <Ionicons name="add" size={13} color="#fff" />
+          </Pressable>
         </View>
-      </GestureDetector>
+      </View>
       <GestureDetector gesture={resizeGesture}>
         <View style={styles.cardGrip}>
           <Ionicons name="resize-outline" size={13} color="#fff" />
@@ -2877,6 +2911,12 @@ export default function BoardScreen() {
     );
   }
 
+  function stepContainerTextSize(container: BoardContainer, dir: 1 | -1) {
+    const current = container.fontSize ?? SHAPE_LABEL_SIZE_DEFAULT;
+    const next = stepTextSize(current, dir);
+    setContainers((prev) => prev.map((c) => (c.id === container.id ? { ...c, fontSize: next } : c)));
+  }
+
   // Long-pressing a card selects just that one, which surfaces the same
   // bottom action bar the marquee/select tool uses for a multi-card
   // selection - "Редагувати" for a lone document card, "Видалити" either
@@ -3479,6 +3519,7 @@ export default function BoardScreen() {
                   onRename={setRenamingContainer}
                   onDelete={confirmDeleteContainer}
                   onResize={resizeContainer}
+                  onStepFontSize={stepContainerTextSize}
                 />
               ))}
 
@@ -3691,7 +3732,9 @@ export default function BoardScreen() {
                   >
                     <Ionicons name="remove" size={16} color="#fff" />
                   </Pressable>
-                  <Text style={styles.selectionBarActionLabel}>Розмір</Text>
+                  <Text style={styles.selectionBarActionLabel}>
+                    {textSizeStepLabel(selectedShape.fontSize ?? (selectedShape.kind === 'text' ? SHAPE_TEXT_SIZE_DEFAULT : SHAPE_LABEL_SIZE_DEFAULT))}
+                  </Text>
                   <Pressable
                     hitSlop={6}
                     onPress={() => stepShapeTextSize(selectedShape, 1)}
@@ -4488,15 +4531,24 @@ const makeStyles = (theme: Theme) =>
       borderColor: theme.canvas.laneEdge,
       borderStyle: 'dashed',
     },
-    // The only part of the frame that takes touches - see DraggableContainer's
-    // own comment on why the rest is box-none.
-    frameLabel: {
+    // Floats just above the frame's own top-left corner, Figma/Miro-style
+    // - the only part of it that takes touches is the label pill inside
+    // (see DraggableContainer's own comment on why the rest is box-none).
+    frameLabelRow: {
       position: 'absolute',
       left: -1,
       top: -CONTAINER_HEADER_HEIGHT,
       height: CONTAINER_HEADER_HEIGHT,
+      maxWidth: '100%',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    frameLabel: {
+      height: CONTAINER_HEADER_HEIGHT,
       minWidth: 64,
-      maxWidth: '70%',
+      maxWidth: 220,
+      flexShrink: 1,
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: 10,
@@ -4506,10 +4558,31 @@ const makeStyles = (theme: Theme) =>
       backgroundColor: theme.canvas.lane,
     },
     frameLabelText: {
-      fontSize: 12,
       fontWeight: '700',
       fontFamily: FONT_BOLD,
       color: theme.canvas.inkMuted,
+    },
+    // The size stepper beside the label - a separate pill on purpose,
+    // never nested inside the label's own draggable/tappable area. See
+    // textSizeStepLabel for what the number between the buttons means.
+    frameSizeStepper: {
+      height: CONTAINER_HEADER_HEIGHT,
+      flexShrink: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 8,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.canvas.laneEdge,
+      backgroundColor: theme.canvas.lane,
+    },
+    frameSizeStepperText: {
+      fontSize: 11,
+      fontFamily: FONT_REGULAR,
+      color: theme.canvas.inkFaint,
+      minWidth: 22,
+      textAlign: 'center',
     },
     // Same compact, content-hugging dark-glass pill as the shared
     // BulkActionBar component (Documents/Files/Photos/Links' own
