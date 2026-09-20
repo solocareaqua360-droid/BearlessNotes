@@ -62,6 +62,7 @@ import {
   CustomDatabase,
   CustomDatabaseRow,
   CustomDatabaseView,
+  DateRangeValue,
   FieldDef,
   FieldType,
   Group,
@@ -73,6 +74,7 @@ import CustomRowCard, { CustomRowGridCard, RelationThumb } from '../components/C
 import {
   buildRowDisplay,
   coverFieldOf,
+  dateRangeOf,
   displayFieldValue,
   resolveRelationValue,
   resolveBacklinkRows,
@@ -278,7 +280,7 @@ export default function CustomDatabaseScreen({
   // this one record - and editing is a deliberate step from there, rather
   // than every tap dropping straight into a form.
   const [rowPageId, setRowPageId] = useState<string | null>(null);
-  const [draftValues, setDraftValues] = useState<Record<string, string | number | string[]>>({});
+  const [draftValues, setDraftValues] = useState<Record<string, string | number | string[] | DateRangeValue>>({});
   const [draftTagIds, setDraftTagIds] = useState<string[]>([]);
   const [tagPickerVisible, setTagPickerVisible] = useState(false);
   const [datePickerFieldId, setDatePickerFieldId] = useState<string | null>(null);
@@ -1187,13 +1189,13 @@ export default function CustomDatabaseScreen({
     clearSelection();
   }
 
-  function setDraftValue(fieldId: string, value: string | number | string[]) {
+  function setDraftValue(fieldId: string, value: string | number | string[] | DateRangeValue) {
     setDraftValues((prev) => ({ ...prev, [fieldId]: value }));
   }
 
   // Writes a single cell straight to its row, by nested field path, so
   // editing one value never rewrites the rest of the row's `values` map.
-  async function writeRowValue(rowId: string, fieldId: string, value: string | number | string[]) {
+  async function writeRowValue(rowId: string, fieldId: string, value: string | number | string[] | DateRangeValue) {
     await updateDoc(doc(db, 'customDatabaseRows', rowId), {
       [`values.${fieldId}`]: value,
       updatedAt: Date.now(),
@@ -1216,7 +1218,7 @@ export default function CustomDatabaseScreen({
     writeRowValue(row.id, field.id, value);
   }
 
-  function displayValue(field: FieldDef, value: string | number | string[] | undefined): string {
+  function displayValue(field: FieldDef, value: string | number | string[] | DateRangeValue | undefined): string {
     return displayFieldValue(field, value, displayContext);
   }
 
@@ -2334,9 +2336,9 @@ export default function CustomDatabaseScreen({
 
       {datePickerField && (
         <MiniDatePicker
-          value={typeof draftValues[datePickerField.id] === 'string' ? (draftValues[datePickerField.id] as string) : undefined}
-          onPick={(key) => {
-            setDraftValue(datePickerField.id, key);
+          value={dateRangeOf(draftValues[datePickerField.id]) ?? undefined}
+          onPick={(picked) => {
+            setDraftValue(datePickerField.id, picked);
             setDatePickerFieldId(null);
           }}
           onClose={() => setDatePickerFieldId(null)}
@@ -2412,13 +2414,9 @@ export default function CustomDatabaseScreen({
           writing straight to that row instead of into the form's draft. */}
       {cellPicker?.field.type === 'date' && (
         <MiniDatePicker
-          value={
-            typeof rows.find((r) => r.id === cellPicker.rowId)?.values[cellPicker.field.id] === 'string'
-              ? (rows.find((r) => r.id === cellPicker.rowId)?.values[cellPicker.field.id] as string)
-              : undefined
-          }
-          onPick={(key) => {
-            writeRowValue(cellPicker.rowId, cellPicker.field.id, key);
+          value={dateRangeOf(rows.find((r) => r.id === cellPicker.rowId)?.values[cellPicker.field.id]) ?? undefined}
+          onPick={(picked) => {
+            writeRowValue(cellPicker.rowId, cellPicker.field.id, picked);
             setCellPicker(null);
           }}
           onClose={() => setCellPicker(null)}
@@ -2591,7 +2589,7 @@ function OptionPickerSheet({
   onClose,
 }: {
   field: FieldDef;
-  value: string | number | string[] | undefined;
+  value: string | number | string[] | DateRangeValue | undefined;
   onChange: (value: string | string[]) => void;
   // Adds a variant to the FIELD itself and resolves with its id. The list
   // is the field's, not this row's, so a variant typed here is there for
@@ -2726,7 +2724,7 @@ function RelationPickerSheet({
   onClose,
 }: {
   field: FieldDef;
-  value: string | number | string[] | undefined;
+  value: string | number | string[] | DateRangeValue | undefined;
   photos: { id: string; imageUri: string; title?: string; driveFileId?: string }[];
   files: { id: string; title?: string; fileName?: string }[];
   links: { id: string; url: string; title?: string; imageUrl?: string; category: LinkCategory }[];
@@ -3009,10 +3007,30 @@ function RelationPickerSheet({
 // utilities (no native/date-picker dependency) - deliberately not
 // TasksScreen's ReminderSheet, which also carries time-of-day and
 // notification scheduling this field type doesn't need.
-function MiniDatePicker({ value, onPick, onClose }: { value?: string; onPick: (key: string) => void; onClose: () => void }) {
+//
+// Range mode - "у Notion дата розтягується початок-кінець, і це в одній
+// клітинці", the user's own reference: a "Кінцева дата" switch turns a
+// single-day pick into a two-tap one (start, then a later day for the
+// end); a same-day second tap just confirms a one-day pick, and tapping
+// an EARLIER day than the current start restarts the range from there
+// rather than erroring. Off, the picker behaves exactly as it always
+// did - one tap, one day, closes immediately.
+function MiniDatePicker({
+  value,
+  onPick,
+  onClose,
+}: {
+  value?: string | DateRangeValue;
+  onPick: (value: DateRangeValue) => void;
+  onClose: () => void;
+}) {
   const miniStyles = useStyles(makeMiniStyles);
-  const initial = value ? parseDateKey(value) : new Date();
+  const initialRange = dateRangeOf(value);
+  const initial = initialRange ? parseDateKey(initialRange.start) : new Date();
   const [visibleMonth, setVisibleMonth] = useState({ year: initial.getFullYear(), month: initial.getMonth() });
+  const [rangeMode, setRangeMode] = useState(!!initialRange?.end);
+  const [pendingStart, setPendingStart] = useState<string | undefined>(initialRange?.start);
+  const [pendingEnd, setPendingEnd] = useState<string | undefined>(initialRange?.end);
   const grid = getMonthGrid(visibleMonth.year, visibleMonth.month);
   const today = new Date();
 
@@ -3021,6 +3039,24 @@ function MiniDatePicker({ value, onPick, onClose }: { value?: string; onPick: (k
       const d = new Date(prev.year, prev.month + delta, 1);
       return { year: d.getFullYear(), month: d.getMonth() };
     });
+  }
+
+  function handleDayPress(key: string) {
+    if (!rangeMode) {
+      onPick({ start: key });
+      return;
+    }
+    if (!pendingStart || key < pendingStart) {
+      setPendingStart(key);
+      setPendingEnd(undefined);
+      return;
+    }
+    if (key === pendingStart) {
+      onPick({ start: key });
+      return;
+    }
+    setPendingEnd(key);
+    onPick({ start: pendingStart, end: key });
   }
 
   return (
@@ -3038,6 +3074,20 @@ function MiniDatePicker({ value, onPick, onClose }: { value?: string; onPick: (k
               <Ionicons name="chevron-forward" size={18} color={GLASS_TEXT} />
             </Pressable>
           </View>
+          <Pressable
+            style={miniStyles.rangeToggleRow}
+            onPress={() => {
+              setRangeMode((v) => !v);
+              setPendingEnd(undefined);
+            }}
+          >
+            <Ionicons
+              name={rangeMode ? 'checkbox' : 'square-outline'}
+              size={18}
+              color={rangeMode ? GLASS_TEXT : GLASS_TEXT_FAINT}
+            />
+            <Text style={miniStyles.rangeToggleLabel}>Кінцева дата</Text>
+          </Pressable>
           <View style={miniStyles.weekdayRow}>
             {WEEKDAY_SHORT.map((w) => (
               <Text key={w} style={miniStyles.weekdayLabel}>
@@ -3050,19 +3100,29 @@ function MiniDatePicker({ value, onPick, onClose }: { value?: string; onPick: (k
               {grid.slice(row * 7, row * 7 + 7).map(({ date, inMonth }) => {
                 const key = dateKey(date);
                 const isToday = isSameDay(date, today);
-                const isSelected = value === key;
+                const isSelected = rangeMode ? key === pendingStart || key === pendingEnd : value === key;
+                const isInRange =
+                  rangeMode && !!pendingStart && !!pendingEnd && key > pendingStart && key < pendingEnd;
                 return (
-                  <Pressable key={key} style={miniStyles.dayCell} onPress={() => onPick(key)}>
-                    <View style={[miniStyles.dayCircle, isSelected && miniStyles.dayCircleSelected, isToday && !isSelected && miniStyles.dayCircleToday]}>
-                      <Text
+                  <Pressable key={key} style={miniStyles.dayCell} onPress={() => handleDayPress(key)}>
+                    <View style={[miniStyles.dayCellInner, isInRange && miniStyles.dayCellInRange]}>
+                      <View
                         style={[
-                          miniStyles.dayNum,
-                          !inMonth && miniStyles.dayNumMuted,
-                          isSelected && miniStyles.dayNumSelected,
+                          miniStyles.dayCircle,
+                          isSelected && miniStyles.dayCircleSelected,
+                          isToday && !isSelected && miniStyles.dayCircleToday,
                         ]}
                       >
-                        {date.getDate()}
-                      </Text>
+                        <Text
+                          style={[
+                            miniStyles.dayNum,
+                            !inMonth && miniStyles.dayNumMuted,
+                            isSelected && miniStyles.dayNumSelected,
+                          ]}
+                        >
+                          {date.getDate()}
+                        </Text>
+                      </View>
                     </View>
                   </Pressable>
                 );
@@ -3105,6 +3165,18 @@ const makeMiniStyles = (t: Theme) => StyleSheet.create({
     fontFamily: FONT_BOLD,
     color: GLASS_TEXT,
   },
+  rangeToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+    marginBottom: 6,
+  },
+  rangeToggleLabel: {
+    fontSize: 13,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT,
+  },
   weekdayRow: {
     flexDirection: 'row',
   },
@@ -3124,6 +3196,17 @@ const makeMiniStyles = (t: Theme) => StyleSheet.create({
     height: 38,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // Fills the whole cell (not just the day's own circle), so the range
+  // tint between a picked start and end reads as one continuous band
+  // rather than a gap between separate circles.
+  dayCellInner: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayCellInRange: {
+    backgroundColor: `${t.sections.custom}26`,
   },
   dayCircle: {
     width: 30,

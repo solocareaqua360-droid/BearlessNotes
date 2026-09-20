@@ -699,6 +699,17 @@ export interface FieldOption {
   color: string;
 }
 
+// A 'date' field's value once it covers more than one day - "у Notion
+// дата розтягується початок-кінець, і це в одній клітинці", the user's
+// own reference. A plain string (today's only shape, a dateKey) still
+// means one day; this is additive, so every existing single date stays
+// exactly as it was with nothing to migrate. `end` absent means "picked
+// as a range but no end chosen yet" reads the same as a single day.
+export interface DateRangeValue {
+  start: string;
+  end?: string;
+}
+
 // What a 'relation' field points at - the built-in Photos database, or
 // another user-created one. A row's value for such a field is just the
 // target's id as a plain string (CustomDatabaseRow.values already allows a
@@ -802,10 +813,11 @@ export interface CustomDatabaseRow {
   id: string;
   databaseId: string;
   // Keyed by FieldDef.id. 'select' stores one FieldOption.id, 'multiSelect'
-  // an array of them, 'number' a number, 'text'/'date' a string (date as an
-  // ISO string). A field added after this row exists simply has no key here
+  // an array of them, 'number' a number, 'text' a string, 'date' a dateKey
+  // string ("YYYY-MM-DD") OR, once it's a range, a DateRangeValue - see its
+  // own comment. A field added after this row exists simply has no key here
   // yet - rendered as empty, not backfilled.
-  values: Record<string, string | number | string[]>;
+  values: Record<string, string | number | string[] | DateRangeValue>;
   // Tags/groups are scoped per-database (kind/GroupKind `customRow:${databaseId}`),
   // not shared across every custom database - see useTags.ts and
   // GroupPickerSheet.tsx.

@@ -1,5 +1,5 @@
 import { CustomDatabase, CustomDatabaseRow, FieldDef } from '../types';
-import { RowDisplayContext, displayFieldValue, resolveRelationValue, rowTitleOf } from './customRowDisplay';
+import { RowDisplayContext, dateRangeOf, displayFieldValue, resolveRelationValue, rowTitleOf } from './customRowDisplay';
 
 export type SortDir = 'asc' | 'desc';
 
@@ -84,6 +84,12 @@ export function facetsOfRow(field: FieldDef, row: CustomDatabaseRow): string[] {
   const value = row.values[field.id];
   if (value === undefined || value === null || value === '') return [];
   if (Array.isArray(value)) return value.filter((v) => v !== '');
+  // A date range has no single "raw key" of its own - its start stands in
+  // for it, same as sorting does (see compareByField).
+  if (field.type === 'date') {
+    const range = dateRangeOf(value);
+    return range ? [range.start] : [];
+  }
   return [String(value)];
 }
 
@@ -196,8 +202,13 @@ function compareByField(
   const bEmpty = bv === undefined || bv === null || bv === '';
   if (aEmpty || bEmpty) return aEmpty && bEmpty ? 0 : aEmpty ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
   if (field.type === 'number') return Number(av) - Number(bv);
-  // dateKeys are 'YYYY-MM-DD', so plain string order IS date order.
-  if (field.type === 'date') return String(av).localeCompare(String(bv));
+  // dateKeys are 'YYYY-MM-DD', so plain string order IS date order - a
+  // range sorts by its own start, same as a single day would.
+  if (field.type === 'date') {
+    const aStart = dateRangeOf(av)?.start ?? '';
+    const bStart = dateRangeOf(bv)?.start ?? '';
+    return aStart.localeCompare(bStart);
+  }
   if (field.type === 'select') {
     const order = new Map((field.options ?? []).map((o, i) => [o.id, i]));
     return (order.get(String(av)) ?? 999) - (order.get(String(bv)) ?? 999);

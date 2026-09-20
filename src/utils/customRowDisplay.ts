@@ -1,5 +1,27 @@
-import { CustomDatabase, CustomDatabaseRow, FieldDef } from '../types';
+import { CustomDatabase, CustomDatabaseRow, DateRangeValue, FieldDef } from '../types';
 import { LinkCategory } from './linkCategory';
+
+// The one place that knows a 'date' field's value can be a plain dateKey
+// OR a DateRangeValue - see that type's own comment. Returns null for
+// anything else (empty, or a value that isn't actually a date at all).
+export function dateRangeOf(value: unknown): DateRangeValue | null {
+  if (typeof value === 'string' && value) return { start: value };
+  if (value && typeof value === 'object' && 'start' in value && typeof (value as DateRangeValue).start === 'string') {
+    return value as DateRangeValue;
+  }
+  return null;
+}
+
+function formatDateKey(key: string): string {
+  return key.split('-').reverse().join('.');
+}
+
+// "12.03" for one day, "12.03–15.03" for a range with an end, "12.03–…"
+// for a range still missing its end (mid-pick, or the user left it open).
+export function formatDateRange(range: DateRangeValue): string {
+  if (!range.end || range.end === range.start) return formatDateKey(range.start);
+  return `${formatDateKey(range.start)}–${formatDateKey(range.end)}`;
+}
 
 // Everything a custom-database row needs in order to be rendered anywhere
 // outside its own screen: the Photos a 'relation' field can point at, plus
@@ -69,9 +91,10 @@ export function rowTitleOf(database: CustomDatabase | null | undefined, row: Cus
     if (!field.inTitle || !canJoinTitle(field.type)) return;
     const raw = row.values[field.id];
     if (raw === undefined || raw === null || raw === '') return;
-    // A date is stored as its dateKey; everything else here is already the
-    // text it should read as.
-    parts.push(field.type === 'date' ? String(raw).split('-').reverse().join('.') : String(raw).trim());
+    // A date is stored as its dateKey or a DateRangeValue; everything else
+    // here is already the text it should read as.
+    const range = field.type === 'date' ? dateRangeOf(raw) : null;
+    parts.push(range ? formatDateRange(range) : String(raw).trim());
   });
   return parts.filter((p) => p !== '').join(' · ') || 'Без назви';
 }
@@ -80,7 +103,7 @@ export function rowTitleOf(database: CustomDatabase | null | undefined, row: Cus
 // them. The cover is whichever comes first: a card has room for exactly
 // one picture, and a field the user turned into a gallery after picking a
 // cover must not silently lose that cover.
-export function firstRelationId(value: string | number | string[] | undefined): string | undefined {
+export function firstRelationId(value: string | number | string[] | DateRangeValue | undefined): string | undefined {
   if (Array.isArray(value)) return value.find((v) => typeof v === 'string' && v !== '');
   return typeof value === 'string' && value !== '' ? value : undefined;
 }
@@ -147,13 +170,13 @@ export function resolveBacklinkRows(
 // callers filter on to decide whether it's worth showing at all.
 export function displayFieldValue(
   field: FieldDef,
-  value: string | number | string[] | undefined,
+  value: string | number | string[] | DateRangeValue | undefined,
   ctx: RowDisplayContext
 ): string {
   if (value === undefined || value === null || value === '') return '';
-  if (field.type === 'date' && typeof value === 'string') {
-    // Already a dateKey ("YYYY-MM-DD") - just reformat, no Date round-trip.
-    return value.split('-').reverse().join('.');
+  if (field.type === 'date') {
+    const range = dateRangeOf(value);
+    return range ? formatDateRange(range) : '';
   }
   if ((field.type === 'select' || field.type === 'multiSelect') && field.options) {
     const ids = Array.isArray(value) ? value : [value as string];
@@ -179,7 +202,7 @@ export function displayFieldValue(
 // one shape for both so callers don't branch on `multiple` themselves.
 export function resolveRelationList(
   field: FieldDef,
-  value: string | number | string[] | undefined,
+  value: string | number | string[] | DateRangeValue | undefined,
   ctx: RowDisplayContext
 ): ResolvedRelation[] {
   const ids = Array.isArray(value) ? value : typeof value === 'string' && value ? [value] : [];
