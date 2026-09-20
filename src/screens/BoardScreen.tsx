@@ -869,7 +869,7 @@ function DraggableContainer({
 
   return (
     <Animated.View style={[styles.frame, { width, height }, animatedStyle]} pointerEvents="box-none">
-      <View style={styles.frameLabelRow}>
+      <View style={[styles.frameLabelRow, { width }]}>
         <GestureDetector gesture={headerGesture}>
           <View style={styles.frameLabel}>
             <Text
@@ -4724,12 +4724,21 @@ const makeStyles = (theme: Theme) =>
     // Floats just above the frame's own top-left corner, Figma/Miro-style
     // - the only part of it that takes touches is the label pill inside
     // (see DraggableContainer's own comment on why the rest is box-none).
+    // Width is SAID inline (see DraggableContainer's own call site) at
+    // exactly the frame's own width, never left to a percentage - a
+    // maxWidth of '100%' here left the label capped by its OWN
+    // hardcoded number well before the row ever reached that limit, so
+    // a wide frame sat with room to spare while the name was cut off
+    // for no reason: "назва може збільшуватись і відображатись доти
+    // поки блок показу розміру тексту не дійде до протилежного краю
+    // рамки". With the row's own width said exactly and the stepper
+    // pinned to its natural size (flexShrink 0), the label's flexShrink
+    // 1 below gives it every point of room the stepper isn't using.
     frameLabelRow: {
       position: 'absolute',
       left: -1,
       top: -CONTAINER_HEADER_HEIGHT,
       height: CONTAINER_HEADER_HEIGHT,
-      maxWidth: '100%',
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
@@ -4737,7 +4746,6 @@ const makeStyles = (theme: Theme) =>
     frameLabel: {
       height: CONTAINER_HEADER_HEIGHT,
       minWidth: 64,
-      maxWidth: 220,
       flexShrink: 1,
       flexDirection: 'row',
       alignItems: 'center',
