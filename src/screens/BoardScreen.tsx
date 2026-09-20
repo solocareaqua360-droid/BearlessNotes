@@ -908,6 +908,13 @@ function DraggableContainer({
             <Ionicons name="add" size={13} color="#fff" />
           </Pressable>
         </View>
+        {/* A long-press on the label already deletes (same as a column's
+            header) - added here too, visibly, because "не бачу
+            механізма їх видалення" is exactly what an invisible-only
+            affordance earns. */}
+        <Pressable hitSlop={6} style={styles.frameDeleteButton} onPress={() => onDelete(container)}>
+          <Ionicons name="trash-outline" size={13} color="#fff" />
+        </Pressable>
       </View>
       <GestureDetector gesture={resizeGesture}>
         <View style={styles.cardGrip}>
@@ -3029,10 +3036,16 @@ export default function BoardScreen() {
 
   function addContainer() {
     setContainers((prev) => {
+      // The RIGHT edge of the rightmost container, not its left one - a
+      // container's width varies (resizable, and wider than the default
+      // once anyone drags its grip), so landing a fixed distance past
+      // its own x, the way a column's fixed-width own math does, put
+      // every new one deep inside the one before it: "області в дошці
+      // створюються одна на одній".
       const x =
         prev.length === 0
           ? WORLD_CENTER - CONTAINER_DEFAULT_WIDTH / 2
-          : Math.max(...prev.map((c) => c.x)) + CONTAINER_SPACING;
+          : Math.max(...prev.map((c) => c.x + c.width)) + CONTAINER_SPACING;
       const y = prev.length === 0 ? WORLD_CENTER - CONTAINER_DEFAULT_HEIGHT / 2 : prev[0].y;
       return [
         ...prev,
@@ -3055,13 +3068,25 @@ export default function BoardScreen() {
   }
 
   async function confirmDeleteContainer(container: BoardContainer) {
-    const yes = await confirm({
+    // Two questions, not one - "повинне бути запитання видалити
+    // область і потім видалити чи залишити об'єкти області": deleting
+    // the frame and deleting what's in it are two different things, and
+    // "Видалити" alone used to always mean only the first.
+    const choice = await ask({
       title: 'Видалити область?',
-      message: 'Об’єкти в ній залишаться на дошці.',
-      confirmLabel: 'Видалити',
+      message: 'Що зробити з обʼєктами всередині неї?',
+      actions: [
+        { id: 'keep', label: 'Залишити обʼєкти на дошці' },
+        { id: 'deleteAll', label: 'Видалити разом з обʼєктами', tone: 'danger' },
+      ],
     });
-    if (!yes) return;
+    if (choice === 'cancel') return;
+    const { cardIds, shapeIds } = containerMembersAt(container);
     setContainers((prev) => prev.filter((c) => c.id !== container.id));
+    if (choice === 'deleteAll') {
+      if (cardIds.size > 0) setCards((prev) => prev.filter((c) => !cardIds.has(c.id)));
+      if (shapeIds.size > 0) setShapes((prev) => prev.filter((sh) => !shapeIds.has(sh.id)));
+    }
   }
 
   function resizeContainer(id: string, width: number, height: number) {
@@ -4839,6 +4864,17 @@ const makeStyles = (theme: Theme) =>
       color: theme.canvas.inkFaint,
       minWidth: 22,
       textAlign: 'center',
+    },
+    frameDeleteButton: {
+      height: CONTAINER_HEADER_HEIGHT,
+      width: CONTAINER_HEADER_HEIGHT,
+      flexShrink: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.canvas.laneEdge,
+      backgroundColor: theme.canvas.lane,
     },
     // Same compact, content-hugging dark-glass pill as the shared
     // BulkActionBar component (Documents/Files/Photos/Links' own
