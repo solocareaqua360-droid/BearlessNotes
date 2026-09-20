@@ -1988,6 +1988,11 @@ export default function BoardScreen() {
   // instead of drifting toward the board's centre.
   const pinchFocalWorldX = useSharedValue(0);
   const pinchFocalWorldY = useSharedValue(0);
+  // Where the finger panGesture is tracking actually was when ITS OWN
+  // onStart fired - see panGesture's own comment for why its built-in
+  // translationX/Y can't be trusted right after a pinch.
+  const panTouchStartX = useSharedValue(0);
+  const panTouchStartY = useSharedValue(0);
   // Shared by every selected card (see DraggableCard's isGroupDrag branch) -
   // whichever selected card is actually being dragged writes into this, and
   // every OTHER selected card reads the same live value in its own animated
@@ -2420,14 +2425,28 @@ export default function BoardScreen() {
     // Same resync as pinchGesture's own onStart, same reason: a fit-to-
     // bounds pan (isolation, "показати на дошці") moves translateX/Y
     // outside this gesture, and the next drag has to pick up from there,
-    // not from wherever the PREVIOUS drag happened to end.
-    .onStart(() => {
+    // not from wherever the PREVIOUS drag happened to end. Also captures
+    // the finger's own absolute position right now - see onUpdate's own
+    // comment for why the gesture's built-in translationX/Y isn't used.
+    .onStart((e) => {
       savedTranslateX.value = translateX.value;
       savedTranslateY.value = translateY.value;
+      panTouchStartX.value = e.absoluteX;
+      panTouchStartY.value = e.absoluteY;
     })
     .onUpdate((e) => {
-      translateX.value = savedTranslateX.value + e.translationX;
-      translateY.value = savedTranslateY.value + e.translationY;
+      // Computed by hand from the finger's own absolute position, rather
+      // than the gesture's own translationX/Y - which measures from
+      // wherever THAT finger first touched down, not from this gesture's
+      // own onStart. Ordinarily the same instant, but not right after a
+      // two-finger pinch: the second finger may have been down (and
+      // drifting) for the whole pinch before it became this lone finger's
+      // own pan, and translationX would silently carry that drift as a
+      // jump the moment this gesture activated - the user's own report,
+      // "невеличкий ривок... не можу сказати напрямку", exactly matches
+      // it depending on how far that one finger personally moved mid-pinch.
+      translateX.value = savedTranslateX.value + (e.absoluteX - panTouchStartX.value);
+      translateY.value = savedTranslateY.value + (e.absoluteY - panTouchStartY.value);
     })
     .onEnd(() => {
       savedTranslateX.value = translateX.value;
