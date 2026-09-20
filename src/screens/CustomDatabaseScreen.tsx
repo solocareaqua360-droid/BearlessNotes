@@ -1664,6 +1664,11 @@ export default function CustomDatabaseScreen({
     const days = Array.from({ length: SCHEDULE_WINDOW_DAYS }, (_, i) => addDays(windowStartDate, i));
     const todayKey = dateKey(new Date());
     const rowHeaderWidth = titleColumnWidth(rowRecords.map((r) => rowTitleOf(rowDatabase, r)), windowWidth);
+    // Whole days between two dateKeys - the grid's own columns are exactly
+    // one day wide, so this is directly a column-index offset from the
+    // window's own first day.
+    const dayOffset = (key: string) =>
+      Math.round((parseDateKey(key).getTime() - windowStartDate.getTime()) / 86400000);
 
     if (!rowDatabase) {
       return (
@@ -1735,23 +1740,56 @@ export default function CustomDatabaseScreen({
               }
             >
               <View>
-                {rowRecords.map((row) => (
-                  <View key={row.id} style={{ flexDirection: 'row' }}>
-                    {days.map((d) => {
-                      const key = dateKey(d);
-                      return (
-                        <View
-                          key={key}
-                          style={[
-                            styles.scheduleDayCell,
-                            key === todayKey && styles.scheduleDayCellToday,
-                            { width: SCHEDULE_DAY_WIDTH },
-                          ]}
-                        />
-                      );
-                    })}
-                  </View>
-                ))}
+                {rowRecords.map((row) => {
+                  // Every row of THIS database (Дорожній лист) whose own
+                  // relation field points at this record - never
+                  // `displayedRows`, which carries whatever sort/filter
+                  // was last set for list/table/cards and has nothing to
+                  // do with a schedule (see scheduleConfig's own comment).
+                  const events = rows.filter((r) => r.values[config.rowRelationFieldId] === row.id);
+                  return (
+                    <View key={row.id} style={styles.scheduleRowTrack}>
+                      {days.map((d) => {
+                        const key = dateKey(d);
+                        return (
+                          <View
+                            key={key}
+                            style={[
+                              styles.scheduleDayCell,
+                              key === todayKey && styles.scheduleDayCellToday,
+                              { width: SCHEDULE_DAY_WIDTH },
+                            ]}
+                          />
+                        );
+                      })}
+                      {events.map((eventRow) => {
+                        const range = dateRangeOf(eventRow.values[config.dateFieldId]);
+                        if (!range) return null;
+                        const startIdx = Math.max(0, dayOffset(range.start));
+                        const endIdx = Math.min(SCHEDULE_WINDOW_DAYS - 1, dayOffset(range.end ?? range.start));
+                        // Entirely before or after the visible window -
+                        // "цей тиждень ‹ ›" navigation is a later step, so
+                        // for now it's simply not drawn rather than shown
+                        // in the wrong place.
+                        if (endIdx < startIdx) return null;
+                        return (
+                          <Pressable
+                            key={eventRow.id}
+                            style={[
+                              styles.scheduleEventCard,
+                              { left: startIdx * SCHEDULE_DAY_WIDTH, width: (endIdx - startIdx + 1) * SCHEDULE_DAY_WIDTH - 4 },
+                            ]}
+                            onPress={() => setRowPageId(eventRow.id)}
+                          >
+                            <Text style={styles.scheduleEventCardLabel} numberOfLines={1}>
+                              {rowTitleOf(database, eventRow)}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  );
+                })}
               </View>
             </ScrollView>
           </View>
@@ -4511,6 +4549,30 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   },
   scheduleDayCellToday: {
     backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  // One row's whole strip of day cells, PLUS whatever event cards land on
+  // it - the day cells lay out as an ordinary flex row (their width is
+  // literally the column grid), and the events float on top of that same
+  // row by absolute position instead of trying to sit inside one cell.
+  scheduleRowTrack: {
+    flexDirection: 'row',
+    position: 'relative',
+    height: SCHEDULE_ROW_HEIGHT,
+  },
+  scheduleEventCard: {
+    position: 'absolute',
+    top: 6,
+    bottom: 6,
+    left: 0,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(96,165,250,0.85)',
+  },
+  scheduleEventCardLabel: {
+    fontSize: 12,
+    fontFamily: FONT_SEMIBOLD,
+    color: '#0B1220',
   },
   tableCellEmpty: {
     fontSize: 13,
