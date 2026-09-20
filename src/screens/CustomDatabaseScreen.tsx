@@ -892,6 +892,27 @@ export default function CustomDatabaseScreen({
     closeParamList();
   }
 
+  // Reached from the main "Вигляд" picker, right beside Список/Картки/
+  // Таблиця - the user's own point: a 4th way to look at the database
+  // belongs where the other three live, not buried inside a "Вигляди"
+  // tab of a whole separate params window. Picks the first saved
+  // schedule if one already exists; otherwise opens the same setup sheet
+  // "Створити графік" (still in the "Вигляди" tab too, for whenever a
+  // SECOND schedule is wanted later) opens.
+  function selectScheduleView() {
+    closeParamList();
+    const existing = savedViews.find((v) => v.viewMode === 'schedule');
+    if (existing) {
+      applySavedView(existing);
+      return;
+    }
+    if (scheduleRelationFields.length === 0 || scheduleDateFields.length === 0) {
+      notify('Потрібні поля', 'Щоб створити графік, додайте поле-звʼязок на іншу базу і поле дати.');
+      return;
+    }
+    setScheduleSetupVisible(true);
+  }
+
   async function renameSavedView(view: CustomDatabaseView, name: string) {
     setViewPrompt(null);
     await updateDoc(doc(db, 'customDatabaseViews', view.id), { name: name.trim() || view.name, updatedAt: Date.now() });
@@ -1669,6 +1690,15 @@ export default function CustomDatabaseScreen({
     // window's own first day.
     const dayOffset = (key: string) =>
       Math.round((parseDateKey(key).getTime() - windowStartDate.getTime()) / 86400000);
+    // How far into its own 24h a time-of-day sits, as a fraction - "одне
+    // поле - 24 години, щоб пропорційно від вибраних годин заповнювалося":
+    // an event ending at 09:00 fills 9/24 of its own last day's column,
+    // not the whole thing.
+    const timeFraction = (time: string | undefined) => {
+      if (!time) return null;
+      const [h, m] = time.split(':').map(Number);
+      return (h * 60 + m) / (24 * 60);
+    };
 
     if (!rowDatabase) {
       return (
@@ -1765,20 +1795,30 @@ export default function CustomDatabaseScreen({
                       {events.map((eventRow) => {
                         const range = dateRangeOf(eventRow.values[config.dateFieldId]);
                         if (!range) return null;
-                        const startIdx = Math.max(0, dayOffset(range.start));
-                        const endIdx = Math.min(SCHEDULE_WINDOW_DAYS - 1, dayOffset(range.end ?? range.start));
+                        const rawStartIdx = dayOffset(range.start);
+                        const rawEndIdx = dayOffset(range.end ?? range.start);
+                        const startIdx = Math.max(0, rawStartIdx);
+                        const endIdx = Math.min(SCHEDULE_WINDOW_DAYS - 1, rawEndIdx);
                         // Entirely before or after the visible window -
                         // "цей тиждень ‹ ›" navigation is a later step, so
                         // for now it's simply not drawn rather than shown
                         // in the wrong place.
                         if (endIdx < startIdx) return null;
+                        // The time fraction only ever applies to the
+                        // event's OWN real start/end day - a day clipped
+                        // by the visible window has nothing of its own to
+                        // be a fraction of, so it just fills in full.
+                        const startFrac = rawStartIdx === startIdx ? (timeFraction(range.startTime) ?? 0) : 0;
+                        const endFrac = rawEndIdx === endIdx ? (timeFraction(range.endTime) ?? 1) : 1;
+                        const left = startIdx * SCHEDULE_DAY_WIDTH + startFrac * SCHEDULE_DAY_WIDTH;
+                        const right = (endIdx + 1) * SCHEDULE_DAY_WIDTH - (1 - endFrac) * SCHEDULE_DAY_WIDTH;
+                        // A minimum width so a short same-day hop (a quick
+                        // errand, say) never shrinks to an untappable sliver.
+                        const width = Math.max(right - left - 4, 16);
                         return (
                           <Pressable
                             key={eventRow.id}
-                            style={[
-                              styles.scheduleEventCard,
-                              { left: startIdx * SCHEDULE_DAY_WIDTH, width: (endIdx - startIdx + 1) * SCHEDULE_DAY_WIDTH - 4 },
-                            ]}
+                            style={[styles.scheduleEventCard, { left, width }]}
                             onPress={() => setRowPageId(eventRow.id)}
                           >
                             <Text style={styles.scheduleEventCardLabel} numberOfLines={1}>
@@ -1909,6 +1949,19 @@ export default function CustomDatabaseScreen({
                         </Text>
                       </Pressable>
                     ))}
+                    {/* A 4th way to look at the database, same as the other
+                        three - not "create a schedule", which lives one
+                        level down (see selectScheduleView's own comment). */}
+                    <Pressable style={styles.paramOption} onPress={selectScheduleView}>
+                      <Ionicons
+                        name={VIEW_ICONS.schedule}
+                        size={14}
+                        color={viewMode === 'schedule' ? '#fff' : 'rgba(255,255,255,0.7)'}
+                      />
+                      <Text style={[styles.paramOptionLabel, viewMode === 'schedule' && styles.paramOptionLabelActive]}>
+                        {VIEW_LABELS.schedule}
+                      </Text>
+                    </Pressable>
                   </ScrollView>
                 </View>
               </>
