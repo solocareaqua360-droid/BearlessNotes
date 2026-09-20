@@ -287,6 +287,10 @@ export interface TaskList {
   name: string;
   color: string;
   projectId: string;
+  // A short line shown under the list's own name, above its tasks - the
+  // user's own ask, distinct from a task's own comment (Block.comment):
+  // this describes the LIST, not any one thing in it.
+  description?: string;
 }
 
 // Same shape as Project, but a deliberately separate concept and Firestore

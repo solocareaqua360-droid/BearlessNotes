@@ -30,6 +30,10 @@ type Props = {
   // one-line field ran off the end of it, which is no way to correct
   // anything - "вузька строчка з текстом який уходе за межі поля вводу".
   multiline?: boolean;
+  // Lets Save fire with nothing typed - opt-in (default false, every
+  // existing caller keeps requiring a real name) for a field that means
+  // something by being cleared, like a list's own optional description.
+  allowEmpty?: boolean;
   onCancel: () => void;
   onSave: (value: string) => void;
 };
@@ -58,6 +62,7 @@ export default function RenamePrompt({
   placeholder,
   busy,
   multiline,
+  allowEmpty,
   onCancel,
   onSave,
 }: Props) {
@@ -107,7 +112,7 @@ export default function RenamePrompt({
           multiline={multiline}
           style={[styles.input, multiline && styles.inputTall, busy && styles.inputBusy]}
           onSubmitEditing={
-            multiline ? undefined : () => value.trim() && !busy && onSave(value.trim())
+            multiline ? undefined : () => (allowEmpty || value.trim()) && !busy && onSave(value.trim())
           }
           returnKeyType={multiline ? 'default' : 'done'}
         />
@@ -126,10 +131,10 @@ export default function RenamePrompt({
             <Pressable
               style={({ pressed }) => [
                 styles.saveButton,
-                !value.trim() && styles.saveButtonDisabled,
+                !allowEmpty && !value.trim() && styles.saveButtonDisabled,
                 pressed && styles.pressed,
               ]}
-              disabled={!value.trim()}
+              disabled={!allowEmpty && !value.trim()}
               onPress={() => onSave(value.trim())}
             >
               <Text style={styles.saveLabel}>Зберегти</Text>

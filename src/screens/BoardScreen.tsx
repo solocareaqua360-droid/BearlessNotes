@@ -573,6 +573,8 @@ type LiveEndpoint = {
   offsetY: SharedValue<number> | null;
   columnOffsetX: SharedValue<number> | null;
   columnOffsetY: SharedValue<number> | null;
+  containerOffsetX: SharedValue<number> | null;
+  containerOffsetY: SharedValue<number> | null;
   width: number;
   height: number;
 };
@@ -588,10 +590,14 @@ function LiveConnectionLine({ from, to }: { from: LiveEndpoint; to: LiveEndpoint
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const animatedStyle = useAnimatedStyle(() => {
-    const fromX = from.posX.value + (from.offsetX?.value ?? 0) + (from.columnOffsetX?.value ?? 0);
-    const fromY = from.posY.value + (from.offsetY?.value ?? 0) + (from.columnOffsetY?.value ?? 0);
-    const toX = to.posX.value + (to.offsetX?.value ?? 0) + (to.columnOffsetX?.value ?? 0);
-    const toY = to.posY.value + (to.offsetY?.value ?? 0) + (to.columnOffsetY?.value ?? 0);
+    const fromX =
+      from.posX.value + (from.offsetX?.value ?? 0) + (from.columnOffsetX?.value ?? 0) + (from.containerOffsetX?.value ?? 0);
+    const fromY =
+      from.posY.value + (from.offsetY?.value ?? 0) + (from.columnOffsetY?.value ?? 0) + (from.containerOffsetY?.value ?? 0);
+    const toX =
+      to.posX.value + (to.offsetX?.value ?? 0) + (to.columnOffsetX?.value ?? 0) + (to.containerOffsetX?.value ?? 0);
+    const toY =
+      to.posY.value + (to.offsetY?.value ?? 0) + (to.columnOffsetY?.value ?? 0) + (to.containerOffsetY?.value ?? 0);
 
     // Same "leave from the side that faces the other card" rule the
     // resting curve uses, so the line doesn't jump sides on release.
@@ -768,6 +774,8 @@ function DraggableColumn({
 // because its size is stored rather than derived from its members.
 function DraggableContainer({
   container,
+  posX,
+  posY,
   isDragging,
   canvasScale,
   canvasPanGesture,
@@ -781,6 +789,11 @@ function DraggableContainer({
   onStepFontSize,
 }: {
   container: BoardContainer;
+  // From the board's own position registry, same as a card/shape - so a
+  // connection ending on a container can read its live position too
+  // (see liveEndpointFor).
+  posX: SharedValue<number>;
+  posY: SharedValue<number>;
   isDragging: boolean;
   canvasScale: SharedValue<number>;
   canvasPanGesture: ReturnType<typeof Gesture.Pan>;
@@ -794,8 +807,6 @@ function DraggableContainer({
   onStepFontSize: (container: BoardContainer, dir: 1 | -1) => void;
 }) {
   const styles = useStyles(makeStyles);
-  const posX = useSharedValue(container.x);
-  const posY = useSharedValue(container.y);
   const reportedX = useSharedValue(container.x);
   const reportedY = useSharedValue(container.y);
 
@@ -2272,13 +2283,26 @@ export default function BoardScreen() {
   }
 
   // What an arrow may start from or land on. Cards first, then the
-  // furniture underneath them - a card wins where the two overlap,
-  // because the card is what is drawn on top.
+  // furniture underneath them, then a container last of all - it is the
+  // bottom-most layer on screen (see DraggableContainer), so it should
+  // be the last thing a connect-drag falls back to as well: a card is drawn on top.
   function nodeAt(worldX: number, worldY: number): BoardNode | undefined {
     const card = cardAt(worldX, worldY);
     if (card) return nodeById.get(card.id);
-    return shapes
+    const shapeHit = shapes
       .map((sh) => nodeById.get(sh.id))
+      .filter(
+        (n): n is BoardNode =>
+          !!n &&
+          worldX >= n.x &&
+          worldX <= n.x + n.width &&
+          worldY >= n.y &&
+          worldY <= n.y + n.height
+      )
+      .pop();
+    if (shapeHit) return shapeHit;
+    return containers
+      .map((c) => nodeById.get(c.id))
       .filter(
         (n): n is BoardNode =>
           !!n &&
@@ -3422,6 +3446,19 @@ export default function BoardScreen() {
       height: shape.kind === 'text' ? SHAPE_TEXT_HEIGHT : shape.kind === 'square' || shape.kind === 'circle' ? shape.width : shape.height,
     });
   }
+  // A container is a connectable node too now - "область можна
+  // пов'язувати з іншими областями лініями". Its own stored size, not a
+  // live-resize one: a resting connection reads this, and the live line
+  // (see liveEndpointFor) is what tracks an actual drag or resize.
+  for (const container of containers) {
+    nodeById.set(container.id, {
+      id: container.id,
+      x: container.x,
+      y: container.y,
+      width: container.width,
+      height: container.height,
+    });
+  }
 
   // Which cards and shapes are geometrically INSIDE a container's own
   // rectangle right now, by each item's CENTRE point - so a thing only
@@ -3482,6 +3519,14 @@ export default function BoardScreen() {
     const card = cardById.get(node.id);
     const inGroupDrag = !!card && selectedCardIds.has(node.id);
     const inColumnDrag = !!card?.columnId && card.columnId === draggingColumnId;
+    // True for the container itself while it's being dragged, AND for
+    // every card/shape riding along with it - same set startContainerDrag
+    // snapshotted (see containerDragMembers's own comment).
+    const inContainerDrag =
+      draggingContainerId !== null &&
+      (node.id === draggingContainerId ||
+        containerDragMembers.cardIds.has(node.id) ||
+        containerDragMembers.shapeIds.has(node.id));
     const position = positionFor(node.id, node.x, node.y);
     return {
       posX: position.x,
@@ -3490,6 +3535,8 @@ export default function BoardScreen() {
       offsetY: inGroupDrag ? groupOffsetY : null,
       columnOffsetX: inColumnDrag ? columnOffsetX : null,
       columnOffsetY: inColumnDrag ? columnOffsetY : null,
+      containerOffsetX: inContainerDrag ? containerOffsetX : null,
+      containerOffsetY: inContainerDrag ? containerOffsetY : null,
       width: node.width,
       height: node.height,
     };
@@ -3510,6 +3557,15 @@ export default function BoardScreen() {
     draggedShapeId !== null
       ? new Set([...(movingCardIds ?? []), draggedShapeId])
       : movingCardIds;
+  // A dragged container moves its own arrows too, and every card/shape
+  // riding along with it.
+  const containerMovingIds = draggingContainerId
+    ? new Set([draggingContainerId, ...containerDragMembers.cardIds, ...containerDragMembers.shapeIds])
+    : null;
+  const allMovingIds =
+    containerMovingIds && movingIds
+      ? new Set([...movingIds, ...containerMovingIds])
+      : (containerMovingIds ?? movingIds);
   const selectionHasConnections = connections.some(
     (c) => selectedCardIds.has(c.fromCardId) || selectedCardIds.has(c.toCardId)
   );
@@ -3658,6 +3714,8 @@ export default function BoardScreen() {
                 <DraggableContainer
                   key={frame.id}
                   container={frame}
+                  posX={positionFor(frame.id, frame.x, frame.y).x}
+                  posY={positionFor(frame.id, frame.x, frame.y).y}
                   isDragging={frame.id === draggingContainerId}
                   canvasScale={scale}
                   canvasPanGesture={canvasBlockingGesture}
@@ -3741,7 +3799,7 @@ export default function BoardScreen() {
                 // the cards' own shared positions instead - the resting
                 // curve below is computed from React state, which doesn't
                 // update until the drop commits.
-                if (movingIds && (movingIds.has(from.id) || movingIds.has(to.id))) {
+                if (allMovingIds && (allMovingIds.has(from.id) || allMovingIds.has(to.id))) {
                   return (
                     <LiveConnectionLine
                       key={connection.id}

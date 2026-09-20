@@ -277,6 +277,11 @@ export default function TasksScreen() {
   const [newTaskListName, setNewTaskListName] = useState('');
   const [editingTaskListId, setEditingTaskListId] = useState<string | null>(null);
   const [editingTaskListName, setEditingTaskListName] = useState('');
+  // The list's own short description - a separate small prompt (see
+  // RenamePrompt below) rather than an inline field, since it only ever
+  // needs editing from its one spot (the list's own section header),
+  // never repeated per row the way a task's comment is.
+  const [describingListId, setDescribingListId] = useState<string | null>(null);
   // This device's Android build doesn't resize the window under the
   // keyboard (edge-to-edge delivers it as an inset, not a resize - already
   // confirmed on-device for the editor's pinned toolbar), so the project-
@@ -374,6 +379,7 @@ export default function TasksScreen() {
             name: docSnapshot.data().name,
             color: docSnapshot.data().color,
             projectId: docSnapshot.data().projectId,
+            description: docSnapshot.data().description,
           }))
           .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
       );
@@ -948,6 +954,14 @@ export default function TasksScreen() {
     });
   }
 
+  async function saveListDescription(value: string) {
+    const listId = describingListId;
+    setDescribingListId(null);
+    if (!listId) return;
+    const trimmed = value.trim();
+    await updateDoc(doc(db, 'taskLists', listId), { description: trimmed || deleteField() });
+  }
+
   function toggleGroupExpanded(key: string) {
     setExpandedGroups((prev) => {
       const next = new Set(prev);
@@ -1219,28 +1233,44 @@ export default function TasksScreen() {
     completed: Task[];
     showProjectChip: boolean;
     showListChip: boolean;
+    // Only meaningful for a list's own section (icon === 'list') - the
+    // description shown right under the name, and its own id so tapping
+    // it can open the edit prompt.
+    listId?: string;
+    description?: string;
   }) {
     const rowOpts = { showProjectChip: section.showProjectChip, showListChip: section.showListChip };
     return (
       <View key={section.key} style={styles.group}>
         {section.title && (
-          <View style={styles.groupHeader}>
-            {section.icon === 'star' ? (
-              <Ionicons name="star" size={14} color={section.color ?? 'rgba(255,255,255,0.45)'} />
-            ) : section.icon === 'list' ? (
-              <Ionicons name="list-outline" size={20} color={section.color ?? 'rgba(255,255,255,0.45)'} />
-            ) : (
-              <View style={[styles.groupDot, { backgroundColor: section.color ?? 'rgba(255,255,255,0.45)' }]} />
+          <>
+            <View style={styles.groupHeader}>
+              {section.icon === 'star' ? (
+                <Ionicons name="star" size={14} color={section.color ?? 'rgba(255,255,255,0.45)'} />
+              ) : section.icon === 'list' ? (
+                <Ionicons name="list-outline" size={20} color={section.color ?? 'rgba(255,255,255,0.45)'} />
+              ) : (
+                <View style={[styles.groupDot, { backgroundColor: section.color ?? 'rgba(255,255,255,0.45)' }]} />
+              )}
+              <Text
+                style={[
+                  section.icon === 'list' ? styles.groupTitleList : styles.groupTitle,
+                  { color: section.color ?? 'rgba(255,255,255,0.45)' },
+                ]}
+              >
+                {section.title}
+              </Text>
+            </View>
+            {/* A list's own short line, above its tasks - the user's own
+                ask, tappable to add or change it. */}
+            {section.icon === 'list' && section.listId && (
+              <Pressable onPress={() => setDescribingListId(section.listId!)} style={styles.listDescriptionTap}>
+                <Text style={styles.listDescriptionText} numberOfLines={2}>
+                  {section.description || 'Додати опис'}
+                </Text>
+              </Pressable>
             )}
-            <Text
-              style={[
-                section.icon === 'list' ? styles.groupTitleList : styles.groupTitle,
-                { color: section.color ?? 'rgba(255,255,255,0.45)' },
-              ]}
-            >
-              {section.title}
-            </Text>
-          </View>
+          </>
         )}
         {section.unfinished.map((task) => renderTaskRow(task, rowOpts))}
         {section.completed.length > 0 && (
@@ -1543,12 +1573,17 @@ export default function TasksScreen() {
               <>
                 {listsHere.map((l) => {
                   const inList = rest.filter((t) => t.listId === l.id);
-                  if (inList.length === 0) return null;
+                  // Shown even with nothing in it yet - a list is its own
+                  // small object now (it can carry a description), not
+                  // just a grouping that only exists once something is
+                  // filed under it.
                   return renderSection({
                     key: `__list_${l.id}__`,
                     title: l.name,
                     color: l.color,
                     icon: 'list',
+                    listId: l.id,
+                    description: l.description,
                     unfinished: inList.filter((t) => !t.checked),
                     completed: inList.filter((t) => t.checked),
                     showProjectChip: false,
@@ -1779,6 +1814,16 @@ export default function TasksScreen() {
         onCancel={() => setCreating(false)}
         onSave={createTask}
       />
+      <RenamePrompt
+        visible={describingListId !== null}
+        title="Опис списку"
+        initialValue={taskLists.find((l) => l.id === describingListId)?.description ?? ''}
+        placeholder="Короткий опис"
+        multiline
+        allowEmpty
+        onCancel={() => setDescribingListId(null)}
+        onSave={saveListDescription}
+      />
       <ReminderSheet
           visible={reminderTaskId !== null}
           initialDate={reminderTaskId ? tasks.find((t) => t.id === reminderTaskId)?.reminderDate : undefined}
@@ -1952,6 +1997,15 @@ const makeStyles = (t: Theme) =>
     fontSize: 21,
     fontFamily: FONT_SEMIBOLD,
     letterSpacing: 0,
+  },
+  listDescriptionTap: {
+    paddingHorizontal: 4,
+    paddingBottom: 8,
+  },
+  listDescriptionText: {
+    fontSize: 13,
+    fontFamily: FONT_REGULAR,
+    color: 'rgba(255,255,255,0.5)',
   },
   collapseToggle: {
     flexDirection: 'row',
