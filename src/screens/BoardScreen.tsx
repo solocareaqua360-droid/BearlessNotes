@@ -119,6 +119,9 @@ import { useDockActions, useDockBeads, useDockLeave } from '../navigation/navDoc
 import { ask, confirm } from '../components/surfaces/Ask';
 
 const AUTOSAVE_DELAY_MS = 600;
+// How many steps back undo keeps - a plain cap on a session-only stack,
+// not a meaningful design number.
+const UNDO_HISTORY_LIMIT = 50;
 const MIN_SCALE = 0.4;
 const MAX_SCALE = 3;
 // Isolation's own ceiling on fitting a chain into view - lower than the
@@ -734,6 +737,7 @@ function DraggableColumn({
   height,
   isDragging,
   isCatching,
+  dragEnabled,
   canvasScale,
   canvasPanGesture,
   columnOffsetX,
@@ -750,6 +754,8 @@ function DraggableColumn({
   // A card is being carried over this column right now: it lights up to
   // say it will catch, rather than the drop being a surprise.
   isCatching: boolean;
+  // False while the "Рука" tool is active - see canvasTool's own comment.
+  dragEnabled: boolean;
   canvasScale: SharedValue<number>;
   canvasPanGesture: ReturnType<typeof Gesture.Pan>;
   columnOffsetX: SharedValue<number>;
@@ -778,6 +784,7 @@ function DraggableColumn({
   }, [column.x, column.y]);
 
   const panGesture = Gesture.Pan()
+    .enabled(dragEnabled)
     .blocksExternalGesture(canvasPanGesture)
     .onStart(() => {
       runOnJS(onDragStart)(column.id);
@@ -844,6 +851,7 @@ function DraggableContainer({
   isDragging,
   dimmed,
   locked,
+  dragEnabled,
   canvasScale,
   canvasPanGesture,
   containerOffsetX,
@@ -870,6 +878,11 @@ function DraggableContainer({
   // resize, rename and delete, but never visibility (see BoardLayer's
   // own comment on why lock and hide are two different things).
   locked: boolean;
+  // False while the "Рука" tool is active - see canvasTool's own comment.
+  // Only the MOVE and resize gestures answer to this; rename and delete
+  // (tap/long-press) stay available, same as a card's own tap still opens
+  // it while dragging is disabled for 'connect'.
+  dragEnabled: boolean;
   canvasScale: SharedValue<number>;
   canvasPanGesture: ReturnType<typeof Gesture.Pan>;
   containerOffsetX: SharedValue<number>;
@@ -897,7 +910,7 @@ function DraggableContainer({
   }, [container.x, container.y]);
 
   const panGesture = Gesture.Pan()
-    .enabled(!locked)
+    .enabled(!locked && dragEnabled)
     .blocksExternalGesture(canvasPanGesture)
     .onStart(() => {
       runOnJS(onDragStart)(container.id);
@@ -940,7 +953,7 @@ function DraggableContainer({
   const width = live?.width ?? container.width;
   const height = live?.height ?? container.height;
   const resizeGesture = Gesture.Pan()
-    .enabled(!locked)
+    .enabled(!locked && dragEnabled)
     .blocksExternalGesture(canvasPanGesture)
     .onStart(() => {
       resizeBase.current = { width, height };
@@ -1883,7 +1896,7 @@ export default function BoardScreen() {
   // state the board sits in from the moment it opens. Defaulting the web
   // to select worked, but it left the tool lit as though a mode had been
   // entered that nobody chose.
-  const [canvasTool, setCanvasTool] = useState<'move' | 'select' | 'connect'>('move');
+  const [canvasTool, setCanvasTool] = useState<'move' | 'hand' | 'select' | 'connect'>('move');
   // Isolation is deliberately its OWN flag, not a fourth canvasTool - it
   // is a lens over the whole board (dim/disable everything outside a
   // chain), not a way of interacting with the canvas the way move/
@@ -1894,6 +1907,15 @@ export default function BoardScreen() {
   const [isolateArmed, setIsolateArmed] = useState(false);
   const [isolatedIds, setIsolatedIds] = useState<Set<string> | null>(null);
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
+  // The marquee's own catch on floating text - the user's own ask: the
+  // 'select' tool only ever swept up cards, so a text shape could only
+  // ever be removed one at a time, by long-pressing it. Deliberately just
+  // text (BoardShapeKind === 'text'), not every shape kind, and deliberately
+  // its OWN set rather than folded into selectedCardIds - a marquee-caught
+  // text shape only ever gets the "Вийти"/"Видалити" pair (see the dock's
+  // own action list), not the card-only actions (align, copy, disconnect...)
+  // that assume every selected id is a real BoardCard.
+  const [selectedShapeIds, setSelectedShapeIds] = useState<Set<string>>(new Set());
   const [connections, setConnections] = useState<BoardConnection[]>([]);
   // Tapping the LINE ITSELF selects it and shows a small "×" beside it -
   // the disconnect action lives on card multi-select too (see
@@ -2229,6 +2251,94 @@ export default function BoardScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, cards, connections, columns, shapes, containers, layers, isLoaded]);
 
+  // UNDO/REDO - one history entry per settled change to the board's own
+  // structural content (cards/connections/columns/shapes/containers/
+  // layers), the same six pieces the save effect above already watches.
+  // Session-only, on purpose: it lives in a ref, not in anything written
+  // to Firestore, and resets the moment the board is left and reopened -
+  // matching every other whiteboard/editor's own undo, and far simpler
+  // than trying to make "undo" survive a sync from another device.
+  //
+  // Deliberately snapshot-based rather than per-action: cards/shapes/
+  // containers are each their own React state, set from dozens of
+  // different call sites all over this file (add, delete, drag-end,
+  // resize, rename, recolor...), and recording an explicit history
+  // entry at every one of them would both miss the ones a future edit
+  // forgets to wire up and double-count the ones that touch more than
+  // one piece of state at once. Watching the SETTLED combination
+  // instead - the same six values already used to decide what to save -
+  // means every one of those call sites is covered for free, with
+  // exactly one entry per user-visible change (a drag's own live motion
+  // never touches this state at all; only the commit at its end does -
+  // see the position registry's own comment).
+  type BoardSnapshot = {
+    cards: BoardCard[];
+    connections: BoardConnection[];
+    columns: BoardColumn[];
+    shapes: BoardShape[];
+    containers: BoardContainer[];
+    layers: BoardLayer[];
+  };
+  const undoStack = useRef<BoardSnapshot[]>([]);
+  const redoStack = useRef<BoardSnapshot[]>([]);
+  const lastSnapshotRef = useRef<BoardSnapshot | null>(null);
+  // Set right before undo/redo applies a past snapshot, so the effect
+  // below recognises its OWN write and skips recording a new history
+  // entry for it - otherwise every undo would immediately push a fresh
+  // entry undoing the undo.
+  const applyingHistoryRef = useRef(false);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    const next: BoardSnapshot = { cards, connections, columns, shapes, containers, layers };
+    if (applyingHistoryRef.current) {
+      applyingHistoryRef.current = false;
+      lastSnapshotRef.current = next;
+      return;
+    }
+    const previous = lastSnapshotRef.current;
+    lastSnapshotRef.current = next;
+    // The very first settle after load is the board arriving from
+    // Firestore, not a change the user made - nothing to undo TO yet.
+    if (previous === null) return;
+    undoStack.current.push(previous);
+    if (undoStack.current.length > UNDO_HISTORY_LIMIT) undoStack.current.shift();
+    redoStack.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cards, connections, columns, shapes, containers, layers, isLoaded]);
+
+  function applyBoardSnapshot(snap: BoardSnapshot) {
+    applyingHistoryRef.current = true;
+    setCards(snap.cards);
+    setConnections(snap.connections);
+    setColumns(snap.columns);
+    setShapes(snap.shapes);
+    setContainers(snap.containers);
+    setLayers(snap.layers);
+  }
+
+  function undo() {
+    const previous = undoStack.current.pop();
+    if (!previous || !lastSnapshotRef.current) return;
+    redoStack.current.push(lastSnapshotRef.current);
+    applyBoardSnapshot(previous);
+    setCanUndo(undoStack.current.length > 0);
+    setCanRedo(true);
+  }
+
+  function redo() {
+    const next = redoStack.current.pop();
+    if (!next || !lastSnapshotRef.current) return;
+    undoStack.current.push(lastSnapshotRef.current);
+    applyBoardSnapshot(next);
+    setCanRedo(redoStack.current.length > 0);
+    setCanUndo(true);
+  }
+
   // Read by the focus-time preview refresh below, which must not re-run
   // every time a card moves - so it reads the current cards through this
   // rather than closing over them.
@@ -2479,6 +2589,15 @@ export default function BoardScreen() {
       (c) => c.x < right && c.x + c.width > left && c.y < bottom && c.y + APPROX_CARD_HEIGHT > top
     );
     setSelectedCardIds(new Set(matched.map((c) => c.id)));
+    // Loose text auto-sizes its own box - same stand-in width/height the
+    // node map (nodeById) and the connection lines already aim at, since
+    // nothing here has actually measured the rendered text either.
+    const matchedText = shapes.filter((sh) => {
+      if (sh.kind !== 'text') return false;
+      const w = approxTextShapeWidth(sh.text ?? '', sh.fontSize ?? SHAPE_TEXT_SIZE_DEFAULT);
+      return sh.x < right && sh.x + w > left && sh.y < bottom && sh.y + SHAPE_TEXT_HEIGHT > top;
+    });
+    setSelectedShapeIds(new Set(matchedText.map((sh) => sh.id)));
   }
 
   // Held in a ref so the context-menu callback above can reach it
@@ -2729,6 +2848,7 @@ export default function BoardScreen() {
   const clearSelection = useCallback(() => {
     setSelectedShapeId(null);
     setSelectedCardIds(new Set());
+    setSelectedShapeIds(new Set());
     setSelectedConnectionId(null);
     setCanvasTool('move');
   }, []);
@@ -3727,8 +3847,35 @@ export default function BoardScreen() {
     });
   }
 
-  function deleteSelectedCards() {
-    deleteCards(selectedCardIds);
+  // The dock's combined "Видалити" for whatever the marquee is currently
+  // holding - cards, or the text shapes it now also catches (see
+  // selectedShapeIds's own comment). One confirm, one count, either or
+  // both kinds at once - not deleteCards(selectedCardIds) plus a second
+  // dialog for the shapes.
+  function deleteSelection() {
+    const cardIds = selectedCardIds;
+    const shapeIds = selectedShapeIds;
+    const count = cardIds.size + shapeIds.size;
+    if (count === 0) return;
+    confirm({
+      title: count === 1 ? 'Видалити обʼєкт?' : `Видалити обʼєкти (${count})?`,
+      confirmLabel: 'Видалити',
+    }).then((yes) => {
+      if (!yes) return;
+      if (cardIds.size > 0) {
+        setCards((prev) => reflowColumns(prev.filter((c) => !cardIds.has(c.id)), columns, cardHeights));
+      }
+      if (shapeIds.size > 0) {
+        setShapes((prev) => prev.filter((sh) => !shapeIds.has(sh.id)));
+      }
+      const removedIds = new Set([...cardIds, ...shapeIds]);
+      // A connection to something that no longer exists would render as a
+      // line into empty space, so it goes with whatever it was attached to.
+      setConnections((prev) => prev.filter((c) => !removedIds.has(c.fromCardId) && !removedIds.has(c.toCardId)));
+      setSelectedCardIds(new Set());
+      setSelectedShapeIds(new Set());
+      setCanvasTool('move');
+    });
   }
 
   // ALIGN AND ARRANGE. Plain state edits, not a gesture - each selected
@@ -4184,7 +4331,7 @@ export default function BoardScreen() {
   // this was simply the one screen that had never been moved onto it.
   useDockActions(
     boardFocused
-      ? selectedCardIds.size > 0
+      ? selectedCardIds.size > 0 || selectedShapeIds.size > 0
         ? [
             { key: 'cancel', icon: 'close-outline', label: 'Вийти', onPress: clearSelection },
             ...(selectedCardIds.size >= 2
@@ -4250,7 +4397,7 @@ export default function BoardScreen() {
                   },
                 ]
               : []),
-            { key: 'delete', icon: 'trash-outline', label: 'Видалити', onPress: deleteSelectedCards },
+            { key: 'delete', icon: 'trash-outline', label: 'Видалити', onPress: deleteSelection },
           ]
         : [
             // Three separate buttons now, not one cycled through - "чому
@@ -4266,6 +4413,13 @@ export default function BoardScreen() {
               label: 'Рух',
               active: canvasTool === 'move',
               onPress: () => setCanvasTool('move'),
+            },
+            {
+              key: 'hand',
+              icon: 'mc:hand-back-right-outline',
+              label: 'Рука',
+              active: canvasTool === 'hand',
+              onPress: () => setCanvasTool('hand'),
             },
             {
               key: 'select',
@@ -4291,6 +4445,11 @@ export default function BoardScreen() {
               active: isolateArmed || isolatedIds !== null,
               onPress: toggleIsolation,
             },
+            // Also not tools - one-shot actions, shown only once there is
+            // something to do (see undo/redo's own comment on why they
+            // stay in sync for free with every mutation on the board).
+            ...(canUndo ? [{ key: 'undo', icon: 'arrow-undo-outline', label: 'Скасувати', onPress: undo }] : []),
+            ...(canRedo ? [{ key: 'redo', icon: 'arrow-redo-outline', label: 'Повторити', onPress: redo }] : []),
           ]
       : null
   );
@@ -4321,6 +4480,7 @@ export default function BoardScreen() {
                   isDragging={frame.id === draggingContainerId}
                   dimmed={isolatedIds !== null && !isolatedIds.has(frame.id)}
                   locked={isLocked(frame)}
+                  dragEnabled={canvasTool !== 'connect' && canvasTool !== 'hand'}
                   canvasScale={scale}
                   canvasPanGesture={canvasBlockingGesture}
                   containerOffsetX={containerOffsetX}
@@ -4346,6 +4506,7 @@ export default function BoardScreen() {
                     memberCount={members.length}
                     height={columnHeight(members, cardHeights)}
                     isDragging={column.id === draggingColumnId}
+                    dragEnabled={canvasTool !== 'connect' && canvasTool !== 'hand'}
                     canvasScale={scale}
                     canvasPanGesture={canvasBlockingGesture}
                     columnOffsetX={columnOffsetX}
@@ -4371,11 +4532,11 @@ export default function BoardScreen() {
                 <DraggableShape
                   key={shape.id}
                   shape={shape}
-                  isSelected={shape.id === selectedShapeId}
+                  isSelected={shape.id === selectedShapeId || selectedShapeIds.has(shape.id)}
                   posX={positionFor(shape.id, shape.x, shape.y).x}
                   posY={positionFor(shape.id, shape.x, shape.y).y}
                   onDragStart={setDraggedShapeId}
-                  dragEnabled={canvasTool !== 'connect' && !isLocked(shape)}
+                  dragEnabled={canvasTool !== 'connect' && canvasTool !== 'hand' && !isLocked(shape)}
                   canvasScale={scale}
                   canvasPanGesture={canvasBlockingGesture}
                   canvasHoldGesture={holdToSelectGesture}
@@ -4510,7 +4671,7 @@ export default function BoardScreen() {
                     guideVVisible={guideVVisible}
                     guideHY={guideHY}
                     guideHVisible={guideHVisible}
-                    dragEnabled={canvasTool !== 'connect' && !isLocked(card)}
+                    dragEnabled={canvasTool !== 'connect' && canvasTool !== 'hand' && !isLocked(card)}
                     onMeasure={measureCard}
                     onDragStart={handleDragStart}
                     onDragEnd={commitCardDrag}
