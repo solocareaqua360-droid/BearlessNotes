@@ -890,6 +890,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       if (b.reminderDate) taskDoc.reminderDate = b.reminderDate;
       if (b.reminderTime) taskDoc.reminderTime = b.reminderTime;
       if (b.reminderNotificationId) taskDoc.reminderNotificationId = b.reminderNotificationId;
+      if (b.comment) taskDoc.comment = b.comment;
+      if (b.subtasks && b.subtasks.length > 0) taskDoc.subtasks = b.subtasks;
+      if (b.attachments && b.attachments.length > 0) taskDoc.attachments = b.attachments;
       // The block's own createdAt (set once at buildBlock, unaffected by
       // later edits) - has to be carried forward on every write same as the
       // fields above, since this setDoc has no {merge:true} and would

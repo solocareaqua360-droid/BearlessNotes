@@ -174,6 +174,12 @@ type Props = {
   // under a finger - the reference panel's drag (see useReferenceDrag).
   // `build` is the very block a tap on that row would have inserted.
   rowRef?: (id: string, build: () => Block, label: string) => ((node: View | null) => void) | undefined;
+  // Narrows the tab bar to just these (in this order) - undefined shows
+  // every default tab, exactly today's behaviour. A caller that only
+  // wants "files and photos" (Tasks' own attachments, say) would
+  // otherwise offer links and stickers too, which is a harmless superset
+  // but not what was actually asked for.
+  allowedTabs?: Tab[];
 };
 
 // The reverse direction of CopyToNoteModal (Files/Photos/Links → a note) -
@@ -191,11 +197,13 @@ export default function AddExistingItemModal({
   includeCustomDatabases,
   docked,
   rowRef,
+  allowedTabs,
 }: Props) {
   const accent = useTheme().accent;
   const styles = useStyles(makeStyles);
   const keyboardHeight = useKeyboardHeight();
-  const [tab, setTab] = useState<Tab>('file');
+  const tabAllowed = (t: Tab) => !allowedTabs || allowedTabs.includes(t);
+  const [tab, setTab] = useState<Tab>(allowedTabs?.[0] ?? 'file');
   const [searchQuery, setSearchQuery] = useState('');
   const [files, setFiles] = useState<FileRow[]>([]);
   const [photos, setPhotos] = useState<PhotoRow[]>([]);
@@ -302,10 +310,11 @@ export default function AddExistingItemModal({
   useEffect(() => {
     if (!visible) {
       setSearchQuery('');
-      setTab('file');
+      setTab(allowedTabs?.[0] ?? 'file');
       setOpenDatabaseId(null);
       setOpenDocId(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   // The document opened for its blocks - read-only, nothing here ever
@@ -364,24 +373,36 @@ export default function AddExistingItemModal({
             style={styles.tabRow}
             contentContainerStyle={styles.tabRowContent}
           >
-            <Pressable style={[styles.tab, tab === 'file' && styles.tabActive]} onPress={() => setTab('file')}>
-              <Text style={[styles.tabLabel, tab === 'file' && styles.tabLabelActive]}>Файли</Text>
-            </Pressable>
-            <Pressable style={[styles.tab, tab === 'photo' && styles.tabActive]} onPress={() => setTab('photo')}>
-              <Text style={[styles.tabLabel, tab === 'photo' && styles.tabLabelActive]}>Зображення</Text>
-            </Pressable>
-            <Pressable style={[styles.tab, tab === 'video' && styles.tabActive]} onPress={() => setTab('video')}>
-              <Text style={[styles.tabLabel, tab === 'video' && styles.tabLabelActive]}>YouTube / TikTok</Text>
-            </Pressable>
-            <Pressable style={[styles.tab, tab === 'geo' && styles.tabActive]} onPress={() => setTab('geo')}>
-              <Text style={[styles.tabLabel, tab === 'geo' && styles.tabLabelActive]}>Геоточки</Text>
-            </Pressable>
-            <Pressable style={[styles.tab, tab === 'other' && styles.tabActive]} onPress={() => setTab('other')}>
-              <Text style={[styles.tabLabel, tab === 'other' && styles.tabLabelActive]}>Посилання</Text>
-            </Pressable>
-            <Pressable style={[styles.tab, tab === 'sticker' && styles.tabActive]} onPress={() => setTab('sticker')}>
-              <Text style={[styles.tabLabel, tab === 'sticker' && styles.tabLabelActive]}>Стікери</Text>
-            </Pressable>
+            {tabAllowed('file') && (
+              <Pressable style={[styles.tab, tab === 'file' && styles.tabActive]} onPress={() => setTab('file')}>
+                <Text style={[styles.tabLabel, tab === 'file' && styles.tabLabelActive]}>Файли</Text>
+              </Pressable>
+            )}
+            {tabAllowed('photo') && (
+              <Pressable style={[styles.tab, tab === 'photo' && styles.tabActive]} onPress={() => setTab('photo')}>
+                <Text style={[styles.tabLabel, tab === 'photo' && styles.tabLabelActive]}>Зображення</Text>
+              </Pressable>
+            )}
+            {tabAllowed('video') && (
+              <Pressable style={[styles.tab, tab === 'video' && styles.tabActive]} onPress={() => setTab('video')}>
+                <Text style={[styles.tabLabel, tab === 'video' && styles.tabLabelActive]}>YouTube / TikTok</Text>
+              </Pressable>
+            )}
+            {tabAllowed('geo') && (
+              <Pressable style={[styles.tab, tab === 'geo' && styles.tabActive]} onPress={() => setTab('geo')}>
+                <Text style={[styles.tabLabel, tab === 'geo' && styles.tabLabelActive]}>Геоточки</Text>
+              </Pressable>
+            )}
+            {tabAllowed('other') && (
+              <Pressable style={[styles.tab, tab === 'other' && styles.tabActive]} onPress={() => setTab('other')}>
+                <Text style={[styles.tabLabel, tab === 'other' && styles.tabLabelActive]}>Посилання</Text>
+              </Pressable>
+            )}
+            {tabAllowed('sticker') && (
+              <Pressable style={[styles.tab, tab === 'sticker' && styles.tabActive]} onPress={() => setTab('sticker')}>
+                <Text style={[styles.tabLabel, tab === 'sticker' && styles.tabLabelActive]}>Стікери</Text>
+              </Pressable>
+            )}
             {includeCustomDatabases && (
               <Pressable style={[styles.tab, tab === 'customDb' && styles.tabActive]} onPress={() => setTab('customDb')}>
                 <Text style={[styles.tabLabel, tab === 'customDb' && styles.tabLabelActive]}>Бази</Text>

@@ -182,6 +182,26 @@ export interface Block {
   // way is what keeps it doing what it already does rather than quietly
   // going quiet the next time it is edited.
   reminderKind?: 'notify' | 'alarm';
+  // 'checkbox' blocks only, all three below - shown ONLY in TasksScreen's
+  // own expanded row, never in the document itself (same reasoning as
+  // subtasks: quick and disposable, not meant to carry the weight of a
+  // real block in the page's own reading order).
+  //
+  // A longer free-text note - the task's own text stays the one-line
+  // label, this is where the detail goes.
+  comment?: string;
+  // A step that never becomes a document block or a mirror record of its
+  // own - it only ever appears nested under its own parent's expanded
+  // row. Deliberately NOT a nested Block: a subtask has no project, no
+  // reminder, no kanban column and no document of its own, so giving it
+  // the full Block shape would invite all of that machinery for
+  // something meant to stay small.
+  subtasks?: Subtask[];
+  // A copy of an existing file/photo record - the SAME convention
+  // AddExistingItemModal already produces for a document's own blocks
+  // (see blockFromFile/blockFromPhoto in copyToNote.ts): the task gets
+  // its own copy, not a live reference back to the original.
+  attachments?: Block[];
   // 'link' blocks only - a paragraph containing a bare URL auto-converts
   // into one of these. text holds the original URL. Preview fields are
   // best-effort (fetched once at conversion time) and absent when nothing
@@ -219,6 +239,14 @@ export interface Block {
 
 export interface TableRow {
   cells: string[];
+}
+
+// A checkbox task's own sub-step - see Block.subtasks for why this is
+// its own small shape rather than a nested Block.
+export interface Subtask {
+  id: string;
+  text: string;
+  checked: boolean;
 }
 
 export interface Project {

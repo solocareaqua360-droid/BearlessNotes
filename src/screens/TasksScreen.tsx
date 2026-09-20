@@ -31,7 +31,8 @@ import {
 } from '../firestore';
 import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
-import { Block, Project } from '../types';
+import { Block, Project, Subtask } from '../types';
+import AddExistingItemModal from '../components/AddExistingItemModal';
 import { hapticToggle } from '../utils/haptics';
 import { RootStackParamList } from '../navigation';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
@@ -92,6 +93,9 @@ type Task = {
   reminderTime?: string;
   reminderKind?: ReminderKind;
   reminderNotificationId?: string;
+  comment?: string;
+  subtasks?: Subtask[];
+  attachments?: Block[];
   updatedAt: number;
   createdAt?: number;
 };
@@ -234,6 +238,28 @@ export default function TasksScreen() {
   const { sortPref, selectSortField } = useSortPref('tasksPrefs');
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  // Which tasks currently show their own expanded row - subtasks, the
+  // comment field and attachments, none of which ever appear anywhere
+  // else (see Block.comment's own comment on why).
+  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set());
+  function toggleTaskExpanded(id: string) {
+    setExpandedTaskIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  // The new-subtask text field, one per task that has ever had one open -
+  // kept here rather than local to the row so it survives the row's own
+  // re-renders while typing.
+  const [subtaskDrafts, setSubtaskDrafts] = useState<Record<string, string>>({});
+  // The comment field's own draft, same reasoning - starts from the
+  // task's saved comment the first time its row expands, then tracks
+  // typing until it's saved on blur.
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  // Which task the file/photo picker is currently open for.
+  const [attachTaskId, setAttachTaskId] = useState<string | null>(null);
   const [pickerTaskId, setPickerTaskId] = useState<string | null>(null);
   const [reminderTaskId, setReminderTaskId] = useState<string | null>(null);
   const [newProjectName, setNewProjectName] = useState('');
@@ -293,6 +319,9 @@ export default function TasksScreen() {
         reminderTime: docSnapshot.data().reminderTime,
         reminderKind: docSnapshot.data().reminderKind,
         reminderNotificationId: docSnapshot.data().reminderNotificationId,
+        comment: docSnapshot.data().comment,
+        subtasks: docSnapshot.data().subtasks,
+        attachments: docSnapshot.data().attachments,
         updatedAt: docSnapshot.data().updatedAt ?? 0,
         createdAt: docSnapshot.data().createdAt,
       }));
@@ -394,6 +423,67 @@ export default function TasksScreen() {
     const blocks: Block[] = data.blocks ?? [];
     const updatedBlocks = blocks.map((b) => (b.id === task.id ? { ...b, checked: newChecked } : b));
     updateDoc(documentRef, { blocks: updatedBlocks });
+  }
+
+  // The shared shape every mutation above hand-rolls: patch the mirror,
+  // then read-modify-write the one block inside the owning document that
+  // actually carries the field. Comment/subtasks/attachments are new
+  // enough not to have their own eight copies of this - one helper, used
+  // by all three, rather than a ninth through eleventh near-duplicate.
+  async function updateTaskBothSides(
+    task: Task,
+    mirrorPatch: Record<string, unknown>,
+    blockPatch: (b: Block) => Block
+  ) {
+    updateDoc(doc(db, 'tasks', task.id), mirrorPatch);
+    const documentRef = doc(db, 'documents', task.documentId);
+    const snapshot = await getDoc(documentRef);
+    const data = snapshot.data();
+    if (!data) return;
+    const blocks: Block[] = data.blocks ?? [];
+    const updatedBlocks = blocks.map((b) => (b.id === task.id ? blockPatch(b) : b));
+    updateDoc(documentRef, { blocks: updatedBlocks });
+  }
+
+  function saveTaskComment(task: Task, comment: string) {
+    const trimmed = comment.trim();
+    updateTaskBothSides(
+      task,
+      { comment: trimmed || deleteField() },
+      (b) => {
+        if (trimmed) return { ...b, comment: trimmed };
+        const { comment: _c, ...rest } = b;
+        return rest;
+      }
+    );
+  }
+
+  function addSubtask(task: Task, text: string) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const subtask: Subtask = { id: generateId(), text: trimmed, checked: false };
+    const next = [...(task.subtasks ?? []), subtask];
+    updateTaskBothSides(task, { subtasks: next }, (b) => ({ ...b, subtasks: next }));
+  }
+
+  function toggleSubtask(task: Task, subtaskId: string) {
+    const next = (task.subtasks ?? []).map((s) => (s.id === subtaskId ? { ...s, checked: !s.checked } : s));
+    updateTaskBothSides(task, { subtasks: next }, (b) => ({ ...b, subtasks: next }));
+  }
+
+  function deleteSubtask(task: Task, subtaskId: string) {
+    const next = (task.subtasks ?? []).filter((s) => s.id !== subtaskId);
+    updateTaskBothSides(task, { subtasks: next }, (b) => ({ ...b, subtasks: next }));
+  }
+
+  function addAttachment(task: Task, block: Block) {
+    const next = [...(task.attachments ?? []), block];
+    updateTaskBothSides(task, { attachments: next }, (b) => ({ ...b, attachments: next }));
+  }
+
+  function removeAttachment(task: Task, attachmentId: string) {
+    const next = (task.attachments ?? []).filter((a) => a.id !== attachmentId);
+    updateTaskBothSides(task, { attachments: next }, (b) => ({ ...b, attachments: next }));
   }
 
   // The star and "reminder date is today" are meant to read as the same
@@ -737,72 +827,178 @@ export default function TasksScreen() {
     const isToday = isTaskToday(item, today);
     const isSelected = selectedIds.has(item.id);
     const reminderLabel = formatReminderBadge(item);
+    const isExpanded = expandedTaskIds.has(item.id);
+    const subtaskCount = item.subtasks?.length ?? 0;
     return (
       <View key={item.id} style={styles.row}>
-        <Pressable hitSlop={8} onPress={() => toggleTask(item)}>
-          <Ionicons
-            name={item.checked ? 'checkbox' : 'square-outline'}
-            size={22}
-            color={item.checked ? accent : 'rgba(255,255,255,0.45)'}
-          />
-        </Pressable>
-        <Pressable
-          style={styles.rowTextTap}
-          onPress={() =>
-            isSelectMode
-              ? toggleSelected(item.id)
-              : navigation.navigate('Editor', { documentId: item.documentId })
-          }
-        >
-          <Text style={[styles.rowText, item.checked && styles.rowTextChecked]} numberOfLines={2}>
-            {item.text}
-          </Text>
-          <View style={styles.chipsRow}>
-            <Pressable onPress={() => openProjectPicker(item.id)}>
-              <View
-                style={[
-                  styles.chip,
-                  project ? { backgroundColor: `${project.color}1A` } : styles.chipEmpty,
-                ]}
-              >
-                <Text style={[styles.chipText, { color: project ? project.color : 'rgba(255,255,255,0.45)' }]}>
-                  {project ? project.name : 'Вхідні'}
-                </Text>
-              </View>
-            </Pressable>
-            {reminderLabel && (
-              <Pressable onPress={() => openReminderPicker(item.id)}>
-                <View style={styles.reminderChip}>
-                  {/* The chip's own icon says which of the two this is -
-                      a plain notification should never look like it is
-                      about to ring. */}
-                  <Ionicons
-                    name={item.reminderKind === 'notify' ? 'notifications-outline' : 'alarm-outline'}
-                    size={11}
-                    color={accent}
-                  />
-                  <Text style={styles.reminderChipText}>{reminderLabel}</Text>
-                </View>
-              </Pressable>
-            )}
-          </View>
-        </Pressable>
-        <Pressable
-          hitSlop={8}
-          onPress={() => toggleToday(item)}
-          onLongPress={() => openReminderPicker(item.id)}
-        >
-          <Ionicons name={isToday ? 'star' : 'star-outline'} size={20} color={isToday ? '#F59E0B' : 'rgba(255,255,255,0.45)'} />
-        </Pressable>
-        {isSelectMode && (
-          <Pressable hitSlop={8} onPress={() => toggleSelected(item.id)} style={styles.rowDelete}>
+        <View style={styles.rowMain}>
+          <Pressable hitSlop={8} onPress={() => toggleTask(item)}>
             <Ionicons
-              name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
-              size={20}
-              color={isSelected ? accent : 'rgba(255,255,255,0.45)'}
+              name={item.checked ? 'checkbox' : 'square-outline'}
+              size={22}
+              color={item.checked ? accent : 'rgba(255,255,255,0.45)'}
             />
           </Pressable>
+          <Pressable
+            style={styles.rowTextTap}
+            onPress={() =>
+              isSelectMode
+                ? toggleSelected(item.id)
+                : navigation.navigate('Editor', { documentId: item.documentId })
+            }
+          >
+            <Text style={[styles.rowText, item.checked && styles.rowTextChecked]} numberOfLines={2}>
+              {item.text}
+            </Text>
+            <View style={styles.chipsRow}>
+              <Pressable onPress={() => openProjectPicker(item.id)}>
+                <View
+                  style={[
+                    styles.chip,
+                    project ? { backgroundColor: `${project.color}1A` } : styles.chipEmpty,
+                  ]}
+                >
+                  <Text style={[styles.chipText, { color: project ? project.color : 'rgba(255,255,255,0.45)' }]}>
+                    {project ? project.name : 'Вхідні'}
+                  </Text>
+                </View>
+              </Pressable>
+              {reminderLabel && (
+                <Pressable onPress={() => openReminderPicker(item.id)}>
+                  <View style={styles.reminderChip}>
+                    {/* The chip's own icon says which of the two this is -
+                        a plain notification should never look like it is
+                        about to ring. */}
+                    <Ionicons
+                      name={item.reminderKind === 'notify' ? 'notifications-outline' : 'alarm-outline'}
+                      size={11}
+                      color={accent}
+                    />
+                    <Text style={styles.reminderChipText}>{reminderLabel}</Text>
+                  </View>
+                </Pressable>
+              )}
+              {subtaskCount > 0 && (
+                <View style={styles.reminderChip}>
+                  <Ionicons name="git-branch-outline" size={11} color="rgba(255,255,255,0.6)" />
+                  <Text style={styles.reminderChipText}>{subtaskCount}</Text>
+                </View>
+              )}
+            </View>
+          </Pressable>
+          <Pressable
+            hitSlop={8}
+            onPress={() => toggleToday(item)}
+            onLongPress={() => openReminderPicker(item.id)}
+          >
+            <Ionicons name={isToday ? 'star' : 'star-outline'} size={20} color={isToday ? '#F59E0B' : 'rgba(255,255,255,0.45)'} />
+          </Pressable>
+          {/* Everything below the fold - subtasks, comment, attachments -
+              never shows anywhere but here, so a chevron is the only way
+              to it (see Block.comment's own comment on why). */}
+          <Pressable hitSlop={8} onPress={() => toggleTaskExpanded(item.id)}>
+            <Ionicons
+              name={isExpanded ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color="rgba(255,255,255,0.45)"
+            />
+          </Pressable>
+          {isSelectMode && (
+            <Pressable hitSlop={8} onPress={() => toggleSelected(item.id)} style={styles.rowDelete}>
+              <Ionicons
+                name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+                size={20}
+                color={isSelected ? accent : 'rgba(255,255,255,0.45)'}
+              />
+            </Pressable>
+          )}
+        </View>
+        {isExpanded && renderTaskDetails(item)}
+      </View>
+    );
+  }
+
+  // The part of a task that never appears anywhere but its own expanded
+  // row - see Block.comment/subtasks/attachments. Subtasks are a small,
+  // disposable shape of their own (Subtask), never a nested Block: no
+  // project, no reminder, no kanban column, nothing a real task carries.
+  function renderTaskDetails(item: Task) {
+    const subtasks = item.subtasks ?? [];
+    const attachments = item.attachments ?? [];
+    const draft = subtaskDrafts[item.id] ?? '';
+    const commentDraft = commentDrafts[item.id] ?? item.comment ?? '';
+    const submitSubtask = () => {
+      if (!draft.trim()) return;
+      addSubtask(item, draft);
+      setSubtaskDrafts((prev) => ({ ...prev, [item.id]: '' }));
+    };
+    return (
+      <View style={styles.details}>
+        {subtasks.map((s) => (
+          <View key={s.id} style={styles.subtaskRow}>
+            <Pressable hitSlop={8} onPress={() => toggleSubtask(item, s.id)}>
+              <Ionicons
+                name={s.checked ? 'checkbox' : 'square-outline'}
+                size={18}
+                color={s.checked ? accent : 'rgba(255,255,255,0.45)'}
+              />
+            </Pressable>
+            <Text style={[styles.subtaskText, s.checked && styles.rowTextChecked]} numberOfLines={2}>
+              {s.text}
+            </Text>
+            <Pressable hitSlop={8} onPress={() => deleteSubtask(item, s.id)}>
+              <Ionicons name="close" size={16} color="rgba(255,255,255,0.35)" />
+            </Pressable>
+          </View>
+        ))}
+        <View style={styles.subtaskAddRow}>
+          <TextInput
+            value={draft}
+            onChangeText={(v) => setSubtaskDrafts((prev) => ({ ...prev, [item.id]: v }))}
+            placeholder="Нова підзадача"
+            placeholderTextColor="rgba(255,255,255,0.35)"
+            style={styles.subtaskInput}
+            onSubmitEditing={submitSubtask}
+            returnKeyType="done"
+          />
+          <Pressable hitSlop={8} onPress={submitSubtask}>
+            <Ionicons name="add-circle-outline" size={22} color={accent} />
+          </Pressable>
+        </View>
+
+        <TextInput
+          value={commentDraft}
+          onChangeText={(v) => setCommentDrafts((prev) => ({ ...prev, [item.id]: v }))}
+          onBlur={() => saveTaskComment(item, commentDraft)}
+          placeholder="Коментар"
+          placeholderTextColor="rgba(255,255,255,0.35)"
+          style={styles.commentInput}
+          multiline
+        />
+
+        {attachments.length > 0 && (
+          <View style={styles.attachmentsRow}>
+            {attachments.map((a) => (
+              <View key={a.id} style={styles.attachmentChip}>
+                <Ionicons
+                  name={(a.type ?? 'paragraph') === 'image' ? 'image-outline' : 'document-outline'}
+                  size={14}
+                  color="rgba(255,255,255,0.7)"
+                />
+                <Text style={styles.attachmentChipText} numberOfLines={1}>
+                  {(a.type === 'image' ? a.imageTitle : a.fileTitle || a.fileName) || 'Без назви'}
+                </Text>
+                <Pressable hitSlop={8} onPress={() => removeAttachment(item, a.id)}>
+                  <Ionicons name="close" size={13} color="rgba(255,255,255,0.4)" />
+                </Pressable>
+              </View>
+            ))}
+          </View>
         )}
+        <Pressable style={styles.attachButton} onPress={() => setAttachTaskId(item.id)}>
+          <Ionicons name="attach-outline" size={16} color={accent} />
+          <Text style={[styles.attachButtonText, { color: accent }]}>Додати файл або фото</Text>
+        </Pressable>
       </View>
     );
   }
@@ -1190,6 +1386,16 @@ export default function TasksScreen() {
           onSave={saveTaskReminder}
           onClear={clearTaskReminder}
         />
+      <AddExistingItemModal
+        visible={attachTaskId !== null}
+        allowedTabs={['file', 'photo']}
+        onClose={() => setAttachTaskId(null)}
+        onPick={(block) => {
+          const task = tasks.find((t) => t.id === attachTaskId);
+          setAttachTaskId(null);
+          if (task) addAttachment(task, block);
+        }}
+      />
       </ContentColumn>
 
     </View>
@@ -1353,16 +1559,22 @@ const makeStyles = (t: Theme) =>
   // file row sit on. On white the rows were separated by nothing but
   // space and that was enough; on the dark backdrop the user could not
   // tell where one ended - "без меж погано зчитується візуально".
+  // The whole card - a column now, so the expanded details below share
+  // its one continuous background/border rather than standing as a
+  // second capsule of their own. `rowMain` carries the row's own old
+  // layout (the horizontal strip of checkbox/text/star/chevron).
   row: {
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  rowMain: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
   },
   rowTextTap: {
     flex: 1,
@@ -1417,6 +1629,90 @@ const makeStyles = (t: Theme) =>
   },
   rowDelete: {
     padding: 4,
+  },
+  // Subtasks, comment, attachments - the part of a task only its own
+  // chevron ever reveals. A hairline top border is the only thing
+  // telling it apart from rowMain above it, since they share one
+  // continuous card (see `row`'s own comment).
+  details: {
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.12)',
+  },
+  subtaskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingLeft: 8,
+  },
+  subtaskText: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.primary,
+  },
+  subtaskAddRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingLeft: 8,
+  },
+  subtaskInput: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.primary,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.16)',
+  },
+  commentInput: {
+    fontSize: 14,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.primary,
+    minHeight: 40,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  attachmentsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  attachmentChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    maxWidth: 180,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  attachmentChipText: {
+    flexShrink: 1,
+    fontSize: 12,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.primary,
+  },
+  attachButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    paddingVertical: 4,
+  },
+  attachButtonText: {
+    fontSize: 13,
+    fontFamily: FONT_MEDIUM,
+    fontWeight: '500',
   },
   modalBackdrop: {
     backgroundColor: t.scrim,
