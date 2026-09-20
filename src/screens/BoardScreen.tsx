@@ -1,6 +1,6 @@
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import { mutedForTheme, type Theme } from '../theme/tokens';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -49,7 +49,9 @@ import * as Clipboard from 'expo-clipboard';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import { db } from '../firebase';
 import { BoardsStackParamList, RootStackParamList } from '../navigation';
-import { Block, BoardCard, BoardColumn, BoardConnection, BoardContainer, BoardShape, BoardShapeKind } from '../types';
+import { Block, BoardCard, BoardColumn, BoardConnection, BoardContainer, BoardLayer, BoardShape, BoardShapeKind } from '../types';
+import { useCardCarry } from '../hooks/useCardCarry';
+import CardCarryOverlay from '../components/CardCarryOverlay';
 import CustomRowBlockCard from '../components/CustomRowBlockCard';
 import { hapticDrop, hapticPickUp, hapticSuccess } from '../utils/haptics';
 import {
@@ -95,7 +97,18 @@ import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { useContextMenu } from '../hooks/useContextMenu';
 import Menu, { MENU_WIDTH } from '../components/surfaces/Menu';
 import { FONT_BOLD, FONT_EXTRABOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { GLASS_ISLAND, GLASS_TEXT_FAINT, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import {
+  GLASS_BODY_BLURRED,
+  GLASS_CARD,
+  GLASS_EDGE,
+  GLASS_ISLAND,
+  GLASS_TEXT,
+  GLASS_TEXT_FAINT,
+  GLASS_TEXT_MUTED,
+  SHEET_BACKDROP,
+  SHEET_WINDOW,
+} from '../constants/glass';
+import GlassLayer from '../components/GlassLayer';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
@@ -829,6 +842,7 @@ function DraggableContainer({
   posY,
   isDragging,
   dimmed,
+  locked,
   canvasScale,
   canvasPanGesture,
   containerOffsetX,
@@ -851,6 +865,10 @@ function DraggableContainer({
   // isolated chain - faded and untouchable, same treatment a card/shape
   // gets (see their own `dimmed` prop).
   dimmed: boolean;
+  // True while this container's own BoardLayer is locked - blocks drag,
+  // resize, rename and delete, but never visibility (see BoardLayer's
+  // own comment on why lock and hide are two different things).
+  locked: boolean;
   canvasScale: SharedValue<number>;
   canvasPanGesture: ReturnType<typeof Gesture.Pan>;
   containerOffsetX: SharedValue<number>;
@@ -878,6 +896,7 @@ function DraggableContainer({
   }, [container.x, container.y]);
 
   const panGesture = Gesture.Pan()
+    .enabled(!locked)
     .blocksExternalGesture(canvasPanGesture)
     .onStart(() => {
       runOnJS(onDragStart)(container.id);
@@ -890,11 +909,14 @@ function DraggableContainer({
       runOnJS(onDragEnd)(container.id, containerOffsetX.value, containerOffsetY.value);
     });
 
-  const tapGesture = Gesture.Tap().onEnd(() => {
-    runOnJS(onRename)(container);
-  });
+  const tapGesture = Gesture.Tap()
+    .enabled(!locked)
+    .onEnd(() => {
+      runOnJS(onRename)(container);
+    });
 
   const longPressGesture = Gesture.LongPress()
+    .enabled(!locked)
     .minDuration(500)
     .onStart(() => {
       runOnJS(onDelete)(container);
@@ -917,6 +939,7 @@ function DraggableContainer({
   const width = live?.width ?? container.width;
   const height = live?.height ?? container.height;
   const resizeGesture = Gesture.Pan()
+    .enabled(!locked)
     .blocksExternalGesture(canvasPanGesture)
     .onStart(() => {
       resizeBase.current = { width, height };
@@ -1900,6 +1923,12 @@ export default function BoardScreen() {
     cardIds: new Set(),
     shapeIds: new Set(),
   });
+  // Organisational, not spatial - see BoardLayer. `layersDrawerVisible`
+  // is the "Шари" bead's own sheet.
+  const [layers, setLayers] = useState<BoardLayer[]>([]);
+  const [layersDrawerVisible, setLayersDrawerVisible] = useState(false);
+  const [renamingLayer, setRenamingLayer] = useState<BoardLayer | null>(null);
+  const [collapsedLayerIds, setCollapsedLayerIds] = useState<Set<string>>(new Set());
   // Each card's real rendered height, reported by its own onLayout - what
   // a column stacks by. State rather than a ref specifically so a height
   // change re-renders: a column whose single card grew has nothing to
@@ -1991,12 +2020,14 @@ export default function BoardScreen() {
     connections: BoardConnection[];
     shapes: BoardShape[];
     containers: BoardContainer[];
+    layers: BoardLayer[];
   }>({
     cards: [],
     columns: [],
     connections: [],
     shapes: [],
     containers: [],
+    layers: [],
   });
   // What shape the DOCUMENT is in, which decides how a save may be
   // written - and the one thing here that must never be guessed.
@@ -2054,6 +2085,7 @@ export default function BoardScreen() {
       const loadedConnections = readBoardPart<BoardConnection>(data?.connections);
       const loadedShapes = readBoardPart<BoardShape>(data?.shapes);
       const loadedContainers = readBoardPart<BoardContainer>(data?.containers);
+      const loadedLayers = readBoardPart<BoardLayer>(data?.layers);
       const looksLikeArray =
         Array.isArray(data?.cards) || Array.isArray(data?.columns) || Array.isArray(data?.connections);
       // A keyed copy is trustworthy even from the cache - the change is
@@ -2087,6 +2119,7 @@ export default function BoardScreen() {
         connections: loadedConnections,
         shapes: loadedShapes,
         containers: loadedContainers,
+        layers: loadedLayers,
       };
       setTitle(data?.title ?? 'Без назви');
       setCards(loadedCards);
@@ -2094,6 +2127,7 @@ export default function BoardScreen() {
       setShapes(loadedShapes);
       setColumns(loadedColumns);
       setContainers(loadedContainers);
+      setLayers(loadedLayers);
       setIsLoaded(true);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2141,17 +2175,19 @@ export default function BoardScreen() {
       const connectionPatch = whole ? keyedAll(connections) : keyedDiff(saved.connections, connections);
       const shapePatch = whole ? keyedAll(shapes) : keyedDiff(saved.shapes, shapes);
       const containerPatch = whole ? keyedAll(containers) : keyedDiff(saved.containers, containers);
+      const layerPatch = whole ? keyedAll(layers) : keyedDiff(saved.layers, layers);
       if (cardPatch) patch.cards = cardPatch;
       if (columnPatch) patch.columns = columnPatch;
       if (connectionPatch) patch.connections = connectionPatch;
       if (shapePatch) patch.shapes = shapePatch;
       if (containerPatch) patch.containers = containerPatch;
+      if (layerPatch) patch.layers = layerPatch;
       shapeRef.current = 'keyed';
       // Recorded as sent, not as acknowledged: Firestore keeps an unsent
       // write on disk and replays it in order, so it WILL arrive - and
       // until it does, the next difference must be measured against it
       // rather than against what the server has yet to hear.
-      savedRef.current = { cards: cardsToSave, columns, connections, shapes, containers };
+      savedRef.current = { cards: cardsToSave, columns, connections, shapes, containers, layers };
       setDoc(doc(db, 'boards', boardId), patch, { merge: true });
     };
     saveTimeoutRef.current = setTimeout(attemptSave, AUTOSAVE_DELAY_MS);
@@ -2159,7 +2195,7 @@ export default function BoardScreen() {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, cards, connections, columns, shapes, containers, isLoaded]);
+  }, [title, cards, connections, columns, shapes, containers, layers, isLoaded]);
 
   // Read by the focus-time preview refresh below, which must not re-run
   // every time a card moves - so it reads the current cards through this
@@ -3266,6 +3302,264 @@ export default function BoardScreen() {
     setContainers((prev) => prev.map((c) => (c.id === container.id ? { ...c, fontSize: next } : c)));
   }
 
+  // LAYERS - see BoardLayer. Purely organisational: a card/shape/
+  // container names its layer by id, nothing here has a position of its
+  // own.
+  const layersById = useMemo(() => {
+    const map = new Map<string, BoardLayer>();
+    layers.forEach((l) => map.set(l.id, l));
+    return map;
+  }, [layers]);
+
+  // Hidden if the object says so itself, OR its own layer does - either
+  // one is enough (see BoardCard's own `hidden` comment).
+  function isHidden(obj: { hidden?: boolean; layerId?: string }): boolean {
+    return !!obj.hidden || (!!obj.layerId && !!layersById.get(obj.layerId)?.hidden);
+  }
+  // Lock only ever comes from the LAYER - there is no per-object lock,
+  // on purpose: an object is either free or it is filed somewhere that
+  // protects it, never protected on its own.
+  function isLocked(obj: { layerId?: string }): boolean {
+    return !!obj.layerId && !!layersById.get(obj.layerId)?.locked;
+  }
+  // For the connections loop, which only has an id on each end and has
+  // to ask across all three kinds of node.
+  function isObjectHiddenById(id: string): boolean {
+    const card = cardById.get(id);
+    if (card) return isHidden(card);
+    const shape = shapes.find((s) => s.id === id);
+    if (shape) return isHidden(shape);
+    const container = containers.find((c) => c.id === id);
+    if (container) return isHidden(container);
+    return false;
+  }
+
+  function addLayer() {
+    setLayers((prev) => [...prev, { id: generateId(), name: `Шар ${prev.length + 1}` }]);
+  }
+
+  function renameLayerTo(layer: BoardLayer, name: string) {
+    const trimmed = name.trim();
+    if (trimmed) setLayers((prev) => prev.map((l) => (l.id === layer.id ? { ...l, name: trimmed } : l)));
+    setRenamingLayer(null);
+  }
+
+  function toggleLayerHidden(layer: BoardLayer) {
+    setLayers((prev) => prev.map((l) => (l.id === layer.id ? { ...l, hidden: !l.hidden } : l)));
+  }
+
+  function toggleLayerLocked(layer: BoardLayer) {
+    setLayers((prev) => prev.map((l) => (l.id === layer.id ? { ...l, locked: !l.locked } : l)));
+  }
+
+  async function confirmDeleteLayer(layer: BoardLayer) {
+    const yes = await confirm({
+      title: 'Видалити шар?',
+      message: `Обʼєкти з шару "${layer.name}" стануть без шару.`,
+      confirmLabel: 'Видалити',
+    });
+    if (!yes) return;
+    setLayers((prev) => prev.filter((l) => l.id !== layer.id));
+    setCards((prev) =>
+      prev.map((c) => {
+        if (c.layerId !== layer.id) return c;
+        const { layerId: _drop, ...rest } = c;
+        return rest;
+      })
+    );
+    setShapes((prev) =>
+      prev.map((sh) => {
+        if (sh.layerId !== layer.id) return sh;
+        const { layerId: _drop, ...rest } = sh;
+        return rest;
+      })
+    );
+    setContainers((prev) =>
+      prev.map((c) => {
+        if (c.layerId !== layer.id) return c;
+        const { layerId: _drop, ...rest } = c;
+        return rest;
+      })
+    );
+  }
+
+  // What the layers drawer's own list carries - a flat id across all
+  // three kinds, since the drawer shows them side by side.
+  type LayerMember = { kind: 'card' | 'shape' | 'container'; id: string };
+
+  function setObjectLayer(member: LayerMember, layerId: string | null) {
+    const apply = <T extends { layerId?: string }>(item: T): T => {
+      if (layerId) return { ...item, layerId };
+      const { layerId: _drop, ...rest } = item;
+      return rest as T;
+    };
+    if (member.kind === 'card') setCards((prev) => prev.map((c) => (c.id === member.id ? apply(c) : c)));
+    else if (member.kind === 'shape') setShapes((prev) => prev.map((sh) => (sh.id === member.id ? apply(sh) : sh)));
+    else setContainers((prev) => prev.map((c) => (c.id === member.id ? apply(c) : c)));
+  }
+
+  function toggleObjectHidden(member: LayerMember) {
+    if (member.kind === 'card') {
+      setCards((prev) => prev.map((c) => (c.id === member.id ? { ...c, hidden: !c.hidden } : c)));
+    } else if (member.kind === 'shape') {
+      setShapes((prev) => prev.map((sh) => (sh.id === member.id ? { ...sh, hidden: !sh.hidden } : sh)));
+    } else {
+      setContainers((prev) => prev.map((c) => (c.id === member.id ? { ...c, hidden: !c.hidden } : c)));
+    }
+  }
+
+  // "Показати на дошці" - the same fit-to-bounds isolation already uses,
+  // aimed at just one object instead of a whole connected chain.
+  function locateObject(id: string) {
+    setLayersDrawerVisible(false);
+    fitViewToBounds(new Set([id]));
+  }
+
+  // Every object, bucketed by its layer - '' is "Без шару", same
+  // convention useCardCarry's own moveItem destination uses (null layerId
+  // reads back as the empty path).
+  const layerMembers = useMemo(() => {
+    const map = new Map<string, LayerMember[]>();
+    map.set('', []);
+    layers.forEach((l) => map.set(l.id, []));
+    const bucket = (layerId: string | undefined) => map.get(layerId && map.has(layerId) ? layerId : '')!;
+    cards.forEach((c) => bucket(c.layerId).push({ kind: 'card', id: c.id }));
+    shapes.forEach((s) => bucket(s.layerId).push({ kind: 'shape', id: s.id }));
+    containers.forEach((c) => bucket(c.layerId).push({ kind: 'container', id: c.id }));
+    return map;
+  }, [layers, cards, shapes, containers]);
+
+  function toggleLayerCollapsed(id: string) {
+    setCollapsedLayerIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function layerIdOfMember(member: LayerMember): string | null {
+    if (member.kind === 'card') return cardById.get(member.id)?.layerId ?? null;
+    if (member.kind === 'shape') return shapes.find((s) => s.id === member.id)?.layerId ?? null;
+    return containers.find((c) => c.id === member.id)?.layerId ?? null;
+  }
+
+  // Where a carried object actually sits RIGHT NOW - not a fixed "current
+  // folder" the way the explorer has one, since the drawer shows every
+  // layer at once rather than standing inside one. Without this, dropping
+  // an object that already has a layer back onto "Без шару" read as a
+  // drop on its own origin (both '') and did nothing - see useCardCarry's
+  // own settle().
+  const layerDragOriginRef = useRef<string>('');
+  const layersCarry = useCardCarry<LayerMember>({
+    currentPath: layerDragOriginRef.current,
+    onPickUp: (items) => {
+      layerDragOriginRef.current = items[0] ? (layerIdOfMember(items[0]) ?? '') : '';
+    },
+    moveItem: async (member, destination) => {
+      setObjectLayer(member, destination);
+    },
+    // No auto-scroll axis of its own - the drawer's list is short enough
+    // that the carry's own edge-scroll isn't needed the way the kanban
+    // board's is.
+    scrollBy: () => {},
+  });
+  // Same long-press-then-drag shape as TasksScreen's own kanbanBoardGesture
+  // - lives on the drawer's own scrollable list, not on each row, so it
+  // survives a row scrolling off and back on screen.
+  const layersDragGesture = Gesture.Pan()
+    .activateAfterLongPress(400)
+    .runOnJS(true)
+    .onStart((e) => layersCarry.pickUpAt(e.absoluteX, e.absoluteY))
+    .onUpdate((e) => layersCarry.updateCarry(e.absoluteX, e.absoluteY))
+    .onEnd((_e, success) => {
+      if (success) layersCarry.endCarry();
+    })
+    .onFinalize(() => layersCarry.cancelCarry());
+
+  // What one row of the drawer's object list shows, across all three
+  // kinds of board furniture it can hold.
+  function labelForCard(card: BoardCard): string {
+    return card.documentTitle || card.fileTitle || card.imageTitle || card.linkTitle || card.text?.trim() || 'Картка';
+  }
+  function iconForCard(card: BoardCard): keyof typeof Ionicons.glyphMap {
+    switch (card.type) {
+      case 'document':
+        return 'document-text-outline';
+      case 'image':
+        return 'image-outline';
+      case 'file':
+        return 'document-outline';
+      case 'link':
+        return 'link-outline';
+      default:
+        return 'chatbox-outline';
+    }
+  }
+  function labelForMember(member: LayerMember): string {
+    if (member.kind === 'card') {
+      const card = cardById.get(member.id);
+      return card ? labelForCard(card) : 'Картка';
+    }
+    if (member.kind === 'shape') {
+      const shape = shapes.find((s) => s.id === member.id);
+      if (!shape) return 'Фігура';
+      return shape.text?.trim() || SHAPE_MENU.find((m) => m.kind === shape.kind)?.label || 'Фігура';
+    }
+    const container = containers.find((c) => c.id === member.id);
+    return container?.title || 'Область';
+  }
+  function iconForMember(member: LayerMember): keyof typeof Ionicons.glyphMap {
+    if (member.kind === 'card') {
+      const card = cardById.get(member.id);
+      return card ? iconForCard(card) : 'chatbox-outline';
+    }
+    if (member.kind === 'shape') return 'shapes-outline';
+    return 'scan-outline';
+  }
+  // This object's OWN hide flag - not combined with its layer's, unlike
+  // isHidden/isObjectHiddenById: the row shows what tapping ITS eye would
+  // toggle, and the layer's own eye (drawn on the layer's own row) already
+  // says whether the whole layer is hidden.
+  function hiddenForMember(member: LayerMember): boolean {
+    if (member.kind === 'card') return !!cardById.get(member.id)?.hidden;
+    if (member.kind === 'shape') return !!shapes.find((s) => s.id === member.id)?.hidden;
+    return !!containers.find((c) => c.id === member.id)?.hidden;
+  }
+
+  // One row of the drawer's object list - registered with layersCarry as
+  // both a drag source (registerCard) and, via its own eye/locate buttons,
+  // a place to act on the object without lifting it at all.
+  function renderLayerMemberRow(member: LayerMember) {
+    const hidden = hiddenForMember(member);
+    const isCarrying = !!layersCarry.ghost?.items.some(
+      (one) => one.kind === member.kind && one.id === member.id
+    );
+    return (
+      <View
+        key={`${member.kind}:${member.id}`}
+        ref={layersCarry.registerCard(member.id, () => [member], () => {})}
+        collapsable={false}
+        style={[styles.memberRow, isCarrying && styles.memberRowDimmed]}
+      >
+        <Ionicons name={iconForMember(member)} size={15} color={GLASS_TEXT_MUTED} />
+        <Text style={styles.memberLabel} numberOfLines={1}>
+          {labelForMember(member)}
+        </Text>
+        <Pressable hitSlop={8} onPress={() => toggleObjectHidden(member)}>
+          <Ionicons
+            name={hidden ? 'eye-off-outline' : 'eye-outline'}
+            size={15}
+            color={hidden ? '#F87171' : GLASS_TEXT_MUTED}
+          />
+        </Pressable>
+        <Pressable hitSlop={8} onPress={() => locateObject(member.id)}>
+          <Ionicons name="locate-outline" size={15} color={GLASS_TEXT_MUTED} />
+        </Pressable>
+      </View>
+    );
+  }
+
   // Long-pressing a card selects just that one, which surfaces the same
   // bottom action bar the marquee/select tool uses for a multi-card
   // selection - "Редагувати" for a lone document card, "Видалити" either
@@ -3765,7 +4059,9 @@ export default function BoardScreen() {
   // nothing BUT width.
   useDockLeave('easel-outline', () => navigation.goBack());
   useDockBeads(
-    null,
+    boardFocused
+      ? { icon: 'layers-outline', active: layersDrawerVisible, onPress: () => setLayersDrawerVisible(true) }
+      : null,
     boardFocused && selectedCardIds.size === 0
       ? { icon: 'add-outline', onPress: () => setAddSheetVisible(true) }
       : null
@@ -3908,7 +4204,7 @@ export default function BoardScreen() {
             <Animated.View style={[styles.world, worldAnimatedStyle]}>
               {/* Under everything else too - a frame marks a region, it
                   never sits ON top of what it holds. */}
-              {containers.map((frame) => (
+              {containers.filter((frame) => !isHidden(frame)).map((frame) => (
                 <DraggableContainer
                   key={frame.id}
                   container={frame}
@@ -3916,6 +4212,7 @@ export default function BoardScreen() {
                   posY={positionFor(frame.id, frame.x, frame.y).y}
                   isDragging={frame.id === draggingContainerId}
                   dimmed={isolatedIds !== null && !isolatedIds.has(frame.id)}
+                  locked={isLocked(frame)}
                   canvasScale={scale}
                   canvasPanGesture={canvasBlockingGesture}
                   containerOffsetX={containerOffsetX}
@@ -3962,7 +4259,7 @@ export default function BoardScreen() {
               {/* THE BOARD'S FURNITURE, between the lanes and the
                   cards: it is drawn ON the canvas, and the cards are the
                   things that live on top of it. */}
-              {shapes.map((shape) => (
+              {shapes.filter((shape) => !isHidden(shape)).map((shape) => (
                 <DraggableShape
                   key={shape.id}
                   shape={shape}
@@ -3970,7 +4267,7 @@ export default function BoardScreen() {
                   posX={positionFor(shape.id, shape.x, shape.y).x}
                   posY={positionFor(shape.id, shape.x, shape.y).y}
                   onDragStart={setDraggedShapeId}
-                  dragEnabled={canvasTool !== 'connect'}
+                  dragEnabled={canvasTool !== 'connect' && !isLocked(shape)}
                   canvasScale={scale}
                   canvasPanGesture={canvasBlockingGesture}
                   canvasHoldGesture={holdToSelectGesture}
@@ -3995,6 +4292,9 @@ export default function BoardScreen() {
                 const from = nodeById.get(connection.fromCardId);
                 const to = nodeById.get(connection.toCardId);
                 if (!from || !to) return null;
+                // A line to or from something hidden is itself hidden -
+                // nothing to point at otherwise.
+                if (isObjectHiddenById(from.id) || isObjectHiddenById(to.id)) return null;
                 // While either end is in motion the line is drawn live off
                 // the cards' own shared positions instead - the resting
                 // curve below is computed from React state, which doesn't
@@ -4040,7 +4340,7 @@ export default function BoardScreen() {
                 );
               })}
 
-              {cards.map((card) => {
+              {cards.filter((card) => !isHidden(card)).map((card) => {
                 const isSelected = selectedCardIds.has(card.id);
                 const position = positionOf(card);
                 return (
@@ -4078,7 +4378,7 @@ export default function BoardScreen() {
                     guideVVisible={guideVVisible}
                     guideHY={guideHY}
                     guideHVisible={guideHVisible}
-                    dragEnabled={canvasTool !== 'connect'}
+                    dragEnabled={canvasTool !== 'connect' && !isLocked(card)}
                     onMeasure={measureCard}
                     onDragStart={handleDragStart}
                     onDragEnd={commitCardDrag}
@@ -4532,6 +4832,121 @@ export default function BoardScreen() {
           }}
         />
 
+        <RenamePrompt
+          visible={renamingLayer !== null}
+          title="Назва шару"
+          initialValue={renamingLayer?.name ?? ''}
+          onCancel={() => setRenamingLayer(null)}
+          onSave={(value) => {
+            if (renamingLayer) renameLayerTo(renamingLayer, value);
+          }}
+        />
+
+        {/* «Шари» - see BoardLayer. A left-anchored panel rather than
+            GlassLayer's own centred card (same layer/blur/back-button
+            plumbing, just an absolutely-positioned child instead of a
+            centred one), so it reads as a drawer rather than a dialog. */}
+        <GlassLayer visible={layersDrawerVisible} onClose={() => setLayersDrawerVisible(false)} intensity={60}>
+          <View style={styles.layersFrame} pointerEvents="box-none">
+            <View style={[styles.layersPanel, { width: Math.min(340, windowWidth * 0.86) }]}>
+              <View style={styles.layersHeader}>
+                <Text style={styles.layersTitle}>Шари</Text>
+                <View style={styles.layersHeaderActions}>
+                  <Pressable hitSlop={8} onPress={addLayer}>
+                    <Ionicons name="add" size={22} color={GLASS_TEXT} />
+                  </Pressable>
+                  <Pressable hitSlop={8} onPress={() => setLayersDrawerVisible(false)}>
+                    <Ionicons name="close" size={22} color={GLASS_TEXT} />
+                  </Pressable>
+                </View>
+              </View>
+              <GestureDetector gesture={layersDragGesture}>
+                <ScrollView style={styles.layersScroll}>
+                  {/* "Без шару": every object nothing has claimed - a bucket,
+                      not a real layer, so it has no eye/lock of its own. */}
+                  <View
+                    ref={layersCarry.registerFolder('')}
+                    collapsable={false}
+                    style={styles.layerGroup}
+                  >
+                    <Pressable
+                      style={styles.layerHeaderRow}
+                      onPress={() => toggleLayerCollapsed('__none__')}
+                    >
+                      <Ionicons
+                        name={collapsedLayerIds.has('__none__') ? 'chevron-forward' : 'chevron-down'}
+                        size={16}
+                        color={GLASS_TEXT_MUTED}
+                      />
+                      <Text style={[styles.layerName, { color: GLASS_TEXT_MUTED }]} numberOfLines={1}>
+                        Без шару
+                      </Text>
+                      <Text style={styles.layerCount}>{(layerMembers.get('') ?? []).length}</Text>
+                    </Pressable>
+                    {!collapsedLayerIds.has('__none__') &&
+                      (layerMembers.get('') ?? []).map((member) => renderLayerMemberRow(member))}
+                  </View>
+
+                  {layers.map((layer) => (
+                    <View
+                      key={layer.id}
+                      ref={layersCarry.registerFolder(layer.id)}
+                      collapsable={false}
+                      style={styles.layerGroup}
+                    >
+                      <View style={styles.layerHeaderRow}>
+                        <Pressable hitSlop={6} onPress={() => toggleLayerCollapsed(layer.id)}>
+                          <Ionicons
+                            name={collapsedLayerIds.has(layer.id) ? 'chevron-forward' : 'chevron-down'}
+                            size={16}
+                            color={GLASS_TEXT}
+                          />
+                        </Pressable>
+                        <Pressable style={styles.layerNameTap} onPress={() => setRenamingLayer(layer)}>
+                          <Text style={styles.layerName} numberOfLines={1}>
+                            {layer.name}
+                          </Text>
+                        </Pressable>
+                        <Text style={styles.layerCount}>{(layerMembers.get(layer.id) ?? []).length}</Text>
+                        <Pressable hitSlop={6} onPress={() => toggleLayerHidden(layer)}>
+                          <Ionicons
+                            name={layer.hidden ? 'eye-off-outline' : 'eye-outline'}
+                            size={17}
+                            color={layer.hidden ? '#F87171' : GLASS_TEXT}
+                          />
+                        </Pressable>
+                        <Pressable hitSlop={6} onPress={() => toggleLayerLocked(layer)}>
+                          <Ionicons
+                            name={layer.locked ? 'lock-closed' : 'lock-open-outline'}
+                            size={17}
+                            color={layer.locked ? '#F5C77E' : GLASS_TEXT}
+                          />
+                        </Pressable>
+                        <Pressable hitSlop={6} onPress={() => confirmDeleteLayer(layer)}>
+                          <Ionicons name="trash-outline" size={16} color={GLASS_TEXT_MUTED} />
+                        </Pressable>
+                      </View>
+                      {!collapsedLayerIds.has(layer.id) &&
+                        (layerMembers.get(layer.id) ?? []).map((member) => renderLayerMemberRow(member))}
+                    </View>
+                  ))}
+
+                  {layers.length === 0 && (
+                    <Text style={styles.layersEmpty}>
+                      Ще немає жодного шару. Натисніть «+», щоб створити перший.
+                    </Text>
+                  )}
+                </ScrollView>
+              </GestureDetector>
+            </View>
+          </View>
+        </GlassLayer>
+        <CardCarryOverlay
+          carry={layersCarry}
+          label={(items) => (items[0] ? labelForMember(items[0]) : 'Обʼєкт')}
+          icon="layers-outline"
+          onEnterFolder={() => {}}
+        />
 
         {/* A plain overlay View sibling of the gesture-driven canvas, not a
             Modal and not a child of the canvas - same reasoning as
@@ -5115,6 +5530,95 @@ const makeStyles = (theme: Theme) =>
     // Same dark-glass treatment as the selection bar's own capsule above,
     // for the one confirmation that sits over the canvas itself rather than
     // this app's usual native Alert.
+    // «Шари» - a left-anchored drawer inside GlassLayer's own full-screen
+    // frame, so it needs its own absolute positioning rather than the
+    // frame's default centring (see the frame's own comment).
+    layersFrame: {
+      flex: 1,
+    },
+    layersPanel: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      bottom: 0,
+      backgroundColor: GLASS_BODY_BLURRED,
+      borderRightWidth: 1,
+      borderRightColor: GLASS_EDGE,
+      paddingTop: 56,
+      paddingHorizontal: 14,
+      paddingBottom: 16,
+    },
+    layersHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 14,
+    },
+    layersTitle: {
+      fontSize: 20,
+      fontFamily: FONT_BOLD,
+      color: GLASS_TEXT,
+    },
+    layersHeaderActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 16,
+    },
+    layersScroll: {
+      flex: 1,
+    },
+    layerGroup: {
+      marginBottom: 10,
+    },
+    layerHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 8,
+      borderRadius: 12,
+      backgroundColor: GLASS_CARD,
+    },
+    layerNameTap: {
+      flex: 1,
+    },
+    layerName: {
+      flex: 1,
+      fontSize: 15,
+      fontFamily: FONT_SEMIBOLD,
+      color: GLASS_TEXT,
+    },
+    layerCount: {
+      fontSize: 12,
+      fontFamily: FONT_REGULAR,
+      color: GLASS_TEXT_FAINT,
+    },
+    memberRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: 7,
+      paddingLeft: 26,
+      paddingRight: 8,
+    },
+    // The row of the object currently being dragged - left in place, just
+    // faded, the same treatment the kanban card gets while carried.
+    memberRowDimmed: {
+      opacity: 0.35,
+    },
+    memberLabel: {
+      flex: 1,
+      fontSize: 14,
+      fontFamily: FONT_REGULAR,
+      color: GLASS_TEXT_MUTED,
+    },
+    layersEmpty: {
+      fontSize: 13,
+      fontFamily: FONT_REGULAR,
+      color: GLASS_TEXT_FAINT,
+      textAlign: 'center',
+      paddingVertical: 24,
+    },
     sheetBackdrop: {
       backgroundColor: 'rgba(17,24,39,0.45)',
       ...SHEET_BACKDROP,

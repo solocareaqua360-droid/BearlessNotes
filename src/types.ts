@@ -433,6 +433,14 @@ export interface BoardCard extends Omit<Block, 'type'> {
   // adding scroll-vs-drag gesture arbitration for potentially very long
   // text - a card can't be dragged while open, only while collapsed.
   documentExpanded?: boolean;
+  // Which BoardLayer this card belongs to, if any - see BoardLayer's own
+  // comment for how it differs from a column or a container.
+  layerId?: string;
+  // This card's OWN hide flag, independent of its layer's - the user's
+  // own ask: "кожен із об'єктів можна окремо приховати показати". Either
+  // one hides it; see BoardScreen's own isHidden helper for how the two
+  // combine.
+  hidden?: boolean;
 }
 
 // A mindmap-style link between two board cards. Which SIDE of each card the
@@ -507,6 +515,25 @@ export type BoardShapeKind =
 // on purpose - a member is discovered fresh every time the frame is
 // dragged (see containerMembersAt in BoardScreen), never persisted, so
 // there is nothing to keep in sync when a card moves on its own.
+// An ORGANISATIONAL grouping (Photoshop's own idea of a layer), never a
+// spatial one - a BoardContainer already covers "a region on the
+// canvas"; this is "a named bucket in a list" with no x/y of its own.
+// Cards, shapes AND containers can all belong to one (see their own
+// layerId), which is why this lives beside them rather than under any
+// one of the three.
+export interface BoardLayer {
+  id: string;
+  name: string;
+  // Hides every member regardless of the member's OWN hidden flag - see
+  // Block... no, see BoardCard/BoardShape/BoardContainer's own `hidden`
+  // comment for how the two combine.
+  hidden?: boolean;
+  // Blocks moving, resizing, editing and deleting every member. Visible
+  // means visible - lock is only ever about protecting from a mistake,
+  // never a second way to hide something.
+  locked?: boolean;
+}
+
 export interface BoardContainer {
   id: string;
   title: string;
@@ -521,6 +548,9 @@ export interface BoardContainer {
   // is measured on one shared scale rather than each control inventing
   // its own.
   fontSize?: number;
+  // See BoardCard's own layerId/hidden comments.
+  layerId?: string;
+  hidden?: boolean;
 }
 
 export interface BoardShape {
@@ -547,6 +577,10 @@ export interface BoardShape {
   // user raised was being unable to make a label read from across the
   // board, not fine typographic control.
   fontSize?: number;
+  // See BoardCard's own layerId/hidden comments - the same two fields,
+  // same meaning, on furniture instead of a card.
+  layerId?: string;
+  hidden?: boolean;
 }
 
 export interface BoardItem {
@@ -559,6 +593,8 @@ export interface BoardItem {
   shapes?: BoardShape[];
   // See BoardContainer.
   containers?: BoardContainer[];
+  // See BoardLayer.
+  layers?: BoardLayer[];
   // A board is a record of a database like any other now: it carries tags
   // (which are also its folders - see the explorer), a group, and a bin
   // flag. Absent on every board made before that, and read as empty.
