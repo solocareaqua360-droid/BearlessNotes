@@ -813,7 +813,15 @@ export default function TasksScreen() {
     const task = tasks.find((t) => t.id === taskId);
     setPickerTaskId(null);
     if (!task) return;
-    updateDoc(doc(db, 'tasks', task.id), { projectId: projectId ?? deleteField() });
+    // A list belongs to exactly one project (see TaskList) - changing
+    // (or clearing) the project makes any list already on the task
+    // meaningless, since it was scoped to the OLD project. Left alone
+    // only when the "new" project is actually the same one already set.
+    const dropsList = projectId !== (task.projectId ?? null) && !!task.listId;
+    updateDoc(doc(db, 'tasks', task.id), {
+      projectId: projectId ?? deleteField(),
+      ...(dropsList ? { listId: deleteField() } : {}),
+    });
     const documentRef = doc(db, 'documents', task.documentId);
     const snapshot = await getDoc(documentRef);
     const data = snapshot.data();
@@ -821,9 +829,11 @@ export default function TasksScreen() {
     const blocks: Block[] = data.blocks ?? [];
     const updatedBlocks = blocks.map((b) => {
       if (b.id !== task.id) return b;
-      if (projectId) return { ...b, projectId };
-      const { projectId: _drop, ...rest } = b;
-      return rest;
+      const next = { ...b };
+      if (projectId) next.projectId = projectId;
+      else delete next.projectId;
+      if (dropsList) delete next.listId;
+      return next;
     });
     updateDoc(documentRef, { blocks: updatedBlocks });
   }
