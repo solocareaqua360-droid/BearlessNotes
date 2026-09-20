@@ -594,6 +594,25 @@ function curvePath(x1: number, y1: number, x2: number, y2: number, vertical: boo
   return `M ${x1} ${y1} C ${x1 + bend * direction} ${y1} ${x2 - bend * direction} ${y2} ${x2} ${y2}`;
 }
 
+// A small filled triangle, tip at (x,y), pointing along the unit
+// direction (dx,dy) - always axis-aligned today, since curvePath's own
+// S-bend always leaves and arrives at a right angle to whichever edge
+// connectionEndpoints picked (the user's own read: "стрілка повинна бути
+// перпендикулярна... майже всі елементи прямокутні"). Written to take
+// any direction, not just the four axis-aligned ones, so a round shape's
+// own radial direction can reuse it later without a second function.
+function arrowheadPoints(x: number, y: number, dx: number, dy: number): string {
+  const length = 10;
+  const halfWidth = 5;
+  const baseX = x - dx * length;
+  const baseY = y - dy * length;
+  const p1x = baseX - dy * halfWidth;
+  const p1y = baseY + dx * halfWidth;
+  const p2x = baseX + dy * halfWidth;
+  const p2y = baseY - dx * halfWidth;
+  return `${x},${y} ${p1x},${p1y} ${p2x},${p2y}`;
+}
+
 // The straight rubber band a connect-drag trails behind the finger, drawn
 // as one rotated View rather than an Svg: it has to follow the finger on
 // the UI thread, and an Svg big enough to cover anywhere the finger might
@@ -2858,6 +2877,30 @@ export default function BoardScreen() {
     setSelectedConnectionId(null);
   }
 
+  // Plain -> one-way -> two-way -> plain. The move-together behaviour a
+  // one-way/two-way line implies is a later phase (see BoardConnection's
+  // own comment) - this only changes how the line LOOKS for now.
+  const NEXT_CONNECTION_KIND: Record<'plain' | 'arrow' | 'doubleArrow', 'plain' | 'arrow' | 'doubleArrow'> = {
+    plain: 'arrow',
+    arrow: 'doubleArrow',
+    doubleArrow: 'plain',
+  };
+  function cycleConnectionKind(id: string) {
+    setConnections((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, kind: NEXT_CONNECTION_KIND[c.kind ?? 'plain'] } : c))
+    );
+  }
+
+  // Which end is the "parent" of a one-way line is just which id is
+  // fromCardId - so flipping it is swapping the two ids, not a direction
+  // field of its own. Only meaningful for 'arrow'; the button that calls
+  // this is hidden otherwise (see the connection's own toolbar).
+  function flipConnectionDirection(id: string) {
+    setConnections((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, fromCardId: c.toCardId, toCardId: c.fromCardId } : c))
+    );
+  }
+
   const clearSelectionGesture = Gesture.Tap()
     .maxDuration(250)
     .onEnd((_event, success) => {
@@ -4592,6 +4635,17 @@ export default function BoardScreen() {
                 const width = Math.abs(x2 - x1) + CONNECTION_PADDING * 2;
                 const height = Math.abs(y2 - y1) + CONNECTION_PADDING * 2;
                 const isSelected = selectedConnectionId === connection.id;
+                const kind = connection.kind ?? 'plain';
+                // The curve's own departure/arrival direction at each end -
+                // see curvePath's own identical `direction`, duplicated here
+                // rather than threaded out of it, since that worklet's
+                // signature is also called from LiveConnectionLine's own
+                // UI-thread animated style and changing its return shape
+                // would touch that path too.
+                const direction = vertical ? (y2 >= y1 ? 1 : -1) : x2 >= x1 ? 1 : -1;
+                const toDx = vertical ? 0 : direction;
+                const toDy = vertical ? direction : 0;
+                const tint = isSelected ? SELECTION_COLOR : CONNECTION_COLOR;
                 // Tapping the line selects it and shows the "×" beside it -
                 // see selectedConnectionId's own comment for why this has
                 // to exist alongside disconnectSelectedCards, not instead
@@ -4611,23 +4665,61 @@ export default function BoardScreen() {
                       <Svg width={width} height={height}>
                         <Path
                           d={curvePath(x1 - left, y1 - top, x2 - left, y2 - top, vertical)}
-                          stroke={isSelected ? SELECTION_COLOR : CONNECTION_COLOR}
+                          stroke={tint}
                           strokeWidth={isSelected ? 3 : 2}
                           fill="none"
                         />
+                        {(kind === 'arrow' || kind === 'doubleArrow') && (
+                          <Polygon points={arrowheadPoints(x2 - left, y2 - top, toDx, toDy)} fill={tint} />
+                        )}
+                        {kind === 'doubleArrow' && (
+                          <Polygon points={arrowheadPoints(x1 - left, y1 - top, -toDx, -toDy)} fill={tint} />
+                        )}
                       </Svg>
                     </GestureDetector>
                     {isSelected && (
-                      <Pressable
-                        hitSlop={8}
+                      <View
                         style={[
-                          styles.connectionDeleteButton,
+                          styles.connectionToolbar,
                           { left: (x1 + x2) / 2 - left - 11, top: (y1 + y2) / 2 - top - 11 },
                         ]}
-                        onPress={() => deleteConnection(connection.id)}
                       >
-                        <Ionicons name="close" size={14} color="#fff" />
-                      </Pressable>
+                        {/* Plain -> one-way -> two-way -> plain - the
+                            button's own icon says which one is current. */}
+                        <Pressable
+                          hitSlop={6}
+                          style={styles.connectionToolButton}
+                          onPress={() => cycleConnectionKind(connection.id)}
+                        >
+                          <Ionicons
+                            name={
+                              kind === 'plain'
+                                ? 'remove-outline'
+                                : kind === 'arrow'
+                                  ? 'arrow-forward-outline'
+                                  : 'swap-horizontal-outline'
+                            }
+                            size={14}
+                            color="#fff"
+                          />
+                        </Pressable>
+                        {kind === 'arrow' && (
+                          <Pressable
+                            hitSlop={6}
+                            style={styles.connectionToolButton}
+                            onPress={() => flipConnectionDirection(connection.id)}
+                          >
+                            <Ionicons name="repeat-outline" size={14} color="#fff" />
+                          </Pressable>
+                        )}
+                        <Pressable
+                          hitSlop={6}
+                          style={styles.connectionToolButton}
+                          onPress={() => deleteConnection(connection.id)}
+                        >
+                          <Ionicons name="close" size={14} color="#fff" />
+                        </Pressable>
+                      </View>
                     )}
                   </View>
                 );
@@ -5628,10 +5720,15 @@ const makeStyles = (theme: Theme) =>
     connection: {
       position: 'absolute',
     },
-    // The selected connection's own "×" - left/top come from its curve's
-    // own midpoint at render time, same as connection's left/top above.
-    connectionDeleteButton: {
+    // The selected connection's own small row of buttons (type/flip/
+    // delete) - left/top come from its curve's own midpoint at render
+    // time, same as connection's left/top above.
+    connectionToolbar: {
       position: 'absolute',
+      flexDirection: 'row',
+      gap: 4,
+    },
+    connectionToolButton: {
       width: 22,
       height: 22,
       borderRadius: 11,

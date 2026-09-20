@@ -452,6 +452,17 @@ export interface BoardConnection {
   id: string;
   fromCardId: string;
   toCardId: string;
+  // Absent/'plain' - a plain line, no arrowhead, no relation between the
+  // two ends when either is dragged (today's only behaviour). 'arrow' -
+  // one arrowhead at the `toCardId` end: `fromCardId` is the "parent" -
+  // dragging it (or a container it's a member of) carries `toCardId`
+  // along; dragging `toCardId` does NOT move `fromCardId` back. Flipping
+  // which end is the parent swaps fromCardId/toCardId rather than adding
+  // a direction field of its own. 'doubleArrow' - an arrowhead at BOTH
+  // ends: either side moves the other. The move-together behaviour
+  // itself is a later phase; this field exists for the line's own look
+  // first (see BoardScreen's own comment on why it's built in two steps).
+  kind?: 'plain' | 'arrow' | 'doubleArrow';
 }
 
 // A kanban lane on the board. Cards dropped inside one stop floating
