@@ -125,6 +125,18 @@ const SHAPE_MIN = 48;
 // same kind of stand-in APPROX_CARD_HEIGHT is, and used for the same two
 // things: aiming an arrow at it, and hit-testing.
 const SHAPE_TEXT_HEIGHT = 34;
+// A loose label is as WIDE as its own words too, now - it used to be
+// born at a fixed 180 and stay there forever, so raising its font size
+// (or typing more into it) just wrapped the same box onto more lines
+// instead of the box growing: "текст з фіксованою шириною переноситься
+// на іншу строку при збільшенні його розміру". The box itself (see
+// DraggableShape) auto-sizes to its own Text now, the same way its
+// height already did; this is only the STAND-IN used where nothing
+// actually measures the rendered box - aiming an arrow at it, same as
+// SHAPE_TEXT_HEIGHT above.
+function approxTextShapeWidth(text: string, fontSize: number): number {
+  return Math.max(SHAPE_MIN, Math.round((text || 'Текст').length * fontSize * 0.55) + 16);
+}
 // A STEP, never a free number - the request was "make it readable from
 // across the board", not fine typographic control, and a stepper is
 // what a corner grip already does for size (see clampShapeSize) rather
@@ -1296,7 +1308,11 @@ function DraggableShape({
     transform: [{ translateX: posX.value }, { translateY: posY.value }],
   }));
 
-  const width = live?.width ?? shape.width;
+  // Text is as WIDE as its own words too, not only as tall - see
+  // approxTextShapeWidth's own comment. No resize grip ever changes it
+  // (below), so `live` never holds a width for a text shape and this is
+  // simply `undefined` there, the same way height already was.
+  const width = shape.kind === 'text' ? undefined : live?.width ?? shape.width;
   // Text is as tall as its own words; everything else is the box it was
   // given. A square and a circle are the same shapes as a rectangle and
   // an ellipse with one rule added, which is why they are separate kinds
@@ -1307,7 +1323,7 @@ function DraggableShape({
   const resizeGesture = Gesture.Pan()
     .blocksExternalGesture(canvasPanGesture)
     .onStart(() => {
-      resizeBase.current = { width, height: height ?? shape.height };
+      resizeBase.current = { width: width ?? 0, height: height ?? shape.height };
     })
     .onChange((e) => {
       const nextW = clampShapeSize(resizeBase.current.width + e.translationX / canvasScale.value);
@@ -1335,7 +1351,7 @@ function DraggableShape({
       >
         <ShapeBody
           shape={shape}
-          width={width}
+          width={width ?? 0}
           height={height ?? 0}
           stroke={shape.color ?? theme.canvas.inkMuted}
           fill={shapeFillFor(shape, shape.color ?? theme.canvas.inkMuted, theme)}
@@ -2966,7 +2982,11 @@ export default function BoardScreen() {
       id: shape.id,
       x: shape.x,
       y: shape.y,
-      width: shape.width,
+      // Loose text auto-sizes its own box now and `shape.width` is no
+      // longer what it is actually drawn at (see approxTextShapeWidth) -
+      // stale here would aim an arrow, or a connect-mode tap, at where
+      // the box used to end rather than where it now does.
+      width: shape.kind === 'text' ? approxTextShapeWidth(shape.text ?? '', shape.fontSize ?? SHAPE_TEXT_SIZE_DEFAULT) : shape.width,
       // Loose text is as tall as its own words, which nothing here has
       // measured; a card's own rough constant is the same stand-in the
       // marquee uses, and it is close enough to aim a line at.
