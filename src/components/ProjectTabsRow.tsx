@@ -46,6 +46,11 @@ type Props = {
   // they can be scrolled across it, but at rest they should start at the
   // edge of the pane they belong to - which is this.
   startPadding?: number;
+  // Puts the "unassigned" tab right after "Всі", before the named items -
+  // opt-in (default false, unchanged everywhere else) since only Tasks
+  // asked for its own inbox to read as a top-level bucket rather than a
+  // catch-all parked at the end.
+  unassignedFirst?: boolean;
 };
 
 // Horizontal row of pills (see the videobookmark reference the user showed:
@@ -61,8 +66,20 @@ export default function ProjectTabsRow({
   blurTarget,
   endPadding,
   startPadding,
+  unassignedFirst,
 }: Props) {
   const styles = useStyles(makeStyles);
+  const unassignedTab = (
+    <Tab
+      key="__unassigned__"
+      label={unassignedLabel}
+      color={MUTED}
+      active={selected === UNASSIGNED_ID}
+      onPress={() => onSelect(UNASSIGNED_ID)}
+      dark={dark}
+      blurTarget={blurTarget}
+    />
+  );
   return (
     <ScrollView
       horizontal
@@ -88,6 +105,7 @@ export default function ProjectTabsRow({
         dark={dark}
         blurTarget={blurTarget}
       />
+      {unassignedFirst && unassignedTab}
       {items.map((p) => (
         <Tab
           key={p.id}
@@ -99,14 +117,7 @@ export default function ProjectTabsRow({
           blurTarget={blurTarget}
         />
       ))}
-      <Tab
-        label={unassignedLabel}
-        color={MUTED}
-        active={selected === UNASSIGNED_ID}
-        onPress={() => onSelect(UNASSIGNED_ID)}
-        dark={dark}
-        blurTarget={blurTarget}
-      />
+      {!unassignedFirst && unassignedTab}
       {pinnedTab && (
         <Tab
           label={pinnedTab.label}

@@ -874,6 +874,14 @@ export default function TasksScreen() {
   }
 
   function confirmDeleteProject(project: Project) {
+    // Closed FIRST - «Питання» is a layer inside this same window (see
+    // Ask.tsx's own comment on why it isn't a Modal), but the project
+    // picker IS one, and a native Modal is a separate window Android
+    // draws on top of everything else regardless of what's asked for
+    // behind it. Left open, the two windows' content interleaves instead
+    // of one cleanly covering the other - the overlapping text the user
+    // caught in a screenshot.
+    setPickerTaskId(null);
     confirm({
       title: 'Видалити проект?',
       message: `Справи з проектом "${project.name}" стануть без проекту.`,
@@ -926,6 +934,10 @@ export default function TasksScreen() {
   }
 
   function confirmDeleteTaskList(list: TaskList) {
+    // Same reason as confirmDeleteProject - closed first, or the list
+    // picker's own Modal window interleaves with «Питання» instead of
+    // being cleanly covered by it.
+    setListPickerTaskId(null);
     confirm({
       title: 'Видалити список?',
       message: `Справи зі списком "${list.name}" стануть без списку.`,
@@ -1216,11 +1228,18 @@ export default function TasksScreen() {
             {section.icon === 'star' ? (
               <Ionicons name="star" size={14} color={section.color ?? 'rgba(255,255,255,0.45)'} />
             ) : section.icon === 'list' ? (
-              <Ionicons name="list-outline" size={14} color={section.color ?? 'rgba(255,255,255,0.45)'} />
+              <Ionicons name="list-outline" size={20} color={section.color ?? 'rgba(255,255,255,0.45)'} />
             ) : (
               <View style={[styles.groupDot, { backgroundColor: section.color ?? 'rgba(255,255,255,0.45)' }]} />
             )}
-            <Text style={[styles.groupTitle, { color: section.color ?? 'rgba(255,255,255,0.45)' }]}>{section.title}</Text>
+            <Text
+              style={[
+                section.icon === 'list' ? styles.groupTitleList : styles.groupTitle,
+                { color: section.color ?? 'rgba(255,255,255,0.45)' },
+              ]}
+            >
+              {section.title}
+            </Text>
           </View>
         )}
         {section.unfinished.map((task) => renderTaskRow(task, rowOpts))}
@@ -1456,6 +1475,7 @@ export default function TasksScreen() {
             onSelect={setProjectFilter}
             // Not assigned to a project = in the inbox; the user's own rule.
             unassignedLabel="Вхідні"
+            unassignedFirst
           />
         )}
 
@@ -1924,6 +1944,14 @@ const makeStyles = (t: Theme) =>
     fontWeight: '700',
     fontFamily: FONT_BOLD,
     letterSpacing: 0.5,
+  },
+  // A list's own name, not a small-caps label like "СЬОГОДНІ" - it reads
+  // as a real heading over its tasks, H2-sized to match the document
+  // editor's own heading scale (documentEditorStyles' heading2).
+  groupTitleList: {
+    fontSize: 21,
+    fontFamily: FONT_SEMIBOLD,
+    letterSpacing: 0,
   },
   collapseToggle: {
     flexDirection: 'row',
