@@ -4074,7 +4074,11 @@ export default function BoardScreen() {
   useDockLeave('easel-outline', () => navigation.goBack());
   useDockBeads(
     boardFocused
-      ? { icon: 'layers-outline', active: layersDrawerVisible, onPress: () => setLayersDrawerVisible(true) }
+      ? {
+          icon: 'layers-outline',
+          active: layersDrawerVisible,
+          onPress: () => setLayersDrawerVisible((v) => !v),
+        }
       : null,
     boardFocused && selectedCardIds.size === 0
       ? { icon: 'add-outline', onPress: () => setAddSheetVisible(true) }
@@ -4857,21 +4861,22 @@ export default function BoardScreen() {
         />
 
         {/* «Шари» - see BoardLayer. NOT built on GlassLayer, on purpose:
-            GlassLayer blurs the WHOLE screen behind it, and the user's own
-            ask was to see the board and the drawer at once - "показати на
-            дошці" is pointless if showing it means the board just went
-            behind a blur. So this is TagsDrawer's own shape instead: a
-            plain dim over the screen (for tap-outside-to-close), and the
-            blur lives only on the panel itself, clipped to its own width -
-            everything beside the panel stays as clear as the canvas ever
-            is. */}
+            GlassLayer blurs the WHOLE screen behind it AND swallows every
+            touch outside its own card to close on tap - both wrong for a
+            drawer the user wants open ALONGSIDE a board that stays fully
+            usable: "показати на дошці" is pointless if showing it means
+            the board went behind a blur, and dragging a card should still
+            drag the card, not close the drawer. So this is TagsDrawer's
+            own shape instead - a plain dim over the screen, non-touchable
+            (pointerEvents="none") so it never competes with the canvas's
+            own pan/drag gestures for the same touch - and the blur lives
+            only on the panel itself, clipped to its own width. Closing is
+            the "Шари" bead again (now a toggle), the drawer's own "×", or
+            the hardware back button. */}
         {layersDrawerVisible && (
           <GlassPortal>
             <View style={styles.layersLayer} pointerEvents="box-none">
-              <Pressable
-                style={[StyleSheet.absoluteFill, styles.layersDim]}
-                onPress={() => setLayersDrawerVisible(false)}
-              />
+              <View style={[StyleSheet.absoluteFill, styles.layersDim]} pointerEvents="none" />
               <View style={[styles.layersPanel, { width: Math.min(340, windowWidth * 0.86) }]}>
                 <BlurView
                   intensity={60}
