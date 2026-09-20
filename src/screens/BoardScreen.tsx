@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Image,
   Linking,
   Modal,
@@ -108,7 +109,7 @@ import {
   SHEET_BACKDROP,
   SHEET_WINDOW,
 } from '../constants/glass';
-import GlassLayer from '../components/GlassLayer';
+import { GlassPortal } from '../components/GlassPortal';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
@@ -1929,6 +1930,17 @@ export default function BoardScreen() {
   const [layersDrawerVisible, setLayersDrawerVisible] = useState(false);
   const [renamingLayer, setRenamingLayer] = useState<BoardLayer | null>(null);
   const [collapsedLayerIds, setCollapsedLayerIds] = useState<Set<string>>(new Set());
+  // The drawer isn't built on GlassLayer (see its own JSX comment), so it
+  // has to catch the hardware back button itself, the way GlassLayer does
+  // for every other sheet.
+  useEffect(() => {
+    if (!layersDrawerVisible) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setLayersDrawerVisible(false);
+      return true;
+    });
+    return () => sub.remove();
+  }, [layersDrawerVisible]);
   // Each card's real rendered height, reported by its own onLayout - what
   // a column stacks by. State rather than a ref specifically so a height
   // change re-renders: a column whose single card grew has nothing to
@@ -3409,9 +3421,11 @@ export default function BoardScreen() {
   }
 
   // "Показати на дошці" - the same fit-to-bounds isolation already uses,
-  // aimed at just one object instead of a whole connected chain.
+  // aimed at just one object instead of a whole connected chain. Leaves
+  // the drawer open on purpose - the user's own ask: seeing the board pan
+  // to the object is the point, and closing the drawer to show it would
+  // hide the very list they were just working from.
   function locateObject(id: string) {
-    setLayersDrawerVisible(false);
     fitViewToBounds(new Set([id]));
   }
 
@@ -4842,13 +4856,32 @@ export default function BoardScreen() {
           }}
         />
 
-        {/* «Шари» - see BoardLayer. A left-anchored panel rather than
-            GlassLayer's own centred card (same layer/blur/back-button
-            plumbing, just an absolutely-positioned child instead of a
-            centred one), so it reads as a drawer rather than a dialog. */}
-        <GlassLayer visible={layersDrawerVisible} onClose={() => setLayersDrawerVisible(false)} intensity={60}>
-          <View style={styles.layersFrame} pointerEvents="box-none">
-            <View style={[styles.layersPanel, { width: Math.min(340, windowWidth * 0.86) }]}>
+        {/* «Шари» - see BoardLayer. NOT built on GlassLayer, on purpose:
+            GlassLayer blurs the WHOLE screen behind it, and the user's own
+            ask was to see the board and the drawer at once - "показати на
+            дошці" is pointless if showing it means the board just went
+            behind a blur. So this is TagsDrawer's own shape instead: a
+            plain dim over the screen (for tap-outside-to-close), and the
+            blur lives only on the panel itself, clipped to its own width -
+            everything beside the panel stays as clear as the canvas ever
+            is. */}
+        {layersDrawerVisible && (
+          <GlassPortal>
+            <View style={styles.layersLayer} pointerEvents="box-none">
+              <Pressable
+                style={[StyleSheet.absoluteFill, styles.layersDim]}
+                onPress={() => setLayersDrawerVisible(false)}
+              />
+              <View style={[styles.layersPanel, { width: Math.min(340, windowWidth * 0.86) }]}>
+                <BlurView
+                  intensity={60}
+                  tint="dark"
+                  blurMethod="dimezisBlurView"
+                  blurTarget={boardBlurTarget ?? undefined}
+                  style={StyleSheet.absoluteFill}
+                  pointerEvents="none"
+                />
+                <View style={[StyleSheet.absoluteFill, styles.layersPanelTint]} pointerEvents="none" />
               <View style={styles.layersHeader}>
                 <Text style={styles.layersTitle}>Шари</Text>
                 <View style={styles.layersHeaderActions}>
@@ -4938,9 +4971,10 @@ export default function BoardScreen() {
                   )}
                 </ScrollView>
               </GestureDetector>
+              </View>
             </View>
-          </View>
-        </GlassLayer>
+          </GlassPortal>
+        )}
         <CardCarryOverlay
           carry={layersCarry}
           label={(items) => (items[0] ? labelForMember(items[0]) : 'Обʼєкт')}
@@ -5530,23 +5564,41 @@ const makeStyles = (theme: Theme) =>
     // Same dark-glass treatment as the selection bar's own capsule above,
     // for the one confirmation that sits over the canvas itself rather than
     // this app's usual native Alert.
-    // «Шари» - a left-anchored drawer inside GlassLayer's own full-screen
-    // frame, so it needs its own absolute positioning rather than the
-    // frame's default centring (see the frame's own comment).
-    layersFrame: {
-      flex: 1,
+    // «Шари» - a left-anchored drawer, drawn through GlassPortal rather
+    // than GlassLayer: the panel carries its own blur (see layersPanel/
+    // layersPanelTint below), and everything beside it stays a plain dim
+    // (layersDim) rather than the whole screen going behind a blur - the
+    // user's own ask was to see the board and the drawer at once.
+    layersLayer: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
+      zIndex: 55,
+    },
+    layersDim: {
+      backgroundColor: 'rgba(17,24,39,0.35)',
     },
     layersPanel: {
       position: 'absolute',
       left: 0,
       top: 0,
       bottom: 0,
-      backgroundColor: GLASS_BODY_BLURRED,
+      overflow: 'hidden',
       borderRightWidth: 1,
       borderRightColor: GLASS_EDGE,
       paddingTop: 56,
       paddingHorizontal: 14,
       paddingBottom: 16,
+    },
+    // The tint OVER the blur - a blur alone leaves the canvas showing
+    // through too sharply for text to sit on; this is what RenamePrompt's
+    // own card gets for the same reason, just as an explicit layer here
+    // since the panel's own background can't paint over its BlurView
+    // child (a parent's fill draws BEHIND what it renders, not on top).
+    layersPanelTint: {
+      backgroundColor: GLASS_BODY_BLURRED,
     },
     layersHeader: {
       flexDirection: 'row',
