@@ -665,6 +665,8 @@ type LiveEndpoint = {
   columnOffsetY: SharedValue<number> | null;
   containerOffsetX: SharedValue<number> | null;
   containerOffsetY: SharedValue<number> | null;
+  pullOffsetX: SharedValue<number> | null;
+  pullOffsetY: SharedValue<number> | null;
   width: number;
   height: number;
 };
@@ -681,13 +683,29 @@ function LiveConnectionLine({ from, to }: { from: LiveEndpoint; to: LiveEndpoint
   const styles = useStyles(makeStyles);
   const animatedStyle = useAnimatedStyle(() => {
     const fromX =
-      from.posX.value + (from.offsetX?.value ?? 0) + (from.columnOffsetX?.value ?? 0) + (from.containerOffsetX?.value ?? 0);
+      from.posX.value +
+      (from.offsetX?.value ?? 0) +
+      (from.columnOffsetX?.value ?? 0) +
+      (from.containerOffsetX?.value ?? 0) +
+      (from.pullOffsetX?.value ?? 0);
     const fromY =
-      from.posY.value + (from.offsetY?.value ?? 0) + (from.columnOffsetY?.value ?? 0) + (from.containerOffsetY?.value ?? 0);
+      from.posY.value +
+      (from.offsetY?.value ?? 0) +
+      (from.columnOffsetY?.value ?? 0) +
+      (from.containerOffsetY?.value ?? 0) +
+      (from.pullOffsetY?.value ?? 0);
     const toX =
-      to.posX.value + (to.offsetX?.value ?? 0) + (to.columnOffsetX?.value ?? 0) + (to.containerOffsetX?.value ?? 0);
+      to.posX.value +
+      (to.offsetX?.value ?? 0) +
+      (to.columnOffsetX?.value ?? 0) +
+      (to.containerOffsetX?.value ?? 0) +
+      (to.pullOffsetX?.value ?? 0);
     const toY =
-      to.posY.value + (to.offsetY?.value ?? 0) + (to.columnOffsetY?.value ?? 0) + (to.containerOffsetY?.value ?? 0);
+      to.posY.value +
+      (to.offsetY?.value ?? 0) +
+      (to.columnOffsetY?.value ?? 0) +
+      (to.containerOffsetY?.value ?? 0) +
+      (to.pullOffsetY?.value ?? 0);
 
     // Same routing rule the resting curve uses (connectionEndpoints,
     // marked 'worklet' for exactly this call), so the line doesn't jump
@@ -875,6 +893,9 @@ function DraggableContainer({
   canvasPanGesture,
   containerOffsetX,
   containerOffsetY,
+  followsConnectionPull,
+  pullOffsetX,
+  pullOffsetY,
   onDragStart,
   onDragEnd,
   onRename,
@@ -906,6 +927,12 @@ function DraggableContainer({
   canvasPanGesture: ReturnType<typeof Gesture.Pan>;
   containerOffsetX: SharedValue<number>;
   containerOffsetY: SharedValue<number>;
+  // True while this container is in pullMembers - something ELSE is being
+  // dragged and an 'arrow'/'doubleArrow' connection says this container
+  // (and everything geometrically inside it) comes along.
+  followsConnectionPull: boolean;
+  pullOffsetX: SharedValue<number>;
+  pullOffsetY: SharedValue<number>;
   onDragStart: (id: string) => void;
   onDragEnd: (id: string, dx: number, dy: number) => void;
   onRename: (container: BoardContainer) => void;
@@ -925,6 +952,8 @@ function DraggableContainer({
     posY.value = container.y;
     containerOffsetX.value = 0;
     containerOffsetY.value = 0;
+    pullOffsetX.value = 0;
+    pullOffsetY.value = 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [container.x, container.y]);
 
@@ -937,6 +966,8 @@ function DraggableContainer({
     .onChange((e) => {
       containerOffsetX.value += e.changeX / canvasScale.value;
       containerOffsetY.value += e.changeY / canvasScale.value;
+      pullOffsetX.value += e.changeX / canvasScale.value;
+      pullOffsetY.value += e.changeY / canvasScale.value;
     })
     .onEnd(() => {
       runOnJS(onDragEnd)(container.id, containerOffsetX.value, containerOffsetY.value);
@@ -959,8 +990,18 @@ function DraggableContainer({
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateX: posX.value + (isDragging ? containerOffsetX.value : 0) },
-      { translateY: posY.value + (isDragging ? containerOffsetY.value : 0) },
+      {
+        translateX:
+          posX.value +
+          (isDragging ? containerOffsetX.value : 0) +
+          (followsConnectionPull ? pullOffsetX.value : 0),
+      },
+      {
+        translateY:
+          posY.value +
+          (isDragging ? containerOffsetY.value : 0) +
+          (followsConnectionPull ? pullOffsetY.value : 0),
+      },
     ],
   }));
 
@@ -1075,6 +1116,15 @@ type DraggableCardProps = {
   followsContainerDrag: boolean;
   containerOffsetX: SharedValue<number>;
   containerOffsetY: SharedValue<number>;
+  // True while this card is in pullMembers - something ELSE is being
+  // dragged and an 'arrow'/'doubleArrow' connection says this card comes
+  // along (see pulledIdsFrom). Same additive-offset shape as the other
+  // three; all four can in principle be non-zero for the same card at
+  // once (a member of a dragged column that ALSO happens to be pulled by
+  // an unrelated arrow, say), and they simply add.
+  followsConnectionPull: boolean;
+  pullOffsetX: SharedValue<number>;
+  pullOffsetY: SharedValue<number>;
   // Every card's bounds, and the board's own guide shared values - see
   // GUIDE_COLOR. Only read while THIS card is the one being dragged
   // (isGroupDrag false); a card's own entry is skipped by id.
@@ -1148,6 +1198,9 @@ function DraggableCard({
   followsContainerDrag,
   containerOffsetX,
   containerOffsetY,
+  followsConnectionPull,
+  pullOffsetX,
+  pullOffsetY,
   allCardBounds,
   guideVX,
   guideVVisible,
@@ -1205,6 +1258,10 @@ function DraggableCard({
     // followsContainerDrag's own comment.
     containerOffsetX.value = 0;
     containerOffsetY.value = 0;
+    // And again for a connection's own pull - see followsConnectionPull's
+    // own comment.
+    pullOffsetX.value = 0;
+    pullOffsetY.value = 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card.x, card.y]);
 
@@ -1245,6 +1302,8 @@ function DraggableCard({
       } else {
         posX.value += e.changeX / canvasScale.value;
         posY.value += e.changeY / canvasScale.value;
+        pullOffsetX.value += e.changeX / canvasScale.value;
+        pullOffsetY.value += e.changeY / canvasScale.value;
         // Told to JS only every few points of travel: it is the answer to
         // "which column would catch this", and asking that on every frame
         // of a drag costs far more than it is worth.
@@ -1365,14 +1424,16 @@ function DraggableCard({
           posX.value +
           (isSelected ? groupOffsetX.value : 0) +
           (followsColumnDrag ? columnOffsetX.value : 0) +
-          (followsContainerDrag ? containerOffsetX.value : 0),
+          (followsContainerDrag ? containerOffsetX.value : 0) +
+          (followsConnectionPull ? pullOffsetX.value : 0),
       },
       {
         translateY:
           posY.value +
           (isSelected ? groupOffsetY.value : 0) +
           (followsColumnDrag ? columnOffsetY.value : 0) +
-          (followsContainerDrag ? containerOffsetY.value : 0),
+          (followsContainerDrag ? containerOffsetY.value : 0) +
+          (followsConnectionPull ? pullOffsetY.value : 0),
       },
     ],
   }));
@@ -1683,6 +1744,9 @@ function DraggableShape({
   followsContainerDrag,
   containerOffsetX,
   containerOffsetY,
+  followsConnectionPull,
+  pullOffsetX,
+  pullOffsetY,
   dimmed,
 }: {
   shape: BoardShape;
@@ -1699,6 +1763,11 @@ function DraggableShape({
   followsContainerDrag: boolean;
   containerOffsetX: SharedValue<number>;
   containerOffsetY: SharedValue<number>;
+  // True while this shape is in pullMembers - see DraggableCard's own
+  // identical comment.
+  followsConnectionPull: boolean;
+  pullOffsetX: SharedValue<number>;
+  pullOffsetY: SharedValue<number>;
   // True while isolation is active and this shape is outside the
   // isolated chain.
   dimmed: boolean;
@@ -1737,6 +1806,8 @@ function DraggableShape({
     // column offset.
     containerOffsetX.value = 0;
     containerOffsetY.value = 0;
+    pullOffsetX.value = 0;
+    pullOffsetY.value = 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shape.x, shape.y]);
 
@@ -1752,6 +1823,8 @@ function DraggableShape({
     .onChange((e) => {
       posX.value += e.changeX / canvasScale.value;
       posY.value += e.changeY / canvasScale.value;
+      pullOffsetX.value += e.changeX / canvasScale.value;
+      pullOffsetY.value += e.changeY / canvasScale.value;
     })
     .onEnd(() => {
       reportedX.value = posX.value;
@@ -1772,8 +1845,18 @@ function DraggableShape({
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateX: posX.value + (followsContainerDrag ? containerOffsetX.value : 0) },
-      { translateY: posY.value + (followsContainerDrag ? containerOffsetY.value : 0) },
+      {
+        translateX:
+          posX.value +
+          (followsContainerDrag ? containerOffsetX.value : 0) +
+          (followsConnectionPull ? pullOffsetX.value : 0),
+      },
+      {
+        translateY:
+          posY.value +
+          (followsContainerDrag ? containerOffsetY.value : 0) +
+          (followsConnectionPull ? pullOffsetY.value : 0),
+      },
     ],
   }));
 
@@ -1974,6 +2057,17 @@ export default function BoardScreen() {
     cardIds: new Set(),
     shapeIds: new Set(),
   });
+  // Whatever an 'arrow'/'doubleArrow' connection says should move along
+  // with whichever card/shape/container is being dragged right now - see
+  // pulledIdsFrom's own comment. Same snapshot-once-at-drag-start shape as
+  // containerDragMembers, for the same reason (nothing in it can change
+  // mid-drag), just carrying container ids too since a pulled container
+  // moves as a whole rather than only ever being someone else's member.
+  const [pullMembers, setPullMembers] = useState<{
+    cardIds: Set<string>;
+    shapeIds: Set<string>;
+    containerIds: Set<string>;
+  }>({ cardIds: new Set(), shapeIds: new Set(), containerIds: new Set() });
   // Organisational, not spatial - see BoardLayer. `layersDrawerVisible`
   // is the "Шари" bead's own sheet.
   const [layers, setLayers] = useState<BoardLayer[]>([]);
@@ -2049,6 +2143,12 @@ export default function BoardScreen() {
   // containerDragMembers for how "inside it" is decided).
   const containerOffsetX = useSharedValue(0);
   const containerOffsetY = useSharedValue(0);
+  // Same idea again, for a connection's own 'arrow'/'doubleArrow' pull -
+  // written by whichever card/shape/container is actually being dragged,
+  // read by everything pulledIdsFrom (below) put in pullMembers, whatever
+  // mix of kinds that turns out to be.
+  const pullOffsetX = useSharedValue(0);
+  const pullOffsetY = useSharedValue(0);
   // A dragged card's own alignment guides - see GUIDE_COLOR. Written
   // entirely on the UI thread from inside DraggableCard's own pan
   // gesture (no runOnJS: there is nothing here JS needs to decide), read
@@ -3366,6 +3466,10 @@ export default function BoardScreen() {
   function handleDragStart(id: string) {
     hapticPickUp();
     setDraggedCardId(id);
+    // A group drag (see isGroupDrag) already has its own way of moving
+    // several cards together - connection-pull is for a SOLO drag only,
+    // to keep the two mechanisms from having to reconcile with each other.
+    if (!(selectedCardIds.has(id) && selectedCardIds.size > 1)) beginConnectionPull(id);
   }
 
   function measureCard(id: string, height: number) {
@@ -3412,6 +3516,12 @@ export default function BoardScreen() {
 
   function commitCardDrag(id: string, x: number, y: number) {
     setHoverColumnId(null);
+    // Read before the update below, while `cards` (this render's own
+    // closure) still holds where the card was BEFORE this drag - nothing
+    // else can have moved it in the meantime, a drag's own live motion
+    // never touches this state until now (see the position registry's
+    // own comment).
+    const before = cards.find((c) => c.id === id);
     setCards((prev) => {
       const dropped = prev.map((c) => (c.id === id ? { ...c, x, y } : c));
       const card = dropped.find((c) => c.id === id);
@@ -3441,6 +3551,7 @@ export default function BoardScreen() {
       return reflowColumns(assigned, columns, cardHeights);
     });
     setDraggedCardId(null);
+    if (before) commitConnectionPull(x - before.x, y - before.y);
   }
 
   // Dragging any one selected card moves the whole selection - see
@@ -4271,6 +4382,7 @@ export default function BoardScreen() {
     setDraggingContainerId(id);
     const container = containers.find((c) => c.id === id);
     setContainerDragMembers(container ? containerMembersAt(container) : { cardIds: new Set(), shapeIds: new Set() });
+    beginConnectionPull(id);
   }
 
   // The container and every member it was carrying at the start of THIS
@@ -4289,6 +4401,89 @@ export default function BoardScreen() {
     }
     setDraggingContainerId(null);
     setContainerDragMembers({ cardIds: new Set(), shapeIds: new Set() });
+    commitConnectionPull(dx, dy);
+  }
+
+  // CONNECTION-PULL MOVEMENT - see BoardConnection's own comment on
+  // 'arrow'/'doubleArrow'. Computed once, at the instant a drag starts
+  // (same moment containerMembersAt is, and for the same reason:
+  // recomputed fresh rather than kept in a stored field, since the graph
+  // can change between drags).
+  //
+  // A cycle in the arrow graph (A pulls B pulls C pulls A) is deliberately
+  // NOT forbidden - the visited set below just means each node is only
+  // ever added once, so a cycle reads as "this whole ring moves
+  // together", a sensible outcome rather than a bug to guard against.
+  function pulledIdsFrom(startId: string): Set<string> {
+    const visited = new Set<string>([startId]);
+    const queue = [startId];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      for (const c of connections) {
+        const kind = c.kind ?? 'plain';
+        if (kind === 'plain') continue;
+        if (c.fromCardId === current && !visited.has(c.toCardId)) {
+          visited.add(c.toCardId);
+          queue.push(c.toCardId);
+        }
+        if (kind === 'doubleArrow' && c.toCardId === current && !visited.has(c.fromCardId)) {
+          visited.add(c.fromCardId);
+          queue.push(c.fromCardId);
+        }
+      }
+    }
+    visited.delete(startId);
+    return visited;
+  }
+
+  // A pulled container carries everything geometrically inside it too -
+  // the user's own call: "якщо область прив'язана з лінією, то ми тягнемо
+  // всю область" - the same membership test a direct container drag
+  // already uses (containerMembersAt).
+  function expandPulledContainers(
+    ids: Set<string>
+  ): { cardIds: Set<string>; shapeIds: Set<string>; containerIds: Set<string> } {
+    const cardIds = new Set<string>();
+    const shapeIds = new Set<string>();
+    const containerIds = new Set<string>();
+    ids.forEach((id) => {
+      if (cardById.has(id)) {
+        cardIds.add(id);
+        return;
+      }
+      const shape = shapes.find((s) => s.id === id);
+      if (shape) {
+        shapeIds.add(id);
+        return;
+      }
+      const container = containers.find((c) => c.id === id);
+      if (container) {
+        containerIds.add(id);
+        const members = containerMembersAt(container);
+        members.cardIds.forEach((cid) => cardIds.add(cid));
+        members.shapeIds.forEach((sid) => shapeIds.add(sid));
+      }
+    });
+    return { cardIds, shapeIds, containerIds };
+  }
+
+  function beginConnectionPull(id: string) {
+    setPullMembers(expandPulledContainers(pulledIdsFrom(id)));
+  }
+
+  function commitConnectionPull(dx: number, dy: number) {
+    const { cardIds, shapeIds, containerIds } = pullMembers;
+    if (cardIds.size === 0 && shapeIds.size === 0 && containerIds.size === 0) return;
+    if (cardIds.size > 0) {
+      setCards((prev) => prev.map((c) => (cardIds.has(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
+    }
+    if (shapeIds.size > 0) {
+      setShapes((prev) => prev.map((sh) => (shapeIds.has(sh.id) ? { ...sh, x: sh.x + dx, y: sh.y + dy } : sh)));
+    }
+    if (containerIds.size > 0) {
+      setContainers((prev) => prev.map((c) => (containerIds.has(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
+    }
+    setPullMembers({ cardIds: new Set(), shapeIds: new Set(), containerIds: new Set() });
   }
 
   function liveEndpointFor(node: BoardNode): LiveEndpoint {
@@ -4303,6 +4498,12 @@ export default function BoardScreen() {
       (node.id === draggingContainerId ||
         containerDragMembers.cardIds.has(node.id) ||
         containerDragMembers.shapeIds.has(node.id));
+    // True for anything pulledIdsFrom put in pullMembers - see
+    // followsConnectionPull's own comment.
+    const inPull =
+      pullMembers.cardIds.has(node.id) ||
+      pullMembers.shapeIds.has(node.id) ||
+      pullMembers.containerIds.has(node.id);
     const position = positionFor(node.id, node.x, node.y);
     return {
       posX: position.x,
@@ -4313,6 +4514,8 @@ export default function BoardScreen() {
       columnOffsetY: inColumnDrag ? columnOffsetY : null,
       containerOffsetX: inContainerDrag ? containerOffsetX : null,
       containerOffsetY: inContainerDrag ? containerOffsetY : null,
+      pullOffsetX: inPull ? pullOffsetX : null,
+      pullOffsetY: inPull ? pullOffsetY : null,
       width: node.width,
       height: node.height,
     };
@@ -4338,10 +4541,18 @@ export default function BoardScreen() {
   const containerMovingIds = draggingContainerId
     ? new Set([draggingContainerId, ...containerDragMembers.cardIds, ...containerDragMembers.shapeIds])
     : null;
-  const allMovingIds =
-    containerMovingIds && movingIds
-      ? new Set([...movingIds, ...containerMovingIds])
-      : (containerMovingIds ?? movingIds);
+  // Whatever pullMembers is currently holding also counts as "moving" for
+  // the connections loop below - a line between two PULLED nodes (neither
+  // one actually under the finger) still has to draw live, or it visibly
+  // lags behind both ends while they slide together.
+  const pullMovingIds =
+    pullMembers.cardIds.size > 0 || pullMembers.shapeIds.size > 0 || pullMembers.containerIds.size > 0
+      ? new Set([...pullMembers.cardIds, ...pullMembers.shapeIds, ...pullMembers.containerIds])
+      : null;
+  const allMovingIds = [movingIds, containerMovingIds, pullMovingIds].reduce<Set<string> | null>(
+    (acc, ids) => (ids ? (acc ? new Set([...acc, ...ids]) : new Set(ids)) : acc),
+    null
+  );
   const selectionHasConnections = connections.some(
     (c) => selectedCardIds.has(c.fromCardId) || selectedCardIds.has(c.toCardId)
   );
@@ -4528,6 +4739,9 @@ export default function BoardScreen() {
                   canvasPanGesture={canvasBlockingGesture}
                   containerOffsetX={containerOffsetX}
                   containerOffsetY={containerOffsetY}
+                  followsConnectionPull={pullMembers.containerIds.has(frame.id)}
+                  pullOffsetX={pullOffsetX}
+                  pullOffsetY={pullOffsetY}
                   onDragStart={startContainerDrag}
                   onDragEnd={commitContainerDrag}
                   onRename={(c) => (isolateArmed ? pickIsolationAnchor(c.id) : setRenamingContainer(c))}
@@ -4578,7 +4792,10 @@ export default function BoardScreen() {
                   isSelected={shape.id === selectedShapeId || selectedShapeIds.has(shape.id)}
                   posX={positionFor(shape.id, shape.x, shape.y).x}
                   posY={positionFor(shape.id, shape.x, shape.y).y}
-                  onDragStart={setDraggedShapeId}
+                  onDragStart={(id) => {
+                    setDraggedShapeId(id);
+                    beginConnectionPull(id);
+                  }}
                   dragEnabled={canvasTool !== 'connect' && canvasTool !== 'hand' && !isLocked(shape)}
                   canvasScale={scale}
                   canvasPanGesture={canvasBlockingGesture}
@@ -4590,12 +4807,17 @@ export default function BoardScreen() {
                   }}
                   onDragEnd={(id, x, y) => {
                     setDraggedShapeId(null);
+                    const before = shapes.find((s) => s.id === id);
                     moveShape(id, x, y);
+                    if (before) commitConnectionPull(x - before.x, y - before.y);
                   }}
                   onResize={resizeShape}
                   followsContainerDrag={draggingContainerId !== null && containerDragMembers.shapeIds.has(shape.id)}
                   containerOffsetX={containerOffsetX}
                   containerOffsetY={containerOffsetY}
+                  followsConnectionPull={pullMembers.shapeIds.has(shape.id)}
+                  pullOffsetX={pullOffsetX}
+                  pullOffsetY={pullOffsetY}
                   dimmed={isolatedIds !== null && !isolatedIds.has(shape.id)}
                 />
               ))}
@@ -4758,6 +4980,9 @@ export default function BoardScreen() {
                     followsContainerDrag={draggingContainerId !== null && containerDragMembers.cardIds.has(card.id)}
                     containerOffsetX={containerOffsetX}
                     containerOffsetY={containerOffsetY}
+                    followsConnectionPull={pullMembers.cardIds.has(card.id)}
+                    pullOffsetX={pullOffsetX}
+                    pullOffsetY={pullOffsetY}
                     allCardBounds={cardBoundsForGuides}
                     guideVX={guideVX}
                     guideVVisible={guideVVisible}
