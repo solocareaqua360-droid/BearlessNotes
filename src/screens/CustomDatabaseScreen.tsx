@@ -65,6 +65,7 @@ import {
   CustomDatabaseView,
   DateRangeValue,
   FieldDef,
+  FieldOption,
   FieldType,
   Group,
   RelationTarget,
@@ -259,6 +260,12 @@ export default function CustomDatabaseScreen({
   // in the same prefs doc the rest of the view state already lives in.
   const [scheduleViewId, setScheduleViewId] = useState<string | null>(null);
   const [scheduleSetupVisible, setScheduleSetupVisible] = useState(false);
+  // Non-null while editing an EXISTING schedule's own configuration
+  // (relation field / date field / manual statuses) rather than creating
+  // a new one - "не розумію де ручні статуси... як їх налаштовувати" was
+  // exactly this: there was a way to SET them once, at creation, and no
+  // way back in afterwards.
+  const [scheduleEditView, setScheduleEditView] = useState<CustomDatabaseView | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   // 'params' is the one window that carries sorting, filtering and
   // grouping on three tabs - they were three separate anchored lists, and
@@ -876,6 +883,18 @@ export default function CustomDatabaseScreen({
     });
   }
 
+  // Keeps a status's own id (and colour) when its label survives an edit
+  // unchanged, so cells already tagged with it don't silently go blank -
+  // only a genuinely NEW name gets a fresh id, and a removed one is just
+  // dropped (any cell still pointing at it renders as empty, which is the
+  // same as never having matched anything).
+  function mergeManualStatuses(existing: FieldOption[], names: string[]): FieldOption[] {
+    return names.map((label, i) => {
+      const prior = existing.find((o) => o.label === label);
+      return prior ?? { id: generateId(), label, color: TAG_COLORS[(existing.length + i) % TAG_COLORS.length] };
+    });
+  }
+
   // 'schedule' is never reached through changeViewMode/saveCurrentAsView -
   // it has real configuration (which relation field supplies the rows,
   // which date field spans the columns) that "the screen's current state"
@@ -887,11 +906,7 @@ export default function CustomDatabaseScreen({
     if (!relationField || relationField.relationTarget?.kind !== 'customDb') return;
     setScheduleSetupVisible(false);
     const id = generateId();
-    const manualStatuses = statusNames.map((label, i) => ({
-      id: generateId(),
-      label,
-      color: TAG_COLORS[i % TAG_COLORS.length],
-    }));
+    const manualStatuses = mergeManualStatuses([], statusNames);
     await setDoc(doc(db, 'customDatabaseViews', id), {
       databaseId,
       name: name.trim() || 'Графік',
@@ -910,6 +925,31 @@ export default function CustomDatabaseScreen({
     });
     await setDoc(prefsDoc, { viewMode: 'schedule', scheduleViewId: id }, { merge: true });
     closeParamList();
+  }
+
+  // The way back in to a schedule's own configuration - see
+  // scheduleEditView's own comment on why this exists at all.
+  async function updateScheduleView(
+    view: CustomDatabaseView,
+    relationFieldId: string,
+    dateFieldId: string,
+    name: string,
+    statusNames: string[]
+  ) {
+    const relationField = database?.fields.find((f) => f.id === relationFieldId);
+    if (!relationField || relationField.relationTarget?.kind !== 'customDb') return;
+    setScheduleEditView(null);
+    const manualStatuses = mergeManualStatuses(view.scheduleConfig?.manualStatuses ?? [], statusNames);
+    await updateDoc(doc(db, 'customDatabaseViews', view.id), {
+      name: name.trim() || view.name,
+      scheduleConfig: {
+        rowDatabaseId: relationField.relationTarget.databaseId,
+        rowRelationFieldId: relationFieldId,
+        dateFieldId,
+        ...(manualStatuses.length > 0 ? { manualStatuses } : {}),
+      },
+      updatedAt: Date.now(),
+    });
   }
 
   // Reached from the main "Вигляд" picker, right beside Список/Картки/
@@ -982,10 +1022,19 @@ export default function CustomDatabaseScreen({
     ask({
       title: view.name,
       actions: [
+        // Only a schedule has its own separate configuration (row field,
+        // date field, manual statuses) worth reopening - the other three
+        // modes' own "state" is just whatever sort/filter is already
+        // showing, edited by using them normally rather than a settings
+        // screen of their own.
+        ...(view.viewMode === 'schedule'
+          ? [{ id: 'edit', label: 'Налаштування графіка', icon: 'options-outline' as const }]
+          : []),
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
         { id: 'delete', label: 'Видалити', tone: 'danger', icon: 'trash-outline' },
       ],
     }).then((answer) => {
+      if (answer === 'edit') setScheduleEditView(view);
       if (answer === 'rename') setViewPrompt({ mode: 'rename', view });
       if (answer === 'delete') deleteDoc(doc(db, 'customDatabaseViews', view.id));
     });
@@ -2051,8 +2100,20 @@ export default function CustomDatabaseScreen({
                     ))}
                     {/* A 4th way to look at the database, same as the other
                         three - not "create a schedule", which lives one
-                        level down (see selectScheduleView's own comment). */}
-                    <Pressable style={styles.paramOption} onPress={selectScheduleView}>
+                        level down (see selectScheduleView's own comment).
+                        A long press is the direct way back into its own
+                        config (relation/date field, manual statuses) -
+                        "не розумію де ручні статуси... як їх
+                        налаштовувати" was exactly this being undiscoverable
+                        anywhere near where "Графік" itself lives. */}
+                    <Pressable
+                      style={styles.paramOption}
+                      onPress={selectScheduleView}
+                      onLongPress={() => {
+                        const existing = savedViews.find((v) => v.viewMode === 'schedule');
+                        if (existing) openSavedViewMenu(existing);
+                      }}
+                    >
                       <Ionicons
                         name={VIEW_ICONS.schedule}
                         size={14}
@@ -2486,11 +2547,19 @@ export default function CustomDatabaseScreen({
       />
 
       <ScheduleViewSetupSheet
-        visible={scheduleSetupVisible}
+        visible={scheduleSetupVisible || scheduleEditView !== null}
+        editingView={scheduleEditView}
         relationFields={scheduleRelationFields}
         dateFields={scheduleDateFields}
-        onCancel={() => setScheduleSetupVisible(false)}
-        onCreate={createScheduleView}
+        onCancel={() => {
+          setScheduleSetupVisible(false);
+          setScheduleEditView(null);
+        }}
+        onSubmit={(relationFieldId, dateFieldId, name, statusNames) =>
+          scheduleEditView
+            ? updateScheduleView(scheduleEditView, relationFieldId, dateFieldId, name, statusNames)
+            : createScheduleView(relationFieldId, dateFieldId, name, statusNames)
+        }
       />
 
       <ImportTableSheet
@@ -4001,16 +4070,18 @@ const makeMiniStyles = (t: Theme) => StyleSheet.create({
 // eligible ones, so an empty state here never has to be drawn.
 function ScheduleViewSetupSheet({
   visible,
+  editingView,
   relationFields,
   dateFields,
   onCancel,
-  onCreate,
+  onSubmit,
 }: {
   visible: boolean;
+  editingView: CustomDatabaseView | null;
   relationFields: FieldDef[];
   dateFields: FieldDef[];
   onCancel: () => void;
-  onCreate: (relationFieldId: string, dateFieldId: string, name: string, statusNames: string[]) => void;
+  onSubmit: (relationFieldId: string, dateFieldId: string, name: string, statusNames: string[]) => void;
 }) {
   const miniStyles = useStyles(makeMiniStyles);
   const [relationFieldId, setRelationFieldId] = useState<string | null>(null);
@@ -4021,13 +4092,14 @@ function ScheduleViewSetupSheet({
 
   useEffect(() => {
     if (visible && !wasVisibleRef.current) {
-      setRelationFieldId(relationFields[0]?.id ?? null);
-      setDateFieldId(dateFields[0]?.id ?? null);
-      setName('');
-      setStatusesText('');
+      const config = editingView?.scheduleConfig;
+      setRelationFieldId(config?.rowRelationFieldId ?? relationFields[0]?.id ?? null);
+      setDateFieldId(config?.dateFieldId ?? dateFields[0]?.id ?? null);
+      setName(editingView?.name ?? '');
+      setStatusesText(config?.manualStatuses?.map((s) => s.label).join(', ') ?? '');
     }
     wasVisibleRef.current = visible;
-  }, [visible, relationFields, dateFields]);
+  }, [visible, editingView, relationFields, dateFields]);
 
   if (!visible) return null;
 
@@ -4035,7 +4107,7 @@ function ScheduleViewSetupSheet({
     <GlassLayer visible={visible} onClose={onCancel}>
       <Pressable style={miniStyles.backdrop} onPress={onCancel}>
         <Pressable style={miniStyles.card} onPress={() => {}}>
-          <Text style={miniStyles.scheduleTitle}>Новий графік</Text>
+          <Text style={miniStyles.scheduleTitle}>{editingView ? 'Редагувати графік' : 'Новий графік'}</Text>
           <Text style={miniStyles.scheduleSectionLabel}>Рядки за полем</Text>
           {relationFields.map((field) => (
             <Pressable
@@ -4095,7 +4167,7 @@ function ScheduleViewSetupSheet({
               onPress={() =>
                 relationFieldId &&
                 dateFieldId &&
-                onCreate(
+                onSubmit(
                   relationFieldId,
                   dateFieldId,
                   name,
@@ -4106,7 +4178,7 @@ function ScheduleViewSetupSheet({
                 )
               }
             >
-              <Text style={miniStyles.confirmButtonLabel}>Створити</Text>
+              <Text style={miniStyles.confirmButtonLabel}>{editingView ? 'Зберегти' : 'Створити'}</Text>
             </Pressable>
           </View>
         </Pressable>
