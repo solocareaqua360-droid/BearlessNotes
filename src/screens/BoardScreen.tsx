@@ -1895,6 +1895,15 @@ export default function BoardScreen() {
   const [isolatedIds, setIsolatedIds] = useState<Set<string> | null>(null);
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const [connections, setConnections] = useState<BoardConnection[]>([]);
+  // Tapping the LINE ITSELF selects it and shows a small "×" beside it -
+  // the disconnect action lives on card multi-select too (see
+  // disconnectSelectedCards), but that only ever covers CARDS, and a
+  // connection can now join a shape or a container just as well (see
+  // BoardConnection's own fromCardId/toCardId - despite the name, either
+  // end can be any node kind). Neither has a multi-select of its own, so
+  // this is the only way to remove one of those - the user's own ask,
+  // and also just how every other canvas app lets you cancel a line.
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
   // The board's own furniture - see BoardShape. A list of its OWN, never
   // merged into `cards`, so nothing that collects, groups or exports
   // cards can ever pick one up.
@@ -2688,8 +2697,14 @@ export default function BoardScreen() {
   const clearSelection = useCallback(() => {
     setSelectedShapeId(null);
     setSelectedCardIds(new Set());
+    setSelectedConnectionId(null);
     setCanvasTool('move');
   }, []);
+
+  function deleteConnection(id: string) {
+    setConnections((prev) => prev.filter((c) => c.id !== id));
+    setSelectedConnectionId(null);
+  }
 
   const clearSelectionGesture = Gesture.Tap()
     .maxDuration(250)
@@ -4383,21 +4398,45 @@ export default function BoardScreen() {
                 const top = Math.min(y1, y2) - CONNECTION_PADDING;
                 const width = Math.abs(x2 - x1) + CONNECTION_PADDING * 2;
                 const height = Math.abs(y2 - y1) + CONNECTION_PADDING * 2;
+                const isSelected = selectedConnectionId === connection.id;
+                // Tapping the line selects it and shows the "×" beside it -
+                // see selectedConnectionId's own comment for why this has
+                // to exist alongside disconnectSelectedCards, not instead
+                // of it. The whole padded box counts as "on the line"
+                // rather than hit-testing the curve itself: close enough
+                // for a connection this short, and far simpler than
+                // distance-to-bezier math.
+                const connectionTapGesture = Gesture.Tap()
+                  .maxDuration(250)
+                  .enabled(canvasTool === 'move')
+                  .onEnd((_e, success) => {
+                    if (success) runOnJS(setSelectedConnectionId)(connection.id);
+                  });
                 return (
-                  <Svg
-                    key={connection.id}
-                    style={[styles.connection, { left, top }]}
-                    width={width}
-                    height={height}
-                    pointerEvents="none"
-                  >
-                    <Path
-                      d={curvePath(x1 - left, y1 - top, x2 - left, y2 - top, vertical)}
-                      stroke={CONNECTION_COLOR}
-                      strokeWidth={2}
-                      fill="none"
-                    />
-                  </Svg>
+                  <View key={connection.id} style={[styles.connection, { left, top, width, height }]}>
+                    <GestureDetector gesture={connectionTapGesture}>
+                      <Svg width={width} height={height}>
+                        <Path
+                          d={curvePath(x1 - left, y1 - top, x2 - left, y2 - top, vertical)}
+                          stroke={isSelected ? SELECTION_COLOR : CONNECTION_COLOR}
+                          strokeWidth={isSelected ? 3 : 2}
+                          fill="none"
+                        />
+                      </Svg>
+                    </GestureDetector>
+                    {isSelected && (
+                      <Pressable
+                        hitSlop={8}
+                        style={[
+                          styles.connectionDeleteButton,
+                          { left: (x1 + x2) / 2 - left - 11, top: (y1 + y2) / 2 - top - 11 },
+                        ]}
+                        onPress={() => deleteConnection(connection.id)}
+                      >
+                        <Ionicons name="close" size={14} color="#fff" />
+                      </Pressable>
+                    )}
+                  </View>
                 );
               })}
 
@@ -5395,6 +5434,19 @@ const makeStyles = (theme: Theme) =>
     // left/top come from each connection's own bounding box at render time.
     connection: {
       position: 'absolute',
+    },
+    // The selected connection's own "×" - left/top come from its curve's
+    // own midpoint at render time, same as connection's left/top above.
+    connectionDeleteButton: {
+      position: 'absolute',
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: SELECTION_COLOR,
+      borderWidth: 1.5,
+      borderColor: '#fff',
     },
     connectDraft: {
       position: 'absolute',
