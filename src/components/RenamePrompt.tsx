@@ -67,6 +67,20 @@ export default function RenamePrompt({
   onSave,
 }: Props) {
   const [value, setValue] = useState(initialValue);
+  // Some Android keyboards (Samsung's own, confirmed on-device) silently
+  // reset the cursor to the START of the field after every character
+  // typed instead of leaving it where it was - a whole word types out
+  // back to front ("things" -> "sgniht"), every single letter, not a
+  // flake. Pinning `selection` explicitly after each change is what
+  // overrides that; a real tap still moves it correctly, since
+  // onSelectionChange keeps this in sync with wherever the user actually
+  // put the cursor themselves.
+  const [selection, setSelection] = useState<{ start: number; end: number } | undefined>(undefined);
+
+  function handleChangeText(text: string) {
+    setValue(text);
+    setSelection({ start: text.length, end: text.length });
+  }
 
   // Lifted clear of the keyboard by hand, the way TagPicker,
   // GroupPickerSheet and FieldsEditorSheet all already do it.
@@ -91,7 +105,10 @@ export default function RenamePrompt({
   // the second one - the field has to clear with it, or the answer to the
   // first question is still sitting there.
   useEffect(() => {
-    if (visible) setValue(initialValue);
+    if (visible) {
+      setValue(initialValue);
+      setSelection({ start: initialValue.length, end: initialValue.length });
+    }
   }, [visible, initialValue, title]);
 
   return (
@@ -106,7 +123,9 @@ export default function RenamePrompt({
           autoFocus
           editable={!busy}
           value={value}
-          onChangeText={setValue}
+          onChangeText={handleChangeText}
+          selection={selection}
+          onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
           placeholder={placeholder ?? 'Назва'}
           placeholderTextColor={GLASS_TEXT_FAINT}
           multiline={multiline}
