@@ -15,7 +15,14 @@ import {
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { hapticButtonDown } from '../utils/haptics';
-import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  runOnJS,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -845,6 +852,18 @@ export default function CalendarScreen() {
   // Closed, there is no grid at all any more - only the month's name
   // above it. The "only filled days" strip is the exception: it is not a
   // week and has no month behind it, so it simply stands.
+  // TEMPORARY - the month cut off to 2 of ~5 rows, 2026-09-20 (see the
+  // memory calendar-dock-and-month-bugs). `expandAmount * monthAreaHeight`
+  // is exactly what clips the grid below, and 2/5 = 0.4 is suspiciously
+  // exact for a value stuck mid-animation rather than settled at 1 - but
+  // that was read off the code, not the device. Mirrored into plain
+  // state (a shared value read outside a worklet is not reactive) so it
+  // can go on screen and say which one it actually is.
+  const [expandAmountDbg, setExpandAmountDbg] = useState(0);
+  useAnimatedReaction(
+    () => expandAmount.value,
+    (v) => runOnJS(setExpandAmountDbg)(v)
+  );
   const gridClipStyle = useAnimatedStyle(() => ({
     height: onlyFilledDays ? weekRowHeight : monthAreaHeight * expandAmount.value,
   }), [weekRowHeight, monthAreaHeight, onlyFilledDays]);
@@ -1043,6 +1062,18 @@ export default function CalendarScreen() {
               </Animated.View>
             )}
 
+            {/* TEMPORARY - see the memory calendar-dock-and-month-bugs. */}
+            <Text
+              style={{
+                fontSize: 10,
+                color: '#fff',
+                backgroundColor: 'rgba(0,0,0,0.6)',
+                zIndex: 2000,
+              }}
+            >
+              expand:{expandAmountDbg.toFixed(2)} monthOpen:{monthOpen ? 1 : 0} isTwoPane:{isTwoPane ? 1 : 0}{' '}
+              monthRows:{monthRows} h:{Math.round(monthAreaHeight)}
+            </Text>
             <Animated.View style={[styles.gridClip, gridClipStyle]}>
               {/* The week strip is gone from here - the dock is the week
                   now, under the thumb where moving from day to day

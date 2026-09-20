@@ -1248,6 +1248,32 @@ export default function ContextDock() {
 
   return (
     <GlassPortal>
+      {/* TEMPORARY - the calendar's own bug, 2026-09-20 (see the memory
+          calendar-dock-and-month-bugs): the dock reads as a bare desks
+          pill with no beads and no split zone on a non-today day, and
+          static reading found no place beads are even gated on
+          `suppress` - so before guessing again, put the actual ground
+          truth on screen and read it back off the device. Reproduce the
+          bug, note every letter, report it, then this comes out. */}
+      <Text
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          top: 40,
+          left: 0,
+          right: 0,
+          textAlign: 'center',
+          fontSize: 11,
+          color: '#fff',
+          backgroundColor: 'rgba(0,0,0,0.6)',
+          zIndex: 2000,
+        }}
+      >
+        own:{own ? own.kind : '-'} desks:{desksCard ? '1' : '0'} ring:{ringHasOtherContent ? 1 : 0}{' '}
+        act:{actions?.length ?? '-'}(pub:{actionsPublished?.length ?? '-'}) split:{splitActive ? 1 : 0}{' '}
+        showSplit:{showSplitActions ? 1 : 0} beadL:{beads.left ? 1 : 0} beadR:{beads.right ? 1 : 0}{' '}
+        flux:{tabsInFlux ? 1 : 0} faces:{faces.join(',')} showing:{showing}
+      </Text>
       <View
         style={[styles.wrap, { bottom: DOCK_BOTTOM + bottomInset, paddingHorizontal: edgeInsetNow }]}
         pointerEvents="box-none"
