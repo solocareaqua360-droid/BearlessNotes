@@ -699,15 +699,21 @@ export interface FieldOption {
   color: string;
 }
 
-// A 'date' field's value once it covers more than one day - "у Notion
-// дата розтягується початок-кінець, і це в одній клітинці", the user's
-// own reference. A plain string (today's only shape, a dateKey) still
-// means one day; this is additive, so every existing single date stays
-// exactly as it was with nothing to migrate. `end` absent means "picked
-// as a range but no end chosen yet" reads the same as a single day.
+// A 'date' field's value once it covers more than one day, or carries a
+// time of day - "у Notion дата розтягується початок-кінець, і це в одній
+// клітинці" / "потрібно вибирати і час... у який час автомобіль вийде, у
+// який час автомобіль повернеться", both the user's own references. A
+// plain string (today's only shape, a dateKey) still means one day, no
+// time; this is additive, so every existing single date stays exactly as
+// it was with nothing to migrate. `end` absent means "picked as a range
+// but no end chosen yet" reads the same as a single day. `startTime`/
+// `endTime` ("HH:mm", 24h) are independent of whether `end` is set - a
+// same-day trip still has a departure and a return time.
 export interface DateRangeValue {
   start: string;
   end?: string;
+  startTime?: string;
+  endTime?: string;
 }
 
 // What a 'relation' field points at - the built-in Photos database, or

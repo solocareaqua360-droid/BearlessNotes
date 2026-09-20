@@ -3003,18 +3003,35 @@ function RelationPickerSheet({
   );
 }
 
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
 // A minimal month-grid date picker built on this app's own dateLocale
-// utilities (no native/date-picker dependency) - deliberately not
-// TasksScreen's ReminderSheet, which also carries time-of-day and
-// notification scheduling this field type doesn't need.
+// utilities (no native/date-picker dependency) - close kin to
+// TasksScreen's ReminderSheet (same stepper pattern for the time-of-day
+// controls), but without that one's own notification-kind choice, which
+// this field type has no use for.
 //
 // Range mode - "у Notion дата розтягується початок-кінець, і це в одній
 // клітинці", the user's own reference: a "Кінцева дата" switch turns a
 // single-day pick into a two-tap one (start, then a later day for the
-// end); a same-day second tap just confirms a one-day pick, and tapping
-// an EARLIER day than the current start restarts the range from there
-// rather than erroring. Off, the picker behaves exactly as it always
-// did - one tap, one day, closes immediately.
+// end), and tapping an EARLIER day than the current start restarts the
+// range from there rather than erroring.
+//
+// Time - "потрібно вибирати і час... у який час автомобіль вийде, у
+// який час автомобіль повернеться": a separate "Час" switch, independent
+// of the range one, since a same-day trip still has a departure AND a
+// return time - both steppers show together the moment it's on, whether
+// or not there's a separate end date.
+//
+// Neither switch confirms on its own tap any more, in either mode: a
+// mis-tap used to commit the whole pick immediately with no way back
+// short of reopening the picker ("натиснув неправильно... повинна бути
+// кнопка «Ок»") - now every tap and every stepper press only adjusts the
+// PENDING value, and the explicit "Ок" button is the only thing that
+// calls onPick. Plain single-day, no time, is the one case left that
+// still confirms on the tap itself - nothing to double-check there.
 function MiniDatePicker({
   value,
   onPick,
@@ -3024,6 +3041,7 @@ function MiniDatePicker({
   onPick: (value: DateRangeValue) => void;
   onClose: () => void;
 }) {
+  const accent = useTheme().sections.custom;
   const miniStyles = useStyles(makeMiniStyles);
   const initialRange = dateRangeOf(value);
   const initial = initialRange ? parseDateKey(initialRange.start) : new Date();
@@ -3031,8 +3049,20 @@ function MiniDatePicker({
   const [rangeMode, setRangeMode] = useState(!!initialRange?.end);
   const [pendingStart, setPendingStart] = useState<string | undefined>(initialRange?.start);
   const [pendingEnd, setPendingEnd] = useState<string | undefined>(initialRange?.end);
+  // "у який час автомобіль вийде, у який час автомобіль повернеться" -
+  // start/end time are independent of whether there's a separate END
+  // DATE: a same-day trip still has a departure and a return time, so
+  // both steppers show together the moment this is on, range or not.
+  const [timeEnabled, setTimeEnabled] = useState(!!(initialRange?.startTime || initialRange?.endTime));
+  const [startHour, setStartHour] = useState(() => (initialRange?.startTime ? Number(initialRange.startTime.split(':')[0]) : 9));
+  const [startMinute, setStartMinute] = useState(() => (initialRange?.startTime ? Number(initialRange.startTime.split(':')[1]) : 0));
+  const [endHour, setEndHour] = useState(() => (initialRange?.endTime ? Number(initialRange.endTime.split(':')[0]) : 18));
+  const [endMinute, setEndMinute] = useState(() => (initialRange?.endTime ? Number(initialRange.endTime.split(':')[1]) : 0));
   const grid = getMonthGrid(visibleMonth.year, visibleMonth.month);
   const today = new Date();
+  // Once either the range or the time steppers are in play, nothing
+  // confirms on its own tap any more - see handleDayPress's own comment.
+  const needsConfirm = rangeMode || timeEnabled;
 
   function changeMonth(delta: number) {
     setVisibleMonth((prev) => {
@@ -3041,9 +3071,31 @@ function MiniDatePicker({
     });
   }
 
+  function stepStartHour(delta: number) {
+    setStartHour((h) => (h + delta + 24) % 24);
+  }
+  function stepStartMinute(delta: number) {
+    setStartMinute((m) => (m + delta + 60) % 60);
+  }
+  function stepEndHour(delta: number) {
+    setEndHour((h) => (h + delta + 24) % 24);
+  }
+  function stepEndMinute(delta: number) {
+    setEndMinute((m) => (m + delta + 60) % 60);
+  }
+
   function handleDayPress(key: string) {
-    if (!rangeMode) {
+    if (!needsConfirm) {
       onPick({ start: key });
+      return;
+    }
+    // Neither range mode nor time confirms on its own tap any more - a
+    // mis-tap used to commit the whole pick immediately, "натиснув
+    // неправильно" with no way back except reopening the picker. Every
+    // tap here just adjusts the pending selection; the "Ок" button below
+    // is the only thing that actually calls onPick.
+    if (!rangeMode) {
+      setPendingStart(key);
       return;
     }
     if (!pendingStart || key < pendingStart) {
@@ -3051,12 +3103,18 @@ function MiniDatePicker({
       setPendingEnd(undefined);
       return;
     }
-    if (key === pendingStart) {
-      onPick({ start: key });
-      return;
+    setPendingEnd(key === pendingStart ? undefined : key);
+  }
+
+  function confirm() {
+    if (!pendingStart) return;
+    const picked: DateRangeValue = { start: pendingStart };
+    if (pendingEnd) picked.end = pendingEnd;
+    if (timeEnabled) {
+      picked.startTime = `${pad2(startHour)}:${pad2(startMinute)}`;
+      picked.endTime = `${pad2(endHour)}:${pad2(endMinute)}`;
     }
-    setPendingEnd(key);
-    onPick({ start: pendingStart, end: key });
+    onPick(picked);
   }
 
   return (
@@ -3088,6 +3146,14 @@ function MiniDatePicker({
             />
             <Text style={miniStyles.rangeToggleLabel}>Кінцева дата</Text>
           </Pressable>
+          <Pressable style={miniStyles.rangeToggleRow} onPress={() => setTimeEnabled((v) => !v)}>
+            <Ionicons
+              name={timeEnabled ? 'checkbox' : 'square-outline'}
+              size={18}
+              color={timeEnabled ? GLASS_TEXT : GLASS_TEXT_FAINT}
+            />
+            <Text style={miniStyles.rangeToggleLabel}>Час</Text>
+          </Pressable>
           <View style={miniStyles.weekdayRow}>
             {WEEKDAY_SHORT.map((w) => (
               <Text key={w} style={miniStyles.weekdayLabel}>
@@ -3100,7 +3166,9 @@ function MiniDatePicker({
               {grid.slice(row * 7, row * 7 + 7).map(({ date, inMonth }) => {
                 const key = dateKey(date);
                 const isToday = isSameDay(date, today);
-                const isSelected = rangeMode ? key === pendingStart || key === pendingEnd : value === key;
+                const isSelected = needsConfirm
+                  ? key === pendingStart || key === pendingEnd
+                  : dateRangeOf(value)?.start === key;
                 const isInRange =
                   rangeMode && !!pendingStart && !!pendingEnd && key > pendingStart && key < pendingEnd;
                 return (
@@ -3129,6 +3197,63 @@ function MiniDatePicker({
               })}
             </View>
           ))}
+          {timeEnabled && (
+            <View style={miniStyles.timeStepperBlock}>
+              <View style={miniStyles.timeStepperRow}>
+                <Text style={miniStyles.timeStepperLabel}>Виїзд</Text>
+                <View style={miniStyles.stepper}>
+                  <Pressable hitSlop={6} style={miniStyles.stepperBtn} onPress={() => stepStartHour(-1)}>
+                    <Ionicons name="remove" size={18} color={accent} />
+                  </Pressable>
+                  <Text style={miniStyles.stepperValue}>{pad2(startHour)}</Text>
+                  <Pressable hitSlop={6} style={miniStyles.stepperBtn} onPress={() => stepStartHour(1)}>
+                    <Ionicons name="add" size={18} color={accent} />
+                  </Pressable>
+                </View>
+                <Text style={miniStyles.stepperColon}>:</Text>
+                <View style={miniStyles.stepper}>
+                  <Pressable hitSlop={6} style={miniStyles.stepperBtn} onPress={() => stepStartMinute(-5)}>
+                    <Ionicons name="remove" size={18} color={accent} />
+                  </Pressable>
+                  <Text style={miniStyles.stepperValue}>{pad2(startMinute)}</Text>
+                  <Pressable hitSlop={6} style={miniStyles.stepperBtn} onPress={() => stepStartMinute(5)}>
+                    <Ionicons name="add" size={18} color={accent} />
+                  </Pressable>
+                </View>
+              </View>
+              <View style={miniStyles.timeStepperRow}>
+                <Text style={miniStyles.timeStepperLabel}>Повернення</Text>
+                <View style={miniStyles.stepper}>
+                  <Pressable hitSlop={6} style={miniStyles.stepperBtn} onPress={() => stepEndHour(-1)}>
+                    <Ionicons name="remove" size={18} color={accent} />
+                  </Pressable>
+                  <Text style={miniStyles.stepperValue}>{pad2(endHour)}</Text>
+                  <Pressable hitSlop={6} style={miniStyles.stepperBtn} onPress={() => stepEndHour(1)}>
+                    <Ionicons name="add" size={18} color={accent} />
+                  </Pressable>
+                </View>
+                <Text style={miniStyles.stepperColon}>:</Text>
+                <View style={miniStyles.stepper}>
+                  <Pressable hitSlop={6} style={miniStyles.stepperBtn} onPress={() => stepEndMinute(-5)}>
+                    <Ionicons name="remove" size={18} color={accent} />
+                  </Pressable>
+                  <Text style={miniStyles.stepperValue}>{pad2(endMinute)}</Text>
+                  <Pressable hitSlop={6} style={miniStyles.stepperBtn} onPress={() => stepEndMinute(5)}>
+                    <Ionicons name="add" size={18} color={accent} />
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          )}
+          {needsConfirm && (
+            <Pressable
+              style={[miniStyles.confirmButton, !pendingStart && miniStyles.confirmButtonDisabled]}
+              disabled={!pendingStart}
+              onPress={confirm}
+            >
+              <Text style={miniStyles.confirmButtonLabel}>Ок</Text>
+            </Pressable>
+          )}
         </Pressable>
       </Pressable>
     </GlassLayer>
@@ -3235,6 +3360,69 @@ const makeMiniStyles = (t: Theme) => StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontFamily: FONT_BOLD,
+  },
+  timeStepperBlock: {
+    marginTop: 8,
+    gap: 4,
+  },
+  timeStepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 4,
+  },
+  timeStepperLabel: {
+    width: 78,
+    fontSize: 13,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT_MUTED,
+  },
+  // Buttons sit to the LEFT and RIGHT of the number, not stacked above/
+  // below it - a thumb tapping either one never covers the digits it's
+  // supposed to be changing (same layout ReminderSheet's own stepper uses).
+  stepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  stepperBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: GLASS_CARD,
+  },
+  stepperValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    fontFamily: FONT_BOLD,
+    color: GLASS_TEXT,
+    fontVariant: ['tabular-nums'],
+    width: 26,
+    textAlign: 'center',
+  },
+  stepperColon: {
+    fontSize: 15,
+    fontWeight: '700',
+    fontFamily: FONT_BOLD,
+    color: GLASS_TEXT,
+  },
+  confirmButton: {
+    marginTop: 12,
+    borderRadius: 14,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: t.sections.custom,
+  },
+  confirmButtonDisabled: {
+    opacity: 0.4,
+  },
+  confirmButtonLabel: {
+    fontSize: 15,
+    fontFamily: FONT_SEMIBOLD,
+    color: '#fff',
   },
 });
 

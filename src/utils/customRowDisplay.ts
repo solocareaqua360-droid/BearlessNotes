@@ -16,11 +16,24 @@ function formatDateKey(key: string): string {
   return key.split('-').reverse().join('.');
 }
 
-// "12.03" for one day, "12.03–15.03" for a range with an end, "12.03–…"
-// for a range still missing its end (mid-pick, or the user left it open).
+// "12.03" for one day, "12.03–15.03" for a date range, plus a time part
+// when either time is set - "12.03 08:00–18:00" for a same-day trip with
+// a departure and return time, "12.03 08:00–15.03 18:00" once the dates
+// differ too, and just "12.03 08:00" when start and end time are the same
+// (nothing meaningful to show as a span).
 export function formatDateRange(range: DateRangeValue): string {
-  if (!range.end || range.end === range.start) return formatDateKey(range.start);
-  return `${formatDateKey(range.start)}–${formatDateKey(range.end)}`;
+  const sameDay = !range.end || range.end === range.start;
+  const dayPart = sameDay ? formatDateKey(range.start) : `${formatDateKey(range.start)}–${formatDateKey(range.end!)}`;
+  if (!range.startTime && !range.endTime) return dayPart;
+  if (sameDay) {
+    if (range.startTime && range.endTime && range.startTime !== range.endTime) {
+      return `${dayPart} ${range.startTime}–${range.endTime}`;
+    }
+    return `${dayPart} ${range.startTime ?? range.endTime}`;
+  }
+  const startLabel = formatDateKey(range.start) + (range.startTime ? ` ${range.startTime}` : '');
+  const endLabel = formatDateKey(range.end!) + (range.endTime ? ` ${range.endTime}` : '');
+  return `${startLabel}–${endLabel}`;
 }
 
 // Everything a custom-database row needs in order to be rendered anywhere
