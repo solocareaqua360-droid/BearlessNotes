@@ -68,6 +68,7 @@ import {
   FieldType,
   Group,
   RelationTarget,
+  ScheduleCellStatus,
 } from '../types';
 import { groupAppliesTo } from '../utils/groups';
 import { hapticSelectItem, hapticSnapTick, hapticSuccess, hapticToggle } from '../utils/haptics';
@@ -278,6 +279,12 @@ export default function CustomDatabaseScreen({
   // its top level, the list of fields.
   const [filterFieldId, setFilterFieldId] = useState<string | null>(null);
   const [savedViews, setSavedViews] = useState<CustomDatabaseView[]>([]);
+  // Every manual schedule status this account owns, across every schedule
+  // view - see ScheduleCellStatus's own comment. Small enough (one row per
+  // filled cell of one view) that filtering client-side by the active
+  // view's id, same tradeoff every other subscription here already makes,
+  // is simpler than a query per view.
+  const [scheduleCellStatuses, setScheduleCellStatuses] = useState<ScheduleCellStatus[]>([]);
   // { mode: 'new' } asks for a name for the current state; { mode: 'rename' }
   // carries the view being renamed.
   const [viewPrompt, setViewPrompt] = useState<{ mode: 'new' } | { mode: 'rename'; view: CustomDatabaseView } | null>(
@@ -399,6 +406,13 @@ export default function CustomDatabaseScreen({
     },
     (error) => setReadError(error.message));
   }, [databaseId]);
+
+  useEffect(() => {
+    return onSnapshot(ownedQuery('scheduleCellStatuses'), (snapshot) => {
+      setScheduleCellStatuses(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ScheduleCellStatus, 'id'>) })));
+    },
+    (error) => setReadError(error.message));
+  }, []);
 
   useEffect(() => {
     // Filtered client-side by databaseId, same "avoid a composite index"
@@ -868,11 +882,16 @@ export default function CustomDatabaseScreen({
   // has no place to keep, so it only ever comes from this dedicated flow
   // (see ScheduleViewSetupSheet) rather than from "save what's on screen
   // right now" the other three view modes use.
-  async function createScheduleView(relationFieldId: string, dateFieldId: string, name: string) {
+  async function createScheduleView(relationFieldId: string, dateFieldId: string, name: string, statusNames: string[]) {
     const relationField = database?.fields.find((f) => f.id === relationFieldId);
     if (!relationField || relationField.relationTarget?.kind !== 'customDb') return;
     setScheduleSetupVisible(false);
     const id = generateId();
+    const manualStatuses = statusNames.map((label, i) => ({
+      id: generateId(),
+      label,
+      color: TAG_COLORS[i % TAG_COLORS.length],
+    }));
     await setDoc(doc(db, 'customDatabaseViews', id), {
       databaseId,
       name: name.trim() || 'Графік',
@@ -884,6 +903,7 @@ export default function CustomDatabaseScreen({
         rowDatabaseId: relationField.relationTarget.databaseId,
         rowRelationFieldId: relationFieldId,
         dateFieldId,
+        ...(manualStatuses.length > 0 ? { manualStatuses } : {}),
       },
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -911,6 +931,46 @@ export default function CustomDatabaseScreen({
       return;
     }
     setScheduleSetupVisible(true);
+  }
+
+  // Tapping an empty (no event) day cell - "черговий" on a day with no
+  // waybill of its own. Nothing to pick when this schedule has no
+  // manualStatuses configured, so the cell simply does nothing rather
+  // than opening a picker with zero rows in it.
+  async function pickScheduleCellStatus(
+    viewId: string,
+    config: NonNullable<CustomDatabaseView['scheduleConfig']>,
+    row: CustomDatabaseRow,
+    dateKeyStr: string,
+    existing: ScheduleCellStatus | undefined
+  ) {
+    const options = config.manualStatuses ?? [];
+    if (options.length === 0) return;
+    const rowDatabase = relatedDatabases[config.rowDatabaseId] ?? null;
+    const answer = await ask({
+      title: `${rowTitleOf(rowDatabase, row)} · ${dateKeyStr.split('-').reverse().join('.')}`,
+      actions: [
+        ...options.map((o) => ({ id: o.id, label: o.label })),
+        ...(existing ? [{ id: '__clear__', label: 'Очистити', tone: 'danger' as const }] : []),
+      ],
+    });
+    if (answer === 'cancel') return;
+    if (answer === '__clear__') {
+      if (existing) await deleteDoc(doc(db, 'scheduleCellStatuses', existing.id));
+      return;
+    }
+    if (existing) {
+      await updateDoc(doc(db, 'scheduleCellStatuses', existing.id), { statusId: answer, updatedAt: Date.now() });
+      return;
+    }
+    await setDoc(doc(db, 'scheduleCellStatuses', generateId()), {
+      viewId,
+      rowId: row.id,
+      dateKey: dateKeyStr,
+      statusId: answer,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
   }
 
   async function renameSavedView(view: CustomDatabaseView, name: string) {
@@ -1678,7 +1738,7 @@ export default function CustomDatabaseScreen({
   // (relatedRows), never from this database's own `rows`/`displayedRows` -
   // a schedule with zero waybills yet should still show every driver's
   // own empty row, not the generic "Ще немає записів" state.
-  function renderSchedule(config: NonNullable<CustomDatabaseView['scheduleConfig']>) {
+  function renderSchedule(viewId: string, config: NonNullable<CustomDatabaseView['scheduleConfig']>) {
     const rowDatabase = relatedDatabases[config.rowDatabaseId] ?? null;
     const rowRecords = relatedRows[config.rowDatabaseId] ?? [];
     const windowStartDate = parseDateKey(scheduleWindowStart);
@@ -1777,19 +1837,59 @@ export default function CustomDatabaseScreen({
                   // was last set for list/table/cards and has nothing to
                   // do with a schedule (see scheduleConfig's own comment).
                   const events = rows.filter((r) => r.values[config.rowRelationFieldId] === row.id);
+                  // Every day index an event already covers on this row -
+                  // a manual status only ever applies to a day with
+                  // nothing of its own to say already (see BoardLayer's
+                  // own hide-vs-lock comment for the same "two things that
+                  // could both apply, so decide which wins" shape).
+                  const coveredDays = new Set<number>();
+                  events.forEach((eventRow) => {
+                    const range = dateRangeOf(eventRow.values[config.dateFieldId]);
+                    if (!range) return;
+                    const s = Math.max(0, dayOffset(range.start));
+                    const e = Math.min(SCHEDULE_WINDOW_DAYS - 1, dayOffset(range.end ?? range.start));
+                    for (let i = s; i <= e; i++) coveredDays.add(i);
+                  });
                   return (
                     <View key={row.id} style={styles.scheduleRowTrack}>
-                      {days.map((d) => {
+                      {days.map((d, i) => {
                         const key = dateKey(d);
+                        if (coveredDays.has(i)) {
+                          return (
+                            <View
+                              key={key}
+                              style={[
+                                styles.scheduleDayCell,
+                                key === todayKey && styles.scheduleDayCellToday,
+                                { width: SCHEDULE_DAY_WIDTH },
+                              ]}
+                            />
+                          );
+                        }
+                        const status = scheduleCellStatuses.find(
+                          (s) => s.viewId === viewId && s.rowId === row.id && s.dateKey === key
+                        );
+                        const statusOption = status
+                          ? (config.manualStatuses ?? []).find((o) => o.id === status.statusId)
+                          : undefined;
                         return (
-                          <View
+                          <Pressable
                             key={key}
                             style={[
                               styles.scheduleDayCell,
                               key === todayKey && styles.scheduleDayCellToday,
                               { width: SCHEDULE_DAY_WIDTH },
                             ]}
-                          />
+                            onPress={() => pickScheduleCellStatus(viewId, config, row, key, status)}
+                          >
+                            {statusOption && (
+                              <View style={[styles.scheduleStatusPill, { backgroundColor: statusOption.color }]}>
+                                <Text style={styles.scheduleStatusPillLabel} numberOfLines={1}>
+                                  {statusOption.label}
+                                </Text>
+                              </View>
+                            )}
+                          </Pressable>
                         );
                       })}
                       {events.map((eventRow) => {
@@ -2271,7 +2371,7 @@ export default function CustomDatabaseScreen({
         // schedule's rows come from ANOTHER database (relatedRows), so
         // zero rows in THIS one (no waybills yet) must still show every
         // driver's own empty row, not the generic "Ще немає записів".
-        renderSchedule(activeView.scheduleConfig)
+        renderSchedule(activeView.id, activeView.scheduleConfig)
       ) : isLoading ? (
         <View style={styles.emptyState}>
           <ActivityIndicator color="#fff" />
@@ -3910,12 +4010,13 @@ function ScheduleViewSetupSheet({
   relationFields: FieldDef[];
   dateFields: FieldDef[];
   onCancel: () => void;
-  onCreate: (relationFieldId: string, dateFieldId: string, name: string) => void;
+  onCreate: (relationFieldId: string, dateFieldId: string, name: string, statusNames: string[]) => void;
 }) {
   const miniStyles = useStyles(makeMiniStyles);
   const [relationFieldId, setRelationFieldId] = useState<string | null>(null);
   const [dateFieldId, setDateFieldId] = useState<string | null>(null);
   const [name, setName] = useState('');
+  const [statusesText, setStatusesText] = useState('');
   const wasVisibleRef = useRef(false);
 
   useEffect(() => {
@@ -3923,6 +4024,7 @@ function ScheduleViewSetupSheet({
       setRelationFieldId(relationFields[0]?.id ?? null);
       setDateFieldId(dateFields[0]?.id ?? null);
       setName('');
+      setStatusesText('');
     }
     wasVisibleRef.current = visible;
   }, [visible, relationFields, dateFields]);
@@ -3975,6 +4077,14 @@ function ScheduleViewSetupSheet({
             placeholder="Назва графіка"
             placeholderTextColor={GLASS_TEXT_FAINT}
           />
+          <Text style={miniStyles.scheduleSectionLabel}>Ручні статуси (необовʼязково)</Text>
+          <TextInput
+            style={miniStyles.scheduleNameInput}
+            value={statusesText}
+            onChangeText={setStatusesText}
+            placeholder="Наприклад: Черговий, Днювальний"
+            placeholderTextColor={GLASS_TEXT_FAINT}
+          />
           <View style={miniStyles.actionsRow}>
             <Pressable style={miniStyles.cancelBtn} onPress={onCancel}>
               <Text style={miniStyles.cancelBtnLabel}>Скасувати</Text>
@@ -3982,7 +4092,19 @@ function ScheduleViewSetupSheet({
             <Pressable
               style={[miniStyles.confirmButton, (!relationFieldId || !dateFieldId) && miniStyles.confirmButtonDisabled]}
               disabled={!relationFieldId || !dateFieldId}
-              onPress={() => relationFieldId && dateFieldId && onCreate(relationFieldId, dateFieldId, name)}
+              onPress={() =>
+                relationFieldId &&
+                dateFieldId &&
+                onCreate(
+                  relationFieldId,
+                  dateFieldId,
+                  name,
+                  statusesText
+                    .split(',')
+                    .map((s) => s.trim())
+                    .filter((s) => s !== '')
+                )
+              }
             >
               <Text style={miniStyles.confirmButtonLabel}>Створити</Text>
             </Pressable>
@@ -4624,6 +4746,24 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   },
   scheduleEventCardLabel: {
     fontSize: 12,
+    fontFamily: FONT_SEMIBOLD,
+    color: '#0B1220',
+  },
+  // A manual status - "черговий" - fills the WHOLE day cell rather than
+  // floating over it the way an event card does: unlike an event, it can
+  // never span more than the one day it was set on.
+  scheduleStatusPill: {
+    position: 'absolute',
+    top: 4,
+    bottom: 4,
+    left: 3,
+    right: 3,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scheduleStatusPillLabel: {
+    fontSize: 10,
     fontFamily: FONT_SEMIBOLD,
     color: '#0B1220',
   },

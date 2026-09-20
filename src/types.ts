@@ -817,10 +817,36 @@ export interface CustomDatabaseView {
     rowDatabaseId: string;
     rowRelationFieldId: string;
     dateFieldId: string;
+    // A day this schedule's own event layer leaves free can carry ONE of
+    // these instead - "черговий/днювальний" was the user's own case, but
+    // named/coloured here rather than hard-coded, since nothing about the
+    // schedule view itself is fleet-specific. Stored per (row, day) in
+    // the separate ScheduleCellStatus collection below, never on a
+    // FieldDef anywhere - it belongs to this ONE view, not to either
+    // database's own schema.
+    manualStatuses?: FieldOption[];
   };
   // documentId -> true for every document embedding this view as a 'dbView'
   // block, same shape/purpose as CustomDatabaseRow.usedInDocuments below.
   usedInDocuments?: Record<string, boolean>;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// One (row, day) cell of a schedule view carrying a manual status (see
+// CustomDatabaseView.scheduleConfig.manualStatuses) - "черговий" on a day
+// that has no waybill of its own to speak of. A flat collection rather
+// than embedded in the view or in either database's rows, because it
+// belongs to none of them alone: it's specific to ONE view's own reading
+// of the calendar, and there is no natural single owner document for a
+// per-day tag that could grow to many per row. Absence of a matching doc
+// IS "no status" - there's no separate empty/null value to store.
+export interface ScheduleCellStatus {
+  id: string;
+  viewId: string;
+  rowId: string;
+  dateKey: string;
+  statusId: string;
   createdAt: number;
   updatedAt: number;
 }
