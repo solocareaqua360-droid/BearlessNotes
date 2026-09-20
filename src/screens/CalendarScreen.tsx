@@ -37,7 +37,10 @@ import {
 } from '../firestore';
 import { ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
-import { Block } from '../types';
+import { Block, Recurrence } from '../types';
+import { createTaskOnDate } from '../utils/copyToNote';
+import { nextRecurrenceDate } from '../utils/recurrence';
+import { ReminderKind } from '../utils/reminders';
 import { RootStackParamList } from '../navigation';
 import DocumentEditorScreen, { DocumentEditorHandle } from './DocumentEditorScreen';
 import { hasNoteContent } from '../utils/documentPreview';
@@ -229,7 +232,18 @@ export default function CalendarScreen() {
   const historyDatesSorted = useMemo(() => Array.from(historyDates).sort(), [historyDates]);
   const activeDatesSorted = compactFilter === 'history' ? historyDatesSorted : filledDatesSorted;
   const [dueReminders, setDueReminders] = useState<
-    { id: string; text: string; checked: boolean; documentId: string; reminderTime?: string }[]
+    {
+      id: string;
+      text: string;
+      checked: boolean;
+      documentId: string;
+      reminderTime?: string;
+      reminderDate?: string;
+      reminderKind?: ReminderKind;
+      projectId?: string;
+      listId?: string;
+      recurrence?: Recurrence;
+    }[]
   >([]);
   // The capsule stands on the rail at the right edge now, drawn through
   // the portal for its blur - so it has to withdraw when the calendar
@@ -900,6 +914,11 @@ export default function CalendarScreen() {
           checked: !!docSnapshot.data().checked,
           documentId: docSnapshot.data().documentId,
           reminderTime: docSnapshot.data().reminderTime,
+          reminderDate: docSnapshot.data().reminderDate,
+          reminderKind: docSnapshot.data().reminderKind,
+          projectId: docSnapshot.data().projectId,
+          listId: docSnapshot.data().listId,
+          recurrence: docSnapshot.data().recurrence,
         }))
       );
     });
@@ -910,8 +929,30 @@ export default function CalendarScreen() {
   // listing it here too would just be a duplicate.
   const dueElsewhere = dueReminders.filter((r) => r.documentId !== dailyDocId);
 
-  async function toggleDueReminder(task: { id: string; checked: boolean; documentId: string }) {
+  async function toggleDueReminder(task: {
+    id: string;
+    checked: boolean;
+    documentId: string;
+    text?: string;
+    reminderDate?: string;
+    reminderTime?: string;
+    reminderKind?: ReminderKind;
+    projectId?: string;
+    listId?: string;
+    recurrence?: Recurrence;
+  }) {
     const newChecked = !task.checked;
+    // Same rule as TasksScreen's own toggleTask: checking a recurring
+    // task spins up its next occurrence, one at a time.
+    if (newChecked && task.recurrence && task.reminderDate) {
+      createTaskOnDate(task.text ?? '', nextRecurrenceDate(task.recurrence, task.reminderDate), {
+        projectId: task.projectId,
+        listId: task.listId,
+        recurrence: task.recurrence,
+        reminderTime: task.reminderTime,
+        reminderKind: task.reminderKind,
+      });
+    }
     updateDoc(doc(db, 'tasks', task.id), { checked: newChecked });
     const documentRef = doc(db, 'documents', task.documentId);
     const snapshot = await getDoc(documentRef);

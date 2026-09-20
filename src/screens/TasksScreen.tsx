@@ -31,7 +31,8 @@ import {
 } from '../firestore';
 import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
-import { Block, Project, Subtask, TaskList } from '../types';
+import { Block, Project, Recurrence, Subtask, TaskList } from '../types';
+import { nextRecurrenceDate, recurrenceLabel } from '../utils/recurrence';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import { hapticToggle } from '../utils/haptics';
 import { RootStackParamList } from '../navigation';
@@ -44,8 +45,8 @@ import CardCarryOverlay from '../components/CardCarryOverlay';
 import UndoToast from '../components/UndoToast';
 import { useSortPref } from '../hooks/useSortPref';
 import { cancelReminder, scheduleReminder, type ReminderKind } from '../utils/reminders';
-import { formatShortDate, parseDateKey } from '../utils/dateLocale';
-import { createTaskInToday } from '../utils/copyToNote';
+import { formatShortDate, parseDateKey, WEEKDAY_FULL } from '../utils/dateLocale';
+import { createTaskInToday, createTaskOnDate } from '../utils/copyToNote';
 import { sortItems } from '../utils/sortItems';
 import ContentColumn from '../components/ContentColumn';
 import { BlurView } from 'expo-blur';
@@ -98,6 +99,7 @@ type Task = {
   comment?: string;
   subtasks?: Subtask[];
   attachments?: Block[];
+  recurrence?: Recurrence;
   updatedAt: number;
   createdAt?: number;
 };
@@ -262,6 +264,8 @@ export default function TasksScreen() {
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   // Which task the file/photo picker is currently open for.
   const [attachTaskId, setAttachTaskId] = useState<string | null>(null);
+  // Which task the recurrence picker is currently open for.
+  const [recurrenceTaskId, setRecurrenceTaskId] = useState<string | null>(null);
   const [pickerTaskId, setPickerTaskId] = useState<string | null>(null);
   const [reminderTaskId, setReminderTaskId] = useState<string | null>(null);
   const [newProjectName, setNewProjectName] = useState('');
@@ -331,6 +335,7 @@ export default function TasksScreen() {
         comment: docSnapshot.data().comment,
         subtasks: docSnapshot.data().subtasks,
         attachments: docSnapshot.data().attachments,
+        recurrence: docSnapshot.data().recurrence,
         updatedAt: docSnapshot.data().updatedAt ?? 0,
         createdAt: docSnapshot.data().createdAt,
       }));
@@ -448,6 +453,7 @@ export default function TasksScreen() {
   async function toggleTask(task: Task) {
     const newChecked = !task.checked;
     hapticToggle(newChecked);
+    if (newChecked) spawnNextRecurrence(task);
     updateDoc(doc(db, 'tasks', task.id), { checked: newChecked });
     const documentRef = doc(db, 'documents', task.documentId);
     const snapshot = await getDoc(documentRef);
@@ -517,6 +523,50 @@ export default function TasksScreen() {
   function removeAttachment(task: Task, attachmentId: string) {
     const next = (task.attachments ?? []).filter((a) => a.id !== attachmentId);
     updateTaskBothSides(task, { attachments: next }, (b) => ({ ...b, attachments: next }));
+  }
+
+  // A recurring task needs a date to advance FROM (see
+  // nextRecurrenceDate) - turning recurrence on for a task with no
+  // reminder date yet gives it today's, the same way starring a task
+  // already means "reminder date is today" elsewhere in this screen.
+  function setTaskRecurrence(task: Task, recurrence: Recurrence | null) {
+    setRecurrenceTaskId(null);
+    const needsDate = recurrence && !task.reminderDate;
+    updateTaskBothSides(
+      task,
+      {
+        recurrence: recurrence ?? deleteField(),
+        ...(needsDate ? { reminderDate: today, todayMarkedDate: today } : {}),
+      },
+      (b) => {
+        const next = { ...b };
+        if (recurrence) next.recurrence = recurrence;
+        else delete next.recurrence;
+        if (needsDate) {
+          next.reminderDate = today;
+          next.todayMarkedDate = today;
+        }
+        return next;
+      }
+    );
+  }
+
+  // Fires from toggleTask/setTaskStatus wherever a task actually becomes
+  // checked - see Block.recurrence's own comment: one occurrence at a
+  // time, never a batch of future dates. Carries the rule, project and
+  // list forward; subtasks/comment/attachments belonged to the
+  // occurrence that just finished, not to the series, so they start
+  // empty on the new one.
+  function spawnNextRecurrence(task: Task) {
+    if (!task.recurrence || !task.reminderDate) return;
+    const nextDate = nextRecurrenceDate(task.recurrence, task.reminderDate);
+    createTaskOnDate(task.text, nextDate, {
+      projectId: task.projectId,
+      listId: task.listId,
+      recurrence: task.recurrence,
+      reminderTime: task.reminderTime,
+      reminderKind: task.reminderKind,
+    });
   }
 
   // The star and "reminder date is today" are meant to read as the same
@@ -644,6 +694,7 @@ export default function TasksScreen() {
     const wasDone = task.kanbanStatus === 'done';
     const willBeDone = newStatus === 'done';
     const checkedChange = willBeDone && !wasDone ? true : !willBeDone && wasDone ? false : undefined;
+    if (checkedChange) spawnNextRecurrence(task);
     updateDoc(doc(db, 'tasks', task.id), {
       kanbanStatus: newStatus,
       ...(checkedChange !== undefined ? { checked: checkedChange } : {}),
@@ -1095,6 +1146,13 @@ export default function TasksScreen() {
         <Pressable style={styles.attachButton} onPress={() => setAttachTaskId(item.id)}>
           <Ionicons name="attach-outline" size={16} color={accent} />
           <Text style={[styles.attachButtonText, { color: accent }]}>Додати файл або фото</Text>
+        </Pressable>
+
+        <Pressable style={styles.attachButton} onPress={() => setRecurrenceTaskId(item.id)}>
+          <Ionicons name="repeat-outline" size={16} color={item.recurrence ? accent : 'rgba(255,255,255,0.5)'} />
+          <Text style={[styles.attachButtonText, { color: item.recurrence ? accent : 'rgba(255,255,255,0.5)' }]}>
+            {item.recurrence ? recurrenceLabel(item.recurrence) : 'Повторення: немає'}
+          </Text>
         </Pressable>
       </View>
     );
@@ -1548,6 +1606,57 @@ export default function TasksScreen() {
           );
         })()}
 
+        <Modal
+          visible={recurrenceTaskId !== null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setRecurrenceTaskId(null)}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setRecurrenceTaskId(null)}>
+            <Pressable style={styles.modalSheet} onPress={() => {}}>
+              <View style={styles.modalHandle} />
+              <Text style={styles.modalTitle}>Повторення</Text>
+              {(() => {
+                const task = tasks.find((t) => t.id === recurrenceTaskId);
+                const apply = (r: Recurrence | null) => task && setTaskRecurrence(task, r);
+                return (
+                  <>
+                    <Pressable style={styles.modalRow} onPress={() => apply(null)}>
+                      <View style={[styles.modalDot, { backgroundColor: 'rgba(255,255,255,0.45)' }]} />
+                      <Text style={styles.modalRowText}>Немає</Text>
+                    </Pressable>
+                    <Pressable style={styles.modalRow} onPress={() => apply({ freq: 'daily' })}>
+                      <View style={[styles.modalDot, { backgroundColor: accent }]} />
+                      <Text style={styles.modalRowText}>Щодня</Text>
+                    </Pressable>
+                    <Pressable style={styles.modalRow} onPress={() => apply({ freq: 'weekly' })}>
+                      <View style={[styles.modalDot, { backgroundColor: accent }]} />
+                      <Text style={styles.modalRowText}>Щотижня</Text>
+                    </Pressable>
+                    <Pressable style={styles.modalRow} onPress={() => apply({ freq: 'monthly' })}>
+                      <View style={[styles.modalDot, { backgroundColor: accent }]} />
+                      <Text style={styles.modalRowText}>Щомісяця</Text>
+                    </Pressable>
+                    <View style={styles.modalDivider} />
+                    <Text style={styles.weekdayHint}>Або щотижня в один день:</Text>
+                    <View style={styles.weekdayRow}>
+                      {WEEKDAY_FULL.map((label, index) => (
+                        <Pressable
+                          key={label}
+                          style={styles.weekdayButton}
+                          onPress={() => apply({ freq: 'weekday', weekday: index })}
+                        >
+                          <Text style={styles.weekdayButtonText}>{label.slice(0, 2)}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </>
+                );
+              })()}
+            </Pressable>
+          </Pressable>
+        </Modal>
+
         <RenamePrompt
         visible={creating}
         title="Нова справа"
@@ -1947,6 +2056,29 @@ const makeStyles = (t: Theme) =>
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.08)',
     marginVertical: 4,
+  },
+  weekdayHint: {
+    fontSize: 12,
+    fontFamily: FONT_REGULAR,
+    color: 'rgba(255,255,255,0.5)',
+    marginBottom: 6,
+  },
+  weekdayRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 4,
+  },
+  weekdayButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  weekdayButtonText: {
+    fontSize: 13,
+    fontFamily: FONT_MEDIUM,
+    color: t.ink.primary,
   },
   modalAddRow: {
     flexDirection: 'row',

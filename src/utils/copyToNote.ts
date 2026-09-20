@@ -7,8 +7,9 @@ import {
 } from '../firestore';
 import { addDoc, setDoc } from './owned';
 import { db } from '../firebase';
-import { Block, SketchElement } from '../types';
+import { Block, Recurrence, SketchElement } from '../types';
 import { dateKey } from './dateLocale';
+import { scheduleReminder, ReminderKind } from './reminders';
 
 const documentsCollection = collection(db, 'documents');
 
@@ -266,4 +267,71 @@ export async function createTaskInToday(
     createdAt: now,
   });
   return { taskId: block.id, documentId };
+}
+
+// A recurring task's NEXT occurrence (see Recurrence, nextRecurrenceDate)
+// - the same shape createTaskInToday writes, generalised to an arbitrary
+// date and carrying forward the project/list/rule that made it. Never
+// subtasks/comment/attachments - those started attached to the
+// occurrence that just finished, not to the series itself.
+export async function createTaskOnDate(
+  text: string,
+  targetDateKey: string,
+  carry: { projectId?: string; listId?: string; recurrence?: Recurrence; reminderTime?: string; reminderKind?: ReminderKind }
+): Promise<{ taskId: string; documentId: string }> {
+  const documentId = `day_${targetDateKey}`;
+  const documentRef = doc(db, 'documents', documentId);
+  const data = (await getDoc(documentRef)).data();
+  const now = Date.now();
+  const id = generateId();
+  // Scheduled BEFORE the block/mirror are built, so the notification id
+  // lands in both writes the first time - no second round trip to patch
+  // it in afterwards.
+  const notificationId = carry.reminderTime
+    ? await scheduleReminder(text, targetDateKey, carry.reminderTime, carry.reminderKind ?? 'alarm')
+    : undefined;
+  const block: Block = {
+    id,
+    type: 'checkbox',
+    text,
+    checked: false,
+    createdAt: now,
+    reminderDate: targetDateKey,
+    ...(carry.projectId ? { projectId: carry.projectId } : {}),
+    ...(carry.listId ? { listId: carry.listId } : {}),
+    ...(carry.recurrence ? { recurrence: carry.recurrence } : {}),
+    ...(carry.reminderTime
+      ? { reminderTime: carry.reminderTime, reminderKind: carry.reminderKind ?? 'alarm' }
+      : {}),
+    ...(notificationId ? { reminderNotificationId: notificationId } : {}),
+  };
+  const blocks: Block[] = [...((data?.blocks as Block[] | undefined) ?? []), block];
+  await setDoc(
+    documentRef,
+    {
+      blocks,
+      updatedAt: now,
+      calendarDate: targetDateKey,
+      ...(data ? {} : { title: '', createdAt: now }),
+    },
+    { merge: true }
+  );
+  const taskDoc: Record<string, unknown> = {
+    text,
+    checked: false,
+    documentId,
+    updatedAt: now,
+    createdAt: now,
+    reminderDate: targetDateKey,
+  };
+  if (carry.projectId) taskDoc.projectId = carry.projectId;
+  if (carry.listId) taskDoc.listId = carry.listId;
+  if (carry.recurrence) taskDoc.recurrence = carry.recurrence;
+  if (carry.reminderTime) {
+    taskDoc.reminderTime = carry.reminderTime;
+    taskDoc.reminderKind = carry.reminderKind ?? 'alarm';
+  }
+  if (notificationId) taskDoc.reminderNotificationId = notificationId;
+  await setDoc(doc(db, 'tasks', id), taskDoc);
+  return { taskId: id, documentId };
 }

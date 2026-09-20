@@ -207,6 +207,12 @@ export interface Block {
   // (see blockFromFile/blockFromPhoto in copyToNote.ts): the task gets
   // its own copy, not a live reference back to the original.
   attachments?: Block[];
+  // 'checkbox' blocks only - see Recurrence. Checking a task that
+  // carries this creates the NEXT occurrence (one at a time, never a
+  // batch of future dates - the user's own choice) as a fresh sibling
+  // block, carrying this same rule, projectId and listId forward but
+  // never subtasks/comment/attachments, which start empty each time.
+  recurrence?: Recurrence;
   // 'link' blocks only - a paragraph containing a bare URL auto-converts
   // into one of these. text holds the original URL. Preview fields are
   // best-effort (fetched once at conversion time) and absent when nothing
@@ -252,6 +258,16 @@ export interface Subtask {
   id: string;
   text: string;
   checked: boolean;
+}
+
+// A checkbox task's own repeat rule - see Block.recurrence. `weekday` is
+// Monday-first (0=Monday..6=Sunday), matching WEEKDAY_SHORT/WEEKDAY_FULL
+// (utils/dateLocale) rather than JS's own Date.getDay() (0=Sunday) - the
+// app's own vocabulary for a day of the week, everywhere else it already
+// appears.
+export interface Recurrence {
+  freq: 'daily' | 'weekly' | 'monthly' | 'weekday';
+  weekday?: number; // only meaningful when freq === 'weekday'
 }
 
 export interface Project {
