@@ -181,15 +181,11 @@ export default function ContextDock() {
   const hasActions = !!actions?.length;
   const showDivider = hasContent && hasActions;
   const dividerSpace = showDivider ? DIVIDER_SPACE : 0;
-  // A desk (or action) button is the biggest thing four of which fit
-  // side by side in whichever zone it belongs to - the same rule either
-  // way, just measured against a different width: the card's own width
-  // when it is the only thing in the card, or the card's width alone
-  // (never counting the actions zone) when a context stands there too -
-  // an action button is sized off the room actions actually have, not
-  // off whatever the context zone happens to need this screen.
-  const contentInnerWidth = cardWidth - (showLeave ? LEAVE_W : 0);
-  const DESK = Math.min(CARD_BUTTON, Math.floor(contentInnerWidth / 4));
+  // An action button is sized off the room actions actually have -
+  // the card's whole width when actions are the only thing in it, the
+  // card's width alone (never counting the content zone) when a context
+  // shares the card too, since the content zone's own width is worked
+  // out below FROM this.
   const ACT_W = Math.floor(
     (hasContent ? cardWidth - CARD_PAD * 2 : cardWidth - CARD_PAD * 2 - (showLeave ? LEAVE_W : 0)) / 4
   );
@@ -199,17 +195,52 @@ export default function ContextDock() {
     actionsCount > 0
       ? actionsCount * ACT_W + Math.floor((actionsCount - 1) / 4) * ACTION_GROUP_GAP + CARD_PAD * 2
       : 0;
-  // The extra room a real window has beyond today's phone-capped card -
-  // only worth spending when there IS a context to share the card with.
-  // Without one, actions are already the whole card and stay at the
-  // phone's own width, scrolling internally past four exactly as they
-  // always did - the room a Fold buys is for splitting FROM something,
-  // not for making a lone actions row wider than it needs to be.
-  const roomAvailable = hasContent ? Math.max(0, windowW - EDGE_INSET * 2 - rowWidth - dividerSpace) : 0;
-  const actionsExtra = hasContent ? Math.min(actionsNeeded, roomAvailable) : 0;
-  const cardWidthNow = cardWidth + (hasContent ? dividerSpace + actionsExtra : 0);
-  const contentZoneWidth = hasContent ? cardWidthNow - dividerSpace - actionsExtra - (showLeave ? LEAVE_W : 0) : 0;
-  const actionsZoneWidth = hasContent ? actionsExtra : cardWidth - (showLeave ? LEAVE_W : 0);
+  // How much the card widens beyond today's phone-capped width, and who
+  // pays for it - a real window's own extra room, first, and only what
+  // that room cannot cover comes out of the content zone's own share.
+  //
+  // Getting this backwards is exactly what shipped first: the divider's
+  // 17pt was added to the row's width UNCONDITIONALLY once both a
+  // context and actions existed, even on a plain phone with no extra
+  // window room to pay for it - so the actions zone was left at zero
+  // width while the row itself grew 17pt past the screen's own safe
+  // width, and a real button (icon + label) rendered into that zero-
+  // width slot spilled out past the card's edge instead of being
+  // contained by it: "видно опцію в доці" on the narrow (outer) screen,
+  // jammed against the create bead. A phone has no room to spare, so
+  // content and actions have to share the SAME card there - actions
+  // capped to a fraction of it rather than added on top.
+  const roomAvailable = hasContent ? Math.max(0, windowW - EDGE_INSET * 2 - rowWidth) : 0;
+  let actionsZoneWidth = 0;
+  let contentZoneWidth = 0;
+  let cardWidthNow = cardWidth;
+  if (hasContent && hasActions) {
+    let wanted = actionsNeeded;
+    let extraNeeded = dividerSpace + wanted;
+    if (extraNeeded > roomAvailable) {
+      // The window alone cannot pay for this - cap what actions claim
+      // so the content zone keeps the larger share of the base card
+      // instead of the two splitting whatever falls short.
+      const sharedCap = Math.max(ACT_W + CARD_PAD * 2, Math.floor(cardWidth * 0.4));
+      wanted = Math.min(wanted, sharedCap);
+      extraNeeded = dividerSpace + wanted;
+    }
+    const extraFromWindow = Math.min(extraNeeded, roomAvailable);
+    const shrinkFromContent = extraNeeded - extraFromWindow;
+    cardWidthNow = cardWidth + extraFromWindow;
+    actionsZoneWidth = wanted;
+    contentZoneWidth = Math.max(0, cardWidth - (showLeave ? LEAVE_W : 0) - shrinkFromContent);
+  } else if (hasActions) {
+    actionsZoneWidth = cardWidth - (showLeave ? LEAVE_W : 0);
+  } else if (hasContent) {
+    contentZoneWidth = cardWidth - (showLeave ? LEAVE_W : 0);
+  }
+  const cardWidthExtra = cardWidthNow - cardWidth;
+  // A desk button is the biggest circle four of which fit side by side
+  // in the room the content zone actually ended up with - not the room
+  // it would have had alone, since that room shrinks the moment actions
+  // also stand in this card.
+  const DESK = Math.min(CARD_BUTTON, Math.floor(contentZoneWidth / 4));
 
   return (
     <GlassPortal>
@@ -217,7 +248,7 @@ export default function ContextDock() {
         style={[styles.wrap, { bottom: DOCK_BOTTOM + bottomInset, paddingHorizontal: EDGE_INSET }]}
         pointerEvents="box-none"
       >
-        <View style={[styles.row, { width: rowWidth + dividerSpace + actionsExtra, gap: GAP, height: CARD_H }]}>
+        <View style={[styles.row, { width: rowWidth + cardWidthExtra, gap: GAP, height: CARD_H }]}>
           {beads.left ? (
             <Bead bead={beads.left} theme={theme} lift={lift} size={BEAD} />
           ) : (
