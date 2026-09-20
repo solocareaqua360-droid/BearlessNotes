@@ -48,7 +48,7 @@ import * as Clipboard from 'expo-clipboard';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import { db } from '../firebase';
 import { BoardsStackParamList, RootStackParamList } from '../navigation';
-import { Block, BoardCard, BoardColumn, BoardConnection, BoardShape, BoardShapeKind } from '../types';
+import { Block, BoardCard, BoardColumn, BoardConnection, BoardContainer, BoardShape, BoardShapeKind } from '../types';
 import CustomRowBlockCard from '../components/CustomRowBlockCard';
 import { hapticDrop, hapticPickUp, hapticSuccess } from '../utils/haptics';
 import {
@@ -66,6 +66,12 @@ import {
   DEFAULT_CARD_WIDTH,
   WORLD_CENTER,
   WORLD_SIZE,
+  CONTAINER_HEADER_HEIGHT,
+  CONTAINER_DEFAULT_WIDTH,
+  CONTAINER_DEFAULT_HEIGHT,
+  CONTAINER_SPACING,
+  clampContainerWidth,
+  clampContainerHeight,
 } from '../utils/boardLayout';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import RenamePrompt from '../components/RenamePrompt';
@@ -697,6 +703,129 @@ function DraggableColumn({
   );
 }
 
+// A free-standing frame - see BoardContainer in types.ts. Built the same
+// way DraggableColumn is (a header that alone takes touches, everything
+// else box-none so the canvas and whatever sits on top keep their own
+// gestures) with two real differences: the fill is genuinely transparent
+// (a column's is a translucent tint) and it carries its own resize grip,
+// because its size is stored rather than derived from its members.
+function DraggableContainer({
+  container,
+  isDragging,
+  canvasScale,
+  canvasPanGesture,
+  containerOffsetX,
+  containerOffsetY,
+  onDragStart,
+  onDragEnd,
+  onRename,
+  onDelete,
+  onResize,
+}: {
+  container: BoardContainer;
+  isDragging: boolean;
+  canvasScale: SharedValue<number>;
+  canvasPanGesture: ReturnType<typeof Gesture.Pan>;
+  containerOffsetX: SharedValue<number>;
+  containerOffsetY: SharedValue<number>;
+  onDragStart: (id: string) => void;
+  onDragEnd: (id: string, dx: number, dy: number) => void;
+  onRename: (container: BoardContainer) => void;
+  onDelete: (container: BoardContainer) => void;
+  onResize: (id: string, width: number, height: number) => void;
+}) {
+  const styles = useStyles(makeStyles);
+  const posX = useSharedValue(container.x);
+  const posY = useSharedValue(container.y);
+  const reportedX = useSharedValue(container.x);
+  const reportedY = useSharedValue(container.y);
+
+  useLayoutEffect(() => {
+    if (container.x === reportedX.value && container.y === reportedY.value) return;
+    reportedX.value = container.x;
+    reportedY.value = container.y;
+    posX.value = container.x;
+    posY.value = container.y;
+    containerOffsetX.value = 0;
+    containerOffsetY.value = 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [container.x, container.y]);
+
+  const panGesture = Gesture.Pan()
+    .blocksExternalGesture(canvasPanGesture)
+    .onStart(() => {
+      runOnJS(onDragStart)(container.id);
+    })
+    .onChange((e) => {
+      containerOffsetX.value += e.changeX / canvasScale.value;
+      containerOffsetY.value += e.changeY / canvasScale.value;
+    })
+    .onEnd(() => {
+      runOnJS(onDragEnd)(container.id, containerOffsetX.value, containerOffsetY.value);
+    });
+
+  const tapGesture = Gesture.Tap().onEnd(() => {
+    runOnJS(onRename)(container);
+  });
+
+  const longPressGesture = Gesture.LongPress()
+    .minDuration(500)
+    .onStart(() => {
+      runOnJS(onDelete)(container);
+    });
+
+  const headerGesture = Gesture.Race(panGesture, tapGesture, longPressGesture);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: posX.value + (isDragging ? containerOffsetX.value : 0) },
+      { translateY: posY.value + (isDragging ? containerOffsetY.value : 0) },
+    ],
+  }));
+
+  // The resize grip - same pattern DraggableShape's own grip uses: a
+  // live local width/height while the finger is down, committed once on
+  // release rather than on every frame.
+  const [live, setLive] = useState<{ width: number; height: number } | null>(null);
+  const resizeBase = useRef({ width: container.width, height: container.height });
+  const width = live?.width ?? container.width;
+  const height = live?.height ?? container.height;
+  const resizeGesture = Gesture.Pan()
+    .blocksExternalGesture(canvasPanGesture)
+    .onStart(() => {
+      resizeBase.current = { width, height };
+    })
+    .onChange((e) => {
+      setLive({
+        width: clampContainerWidth(resizeBase.current.width + e.translationX / canvasScale.value),
+        height: clampContainerHeight(resizeBase.current.height + e.translationY / canvasScale.value),
+      });
+    })
+    .onEnd(() => {
+      const next = live;
+      setLive(null);
+      if (next) runOnJS(onResize)(container.id, next.width, next.height);
+    })
+    .runOnJS(true);
+
+  return (
+    <Animated.View style={[styles.frame, { width, height }, animatedStyle]} pointerEvents="box-none">
+      <GestureDetector gesture={headerGesture}>
+        <View style={styles.frameLabel}>
+          <Text style={styles.frameLabelText} numberOfLines={1}>
+            {container.title}
+          </Text>
+        </View>
+      </GestureDetector>
+      <GestureDetector gesture={resizeGesture}>
+        <View style={styles.cardGrip}>
+          <Ionicons name="resize-outline" size={13} color="#fff" />
+        </View>
+      </GestureDetector>
+    </Animated.View>
+  );
+}
+
 type DraggableCardProps = {
   card: BoardCard;
   // This card's live world position. Owned by BoardScreen (see
@@ -721,6 +850,14 @@ type DraggableCardProps = {
   followsColumnDrag: boolean;
   columnOffsetX: SharedValue<number>;
   columnOffsetY: SharedValue<number>;
+  // Same idea, for a BoardContainer this card currently sits inside - a
+  // column and a container can never both apply to a card (only a
+  // column reads columnId, only geometry decides a container's members,
+  // and a card is never dragged by two frames at once), so the two
+  // offsets simply add - only one is ever non-zero for a given card.
+  followsContainerDrag: boolean;
+  containerOffsetX: SharedValue<number>;
+  containerOffsetY: SharedValue<number>;
   // False while the canvas is in 'connect' mode: a drag starting on a card
   // has to reach the canvas's own connect gesture to draw a link, and this
   // card's Pan would otherwise win that touch (it blocksExternalGesture)
@@ -782,6 +919,9 @@ function DraggableCard({
   followsColumnDrag,
   columnOffsetX,
   columnOffsetY,
+  followsContainerDrag,
+  containerOffsetX,
+  containerOffsetY,
   dragEnabled,
   onMeasure,
   onDragStart,
@@ -830,6 +970,10 @@ function DraggableCard({
     // in the very paint that adopts it.
     columnOffsetX.value = 0;
     columnOffsetY.value = 0;
+    // And the same again for a container this card rode along in - see
+    // followsContainerDrag's own comment.
+    containerOffsetX.value = 0;
+    containerOffsetY.value = 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card.x, card.y]);
 
@@ -922,13 +1066,15 @@ function DraggableCard({
         translateX:
           posX.value +
           (isSelected ? groupOffsetX.value : 0) +
-          (followsColumnDrag ? columnOffsetX.value : 0),
+          (followsColumnDrag ? columnOffsetX.value : 0) +
+          (followsContainerDrag ? containerOffsetX.value : 0),
       },
       {
         translateY:
           posY.value +
           (isSelected ? groupOffsetY.value : 0) +
-          (followsColumnDrag ? columnOffsetY.value : 0),
+          (followsColumnDrag ? columnOffsetY.value : 0) +
+          (followsContainerDrag ? containerOffsetY.value : 0),
       },
     ],
   }));
@@ -1234,6 +1380,9 @@ function DraggableShape({
   onLongPress,
   onDragEnd,
   onResize,
+  followsContainerDrag,
+  containerOffsetX,
+  containerOffsetY,
 }: {
   shape: BoardShape;
   isSelected: boolean;
@@ -1242,6 +1391,13 @@ function DraggableShape({
   posX: SharedValue<number>;
   posY: SharedValue<number>;
   onDragStart: (id: string) => void;
+  // True while a BoardContainer this shape currently sits inside is
+  // itself being dragged - same shared-offset trick DraggableCard uses
+  // for a column (see followsColumnDrag there), generalised to a frame
+  // that can hold either kind of item.
+  followsContainerDrag: boolean;
+  containerOffsetX: SharedValue<number>;
+  containerOffsetY: SharedValue<number>;
   // false in 'connect' mode - same reason DraggableCard has this: a
   // shape's own pan `.blocksExternalGesture(canvasPanGesture)` alone
   // was not enough to guarantee the canvas's connect-drag wins (two
@@ -1271,6 +1427,12 @@ function DraggableShape({
       posY.value = shape.y;
       reportedY.value = shape.y;
     }
+    // A container drag this shape rode along on already folded the
+    // offset into the committed x/y above - back to zero in the same
+    // paint that adopts it, exactly as DraggableCard does for its own
+    // column offset.
+    containerOffsetX.value = 0;
+    containerOffsetY.value = 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shape.x, shape.y]);
 
@@ -1305,7 +1467,10 @@ function DraggableShape({
   const gesture = Gesture.Race(panGesture, tapGesture, longPressGesture);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: posX.value }, { translateY: posY.value }],
+    transform: [
+      { translateX: posX.value + (followsContainerDrag ? containerOffsetX.value : 0) },
+      { translateY: posY.value + (followsContainerDrag ? containerOffsetY.value : 0) },
+    ],
   }));
 
   // Text is as WIDE as its own words too, not only as tall - see
@@ -1459,6 +1624,24 @@ export default function BoardScreen() {
   const [shapeSheetVisible, setShapeSheetVisible] = useState(false);
   const [editingShape, setEditingShape] = useState<BoardShape | null>(null);
   const [columns, setColumns] = useState<BoardColumn[]>([]);
+  // A free-standing frame - see BoardContainer in types.ts. Unlike a
+  // column, membership is never stored: whatever card or shape currently
+  // sits inside a container's rectangle belongs to it, discovered fresh
+  // every time the container itself is dragged (see containerMembersAt).
+  const [containers, setContainers] = useState<BoardContainer[]>([]);
+  const [renamingContainer, setRenamingContainer] = useState<BoardContainer | null>(null);
+  const [draggingContainerId, setDraggingContainerId] = useState<string | null>(null);
+  // Snapshotted the instant a container drag starts (see
+  // startContainerDrag) - which cards and shapes were geometrically
+  // inside it right then, so they can ride its live offset for the rest
+  // of that one gesture. Recomputing this every frame would mean testing
+  // every card and shape against the container's rectangle 60 times a
+  // second for a number that cannot change mid-drag (the container's own
+  // rectangle is the thing moving, and nothing else moves while it does).
+  const [containerDragMembers, setContainerDragMembers] = useState<{ cardIds: Set<string>; shapeIds: Set<string> }>({
+    cardIds: new Set(),
+    shapeIds: new Set(),
+  });
   // Each card's real rendered height, reported by its own onLayout - what
   // a column stacks by. State rather than a ref specifically so a height
   // change re-renders: a column whose single card grew has nothing to
@@ -1501,6 +1684,11 @@ export default function BoardScreen() {
   // by that column AND by every card inside it.
   const columnOffsetX = useSharedValue(0);
   const columnOffsetY = useSharedValue(0);
+  // Same idea again, for a container - written by the container being
+  // dragged, read by every card AND shape inside it (see
+  // containerDragMembers for how "inside it" is decided).
+  const containerOffsetX = useSharedValue(0);
+  const containerOffsetY = useSharedValue(0);
   // The marquee-selection rectangle, in world coordinates (same space as
   // card x/y) so it can be rendered inside the same transformed `world`
   // container the cards live in and compared against their x/y directly -
@@ -1534,11 +1722,13 @@ export default function BoardScreen() {
     columns: BoardColumn[];
     connections: BoardConnection[];
     shapes: BoardShape[];
+    containers: BoardContainer[];
   }>({
     cards: [],
     columns: [],
     connections: [],
     shapes: [],
+    containers: [],
   });
   // What shape the DOCUMENT is in, which decides how a save may be
   // written - and the one thing here that must never be guessed.
@@ -1595,6 +1785,7 @@ export default function BoardScreen() {
       const loadedColumns = readBoardPart<BoardColumn>(data?.columns);
       const loadedConnections = readBoardPart<BoardConnection>(data?.connections);
       const loadedShapes = readBoardPart<BoardShape>(data?.shapes);
+      const loadedContainers = readBoardPart<BoardContainer>(data?.containers);
       const looksLikeArray =
         Array.isArray(data?.cards) || Array.isArray(data?.columns) || Array.isArray(data?.connections);
       // A keyed copy is trustworthy even from the cache - the change is
@@ -1627,12 +1818,14 @@ export default function BoardScreen() {
         columns: loadedColumns,
         connections: loadedConnections,
         shapes: loadedShapes,
+        containers: loadedContainers,
       };
       setTitle(data?.title ?? 'Без назви');
       setCards(loadedCards);
       setConnections(loadedConnections);
       setShapes(loadedShapes);
       setColumns(loadedColumns);
+      setContainers(loadedContainers);
       setIsLoaded(true);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1679,16 +1872,18 @@ export default function BoardScreen() {
       const columnPatch = whole ? keyedAll(columns) : keyedDiff(saved.columns, columns);
       const connectionPatch = whole ? keyedAll(connections) : keyedDiff(saved.connections, connections);
       const shapePatch = whole ? keyedAll(shapes) : keyedDiff(saved.shapes, shapes);
+      const containerPatch = whole ? keyedAll(containers) : keyedDiff(saved.containers, containers);
       if (cardPatch) patch.cards = cardPatch;
       if (columnPatch) patch.columns = columnPatch;
       if (connectionPatch) patch.connections = connectionPatch;
       if (shapePatch) patch.shapes = shapePatch;
+      if (containerPatch) patch.containers = containerPatch;
       shapeRef.current = 'keyed';
       // Recorded as sent, not as acknowledged: Firestore keeps an unsent
       // write on disk and replays it in order, so it WILL arrive - and
       // until it does, the next difference must be measured against it
       // rather than against what the server has yet to hear.
-      savedRef.current = { cards: cardsToSave, columns, connections, shapes };
+      savedRef.current = { cards: cardsToSave, columns, connections, shapes, containers };
       setDoc(doc(db, 'boards', boardId), patch, { merge: true });
     };
     saveTimeoutRef.current = setTimeout(attemptSave, AUTOSAVE_DELAY_MS);
@@ -1696,7 +1891,7 @@ export default function BoardScreen() {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, cards, connections, columns, shapes, isLoaded]);
+  }, [title, cards, connections, columns, shapes, containers, isLoaded]);
 
   // Read by the focus-time preview refresh below, which must not re-run
   // every time a card moves - so it reads the current cards through this
@@ -2637,6 +2832,51 @@ export default function BoardScreen() {
     setColumns((prev) => prev.filter((c) => c.id !== column.id));
   }
 
+  function addContainer() {
+    setContainers((prev) => {
+      const x =
+        prev.length === 0
+          ? WORLD_CENTER - CONTAINER_DEFAULT_WIDTH / 2
+          : Math.max(...prev.map((c) => c.x)) + CONTAINER_SPACING;
+      const y = prev.length === 0 ? WORLD_CENTER - CONTAINER_DEFAULT_HEIGHT / 2 : prev[0].y;
+      return [
+        ...prev,
+        {
+          id: generateId(),
+          title: `Область ${prev.length + 1}`,
+          x,
+          y,
+          width: CONTAINER_DEFAULT_WIDTH,
+          height: CONTAINER_DEFAULT_HEIGHT,
+        },
+      ];
+    });
+    setAddSheetVisible(false);
+  }
+
+  function renameContainer(container: BoardContainer, title: string) {
+    setContainers((prev) => prev.map((c) => (c.id === container.id ? { ...c, title: title.trim() || c.title } : c)));
+    setRenamingContainer(null);
+  }
+
+  async function confirmDeleteContainer(container: BoardContainer) {
+    const yes = await confirm({
+      title: 'Видалити область?',
+      message: 'Об’єкти в ній залишаться на дошці.',
+      confirmLabel: 'Видалити',
+    });
+    if (!yes) return;
+    setContainers((prev) => prev.filter((c) => c.id !== container.id));
+  }
+
+  function resizeContainer(id: string, width: number, height: number) {
+    setContainers((prev) =>
+      prev.map((c) =>
+        c.id === id ? { ...c, width: clampContainerWidth(width), height: clampContainerHeight(height) } : c
+      )
+    );
+  }
+
   // Long-pressing a card selects just that one, which surfaces the same
   // bottom action bar the marquee/select tool uses for a multi-card
   // selection - "Редагувати" for a lone document card, "Видалити" either
@@ -2994,6 +3234,61 @@ export default function BoardScreen() {
     });
   }
 
+  // Which cards and shapes are geometrically INSIDE a container's own
+  // rectangle right now, by each item's CENTRE point - so a thing only
+  // half over the edge still counts as belonging wherever its middle
+  // actually sits, the same rule a drop onto a column already uses.
+  // Called once, at the instant a container starts being dragged (see
+  // startContainerDrag) - see BoardContainer's own comment for why this
+  // is discovered fresh rather than kept in a stored field.
+  function containerMembersAt(container: BoardContainer): { cardIds: Set<string>; shapeIds: Set<string> } {
+    const cardIds = new Set<string>();
+    const shapeIds = new Set<string>();
+    const inside = (node: BoardNode) => {
+      const cx = node.x + node.width / 2;
+      const cy = node.y + node.height / 2;
+      return (
+        cx >= container.x &&
+        cx <= container.x + container.width &&
+        cy >= container.y &&
+        cy <= container.y + container.height
+      );
+    };
+    for (const card of cards) {
+      const node = nodeById.get(card.id);
+      if (node && inside(node)) cardIds.add(card.id);
+    }
+    for (const shape of shapes) {
+      const node = nodeById.get(shape.id);
+      if (node && inside(node)) shapeIds.add(shape.id);
+    }
+    return { cardIds, shapeIds };
+  }
+
+  function startContainerDrag(id: string) {
+    setDraggingContainerId(id);
+    const container = containers.find((c) => c.id === id);
+    setContainerDragMembers(container ? containerMembersAt(container) : { cardIds: new Set(), shapeIds: new Set() });
+  }
+
+  // The container and every member it was carrying at the start of THIS
+  // drag all take the same delta, so nothing has to be recomputed from
+  // the container's new origin - unlike a column, a member keeps
+  // whatever position it already had relative to the frame, because
+  // that relative position was never given up to begin with.
+  function commitContainerDrag(id: string, dx: number, dy: number) {
+    const { cardIds, shapeIds } = containerDragMembers;
+    setContainers((prev) => prev.map((c) => (c.id === id ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
+    if (cardIds.size > 0) {
+      setCards((prev) => prev.map((c) => (cardIds.has(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
+    }
+    if (shapeIds.size > 0) {
+      setShapes((prev) => prev.map((sh) => (shapeIds.has(sh.id) ? { ...sh, x: sh.x + dx, y: sh.y + dy } : sh)));
+    }
+    setDraggingContainerId(null);
+    setContainerDragMembers({ cardIds: new Set(), shapeIds: new Set() });
+  }
+
   function liveEndpointFor(node: BoardNode): LiveEndpoint {
     const card = cardById.get(node.id);
     const inGroupDrag = !!card && selectedCardIds.has(node.id);
@@ -3168,6 +3463,25 @@ export default function BoardScreen() {
         <GestureDetector gesture={canvasGesture}>
           <View ref={canvasRef} style={[StyleSheet.absoluteFill, styles.canvasSurface]}>
             <Animated.View style={[styles.world, worldAnimatedStyle]}>
+              {/* Under everything else too - a frame marks a region, it
+                  never sits ON top of what it holds. */}
+              {containers.map((frame) => (
+                <DraggableContainer
+                  key={frame.id}
+                  container={frame}
+                  isDragging={frame.id === draggingContainerId}
+                  canvasScale={scale}
+                  canvasPanGesture={canvasBlockingGesture}
+                  containerOffsetX={containerOffsetX}
+                  containerOffsetY={containerOffsetY}
+                  onDragStart={startContainerDrag}
+                  onDragEnd={commitContainerDrag}
+                  onRename={setRenamingContainer}
+                  onDelete={confirmDeleteContainer}
+                  onResize={resizeContainer}
+                />
+              ))}
+
               {/* Underneath everything - a column is a backdrop its cards sit
                   on. box-none so only the header takes touches and the rest
                   of the lane still pans the canvas. */}
@@ -3223,6 +3537,9 @@ export default function BoardScreen() {
                     moveShape(id, x, y);
                   }}
                   onResize={resizeShape}
+                  followsContainerDrag={draggingContainerId !== null && containerDragMembers.shapeIds.has(shape.id)}
+                  containerOffsetX={containerOffsetX}
+                  containerOffsetY={containerOffsetY}
                 />
               ))}
 
@@ -3296,6 +3613,9 @@ export default function BoardScreen() {
                     onHover={reportCardHover}
                     columnOffsetX={columnOffsetX}
                     columnOffsetY={columnOffsetY}
+                    followsContainerDrag={draggingContainerId !== null && containerDragMembers.cardIds.has(card.id)}
+                    containerOffsetX={containerOffsetX}
+                    containerOffsetY={containerOffsetY}
                     dragEnabled={canvasTool !== 'connect'}
                     onMeasure={measureCard}
                     onDragStart={handleDragStart}
@@ -3631,6 +3951,10 @@ export default function BoardScreen() {
                 <MaterialCommunityIcons name="view-column-outline" size={18} color="#111827" />
                 <Text style={styles.sheetRowLabel}>Стовпчик</Text>
               </Pressable>
+              <Pressable style={styles.sheetRow} onPress={addContainer}>
+                <MaterialCommunityIcons name="selection-drag" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>Область</Text>
+              </Pressable>
             </Pressable>
           </Pressable>
         </Modal>
@@ -3722,6 +4046,16 @@ export default function BoardScreen() {
           onCancel={() => setRenamingColumn(null)}
           onSave={(value) => {
             if (renamingColumn) renameColumn(renamingColumn, value);
+          }}
+        />
+
+        <RenamePrompt
+          visible={renamingContainer !== null}
+          title="Назва області"
+          initialValue={renamingContainer?.title ?? ''}
+          onCancel={() => setRenamingContainer(null)}
+          onSave={(value) => {
+            if (renamingContainer) renameContainer(renamingContainer, value);
           }}
         />
 
@@ -4140,6 +4474,42 @@ const makeStyles = (theme: Theme) =>
       fontSize: 11,
       fontFamily: FONT_REGULAR,
       color: theme.canvas.inkFaint,
+    },
+    // A free-standing frame - see BoardContainer. Genuinely transparent
+    // inside (a column's own tint is deliberate; this one exists only to
+    // mark a region, never to look like a surface something sits ON).
+    frame: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      borderRadius: 14,
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      borderColor: theme.canvas.laneEdge,
+      borderStyle: 'dashed',
+    },
+    // The only part of the frame that takes touches - see DraggableContainer's
+    // own comment on why the rest is box-none.
+    frameLabel: {
+      position: 'absolute',
+      left: -1,
+      top: -CONTAINER_HEADER_HEIGHT,
+      height: CONTAINER_HEADER_HEIGHT,
+      minWidth: 64,
+      maxWidth: '70%',
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 10,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.canvas.laneEdge,
+      backgroundColor: theme.canvas.lane,
+    },
+    frameLabelText: {
+      fontSize: 12,
+      fontWeight: '700',
+      fontFamily: FONT_BOLD,
+      color: theme.canvas.inkMuted,
     },
     // Same compact, content-hugging dark-glass pill as the shared
     // BulkActionBar component (Documents/Files/Photos/Links' own

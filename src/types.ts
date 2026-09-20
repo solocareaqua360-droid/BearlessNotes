@@ -427,6 +427,29 @@ export type BoardShapeKind =
   | 'ellipse'
   | 'circle';
 
+// A FREE-STANDING FRAME, not a kanban lane. `BoardColumn` above forces
+// its members into a single stacked order and cannot hold a shape at
+// all - this is the opposite on both counts: a resizable rectangle,
+// transparent inside, that a card or a shape belongs to purely by
+// GEOMETRY - whatever currently sits inside its bounds when the frame
+// itself is dragged, moves with it, and nothing is written down to say
+// so beforehand. Dragging a card or shape back out is not a release
+// action, it is just no longer being inside the rectangle. This is the
+// user's own ask: "їх спокійно витягнути або помістити в область".
+//
+// No membership list and no `containerId` field on BoardCard/BoardShape
+// on purpose - a member is discovered fresh every time the frame is
+// dragged (see containerMembersAt in BoardScreen), never persisted, so
+// there is nothing to keep in sync when a card moves on its own.
+export interface BoardContainer {
+  id: string;
+  title: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface BoardShape {
   id: string;
   kind: BoardShapeKind;
@@ -461,6 +484,8 @@ export interface BoardItem {
   columns?: BoardColumn[];
   // See BoardShape: the board's own furniture, never blocks.
   shapes?: BoardShape[];
+  // See BoardContainer.
+  containers?: BoardContainer[];
   // A board is a record of a database like any other now: it carries tags
   // (which are also its folders - see the explorer), a group, and a bin
   // flag. Absent on every board made before that, and read as empty.

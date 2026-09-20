@@ -42,3 +42,17 @@ export const COLUMN_CARD_GAP = 12;
 // A column with nothing in it still has to be a visible drop target.
 export const COLUMN_MIN_HEIGHT = 220;
 export const COLUMN_SPACING = 24;
+
+// A free-standing frame (see BoardContainer) - unlike a column, it has
+// no fixed width and no auto height: it is a rectangle the user draws
+// out to whatever size they want, so both dimensions are stored and
+// both need a floor that still reads as a usable region rather than a
+// sliver.
+export const CONTAINER_HEADER_HEIGHT = 32;
+export const CONTAINER_MIN_WIDTH = 200;
+export const CONTAINER_MIN_HEIGHT = 140;
+export const CONTAINER_DEFAULT_WIDTH = 360;
+export const CONTAINER_DEFAULT_HEIGHT = 260;
+export const CONTAINER_SPACING = 24;
+export const clampContainerWidth = (width: number) => Math.round(Math.max(CONTAINER_MIN_WIDTH, width));
+export const clampContainerHeight = (height: number) => Math.round(Math.max(CONTAINER_MIN_HEIGHT, height));
