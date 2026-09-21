@@ -23,7 +23,17 @@ export type ReferenceGhost = { label: string; x: number; y: number };
 
 export function useReferenceDrag({
   onDrop,
+  onMove,
+  onFinished,
 }: {
+  // Every move of the finger while something is in hand. A surface has
+  // nothing to say to this (a drop lands wherever it is let go), but a
+  // LIST does: it shows the gap the block would fall into.
+  onMove?: (screenX: number, screenY: number) => void;
+  // Nothing is in hand any more, however it ended - dropped, let go over
+  // nowhere, or taken away mid-gesture. Whatever onMove was drawing has
+  // to come down, or a drop-line is left standing with no finger.
+  onFinished?: () => void;
   // Where it was let go, in SCREEN coordinates - the caller decides
   // whether that is over the canvas and what it means there. Answers
   // through `respond` rather than a return value: the canvas's own
@@ -31,6 +41,17 @@ export function useReferenceDrag({
   // callback, not something that can answer synchronously.
   onDrop: (block: Block, screenX: number, screenY: number, respond: (accepted: boolean) => void) => void;
 }) {
+  // Both handlers come in fresh from the caller on every render, and the
+  // gesture below must NOT be rebuilt when they do (see its own comment:
+  // the ghost moving is itself a render, so that would be every frame of
+  // every drag). Held in refs, so the gesture closes over something that
+  // never changes and still calls the latest one.
+  const onDropRef = useRef(onDrop);
+  onDropRef.current = onDrop;
+  const onMoveRef = useRef(onMove);
+  onMoveRef.current = onMove;
+  const onFinishedRef = useRef(onFinished);
+  onFinishedRef.current = onFinished;
   const [ghost, setGhost] = useState<ReferenceGhost | null>(null);
   const ghostRef = useRef<ReferenceGhost | null>(null);
   const fingerRef = useRef({ x: 0, y: 0 });
@@ -69,13 +90,17 @@ export function useReferenceDrag({
     });
   }, []);
 
-  const updateDrag = useCallback((x: number, y: number) => {
-    if (!ghostRef.current) return;
-    fingerRef.current = { x, y };
-    const next = { ...ghostRef.current, x: x + GHOST_NUDGE_X, y: y + GHOST_NUDGE_Y };
-    ghostRef.current = next;
-    setGhost(next);
-  }, []);
+  const updateDrag = useCallback(
+    (x: number, y: number) => {
+      if (!ghostRef.current) return;
+      fingerRef.current = { x, y };
+      const next = { ...ghostRef.current, x: x + GHOST_NUDGE_X, y: y + GHOST_NUDGE_Y };
+      ghostRef.current = next;
+      setGhost(next);
+      onMoveRef.current?.(x, y);
+    },
+    []
+  );
 
   const endDrag = useCallback(() => {
     const block = carried.current;
@@ -84,16 +109,20 @@ export function useReferenceDrag({
     ghostRef.current = null;
     setGhost(null);
     if (!block) return;
-    onDrop(block, at.x, at.y, (accepted) => {
+    onDropRef.current(block, at.x, at.y, (accepted) => {
       if (accepted) hapticDrop();
       else hapticWarning();
     });
-  }, [onDrop]);
+  }, []);
 
+  // Runs on every finalize, a completed drop included - clearing what is
+  // already cleared costs nothing, and missing a cancel costs a line
+  // left on screen.
   const cancelDrag = useCallback(() => {
     carried.current = null;
     ghostRef.current = null;
     setGhost(null);
+    onFinishedRef.current?.();
   }, []);
 
   // One gesture for the whole panel list, not one per row - the same

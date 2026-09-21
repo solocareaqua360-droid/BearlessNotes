@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { ForwardedRef, forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import { LayoutAnimation, LayoutChangeEvent, TextInput, View } from 'react-native';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { Block, Tag } from '../types';
@@ -64,7 +64,28 @@ type BlockListProps = {
   paperColor: ReturnType<typeof colorForDocument> | null;
 };
 
-export default function BlockList({
+// Dropping something onto the page from OUTSIDE the list - a record
+// dragged out of «Референси». The list already knows where a gap is and
+// how to draw the line in it; what it does not know is anything about
+// the finger, because that gesture belongs to the panel, not to a row.
+// So the panel asks in SCREEN coordinates and the list answers in its
+// own - the same shape as DocumentCanvasHandle.screenToSurface, and
+// asynchronous for the same reason: measuring against the window is.
+export type BlockListHandle = {
+  // Moves the drop-line to wherever this point falls and answers with
+  // the index a drop would use, or null when the point is not over the
+  // list at all.
+  hoverExternal: (screenY: number, answer?: (index: number | null) => void) => void;
+  endExternalHover: () => void;
+};
+
+const NOTHING_DRAGGING: Set<string> = new Set();
+
+// The mid-drag snap, same as a block being reordered uses - see
+// handleDragUpdate on why it clamps the overshoot.
+const DROP_LINE_SPRING = { damping: 26, stiffness: 260, overshootClamping: true };
+
+function BlockList({
   blocks,
   onReorder,
   onHoldWithoutDrag,
@@ -97,7 +118,7 @@ export default function BlockList({
   onInputRef,
   paperColor,
   hideHandle,
-}: BlockListProps) {
+}: BlockListProps, ref: ForwardedRef<BlockListHandle>) {
   const styles = useStyles(makeStyles);
   const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
   // The block actually long-pressed to start the drag - the rest of a
@@ -114,6 +135,10 @@ export default function BlockList({
   const rowLayouts = useRef<Record<string, { y: number; height: number }>>({});
   const blocksRef = useRef(blocks);
   blocksRef.current = blocks;
+  // See BlockListHandle - a drop coming from outside the list.
+  const containerRef = useRef<View | null>(null);
+  const [externalIndex, setExternalIndexState] = useState<number | null>(null);
+  const externalIndexRef = useRef<number | null>(null);
   // Did this drag actually go anywhere? See onHoldWithoutDrag.
   const dragMovedRef = useRef(false);
 
@@ -121,6 +146,32 @@ export default function BlockList({
     insertIndexRef.current = index;
     setInsertIndexState(index);
   }
+
+  function setExternalIndex(index: number | null) {
+    if (externalIndexRef.current === index) return;
+    // The same tick a block being reordered gives at every gap it passes.
+    if (index !== null) hapticSnapTick();
+    externalIndexRef.current = index;
+    setExternalIndexState(index);
+  }
+
+  useImperativeHandle(ref, () => ({
+    hoverExternal: (screenY, answer) => {
+      const node = containerRef.current;
+      if (!node) {
+        answer?.(null);
+        return;
+      }
+      node.measureInWindow((_x, y, _width, height) => {
+        const over = screenY >= y && screenY <= y + height;
+        const index = over ? computeInsertIndex(screenY - y, NOTHING_DRAGGING) : null;
+        setExternalIndex(index);
+        if (index !== null) dropLineY.value = withSpring(gapYFor(index, NOTHING_DRAGGING), DROP_LINE_SPRING);
+        answer?.(index);
+      });
+    },
+    endExternalHover: () => setExternalIndex(null),
+  }));
 
   function handleRowLayout(id: string, e: LayoutChangeEvent) {
     rowLayouts.current[id] = {
@@ -287,7 +338,7 @@ export default function BlockList({
   let runningNumber = 0;
 
   return (
-    <View style={styles.blockListContainer}>
+    <View ref={containerRef} collapsable={false} style={styles.blockListContainer}>
       {blocks.map((item, index) => {
         if (item.type === 'numbered') {
           runningNumber = index > 0 && blocks[index - 1].type === 'numbered' ? runningNumber + 1 : 1;
@@ -341,9 +392,11 @@ export default function BlockList({
         );
       })}
 
-      {draggingIds && insertIndex !== null && (
+      {((draggingIds && insertIndex !== null) || externalIndex !== null) && (
         <Animated.View pointerEvents="none" style={[styles.dropLine, dropLineStyle]} />
       )}
     </View>
   );
 }
+
+export default forwardRef(BlockList);

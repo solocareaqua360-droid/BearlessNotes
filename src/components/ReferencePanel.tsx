@@ -8,40 +8,42 @@ import type { Theme } from '../theme/tokens';
 import { GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { useReferenceDrag } from '../hooks/useReferenceDrag';
 import type { Block } from '../types';
-import type { DocumentCanvasHandle } from './DocumentCanvas';
 
-// «Референси» in canvas mode - the user's own idea: browse everything
-// this app already knows how to list (files, photos, links, custom
-// databases, and now another document's own blocks) beside the canvas,
-// and drag pieces of it onto the board as raw material. AddExistingItemModal
-// already IS that browser (opened today from the canvas's own "+"), so
-// this docks a standing copy of it rather than building a second one, and
-// wires ITS rows to useReferenceDrag - a drop lands wherever it is let
-// go, read off the finger, not aimed at anything in particular.
-export default function CanvasReferencePanel({
+// «Референси» - the user's own idea: browse everything this app already
+// knows how to list (files, photos, links, custom databases, and another
+// document's own blocks) beside the note, and drag pieces of it in as raw
+// material. AddExistingItemModal already IS that browser (opened from the
+// "/" menu as «З бази»), so this docks a standing copy of it rather than
+// building a second one, and wires ITS rows to useReferenceDrag.
+//
+// WHERE a drop lands is the caller's business, not this panel's: on the
+// canvas it is a point on a surface, on the page it is a gap between two
+// blocks. Both are answered asynchronously because both are measured
+// against the window (see DocumentCanvasHandle.screenToSurface and
+// BlockListHandle.hoverExternal), hence `respond` rather than a return.
+export default function ReferencePanel({
   visible,
   onClose,
-  canvasRef,
-  onInsertBlock,
+  onDrop,
+  onDragMove,
+  onDragFinished,
+  hint,
   excludeIds,
 }: {
   visible: boolean;
   onClose: () => void;
-  canvasRef: React.RefObject<DocumentCanvasHandle | null>;
-  // A dropped block, and where it landed in the CANVAS'S OWN surface
-  // coordinates (already converted - see DocumentCanvasHandle.screenToSurface).
-  onInsertBlock: (block: Block, at: { x: number; y: number }) => void;
+  onDrop: (block: Block, screenX: number, screenY: number, respond: (accepted: boolean) => void) => void;
+  // Every move of the finger while something is in hand, so the target
+  // can show where it would land. Left out where there is nothing to
+  // show - the canvas takes a drop anywhere on itself.
+  onDragMove?: (screenX: number, screenY: number) => void;
+  // Nothing in hand any more - see useReferenceDrag's onFinished.
+  onDragFinished?: () => void;
+  hint: string;
   excludeIds?: Set<string>;
 }) {
   const styles = useStyles(makeStyles);
-  const drag = useReferenceDrag({
-    onDrop: (block, screenX, screenY, respond) => {
-      canvasRef.current?.screenToSurface(screenX, screenY, (at) => {
-        if (at) onInsertBlock(block, at);
-        respond(!!at);
-      }) ?? respond(false);
-    },
-  });
+  const drag = useReferenceDrag({ onDrop, onMove: onDragMove, onFinished: onDragFinished });
 
   // Plainly positioned, NOT through useAnimatedStyle - and that is the
   // whole of the white screen this panel opened with.
@@ -71,7 +73,7 @@ export default function CanvasReferencePanel({
           <View style={{ flex: 1 }} />
           <Ionicons name="close" size={20} color={GLASS_TEXT_MUTED} onPress={onClose} />
         </View>
-        <Text style={styles.hint}>Затисни й перетягни на полотно</Text>
+        <Text style={styles.hint}>{hint}</Text>
         <GestureDetector gesture={drag.gesture}>
           <View style={{ flex: 1 }}>
             <AddExistingItemModal
@@ -114,8 +116,8 @@ const makeStyles = (t: Theme) =>
     panel: {
       flex: 1,
       backgroundColor: '#181513',
-      // The edge faces the canvas, and the canvas is to the RIGHT of
-      // this panel now - see referencePanelDock.
+      // The edge faces the note, and the note is to the RIGHT of this
+      // panel - see referencePanelDock.
       borderRightWidth: 1,
       borderRightColor: GLASS_LINE,
     },

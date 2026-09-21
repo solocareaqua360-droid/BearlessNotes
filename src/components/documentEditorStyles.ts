@@ -30,9 +30,9 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     backgroundColor: t.paper.fill,
   },
-  // The reference panel's own dock - see CanvasReferencePanel. ~45% of
-  // the screen on purpose: enough to read a row's label, not so much
-  // that the canvas underneath stops being a real drop target.
+  // The reference panel's own dock - see ReferencePanel. ~45% of the
+  // screen on purpose: enough to read a row's label, not so much that
+  // what lies underneath stops being a real drop target.
   referencePanelDock: {
     position: 'absolute',
     top: 0,

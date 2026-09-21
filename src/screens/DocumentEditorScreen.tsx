@@ -101,7 +101,7 @@ import { attachmentInfoText } from '../utils/attachmentInfo';
 import { showDownloadedFile } from '../utils/downloadToFolder';
 import AttachmentImage from '../components/AttachmentImage';
 import DocumentCanvas, { DocumentCanvasHandle } from '../components/DocumentCanvas';
-import CanvasReferencePanel from '../components/CanvasReferencePanel';
+import ReferencePanel from '../components/ReferencePanel';
 import CrashBoundary from '../components/CrashBoundary';
 import { assembleWithDivider } from '../utils/canvasOrder';
 import { stableStringify } from '../utils/stableStringify';
@@ -111,7 +111,7 @@ import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { useRecordColour, useStyles, useTheme } from '../theme/ThemeProvider';
 import { makeStyles } from '../components/documentEditorStyles';
-import BlockList from '../components/BlockList';
+import BlockList, { BlockListHandle } from '../components/BlockList';
 import {
   buildBlock,
   buildDocumentHtml,
@@ -393,13 +393,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // walk out of the document while the caret was still blinking; ending
   // the typing is what "back" means at that moment.
   const canvasApiRef = useRef<DocumentCanvasHandle | null>(null);
-  // «Референси» - see CanvasReferencePanel. Closed by default even while
-  // in canvas mode; the user's own workflow is to open it, drag a few
-  // things over, close it, and keep working with just the board.
+  // «Референси» - see ReferencePanel. Closed by default: the user's own
+  // workflow is to open it, drag a few things over, close it, and keep
+  // working. It survives the page/canvas switch, because it is the same
+  // note either way and the same drawer over it - only what a drop MEANS
+  // changes (a point on the surface there, a gap between blocks here).
   const [referencePanelOpen, setReferencePanelOpen] = useState(false);
-  useEffect(() => {
-    if (!canvasMode) setReferencePanelOpen(false);
-  }, [canvasMode]);
+  // The page's own drop target, for a record dragged out of that drawer.
+  const blockListRef = useRef<BlockListHandle | null>(null);
   // WHICH card is being typed into on the canvas, not just whether one
   // is. The id is what the "/" toolbar needs: the canvas edits the very
   // same Block objects the page does, so once this screen knows which
@@ -1942,21 +1943,24 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             label: canvasMode ? 'Сторінка' : 'Полотно',
             onPress: () => (canvasMode ? leaveCanvas() : setCanvasMode(true)),
           },
-          // Only where it means something. References have no business on
-          // the page, and a control that cannot act is one you have to
-          // read and dismiss every time.
+          // On the page too, not only on the canvas: the drawer is how
+          // anything that already exists elsewhere in the app gets into
+          // this note, and that is no less true of a page than of a
+          // surface - the drop simply lands in a gap between blocks
+          // rather than at a point (see ReferencePanel).
+          {
+            key: 'refs',
+            icon: 'albums-outline',
+            label: 'Референси',
+            active: referencePanelOpen,
+            onPress: () => setReferencePanelOpen((v) => !v),
+          },
+          // The board's own "Скинути дошку?", mirrored here - free
+          // dragging on the canvas needs a way back to the default
+          // layout without undoing every card one at a time. Nothing to
+          // reset on a page, where the order IS the document.
           ...(canvasMode
             ? [
-                {
-                  key: 'refs',
-                  icon: 'albums-outline',
-                  label: 'Референси',
-                  active: referencePanelOpen,
-                  onPress: () => setReferencePanelOpen((v) => !v),
-                },
-                // The board's own "Скинути дошку?", mirrored here - free
-                // dragging on the canvas needs a way back to the default
-                // layout without undoing every card one at a time.
                 {
                   key: 'reset',
                   icon: 'refresh-outline',
@@ -3528,12 +3532,25 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // pattern the board/database copy-paste clipboard already uses
   // (pasteCopiedObject, below): a fresh id so it is its own block here,
   // never the source's, at the exact surface point it was let go over
-  // (CanvasReferencePanel's own drop handler already converted the
-  // screen point through DocumentCanvasHandle.screenToSurface).
+  // (the canvas converted the screen point through
+  // DocumentCanvasHandle.screenToSurface before calling this).
   function insertReferenceBlock(block: Block, at: { x: number; y: number }) {
     snapshotBeforeChange();
     const created: Block = { ...block, id: generateId(), createdAt: Date.now(), canvas: at };
     setBlocks((prev) => [...prev, created]);
+  }
+
+  // The same drop, onto the PAGE: a list has gaps rather than points, so
+  // what the block list answers with is the index the drop-line was
+  // standing in (see BlockListHandle).
+  function insertReferenceBlockAt(block: Block, index: number) {
+    snapshotBeforeChange();
+    const created: Block = { ...block, id: generateId(), createdAt: Date.now() };
+    setBlocks((prev) => {
+      const next = [...prev];
+      next.splice(Math.max(0, Math.min(index, next.length)), 0, created);
+      return next;
+    });
   }
 
   function addBlockAtEnd() {
@@ -3949,24 +3966,53 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         />
       )}
 
-      {/* «Референси» - a drawer over the LEFT of the canvas, never the
-          whole screen: the canvas has to stay visible and reachable on
-          the right as the drop target, and the right edge is the rail's. Same shape on every width for now
-          - the Fold's own wide inner screen could stand a true side pane
-          instead, deliberately deferred rather than risked in the same
-          pass as this screen's own existing embedded/pane double-split
-          rule (see pane_double_split memory). */}
-      {canvasMode && !embedded && referencePanelOpen && (
+      {/* «Референси» - a drawer over the LEFT of the note, never the
+          whole screen: what it drops onto has to stay visible and
+          reachable on the right, and the right edge is the rail's. Same
+          shape on every width for now - the Fold's own wide inner screen
+          could stand a true side pane instead, deliberately deferred
+          rather than risked in the same pass as this screen's own
+          existing embedded/pane double-split rule (see pane_double_split
+          memory).
+
+          On the PAGE as well as the canvas. The two differ only in what
+          a drop means, and each answers that itself: the canvas converts
+          the finger to a point on its surface, the page asks its block
+          list which gap the finger is in and shows the same drop-line a
+          block being reordered gets. */}
+      {!embedded && referencePanelOpen && (
         <View style={styles.referencePanelDock} pointerEvents="box-none">
           {/* Its own boundary: a panel that browses every database in the
               app has more ways to fail than the note it stands beside,
               and none of them should be able to take the note down. */}
           <CrashBoundary>
-            <CanvasReferencePanel
+            <ReferencePanel
               visible
               onClose={() => setReferencePanelOpen(false)}
-              canvasRef={canvasApiRef}
-              onInsertBlock={insertReferenceBlock}
+              hint={canvasMode ? 'Затисни й перетягни на полотно' : 'Затисни й перетягни в текст'}
+              onDragMove={
+                canvasMode ? undefined : (_x, y) => blockListRef.current?.hoverExternal(y)
+              }
+              onDragFinished={canvasMode ? undefined : () => blockListRef.current?.endExternalHover()}
+              onDrop={(block, x, y, respond) => {
+                if (canvasMode) {
+                  canvasApiRef.current?.screenToSurface(x, y, (at) => {
+                    if (at) insertReferenceBlock(block, at);
+                    respond(!!at);
+                  }) ?? respond(false);
+                  return;
+                }
+                const list = blockListRef.current;
+                if (!list) {
+                  respond(false);
+                  return;
+                }
+                list.hoverExternal(y, (index) => {
+                  list.endExternalHover();
+                  if (index !== null) insertReferenceBlockAt(block, index);
+                  respond(index !== null);
+                });
+              }}
             />
           </CrashBoundary>
         </View>
@@ -4091,6 +4137,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         )}
 
         <BlockList
+          ref={blockListRef}
           // The daily note's sheet runs under the rail, so its rows draw
           // no handle column - see BlockRow's hideHandle.
           hideHandle={embedded}
