@@ -387,6 +387,10 @@ export default function DocumentsScreen({
   // to be told where this half ends. Full screen this is zero, which is
   // the window's own edge.
   const [editorPaneInset, setEditorPaneInset] = useState(0);
+  // This pane's own left edge, in from the window's - see
+  // DocumentEditorScreen's paneLeft. Not reliably 0: paneRow centres its
+  // capped content on a screen wide enough (see MAX_CONTENT_WIDTH).
+  const [editorPaneLeft, setEditorPaneLeft] = useState(0);
   // How many cards stand across the list, and how many folders.
   //
   // Two on a phone, as always. On the Fold's inner screen with no
@@ -1478,11 +1482,16 @@ export default function DocumentsScreen({
         {isTwoPane && !!openDoc && (
           <View
             style={styles.editorPane}
-            onLayout={(e) =>
+            onLayout={(e) => {
               setEditorPaneInset(
                 Math.max(0, windowWidth - (e.nativeEvent.layout.x + e.nativeEvent.layout.width))
-              )
-            }
+              );
+              // paneRow centres its capped content on a wide-enough
+              // screen (see MAX_CONTENT_WIDTH) - this pane's own left
+              // edge is not reliably the window's, so it is measured
+              // the same way the right edge already is.
+              setEditorPaneLeft(e.nativeEvent.layout.x);
+            }}
           >
             {openDoc && (
               // Keyed by id so switching documents remounts the editor
@@ -1509,6 +1518,7 @@ export default function DocumentsScreen({
                 // wherever the note is - phone, half a window or all of
                 // it - so this half's right edge is where it stands.
                 railRight={editorPaneInset + RAIL_RIGHT}
+                paneLeft={editorPaneLeft}
                 // The line this screen's own cards start on, so the two
                 // halves begin together.
                 railTop={chromeBottom}

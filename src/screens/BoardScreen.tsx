@@ -2020,6 +2020,10 @@ export default function BoardScreen() {
   // The note in the pane, reached for its own back steps - see
   // DocumentEditorHandle.requestBack and the pane controls below.
   const paneEditorRef = useRef<DocumentEditorHandle | null>(null);
+  // How far the pane's own left edge is from the window's - see
+  // DocumentEditorScreen's paneLeft. Fullscreen this is moot (the board
+  // is hidden and the pane IS the window), but harmless to keep current.
+  const [docPaneLeft, setDocPaneLeft] = useState(0);
   // The canvas's own size, which stops being the window's the moment a
   // document takes half of it. Screen->world maths below reads this, not
   // the window - the gestures report x/y relative to the canvas surface,
@@ -6057,12 +6061,16 @@ export default function BoardScreen() {
       </View>
 
       {isTwoPane && paneDocId !== null && (
-        <View style={styles.docPane}>
+        <View style={styles.docPane} onLayout={(e) => setDocPaneLeft(e.nativeEvent.layout.x)}>
           <DocumentEditorScreen
             key={paneDocId}
             ref={paneEditorRef}
             pane
             documentId={paneDocId}
+            // This pane sits to the RIGHT of the board, not at the
+            // window's own left edge - see DocumentEditorScreen's own
+            // paneLeft comment on why the drawer needs to be told.
+            paneLeft={docPaneLeft}
             // This screen's navigation carries the boards stack's own
             // routes as well; the editor only ever pushes root-stack ones
             // (Links/Photos/Files), which a nested navigator forwards

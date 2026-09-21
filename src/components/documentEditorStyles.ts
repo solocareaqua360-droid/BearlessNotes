@@ -30,22 +30,22 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     backgroundColor: t.paper.fill,
   },
-  // The reference panel's own dock - see ReferencePanel. ~45% of the
-  // screen on purpose: enough to read a row's label, not so much that
-  // what lies underneath stops being a real drop target.
+  // The reference panel's own dock - see ReferencePanel. `left` and
+  // `width` are always set inline (DocumentEditorScreen computes both
+  // off the PANE's own measured geometry, never a fraction of this
+  // portal's own width, which is the whole window regardless of how
+  // narrow the pane sharing it is).
+  //
+  // The LEFT edge, mirrored from where it started. The rail stands on
+  // the right, so a drawer there put the app's own buttons on top of
+  // the panel's - including the one that closes it, which is how the
+  // drawer ended up with no way out. The user's own call: move the
+  // drawer rather than move a button, "прибрати, перенести кнопку буде
+  // плутанина".
   referencePanelDock: {
     position: 'absolute',
     top: 0,
     bottom: 0,
-    // The LEFT edge, mirrored from where it started. The rail stands on
-    // the right, so a drawer there put the app's own buttons on top of
-    // the panel's - including the one that closes it, which is how the
-    // drawer ended up with no way out. The user's own call: move the
-    // drawer rather than move a button, "прибрати, перенести кнопку буде
-    // плутанина".
-    left: 0,
-    width: '45%',
-    minWidth: 260,
     // Android stacks by elevation before it stacks by order, and the
     // canvas this lies over raises its own pieces (its "+" sits at
     // elevation 4). Saying where this goes beats being a later sibling.

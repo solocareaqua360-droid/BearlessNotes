@@ -246,6 +246,15 @@ type Props =
       // in two panes the rail belongs on the pane's edge, not the
       // window's, or it lands on top of the other half.
       railRight?: number;
+      // Where this pane's LEFT edge is, measured in from the window's -
+      // the drawer stands there, portaled above the whole window, so it
+      // has no other way to know. Left out (0) only where that is
+      // actually true; both DocumentsScreen and BoardScreen measure
+      // their own pane's real x and pass it, because neither pane's
+      // left edge is reliably the window's own (DocumentsScreen centres
+      // a capped row on a wide screen, BoardScreen's pane stands beside
+      // the board).
+      paneLeft?: number;
       // The line the list's own cards start on. In two panes the document
       // starts there too, so the two halves read as one row - and the
       // capsule sits on that line, over the cover.
@@ -310,6 +319,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const railRight = 'pane' in props ? (props.railRight ?? RAIL_RIGHT) : RAIL_RIGHT;
   const railTop = 'pane' in props ? props.railTop : undefined;
   const railSide = { right: railRight };
+  // See paneLeft above - 0 for a standalone screen or a pane that is
+  // already the window's own left edge.
+  const paneLeft = 'pane' in props ? props.paneLeft ?? 0 : 0;
   // The "…" panel used to open BESIDE the rail, so it needed to know
   // which edge the rail stood on. It drops out of the dock now and is as
   // wide as the dock, so it has no side to pick.
@@ -423,12 +435,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // The threshold is what both halves need to stay usable: the drawer's
   // own minimum plus a column of text worth reading. Below it, splitting
   // would give two strips and no window - the "три вікна і жодного
-  // функціонального" this is here to avoid.
-  const referencesSplit =
-    referencePanelOpen && !embedded && !canvasMode && editorWidth >= REFERENCES_SPLIT_MIN;
+  // функціонального" this is here to avoid. The canvas is no exception -
+  // it measures its own viewport from whatever room its container
+  // leaves it (see the wrapper around DocumentCanvas below), so pushing
+  // it aside costs nothing this screen does not already do for the page.
+  const referencesSplit = referencePanelOpen && !embedded && editorWidth >= REFERENCES_SPLIT_MIN;
+  // Always a real number, off THIS pane's own measured width - never a
+  // percentage of the portal host, which spans the whole window and
+  // would size the drawer against the BOARD sharing that window with a
+  // narrow pane, not against the note itself ("дошки... площу не
+  // повинно бути видно" - the board's own area must stay clear, so the
+  // drawer's size and position both have to be read off the pane, never
+  // the window).
   const referencePanelWidth = referencesSplit
     ? Math.round(Math.min(420, Math.max(300, editorWidth * 0.36)))
-    : undefined;
+    : Math.round(Math.max(260, editorWidth * 0.45));
   // WHICH card is being typed into on the canvas, not just whether one
   // is. The id is what the "/" toolbar needs: the canvas edits the very
   // same Block objects the page does, so once this screen knows which
@@ -3946,6 +3967,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           above), not here either. */}
 
       {canvasMode && !embedded && (
+        // DocumentCanvas measures its own viewport from whatever room
+        // this leaves it (see its own onLayout) - marginLeft is enough
+        // to push it aside split, and nothing to add when not.
+        <View style={[{ flex: 1 }, referencesSplit && { marginLeft: referencePanelWidth }]}>
         <DocumentCanvas
           ref={canvasApiRef}
           onEditingChange={(id) => {
@@ -3994,6 +4019,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             handleActivateBlock(id);
           }}
         />
+        </View>
       )}
 
       {/* «Референси» - a drawer over the LEFT of the note, never the
@@ -4012,7 +4038,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           block being reordered gets. */}
       {!embedded && referencePanelOpen && (
         <View
-          style={[styles.referencePanelDock, referencesSplit && { width: referencePanelWidth }]}
+          style={[styles.referencePanelDock, { left: paneLeft, width: referencePanelWidth }]}
           pointerEvents="box-none"
         >
           {/* Its own boundary: a panel that browses every database in the
