@@ -53,7 +53,7 @@ import {
   SHEET_WINDOW,
 } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
-import { TAG_COLORS } from '../constants/tags';
+import { TAG_COLORS, TAG_ICONS } from '../constants/tags';
 import { LINK_CATEGORY_INFO, LinkCategory, categoryFromSiteName } from '../utils/linkCategory';
 import { refreshLinkPreviewIfExpired } from '../utils/linkPreviewRefresh';
 import GlassLayer from '../components/GlassLayer';
@@ -123,7 +123,6 @@ import {
   groupableFieldsOf,
   sortableFieldsOf,
   toggleFacet,
-  viewMatchesState,
 } from '../utils/customRowQuery';
 import { MONTH_FULL, WEEKDAY_SHORT, addDays, dateKey, getMonthGrid, isSameDay, parseDateKey } from '../utils/dateLocale';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -146,7 +145,7 @@ function generateId(): string {
 
 const VIEW_LABELS: Record<ViewMode, string> = {
   list: 'Список',
-  cards: 'Картки',
+  cards: 'Галерея',
   table: 'Таблиця',
   schedule: 'Графік',
 };
@@ -197,7 +196,7 @@ type ViewMode = 'list' | 'table' | 'cards' | 'schedule';
 // rail and three anchored lists; the user's own call was that they are one
 // window with three tabs, "як менше основного екрану по центру" - the
 // sheet shape this app already uses everywhere else.
-type ParamsTab = 'sort' | 'filter' | 'group';
+type ParamsTab = 'sort' | 'filter' | 'group' | 'representation';
 type RowEditorState = { mode: 'new'; id: string } | { mode: 'edit'; row: CustomDatabaseRow };
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CustomDatabase'>;
@@ -253,13 +252,17 @@ export default function CustomDatabaseScreen({
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
-  // Which saved 'schedule' view is active, when viewMode is 'schedule' -
-  // needed because a schedule view carries real configuration
-  // (scheduleConfig) that viewMatchesState's own sort/filter comparison
-  // can't distinguish between two schedule views that happen to share the
-  // same leftover sort/filter state (irrelevant to either of them). Kept
-  // in the same prefs doc the rest of the view state already lives in.
-  const [scheduleViewId, setScheduleViewId] = useState<string | null>(null);
+  // Which capsule is selected at the top of the screen - null means
+  // "Поточні зміни" (the working area: sort/filter/group/representation/
+  // hidden fields persist for it same as before, just now explicitly
+  // named rather than inferred by matching state against every saved
+  // view). A real id means a SAVED view is active - its own stored
+  // params drive the display (seeded by the effect below), and further
+  // edits through Подача stay purely local until either this changes
+  // again or the screen unmounts, never written back to the view or to
+  // this prefs doc. Kept in the same prefs doc the rest of the view
+  // state already lives in.
+  const [activeViewId, setActiveViewId] = useState<string | null>(null);
   const [scheduleSetupVisible, setScheduleSetupVisible] = useState(false);
   // Non-null while editing an EXISTING schedule's own configuration
   // (relation field / date field / manual statuses) rather than creating
@@ -273,7 +276,7 @@ export default function CustomDatabaseScreen({
   // they are one family: all three change the same list. 'view' and
   // 'views' stay small anchored lists, because they are one short choice
   // each, not a panel.
-  const [openParam, setOpenParam] = useState<'view' | 'views' | 'params' | null>(null);
+  const [openParam, setOpenParam] = useState<'params' | null>(null);
   // Which of the three tabs opens first: the one used last in THIS
   // database, so the common case stays one tap plus no thinking. Kept in
   // the same per-database prefs document the sort and the filters are.
@@ -283,6 +286,11 @@ export default function CustomDatabaseScreen({
   // Which field the list is broken into groups by, if any - each group
   // headed by its own value and count.
   const [groupFieldId, setGroupFieldId] = useState<string | null>(null);
+  // This screen's own current property visibility - a field's database-
+  // wide `hidden` flag (FieldDef.hidden) always wins, this only ever
+  // hides MORE on top of that, per whichever capsule is active (see
+  // activeViewId's own comment).
+  const [hiddenFieldIds, setHiddenFieldIds] = useState<string[]>([]);
   // Which field's values the filter dropdown is currently showing. null is
   // its top level, the list of fields.
   const [filterFieldId, setFilterFieldId] = useState<string | null>(null);
@@ -298,6 +306,27 @@ export default function CustomDatabaseScreen({
   const [viewPrompt, setViewPrompt] = useState<{ mode: 'new' } | { mode: 'rename'; view: CustomDatabaseView } | null>(
     null
   );
+  // Non-null while "редагувати" (from Налаштування виглядів) has THIS
+  // view's own capsule active and Подача open - every edit then writes
+  // straight back to the view's own doc instead of staying local or going
+  // to the prefs doc (see changeViewMode's own comment). Cleared whenever
+  // Подача closes (closeParamList) or a different capsule is picked.
+  const [editingViewId, setEditingViewId] = useState<string | null>(null);
+  // "Налаштування виглядів" - every saved view with edit/delete/rename/
+  // project icons, reached from Параметри.
+  const [viewsManagerVisible, setViewsManagerVisible] = useState(false);
+  // The quick show/hide-properties list, reached from Параметри - same
+  // hiddenFieldIds this screen already carries, just a faster way in than
+  // opening a saved view's own full editor first.
+  const [quickHiddenSheetVisible, setQuickHiddenSheetVisible] = useState(false);
+  // Which view's icon picker is open, while editing that view (see
+  // editingViewId) - icon choice is part of "редагування", not its own
+  // row button.
+  const [iconPickerVisible, setIconPickerVisible] = useState(false);
+  // Which view the project picker (GroupPickerSheet) is currently open
+  // for, from its own row in Налаштування виглядів.
+  const [viewGroupPickerFor, setViewGroupPickerFor] = useState<CustomDatabaseView | null>(null);
+  const [iconQuery, setIconQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingDatabase, setRenamingDatabase] = useState(false);
@@ -622,41 +651,67 @@ export default function CustomDatabaseScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openViewId, savedViews]);
 
+  // The prefs doc IS "Поточні зміни" - its own persisted snapshot of
+  // sort/filter/group/representation/hidden fields, same fields it has
+  // always stored, plus which capsule (activeViewId) is selected. Only
+  // actually applied to the live display state below when that capsule is
+  // "Поточні зміни" itself (null) - a real saved view's own doc drives the
+  // display instead, via the seeding effect right after this one.
   useEffect(() => {
     return onSnapshot(prefsDoc, (snapshot) => {
       const data = snapshot.data();
-      setViewMode((data?.viewMode as ViewMode | undefined) ?? 'list');
-      setScheduleViewId((data?.scheduleViewId as string | undefined) ?? null);
-      // Same two keys useSortPref writes on the other database screens, so
-      // a sort chosen before this screen grew its own field-aware sorting
-      // is still the sort it comes back with.
-      setSortPref(
-        data?.sortField
-          ? { field: data.sortField as string, dir: (data.sortDir as RowSort['dir']) ?? 'desc' }
-          : DEFAULT_ROW_SORT
-      );
-      setFilters((data?.rowFilters as RowFilter[] | undefined) ?? []);
-      setGroupFieldId((data?.groupFieldId as string | undefined) ?? null);
+      const nextActiveViewId = (data?.activeViewId as string | undefined) ?? null;
+      setActiveViewId(nextActiveViewId);
+      if (nextActiveViewId === null) {
+        setViewMode((data?.viewMode as ViewMode | undefined) ?? 'list');
+        // Same two keys useSortPref writes on the other database screens, so
+        // a sort chosen before this screen grew its own field-aware sorting
+        // is still the sort it comes back with.
+        setSortPref(
+          data?.sortField
+            ? { field: data.sortField as string, dir: (data.sortDir as RowSort['dir']) ?? 'desc' }
+            : DEFAULT_ROW_SORT
+        );
+        setFilters((data?.rowFilters as RowFilter[] | undefined) ?? []);
+        setGroupFieldId((data?.groupFieldId as string | undefined) ?? null);
+        setHiddenFieldIds((data?.hiddenFieldIds as string[] | undefined) ?? []);
+      }
       const tab = data?.paramsTab as ParamsTab | undefined;
-      setParamsTab(tab === 'filter' || tab === 'group' ? tab : 'sort');
+      setParamsTab(tab === 'filter' || tab === 'group' || tab === 'representation' ? tab : 'sort');
       setReadError(null);
     },
     (error) => setReadError(error.message));
   }, [prefsKey]);
 
-  // ABOVE the early return below, and it has to stay there: a hook that
-  // runs only once the database has loaded is a hook that is missing on
-  // the render before it, and React ends the screen over it. That is what
-  // crashed this screen the moment a database was opened.
-  //
-  // A schedule view is looked up by id, not by matching sort/filter state -
-  // its scheduleConfig is what actually distinguishes one from another,
-  // and two schedule views easily share the same leftover sort/filter
-  // values (neither one uses them).
-  const activeView =
-    viewMode === 'schedule'
-      ? (savedViews.find((v) => v.id === scheduleViewId) ?? null)
-      : (savedViews.find((v) => viewMatchesState(v, viewMode, sortPref, filters)) ?? null);
+  // Seeds the live display from a SAVED view's own doc, once per capsule
+  // switch - guarded by the ref rather than re-seeding on every savedViews
+  // refresh, which would otherwise silently discard an in-progress,
+  // never-persisted tweak (see activeViewId's own comment) the moment an
+  // unrelated write anywhere touched this database's views. Retries on its
+  // own once savedViews actually contains the view, so switching to one
+  // right after creating it still works before its snapshot round-trips.
+  const seededViewIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (activeViewId === null) {
+      seededViewIdRef.current = null;
+      return;
+    }
+    if (seededViewIdRef.current === activeViewId) return;
+    const view = savedViews.find((v) => v.id === activeViewId);
+    if (!view) return;
+    seededViewIdRef.current = activeViewId;
+    setViewMode(view.viewMode);
+    setSortPref({ field: view.sortField, dir: view.sortDir });
+    setFilters(view.filters ?? []);
+    setGroupFieldId(view.groupFieldId ?? null);
+    setHiddenFieldIds(view.hiddenFieldIds ?? []);
+  }, [activeViewId, savedViews]);
+
+  // A direct id lookup now, not a match against sort/filter state - every
+  // capsule (including a schedule one) is explicitly selected via
+  // activeViewId, not inferred, so two views that happen to share
+  // leftover sort/filter values can no longer be confused for each other.
+  const activeView = activeViewId ? (savedViews.find((v) => v.id === activeViewId) ?? null) : null;
   // What the one parameters button has to say without words: how many of
   // the three are doing something. A sort is always in force, so it only
   // counts when it is not the default one this database opens with.
@@ -727,22 +782,24 @@ export default function CustomDatabaseScreen({
               : []),
           ]
         : [
-            // The shape of the list - the icon says WHICH shape is in
-            // force, the word says what the button is for.
-            // The shape's own popover also carries the pencil into the
-            // saved views (see the 'views' openParam branch) - lit while
-            // either is open, or a saved view is currently applied, since
-            // that's this button's own family now, not the params one's.
+            // "Вигляд" retired - a view is a whole parameter bundle now,
+            // not a shape, and switching between saved ones moved to the
+            // capsule row above the list (see the viewCapsuleRow render).
+            // What used to be that button's own slot is this one: save
+            // whatever's currently in force (sort/filter/group/
+            // representation/hidden fields, from ANY capsule, tweaked or
+            // not) as a brand new view. A schedule's own creation flow is
+            // its own dedicated setup sheet, not this generic snapshot.
             {
-              key: 'shape',
-              icon: VIEW_ICONS[viewMode],
-              label: 'Вигляд',
-              active: openParam === 'view' || openParam === 'views' || !!activeView,
-              onPress: () => openParamList('view'),
+              key: 'save',
+              icon: 'bookmark-outline',
+              label: 'Зберегти',
+              onPress: () => (viewMode === 'schedule' ? setScheduleSetupVisible(true) : setViewPrompt({ mode: 'new' })),
             },
-            // Ordering, narrowing and grouping only - "Подача" (as in HOW
-            // the list is served up), same funnel icon the filter tab
-            // already used inside it. Saved views moved to 'Вигляд' above.
+            // Ordering, narrowing, grouping and representation (list/
+            // table/gallery/graphic) - "Подача" (as in HOW the list is
+            // served up), same funnel icon the filter tab already used
+            // inside it.
             {
               key: 'params',
               icon: 'funnel-outline',
@@ -751,8 +808,9 @@ export default function CustomDatabaseScreen({
               onPress: () => openParamList('params'),
             },
             { key: 'select', icon: 'checkmark-circle-outline', label: 'Вибір', onPress: () => toggleSelectMode() },
-            // The rare, per-database housekeeping (rename, fields, import,
-            // delete) - "Параметри" freed up from the button above, gear
+            // The rare, per-database housekeeping (rename, fields, hide/
+            // show properties, saved views, import, delete) - "Параметри"
+            // freed up from the button that used to be "Вигляд", gear
             // icon since this is genuinely database settings now.
             { key: 'menu', icon: 'settings-outline', label: 'Параметри', active: menuOpen, onPress: () => setMenuOpen((v) => !v) },
           ]
@@ -797,6 +855,17 @@ export default function CustomDatabaseScreen({
 
   function resolveRelation(field: FieldDef, targetId: string | undefined) {
     return resolveRelationValue(field, targetId, displayContext);
+  }
+
+  // buildRowDisplay only knows a field's own database-wide `hidden` flag -
+  // this capsule's own extra hiddenFieldIds (see CustomDatabaseView.
+  // hiddenFieldIds' own comment) is layered on top here, in list/card
+  // rendering's one shared entry point, rather than inside that shared
+  // util every OTHER screen embedding a row also calls.
+  function rowDisplayFor(row: CustomDatabaseRow) {
+    const display = buildRowDisplay(database, row, displayContext);
+    if (hiddenFieldIds.length === 0) return display;
+    return { ...display, chips: display.chips.filter((c) => !hiddenFieldIds.includes(c.field.id)) };
   }
 
   const pendingFilteredRows = filterPending(rows);
@@ -845,8 +914,24 @@ export default function CustomDatabaseScreen({
   const rowMenuRow = rowMenuId ? rows.find((r) => r.id === rowMenuId) ?? null : null;
   const rowPageRow = rowPageId ? rows.find((r) => r.id === rowPageId) ?? null : null;
 
-  async function changeViewMode(mode: ViewMode) {
-    await setDoc(prefsDoc, { viewMode: mode }, { merge: true });
+  // Where a parameter change actually lands, in order: mid-"редагувати"
+  // (editingViewId) writes straight back to that view's own doc; plain
+  // "Поточні зміни" (activeViewId null) writes to the prefs doc, same as
+  // always; anything else (casually tweaking an active saved view without
+  // having opened its editor) is purely local and goes nowhere, exactly
+  // as long as that tweak stays on screen (see activeViewId's own
+  // comment for why).
+  function persistParam(patch: Record<string, unknown>) {
+    if (editingViewId) {
+      updateDoc(doc(db, 'customDatabaseViews', editingViewId), { ...patch, updatedAt: Date.now() });
+    } else if (activeViewId === null) {
+      setDoc(prefsDoc, patch, { merge: true });
+    }
+  }
+
+  function changeViewMode(mode: ViewMode) {
+    setViewMode(mode);
+    persistParam({ viewMode: mode });
   }
 
   // Tapping the field already sorted by flips its direction; tapping a
@@ -854,38 +939,49 @@ export default function CustomDatabaseScreen({
   // direction - the behaviour useSortPref gave the other screens.
   function selectSortField(field: string) {
     const dir = sortPref.field === field ? (sortPref.dir === 'asc' ? 'desc' : 'asc') : defaultDirFor(field, database);
-    setDoc(prefsDoc, { sortField: field, sortDir: dir }, { merge: true });
+    setSortPref({ field, dir });
+    persistParam({ sortField: field, sortDir: dir });
   }
 
   function applyFilters(next: RowFilter[]) {
-    setDoc(prefsDoc, { rowFilters: next }, { merge: true });
+    setFilters(next);
+    persistParam(editingViewId ? { filters: next } : { rowFilters: next });
   }
 
   function selectGroupField(fieldId: string | null) {
-    setDoc(prefsDoc, { groupFieldId: fieldId ?? deleteField() }, { merge: true });
+    setGroupFieldId(fieldId);
+    persistParam({ groupFieldId: fieldId ?? deleteField() });
     // Deliberately does NOT close: grouping is one tab of a window whose
-    // other two tabs stay open after a choice, and closing on this one
-    // alone would read as the window falling over.
+    // other tabs stay open after a choice, and closing on this one alone
+    // would read as the window falling over.
+  }
+
+  function toggleHiddenField(fieldId: string) {
+    const next = hiddenFieldIds.includes(fieldId)
+      ? hiddenFieldIds.filter((id) => id !== fieldId)
+      : [...hiddenFieldIds, fieldId];
+    setHiddenFieldIds(next);
+    persistParam({ hiddenFieldIds: next });
+  }
+
+  // Switches which capsule is active - a real view's own doc seeds the
+  // display (see the effect right after the prefs one), "Поточні зміни"
+  // (null) reverts to whatever the prefs doc itself last had stored.
+  function selectCapsule(viewId: string | null) {
+    closeParamList();
+    setDoc(prefsDoc, { activeViewId: viewId ?? deleteField() }, { merge: true });
   }
 
   function applySavedView(view: CustomDatabaseView) {
-    setDoc(
-      prefsDoc,
-      {
-        viewMode: view.viewMode,
-        sortField: view.sortField,
-        sortDir: view.sortDir,
-        rowFilters: view.filters ?? [],
-        // Cleared for every OTHER view, set for a schedule one - see
-        // activeView's own comment on why this can't be derived from
-        // sort/filter state the way the other three view modes are.
-        scheduleViewId: view.viewMode === 'schedule' ? view.id : deleteField(),
-      },
-      { merge: true }
-    );
-    closeParamList();
+    selectCapsule(view.id);
   }
 
+  // Always creates a NEW view from whatever is currently on screen -
+  // never overwrites the view being looked at, even if its own tweaked
+  // state is what's showing (see activeViewId's own comment on why a
+  // tweak never quietly becomes the view's new saved state). Lands on the
+  // freshly created view right after, so "Зберегти" reads as "and now
+  // I'm looking at it."
   async function saveCurrentAsView(name: string) {
     setViewPrompt(null);
     const id = generateId();
@@ -896,9 +992,12 @@ export default function CustomDatabaseScreen({
       sortField: sortPref.field,
       sortDir: sortPref.dir,
       filters,
+      ...(groupFieldId ? { groupFieldId } : {}),
+      ...(hiddenFieldIds.length > 0 ? { hiddenFieldIds } : {}),
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
+    selectCapsule(id);
   }
 
   // Keeps a status's own id (and colour) when its label survives an edit
@@ -948,8 +1047,7 @@ export default function CustomDatabaseScreen({
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
-    await setDoc(prefsDoc, { viewMode: 'schedule', scheduleViewId: id }, { merge: true });
-    closeParamList();
+    selectCapsule(id);
   }
 
   // The way back in to a schedule's own configuration - see
@@ -1045,26 +1143,47 @@ export default function CustomDatabaseScreen({
     await updateDoc(doc(db, 'customDatabaseViews', view.id), { name: name.trim() || view.name, updatedAt: Date.now() });
   }
 
-  function openSavedViewMenu(view: CustomDatabaseView) {
-    ask({
-      title: view.name,
-      actions: [
-        // Only a schedule has its own separate configuration (row field,
-        // date field, manual statuses) worth reopening - the other three
-        // modes' own "state" is just whatever sort/filter is already
-        // showing, edited by using them normally rather than a settings
-        // screen of their own.
-        ...(view.viewMode === 'schedule'
-          ? [{ id: 'edit', label: 'Налаштування графіка', icon: 'options-outline' as const }]
-          : []),
-        { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
-        { id: 'delete', label: 'Видалити', tone: 'danger', icon: 'trash-outline' },
-      ],
-    }).then((answer) => {
-      if (answer === 'edit') setScheduleEditView(view);
-      if (answer === 'rename') setViewPrompt({ mode: 'rename', view });
-      if (answer === 'delete') deleteDoc(doc(db, 'customDatabaseViews', view.id));
+  // The "редагувати" icon on a row in Налаштування виглядів - a schedule
+  // has its own dedicated setup sheet (relation/date fields, manual
+  // statuses) that sort/filter/group/representation mean nothing to, so
+  // it gets that instead of the generic edit-in-Подача flow every other
+  // representation shares.
+  function startEditView(view: CustomDatabaseView) {
+    setViewsManagerVisible(false);
+    if (view.viewMode === 'schedule') {
+      setScheduleEditView(view);
+      return;
+    }
+    selectCapsule(view.id);
+    setEditingViewId(view.id);
+    openParamList('params');
+  }
+
+  function confirmDeleteView(view: CustomDatabaseView) {
+    confirm({
+      title: 'Видалити вигляд?',
+      message: `«${view.name}» більше не буде доступний.`,
+      confirmLabel: 'Видалити',
+    }).then((yes) => {
+      if (!yes) return;
+      if (activeViewId === view.id) selectCapsule(null);
+      deleteDoc(doc(db, 'customDatabaseViews', view.id));
     });
+  }
+
+  function assignViewGroup(groupId: string | null) {
+    const view = viewGroupPickerFor;
+    setViewGroupPickerFor(null);
+    if (!view) return;
+    updateDoc(doc(db, 'customDatabaseViews', view.id), { groupId: groupId ?? deleteField(), updatedAt: Date.now() });
+  }
+
+  // Icon choice is part of "редагування" itself (see startEditView), not
+  // its own row button - only reachable while a view is being edited.
+  function setViewIcon(icon: string) {
+    setIconPickerVisible(false);
+    if (!editingViewId) return;
+    updateDoc(doc(db, 'customDatabaseViews', editingViewId), { icon, updatedAt: Date.now() });
   }
 
   function openParamsTab(tab: ParamsTab) {
@@ -1073,7 +1192,7 @@ export default function CustomDatabaseScreen({
     setOpenParam('params');
   }
 
-  function openParamList(key: 'view' | 'views' | 'params') {
+  function openParamList(key: 'params') {
     setFilterFieldId(null);
     setOpenParam((prev) => (prev === key ? null : key));
   }
@@ -1081,6 +1200,9 @@ export default function CustomDatabaseScreen({
   function closeParamList() {
     setOpenParam(null);
     setFilterFieldId(null);
+    // Ends any in-progress "редагувати" session (see startEditView) - the
+    // window it was happening in just closed.
+    setEditingViewId(null);
   }
 
   async function renameDatabase(name: string) {
@@ -1608,7 +1730,7 @@ export default function CustomDatabaseScreen({
       <CustomRowCard
         key={item.id}
         rowId={item.id}
-        display={buildRowDisplay(database, item, displayContext)}
+        display={rowDisplayFor(item)}
         tags={tags.filter((t) => (item.tagIds ?? []).includes(t.id))}
         documentCount={documentIdsOf(item).length}
         onPress={() => (isSelectMode ? toggleSelected(item.id) : setRowPageId(item.id))}
@@ -1646,7 +1768,12 @@ export default function CustomDatabaseScreen({
     // them from the list and the cards.
     const fields = database!.fields;
     const firstField = fields[0];
-    const restFields = visibleFieldsOf(database).filter((f) => f.id !== firstField?.id);
+    // Database-wide hidden (visibleFieldsOf) AND this capsule's own extra
+    // hidden fields (hiddenFieldIds) - see CustomDatabaseView.hiddenFieldIds'
+    // own comment on why a view can hide MORE on top of the field's own flag.
+    const restFields = visibleFieldsOf(database).filter(
+      (f) => f.id !== firstField?.id && !hiddenFieldIds.includes(f.id)
+    );
     const titleWidth = titleColumnWidth(displayedRows.map(titleOf), windowWidth);
     return (
       <View style={styles.tableWrap}>
@@ -2061,6 +2188,53 @@ export default function CustomDatabaseScreen({
           tabs start on - the same one as every other database. */}
       <View style={{ height: insets.top + CHROME_TOP + 8 }} />
 
+      {/* Which vigляд is on screen - "Поточні зміни" (the working area,
+          always first, per its own comment on activeViewId) plus every
+          saved one, Notion-style tabs replacing the old shape popover.
+          Switching a capsule is the only thing this row does; managing
+          the views themselves (rename/delete/edit/project) lives in
+          Параметри → Налаштування виглядів now. */}
+      <View style={styles.controlsRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.viewCapsuleRow}
+        >
+          <Pressable
+            style={[styles.viewCapsule, activeViewId === null && styles.viewCapsuleActive]}
+            onPress={() => selectCapsule(null)}
+          >
+            <Ionicons
+              name="ellipse-outline"
+              size={12}
+              color={activeViewId === null ? '#0B1220' : 'rgba(255,255,255,0.75)'}
+            />
+            <Text style={[styles.viewCapsuleLabel, activeViewId === null && styles.viewCapsuleLabelActive]}>
+              Поточні зміни
+            </Text>
+          </Pressable>
+          {savedViews.map((view) => {
+            const active = activeViewId === view.id;
+            return (
+              <Pressable
+                key={view.id}
+                style={[styles.viewCapsule, active && styles.viewCapsuleActive]}
+                onPress={() => selectCapsule(view.id)}
+              >
+                <Ionicons
+                  name={(view.icon as keyof typeof Ionicons.glyphMap | undefined) ?? VIEW_ICONS[view.viewMode]}
+                  size={12}
+                  color={active ? '#0B1220' : 'rgba(255,255,255,0.75)'}
+                />
+                <Text style={[styles.viewCapsuleLabel, active && styles.viewCapsuleLabelActive]} numberOfLines={1}>
+                  {view.name}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
       {/* The tabs have this row to themselves now that the capsule stands
           on the rail. */}
       <View style={styles.controlsRow}>
@@ -2091,201 +2265,26 @@ export default function CustomDatabaseScreen({
           // is on the dock too now - "дві кнопки одна функція це невірно".
           { label: 'Перейменувати базу', icon: 'pencil-outline', onPress: () => setRenamingDatabase(true) },
           { label: 'Поля', icon: 'options-outline', onPress: () => setEditingFields(true) },
+          // A faster way in than opening a saved view's own editor first
+          // just to hide a field before saving a new one - the same
+          // hiddenFieldIds every capsule already carries (see
+          // toggleHiddenField's own comment).
+          { label: 'Показати, приховати властивості', icon: 'eye-off-outline', onPress: () => setQuickHiddenSheetVisible(true) },
+          { label: 'Налаштування виглядів', icon: 'bookmark-outline', onPress: () => setViewsManagerVisible(true) },
           { label: 'Імпортувати таблицю', icon: 'download-outline', onPress: () => setImporting(true) },
           { label: 'Видалити базу', icon: 'trash-outline', tone: 'danger', onPress: askToDeleteDatabase },
         ]}
       />
 
-      {/* An open list is drawn HERE, over the whole screen, rather than
-          inside the capsule it belongs to - even though it's positioned to
-          look like it grows straight out of that capsule.
-
-          It has to be: the capsule's own row is one pill tall, and Android
-          only dispatches a touch to a view whose ANCESTORS all contain the
-          touch point. A list hanging below a 44px-tall row is outside them,
-          so its ScrollView never saw the drag and refused to scroll -
-          while taps kept working, because React Native hit-tests those
-          against its own tree instead of Android's bounds. Anchored to the
-          capsule's measured position, so it still reads as the capsule
-          stretching downward. */}
-      {openParam === 'view' && (
-        <View style={styles.paramOverlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={closeParamList} />
-          <View
-            style={[
-              styles.paramExpanded,
-              // Above the dock, where the button that opened it lives.
-              { bottom: dockClear + insets.bottom, right: 16, minWidth: 220 },
-            ]}
-          >
-            {openParam === 'view' && (
-              <>
-                <View style={styles.paramExpandedHead}>
-                  <Pressable style={styles.paramExpandedHeadMain} onPress={closeParamList}>
-                    <Ionicons name={VIEW_ICONS[viewMode]} size={13} color="#fff" />
-                    <Text style={styles.paramChipLabel} numberOfLines={1}>
-                      {VIEW_LABELS[viewMode]}
-                    </Text>
-                    <Ionicons name="chevron-up" size={12} color="rgba(255,255,255,0.6)" />
-                  </Pressable>
-                  {/* Notion-style: the shape picker above stays about WHICH
-                      shape is on screen, and this pencil is the way into
-                      the saved views themselves (rename, delete, create a
-                      new one from the current state, a schedule's own
-                      config) - see the 'views' branch just below. */}
-                  <Pressable hitSlop={8} style={styles.paramExpandedEditBtn} onPress={() => openParamList('views')}>
-                    <Ionicons name="pencil-outline" size={14} color="rgba(255,255,255,0.7)" />
-                  </Pressable>
-                </View>
-                <View style={styles.paramScrollWrap}>
-                  <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
-                    {(['list', 'cards', 'table'] as ViewMode[]).map((mode) => (
-                      <Pressable
-                        key={mode}
-                        style={styles.paramOption}
-                        onPress={() => {
-                          changeViewMode(mode);
-                          closeParamList();
-                        }}
-                      >
-                        <Ionicons
-                          name={VIEW_ICONS[mode]}
-                          size={14}
-                          color={viewMode === mode ? '#fff' : 'rgba(255,255,255,0.7)'}
-                        />
-                        <Text style={[styles.paramOptionLabel, viewMode === mode && styles.paramOptionLabelActive]}>
-                          {VIEW_LABELS[mode]}
-                        </Text>
-                      </Pressable>
-                    ))}
-                    {/* A 4th way to look at the database, same as the other
-                        three - not "create a schedule", which lives one
-                        level down (see selectScheduleView's own comment).
-                        A long press is the direct way back into its own
-                        config (relation/date field, manual statuses) -
-                        "не розумію де ручні статуси... як їх
-                        налаштовувати" was exactly this being undiscoverable
-                        anywhere near where "Графік" itself lives. */}
-                    <Pressable
-                      style={styles.paramOption}
-                      onPress={selectScheduleView}
-                      onLongPress={() => {
-                        const existing = savedViews.find((v) => v.viewMode === 'schedule');
-                        if (existing) openSavedViewMenu(existing);
-                      }}
-                    >
-                      <Ionicons
-                        name={VIEW_ICONS.schedule}
-                        size={14}
-                        color={viewMode === 'schedule' ? '#fff' : 'rgba(255,255,255,0.7)'}
-                      />
-                      <Text style={[styles.paramOptionLabel, viewMode === 'schedule' && styles.paramOptionLabelActive]}>
-                        {VIEW_LABELS.schedule}
-                      </Text>
-                    </Pressable>
-                  </ScrollView>
-                </View>
-              </>
-            )}
-
-          </View>
-        </View>
-      )}
-
-      {/* The pencil from 'Вигляд' above: every saved view (rename/apply/
-          delete via a long press), plus saving the current state as a new
-          one and a schedule's own setup - moved out of the old params
-          window's "Вигляди" tab, since a saved view IS a view, not a sort/
-          filter/group setting. */}
-      {openParam === 'views' && (
-        <View style={styles.paramOverlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={closeParamList} />
-          <View
-            style={[
-              styles.paramExpanded,
-              { bottom: dockClear + insets.bottom, right: 16, minWidth: 220 },
-            ]}
-          >
-            <View style={styles.paramExpandedHead}>
-              <Pressable style={styles.paramExpandedHeadMain} onPress={closeParamList}>
-                <Ionicons name="bookmark-outline" size={13} color="#fff" />
-                <Text style={styles.paramChipLabel} numberOfLines={1}>
-                  Вигляди
-                </Text>
-                <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
-              </Pressable>
-            </View>
-            <View style={styles.paramScrollWrap}>
-              <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
-                {savedViews.map((view) => {
-                  const active = activeView?.id === view.id;
-                  return (
-                    <Pressable
-                      key={view.id}
-                      style={styles.paramOption}
-                      onPress={() => applySavedView(view)}
-                      onLongPress={() => openSavedViewMenu(view)}
-                    >
-                      <Ionicons
-                        name={VIEW_ICONS[view.viewMode]}
-                        size={14}
-                        color={active ? '#fff' : 'rgba(255,255,255,0.7)'}
-                      />
-                      <Text style={[styles.paramOptionLabel, active && styles.paramOptionLabelActive]} numberOfLines={1}>
-                        {view.name}
-                      </Text>
-                      {(view.filters?.length ?? 0) > 0 && (
-                        <Ionicons name="funnel" size={11} color="rgba(255,255,255,0.45)" />
-                      )}
-                      {active && <Ionicons name="checkmark" size={14} color="#fff" />}
-                    </Pressable>
-                  );
-                })}
-                {savedViews.length > 0 && <View style={styles.paramDivider} />}
-                {/* "Current state" (sort/filters/mode) means nothing for a
-                    schedule - it has its own real configuration instead
-                    (see createScheduleView) - so this button only makes
-                    sense outside schedule mode, same reason it's already
-                    disabled while a view already matches. */}
-                {viewMode !== 'schedule' && (
-                  <Pressable
-                    style={styles.paramOption}
-                    disabled={!!activeView}
-                    onPress={() => {
-                      closeParamList();
-                      setViewPrompt({ mode: 'new' });
-                    }}
-                  >
-                    <Ionicons name="add-circle-outline" size={15} color={activeView ? 'rgba(255,255,255,0.3)' : accent} />
-                    <Text style={[styles.paramOptionLabel, { color: activeView ? 'rgba(255,255,255,0.3)' : accent }]}>
-                      Зберегти поточний
-                    </Text>
-                  </Pressable>
-                )}
-                {scheduleRelationFields.length > 0 && scheduleDateFields.length > 0 && (
-                  <Pressable
-                    style={styles.paramOption}
-                    onPress={() => {
-                      closeParamList();
-                      setScheduleSetupVisible(true);
-                    }}
-                  >
-                    <Ionicons name="calendar-outline" size={15} color={accent} />
-                    <Text style={[styles.paramOptionLabel, { color: accent }]}>Створити графік</Text>
-                  </Pressable>
-                )}
-              </ScrollView>
-            </View>
-          </View>
-        </View>
-      )}
-
-      {/* Sorting, filtering and grouping, in one window with three tabs.
-          They were three buttons on the rail and three lists hanging off
-          it; the user's own reading was that they are one family - all
-          three change the same list - and that the shape for that is the
-          window this app already uses, a smaller screen in the middle of
-          the screen.
+      {/* Sorting, filtering, grouping and representation, in one window
+          with four tabs. They started as three buttons on the rail and
+          three lists hanging off it; the user's own reading was that they
+          are one family - all four change how the same list is served up
+          - and that the shape for that is the window this app already
+          uses, a smaller screen in the middle of the screen. Representation
+          (list/table/gallery/graphic) joined the other three later, once a
+          "вигляд" stopped meaning "a shape" and started meaning "a whole
+          bundle of parameters" - the shape is just one more of them now.
 
           The window remembers its tab per database, so the common case is
           one tap and no thinking. Filtering keeps its two levels inside
@@ -2295,12 +2294,39 @@ export default function CustomDatabaseScreen({
         <View style={styles.layerBackdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={closeParamList} />
           <View style={[styles.paramsSheet, { maxHeight: Math.min(windowHeight * 0.6, 520) }]}>
+            {/* Only while "редагувати" (startEditView) brought us here -
+                a reminder that changes on every tab below now write
+                straight back into this saved view (see persistParam's own
+                comment), plus its icon, which is part of "редагування"
+                itself rather than its own row button. */}
+            {editingViewId && (
+              <View style={styles.editingViewBanner}>
+                <Pressable
+                  style={styles.editingViewIconBtn}
+                  onPress={() => {
+                    setIconQuery('');
+                    setIconPickerVisible(true);
+                  }}
+                >
+                  <Ionicons
+                    name={(activeView?.icon as keyof typeof Ionicons.glyphMap | undefined) ?? VIEW_ICONS[viewMode]}
+                    size={16}
+                    color="#fff"
+                  />
+                  <Ionicons name="pencil-outline" size={10} color="rgba(255,255,255,0.6)" />
+                </Pressable>
+                <Text style={styles.editingViewBannerLabel} numberOfLines={1}>
+                  Редагування: {activeView?.name ?? ''}
+                </Text>
+              </View>
+            )}
             <View style={styles.paramsTabs}>
               {(
                 [
                   { key: 'sort' as const, icon: 'swap-vertical-outline' as const, label: 'Сортування' },
                   { key: 'filter' as const, icon: 'funnel-outline' as const, label: 'Фільтр' },
                   { key: 'group' as const, icon: 'layers-outline' as const, label: 'Групування' },
+                  { key: 'representation' as const, icon: 'grid-outline' as const, label: 'Представлення' },
                 ] as const
               )
                 // A tab for something this database cannot do would be a
@@ -2480,6 +2506,48 @@ export default function CustomDatabaseScreen({
                   )}
                 </>
               )}
+
+              {paramsTab === 'representation' && (
+                <>
+                  {(['list', 'table', 'cards'] as ViewMode[]).map((mode) => (
+                    <Pressable key={mode} style={styles.paramOption} onPress={() => changeViewMode(mode)}>
+                      <Ionicons
+                        name={VIEW_ICONS[mode]}
+                        size={14}
+                        color={viewMode === mode ? '#fff' : 'rgba(255,255,255,0.7)'}
+                      />
+                      <Text style={[styles.paramOptionLabel, viewMode === mode && styles.paramOptionLabelActive]}>
+                        {VIEW_LABELS[mode]}
+                      </Text>
+                      {viewMode === mode && <Ionicons name="checkmark" size={14} color="#fff" />}
+                    </Pressable>
+                  ))}
+                  {/* Graphic needs its own relation/date fields first, so
+                      picking it here applies the first existing one or
+                      opens its own dedicated setup sheet instead of just
+                      flipping a mode flag - see selectScheduleView's own
+                      comment. A long press on an existing one is the
+                      direct way back into its own config. */}
+                  <Pressable
+                    style={styles.paramOption}
+                    onPress={selectScheduleView}
+                    onLongPress={() => {
+                      const existing = savedViews.find((v) => v.viewMode === 'schedule');
+                      if (existing) startEditView(existing);
+                    }}
+                  >
+                    <Ionicons
+                      name={VIEW_ICONS.schedule}
+                      size={14}
+                      color={viewMode === 'schedule' ? '#fff' : 'rgba(255,255,255,0.7)'}
+                    />
+                    <Text style={[styles.paramOptionLabel, viewMode === 'schedule' && styles.paramOptionLabelActive]}>
+                      {VIEW_LABELS.schedule}
+                    </Text>
+                    {viewMode === 'schedule' && <Ionicons name="checkmark" size={14} color="#fff" />}
+                  </Pressable>
+                </>
+              )}
             </ScrollView>
           </View>
         </View>
@@ -2536,7 +2604,7 @@ export default function CustomDatabaseScreen({
               key={row.id}
               rowId={row.id}
               width={gridTileWidth}
-              display={buildRowDisplay(database, row, displayContext)}
+              display={rowDisplayFor(row)}
               documentCount={documentIdsOf(row).length}
               onPress={() => (isSelectMode ? toggleSelected(row.id) : setRowPageId(row.id))}
               onLongPress={() => setRowMenuId(row.id)}
@@ -2658,6 +2726,139 @@ export default function CustomDatabaseScreen({
         onClose={() => setEditingFields(false)}
       />
 
+      {/* A faster way to hide/show a property than opening a saved view's
+          own editor first - operates on whatever capsule is active (see
+          toggleHiddenField's own comment on where that lands). */}
+      <GlassLayer visible={quickHiddenSheetVisible} onClose={() => setQuickHiddenSheetVisible(false)}>
+        <View style={styles.layerBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setQuickHiddenSheetVisible(false)} />
+          <View style={[styles.paramsSheet, { maxHeight: Math.min(windowHeight * 0.6, 520) }]}>
+            <View style={styles.paramsTabs}>
+              <Text style={styles.paramsSheetTitle}>Показати, приховати властивості</Text>
+              <Pressable hitSlop={8} style={styles.paramsClose} onPress={() => setQuickHiddenSheetVisible(false)}>
+                <Ionicons name="close" size={18} color="rgba(255,255,255,0.7)" />
+              </Pressable>
+            </View>
+            <ScrollView style={styles.paramsBody}>
+              {(database.fields ?? [])
+                .filter((f) => f.type !== 'section')
+                .map((field) => {
+                  const hidden = hiddenFieldIds.includes(field.id);
+                  return (
+                    <Pressable key={field.id} style={styles.paramOption} onPress={() => toggleHiddenField(field.id)}>
+                      <Ionicons
+                        name={hidden ? 'eye-off-outline' : 'eye-outline'}
+                        size={16}
+                        color={hidden ? 'rgba(255,255,255,0.4)' : '#fff'}
+                      />
+                      <Text
+                        style={[styles.paramOptionLabel, hidden && { color: 'rgba(255,255,255,0.4)' }]}
+                        numberOfLines={1}
+                      >
+                        {field.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+            </ScrollView>
+          </View>
+        </View>
+      </GlassLayer>
+
+      {/* Every saved view, with its own edit/delete/rename/project icons -
+          "Поточні зміни" isn't listed, since it's not a named, manageable
+          thing the way a saved view is. */}
+      <GlassLayer visible={viewsManagerVisible} onClose={() => setViewsManagerVisible(false)}>
+        <View style={styles.layerBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setViewsManagerVisible(false)} />
+          <View style={[styles.paramsSheet, { maxHeight: Math.min(windowHeight * 0.6, 520) }]}>
+            <View style={styles.paramsTabs}>
+              <Text style={styles.paramsSheetTitle}>Налаштування виглядів</Text>
+              <Pressable hitSlop={8} style={styles.paramsClose} onPress={() => setViewsManagerVisible(false)}>
+                <Ionicons name="close" size={18} color="rgba(255,255,255,0.7)" />
+              </Pressable>
+            </View>
+            <ScrollView style={styles.paramsBody}>
+              {savedViews.length === 0 && <Text style={styles.emptyHint}>Ще немає збережених виглядів.</Text>}
+              {savedViews.map((view) => (
+                <View key={view.id} style={styles.viewManagerRow}>
+                  <Ionicons
+                    name={(view.icon as keyof typeof Ionicons.glyphMap | undefined) ?? VIEW_ICONS[view.viewMode]}
+                    size={16}
+                    color="rgba(255,255,255,0.7)"
+                  />
+                  <Text style={styles.viewManagerRowLabel} numberOfLines={1}>
+                    {view.name}
+                  </Text>
+                  <Pressable hitSlop={8} onPress={() => startEditView(view)}>
+                    <Ionicons name="options-outline" size={16} color="rgba(255,255,255,0.7)" />
+                  </Pressable>
+                  <Pressable hitSlop={8} onPress={() => setViewPrompt({ mode: 'rename', view })}>
+                    <Ionicons name="pencil-outline" size={16} color="rgba(255,255,255,0.7)" />
+                  </Pressable>
+                  <Pressable hitSlop={8} onPress={() => setViewGroupPickerFor(view)}>
+                    <Ionicons name="folder-outline" size={16} color="rgba(255,255,255,0.7)" />
+                  </Pressable>
+                  <Pressable hitSlop={8} onPress={() => confirmDeleteView(view)}>
+                    <Ionicons name="trash-outline" size={16} color={DANGER} />
+                  </Pressable>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </GlassLayer>
+
+      {/* Icon choice, part of "редагування" (see the banner inside Подача
+          above) - a curated set, same one tags already use. */}
+      <GlassLayer visible={iconPickerVisible} onClose={() => setIconPickerVisible(false)}>
+        <View style={styles.layerBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setIconPickerVisible(false)} />
+          <View style={[styles.paramsSheet, { maxHeight: Math.min(windowHeight * 0.6, 520) }]}>
+            <View style={styles.paramsTabs}>
+              <Text style={styles.paramsSheetTitle}>Іконка вигляду</Text>
+              <Pressable hitSlop={8} style={styles.paramsClose} onPress={() => setIconPickerVisible(false)}>
+                <Ionicons name="close" size={18} color="rgba(255,255,255,0.7)" />
+              </Pressable>
+            </View>
+            <View style={styles.iconSearchRow}>
+              <Ionicons name="search" size={14} color="rgba(255,255,255,0.5)" />
+              <TextInput
+                value={iconQuery}
+                onChangeText={setIconQuery}
+                placeholder="пошук іконки"
+                placeholderTextColor="rgba(255,255,255,0.4)"
+                style={styles.iconSearchInput}
+              />
+            </View>
+            <ScrollView style={styles.paramsBody}>
+              <View style={styles.iconGrid}>
+                {TAG_ICONS.filter((name) => name.includes(iconQuery.trim().toLowerCase())).map((name) => (
+                  <Pressable
+                    key={name}
+                    style={[styles.iconCell, activeView?.icon === name && styles.iconCellSelected]}
+                    onPress={() => setViewIcon(name)}
+                  >
+                    <Ionicons
+                      name={name as keyof typeof Ionicons.glyphMap}
+                      size={18}
+                      color={activeView?.icon === name ? '#0B1220' : 'rgba(255,255,255,0.8)'}
+                    />
+                  </Pressable>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </GlassLayer>
+
+      <GroupPickerSheet
+        visible={viewGroupPickerFor !== null}
+        kind={customRowKind}
+        groups={groups}
+        onPick={assignViewGroup}
+        onClose={() => setViewGroupPickerFor(null)}
+      />
 
       {/* The record as a page: a structured reference to read, with editing
           a deliberate step away rather than the only mode.
@@ -4447,6 +4648,36 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   controlsSpacer: {
     flex: 1,
   },
+  viewCapsuleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingRight: 20,
+  },
+  viewCapsule: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 7,
+    paddingHorizontal: 13,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  viewCapsuleActive: {
+    backgroundColor: '#fff',
+    borderColor: '#fff',
+  },
+  viewCapsuleLabel: {
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
+    color: 'rgba(255,255,255,0.85)',
+    maxWidth: 130,
+  },
+  viewCapsuleLabelActive: {
+    color: '#0B1220',
+  },
   // The strip scrolls horizontally, same family as ProjectTabsRow's own
   // dark tabs - flexGrow/flexShrink: 0 keeps it from competing for height
   // with the row list below it (same fix, same reason, as that
@@ -5053,9 +5284,91 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // The title row for the three plain sheets that reuse paramsTabs as a
+  // header instead of an actual tab strip (quick hide, views manager,
+  // icon picker).
+  paramsSheetTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: FONT_SEMIBOLD,
+    color: '#fff',
+    paddingLeft: 4,
+  },
   paramsBody: {
     paddingTop: 6,
     paddingHorizontal: 7,
+  },
+  // While "редагувати" (startEditView) is active - see editingViewId.
+  editingViewBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 13,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  editingViewIconBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  editingViewBannerLabel: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
+    color: 'rgba(255,255,255,0.85)',
+  },
+  viewManagerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 7,
+  },
+  viewManagerRowLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: FONT_REGULAR,
+    color: '#fff',
+  },
+  iconSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 13,
+    marginTop: 8,
+    marginBottom: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  iconSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: FONT_REGULAR,
+    color: '#fff',
+  },
+  iconGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: 6,
+    paddingBottom: 10,
+  },
+  iconCell: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconCellSelected: {
+    backgroundColor: '#fff',
   },
   // Backing out of one field's values, inside the filter tab. In the
   // window's own header it would read as closing the window.

@@ -805,6 +805,27 @@ export interface CustomDatabaseView {
   // Same array the screen stores in its prefs doc; a filter naming a field
   // that has since been deleted is ignored when the view is applied.
   filters: { fieldId: string; op: 'any' | 'filled' | 'empty'; values?: string[] }[];
+  // Which field the list/table/gallery groups its rows under, same as
+  // filters - a field that no longer exists is ignored when applied.
+  groupFieldId?: string;
+  // This view's OWN property visibility, layered on top of a field's own
+  // database-wide `hidden` flag (see FieldDef.hidden) rather than
+  // replacing it - a field hidden database-wide stays hidden everywhere
+  // regardless of this list, but a view can hide MORE for its own purpose
+  // (e.g. a "Для клієнта" view hiding the VIN a "Для механіка" one shows).
+  hiddenFieldIds?: string[];
+  // Shown on this view's own capsule at the top of the screen, chosen
+  // separately from its representation's own icon (VIEW_ICONS) since a
+  // view is no longer just "the table shape" - it's a whole bundle of
+  // parameters, and two views sharing one representation still want to
+  // read apart at a glance.
+  icon?: string;
+  // The project this VIEW itself belongs to (not its rows' own project) -
+  // references the same shared `groups` collection every other project
+  // does, scoped to this database's own kind (`customRow:${databaseId}`),
+  // so a view surfaces alongside this database's other items when
+  // browsing that project.
+  groupId?: string;
   // 'schedule' only - a Gantt-style grid pivoted off one of THIS
   // database's own relation fields: `rowRelationFieldId` names which
   // field points at the "row database" (`rowRelationFieldId`'s own
