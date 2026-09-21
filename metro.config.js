@@ -13,4 +13,12 @@ config.resolver.assetExts.push('jslib');
 // anyone points the camera at a page.
 config.resolver.assetExts.push('bin');
 
+// The macOS shell in desktop/ carries its own package.json and its own
+// node_modules (Electron). Metro crawls everything under the project root,
+// so without this it walks that second tree too - thousands of files it
+// will never bundle, and duplicate copies of packages that exist in both.
+// Kept out of the root .gitignore on purpose: that file IS hashed into the
+// expo-updates runtime version, and this one is not.
+config.resolver.blockList = [/\/desktop\/node_modules\/.*/];
+
 module.exports = config;
