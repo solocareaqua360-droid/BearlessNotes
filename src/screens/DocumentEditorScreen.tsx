@@ -265,6 +265,18 @@ type Props =
 
 export type DocumentEditorHandle = {
   toggleSelectMode: () => void;
+  // Everything the corner arrow used to do BEFORE closing the note:
+  // finish a canvas card, shut the reference drawer. Answers false when
+  // the note has nothing of its own left to close, which is the pane
+  // owner's cue to close the pane itself.
+  //
+  // A pane owner needs this because the dock has ONE set of beads and
+  // actions, and the screen holding the pane publishes them LAST (React
+  // runs a child's effects before its parent's), so anything the note
+  // publishes from inside a pane is overwritten. The note's way out has
+  // to be published by whoever owns the pane, and this is how that owner
+  // reaches the steps only the note knows about.
+  requestBack: () => boolean;
 };
 
 function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHandle>) {
@@ -1828,14 +1840,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       ? {
           icon: canvasEditing ? 'checkmark-outline' : 'arrow-back-outline',
           onPress: () => {
-            if (canvasEditing) {
-              canvasApiRef.current?.stopEditing();
-              return;
-            }
-            if (referencePanelOpen) {
-              setReferencePanelOpen(false);
-              return;
-            }
+            if (requestBack()) return;
             if (closePane) closePane();
             else navigation.goBack();
           },
@@ -3421,6 +3426,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     setSelectedIds(new Set());
   }
 
+  // See DocumentEditorHandle.requestBack. One step at a time: put the
+  // text down, then shut the drawer, and only then is there nothing left
+  // here for a back press to mean.
+  function requestBack() {
+    if (canvasEditing) {
+      canvasApiRef.current?.stopEditing();
+      return true;
+    }
+    if (referencePanelOpen) {
+      setReferencePanelOpen(false);
+      return true;
+    }
+    return false;
+  }
+
   // A block held and let go where it stood - see BlockList's
   // onHoldWithoutDrag. The user's own design, and it retires the
   // «Вибрати» row from the "…" menu: the way into select mode is now the
@@ -3465,7 +3485,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     );
   }
 
-  useImperativeHandle(ref, () => ({ toggleSelectMode }));
+  useImperativeHandle(ref, () => ({ toggleSelectMode, requestBack }));
 
   useEffect(() => {
     onSelectModeChange?.(isSelectMode);

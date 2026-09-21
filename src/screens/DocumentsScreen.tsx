@@ -48,7 +48,7 @@ import { useDatabaseList } from '../hooks/useDatabaseList';
 import { applyLiveRecord, useLiveRecords } from '../hooks/useLiveRecords';
 import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
-import DocumentEditorScreen from './DocumentEditorScreen';
+import DocumentEditorScreen, { DocumentEditorHandle } from './DocumentEditorScreen';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from '../components/SortMenuRows';
 import SearchField from '../components/SearchField';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
@@ -157,9 +157,13 @@ export default function DocumentsScreen({
   // Nothing to keep clear of any more: the rail is empty on this screen,
   // its 90 points of reserved width included.
   const listClear = null;
-  // The document pane taking the whole window. Only reachable from the
-  // editor's own header, and only while there are two panes to collapse.
+  // The document pane taking the whole window. Only while there are two
+  // panes to collapse - see the pane controls this screen publishes to
+  // the dock, which is where both it and the way out live.
   const [paneFullscreen, setPaneFullscreen] = useState(false);
+  // The note in the pane, reached for its own back steps - see
+  // DocumentEditorHandle.requestBack and paneControls below.
+  const paneEditorRef = useRef<DocumentEditorHandle | null>(null);
   // Which document the right-hand pane holds. Only ever read in two-pane
   // mode; on a phone a document is a pushed screen, as before.
   const [openDoc, setOpenDoc] = useState<{ id: string; autoFocusTitle?: boolean; offerBoard?: boolean } | null>(
@@ -479,11 +483,43 @@ export default function DocumentsScreen({
         }
       : null
   );
+  // The note in the pane cannot publish these itself: the dock has one
+  // set of actions and this screen, being the parent, publishes them
+  // last (see DocumentEditorHandle.requestBack). So the pane's own two
+  // controls - how big it is, and the way out of it - are published
+  // here, by whoever owns the pane.
+  //
+  // Full screen, they are the ONLY actions: the list they would sit
+  // beside is hidden then, and the note was reachable but unleaveable -
+  // "тупікова гілка".
+  const paneDocOpen = isTwoPane && !!openDoc;
+  const paneControls = paneDocOpen
+    ? [
+        {
+          key: 'pane-size',
+          icon: paneFullscreen ? 'contract-outline' : 'expand-outline',
+          label: paneFullscreen ? 'Згорнути' : 'Розгорнути',
+          onPress: () => setPaneFullscreen((v) => !v),
+        },
+        {
+          key: 'pane-close',
+          icon: 'close-outline' as const,
+          label: 'Закрити',
+          onPress: () => {
+            if (paneEditorRef.current?.requestBack()) return;
+            setOpenDoc(null);
+            setPaneFullscreen(false);
+          },
+        },
+      ]
+    : [];
   // What this LIST can do, as the dock's second card - see DockAction.
   // The rail keeps what is left: search, and creating. These three are
   // the ones that were costing the screen its width for the least use.
   useDockActions(
-    isFocused && !searchingAlone
+    paneDocOpen && paneFullscreen
+      ? paneControls
+      : isFocused && !searchingAlone
       ? isSelectMode
         ? [
             {
@@ -530,6 +566,7 @@ export default function DocumentsScreen({
               closesStack: true,
             },
             { key: 'select', icon: 'checkmark-circle-outline', label: 'Вибір', onPress: () => toggleSelectMode() },
+            ...paneControls,
           ]
       : null
   );
@@ -1436,6 +1473,7 @@ export default function DocumentsScreen({
               // rather than re-seeding one instance's state mid-edit.
               <DocumentEditorScreen
                 key={openDoc.id}
+                ref={paneEditorRef}
                 pane
                 documentId={openDoc.id}
                 autoFocusTitle={openDoc.autoFocusTitle}

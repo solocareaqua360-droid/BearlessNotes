@@ -94,7 +94,7 @@ import GroupImportSheet from '../components/GroupImportSheet';
 import { useGroupItems } from '../hooks/useGroupItems';
 import { importGroupToBoard } from '../utils/importGroupToBoard';
 import { Group } from '../types';
-import DocumentEditorScreen from './DocumentEditorScreen';
+import DocumentEditorScreen, { DocumentEditorHandle } from './DocumentEditorScreen';
 import { useCanvasWheel } from '../hooks/useCanvasWheel';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { useContextMenu } from '../hooks/useContextMenu';
@@ -2017,6 +2017,9 @@ export default function BoardScreen() {
   // header. "Сформувати" from inside it still writes a real document, and
   // that document is a snapshot from then on.
   const [paneFullscreen, setPaneFullscreen] = useState(false);
+  // The note in the pane, reached for its own back steps - see
+  // DocumentEditorHandle.requestBack and the pane controls below.
+  const paneEditorRef = useRef<DocumentEditorHandle | null>(null);
   // The canvas's own size, which stops being the window's the moment a
   // document takes half of it. Screen->world maths below reads this, not
   // the window - the gestures report x/y relative to the canvas surface,
@@ -4782,6 +4785,9 @@ export default function BoardScreen() {
   // does what that arrow does; the board itself is only left once
   // there is no document left to close.
   function closePane() {
+    // Whatever the note itself still has open comes first - see
+    // DocumentEditorHandle.requestBack.
+    if (paneEditorRef.current?.requestBack()) return;
     setPaneOfferBoard(false);
     setPaneDocId(null);
     setPaneFullscreen(false);
@@ -4796,18 +4802,39 @@ export default function BoardScreen() {
   useDockLeave('easel-outline', () =>
     isTwoPane && paneDocId !== null ? closePane() : navigation.goBack()
   );
+  // A note filling the window hides the board these two act on, so they
+  // stand down for as long as it does - the pane's own controls take the
+  // dock's actions card instead (see paneControls below).
+  const paneDocOpen = isTwoPane && paneDocId !== null;
+  const boardShowing = boardFocused && !(paneDocOpen && paneFullscreen);
   useDockBeads(
-    boardFocused
+    boardShowing
       ? {
           icon: 'layers-outline',
           active: layersDrawerVisible,
           onPress: () => setLayersDrawerVisible((v) => !v),
         }
       : null,
-    boardFocused && selectedCardIds.size === 0
+    boardShowing && selectedCardIds.size === 0
       ? { icon: 'add-outline', onPress: () => setAddSheetVisible(true) }
       : null
   );
+  // Published by the board, not by the note in its pane: the dock has
+  // one actions card and a parent publishes it last, so anything the
+  // note publishes from inside a pane is overwritten (see
+  // DocumentEditorHandle.requestBack). Full screen, these are the only
+  // actions there are - the board they would sit beside is hidden.
+  const paneControls = paneDocOpen
+    ? [
+        {
+          key: 'pane-size',
+          icon: paneFullscreen ? 'contract-outline' : 'expand-outline',
+          label: paneFullscreen ? 'Згорнути' : 'Розгорнути',
+          onPress: () => setPaneFullscreen((v) => !v),
+        },
+        { key: 'pane-close', icon: 'close-outline', label: 'Закрити', onPress: closePane },
+      ]
+    : [];
   // A CARD SELECTION IS AN ACTIONS CARD, the same as on every other
   // database (Documents/Files/Photos/Links) - it used to be its own
   // floating capsule instead, which is what left the dock showing one
@@ -4817,7 +4844,9 @@ export default function BoardScreen() {
   // variable, scrolling list of actions with a word under each icon -
   // this was simply the one screen that had never been moved onto it.
   useDockActions(
-    boardFocused
+    paneDocOpen && paneFullscreen
+      ? paneControls
+      : boardFocused
       ? selectedCardIds.size > 0 || selectedShapeIds.size > 0
         ? [
             { key: 'cancel', icon: 'close-outline', label: 'Вийти', onPress: clearSelection },
@@ -4937,6 +4966,7 @@ export default function BoardScreen() {
             // stay in sync for free with every mutation on the board).
             ...(canUndo ? [{ key: 'undo', icon: 'arrow-undo-outline', label: 'Скасувати', onPress: undo }] : []),
             ...(canRedo ? [{ key: 'redo', icon: 'arrow-redo-outline', label: 'Повторити', onPress: redo }] : []),
+            ...paneControls,
           ]
       : null
   );
@@ -6026,6 +6056,7 @@ export default function BoardScreen() {
         <View style={styles.docPane}>
           <DocumentEditorScreen
             key={paneDocId}
+            ref={paneEditorRef}
             pane
             documentId={paneDocId}
             // This screen's navigation carries the boards stack's own
