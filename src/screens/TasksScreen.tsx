@@ -999,7 +999,7 @@ export default function TasksScreen() {
             <Ionicons
               name={item.checked ? 'checkbox' : 'square-outline'}
               size={22}
-              color={item.checked ? accent : 'rgba(255,255,255,0.45)'}
+              color={item.checked ? accent : theme.ink.faint}
             />
           </Pressable>
           <Pressable
@@ -1027,9 +1027,9 @@ export default function TasksScreen() {
                     <Ionicons
                       name="cube-outline"
                       size={11}
-                      color={project ? project.color : 'rgba(255,255,255,0.45)'}
+                      color={project ? project.color : theme.ink.faint}
                     />
-                    <Text style={[styles.chipText, { color: project ? project.color : 'rgba(255,255,255,0.45)' }]}>
+                    <Text style={[styles.chipText, { color: project ? project.color : theme.ink.faint }]}>
                       {project ? project.name : 'Вхідні'}
                     </Text>
                   </View>
@@ -1044,8 +1044,8 @@ export default function TasksScreen() {
               {project && opts.showListChip && (
                 <Pressable onPress={() => openListPicker(item.id)}>
                   <View style={[styles.chip, list ? { backgroundColor: `${list.color}1A` } : styles.chipEmpty]}>
-                    <Ionicons name="list-outline" size={11} color={list ? list.color : 'rgba(255,255,255,0.45)'} />
-                    <Text style={[styles.chipText, { color: list ? list.color : 'rgba(255,255,255,0.45)' }]}>
+                    <Ionicons name="list-outline" size={11} color={list ? list.color : theme.ink.faint} />
+                    <Text style={[styles.chipText, { color: list ? list.color : theme.ink.faint }]}>
                       {list ? list.name : 'Без списку'}
                     </Text>
                   </View>
@@ -1068,7 +1068,7 @@ export default function TasksScreen() {
               )}
               {subtaskCount > 0 && (
                 <View style={styles.reminderChip}>
-                  <Ionicons name="git-branch-outline" size={11} color="rgba(255,255,255,0.6)" />
+                  <Ionicons name="git-branch-outline" size={11} color={theme.ink.muted} />
                   <Text style={styles.reminderChipText}>{subtaskCount}</Text>
                 </View>
               )}
@@ -1079,7 +1079,7 @@ export default function TasksScreen() {
             onPress={() => toggleToday(item)}
             onLongPress={() => openReminderPicker(item.id)}
           >
-            <Ionicons name={isToday ? 'star' : 'star-outline'} size={20} color={isToday ? '#F59E0B' : 'rgba(255,255,255,0.45)'} />
+            <Ionicons name={isToday ? 'star' : 'star-outline'} size={20} color={isToday ? '#F59E0B' : theme.ink.faint} />
           </Pressable>
           {/* Everything below the fold - subtasks, comment, attachments -
               never shows anywhere but here, so a chevron is the only way
@@ -1088,7 +1088,7 @@ export default function TasksScreen() {
             <Ionicons
               name={isExpanded ? 'chevron-up' : 'chevron-down'}
               size={18}
-              color="rgba(255,255,255,0.45)"
+              color={theme.ink.faint}
             />
           </Pressable>
           {isSelectMode && (
@@ -1096,7 +1096,7 @@ export default function TasksScreen() {
               <Ionicons
                 name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
                 size={20}
-                color={isSelected ? accent : 'rgba(255,255,255,0.45)'}
+                color={isSelected ? accent : theme.ink.faint}
               />
             </Pressable>
           )}
@@ -1130,14 +1130,14 @@ export default function TasksScreen() {
               <Ionicons
                 name={s.checked ? 'checkbox' : 'square-outline'}
                 size={18}
-                color={s.checked ? accent : 'rgba(255,255,255,0.45)'}
+                color={s.checked ? accent : theme.ink.faint}
               />
             </Pressable>
             <Text style={[styles.subtaskText, s.checked && styles.rowTextChecked]} numberOfLines={2}>
               {s.text}
             </Text>
             <Pressable hitSlop={8} onPress={() => deleteSubtask(item, s.id)}>
-              <Ionicons name="close" size={16} color="rgba(255,255,255,0.35)" />
+              <Ionicons name="close" size={16} color={theme.field.placeholder} />
             </Pressable>
           </View>
         ))}
@@ -1146,7 +1146,7 @@ export default function TasksScreen() {
             value={draft}
             onChangeText={(v) => setSubtaskDrafts((prev) => ({ ...prev, [item.id]: v }))}
             placeholder="Нова підзадача"
-            placeholderTextColor="rgba(255,255,255,0.35)"
+            placeholderTextColor={theme.field.placeholder}
             style={styles.subtaskInput}
             onSubmitEditing={submitSubtask}
             returnKeyType="done"
@@ -1161,7 +1161,7 @@ export default function TasksScreen() {
           onChangeText={(v) => setCommentDrafts((prev) => ({ ...prev, [item.id]: v }))}
           onBlur={() => saveTaskComment(item, commentDraft)}
           placeholder="Коментар"
-          placeholderTextColor="rgba(255,255,255,0.35)"
+          placeholderTextColor={theme.field.placeholder}
           style={styles.commentInput}
           multiline
         />
@@ -1173,13 +1173,13 @@ export default function TasksScreen() {
                 <Ionicons
                   name={(a.type ?? 'paragraph') === 'image' ? 'image-outline' : 'document-outline'}
                   size={14}
-                  color="rgba(255,255,255,0.7)"
+                  color={theme.ink.muted}
                 />
                 <Text style={styles.attachmentChipText} numberOfLines={1}>
                   {(a.type === 'image' ? a.imageTitle : a.fileTitle || a.fileName) || 'Без назви'}
                 </Text>
                 <Pressable hitSlop={8} onPress={() => removeAttachment(item, a.id)}>
-                  <Ionicons name="close" size={13} color="rgba(255,255,255,0.4)" />
+                  <Ionicons name="close" size={13} color={theme.ink.faint} />
                 </Pressable>
               </View>
             ))}
@@ -1191,8 +1191,8 @@ export default function TasksScreen() {
         </Pressable>
 
         <Pressable style={styles.attachButton} onPress={() => setRecurrenceTaskId(item.id)}>
-          <Ionicons name="repeat-outline" size={16} color={item.recurrence ? accent : 'rgba(255,255,255,0.5)'} />
-          <Text style={[styles.attachButtonText, { color: item.recurrence ? accent : 'rgba(255,255,255,0.5)' }]}>
+          <Ionicons name="repeat-outline" size={16} color={item.recurrence ? accent : theme.ink.muted} />
+          <Text style={[styles.attachButtonText, { color: item.recurrence ? accent : theme.ink.muted }]}>
             {item.recurrence ? recurrenceLabel(item.recurrence) : 'Повторення: немає'}
           </Text>
         </Pressable>
@@ -1205,8 +1205,8 @@ export default function TasksScreen() {
         <View style={styles.detailsCapsuleRow}>
           <Pressable onPress={() => openProjectPicker(item.id)}>
             <View style={[styles.chip, project ? { backgroundColor: `${project.color}1A` } : styles.chipEmpty]}>
-              <Ionicons name="cube-outline" size={11} color={project ? project.color : 'rgba(255,255,255,0.45)'} />
-              <Text style={[styles.chipText, { color: project ? project.color : 'rgba(255,255,255,0.45)' }]}>
+              <Ionicons name="cube-outline" size={11} color={project ? project.color : theme.ink.faint} />
+              <Text style={[styles.chipText, { color: project ? project.color : theme.ink.faint }]}>
                 {project ? project.name : 'Вхідні'}
               </Text>
             </View>
@@ -1216,8 +1216,8 @@ export default function TasksScreen() {
               with nothing in it to offer. */}
           <Pressable onPress={() => (item.groupId ? openListPicker(item.id) : openProjectPicker(item.id))}>
             <View style={[styles.chip, list ? { backgroundColor: `${list.color}1A` } : styles.chipEmpty]}>
-              <Ionicons name="list-outline" size={11} color={list ? list.color : 'rgba(255,255,255,0.45)'} />
-              <Text style={[styles.chipText, { color: list ? list.color : 'rgba(255,255,255,0.45)' }]}>
+              <Ionicons name="list-outline" size={11} color={list ? list.color : theme.ink.faint} />
+              <Text style={[styles.chipText, { color: list ? list.color : theme.ink.faint }]}>
                 {list ? list.name : 'Без списку'}
               </Text>
             </View>
@@ -1231,9 +1231,9 @@ export default function TasksScreen() {
               <Ionicons
                 name={item.reminderKind === 'notify' ? 'notifications-outline' : 'alarm-outline'}
                 size={11}
-                color={item.reminderDate ? accent : 'rgba(255,255,255,0.45)'}
+                color={item.reminderDate ? accent : theme.ink.faint}
               />
-              <Text style={[styles.chipText, { color: item.reminderDate ? accent : 'rgba(255,255,255,0.45)' }]}>
+              <Text style={[styles.chipText, { color: item.reminderDate ? accent : theme.ink.faint }]}>
                 {formatReminderBadge(item) ?? 'Без дати'}
               </Text>
             </View>
@@ -1269,16 +1269,16 @@ export default function TasksScreen() {
           <>
             <View style={styles.groupHeader}>
               {section.icon === 'star' ? (
-                <Ionicons name="star" size={14} color={section.color ?? 'rgba(255,255,255,0.45)'} />
+                <Ionicons name="star" size={14} color={section.color ?? theme.ink.faint} />
               ) : section.icon === 'list' ? (
-                <Ionicons name="list-outline" size={20} color={section.color ?? 'rgba(255,255,255,0.45)'} />
+                <Ionicons name="list-outline" size={20} color={section.color ?? theme.ink.faint} />
               ) : (
-                <View style={[styles.groupDot, { backgroundColor: section.color ?? 'rgba(255,255,255,0.45)' }]} />
+                <View style={[styles.groupDot, { backgroundColor: section.color ?? theme.ink.faint }]} />
               )}
               <Text
                 style={[
                   section.icon === 'list' ? styles.groupTitleList : styles.groupTitle,
-                  { color: section.color ?? 'rgba(255,255,255,0.45)' },
+                  { color: section.color ?? theme.ink.faint },
                 ]}
               >
                 {section.title}
@@ -1302,7 +1302,7 @@ export default function TasksScreen() {
               <Ionicons
                 name={expandedGroups.has(section.key) ? 'chevron-down' : 'chevron-forward'}
                 size={16}
-                color="rgba(255,255,255,0.45)"
+                color={theme.ink.faint}
               />
               <Text style={styles.collapseLabel}>Завершені ({section.completed.length})</Text>
             </Pressable>
@@ -1336,7 +1336,7 @@ export default function TasksScreen() {
             <Ionicons
               name={task.checked ? 'checkbox' : 'square-outline'}
               size={20}
-              color={task.checked ? accent : 'rgba(255,255,255,0.45)'}
+              color={task.checked ? accent : theme.ink.faint}
             />
           </Pressable>
           <Pressable
@@ -1356,9 +1356,9 @@ export default function TasksScreen() {
                   <Ionicons
                     name="cube-outline"
                     size={11}
-                    color={project ? project.color : 'rgba(255,255,255,0.45)'}
+                    color={project ? project.color : theme.ink.faint}
                   />
-                  <Text style={[styles.chipText, { color: project ? project.color : 'rgba(255,255,255,0.45)' }]}>
+                  <Text style={[styles.chipText, { color: project ? project.color : theme.ink.faint }]}>
                     {project ? project.name : 'Вхідні'}
                   </Text>
                 </View>
@@ -1383,7 +1383,7 @@ export default function TasksScreen() {
               disabled={columnIndex === 0}
               onPress={() => moveTaskColumn(task, -1)}
             >
-              <Ionicons name="chevron-back" size={16} color={columnIndex === 0 ? 'rgba(255,255,255,0.25)' : theme.ink.muted} />
+              <Ionicons name="chevron-back" size={16} color={columnIndex === 0 ? theme.ink.faint : theme.ink.muted} />
             </Pressable>
             <Pressable
               style={styles.kanbanArrowButton}
@@ -1393,7 +1393,7 @@ export default function TasksScreen() {
               <Ionicons
                 name="chevron-forward"
                 size={16}
-                color={columnIndex === KANBAN_COLUMNS.length - 1 ? 'rgba(255,255,255,0.25)' : theme.ink.muted}
+                color={columnIndex === KANBAN_COLUMNS.length - 1 ? theme.ink.faint : theme.ink.muted}
               />
             </Pressable>
           </View>
@@ -1666,7 +1666,7 @@ export default function TasksScreen() {
                   <Text style={styles.modalTitle}>Оберіть список</Text>
 
                   <Pressable style={styles.modalRow} onPress={() => assignTaskList(null)}>
-                    <View style={[styles.modalDot, { backgroundColor: 'rgba(255,255,255,0.45)' }]} />
+                    <View style={[styles.modalDot, { backgroundColor: theme.ink.faint }]} />
                     <Text style={styles.modalRowText}>Без списку</Text>
                   </Pressable>
 
@@ -1741,7 +1741,7 @@ export default function TasksScreen() {
                 return (
                   <>
                     <Pressable style={styles.modalRow} onPress={() => apply(null)}>
-                      <View style={[styles.modalDot, { backgroundColor: 'rgba(255,255,255,0.45)' }]} />
+                      <View style={[styles.modalDot, { backgroundColor: theme.ink.faint }]} />
                       <Text style={styles.modalRowText}>Немає</Text>
                     </Pressable>
                     <Pressable style={styles.modalRow} onPress={() => apply({ freq: 'daily' })}>
@@ -1860,7 +1860,7 @@ const makeStyles = (t: Theme) =>
     bottom: 0,
     backgroundColor: t.surface,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.08)',
+    borderTopColor: t.edge.hairline,
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 24,
@@ -1900,7 +1900,7 @@ const makeStyles = (t: Theme) =>
     width: 72,
     height: 72,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: t.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1915,13 +1915,13 @@ const makeStyles = (t: Theme) =>
     marginTop: 24,
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: 'rgba(255,255,255,0.45)',
+    color: t.ink.faint,
   },
   emptyHint: {
     marginTop: 6,
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: 'rgba(255,255,255,0.45)',
+    color: t.ink.faint,
     textAlign: 'center',
   },
   list: {
@@ -1976,7 +1976,7 @@ const makeStyles = (t: Theme) =>
   listDescriptionText: {
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: 'rgba(255,255,255,0.5)',
+    color: t.ink.muted,
   },
   collapseToggle: {
     flexDirection: 'row',
@@ -1988,7 +1988,7 @@ const makeStyles = (t: Theme) =>
   collapseLabel: {
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: 'rgba(255,255,255,0.45)',
+    color: t.ink.faint,
   },
   // A task sits on a card of its own, the same one a folder row and a
   // file row sit on. On white the rows were separated by nothing but
@@ -2000,9 +2000,9 @@ const makeStyles = (t: Theme) =>
   // layout (the horizontal strip of checkbox/text/star/chevron).
   row: {
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: t.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
+    borderColor: t.edge.hairline,
   },
   rowMain: {
     flexDirection: 'row',
@@ -2044,10 +2044,10 @@ const makeStyles = (t: Theme) =>
     borderRadius: 10,
   },
   chipEmpty: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: t.field.fill,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: t.ink.faint,
   },
   chipText: {
     fontSize: 12,
@@ -2062,7 +2062,7 @@ const makeStyles = (t: Theme) =>
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: t.surface,
   },
   reminderChipText: {
     fontSize: 11.5,
@@ -2083,7 +2083,7 @@ const makeStyles = (t: Theme) =>
     paddingTop: 10,
     paddingBottom: 12,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.12)',
+    borderTopColor: t.edge.hairline,
   },
   subtaskRow: {
     flexDirection: 'row',
@@ -2110,7 +2110,7 @@ const makeStyles = (t: Theme) =>
     color: t.ink.primary,
     paddingVertical: 6,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.16)',
+    borderBottomColor: t.edge.hairline,
   },
   commentInput: {
     fontSize: 14,
@@ -2120,9 +2120,9 @@ const makeStyles = (t: Theme) =>
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: t.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
+    borderColor: t.edge.hairline,
   },
   attachmentsRow: {
     flexDirection: 'row',
@@ -2137,7 +2137,7 @@ const makeStyles = (t: Theme) =>
     paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: t.field.fill,
   },
   attachmentChipText: {
     flexShrink: 1,
@@ -2208,13 +2208,13 @@ const makeStyles = (t: Theme) =>
   },
   modalDivider: {
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: t.edge.hairline,
     marginVertical: 4,
   },
   weekdayHint: {
     fontSize: 12,
     fontFamily: FONT_REGULAR,
-    color: 'rgba(255,255,255,0.5)',
+    color: t.ink.muted,
     marginBottom: 6,
   },
   weekdayRow: {
@@ -2227,7 +2227,7 @@ const makeStyles = (t: Theme) =>
     alignItems: 'center',
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: t.surface,
   },
   weekdayButtonText: {
     fontSize: 13,
@@ -2283,14 +2283,14 @@ const makeStyles = (t: Theme) =>
     fontSize: 11,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: 'rgba(255,255,255,0.45)',
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    color: t.ink.faint,
+    backgroundColor: t.field.fill,
     borderRadius: 8,
     paddingHorizontal: 7,
     paddingVertical: 1,
   },
   kanbanColumnBody: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: t.surface,
     borderRadius: 14,
   },
   kanbanColumnBodyContent: {
@@ -2341,7 +2341,7 @@ const makeStyles = (t: Theme) =>
     width: 26,
     height: 26,
     borderRadius: 7,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: t.field.fill,
     alignItems: 'center',
     justifyContent: 'center',
   },
