@@ -432,35 +432,52 @@ export default function DocumentsScreen({
   // between them.
   const wideCardWidth = listWidth;
   // FlatList lays a grid out in fixed cells and has no notion of one
-  // item spanning several. So the DATA is padded instead: a wide card is
-  // pushed to the start of a row and the rest of that row is filled with
-  // empty cells, which keeps every other card exactly where the plain
-  // grid would have put it. The card itself then simply draws wider than
-  // its own cell, over cells with nothing in them.
-  function padGridRows(items: DocumentItem[]): DocumentItem[] {
+  // item spanning several. So the DATA is arranged instead: a wide card
+  // is given a row of its own, and the rest of that row is filled with
+  // empty cells the wide card simply draws over.
+  //
+  // The part that matters is what happens to the row ABOVE it. A wide
+  // card arriving mid-row used to leave the hole it pushed out of -
+  // "якщо у нас вверху є дірка, то там повинна стояти картка". So the
+  // row is COMPLETED first, by pulling the next ordinary cards forward
+  // past the wide one. Order gives a little, which is the trade every
+  // packed grid makes; an empty cell is only ever left when there are
+  // no ordinary cards left to pull.
+  function packGridRows(items: DocumentItem[]): DocumentItem[] {
     if (drawnMode !== 'grid' || !items.some((d) => d.wideCard)) return items;
+    const waiting = [...items];
     const out: DocumentItem[] = [];
     let column = 0;
     const filler = () => ({ id: `__cell__${out.length}`, gridFiller: true }) as unknown as DocumentItem;
-    for (const item of items) {
-      if (item.wideCard) {
-        while (column !== 0) {
-          out.push(filler());
-          column = (column + 1) % gridColumns;
-        }
-        out.push(item);
-        column = 1 % gridColumns;
-        while (column !== 0) {
-          out.push(filler());
-          column = (column + 1) % gridColumns;
-        }
-      } else {
-        out.push(item);
+    const endRow = () => {
+      while (column !== 0) {
+        out.push(filler());
         column = (column + 1) % gridColumns;
       }
+    };
+    while (waiting.length > 0) {
+      const next = waiting.shift() as DocumentItem;
+      if (!next.wideCard) {
+        out.push(next);
+        column = (column + 1) % gridColumns;
+        continue;
+      }
+      // Finish the row this card cannot join, with whatever ordinary
+      // cards come after it rather than with nothing.
+      while (column !== 0) {
+        const pulled = waiting.findIndex((d) => !d.wideCard);
+        if (pulled === -1) break;
+        out.push(waiting.splice(pulled, 1)[0]);
+        column = (column + 1) % gridColumns;
+      }
+      endRow();
+      out.push(next);
+      column = 1 % gridColumns;
+      endRow();
     }
     return out;
   }
+
   const folderRowWidth = folderColumns > 1 ? Math.floor((listWidth - 10) / 2) : undefined;
   const insets = useSafeAreaInsets();
   const chromeTop = insets.top + CHROME_TOP;
@@ -1313,7 +1330,7 @@ export default function DocumentsScreen({
             // FlatList throws if numColumns changes on an already-mounted
             // instance - key forces a clean remount when switching views.
             key={`${drawnMode}-${gridColumns}-${trashOpen ? 'trash' : 'list'}`}
-            data={trashOpen ? trashed : padGridRows(explorer.visibleItems)}
+            data={trashOpen ? trashed : packGridRows(explorer.visibleItems)}
             // The folders of this level, and the way up, above the cards.
             ListHeaderComponent={
               trashOpen ? (
@@ -1456,7 +1473,7 @@ export default function DocumentsScreen({
               { paddingTop: chromeBottom, paddingBottom: listBottomPad },
             ]}
             renderItem={({ item }) => {
-              // An empty cell beside a wide card - see padGridRows. It
+              // An empty cell beside a wide card - see packGridRows. It
               // holds the row's arithmetic and draws nothing.
               if ((item as { gridFiller?: boolean }).gridFiller) {
                 return <View style={{ width: gridCardWidth }} />;

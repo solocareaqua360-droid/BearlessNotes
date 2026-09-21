@@ -327,12 +327,17 @@ export default function DocumentCard({
     </Text>
   );
 
+  // A wide card's cover STANDS in a column of its own, so it fills that
+  // column's whole height - the grid's own thumb is a fixed 96 tall
+  // (right for a strip lying across the top, and a cut-off picture with
+  // dead space under it here).
+  const thumbStyle = wide ? styles.thumbWide : isGrid ? styles.thumbGrid : styles.thumb;
   const thumbNode = gradient ? (
-    <CoverGradientView gradient={gradient} style={isGrid ? styles.thumbGrid : styles.thumb} />
+    <CoverGradientView gradient={gradient} style={thumbStyle} />
   ) : imageUri ? (
-    <AttachmentImage uri={imageUri} driveFileId={imageDriveFileId} style={isGrid ? styles.thumbGrid : styles.thumb} />
+    <AttachmentImage uri={imageUri} driveFileId={imageDriveFileId} style={thumbStyle} />
   ) : (
-    <View style={[styles.thumb, styles.thumbPlaceholder]}>
+    <View style={[thumbStyle, styles.thumbPlaceholder]}>
       <Ionicons name="document-text-outline" size={22} color="#D1D5DB" />
     </View>
   );
@@ -347,7 +352,10 @@ export default function DocumentCard({
       textColor={text}
       mutedColor={textMuted}
       compact={isGrid}
-      textLines={isGrid ? (noImage ? EXPANDED_TEXT_LINES : COMPACT_TEXT_LINES) : 2}
+      // A wide card's cover is BESIDE the text, not above it, so the
+      // text column has the card's full height to itself - the same
+      // budget a tile with no picture at all gets.
+      textLines={wide ? EXPANDED_TEXT_LINES : isGrid ? (noImage ? EXPANDED_TEXT_LINES : COMPACT_TEXT_LINES) : 2}
     />
   );
 
@@ -682,6 +690,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderRightWidth: THUMB_BORDER_WIDTH,
     borderRightColor: 'rgba(0,0,0,0.12)',
+  },
+  // Fills that column, rather than the grid's fixed strip height.
+  thumbWide: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: '#F3F4F6',
   },
   wideContent: {
     flex: 1,
