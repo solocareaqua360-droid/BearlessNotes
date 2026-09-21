@@ -497,6 +497,12 @@ export interface BoardColumn {
   // проект" inserts one of these per list PLUS one 'projectUnlisted' for
   // whatever's left with no list. `groupId: null` means "Вхідні".
   liveTaskSource?: { kind: 'projectUnlisted'; groupId: string | null } | { kind: 'list'; listId: string };
+  // See BoardCard's own layerId/hidden comments - the same two fields,
+  // same meaning, on a column instead of a card. A column carried NEITHER
+  // until now - «Шари» listed cards/shapes/containers only, so a column
+  // (a «Проект справ» one especially) had no way into the panel at all.
+  layerId?: string;
+  hidden?: boolean;
 }
 
 // FURNITURE, NOT CONTENT.

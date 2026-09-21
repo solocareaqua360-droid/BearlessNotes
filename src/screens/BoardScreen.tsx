@@ -776,6 +776,7 @@ function DraggableColumn({
   height,
   isDragging,
   isCatching,
+  locked,
   dragEnabled,
   canvasScale,
   canvasPanGesture,
@@ -796,6 +797,10 @@ function DraggableColumn({
   // A card is being carried over this column right now: it lights up to
   // say it will catch, rather than the drop being a surprise.
   isCatching: boolean;
+  // True while this column's own BoardLayer is locked - blocks drag,
+  // rename and delete, but never visibility (see DraggableContainer's
+  // own comment on why lock and hide are two different things).
+  locked: boolean;
   // False while the "Рука" tool is active - see canvasTool's own comment.
   dragEnabled: boolean;
   canvasScale: SharedValue<number>;
@@ -832,7 +837,7 @@ function DraggableColumn({
   }, [column.x, column.y]);
 
   const panGesture = Gesture.Pan()
-    .enabled(dragEnabled)
+    .enabled(!locked && dragEnabled)
     .blocksExternalGesture(canvasPanGesture)
     .onStart(() => {
       runOnJS(onDragStart)(column.id);
@@ -845,11 +850,14 @@ function DraggableColumn({
       runOnJS(onDragEnd)(column.id, columnOffsetX.value, columnOffsetY.value);
     });
 
-  const tapGesture = Gesture.Tap().onEnd(() => {
-    runOnJS(onRename)(column);
-  });
+  const tapGesture = Gesture.Tap()
+    .enabled(!locked)
+    .onEnd(() => {
+      runOnJS(onRename)(column);
+    });
 
   const longPressGesture = Gesture.LongPress()
+    .enabled(!locked)
     .minDuration(500)
     .onStart(() => {
       runOnJS(onDelete)(column);
@@ -3952,7 +3960,7 @@ export default function BoardScreen() {
 
   // What the layers drawer's own list carries - a flat id across all
   // three kinds, since the drawer shows them side by side.
-  type LayerMember = { kind: 'card' | 'shape' | 'container'; id: string };
+  type LayerMember = { kind: 'card' | 'shape' | 'container' | 'column'; id: string };
 
   function setObjectLayer(member: LayerMember, layerId: string | null) {
     const apply = <T extends { layerId?: string }>(item: T): T => {
@@ -3962,7 +3970,8 @@ export default function BoardScreen() {
     };
     if (member.kind === 'card') setCards((prev) => prev.map((c) => (c.id === member.id ? apply(c) : c)));
     else if (member.kind === 'shape') setShapes((prev) => prev.map((sh) => (sh.id === member.id ? apply(sh) : sh)));
-    else setContainers((prev) => prev.map((c) => (c.id === member.id ? apply(c) : c)));
+    else if (member.kind === 'container') setContainers((prev) => prev.map((c) => (c.id === member.id ? apply(c) : c)));
+    else setColumns((prev) => prev.map((c) => (c.id === member.id ? apply(c) : c)));
   }
 
   function toggleObjectHidden(member: LayerMember) {
@@ -3970,8 +3979,10 @@ export default function BoardScreen() {
       setCards((prev) => prev.map((c) => (c.id === member.id ? { ...c, hidden: !c.hidden } : c)));
     } else if (member.kind === 'shape') {
       setShapes((prev) => prev.map((sh) => (sh.id === member.id ? { ...sh, hidden: !sh.hidden } : sh)));
-    } else {
+    } else if (member.kind === 'container') {
       setContainers((prev) => prev.map((c) => (c.id === member.id ? { ...c, hidden: !c.hidden } : c)));
+    } else {
+      setColumns((prev) => prev.map((c) => (c.id === member.id ? { ...c, hidden: !c.hidden } : c)));
     }
   }
 
@@ -3995,8 +4006,9 @@ export default function BoardScreen() {
     cards.forEach((c) => bucket(c.layerId).push({ kind: 'card', id: c.id }));
     shapes.forEach((s) => bucket(s.layerId).push({ kind: 'shape', id: s.id }));
     containers.forEach((c) => bucket(c.layerId).push({ kind: 'container', id: c.id }));
+    columns.forEach((c) => bucket(c.layerId).push({ kind: 'column', id: c.id }));
     return map;
-  }, [layers, cards, shapes, containers]);
+  }, [layers, cards, shapes, containers, columns]);
 
   function toggleLayerCollapsed(id: string) {
     setCollapsedLayerIds((prev) => {
@@ -4010,7 +4022,8 @@ export default function BoardScreen() {
   function layerIdOfMember(member: LayerMember): string | null {
     if (member.kind === 'card') return cardById.get(member.id)?.layerId ?? null;
     if (member.kind === 'shape') return shapes.find((s) => s.id === member.id)?.layerId ?? null;
-    return containers.find((c) => c.id === member.id)?.layerId ?? null;
+    if (member.kind === 'container') return containers.find((c) => c.id === member.id)?.layerId ?? null;
+    return columns.find((c) => c.id === member.id)?.layerId ?? null;
   }
 
   // Where a carried object actually sits RIGHT NOW - not a fixed "current
@@ -4075,6 +4088,10 @@ export default function BoardScreen() {
       if (!shape) return 'Фігура';
       return shape.text?.trim() || SHAPE_MENU.find((m) => m.kind === shape.kind)?.label || 'Фігура';
     }
+    if (member.kind === 'column') {
+      const column = columns.find((c) => c.id === member.id);
+      return column?.title || 'Стовпчик';
+    }
     const container = containers.find((c) => c.id === member.id);
     return container?.title || 'Область';
   }
@@ -4084,6 +4101,10 @@ export default function BoardScreen() {
       return card ? iconForCard(card) : 'chatbox-outline';
     }
     if (member.kind === 'shape') return 'shapes-outline';
+    if (member.kind === 'column') {
+      const column = columns.find((c) => c.id === member.id);
+      return column?.liveTaskSource ? 'checkbox-outline' : 'apps-outline';
+    }
     return 'scan-outline';
   }
   // This object's OWN hide flag - not combined with its layer's, unlike
@@ -4093,7 +4114,8 @@ export default function BoardScreen() {
   function hiddenForMember(member: LayerMember): boolean {
     if (member.kind === 'card') return !!cardById.get(member.id)?.hidden;
     if (member.kind === 'shape') return !!shapes.find((s) => s.id === member.id)?.hidden;
-    return !!containers.find((c) => c.id === member.id)?.hidden;
+    if (member.kind === 'container') return !!containers.find((c) => c.id === member.id)?.hidden;
+    return !!columns.find((c) => c.id === member.id)?.hidden;
   }
 
   // One row of the drawer's object list - registered with layersCarry as
@@ -4944,8 +4966,11 @@ export default function BoardScreen() {
 
               {/* Underneath everything - a column is a backdrop its cards sit
                   on. box-none so only the header takes touches and the rest
-                  of the lane still pans the canvas. */}
-              {columns.map((column) => {
+                  of the lane still pans the canvas. Filtered by its own
+                  layer's visibility the same way cards/shapes/containers
+                  already are - a column had no way into «Шари» at all
+                  until now. */}
+              {columns.filter((column) => !isHidden(column)).map((column) => {
                 // A "Проект справ" column never holds real BoardCards - see
                 // BoardColumn.liveTaskSource's own comment - so its member
                 // count and height come from the live task list instead of
@@ -4960,6 +4985,7 @@ export default function BoardScreen() {
                       memberCount={liveTasksForCol.length}
                       height={COLUMN_HEADER_HEIGHT + rowsCount * (LIVE_TASK_ROW_HEIGHT + 10) + COLUMN_PADDING}
                       isDragging={column.id === draggingColumnId}
+                      locked={isLocked(column)}
                       dragEnabled={canvasTool !== 'connect' && canvasTool !== 'hand'}
                       canvasScale={scale}
                       canvasPanGesture={canvasBlockingGesture}
@@ -4984,6 +5010,7 @@ export default function BoardScreen() {
                     memberCount={members.length}
                     height={columnHeight(members, cardHeights)}
                     isDragging={column.id === draggingColumnId}
+                    locked={isLocked(column)}
                     dragEnabled={canvasTool !== 'connect' && canvasTool !== 'hand'}
                     canvasScale={scale}
                     canvasPanGesture={canvasBlockingGesture}
