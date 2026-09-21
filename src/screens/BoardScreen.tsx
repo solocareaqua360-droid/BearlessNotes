@@ -4775,7 +4775,27 @@ export default function BoardScreen() {
   // second card. The top capsule and the floating "+" are what that
   // replaces - and the rail's width comes back to a screen that is
   // nothing BUT width.
-  useDockLeave('easel-outline', () => navigation.goBack());
+  //
+  // With a document open in the pane, this button used to skip straight
+  // past it and out of the board - the pane's OWN arrow (its rail
+  // capsule) was the only way to close just the document. One press now
+  // does what that arrow does; the board itself is only left once
+  // there is no document left to close.
+  function closePane() {
+    setPaneOfferBoard(false);
+    setPaneDocId(null);
+    setPaneFullscreen(false);
+    // The card that opened this pane shows a snapshot of the document
+    // (title, text, first image), so it has to be read again now that
+    // the document has been edited. Twice: the editor saves on a
+    // debounce, and the first read can land before that write is even
+    // issued.
+    refreshDocumentPreviews();
+    setTimeout(refreshDocumentPreviews, 1000);
+  }
+  useDockLeave('easel-outline', () =>
+    isTwoPane && paneDocId !== null ? closePane() : navigation.goBack()
+  );
   useDockBeads(
     boardFocused
       ? {
@@ -6024,18 +6044,7 @@ export default function BoardScreen() {
               setPaneOfferBoard(!!options?.offerBoard);
               setPaneDocId(documentId);
             }}
-            onClose={() => {
-              setPaneOfferBoard(false);
-              setPaneDocId(null);
-              setPaneFullscreen(false);
-              // The card that opened this pane shows a snapshot of the
-              // document (title, text, first image), so it has to be read
-              // again now that the document has been edited. Twice: the
-              // editor saves on a debounce, and the first read can land
-              // before that write is even issued.
-              refreshDocumentPreviews();
-              setTimeout(refreshDocumentPreviews, 1000);
-            }}
+            onClose={closePane}
           />
         </View>
       )}
