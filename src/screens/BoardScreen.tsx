@@ -179,6 +179,17 @@ function approxTextShapeWidth(text: string, fontSize: number): number {
 // what a corner grip already does for size (see clampShapeSize) rather
 // than a slider or a numeric field neither input method here suits.
 const SHAPE_TEXT_SIZES = [12, 14, 16, 20, 26, 32];
+// A наліпка's own text, on the same scale (see BoardCard.fontSize) - the
+// size it has always drawn at is the default, so every sticky made
+// before it could be changed looks exactly as it did.
+const STICKY_TEXT_SIZE_DEFAULT = 14;
+// How wide a наліпка can be stepped, and by how much per press. The
+// floor is where the card stops being able to hold a word; the ceiling
+// is about the widest that still reads as a note on a board rather than
+// as a page.
+const STICKY_WIDTH_STEP = 40;
+const STICKY_WIDTH_MIN = 120;
+const STICKY_WIDTH_MAX = 480;
 const SHAPE_TEXT_SIZE_DEFAULT = 16;
 const SHAPE_LABEL_SIZE_DEFAULT = 14;
 function stepTextSize(current: number, dir: 1 | -1): number {
@@ -1583,8 +1594,11 @@ function DraggableCard({
               { backgroundColor: mutedForTheme(card.color ?? STICKY_COLORS[0], theme, STICKY_MUTE, theme.canvas.card) },
             ]}
           >
-            <Text style={styles.stickyText} numberOfLines={6}>
-              {card.text || 'Порожня картка'}
+            <Text
+              style={[styles.stickyText, { fontSize: card.fontSize ?? STICKY_TEXT_SIZE_DEFAULT }]}
+              numberOfLines={6}
+            >
+              {card.text || 'Порожня наліпка'}
             </Text>
           </View>
         ) : type === 'image' ? (
@@ -4349,6 +4363,29 @@ export default function BoardScreen() {
     setCards((prev) => prev.map((c) => (c.id === editingCard.id ? { ...c, color } : c)));
   }
 
+  // Text size and width, stepped from inside the наліпка's own editor -
+  // applied to the card as they are pressed, the same way the colour
+  // swatches above already work, so the board behind the sheet shows
+  // what you are choosing rather than what you chose.
+  function stepEditingCardFontSize(dir: 1 | -1) {
+    if (!editingCard) return;
+    const next = stepTextSize(editingCard.fontSize ?? STICKY_TEXT_SIZE_DEFAULT, dir);
+    setEditingCard({ ...editingCard, fontSize: next });
+    setCards((prev) => prev.map((c) => (c.id === editingCard.id ? { ...c, fontSize: next } : c)));
+  }
+
+  function stepEditingCardWidth(dir: 1 | -1) {
+    if (!editingCard) return;
+    const next = Math.round(
+      Math.max(
+        STICKY_WIDTH_MIN,
+        Math.min(STICKY_WIDTH_MAX, (editingCard.width || DEFAULT_CARD_WIDTH) + dir * STICKY_WIDTH_STEP)
+      )
+    );
+    setEditingCard({ ...editingCard, width: next });
+    setCards((prev) => prev.map((c) => (c.id === editingCard.id ? { ...c, width: next } : c)));
+  }
+
   const existingItemExcludeIds = new Set(
     cards
       .filter(
@@ -5685,9 +5722,13 @@ export default function BoardScreen() {
                 <Ionicons name="checkbox-outline" size={18} color="#111827" />
                 <Text style={styles.sheetRowLabel}>Проект справ</Text>
               </Pressable>
+              {/* «Наліпка», not «Текст» - a bare text label with no card
+                  under it is a SHAPE and is already called Текст, and
+                  two different things under one word in one board is
+                  exactly the confusion this renames away from. */}
               <Pressable style={styles.sheetRow} onPress={addTextCard}>
                 <Ionicons name="text-outline" size={18} color="#111827" />
-                <Text style={styles.sheetRowLabel}>Текст</Text>
+                <Text style={styles.sheetRowLabel}>Наліпка</Text>
               </Pressable>
               <Pressable style={styles.sheetRow} onPress={createDocumentCard}>
                 <Ionicons name="document-text-outline" size={18} color="#111827" />
@@ -6021,7 +6062,12 @@ export default function BoardScreen() {
         )}
 
         {editingCard && (
-          <View style={styles.textEditBackdrop}>
+          // The keyboard used to stand OVER the foot of this sheet - the
+          // colours, "Скасувати" and "Зберегти" were all behind it, on a
+          // sheet centred in the whole screen as though nothing else was
+          // there. Same paddingBottom every other sheet on this screen
+          // already uses, so the sheet centres in what is left.
+          <View style={[styles.textEditBackdrop, { paddingBottom: 24 + keyboardHeight }]}>
             <View style={styles.textEditCard}>
               <TextInput
                 autoFocus
@@ -6032,6 +6078,32 @@ export default function BoardScreen() {
                 placeholderTextColor={GLASS_TEXT_FAINT}
                 style={styles.textEditInput}
               />
+              {/* The наліпка's own two sizes - its text, and how wide the
+                  card itself is. Steps rather than sliders, and the text
+                  one counts on the same scale a shape's text does (see
+                  textSizeStepLabel), so "3/6" means one size across the
+                  whole board. */}
+              <View style={styles.stickySizeRow}>
+                <MaterialCommunityIcons name="format-size" size={16} color="#6B7280" />
+                <Pressable hitSlop={8} onPress={() => stepEditingCardFontSize(-1)}>
+                  <Ionicons name="remove" size={18} color="#111827" />
+                </Pressable>
+                <Text style={styles.stickySizeValue}>
+                  {textSizeStepLabel(editingCard.fontSize ?? STICKY_TEXT_SIZE_DEFAULT)}
+                </Text>
+                <Pressable hitSlop={8} onPress={() => stepEditingCardFontSize(1)}>
+                  <Ionicons name="add" size={18} color="#111827" />
+                </Pressable>
+                <View style={styles.stickySizeGap} />
+                <MaterialCommunityIcons name="arrow-expand-horizontal" size={16} color="#6B7280" />
+                <Pressable hitSlop={8} onPress={() => stepEditingCardWidth(-1)}>
+                  <Ionicons name="remove" size={18} color="#111827" />
+                </Pressable>
+                <Text style={styles.stickySizeValue}>{editingCard.width || DEFAULT_CARD_WIDTH}</Text>
+                <Pressable hitSlop={8} onPress={() => stepEditingCardWidth(1)}>
+                  <Ionicons name="add" size={18} color="#111827" />
+                </Pressable>
+              </View>
               <View style={styles.textEditColors}>
                 {STICKY_COLORS.map((color) => (
                   <Pressable
@@ -6810,6 +6882,22 @@ const makeStyles = (theme: Theme) =>
       fontFamily: FONT_REGULAR,
       color: '#111827',
       textAlignVertical: 'top',
+    },
+    // The наліпка's own text-size and width steppers, inside its editor.
+    stickySizeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    stickySizeValue: {
+      minWidth: 30,
+      textAlign: 'center',
+      fontSize: 13,
+      fontFamily: FONT_SEMIBOLD,
+      color: '#111827',
+    },
+    stickySizeGap: {
+      flex: 1,
     },
     textEditColors: {
       flexDirection: 'row',

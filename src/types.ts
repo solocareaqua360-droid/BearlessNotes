@@ -401,6 +401,10 @@ export interface BoardCard extends Omit<Block, 'type'> {
   // 'paragraph' (sticky-note) cards only - no other Block usage in the app
   // has a per-block color, so this lives here rather than on Block itself.
   color?: string;
+  // 'paragraph' (наліпка) cards only - its own text size, stepped through
+  // the same scale a shape's text uses so the two read on one ruler.
+  // Absent means the sticky's own default.
+  fontSize?: number;
   // 'image' cards only - drops the white card chrome and the "Без назви"
   // caption strip, leaving just the picture. Board-specific for the same
   // reason color is: a document's own image block always keeps its
