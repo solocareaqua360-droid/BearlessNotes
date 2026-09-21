@@ -306,6 +306,17 @@ export default function CustomDatabaseScreen({
   // view's id, same tradeoff every other subscription here already makes,
   // is simpler than a query per view.
   const [scheduleCellStatuses, setScheduleCellStatuses] = useState<ScheduleCellStatus[]>([]);
+  // Non-null while the date-range step of assigning/editing a manual
+  // status period is open (see openScheduleStatusPicker's own comment) -
+  // `existingId` marks editing an already-placed one, absent means this
+  // will create a new ScheduleCellStatus once a range is picked.
+  const [scheduleStatusTarget, setScheduleStatusTarget] = useState<{
+    viewId: string;
+    rowId: string;
+    statusId: string;
+    existingId?: string;
+    initialValue: string | DateRangeValue;
+  } | null>(null);
   // { mode: 'new' } asks for a name for the current state; { mode: 'rename' }
   // carries the view being renamed.
   const [viewPrompt, setViewPrompt] = useState<{ mode: 'new' } | { mode: 'rename'; view: CustomDatabaseView } | null>(
@@ -1135,40 +1146,69 @@ export default function CustomDatabaseScreen({
   // waybill of its own. Nothing to pick when this schedule has no
   // manualStatuses configured, so the cell simply does nothing rather
   // than opening a picker with zero rows in it.
-  async function pickScheduleCellStatus(
+  // A manual status is a PERIOD now - "ремонт" (repair) with a planned end
+  // date, extendable, not something clicked onto one day at a time (that
+  // was the whole complaint: a multi-week repair needing dozens of taps).
+  // Tapping a day already inside one skips straight to editing ITS range
+  // - the way back in to extend it past a planned end that's since passed
+  // - rather than asking which status again. A brand new one still asks
+  // which status first, since the day tapped doesn't say that on its own.
+  function openScheduleStatusPicker(
     viewId: string,
     config: NonNullable<CustomDatabaseView['scheduleConfig']>,
     row: CustomDatabaseRow,
     dateKeyStr: string,
     existing: ScheduleCellStatus | undefined
   ) {
+    if (existing) {
+      setScheduleStatusTarget({
+        viewId,
+        rowId: row.id,
+        statusId: existing.statusId,
+        existingId: existing.id,
+        initialValue: existing.endDate ? { start: existing.startDate, end: existing.endDate } : existing.startDate,
+      });
+      return;
+    }
     const options = config.manualStatuses ?? [];
     if (options.length === 0) return;
     const rowDatabase = relatedDatabases[config.rowDatabaseId] ?? null;
-    const answer = await ask({
-      title: `${rowTitleOf(rowDatabase, row)} · ${dateKeyStr.split('-').reverse().join('.')}`,
-      actions: [
-        ...options.map((o) => ({ id: o.id, label: o.label })),
-        ...(existing ? [{ id: '__clear__', label: 'Очистити', tone: 'danger' as const }] : []),
-      ],
+    ask({
+      title: rowTitleOf(rowDatabase, row),
+      actions: options.map((o) => ({ id: o.id, label: o.label })),
+    }).then((answer) => {
+      if (answer === 'cancel') return;
+      setScheduleStatusTarget({ viewId, rowId: row.id, statusId: answer, initialValue: dateKeyStr });
     });
-    if (answer === 'cancel') return;
-    if (answer === '__clear__') {
-      if (existing) await deleteDoc(doc(db, 'scheduleCellStatuses', existing.id));
-      return;
-    }
-    if (existing) {
-      await updateDoc(doc(db, 'scheduleCellStatuses', existing.id), { statusId: answer, updatedAt: Date.now() });
+  }
+
+  async function saveScheduleStatusRange(range: DateRangeValue) {
+    const target = scheduleStatusTarget;
+    setScheduleStatusTarget(null);
+    if (!target) return;
+    if (target.existingId) {
+      await updateDoc(doc(db, 'scheduleCellStatuses', target.existingId), {
+        startDate: range.start,
+        endDate: range.end && range.end !== range.start ? range.end : deleteField(),
+        updatedAt: Date.now(),
+      });
       return;
     }
     await setDoc(doc(db, 'scheduleCellStatuses', generateId()), {
-      viewId,
-      rowId: row.id,
-      dateKey: dateKeyStr,
-      statusId: answer,
+      viewId: target.viewId,
+      rowId: target.rowId,
+      statusId: target.statusId,
+      startDate: range.start,
+      ...(range.end && range.end !== range.start ? { endDate: range.end } : {}),
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
+  }
+
+  function clearScheduleStatusRange() {
+    const target = scheduleStatusTarget;
+    setScheduleStatusTarget(null);
+    if (target?.existingId) deleteDoc(doc(db, 'scheduleCellStatuses', target.existingId));
   }
 
   async function renameSavedView(view: CustomDatabaseView, name: string) {
@@ -2212,11 +2252,30 @@ export default function CustomDatabaseScreen({
                     const e = Math.min(SCHEDULE_WINDOW_DAYS - 1, dayOffset(range.end ?? range.start));
                     for (let i = s; i <= e; i++) coveredDays.add(i);
                   });
+                  // Every manual status PERIOD on this row - see
+                  // ScheduleCellStatus's own comment on why this is a
+                  // range now, not one cell per day. statusDays marks
+                  // every day one spans, same "no plain tap here, a bar
+                  // drawn on top handles it" treatment coveredDays above
+                  // already gives an event. `startDate` guards against a
+                  // doc from before this change (the old, now-gone
+                  // `dateKey` shape) - silently skipped rather than
+                  // crashing the whole grid on an undefined date, same as
+                  // if it had just been deleted.
+                  const statusesForRow = scheduleCellStatuses.filter(
+                    (s) => s.viewId === viewId && s.rowId === row.id && !!s.startDate
+                  );
+                  const statusDays = new Set<number>();
+                  statusesForRow.forEach((status) => {
+                    const s = Math.max(0, dayOffset(status.startDate));
+                    const e = Math.min(SCHEDULE_WINDOW_DAYS - 1, dayOffset(status.endDate ?? status.startDate));
+                    for (let i = s; i <= e; i++) statusDays.add(i);
+                  });
                   return (
                     <View key={row.id} style={[styles.scheduleRowTrack, { height: rowHeight }]}>
                       {days.map((d, i) => {
                         const key = dateKey(d);
-                        if (coveredDays.has(i)) {
+                        if (coveredDays.has(i) || statusDays.has(i)) {
                           return (
                             <View
                               key={key}
@@ -2228,12 +2287,6 @@ export default function CustomDatabaseScreen({
                             />
                           );
                         }
-                        const status = scheduleCellStatuses.find(
-                          (s) => s.viewId === viewId && s.rowId === row.id && s.dateKey === key
-                        );
-                        const statusOption = status
-                          ? (config.manualStatuses ?? []).find((o) => o.id === status.statusId)
-                          : undefined;
                         return (
                           <Pressable
                             key={key}
@@ -2242,15 +2295,29 @@ export default function CustomDatabaseScreen({
                               key === todayKey && styles.scheduleDayCellToday,
                               { width: SCHEDULE_DAY_WIDTH, height: rowHeight },
                             ]}
-                            onPress={() => pickScheduleCellStatus(viewId, config, row, key, status)}
+                            onPress={() => openScheduleStatusPicker(viewId, config, row, key, undefined)}
+                          />
+                        );
+                      })}
+                      {statusesForRow.map((status) => {
+                        const statusOption = (config.manualStatuses ?? []).find((o) => o.id === status.statusId);
+                        if (!statusOption) return null;
+                        const rawStartIdx = dayOffset(status.startDate);
+                        const rawEndIdx = dayOffset(status.endDate ?? status.startDate);
+                        const startIdx = Math.max(0, rawStartIdx);
+                        const endIdx = Math.min(SCHEDULE_WINDOW_DAYS - 1, rawEndIdx);
+                        if (endIdx < startIdx) return null;
+                        const left = startIdx * SCHEDULE_DAY_WIDTH;
+                        const width = (endIdx - startIdx + 1) * SCHEDULE_DAY_WIDTH - 4;
+                        return (
+                          <Pressable
+                            key={status.id}
+                            style={[styles.scheduleStatusBar, { left, width, backgroundColor: statusOption.color }]}
+                            onPress={() => openScheduleStatusPicker(viewId, config, row, status.startDate, status)}
                           >
-                            {statusOption && (
-                              <View style={[styles.scheduleStatusPill, { backgroundColor: statusOption.color }]}>
-                                <Text style={styles.scheduleStatusPillLabel} numberOfLines={1}>
-                                  {statusOption.label}
-                                </Text>
-                              </View>
-                            )}
+                            <Text style={styles.scheduleStatusBarLabel} numberOfLines={1}>
+                              {statusOption.label}
+                            </Text>
                           </Pressable>
                         );
                       })}
@@ -3323,6 +3390,17 @@ export default function CustomDatabaseScreen({
             setCellPicker(null);
           }}
           onClose={() => setCellPicker(null)}
+        />
+      )}
+
+      {/* The date-range step of assigning/editing a manual status period -
+          see openScheduleStatusPicker's own comment. */}
+      {scheduleStatusTarget && (
+        <MiniDatePicker
+          value={scheduleStatusTarget.initialValue}
+          onPick={saveScheduleStatusRange}
+          onClear={clearScheduleStatusRange}
+          onClose={() => setScheduleStatusTarget(null)}
         />
       )}
 
@@ -5332,21 +5410,20 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontFamily: FONT_REGULAR,
     color: 'rgba(11,18,32,0.75)',
   },
-  // A manual status - "черговий" - fills the WHOLE day cell rather than
-  // floating over it the way an event card does: unlike an event, it can
-  // never span more than the one day it was set on.
-  scheduleStatusPill: {
+  // A manual status PERIOD - "ремонт" - spans its own days the same way
+  // an event card does now, not one pill per day (see ScheduleCellStatus's
+  // own comment on why).
+  scheduleStatusBar: {
     position: 'absolute',
-    top: 4,
-    bottom: 4,
-    left: 3,
-    right: 3,
-    borderRadius: 6,
-    alignItems: 'center',
+    top: 6,
+    bottom: 6,
+    left: 0,
+    borderRadius: 8,
+    paddingHorizontal: 8,
     justifyContent: 'center',
   },
-  scheduleStatusPillLabel: {
-    fontSize: 10,
+  scheduleStatusBarLabel: {
+    fontSize: 11,
     fontFamily: FONT_SEMIBOLD,
     color: '#0B1220',
   },

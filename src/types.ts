@@ -862,20 +862,25 @@ export interface CustomDatabaseView {
   updatedAt: number;
 }
 
-// One (row, day) cell of a schedule view carrying a manual status (see
-// CustomDatabaseView.scheduleConfig.manualStatuses) - "черговий" on a day
-// that has no waybill of its own to speak of. A flat collection rather
-// than embedded in the view or in either database's rows, because it
-// belongs to none of them alone: it's specific to ONE view's own reading
-// of the calendar, and there is no natural single owner document for a
-// per-day tag that could grow to many per row. Absence of a matching doc
-// IS "no status" - there's no separate empty/null value to store.
+// A PERIOD of a schedule view carrying a manual status (see
+// CustomDatabaseView.scheduleConfig.manualStatuses) - "ремонт" (repair)
+// spanning a planned start/end, not one cell per day: the user's own
+// complaint was having to tap through every single day of a weeks-long
+// repair by hand. `endDate` is the PLANNED end - extendable later (tap
+// any day already inside the period, see openScheduleStatusPicker) once
+// the real one turns out later than planned, and absent for a single-day
+// status the same short "чорговий"/"днювальний" kind already was. A flat
+// collection rather than embedded in the view or in either database's
+// rows, because it belongs to none of them alone: it's specific to ONE
+// view's own reading of the calendar, and there is no natural single
+// owner document for a period that could grow to many per row.
 export interface ScheduleCellStatus {
   id: string;
   viewId: string;
   rowId: string;
-  dateKey: string;
   statusId: string;
+  startDate: string;
+  endDate?: string;
   createdAt: number;
   updatedAt: number;
 }
