@@ -263,7 +263,7 @@ export default function DatabaseChrome<T extends { id: string }>({
             ...(bulk && list.selectedIds.size > 0
               ? [
                   { key: 'tag', icon: 'pricetag-outline' as const, label: 'Теги', onPress: bulk.onTag },
-                  { key: 'group', icon: 'folder-outline' as const, label: 'Група', onPress: bulk.onGroup },
+                  { key: 'group', icon: 'folder-outline' as const, label: 'Проект', onPress: bulk.onGroup },
                   ...(bulk.onCopy
                     ? [{ key: 'copy', icon: 'document-text-outline' as const, label: 'У нотатку', onPress: bulk.onCopy }]
                     : []),
@@ -392,7 +392,7 @@ export default function DatabaseChrome<T extends { id: string }>({
                   items={list.groups}
                   selected={list.groupFilter}
                   onSelect={list.setGroupFilter}
-                  unassignedLabel="Без групи"
+                  unassignedLabel="Без проекту"
                   dark
                   blurTarget={blurTarget}
                   startPadding={splitting ? listPaneX + 20 : undefined}

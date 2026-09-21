@@ -144,7 +144,7 @@ export default function FieldsEditorSheet({
   // This Android build doesn't resize the window under the keyboard - it
   // arrives as an inset over the content, not a shrink - so the sheet has
   // to track its own height and push up by that much, same as
-  // GroupPickerSheet's "Нова група" input.
+  // GroupPickerSheet's "Новий проект" input.
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const { height: windowHeight } = useWindowDimensions();
   useEffect(() => {

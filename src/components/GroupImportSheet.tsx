@@ -131,7 +131,7 @@ export default function GroupImportSheet({
           {step === 'items' ? (
             <>
               <ScrollView style={styles.list}>
-                {items.length === 0 && <Text style={styles.empty}>У цій групі поки нічого немає.</Text>}
+                {items.length === 0 && <Text style={styles.empty}>У цьому проекті поки нічого немає.</Text>}
                 {kinds.map((kind) => {
                   const ofKind = items.filter((i) => i.kind === kind);
                   const chosen = selectedOfKind(kind).length;

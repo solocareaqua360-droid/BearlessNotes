@@ -378,7 +378,7 @@ export default function CustomDatabaseScreen({
   // This Android build doesn't resize the window under the keyboard - it
   // arrives as an inset over the content, not a shrink - so a bottom sheet
   // needs to track its height itself and push up by that much, same as
-  // GroupPickerSheet's own "Нова група" input.
+  // GroupPickerSheet's own "Новий проект" input.
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
@@ -721,7 +721,7 @@ export default function CustomDatabaseScreen({
             ...(selectedIds.size > 0
               ? [
                   { key: 'tag', icon: 'pricetag-outline' as const, label: 'Теги', onPress: () => setBulkTagPickerVisible(true) },
-                  { key: 'group', icon: 'folder-outline' as const, label: 'Група', onPress: () => setBulkGroupPickerVisible(true) },
+                  { key: 'group', icon: 'folder-outline' as const, label: 'Проект', onPress: () => setBulkGroupPickerVisible(true) },
                   { key: 'delete', icon: 'trash-outline' as const, label: 'Видалити', onPress: confirmDeleteSelected },
                 ]
               : []),
@@ -2069,7 +2069,7 @@ export default function CustomDatabaseScreen({
             items={groups}
             selected={groupFilter}
             onSelect={setGroupFilter}
-            unassignedLabel="Без групи"
+            unassignedLabel="Без проекту"
             dark
             endPadding={20}
           />
@@ -3110,7 +3110,7 @@ export default function CustomDatabaseScreen({
               }}
             >
               <Ionicons name="folder-outline" size={18} color={GLASS_TEXT} />
-              <Text style={styles.cardMenuRowLabel}>Групування</Text>
+              <Text style={styles.cardMenuRowLabel}>Проект</Text>
             </Pressable>
             <Pressable
               style={styles.cardMenuRow}

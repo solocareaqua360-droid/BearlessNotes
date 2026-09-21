@@ -5226,7 +5226,7 @@ export default function BoardScreen() {
           <Pressable style={[styles.sheetBackdrop, { paddingBottom: keyboardHeight }]} onPress={() => setGroupPickerVisible(false)}>
             <Pressable style={styles.sheet} onPress={() => {}}>
               <View style={styles.sheetHandle} />
-              <Text style={styles.sheetTitle}>З якої групи</Text>
+              <Text style={styles.sheetTitle}>З якого проекту</Text>
               <ScrollView style={styles.groupList}>
                 {groups
                   .filter((group) => !group.archived)
@@ -5250,7 +5250,7 @@ export default function BoardScreen() {
                     );
                   })}
                 {groups.filter((group) => !group.archived).length === 0 && (
-                  <Text style={styles.groupEmpty}>Поки немає жодної групи.</Text>
+                  <Text style={styles.groupEmpty}>Поки немає жодного проекту.</Text>
                 )}
               </ScrollView>
             </Pressable>
@@ -5284,7 +5284,7 @@ export default function BoardScreen() {
                 }}
               >
                 <Ionicons name="albums-outline" size={18} color="#111827" />
-                <Text style={styles.sheetRowLabel}>З групи</Text>
+                <Text style={styles.sheetRowLabel}>З проекту</Text>
               </Pressable>
               <Pressable style={styles.sheetRow} onPress={addTextCard}>
                 <Ionicons name="text-outline" size={18} color="#111827" />

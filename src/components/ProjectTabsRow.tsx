@@ -18,14 +18,15 @@ type Props = {
   items: Item[];
   selected: string | null;
   onSelect: (id: string | null) => void;
-  // Tasks' own projects and Files/Photos/Links' groups are two entirely
-  // separate collections (the user was explicit: grouping in the database
-  // screens is its own thing, not the same "project" tasks have) - this
-  // component only draws the pill row, so it doesn't care which; the
-  // caller supplies the right wording for its "unassigned" tab.
+  // Tasks' own projects and Files/Photos/Links/Documents/Boards/custom
+  // databases' groups are the one "Проект" concept now, but still two
+  // separate collections under the hood (Tasks hasn't migrated onto the
+  // shared `groups` collection yet) - this component only draws the pill
+  // row, so it doesn't care which; the caller supplies the right wording
+  // for its "unassigned" tab.
   unassignedLabel?: string;
   // A tab that is always there and can never be deleted, the way "Без
-  // групи" always is - Documents keeps its loose stickers behind one.
+  // проекту" always is - Documents keeps its loose stickers behind one.
   // Drawn last, after the unassigned tab.
   pinnedTab?: { id: string; label: string };
   // Documents/Calendar/Databases sit on the dark gradient background

@@ -1992,7 +1992,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           {
             key: 'group',
             icon: 'folder-outline',
-            label: 'Група',
+            label: 'Проект',
             active: !!groupId,
             onPress: () => {
               setExportMenuOpen(false);
@@ -3866,7 +3866,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           >
             <Ionicons name="folder-outline" size={17} color={GLASS_TEXT} />
             <Text style={styles.exportMenuRowLabel}>
-              {groups.find((g) => g.id === groupId)?.name ?? 'Додати в групу'}
+              {groups.find((g) => g.id === groupId)?.name ?? 'Додати в проект'}
             </Text>
           </Pressable>
           {!!sourceBoardId && (

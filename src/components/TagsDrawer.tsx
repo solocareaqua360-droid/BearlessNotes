@@ -529,7 +529,7 @@ function TagsDrawerInner({
             <View style={styles.segmented}>
               {(
                 [
-                  { value: 'groups', label: 'Групи', icon: 'albums-outline' },
+                  { value: 'groups', label: 'Проекти', icon: 'albums-outline' },
                   { value: 'list', label: 'Список', icon: 'list-outline' },
                   { value: 'explorer', label: 'Провідник', icon: 'folder-open-outline' },
                 ] as { value: ListMode; label: string; icon: keyof typeof Ionicons.glyphMap }[]
@@ -574,7 +574,7 @@ function TagsDrawerInner({
             {groupSection && showGroups && (
               <>
                 <SectionHeader
-                  label="Групи"
+                  label="Проекти"
                   collapsed={groupsCollapsed}
                   onPress={() => setGroupsCollapsed((v) => !v)}
                 />

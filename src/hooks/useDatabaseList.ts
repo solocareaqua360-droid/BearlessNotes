@@ -181,7 +181,7 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
     })),
     {
       id: UNASSIGNED_ID as string | null,
-      name: 'Без групи',
+      name: 'Без проекту',
       color: GLASS_TEXT_MUTED,
       count: present.filter((item) => !groupIdOf(item)).length,
     },
@@ -189,8 +189,8 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
 
   const selected = items.filter((item) => select.selectedIds.has(item.id));
 
-  // A real group, as opposed to "Всі", "Без групи" or one of the tabs that
-  // is not a group at all (the documents screen's stickers). What the
+  // A real group, as opposed to "Всі", "Без проекту" or one of the tabs
+  // that is not a group at all (the documents screen's stickers). What the
   // cross-database sections under the list key off - they exist only when
   // a theme is actually chosen.
   const selectedGroupId =

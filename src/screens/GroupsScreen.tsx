@@ -38,11 +38,12 @@ import { confirm, notify } from '../components/surfaces/Ask';
 const DANGER = '#EF4444';
 
 // The temporary, cross-database side of this app's two filing systems (see
-// the Group type): a group is whatever period of life is current, gathering
-// items of every type for as long as it lasts, then archived once its
-// contents have been filed away with tags. This screen is where a group is
-// seen whole - every item it holds, across every database at once - which
-// no single database screen can show.
+// the Group type, now shown everywhere as "Проект"): a project is whatever
+// period of life is current, gathering items of every type for as long as
+// it lasts, then archived once its contents have been filed away with
+// tags. This screen is where a project is seen whole - every item it
+// holds, across every database at once - which no single database screen
+// can show.
 export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
   const theme = useTheme();
   const accent = theme.sections.groups;
@@ -90,7 +91,7 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
   // screen's own picker.
   function confirmDelete(group: Group) {
     confirm({
-      title: 'Видалити групу?',
+      title: 'Видалити проект?',
       message: `"${group.name}" — самі елементи залишаться на місці.`,
       confirmLabel: 'Видалити',
     }).then(async (yes) => {
@@ -143,6 +144,8 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
     } else if (item.kind.startsWith('link-')) {
       const category = item.kind === 'link-video' ? 'video' : item.kind === 'link-geo' ? 'geo' : 'other';
       navigation.navigate('Links', { category });
+    } else if (item.kind === 'board') {
+      navigation.navigate('BoardCopy', { boardId: item.id });
     } else if (item.databaseId) {
       navigation.navigate('CustomDatabase', { databaseId: item.databaseId, openRowId: item.id });
     }
@@ -178,7 +181,7 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
           <ScrollView contentContainerStyle={[styles.list, shellClear(railSide, 4)]}>
             {activeGroups.length === 0 ? (
               <Text style={styles.emptyHint}>
-                Групи створюються там, де ви їх використовуєте — у документах, фото, файлах чи власній базі.
+                Проекти створюються там, де ви їх використовуєте — у документах, фото, файлах, дошках чи власній базі.
               </Text>
             ) : (
               activeGroups.map(renderGroupRow)
@@ -248,7 +251,7 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
                       itself. */}
                   <ScrollView style={styles.itemList} keyboardShouldPersistTaps="handled">
                     {openItems.length === 0 ? (
-                      <Text style={styles.sheetEmpty}>У цій групі поки нічого немає.</Text>
+                      <Text style={styles.sheetEmpty}>У цьому проекті поки нічого немає.</Text>
                     ) : (
                       <GroupSections
                         groupId={openGroupId}
@@ -322,7 +325,7 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
 
         <RenamePrompt
           visible={renamingGroup !== null}
-          title="Назва групи"
+          title="Назва проекту"
           initialValue={renamingGroup?.name ?? ''}
           onCancel={() => setRenamingGroup(null)}
           onSave={(name) => {

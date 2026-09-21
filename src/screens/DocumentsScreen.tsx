@@ -338,8 +338,8 @@ export default function DocumentsScreen({
     });
     return () => sub.remove();
   }, [explorer.active, explorer.path]);
-  // Changing the mode puts the other modes' filters down: a group chosen
-  // under "Групи" must not keep narrowing the list under "Список", where
+  // Changing the mode puts the other modes' filters down: a project chosen
+  // under "Проекти" must not keep narrowing the list under "Список", where
   // nothing shows that it does. The explorer starts at its root.
   useEffect(() => {
     if (listMode !== 'groups' && groupFilter !== STICKERS_GROUP) setGroupFilter(null);
@@ -495,7 +495,7 @@ export default function DocumentsScreen({
             ...(selectedIds.size > 0
               ? [
                   { key: 'tag', icon: 'pricetag-outline' as const, label: 'Теги', onPress: () => setBulkTagPickerVisible(true) },
-                  { key: 'group', icon: 'folder-outline' as const, label: 'Група', onPress: () => setBulkGroupPickerVisible(true) },
+                  { key: 'group', icon: 'folder-outline' as const, label: 'Проект', onPress: () => setBulkGroupPickerVisible(true) },
                   { key: 'delete', icon: 'trash-outline' as const, label: 'Видалити', onPress: confirmDeleteSelected },
                 ]
               : []),
@@ -755,10 +755,10 @@ export default function DocumentsScreen({
       createdAt: now,
       updatedAt: now,
       blocks: [],
-      // A note created while a real group tab (not "Всі"/"Без групи") is
+      // A note created while a real project tab (not "Всі"/"Без проекту") is
       // selected starts pre-assigned to it, same idea as the tag filter
       // below - it lands back in the currently-filtered view instead of
-      // vanishing into "Без групи" the moment it's created.
+      // vanishing into "Без проекту" the moment it's created.
       ...(groupFilter && groupFilter !== UNASSIGNED_ID ? { groupId: groupFilter } : {}),
     });
     if (activeFilter?.type === 'tags') {
@@ -864,8 +864,8 @@ export default function DocumentsScreen({
     clearSelection();
   }
 
-  // Тhe loose stickers are a group of their own now - the last tab, the
-  // one that can no more be removed than "Без групи" can. Tapping it
+  // Тhe loose stickers are a project of their own now - the last tab, the
+  // one that can no more be removed than "Без проекту" can. Tapping it
   // swaps the list of documents for a list of stickers, in whichever
   // view (list or grid) the documents are in.
   function stickerFace(s: StripSticker) {
@@ -990,7 +990,7 @@ export default function DocumentsScreen({
                 items={groups}
                 selected={groupFilter}
                 onSelect={setGroupFilter}
-                unassignedLabel="Без групи"
+                unassignedLabel="Без проекту"
                 pinnedTab={{ id: STICKERS_GROUP, label: 'Стікери' }}
                 dark
                 blurTarget={blurTarget}
@@ -1496,7 +1496,7 @@ export default function DocumentsScreen({
             })),
             {
               id: UNASSIGNED_ID,
-              name: 'Без групи',
+              name: 'Без проекту',
               color: theme.ink.muted,
               count: groupCounts.ungrouped,
             },

@@ -115,7 +115,7 @@ export function useDatabaseContents(): DatabaseContents {
 
   // A group crosses databases, so its count does too.
   const inGroup = (id: string) =>
-    [...notes, ...tasks, ...links, ...photos, ...files, ...customRows].filter((r) => r.groupId === id)
+    [...notes, ...tasks, ...links, ...photos, ...files, ...boards, ...customRows].filter((r) => r.groupId === id)
       .length;
   const pinnableGroups: PinnableItem[] = groups.map((g) => ({
     id: g.id,

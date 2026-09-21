@@ -30,15 +30,15 @@ import { confirm } from './surfaces/Ask';
 const GROUP_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
 const groupsCollection = collection(db, 'groups');
 
-// A fixed, non-deletable group (like "Всі"/"Без групи", but a real group
-// document rather than a pseudo-entry) - every image captured with the
-// in-app camera lands here automatically, per PhotosScreen's own
+// A fixed, non-deletable project (like "Всі"/"Без проекту", but a real
+// group document rather than a pseudo-entry) - every image captured with
+// the in-app camera lands here automatically, per PhotosScreen's own
 // ensureCameraPhotosGroup. Deleting it would silently strand every camera
 // photo's groupId pointing at nothing, so it's exempted from the delete
 // button below the same way the two pseudo-entries never had one.
 export const CAMERA_PHOTOS_GROUP_ID = 'camera-photos';
 
-// A database identifier a group can belong to - see Group.kinds.
+// A database identifier a project can belong to - see Group.kinds.
 export type GroupKind = string;
 
 type Props = {
@@ -49,11 +49,13 @@ type Props = {
   onClose: () => void;
 };
 
-// Group assignment for Files/Photos/Links - its own `groups` collection,
-// separate from Tasks' `projects` (the user was explicit these two
-// shouldn't be the same thing), AND separate PER DATABASE TYPE - a group
-// made while in Photos must not show up in Files or Links, so every group
-// carries a `kind` and every screen only ever queries/creates its own.
+// Project assignment for Files/Photos/Links/Documents/Boards/custom
+// databases - the underlying type/collection are still `Group`/`groups`
+// in code (renaming either would mean losing every project any database
+// already has), but every screen shows the word "Проект" for it. Scoped
+// PER DATABASE TYPE - a project made while in Photos must not show up in
+// Files or Links, so every one carries a `kind` and every screen only
+// ever queries/creates its own.
 export default function GroupPickerSheet({ visible, kind, groups, onPick, onClose }: Props) {
   const accent = useTheme().accent;
   const styles = useStyles(makeStyles);
@@ -63,7 +65,7 @@ export default function GroupPickerSheet({ visible, kind, groups, onPick, onClos
   // This Android build doesn't resize the window under the keyboard
   // (edge-to-edge delivers it as an inset, not a resize - confirmed on
   // TasksScreen's own project-picker sheet, same bottom-sheet shape as
-  // this one), so the "Нова група" input needs the same manual
+  // this one), so the "Новий проект" input needs the same manual
   // Keyboard-height tracking to stay clear of it.
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   useEffect(() => {
@@ -98,8 +100,8 @@ export default function GroupPickerSheet({ visible, kind, groups, onPick, onClos
 
   function confirmDeleteGroup(group: Group) {
     confirm({
-      title: 'Видалити групу?',
-      message: `Об'єкти з групою "${group.name}" стануть без групи.`,
+      title: 'Видалити проект?',
+      message: `Об'єкти з проектом "${group.name}" стануть без проекту.`,
       confirmLabel: 'Видалити',
     }).then((yes) => {
       if (!yes) return;
@@ -112,11 +114,11 @@ export default function GroupPickerSheet({ visible, kind, groups, onPick, onClos
       <Pressable style={[styles.backdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
         <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.handle} />
-          <Text style={styles.title}>Групування</Text>
+          <Text style={styles.title}>Оберіть проект</Text>
 
           <Pressable style={styles.row} onPress={() => onPick(null)}>
             <View style={[styles.dot, { backgroundColor: GLASS_TEXT_FAINT }]} />
-            <Text style={styles.rowText}>Без групи</Text>
+            <Text style={styles.rowText}>Без проекту</Text>
           </Pressable>
 
           {groups.map((g) =>
@@ -158,7 +160,7 @@ export default function GroupPickerSheet({ visible, kind, groups, onPick, onClos
               style={styles.addInput}
               value={newGroupName}
               onChangeText={setNewGroupName}
-              placeholder="Нова група"
+              placeholder="Новий проект"
               placeholderTextColor={GLASS_TEXT_FAINT}
               onSubmitEditing={addGroup}
               returnKeyType="done"

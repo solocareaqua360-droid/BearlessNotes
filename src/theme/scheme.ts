@@ -54,7 +54,7 @@ export const SCHEME_LUM_RANGE: [number, number] = [45, 78];
 //
 // TRIAD rather than analogous, though - and that is about the eleven
 // sections, not the accent. An analogous scheme spans ninety degrees;
-// spread eleven identities over that and Задачі, Посилання and Групи
+// spread eleven identities over that and Задачі, Посилання and Проекти
 // all come out as versions of one yellow. Three anchors give each
 // section somewhere to actually be.
 export const DEFAULT_SCHEME: ColourScheme = { kind: 'triad', hue: 37, sat: 86, lum: 73 };

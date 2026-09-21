@@ -39,6 +39,7 @@ export function labelForKind(kind: string, customDatabaseNames: Record<string, s
     'link-video': 'YouTube / TikTok',
     'link-geo': 'Геоточки',
     'link-other': 'Посилання',
+    board: 'Дошки',
     task: 'Справи',
     // Not a real group kind (groups don't apply to plain shared text) -
     // included here anyway so addItemToBoard.ts's single-item board add

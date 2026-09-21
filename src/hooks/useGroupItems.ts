@@ -7,13 +7,14 @@ import { labelForKind } from '../utils/groups';
 import { rowTitleOf } from '../utils/customRowDisplay';
 
 // Everything a group can gather, and where each kind actually lives. Tasks
-// are deliberately absent: they have their own "проєкти" field, which the
-// user was explicit shouldn't be the same thing as a group.
+// are still absent here - they're mid-migration onto this same mechanism
+// (from their own separate `projectId`/`projects`), not yet on `groupId`.
 const SOURCES: { kind: string; collectionName: string }[] = [
   { kind: 'document', collectionName: 'documents' },
   { kind: 'photo', collectionName: 'photos' },
   { kind: 'file', collectionName: 'files' },
   { kind: 'link', collectionName: 'links' },
+  { kind: 'board', collectionName: 'boards' },
   { kind: 'customRow', collectionName: 'customDatabaseRows' },
 ];
 
@@ -43,6 +44,7 @@ const ICON_BY_KIND: Record<string, keyof typeof Ionicons.glyphMap> = {
   'link-video': 'videocam-outline',
   'link-geo': 'location-outline',
   'link-other': 'link-outline',
+  board: 'apps-outline',
 };
 
 // Every group and everything filed under it, gathered once and shared by
@@ -115,6 +117,8 @@ export function useGroupItems() {
             } else if (source.kind === 'link') {
               kind = linkKindOf(data.siteName as string | undefined);
               title = (data.title as string) || (data.url as string) || 'Без назви';
+            } else if (source.kind === 'board') {
+              title = (data.title as string) || 'Без назви';
             } else {
               databaseId = data.databaseId as string;
               kind = `customRow:${databaseId}`;

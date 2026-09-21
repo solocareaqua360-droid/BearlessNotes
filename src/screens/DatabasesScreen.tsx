@@ -1297,8 +1297,8 @@ export default function DatabasesScreen() {
           <Pressable style={styles.pinCard} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.colorMenuTitle}>Закріпити на дошці</Text>
             <ScrollView style={styles.pinList}>
-              <Text style={styles.pinSection}>Групи</Text>
-              {pinnableGroups.length === 0 && <Text style={styles.pinEmpty}>Груп поки немає</Text>}
+              <Text style={styles.pinSection}>Проекти</Text>
+              {pinnableGroups.length === 0 && <Text style={styles.pinEmpty}>Проектів поки немає</Text>}
               {pinnableGroups.map((group) => {
                 const key = groupKey(group.id);
                 const on = pinnedKeys.includes(key);
@@ -1540,7 +1540,7 @@ function BoardTile({
   const painted = !isAction && !background;
   // Every tile passes through here - custom, pinned, built-in - so this
   // is where the paint is muted outside the colour theme; muting only
-  // the custom ones left "Групи" and "Стікери" shouting on their own.
+  // the custom ones left "Проекти" and "Стікери" shouting on their own.
   const theme = useTheme();
   const paint = mutedForTheme(color, theme);
   const ink = painted ? contrastTextColor(paint) : '#fff';
