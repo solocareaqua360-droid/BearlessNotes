@@ -486,6 +486,17 @@ export interface BoardColumn {
   // Columns from importGroupToBoard.ts don't set this - a fresh column
   // per import batch is the point there, never reused across imports.
   kind?: string;
+  // Set only on a column inserted via "Проект справ" - unlike every other
+  // column, its members are never stored as BoardCards at all. They're
+  // computed live, every render, straight from the `tasks` collection
+  // (filtered by a task's own groupId/listId) - the whole point being
+  // that a task added to the project/list afterwards shows up here with
+  // no re-import, and ticking one off here IS ticking off the real task
+  // (see BoardScreen's own liveTaskSource comment for the rendering
+  // side). One list is always one column (the user's own call) - "весь
+  // проект" inserts one of these per list PLUS one 'projectUnlisted' for
+  // whatever's left with no list. `groupId: null` means "Вхідні".
+  liveTaskSource?: { kind: 'projectUnlisted'; groupId: string | null } | { kind: 'list'; listId: string };
 }
 
 // FURNITURE, NOT CONTENT.

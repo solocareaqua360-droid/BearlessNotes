@@ -43,7 +43,11 @@ export type RootStackParamList = {
   // feels like staying on the board rather than navigating away to a
   // separate screen.
   EditorModal: { documentId: string; autoFocusTitle?: boolean; offerBoard?: boolean };
-  Tasks: undefined;
+  // `focusTaskId` - arriving from a "Проект справ" board card: switches
+  // to "Всі" so the task is guaranteed visible regardless of its own
+  // project, leaves Kanban if it was on, and opens that task's row
+  // expanded.
+  Tasks: { focusTaskId?: string } | undefined;
   // «Загальний чат» - the capture inbox read back. What goes IN is the
   // window on the dock's long press; this is the history.
   Chat: undefined;

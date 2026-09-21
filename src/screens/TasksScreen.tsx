@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   collection,
@@ -152,6 +152,7 @@ export default function TasksScreen() {
   const accent = theme.sections.tasks;
   const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<RootStackParamList, 'Tasks'>>();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -352,6 +353,23 @@ export default function TasksScreen() {
       notify('Справи не завантажилися', e.message);
     });
   }, []);
+
+  // Arrived from a "Проект справ" board card (see navigation.ts's own
+  // comment on this param) - "Всі" guarantees the task is visible
+  // regardless of its own project, since the board doesn't know or care
+  // which project tab was last selected here. One-shot: the ref stops
+  // this from re-firing (and re-collapsing anything the user opens by
+  // hand afterwards) on every unrelated re-render.
+  const focusedTaskRef = useRef<string | null>(null);
+  useEffect(() => {
+    const focusTaskId = route.params?.focusTaskId;
+    if (!focusTaskId || focusedTaskRef.current === focusTaskId) return;
+    if (!tasks.some((t) => t.id === focusTaskId)) return;
+    focusedTaskRef.current = focusTaskId;
+    setProjectFilter(null);
+    setKanbanMode(false);
+    setExpandedTaskIds((prev) => new Set(prev).add(focusTaskId));
+  }, [route.params, tasks]);
 
   useEffect(() => {
     return onSnapshot(ownedQuery('groups'), (snapshot) => {

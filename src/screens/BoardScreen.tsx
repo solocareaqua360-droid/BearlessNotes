@@ -44,7 +44,8 @@ import {
   onSnapshot,
   updateDoc,
 } from '../firestore';
-import { addDoc, setDoc } from '../utils/owned';
+import { addDoc, ownedQuery, setDoc } from '../utils/owned';
+import { groupAppliesTo } from '../utils/groups';
 import { applyLiveRecord, recordIdFor, useLiveRecords } from '../hooks/useLiveRecords';
 import * as Clipboard from 'expo-clipboard';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
@@ -54,13 +55,14 @@ import { Block, BoardCard, BoardColumn, BoardConnection, BoardContainer, BoardLa
 import { useCardCarry } from '../hooks/useCardCarry';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import CustomRowBlockCard from '../components/CustomRowBlockCard';
-import { hapticDrop, hapticPickUp, hapticSuccess } from '../utils/haptics';
+import { hapticDrop, hapticPickUp, hapticSuccess, hapticToggle } from '../utils/haptics';
 import {
   APPROX_CARD_HEIGHT,
   COLUMN_CARD_GAP,
   COLUMN_HEADER_HEIGHT,
   COLUMN_MIN_HEIGHT,
   COLUMN_PADDING,
+  LIVE_TASK_ROW_HEIGHT,
   widthInColumn,
   clampCardWidth,
   cardImageHeight,
@@ -783,6 +785,9 @@ function DraggableColumn({
   onDragEnd,
   onRename,
   onDelete,
+  liveTasks,
+  onToggleTask,
+  onOpenTask,
 }: {
   column: BoardColumn;
   memberCount: number;
@@ -801,6 +806,12 @@ function DraggableColumn({
   onDragEnd: (id: string, dx: number, dy: number) => void;
   onRename: (column: BoardColumn) => void;
   onDelete: (column: BoardColumn) => void;
+  // 'liveTaskSource' columns only (see BoardColumn's own comment) - the
+  // rows to draw below the header, computed live and never touching
+  // `cards`/reflow/autosave at all.
+  liveTasks?: BoardTask[];
+  onToggleTask?: (task: BoardTask) => void;
+  onOpenTask?: (task: BoardTask) => void;
 }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
@@ -871,6 +882,33 @@ function DraggableColumn({
           <Text style={styles.columnCount}>{memberCount}</Text>
         </View>
       </GestureDetector>
+      {/* A live task column's own rows - see BoardColumn.liveTaskSource's
+          own comment for why these are drawn here rather than as ordinary
+          DraggableCards: no drag, no reflow, nothing stored. */}
+      {liveTasks && (
+        <View style={styles.liveTaskList}>
+          {liveTasks.map((task) => (
+            <View key={task.id} style={styles.liveTaskRow}>
+              <Pressable hitSlop={8} onPress={() => onToggleTask?.(task)}>
+                <Ionicons
+                  name={task.checked ? 'checkbox' : 'square-outline'}
+                  size={20}
+                  color={task.checked ? theme.accent : 'rgba(255,255,255,0.6)'}
+                />
+              </Pressable>
+              <Pressable style={styles.liveTaskTextTap} onPress={() => onOpenTask?.(task)}>
+                <Text
+                  style={[styles.liveTaskText, task.checked && styles.liveTaskTextChecked]}
+                  numberOfLines={3}
+                >
+                  {task.text || 'Без назви'}
+                </Text>
+              </Pressable>
+            </View>
+          ))}
+          {liveTasks.length === 0 && <Text style={styles.liveTaskEmpty}>Тут поки немає справ</Text>}
+        </View>
+      )}
     </Animated.View>
   );
 }
@@ -1921,6 +1959,20 @@ function DraggableShape({
     </GestureDetector>
   );
 }
+
+// A task's own shape, as read live for a "Проект справ" column (see
+// BoardColumn.liveTaskSource) - only what a checkbox row needs, not the
+// full local `Task` type TasksScreen.tsx keeps to itself.
+type BoardTask = {
+  id: string;
+  text: string;
+  checked: boolean;
+  documentId: string;
+  groupId?: string;
+  listId?: string;
+};
+
+type BoardTaskList = { id: string; name: string; groupId: string };
 
 type Props = NativeStackScreenProps<BoardsStackParamList, 'Board'>;
 
@@ -3426,6 +3478,57 @@ export default function BoardScreen() {
   const [groupPickerVisible, setGroupPickerVisible] = useState(false);
   const [importingGroup, setImportingGroup] = useState<Group | null>(null);
 
+  // "Проект справ" - live columns (see BoardColumn.liveTaskSource's own
+  // comment on why these never become stored BoardCards). Kept entirely
+  // separate from the group-import machinery above: those materialize a
+  // one-time snapshot, this stays live for as long as the column exists.
+  const [liveTasks, setLiveTasks] = useState<BoardTask[]>([]);
+  const [taskProjects, setTaskProjects] = useState<Group[]>([]);
+  const [taskLists, setTaskLists] = useState<BoardTaskList[]>([]);
+  const [taskColumnPickerVisible, setTaskColumnPickerVisible] = useState(false);
+  // Set once a project is tapped in that picker - its own lists (plus
+  // "Весь проект") show next. Cleared to go back to the project list.
+  const [taskColumnProject, setTaskColumnProject] = useState<{ id: string | null; name: string } | null>(null);
+
+  useEffect(() => {
+    return onSnapshot(ownedQuery('tasks'), (snapshot) => {
+      setLiveTasks(
+        snapshot.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            text: (data.text as string) ?? '',
+            checked: !!data.checked,
+            documentId: data.documentId as string,
+            groupId: data.groupId as string | undefined,
+            listId: data.listId as string | undefined,
+          };
+        })
+      );
+    });
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(ownedQuery('groups'), (snapshot) => {
+      setTaskProjects(
+        snapshot.docs
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<Group, 'id'>) }))
+          .filter((g) => groupAppliesTo(g, 'task'))
+      );
+    });
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(ownedQuery('taskLists'), (snapshot) => {
+      setTaskLists(
+        snapshot.docs.map((d) => {
+          const data = d.data();
+          return { id: d.id, name: (data.name as string) ?? '', groupId: data.groupId as string };
+        })
+      );
+    });
+  }, []);
+
   // Arriving from the document's own "show the board" button: the document
   // that sent us here opens beside the board it came from.
   useEffect(() => {
@@ -3578,6 +3681,88 @@ export default function BoardScreen() {
     setAddSheetVisible(false);
   }
 
+  // One or several live task columns at once (see BoardColumn.
+  // liveTaskSource) - "Весь проект" adds one per list in a single batch,
+  // so each one still needs to know about the others just added, not only
+  // about `columns` as it stood before the tap. Same positioning rule as
+  // addColumn - each new one lands to the right of the last.
+  function addLiveTaskColumns(entries: { title: string; source: NonNullable<BoardColumn['liveTaskSource']> }[]) {
+    setColumns((prev) => {
+      const next = [...prev];
+      entries.forEach(({ title, source }) => {
+        const x =
+          next.length === 0
+            ? WORLD_CENTER - COLUMN_WIDTH / 2
+            : Math.max(...next.map((c) => c.x)) + COLUMN_WIDTH + COLUMN_SPACING;
+        const y = next.length === 0 ? WORLD_CENTER - COLUMN_MIN_HEIGHT / 2 : next[0].y;
+        next.push({ id: generateId(), title, x, y, liveTaskSource: source });
+      });
+      return next;
+    });
+    setAddSheetVisible(false);
+    setTaskColumnPickerVisible(false);
+    setTaskColumnProject(null);
+  }
+
+  // "Весь проект" - one column per list, the user's own call, plus one
+  // more for whatever's left with no list (only if that bucket actually
+  // has something in it, or there were no lists at all to begin with -
+  // never an empty column just for the sake of covering every case).
+  function insertWholeTaskProject() {
+    if (!taskColumnProject) return;
+    const projectId = taskColumnProject.id;
+    const listsHere = taskLists.filter((l) => l.groupId === projectId);
+    const entries: { title: string; source: NonNullable<BoardColumn['liveTaskSource']> }[] = listsHere.map(
+      (list) => ({ title: list.name, source: { kind: 'list' as const, listId: list.id } })
+    );
+    const hasUnlisted = liveTasks.some((t) => (t.groupId ?? null) === projectId && !t.listId);
+    if (hasUnlisted || listsHere.length === 0) {
+      entries.push({
+        title: listsHere.length === 0 ? taskColumnProject.name : `${taskColumnProject.name} · Без списку`,
+        source: { kind: 'projectUnlisted', groupId: projectId },
+      });
+    }
+    addLiveTaskColumns(entries);
+  }
+
+  function insertOneTaskList(list: BoardTaskList) {
+    addLiveTaskColumns([{ title: list.name, source: { kind: 'list', listId: list.id } }]);
+  }
+
+  // The checkbox on a live task row - the SAME dual write TasksScreen's
+  // own toggleTask does (the tasks/{id} mirror doc, and the matching
+  // block inside the source document), so checking it here really does
+  // complete the real task, not just this board's own idea of it.
+  async function toggleLiveTask(task: BoardTask) {
+    const newChecked = !task.checked;
+    hapticToggle(newChecked);
+    updateDoc(doc(db, 'tasks', task.id), { checked: newChecked });
+    const documentRef = doc(db, 'documents', task.documentId);
+    const snapshot = await getDoc(documentRef);
+    const data = snapshot.data();
+    if (!data) return;
+    const blocks: Block[] = data.blocks ?? [];
+    const updatedBlocks = blocks.map((b) => (b.id === task.id ? { ...b, checked: newChecked } : b));
+    updateDoc(documentRef, { blocks: updatedBlocks });
+  }
+
+  // Which live tasks belong in this column right now - recomputed every
+  // render straight from `liveTasks`, never stored (see BoardColumn.
+  // liveTaskSource's own comment on why).
+  function tasksForColumn(column: BoardColumn): BoardTask[] {
+    const source = column.liveTaskSource;
+    if (!source) return [];
+    if (source.kind === 'list') return liveTasks.filter((t) => t.listId === source.listId);
+    return liveTasks.filter((t) => (t.groupId ?? null) === source.groupId && !t.listId);
+  }
+
+  // Tapping the card itself (not its checkbox) - "тільки відмічати
+  // виконання" on the board means anything more than that sends you to
+  // Tasks, where the row opens already expanded.
+  function openLiveTask(task: BoardTask) {
+    navigation.navigate('Tasks', { focusTaskId: task.id });
+  }
+
   // Both the column and its cards take the drag's own delta, so nothing
   // has to be recomputed from the column's new origin - and the reflow
   // effect that follows (columns changed) lands on the same positions,
@@ -3598,9 +3783,15 @@ export default function BoardScreen() {
   // «Питання» looks like the board does, so there is nothing left to
   // work around.
   async function confirmDeleteColumn(column: BoardColumn) {
+    // A live column has nothing to leave behind - its rows were never
+    // stored (see BoardColumn.liveTaskSource) - so the usual "cards stay
+    // on the board" reassurance would be actively wrong here, and the
+    // real tasks themselves are obviously untouched either way.
     const yes = await confirm({
       title: 'Видалити стовпчик?',
-      message: 'Картки з нього залишаться на дошці.',
+      message: column.liveTaskSource
+        ? 'Самі справи нікуди не подінуться - лише перестануть показуватись на цій дошці.'
+        : 'Картки з нього залишаться на дошці.',
       confirmLabel: 'Видалити',
     });
     if (!yes) return;
@@ -4755,6 +4946,36 @@ export default function BoardScreen() {
                   on. box-none so only the header takes touches and the rest
                   of the lane still pans the canvas. */}
               {columns.map((column) => {
+                // A "Проект справ" column never holds real BoardCards - see
+                // BoardColumn.liveTaskSource's own comment - so its member
+                // count and height come from the live task list instead of
+                // columnMembers/columnHeight, which both assume `cards`.
+                if (column.liveTaskSource) {
+                  const liveTasksForCol = tasksForColumn(column);
+                  const rowsCount = Math.max(1, liveTasksForCol.length);
+                  return (
+                    <DraggableColumn
+                      key={column.id}
+                      column={column}
+                      memberCount={liveTasksForCol.length}
+                      height={COLUMN_HEADER_HEIGHT + rowsCount * (LIVE_TASK_ROW_HEIGHT + 10) + COLUMN_PADDING}
+                      isDragging={column.id === draggingColumnId}
+                      dragEnabled={canvasTool !== 'connect' && canvasTool !== 'hand'}
+                      canvasScale={scale}
+                      canvasPanGesture={canvasBlockingGesture}
+                      columnOffsetX={columnOffsetX}
+                      columnOffsetY={columnOffsetY}
+                      isCatching={column.id === hoverColumnId}
+                      onDragStart={setDraggingColumnId}
+                      onDragEnd={commitColumnDrag}
+                      onRename={setRenamingColumn}
+                      onDelete={confirmDeleteColumn}
+                      liveTasks={liveTasksForCol}
+                      onToggleTask={toggleLiveTask}
+                      onOpenTask={openLiveTask}
+                    />
+                  );
+                }
                 const members = columnMembers(cards, column.id);
                 return (
                   <DraggableColumn
@@ -5257,6 +5478,84 @@ export default function BoardScreen() {
           </Pressable>
         </Modal>
 
+        {/* "Проект справ" - a live column, not a snapshot (see the sheet
+            row's own comment). Two steps: which project, then the whole
+            thing or one of its own lists - a project can hold several. */}
+        <Modal
+          visible={taskColumnPickerVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            setTaskColumnPickerVisible(false);
+            setTaskColumnProject(null);
+          }}
+        >
+          <Pressable
+            style={[styles.sheetBackdrop, { paddingBottom: keyboardHeight }]}
+            onPress={() => {
+              setTaskColumnPickerVisible(false);
+              setTaskColumnProject(null);
+            }}
+          >
+            <Pressable style={styles.sheet} onPress={() => {}}>
+              <View style={styles.sheetHandle} />
+              {taskColumnProject === null ? (
+                <>
+                  <Text style={styles.sheetTitle}>З якого проекту</Text>
+                  <ScrollView style={styles.groupList}>
+                    <Pressable
+                      style={styles.sheetRow}
+                      onPress={() => setTaskColumnProject({ id: null, name: 'Вхідні' })}
+                    >
+                      <View style={[styles.groupDot, { backgroundColor: '#6B7280' }]} />
+                      <Text style={styles.sheetRowLabel} numberOfLines={1}>
+                        Вхідні
+                      </Text>
+                    </Pressable>
+                    {taskProjects
+                      .filter((project) => !project.archived)
+                      .map((project) => (
+                        <Pressable
+                          key={project.id}
+                          style={styles.sheetRow}
+                          onPress={() => setTaskColumnProject({ id: project.id, name: project.name })}
+                        >
+                          <View style={[styles.groupDot, { backgroundColor: project.color || '#6B7280' }]} />
+                          <Text style={styles.sheetRowLabel} numberOfLines={1}>
+                            {project.name}
+                          </Text>
+                        </Pressable>
+                      ))}
+                  </ScrollView>
+                </>
+              ) : (
+                <>
+                  <Pressable style={styles.sheetBack} onPress={() => setTaskColumnProject(null)}>
+                    <Ionicons name="chevron-back" size={16} color="#111827" />
+                    <Text style={styles.sheetTitle}>{taskColumnProject.name}</Text>
+                  </Pressable>
+                  <ScrollView style={styles.groupList}>
+                    <Pressable style={styles.sheetRow} onPress={insertWholeTaskProject}>
+                      <Ionicons name="albums-outline" size={18} color="#111827" />
+                      <Text style={styles.sheetRowLabel}>Весь проект</Text>
+                    </Pressable>
+                    {taskLists
+                      .filter((list) => list.groupId === taskColumnProject.id)
+                      .map((list) => (
+                        <Pressable key={list.id} style={styles.sheetRow} onPress={() => insertOneTaskList(list)}>
+                          <Ionicons name="list-outline" size={18} color="#111827" />
+                          <Text style={styles.sheetRowLabel} numberOfLines={1}>
+                            {list.name}
+                          </Text>
+                        </Pressable>
+                      ))}
+                  </ScrollView>
+                </>
+              )}
+            </Pressable>
+          </Pressable>
+        </Modal>
+
         <GroupImportSheet
           visible={importingGroup !== null}
           groupName={importingGroup?.name ?? ''}
@@ -5285,6 +5584,21 @@ export default function BoardScreen() {
               >
                 <Ionicons name="albums-outline" size={18} color="#111827" />
                 <Text style={styles.sheetRowLabel}>З проекту</Text>
+              </Pressable>
+              {/* A live column (see BoardColumn.liveTaskSource) - separate
+                  from "З проекту" above, which makes a one-time snapshot.
+                  A task's own project can carry several lists, so this
+                  needs its own two-step picker rather than reusing that
+                  generic one. */}
+              <Pressable
+                style={styles.sheetRow}
+                onPress={() => {
+                  setAddSheetVisible(false);
+                  setTaskColumnPickerVisible(true);
+                }}
+              >
+                <Ionicons name="checkbox-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>Проект справ</Text>
               </Pressable>
               <Pressable style={styles.sheetRow} onPress={addTextCard}>
                 <Ionicons name="text-outline" size={18} color="#111827" />
@@ -6040,6 +6354,40 @@ const makeStyles = (theme: Theme) =>
       fontFamily: FONT_REGULAR,
       color: theme.canvas.inkFaint,
     },
+    // A live task column's own rows - see DraggableColumn's liveTasks
+    // prop. Plain flex, no per-card measuring/reflow the way real cards
+    // need - LIVE_TASK_ROW_HEIGHT is what the parent's own height
+    // calculation assumes each one takes.
+    liveTaskList: {
+      paddingHorizontal: COLUMN_PADDING,
+      paddingBottom: COLUMN_PADDING,
+      gap: 6,
+    },
+    liveTaskRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 8,
+      minHeight: LIVE_TASK_ROW_HEIGHT,
+      paddingVertical: 4,
+    },
+    liveTaskTextTap: {
+      flex: 1,
+    },
+    liveTaskText: {
+      fontSize: 13,
+      fontFamily: FONT_REGULAR,
+      color: theme.canvas.ink,
+    },
+    liveTaskTextChecked: {
+      color: theme.canvas.inkFaint,
+      textDecorationLine: 'line-through',
+    },
+    liveTaskEmpty: {
+      fontSize: 12,
+      fontFamily: FONT_REGULAR,
+      color: theme.canvas.inkFaint,
+      paddingVertical: 6,
+    },
     // A free-standing frame - see BoardContainer. Genuinely transparent
     // inside (a column's own tint is deliberate; this one exists only to
     // mark a region, never to look like a surface something sits ON).
@@ -6302,6 +6650,12 @@ const makeStyles = (theme: Theme) =>
       fontWeight: '700',
       fontFamily: FONT_BOLD,
       color: '#111827',
+      marginBottom: 6,
+    },
+    sheetBack: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
       marginBottom: 6,
     },
     groupList: {

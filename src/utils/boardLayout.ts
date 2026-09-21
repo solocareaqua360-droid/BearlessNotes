@@ -42,6 +42,10 @@ export const COLUMN_CARD_GAP = 12;
 // A column with nothing in it still has to be a visible drop target.
 export const COLUMN_MIN_HEIGHT = 220;
 export const COLUMN_SPACING = 24;
+// A "Проект справ" column's own row height (see BoardColumn.
+// liveTaskSource) - fixed, unlike a real card's measured height, since a
+// live task row is always the same simple checkbox+text shape.
+export const LIVE_TASK_ROW_HEIGHT = 32;
 
 // A free-standing frame (see BoardContainer) - unlike a column, it has
 // no fixed width and no auto height: it is a rectangle the user draws
