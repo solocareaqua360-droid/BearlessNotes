@@ -21,18 +21,7 @@ import { FieldDef, FieldOption, FieldType, RelationTarget } from '../types';
 import { canJoinTitle } from '../utils/customRowDisplay';
 import { TAG_COLORS } from '../constants/tags';
 
-import {
-  GLASS_ACCENT,
-  GLASS_BACKDROP,
-  GLASS_BODY_BLURRED,
-  GLASS_DANGER,
-  GLASS_EDGE,
-  GLASS_TEXT,
-  GLASS_TEXT_FAINT,
-  GLASS_TEXT_MUTED,
-  SHEET_BACKDROP,
-  SHEET_WINDOW,
-} from '../constants/glass';
+import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import GlassLayer from './GlassLayer';
 import { LINK_CATEGORY_INFO, LinkCategory } from '../utils/linkCategory';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -42,12 +31,9 @@ import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 // translucent body with a hairline white edge - instead of the white card
 // every other sheet in the app still uses. On that body the flat blue and
 // red of a white sheet go muddy, so both are lightened.
-// The shared glass palette - see constants/glass.
-const TEXT = GLASS_TEXT;
-const TEXT_MUTED = GLASS_TEXT_MUTED;
-const TEXT_FAINT = GLASS_TEXT_FAINT;
-const ACCENT_ON_GLASS = GLASS_ACCENT;
-const DANGER = GLASS_DANGER;
+// Its colours are the THEME's - the five module-level aliases that used
+// to stand here held one fixed dark palette, which is the whole reason a
+// sheet came out a dark slab in the white theme.
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -124,7 +110,8 @@ export default function FieldsEditorSheet({
   onSave,
   onClose,
 }: Props) {
-  const accent = useTheme().accent;
+  const theme = useTheme();
+  const accent = theme.accent;
   const styles = useStyles(makeStyles);
   const [draft, setDraft] = useState<FieldDef[]>(fields);
   const [typeMenuFieldId, setTypeMenuFieldId] = useState<string | null>(null);
@@ -159,7 +146,6 @@ export default function FieldsEditorSheet({
   useEffect(() => {
     if (visible) setDraft(fields);
   }, [visible, fields]);
-
 
   function updateField(id: string, patch: Partial<FieldDef>) {
     setDraft((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)));
@@ -333,7 +319,7 @@ export default function FieldsEditorSheet({
                     style={styles.typeBadge}
                     onPress={() => openTypeMenu(field.id)}
                   >
-                    <Ionicons name={TYPE_ICON[field.type]} size={14} color={TEXT_MUTED} />
+                    <Ionicons name={TYPE_ICON[field.type]} size={14} color={theme.ink.muted} />
                     <Text style={styles.typeBadgeLabel}>{TYPE_LABEL[field.type]}</Text>
                   </Pressable>
                   {/* Everything below is index > 0: fields[0] is the row's
@@ -354,7 +340,7 @@ export default function FieldsEditorSheet({
                         <Ionicons
                           name="chevron-up"
                           size={20}
-                          color={index <= 1 ? TEXT_FAINT : TEXT_MUTED}
+                          color={index <= 1 ? theme.ink.faint : theme.ink.muted}
                         />
                       </Pressable>
                       <Pressable
@@ -366,7 +352,7 @@ export default function FieldsEditorSheet({
                         <Ionicons
                           name="chevron-down"
                           size={20}
-                          color={index >= draft.length - 1 ? TEXT_FAINT : TEXT_MUTED}
+                          color={index >= draft.length - 1 ? theme.ink.faint : theme.ink.muted}
                         />
                       </Pressable>
                     </View>
@@ -383,7 +369,7 @@ export default function FieldsEditorSheet({
                       <Ionicons
                         name="ellipsis-horizontal"
                         size={20}
-                        color={fieldMenuId === field.id ? ACCENT_ON_GLASS : TEXT_MUTED}
+                        color={fieldMenuId === field.id ? theme.accent : theme.ink.muted}
                       />
                     </Pressable>
                   )}
@@ -402,7 +388,7 @@ export default function FieldsEditorSheet({
                         <Ionicons
                           name={field.hidden ? 'eye-off-outline' : 'eye-outline'}
                           size={18}
-                          color={field.hidden ? ACCENT_ON_GLASS : TEXT_MUTED}
+                          color={field.hidden ? theme.accent : theme.ink.muted}
                         />
                         <Text style={styles.typeMenuLabel}>
                           {field.hidden ? 'Показувати поле' : 'Приховати поле'}
@@ -420,10 +406,10 @@ export default function FieldsEditorSheet({
                         <Ionicons
                           name={field.inTitle ? 'pricetag' : 'pricetag-outline'}
                           size={18}
-                          color={field.inTitle ? ACCENT_ON_GLASS : TEXT_MUTED}
+                          color={field.inTitle ? theme.accent : theme.ink.muted}
                         />
                         <Text style={styles.typeMenuLabel}>Додавати до назви</Text>
-                        {!!field.inTitle && <Ionicons name="checkmark" size={18} color={ACCENT_ON_GLASS} />}
+                        {!!field.inTitle && <Ionicons name="checkmark" size={18} color={theme.accent} />}
                       </Pressable>
                     )}
                     <Pressable
@@ -433,8 +419,8 @@ export default function FieldsEditorSheet({
                         setFieldMenuId(null);
                       }}
                     >
-                      <Ionicons name="trash-outline" size={18} color={DANGER} />
-                      <Text style={[styles.typeMenuLabel, { color: DANGER }]}>Видалити поле</Text>
+                      <Ionicons name="trash-outline" size={18} color={theme.danger} />
+                      <Text style={[styles.typeMenuLabel, { color: theme.danger }]}>Видалити поле</Text>
                     </Pressable>
                   </View>
                 )}
@@ -447,9 +433,9 @@ export default function FieldsEditorSheet({
                   <View style={styles.typeMenu}>
                     {TYPE_ORDER.map((type) => (
                       <Pressable key={type} style={styles.typeMenuRow} onPress={() => changeType(field.id, type)}>
-                        <Ionicons name={TYPE_ICON[type]} size={17} color={TEXT_MUTED} />
+                        <Ionicons name={TYPE_ICON[type]} size={17} color={theme.ink.muted} />
                         <Text style={styles.typeMenuLabel}>{TYPE_LABEL[type]}</Text>
-                        {field.type === type && <Ionicons name="checkmark" size={18} color={ACCENT_ON_GLASS} />}
+                        {field.type === type && <Ionicons name="checkmark" size={18} color={theme.accent} />}
                       </Pressable>
                     ))}
                   </View>
@@ -475,12 +461,12 @@ export default function FieldsEditorSheet({
                         value={newOptionText[field.id] ?? ''}
                         onChangeText={(text) => setNewOptionText((prev) => ({ ...prev, [field.id]: text }))}
                         placeholder="Новий варіант"
-                        placeholderTextColor={TEXT_FAINT}
+                        placeholderTextColor={theme.ink.faint}
                         onSubmitEditing={() => addOption(field.id)}
                         returnKeyType="done"
                       />
                       <Pressable hitSlop={8} onPress={() => addOption(field.id)}>
-                        <Ionicons name="add-circle" size={26} color={ACCENT_ON_GLASS} />
+                        <Ionicons name="add-circle" size={26} color={theme.accent} />
                       </Pressable>
                     </View>
                   </View>
@@ -492,14 +478,14 @@ export default function FieldsEditorSheet({
                       style={styles.relationTargetRow}
                       onPress={() => setRelationMenuFieldId(relationMenuFieldId === field.id ? null : field.id)}
                     >
-                      <Ionicons name="link-outline" size={15} color={TEXT_MUTED} />
+                      <Ionicons name="link-outline" size={15} color={theme.ink.muted} />
                       <Text style={styles.relationTargetLabel}>
                         Ціль: {relationTargetLabel(field.relationTarget, otherDatabases)}
                       </Text>
                       <Ionicons
                         name={relationMenuFieldId === field.id ? 'chevron-up' : 'chevron-down'}
                         size={16}
-                        color={TEXT_MUTED}
+                        color={theme.ink.muted}
                       />
                     </Pressable>
                     {relationMenuFieldId === field.id && (
@@ -508,20 +494,20 @@ export default function FieldsEditorSheet({
                           style={styles.typeMenuRow}
                           onPress={() => setRelationTarget(field.id, { kind: 'photos' })}
                         >
-                          <Ionicons name="image-outline" size={17} color={TEXT_MUTED} />
+                          <Ionicons name="image-outline" size={17} color={theme.ink.muted} />
                           <Text style={styles.typeMenuLabel}>Фото</Text>
                           {(field.relationTarget?.kind ?? 'photos') === 'photos' && (
-                            <Ionicons name="checkmark" size={18} color={ACCENT_ON_GLASS} />
+                            <Ionicons name="checkmark" size={18} color={theme.accent} />
                           )}
                         </Pressable>
                         <Pressable
                           style={styles.typeMenuRow}
                           onPress={() => setRelationTarget(field.id, { kind: 'files' })}
                         >
-                          <Ionicons name="document-outline" size={17} color={TEXT_MUTED} />
+                          <Ionicons name="document-outline" size={17} color={theme.ink.muted} />
                           <Text style={styles.typeMenuLabel}>Файли</Text>
                           {field.relationTarget?.kind === 'files' && (
-                            <Ionicons name="checkmark" size={18} color={ACCENT_ON_GLASS} />
+                            <Ionicons name="checkmark" size={18} color={theme.accent} />
                           )}
                         </Pressable>
                         {(['video', 'geo', 'other'] as LinkCategory[]).map((category) => (
@@ -533,14 +519,14 @@ export default function FieldsEditorSheet({
                             <Ionicons
                               name={LINK_CATEGORY_INFO[category].icon}
                               size={17}
-                              color={TEXT_MUTED}
+                              color={theme.ink.muted}
                             />
                             <Text style={styles.typeMenuLabel} numberOfLines={1}>
                               {LINK_CATEGORY_INFO[category].title}
                             </Text>
                             {field.relationTarget?.kind === 'links' &&
                               field.relationTarget.category === category && (
-                                <Ionicons name="checkmark" size={18} color={ACCENT_ON_GLASS} />
+                                <Ionicons name="checkmark" size={18} color={theme.accent} />
                               )}
                           </Pressable>
                         ))}
@@ -550,13 +536,13 @@ export default function FieldsEditorSheet({
                             style={styles.typeMenuRow}
                             onPress={() => setRelationTarget(field.id, { kind: 'customDb', databaseId: odb.id })}
                           >
-                            <Ionicons name="grid-outline" size={17} color={TEXT_MUTED} />
+                            <Ionicons name="grid-outline" size={17} color={theme.ink.muted} />
                             <Text style={styles.typeMenuLabel} numberOfLines={1}>
                               {odb.name}
                             </Text>
                             {field.relationTarget?.kind === 'customDb' &&
                               field.relationTarget.databaseId === odb.id && (
-                                <Ionicons name="checkmark" size={18} color={ACCENT_ON_GLASS} />
+                                <Ionicons name="checkmark" size={18} color={theme.accent} />
                               )}
                           </Pressable>
                         ))}
@@ -569,7 +555,7 @@ export default function FieldsEditorSheet({
                       <Ionicons
                         name={field.multiple ? 'checkbox' : 'square-outline'}
                         size={22}
-                        color={field.multiple ? ACCENT_ON_GLASS : TEXT_MUTED}
+                        color={field.multiple ? theme.accent : theme.ink.muted}
                       />
                       <Text style={styles.coverToggleLabel}>Кілька значень (галерея)</Text>
                     </Pressable>
@@ -577,7 +563,7 @@ export default function FieldsEditorSheet({
                       <Ionicons
                         name={field.isCover ? 'checkbox' : 'square-outline'}
                         size={22}
-                        color={field.isCover ? ACCENT_ON_GLASS : TEXT_MUTED}
+                        color={field.isCover ? theme.accent : theme.ink.muted}
                       />
                       <Text style={styles.coverToggleLabel}>Використовувати як заставку</Text>
                     </Pressable>
@@ -595,7 +581,7 @@ export default function FieldsEditorSheet({
                           <Ionicons
                             name={isBacklinkEnabled(field) ? 'checkbox' : 'square-outline'}
                             size={22}
-                            color={isBacklinkEnabled(field) ? ACCENT_ON_GLASS : TEXT_MUTED}
+                            color={isBacklinkEnabled(field) ? theme.accent : theme.ink.muted}
                           />
                           <Text style={styles.coverToggleLabel}>Показувати з іншого боку</Text>
                         </Pressable>
@@ -606,7 +592,7 @@ export default function FieldsEditorSheet({
             ))}
 
             <Pressable style={styles.addFieldRow} onPress={addField}>
-              <Ionicons name="add" size={20} color={ACCENT_ON_GLASS} />
+              <Ionicons name="add" size={20} color={theme.accent} />
               <Text style={styles.addFieldLabel}>Додати поле</Text>
             </Pressable>
           </ScrollView>
@@ -630,13 +616,13 @@ const makeStyles = (t: Theme) => StyleSheet.create({
         ...SHEET_BACKDROP,
   },
   sheet: {
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: t.raised,
     overflow: 'hidden',
     ...SHEET_WINDOW,
     borderTopWidth: 1,
     borderLeftWidth: 1,
     borderRightWidth: 1,
-    borderColor: GLASS_EDGE,
+    borderColor: t.edge.hairline,
     paddingHorizontal: 18,
     paddingTop: 12,
     paddingBottom: 28,
@@ -654,7 +640,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: TEXT,
+    color: t.ink.primary,
     marginBottom: 12,
   },
   scroll: {
@@ -677,14 +663,14 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     gap: 8,
   },
   fieldNameHidden: {
-    color: TEXT_FAINT,
+    color: t.ink.faint,
     textDecorationLine: 'line-through',
   },
   fieldNameInput: {
     flex: 1,
     fontSize: 16,
     fontFamily: FONT_REGULAR,
-    color: TEXT,
+    color: t.ink.primary,
     paddingVertical: 6,
   },
   // Every icon control in this sheet is this big whatever the glyph inside
@@ -731,7 +717,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: TEXT,
+    color: t.ink.primary,
   },
   moveButtons: {
     flexDirection: 'row',
@@ -740,7 +726,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   inTitleHint: {
     fontSize: 12,
     fontFamily: FONT_REGULAR,
-    color: ACCENT_ON_GLASS,
+    color: t.accent,
     marginTop: 4,
   },
   optionsBox: {
@@ -767,7 +753,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: TEXT,
+    color: t.ink.primary,
   },
   optionRemove: {
     paddingLeft: 2,
@@ -783,7 +769,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: TEXT,
+    color: t.ink.primary,
     backgroundColor: 'rgba(255,255,255,0.10)',
     borderRadius: 10,
     paddingHorizontal: 12,
@@ -800,12 +786,12 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: TEXT,
+    color: t.ink.primary,
   },
   relationEmptyHint: {
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: TEXT_MUTED,
+    color: t.ink.muted,
     paddingVertical: 6,
   },
   coverToggleRow: {
@@ -822,7 +808,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   coverToggleLabel: {
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: TEXT,
+    color: t.ink.primary,
   },
   addFieldRow: {
     flexDirection: 'row',
@@ -832,7 +818,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   },
   addFieldLabel: {
     fontSize: 15,
-    color: ACCENT_ON_GLASS,
+    color: t.accent,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
   },
@@ -866,6 +852,6 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: '#fff',
+    color: t.onAccent,
   },
 });

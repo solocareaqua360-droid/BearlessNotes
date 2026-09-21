@@ -24,22 +24,12 @@ import {
   runTableImport,
 } from '../utils/importTable';
 import { FIELD_TYPE_LABEL } from './FieldsEditorSheet';
-import {
-  GLASS_BACKDROP,
-  GLASS_BODY_BLURRED,
-  GLASS_LINE,
-  GLASS_TEXT,
-  GLASS_TEXT_FAINT,
-  GLASS_TEXT_MUTED,
-  SHEET_BACKDROP,
-  SHEET_WINDOW,
-} from '../constants/glass';
+import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { ensureLocalFile } from '../utils/googleDrive';
 import { notify } from './surfaces/Ask';
-
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -66,7 +56,8 @@ type Props = {
 // is the thing this exists to avoid, so the mapping step is deliberately
 // the only step that asks anything.
 export default function ImportTableSheet({ visible, targetDatabase, otherDatabases, onClose, onDone }: Props) {
-  const accent = useTheme().accent;
+  const theme = useTheme();
+  const accent = theme.accent;
   const styles = useStyles(makeStyles);
   const keyboardHeight = useKeyboardHeight();
   const [sheets, setSheets] = useState<ParsedSheet[] | null>(null);
@@ -420,7 +411,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
                 <Ionicons
                   name={hasHeaderRow ? 'checkbox' : 'square-outline'}
                   size={18}
-                  color={hasHeaderRow ? accent : GLASS_TEXT_FAINT}
+                  color={hasHeaderRow ? accent : theme.ink.faint}
                 />
                 <Text style={styles.switchLabel}>Перший рядок це заголовки</Text>
               </Pressable>
@@ -433,7 +424,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
                     value={databaseName}
                     onChangeText={setDatabaseName}
                     placeholder="Назва бази"
-                    placeholderTextColor={GLASS_TEXT_FAINT}
+                    placeholderTextColor={theme.ink.faint}
                   />
                 </>
               )}
@@ -497,7 +488,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
                       <Ionicons
                         name={openMenuColumn === index ? 'chevron-up' : 'chevron-down'}
                         size={16}
-                        color={GLASS_TEXT_FAINT}
+                        color={theme.ink.faint}
                       />
                     </Pressable>
 
@@ -594,7 +585,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     ...SHEET_BACKDROP,
   },
   sheet: {
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: t.raised,
     ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
@@ -604,7 +595,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -613,7 +604,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     marginBottom: 8,
   },
   body: {
@@ -626,13 +617,13 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   hint: {
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   sectionLabel: {
     fontSize: 11,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
     marginTop: 14,
@@ -646,7 +637,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   chip: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: GLASS_LINE,
+    borderColor: t.edge.hairline,
     paddingVertical: 6,
     paddingHorizontal: 12,
   },
@@ -657,7 +648,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   chipLabel: {
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   chipLabelActive: {
     color: t.accent,
@@ -673,21 +664,21 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   switchLabel: {
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   input: {
     borderWidth: 1,
-    borderColor: GLASS_LINE,
+    borderColor: t.edge.hairline,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   columnCard: {
     borderWidth: 1,
-    borderColor: GLASS_LINE,
+    borderColor: t.edge.hairline,
     borderRadius: 12,
     padding: 10,
     marginBottom: 8,
@@ -705,12 +696,12 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   columnSample: {
     fontSize: 12,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
   },
   titleBadge: {
     fontSize: 11,
@@ -722,7 +713,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
   },
   titleControls: {
     flexDirection: 'row',
@@ -732,7 +723,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   titlePreview: {
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
     marginBottom: 8,
   },
   mappingRow: {
@@ -740,7 +731,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginTop: 8,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -749,15 +740,15 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   mappingLabelSkip: {
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
   },
   menu: {
     marginTop: 6,
     borderTopWidth: 1,
-    borderTopColor: GLASS_LINE,
+    borderTopColor: t.edge.hairline,
   },
   menuRow: {
     flexDirection: 'row',
@@ -769,12 +760,12 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   menuRowType: {
     fontSize: 12,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
   },
   storedList: {
     maxHeight: 260,
@@ -789,7 +780,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   primaryButton: {
     backgroundColor: t.accent,
@@ -802,6 +793,6 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: '#fff',
+    color: t.onAccent,
   },
 });

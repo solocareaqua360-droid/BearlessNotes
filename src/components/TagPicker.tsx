@@ -13,19 +13,9 @@ import { TAG_COLORS, TAG_ICONS } from '../constants/tags';
 import { isTagAllowedForKind } from '../hooks/useTags';
 import { useHiddenTags } from '../hooks/useHiddenTags';
 import RenamePrompt from './RenamePrompt';
-import {
-  GLASS_BACKDROP,
-  GLASS_BODY_BLURRED,
-  GLASS_LINE,
-  GLASS_TEXT,
-  GLASS_TEXT_FAINT,
-  GLASS_TEXT_MUTED,
-  SHEET_BACKDROP,
-  SHEET_WINDOW,
-} from '../constants/glass';
+import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-
 
 const KIND_LABELS: Record<string, string> = {
   board: 'Дошки',
@@ -78,7 +68,8 @@ export default function TagPicker({
   initialMode = 'list',
   initialPath = '',
 }: Props) {
-  const accent = useTheme().accent;
+  const theme = useTheme();
+  const accent = theme.accent;
   // The colours offered are the theme's own card palette, so a tag
   // picked here can never leave the scheme - the user's condition:
   // "навіть вибором кольору картки нічого не зіпсувати".
@@ -181,17 +172,17 @@ export default function TagPicker({
                     "немає кнопки завершення для закриття вікна вибору
                     тегів". */}
                 <Pressable hitSlop={10} onPress={onClose}>
-                  <Ionicons name="close" size={22} color={GLASS_TEXT_MUTED} />
+                  <Ionicons name="close" size={22} color={theme.ink.muted} />
                 </Pressable>
               </View>
               <View style={styles.searchRow}>
-                <Ionicons name="search" size={16} color={GLASS_TEXT_FAINT} />
+                <Ionicons name="search" size={16} color={theme.ink.faint} />
                 <TextInput
                   autoFocus
                   value={query}
                   onChangeText={setQuery}
                   placeholder='пошук або нова назва "робота/..."'
-                  placeholderTextColor={GLASS_TEXT_FAINT}
+                  placeholderTextColor={theme.ink.faint}
                   style={styles.searchInput}
                 />
               </View>
@@ -219,10 +210,10 @@ export default function TagPicker({
                         </View>
                       </Pressable>
                       <Pressable hitSlop={8} style={styles.pencilButton} onPress={() => setRenamingTag(tag)}>
-                        <Ionicons name="pencil-outline" size={14} color={GLASS_TEXT_FAINT} />
+                        <Ionicons name="pencil-outline" size={14} color={theme.ink.faint} />
                       </Pressable>
                       <Pressable hitSlop={8} style={styles.pencilButton} onPress={() => hideTag(tag.id)}>
-                        <Ionicons name="close" size={14} color={GLASS_TEXT_FAINT} />
+                        <Ionicons name="close" size={14} color={theme.ink.faint} />
                       </Pressable>
                     </View>
                   );
@@ -274,12 +265,12 @@ export default function TagPicker({
 
               <Text style={styles.sectionLabel}>ІКОНКА</Text>
               <View style={styles.iconSearchRow}>
-                <Ionicons name="search" size={14} color={GLASS_TEXT_FAINT} />
+                <Ionicons name="search" size={14} color={theme.ink.faint} />
                 <TextInput
                   value={iconQuery}
                   onChangeText={setIconQuery}
                   placeholder="пошук іконки"
-                  placeholderTextColor={GLASS_TEXT_FAINT}
+                  placeholderTextColor={theme.ink.faint}
                   style={styles.iconSearchInput}
                 />
               </View>
@@ -294,7 +285,7 @@ export default function TagPicker({
                       <Ionicons
                         name={name as keyof typeof Ionicons.glyphMap}
                         size={18}
-                        color={selectedIcon === name ? '#fff' : GLASS_TEXT_MUTED}
+                        color={selectedIcon === name ? '#fff' : theme.ink.muted}
                       />
                     </Pressable>
                   ))}
@@ -332,7 +323,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     ...SHEET_BACKDROP,
   },
   sheet: {
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: t.raised,
     ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
@@ -342,7 +333,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -357,13 +348,13 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 9,
@@ -372,7 +363,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   list: {
     marginTop: 8,
@@ -402,12 +393,12 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   rowLabel: {
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   rowMeta: {
     fontSize: 11,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
     marginTop: 1,
   },
   checkFilled: {
@@ -423,7 +414,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     height: 22,
     borderRadius: 11,
     borderWidth: 1.5,
-    borderColor: GLASS_TEXT_FAINT,
+    borderColor: t.ink.faint,
   },
   pencilButton: {
     padding: 8,
@@ -434,7 +425,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     gap: 10,
     paddingVertical: 10,
     borderTopWidth: 1,
-    borderTopColor: GLASS_LINE,
+    borderTopColor: t.edge.hairline,
     marginTop: 4,
   },
   createLabel: {
@@ -452,13 +443,13 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   createHeaderCancel: {
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   createHeaderTitle: {
     fontSize: 17,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   createHeaderSave: {
     fontSize: 15,
@@ -483,16 +474,16 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     fontSize: 17,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     borderBottomWidth: 1.5,
-    borderBottomColor: GLASS_LINE,
+    borderBottomColor: t.edge.hairline,
     paddingBottom: 8,
   },
   sectionLabel: {
     fontSize: 13,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
     marginBottom: 8,
   },
   colorRow: {
@@ -507,13 +498,13 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   },
   colorSwatchSelected: {
     borderWidth: 2,
-    borderColor: GLASS_TEXT,
+    borderColor: t.ink.primary,
   },
   iconSearchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -523,7 +514,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   iconGridScroll: {
     maxHeight: 180,
@@ -561,6 +552,6 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   typeHint: {
     fontSize: 12,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
   },
 });

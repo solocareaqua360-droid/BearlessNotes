@@ -10,19 +10,10 @@ import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { onSnapshot } from '../firestore';
 import { ownedQuery } from '../utils/owned';
-import {
-  GLASS_BACKDROP,
-  GLASS_BODY_BLURRED,
-  GLASS_LINE,
-  GLASS_TEXT,
-  GLASS_TEXT_FAINT,
-  SHEET_BACKDROP,
-  SHEET_WINDOW,
-} from '../constants/glass';
+import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-
 
 type PickableDocument = { id: string; title: string };
 
@@ -40,7 +31,8 @@ type Props = {
 // creation uses is SaveDestinationSheet, a separate component - this one
 // stays scoped to its own original job.
 export default function CopyToNoteModal({ visible, onPickExisting, onPickNew, onClose }: Props) {
-  const accent = useTheme().accent;
+  const theme = useTheme();
+  const accent = theme.accent;
   const styles = useStyles(makeStyles);
   const keyboardHeight = useKeyboardHeight();
   const [documents, setDocuments] = useState<PickableDocument[]>([]);
@@ -90,12 +82,12 @@ export default function CopyToNoteModal({ visible, onPickExisting, onPickNew, on
           </Pressable>
 
           <View style={styles.searchRow}>
-            <Ionicons name="search" size={14} color={GLASS_TEXT_FAINT} />
+            <Ionicons name="search" size={14} color={theme.ink.faint} />
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder="Пошук за назвою"
-              placeholderTextColor={GLASS_TEXT_FAINT}
+              placeholderTextColor={theme.ink.faint}
               style={styles.searchInput}
             />
           </View>
@@ -126,7 +118,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     ...SHEET_BACKDROP,
   },
   sheet: {
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: t.raised,
     ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
@@ -136,7 +128,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -145,14 +137,14 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     marginBottom: 8,
   },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -162,12 +154,12 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   emptyLabel: {
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
     textAlign: 'center',
     paddingVertical: 16,
   },
@@ -200,6 +192,6 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
 });

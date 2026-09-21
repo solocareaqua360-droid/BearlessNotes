@@ -7,19 +7,9 @@ import { onSnapshot } from '../firestore';
 import { ownedQuery } from '../utils/owned';
 import { ImportableItem, MAX_CARDS_PER_COLUMN } from '../utils/importGroupToBoard';
 import { hapticSelectItem, hapticWarning } from '../utils/haptics';
-import {
-  GLASS_BACKDROP,
-  GLASS_BODY_BLURRED,
-  GLASS_LINE,
-  GLASS_TEXT,
-  GLASS_TEXT_FAINT,
-  GLASS_TEXT_MUTED,
-  SHEET_BACKDROP,
-  SHEET_WINDOW,
-} from '../constants/glass';
+import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-
 
 type BoardRow = { id: string; title: string };
 
@@ -51,7 +41,8 @@ export default function GroupImportSheet({
   onCancel,
   onConfirm,
 }: Props) {
-  const accent = useTheme().accent;
+  const theme = useTheme();
+  const accent = theme.accent;
   const styles = useStyles(makeStyles);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [step, setStep] = useState<'items' | 'board'>('items');
@@ -156,7 +147,7 @@ export default function GroupImportSheet({
                             <Ionicons
                               name={on ? 'checkbox' : 'square-outline'}
                               size={18}
-                              color={on ? accent : blocked ? GLASS_LINE : GLASS_TEXT_FAINT}
+                              color={on ? accent : blocked ? theme.edge.hairline : theme.ink.faint}
                             />
                             <Text style={[styles.itemLabel, blocked && styles.itemLabelBlocked]} numberOfLines={1}>
                               {titleForItem(item)}
@@ -228,7 +219,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     ...SHEET_BACKDROP,
   },
   sheet: {
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: t.raised,
     ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
@@ -238,7 +229,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -247,7 +238,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     marginBottom: 8,
   },
   list: {
@@ -256,7 +247,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   empty: {
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
     paddingVertical: 16,
   },
   kindHeader: {
@@ -266,18 +257,18 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     paddingVertical: 10,
     marginTop: 6,
     borderBottomWidth: 1,
-    borderBottomColor: GLASS_LINE,
+    borderBottomColor: t.edge.hairline,
   },
   kindLabel: {
     fontSize: 13,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   kindCount: {
     fontSize: 12,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
   },
   kindCountCapped: {
     color: t.accent,
@@ -297,15 +288,15 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   itemLabelBlocked: {
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
   },
   capHint: {
     fontSize: 12,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
     paddingBottom: 8,
   },
   boardRow: {
@@ -335,7 +326,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   cancelLabel: {
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   saveButton: {
     backgroundColor: t.accent,
@@ -344,12 +335,12 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     paddingHorizontal: 18,
   },
   saveButtonDisabled: {
-    backgroundColor: '#BFDBFE',
+    backgroundColor: t.selected,
   },
   saveLabel: {
     fontSize: 15,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: '#fff',
+    color: t.onAccent,
   },
 });

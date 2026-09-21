@@ -10,20 +10,10 @@ import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { Tag } from '../types';
 import { TAG_COLORS, TAG_ICONS } from '../constants/tags';
-import {
-  GLASS_BACKDROP,
-  GLASS_BODY_BLURRED,
-  GLASS_LINE,
-  GLASS_TEXT,
-  GLASS_TEXT_FAINT,
-  GLASS_TEXT_MUTED,
-  SHEET_BACKDROP,
-  SHEET_WINDOW,
-} from '../constants/glass';
+import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-
 
 type Props = {
   visible: boolean;
@@ -37,7 +27,8 @@ type Props = {
 // TagPicker.tsx), just pre-filled from an existing tag and always in edit
 // mode rather than reached only through a first assignment.
 export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) {
-  const accent = useTheme().accent;
+  const theme = useTheme();
+  const accent = theme.accent;
   const swatches = useTheme().cards;
   const styles = useStyles(makeStyles);
   const keyboardHeight = useKeyboardHeight();
@@ -94,7 +85,7 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
               value={path}
               onChangeText={setPath}
               placeholder='робота/оренда'
-              placeholderTextColor={GLASS_TEXT_FAINT}
+              placeholderTextColor={theme.ink.faint}
               style={styles.pathInput}
             />
           </View>
@@ -112,12 +103,12 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
 
           <Text style={styles.sectionLabel}>ІКОНКА</Text>
           <View style={styles.iconSearchRow}>
-            <Ionicons name="search" size={14} color={GLASS_TEXT_FAINT} />
+            <Ionicons name="search" size={14} color={theme.ink.faint} />
             <TextInput
               value={iconQuery}
               onChangeText={setIconQuery}
               placeholder="пошук іконки"
-              placeholderTextColor={GLASS_TEXT_FAINT}
+              placeholderTextColor={theme.ink.faint}
               style={styles.iconSearchInput}
             />
           </View>
@@ -132,7 +123,7 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
                   <Ionicons
                     name={name as keyof typeof Ionicons.glyphMap}
                     size={18}
-                    color={selectedIcon === name ? '#fff' : GLASS_TEXT_MUTED}
+                    color={selectedIcon === name ? '#fff' : theme.ink.muted}
                   />
                 </Pressable>
               ))}
@@ -149,7 +140,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     ...SHEET_BACKDROP,
   },
   sheet: {
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: t.raised,
     ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
@@ -159,7 +150,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -173,13 +164,13 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   headerCancel: {
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   headerTitle: {
     fontSize: 17,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   headerSave: {
     fontSize: 15,
@@ -207,16 +198,16 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     fontSize: 17,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     borderBottomWidth: 1.5,
-    borderBottomColor: GLASS_LINE,
+    borderBottomColor: t.edge.hairline,
     paddingBottom: 8,
   },
   sectionLabel: {
     fontSize: 13,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
     marginBottom: 8,
   },
   colorRow: {
@@ -231,13 +222,13 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   },
   colorSwatchSelected: {
     borderWidth: 2,
-    borderColor: GLASS_TEXT,
+    borderColor: t.ink.primary,
   },
   iconSearchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -247,7 +238,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   iconGridScroll: {
     maxHeight: 240,

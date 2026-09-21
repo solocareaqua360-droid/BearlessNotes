@@ -17,18 +17,7 @@ import { StockPhoto, StockSource, searchStockPhotos } from '../utils/stockPhotos
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import {
-  GLASS_BODY_BLURRED,
-  GLASS_CARD,
-  GLASS_EDGE,
-  GLASS_INPUT,
-  GLASS_LINE,
-  GLASS_TEXT,
-  GLASS_TEXT_FAINT,
-  GLASS_TEXT_MUTED,
-  SHEET_FRAME,
-  SHEET_WINDOW,
-} from '../constants/glass';
+import { SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 
 // A free picture library beside the gallery button, the way Notion reaches
@@ -130,17 +119,17 @@ export default function StockPhotoPicker({
         <View style={styles.header}>
           <Text style={styles.title}>Пошук зображень</Text>
           <Pressable hitSlop={10} onPress={onClose}>
-            <Ionicons name="close-outline" size={24} color={GLASS_TEXT} />
+            <Ionicons name="close-outline" size={24} color={theme.ink.primary} />
           </Pressable>
         </View>
 
         <View style={styles.searchRow}>
-          <Ionicons name="search-outline" size={17} color={GLASS_TEXT_FAINT} />
+          <Ionicons name="search-outline" size={17} color={theme.ink.faint} />
           <TextInput
             value={query}
             onChangeText={setQuery}
             placeholder="Наприклад: гори, кава, місто…"
-            placeholderTextColor={GLASS_TEXT_FAINT}
+            placeholderTextColor={theme.ink.faint}
             style={styles.searchInput}
             returnKeyType="search"
           />
@@ -171,7 +160,7 @@ export default function StockPhotoPicker({
 
         {!!error && (
           <View style={styles.emptyState}>
-            <Ionicons name="cloud-offline-outline" size={30} color={GLASS_TEXT_FAINT} />
+            <Ionicons name="cloud-offline-outline" size={30} color={theme.ink.faint} />
             <Text style={styles.emptyBody}>{error}</Text>
           </View>
         )}
@@ -186,7 +175,7 @@ export default function StockPhotoPicker({
             columnWrapperStyle={styles.gridRow}
             ListEmptyComponent={
               loading ? (
-                <ActivityIndicator color={GLASS_TEXT} style={styles.loading} />
+                <ActivityIndicator color={theme.ink.primary} style={styles.loading} />
               ) : (
                 <Text style={styles.emptyBody}>
                   Нічого не знайшлося. Бібліотека шукає англійською - спробуй інше слово.
@@ -228,7 +217,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   sheet: {
     ...SHEET_WINDOW,
     height: '82%',
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: t.raised,
     paddingTop: 16,
     paddingHorizontal: 16,
     overflow: 'hidden',
@@ -242,15 +231,15 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   title: {
     fontSize: 19,
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: GLASS_INPUT,
+    backgroundColor: t.field.fill,
     borderWidth: 1,
-    borderColor: GLASS_LINE,
+    borderColor: t.edge.hairline,
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -260,7 +249,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   sources: {
     flexDirection: 'row',
@@ -270,14 +259,14 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   sourceChip: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: GLASS_LINE,
+    borderColor: t.edge.hairline,
     paddingVertical: 6,
     paddingHorizontal: 14,
   },
   sourceLabel: {
     fontSize: 13,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   grid: {
     paddingBottom: 24,
@@ -291,7 +280,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     aspectRatio: 1,
     borderRadius: 14,
     overflow: 'hidden',
-    backgroundColor: GLASS_CARD,
+    backgroundColor: t.surface,
   },
   cellImage: {
     width: '100%',
@@ -326,7 +315,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   emptyBody: {
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
     textAlign: 'center',
     lineHeight: 20,
   },
