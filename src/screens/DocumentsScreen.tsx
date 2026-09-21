@@ -488,27 +488,34 @@ export default function DocumentsScreen({
         }
       : null
   );
-  // The note in the pane cannot publish these itself: the dock has one
-  // set of actions and this screen, being the parent, publishes them
-  // last (see DocumentEditorHandle.requestBack). So the pane's own two
-  // controls - how big it is, and the way out of it - are published
-  // here, by whoever owns the pane.
-  //
-  // Full screen, they are the ONLY actions: the list they would sit
-  // beside is hidden then, and the note was reachable but unleaveable -
-  // "тупікова гілка".
   const paneDocOpen = isTwoPane && !!openDoc;
-  const paneControls = paneDocOpen
+  // Full screen, this list is not on screen at all - so it says nothing,
+  // and the note filling the window is left holding the dock with its
+  // OWN buttons: «Референси», «Полотно», the selection, and its two
+  // beads (back, and the collapse that brings this list back).
+  //
+  // It used to publish a stand-in pair here instead - "Згорнути" and
+  // "Закрити" - which was the only thing in the dock while a note was
+  // full screen, and so the note's own drawer could not be opened at
+  // all: "я хочу в повноекранному режимі документа бачити шторку з
+  // референсами". A screen that is not showing has nothing to say.
+  const paneFullscreenDoc = paneDocOpen && paneFullscreen;
+  // Beside the list, though, both screens are on show and both have
+  // something to say, so these two ride along with the list's own: they
+  // are the only pair guaranteed to be reachable whichever of the two
+  // wrote to the dock last. Who owns the dock in THAT state is still an
+  // open question, and it is not this one.
+  const paneControls = paneDocOpen && !paneFullscreen
     ? [
         {
           key: 'pane-size',
-          icon: paneFullscreen ? 'contract-outline' : 'expand-outline',
-          label: paneFullscreen ? 'Згорнути' : 'Розгорнути',
-          onPress: () => setPaneFullscreen((v) => !v),
+          icon: 'expand-outline',
+          label: 'Розгорнути',
+          onPress: () => setPaneFullscreen(true),
         },
         {
           key: 'pane-close',
-          icon: 'close-outline' as const,
+          icon: 'close-outline',
           label: 'Закрити',
           onPress: () => {
             if (paneEditorRef.current?.requestBack()) return;
@@ -522,8 +529,8 @@ export default function DocumentsScreen({
   // The rail keeps what is left: search, and creating. These three are
   // the ones that were costing the screen its width for the least use.
   useDockActions(
-    paneDocOpen && paneFullscreen
-      ? paneControls
+    paneFullscreenDoc
+      ? null
       : isFocused && !searchingAlone
       ? isSelectMode
         ? [

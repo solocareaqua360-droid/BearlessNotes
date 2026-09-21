@@ -4819,18 +4819,22 @@ export default function BoardScreen() {
       ? { icon: 'add-outline', onPress: () => setAddSheetVisible(true) }
       : null
   );
-  // Published by the board, not by the note in its pane: the dock has
-  // one actions card and a parent publishes it last, so anything the
-  // note publishes from inside a pane is overwritten (see
-  // DocumentEditorHandle.requestBack). Full screen, these are the only
-  // actions there are - the board they would sit beside is hidden.
-  const paneControls = paneDocOpen
+  // Beside the board, both are on show and both have something to say,
+  // so these two ride along with the board's own actions: the pair is
+  // then reachable whichever of the two wrote to the dock last.
+  //
+  // Full screen they are NOT published at all - see the board's own
+  // actions below. The board is hidden then, the note holds the dock,
+  // and its own beads already carry back and collapse; a stand-in pair
+  // here was all the dock held, which left the note unable to open its
+  // own «Референси» while full screen.
+  const paneControls = paneDocOpen && !paneFullscreen
     ? [
         {
           key: 'pane-size',
-          icon: paneFullscreen ? 'contract-outline' : 'expand-outline',
-          label: paneFullscreen ? 'Згорнути' : 'Розгорнути',
-          onPress: () => setPaneFullscreen((v) => !v),
+          icon: 'expand-outline',
+          label: 'Розгорнути',
+          onPress: () => setPaneFullscreen(true),
         },
         { key: 'pane-close', icon: 'close-outline', label: 'Закрити', onPress: closePane },
       ]
@@ -4845,7 +4849,7 @@ export default function BoardScreen() {
   // this was simply the one screen that had never been moved onto it.
   useDockActions(
     paneDocOpen && paneFullscreen
-      ? paneControls
+      ? null
       : boardFocused
       ? selectedCardIds.size > 0 || selectedShapeIds.size > 0
         ? [
