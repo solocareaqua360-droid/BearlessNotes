@@ -419,7 +419,11 @@ export default function CustomDatabaseScreen({
   // Which date the schedule's own visible window starts at - "today" the
   // first time it's opened this session, deliberately not persisted (a
   // schedule always opens on today, the same way a calendar does).
-  const [scheduleWindowStart] = useState(() => dateKey(new Date()));
+  // The first day of the visible stretch. Starts on today and MOVES now
+  // (see scheduleShiftWindow): a trip planned for next month used to be
+  // simply undrawable, since the window was fixed at today..+60 for the
+  // life of the screen.
+  const [scheduleWindowStart, setScheduleWindowStart] = useState(() => dateKey(new Date()));
   // This Android build doesn't resize the window under the keyboard - it
   // arrives as an inset over the content, not a shrink - so a bottom sheet
   // needs to track its height itself and push up by that much, same as
@@ -1067,7 +1071,8 @@ export default function CustomDatabaseScreen({
     dateFieldId: string,
     name: string,
     statusNames: string[],
-    cardFieldIds: string[]
+    cardFieldIds: string[],
+    showDayTotals: boolean
   ) {
     const relationField = database?.fields.find((f) => f.id === relationFieldId);
     if (!relationField || relationField.relationTarget?.kind !== 'customDb') return;
@@ -1087,6 +1092,7 @@ export default function CustomDatabaseScreen({
         dateFieldId,
         ...(manualStatuses.length > 0 ? { manualStatuses } : {}),
         ...(cardFieldIds.length > 0 ? { cardFieldIds } : {}),
+        ...(showDayTotals ? { showDayTotals: true } : {}),
       },
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -1102,7 +1108,8 @@ export default function CustomDatabaseScreen({
     dateFieldId: string,
     name: string,
     statusNames: string[],
-    cardFieldIds: string[]
+    cardFieldIds: string[],
+    showDayTotals: boolean
   ) {
     const relationField = database?.fields.find((f) => f.id === relationFieldId);
     if (!relationField || relationField.relationTarget?.kind !== 'customDb') return;
@@ -1116,6 +1123,7 @@ export default function CustomDatabaseScreen({
         dateFieldId,
         ...(manualStatuses.length > 0 ? { manualStatuses } : {}),
         ...(cardFieldIds.length > 0 ? { cardFieldIds } : {}),
+        ...(showDayTotals ? { showDayTotals: true } : {}),
       },
       updatedAt: Date.now(),
     });
@@ -1140,6 +1148,13 @@ export default function CustomDatabaseScreen({
       return;
     }
     setScheduleSetupVisible(true);
+  }
+
+  // Moves the visible stretch of days - see scheduleWindowStart. Half a
+  // window at a time, so what you were looking at is still half on
+  // screen after a press.
+  function scheduleShiftWindow(days: number) {
+    setScheduleWindowStart((prev) => dateKey(addDays(parseDateKey(prev), days)));
   }
 
   // Tapping an empty (no event) day cell - "черговий" on a day with no
@@ -2162,6 +2177,49 @@ export default function CustomDatabaseScreen({
     // row height unchanged.
     const rowHeight = Math.max(SCHEDULE_ROW_HEIGHT, 20 + 16 + (cardFields.length + 1) * 13);
 
+    // What each row has on it, worked out ONCE per render rather than
+    // inside the row loop below: the day-totals line under the header
+    // needs exactly the same answer, and counting it twice would be two
+    // passes over every event and every status for one number.
+    //
+    // busy = a day this row cannot take anything else on. An event
+    // (a trip) or a manual status (a repair) both make a day busy, which
+    // is also the rule the cells themselves already follow: a day with
+    // either is not tappable to add a status.
+    const rowBusy = new Map<string, { events: Set<number>; statuses: Set<number> }>();
+    rowRecords.forEach((row) => {
+      const events = new Set<number>();
+      rows
+        .filter((r) => r.values[config.rowRelationFieldId] === row.id)
+        .forEach((eventRow) => {
+          const range = dateRangeOf(eventRow.values[config.dateFieldId]);
+          if (!range) return;
+          const s = Math.max(0, dayOffset(range.start));
+          const e = Math.min(SCHEDULE_WINDOW_DAYS - 1, dayOffset(range.end ?? range.start));
+          for (let i = s; i <= e; i++) events.add(i);
+        });
+      const statuses = new Set<number>();
+      scheduleCellStatuses
+        .filter((s) => s.viewId === viewId && s.rowId === row.id && !!s.startDate)
+        .forEach((status) => {
+          const s = Math.max(0, dayOffset(status.startDate));
+          const e = Math.min(SCHEDULE_WINDOW_DAYS - 1, dayOffset(status.endDate ?? status.startDate));
+          for (let i = s; i <= e; i++) statuses.add(i);
+        });
+      rowBusy.set(row.id, { events, statuses });
+    });
+    // How many rows have nothing at all on each day - see
+    // scheduleConfig.showDayTotals.
+    const freePerDay = days.map((_, i) => {
+      let free = 0;
+      rowRecords.forEach((row) => {
+        const busy = rowBusy.get(row.id);
+        if (!busy || (!busy.events.has(i) && !busy.statuses.has(i))) free += 1;
+      });
+      return free;
+    });
+    const showTotals = !!config.showDayTotals && rowRecords.length > 0;
+
     if (!rowDatabase) {
       return (
         <View style={styles.emptyState}>
@@ -2172,33 +2230,98 @@ export default function CustomDatabaseScreen({
       );
     }
 
+    const lastDay = days[days.length - 1];
     return (
       <View style={styles.tableWrap}>
+        {/* Which stretch of days is on screen, and the way to move it -
+            the window used to be nailed to today..+60 for the life of
+            the screen, so anything planned further out simply was not
+            drawn. Half a window per press, so the two overlap and you
+            never lose your place; "Сьогодні" only while it would
+            actually go somewhere. */}
+        <View style={styles.scheduleWindowRow}>
+          <Pressable
+            hitSlop={8}
+            style={styles.scheduleWindowArrow}
+            onPress={() => scheduleShiftWindow(-Math.round(SCHEDULE_WINDOW_DAYS / 2))}
+          >
+            <Ionicons name="chevron-back" size={18} color={GLASS_TEXT} />
+          </Pressable>
+          <Text style={styles.scheduleWindowLabel} numberOfLines={1}>
+            {windowStartDate.getDate()} {MONTH_FULL[windowStartDate.getMonth()]} — {lastDay.getDate()}{' '}
+            {MONTH_FULL[lastDay.getMonth()]}
+          </Text>
+          <Pressable
+            hitSlop={8}
+            style={styles.scheduleWindowArrow}
+            onPress={() => scheduleShiftWindow(Math.round(SCHEDULE_WINDOW_DAYS / 2))}
+          >
+            <Ionicons name="chevron-forward" size={18} color={GLASS_TEXT} />
+          </Pressable>
+          {scheduleWindowStart !== todayKey && (
+            <Pressable
+              hitSlop={8}
+              style={styles.scheduleWindowToday}
+              onPress={() => setScheduleWindowStart(todayKey)}
+            >
+              <Text style={styles.scheduleWindowTodayLabel}>Сьогодні</Text>
+            </Pressable>
+          )}
+        </View>
+
         <View style={styles.tableHeaderRow}>
-          <View style={[styles.tableFrozenHeader, { width: rowHeaderWidth }]} />
+          <View style={[styles.tableFrozenHeader, { width: rowHeaderWidth }]}>
+            {showTotals && (
+              <Text style={styles.scheduleTotalsRowLabel} numberOfLines={1}>
+                Вільні
+              </Text>
+            )}
+          </View>
           <ScrollView
             horizontal
             ref={scheduleHeaderScrollRef}
             scrollEnabled={false}
             showsHorizontalScrollIndicator={false}
           >
-            {days.map((d) => {
-              const key = dateKey(d);
-              const isToday = key === todayKey;
-              return (
-                <View
-                  key={key}
-                  style={[
-                    styles.scheduleDateHeaderCell,
-                    isToday && styles.scheduleDateHeaderCellToday,
-                    { width: SCHEDULE_DAY_WIDTH },
-                  ]}
-                >
-                  <Text style={styles.scheduleDateHeaderWeekday}>{WEEKDAY_SHORT[(d.getDay() + 6) % 7]}</Text>
-                  <Text style={styles.scheduleDateHeaderNum}>{d.getDate()}</Text>
+            {/* Dates and the totals line are ONE column inside one
+                scroller, not two scrollers kept in step - they share the
+                same columns, so sharing the same scroll offset is not a
+                thing that can drift. */}
+            <View>
+              <View style={styles.scheduleHeaderDatesRow}>
+                {days.map((d) => {
+                  const key = dateKey(d);
+                  const isToday = key === todayKey;
+                  return (
+                    <View
+                      key={key}
+                      style={[
+                        styles.scheduleDateHeaderCell,
+                        isToday && styles.scheduleDateHeaderCellToday,
+                        { width: SCHEDULE_DAY_WIDTH },
+                      ]}
+                    >
+                      <Text style={styles.scheduleDateHeaderWeekday}>{WEEKDAY_SHORT[(d.getDay() + 6) % 7]}</Text>
+                      <Text style={styles.scheduleDateHeaderNum}>{d.getDate()}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+              {showTotals && (
+                <View style={styles.scheduleHeaderDatesRow}>
+                  {days.map((d, i) => {
+                    const free = freePerDay[i];
+                    return (
+                      <View key={dateKey(d)} style={[styles.scheduleTotalsCell, { width: SCHEDULE_DAY_WIDTH }]}>
+                        <Text style={[styles.scheduleTotalsValue, free === 0 && styles.scheduleTotalsValueNone]}>
+                          {free}
+                        </Text>
+                      </View>
+                    );
+                  })}
                 </View>
-              );
-            })}
+              )}
+            </View>
           </ScrollView>
         </View>
 
@@ -2239,38 +2362,24 @@ export default function CustomDatabaseScreen({
                   // was last set for list/table/cards and has nothing to
                   // do with a schedule (see scheduleConfig's own comment).
                   const events = rows.filter((r) => r.values[config.rowRelationFieldId] === row.id);
-                  // Every day index an event already covers on this row -
-                  // a manual status only ever applies to a day with
-                  // nothing of its own to say already (see BoardLayer's
-                  // own hide-vs-lock comment for the same "two things that
-                  // could both apply, so decide which wins" shape).
-                  const coveredDays = new Set<number>();
-                  events.forEach((eventRow) => {
-                    const range = dateRangeOf(eventRow.values[config.dateFieldId]);
-                    if (!range) return;
-                    const s = Math.max(0, dayOffset(range.start));
-                    const e = Math.min(SCHEDULE_WINDOW_DAYS - 1, dayOffset(range.end ?? range.start));
-                    for (let i = s; i <= e; i++) coveredDays.add(i);
-                  });
-                  // Every manual status PERIOD on this row - see
-                  // ScheduleCellStatus's own comment on why this is a
-                  // range now, not one cell per day. statusDays marks
-                  // every day one spans, same "no plain tap here, a bar
-                  // drawn on top handles it" treatment coveredDays above
-                  // already gives an event. `startDate` guards against a
-                  // doc from before this change (the old, now-gone
-                  // `dateKey` shape) - silently skipped rather than
-                  // crashing the whole grid on an undefined date, same as
-                  // if it had just been deleted.
+                  // Which days this row already has something on, worked
+                  // out once for the whole grid (see rowBusy): an event's
+                  // days, and a manual status's days. A manual status
+                  // only ever applies to a day with nothing of its own to
+                  // say already (see BoardLayer's own hide-vs-lock
+                  // comment for the same "two things that could both
+                  // apply, so decide which wins" shape).
+                  const busy = rowBusy.get(row.id);
+                  const coveredDays = busy?.events ?? new Set<number>();
+                  const statusDays = busy?.statuses ?? new Set<number>();
+                  // `startDate` guards against a doc from before manual
+                  // statuses became periods (the old, now-gone `dateKey`
+                  // shape) - silently skipped rather than crashing the
+                  // whole grid on an undefined date, same as if it had
+                  // just been deleted.
                   const statusesForRow = scheduleCellStatuses.filter(
                     (s) => s.viewId === viewId && s.rowId === row.id && !!s.startDate
                   );
-                  const statusDays = new Set<number>();
-                  statusesForRow.forEach((status) => {
-                    const s = Math.max(0, dayOffset(status.startDate));
-                    const e = Math.min(SCHEDULE_WINDOW_DAYS - 1, dayOffset(status.endDate ?? status.startDate));
-                    for (let i = s; i <= e; i++) statusDays.add(i);
-                  });
                   return (
                     <View key={row.id} style={[styles.scheduleRowTrack, { height: rowHeight }]}>
                       {days.map((d, i) => {
@@ -2893,10 +3002,18 @@ export default function CustomDatabaseScreen({
           setScheduleSetupVisible(false);
           setScheduleEditView(null);
         }}
-        onSubmit={(relationFieldId, dateFieldId, name, statusNames, cardFieldIds) =>
+        onSubmit={(relationFieldId, dateFieldId, name, statusNames, cardFieldIds, showDayTotals) =>
           scheduleEditView
-            ? updateScheduleView(scheduleEditView, relationFieldId, dateFieldId, name, statusNames, cardFieldIds)
-            : createScheduleView(relationFieldId, dateFieldId, name, statusNames, cardFieldIds)
+            ? updateScheduleView(
+                scheduleEditView,
+                relationFieldId,
+                dateFieldId,
+                name,
+                statusNames,
+                cardFieldIds,
+                showDayTotals
+              )
+            : createScheduleView(relationFieldId, dateFieldId, name, statusNames, cardFieldIds, showDayTotals)
         }
       />
 
@@ -2976,6 +3093,26 @@ export default function CustomDatabaseScreen({
               </Pressable>
             </View>
             <ScrollView style={styles.paramsBody}>
+              {/* The ONLY way to a SECOND schedule. «Вигляд» → «Графік»
+                  opens the first one that already exists (which is right
+                  - that is the one you meant nine times out of ten), so
+                  without this a database could never have two: drivers
+                  AND vehicles off the same waybills, which is exactly
+                  what the fleet case is for. */}
+              {scheduleRelationFields.length > 0 && scheduleDateFields.length > 0 && (
+                <Pressable
+                  style={styles.viewManagerRow}
+                  onPress={() => {
+                    setViewsManagerVisible(false);
+                    setScheduleSetupVisible(true);
+                  }}
+                >
+                  <Ionicons name="add-circle-outline" size={16} color="rgba(255,255,255,0.7)" />
+                  <Text style={styles.viewManagerRowLabel} numberOfLines={1}>
+                    Новий графік
+                  </Text>
+                </Pressable>
+              )}
               {savedViews.length === 0 && <Text style={styles.emptyHint}>Ще немає збережених виглядів.</Text>}
               {savedViews.map((view) => (
                 <View key={view.id} style={styles.viewManagerRow}>
@@ -4570,7 +4707,8 @@ function ScheduleViewSetupSheet({
     dateFieldId: string,
     name: string,
     statusNames: string[],
-    cardFieldIds: string[]
+    cardFieldIds: string[],
+    showDayTotals: boolean
   ) => void;
 }) {
   const miniStyles = useStyles(makeMiniStyles);
@@ -4579,6 +4717,7 @@ function ScheduleViewSetupSheet({
   const [name, setName] = useState('');
   const [statusesText, setStatusesText] = useState('');
   const [cardFieldIds, setCardFieldIds] = useState<string[]>([]);
+  const [showDayTotals, setShowDayTotals] = useState(false);
   const wasVisibleRef = useRef(false);
 
   useEffect(() => {
@@ -4589,6 +4728,7 @@ function ScheduleViewSetupSheet({
       setName(editingView?.name ?? '');
       setStatusesText(config?.manualStatuses?.map((s) => s.label).join(', ') ?? '');
       setCardFieldIds(config?.cardFieldIds ?? []);
+      setShowDayTotals(!!config?.showDayTotals);
     }
     wasVisibleRef.current = visible;
   }, [visible, editingView, relationFields, dateFields]);
@@ -4659,6 +4799,19 @@ function ScheduleViewSetupSheet({
             placeholder="Наприклад: Черговий, Днювальний"
             placeholderTextColor={GLASS_TEXT_FAINT}
           />
+          <Pressable
+            style={[miniStyles.scheduleOptionRow, showDayTotals && miniStyles.scheduleOptionRowActive]}
+            onPress={() => setShowDayTotals((v) => !v)}
+          >
+            <Ionicons
+              name={showDayTotals ? 'checkbox' : 'square-outline'}
+              size={18}
+              color={showDayTotals ? GLASS_TEXT : GLASS_TEXT_FAINT}
+            />
+            <Text style={miniStyles.scheduleOptionLabel} numberOfLines={1}>
+              Рахувати вільних за день
+            </Text>
+          </Pressable>
           {availableCardFields.length > 0 && (
             <>
               <Text style={miniStyles.scheduleSectionLabel}>Поля картки (необовʼязково)</Text>
@@ -4701,7 +4854,8 @@ function ScheduleViewSetupSheet({
                     .split(',')
                     .map((s) => s.trim())
                     .filter((s) => s !== ''),
-                  cardFieldIds.filter((id) => id !== relationFieldId && id !== dateFieldId)
+                  cardFieldIds.filter((id) => id !== relationFieldId && id !== dateFieldId),
+                  showDayTotals
                 )
               }
             >
@@ -5350,6 +5504,61 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 13,
     fontFamily: FONT_SEMIBOLD,
     color: '#fff',
+  },
+  // Which stretch of days is on screen, above the grid's own header.
+  scheduleWindowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingBottom: 6,
+  },
+  scheduleWindowArrow: {
+    padding: 4,
+  },
+  scheduleWindowLabel: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT,
+  },
+  scheduleWindowToday: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  scheduleWindowTodayLabel: {
+    fontSize: 11,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT,
+  },
+  scheduleHeaderDatesRow: {
+    flexDirection: 'row',
+  },
+  // The "скільки вільні цього дня" line under the dates - see
+  // scheduleConfig.showDayTotals.
+  scheduleTotalsRowLabel: {
+    fontSize: 11,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT_FAINT,
+    alignSelf: 'flex-end',
+    paddingHorizontal: 10,
+  },
+  scheduleTotalsCell: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 2,
+  },
+  scheduleTotalsValue: {
+    fontSize: 12,
+    fontFamily: FONT_SEMIBOLD,
+    color: GLASS_TEXT,
+  },
+  // Nothing free that day - the one number on this line worth spotting
+  // without reading it.
+  scheduleTotalsValueNone: {
+    color: '#F87171',
   },
   scheduleDateHeaderCell: {
     alignItems: 'center',

@@ -871,6 +871,15 @@ export interface CustomDatabaseView {
     // this list. Never includes rowRelationFieldId/dateFieldId themselves,
     // since those are already the row grouping and the card's own span.
     cardFieldIds?: string[];
+    // A summary line under the date header counting, per day, how many
+    // rows have NOTHING on them - no event and no manual status. The
+    // fleet case this was asked for is "скільки машин вільні цього дня"
+    // (a vehicle on a trip or in «ремонт» is not available), but like
+    // everything else here it is named for what it does rather than for
+    // vehicles: a schedule of people answers "who is free" with the same
+    // count. Off unless asked for - a schedule read row by row has no
+    // use for it.
+    showDayTotals?: boolean;
   };
   // documentId -> true for every document embedding this view as a 'dbView'
   // block, same shape/purpose as CustomDatabaseRow.usedInDocuments below.
