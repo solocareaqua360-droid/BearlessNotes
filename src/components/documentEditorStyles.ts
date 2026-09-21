@@ -95,21 +95,6 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  // The project badge, with the save ring traced on its own outline.
-  // Stood on its end against the right edge; laid down in the top-left
-  // corner, where it would otherwise run through the text.
-  headerRightRow: {
-    flexDirection: 'row',
-    paddingVertical: 19,
-    paddingHorizontal: 18,
-  },
-  // The room inside the capsule; the glass is GlassDrop's.
-  headerRight: {
-    alignItems: 'center',
-    gap: 18,
-    paddingVertical: 18,
-    paddingHorizontal: 19,
-  },
   exportMenuBackdrop: {
     position: 'absolute',
     left: 0,

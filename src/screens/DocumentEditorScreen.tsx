@@ -135,7 +135,6 @@ import type { colorForDocument } from '../utils/documentColor';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
 import UndoToast from '../components/UndoToast';
-import GlassDrop from '../components/GlassDrop';
 import { COVER_GRADIENTS, CoverGradientView } from '../theme/covers';
 import StockPhotoPicker from '../components/StockPhotoPicker';
 import AddExistingItemModal from '../components/AddExistingItemModal';
@@ -152,7 +151,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_DANGER, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
-import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
+import { CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
 import { dockRowWidth, useDockClearance } from '../navigation/dockGeometry';
 import SaveRing from '../components/SaveRing';
 import ProjectBadge from '../components/ProjectBadge';
@@ -3684,7 +3683,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           <View
             style={[
               styles.editorRail,
-              { top: railTop ?? editorInsets.top + CHROME_TOP + CAPSULE_DROP },
+              // Above the title, not over it. The old four-button capsule
+              // needed CAPSULE_DROP to clear the scroll content below it;
+              // a bare badge is short enough to sit in the strip above
+              // the content instead, so it no longer needs that drop.
+              { top: railTop ?? editorInsets.top + CHROME_TOP },
               railSide,
             ]}
             pointerEvents="box-none"
@@ -3694,37 +3697,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                 every one of them already did the exact same thing from
                 there, so keeping a second way to reach them here was pure
                 duplication. What is left is the one thing with no dock
-                equivalent: which project this document belongs to. */}
-            <GlassDrop style={[styles.headerRight, railHorizontal && styles.headerRightRow]}>
+                equivalent: which project this document belongs to - and
+                it needs none of the old capsule's own glass or padding,
+                since ProjectBadge already carries its own (the same
+                `glass` look TagChips uses) - a pill, not a button. */}
+            <View>
               <ProjectBadge
                 project={groups.find((g) => g.id === groupId) ?? null}
                 onPress={() => setGroupPickerVisible(true)}
                 glass
               />
-              {/* The save indicator STAYS on this capsule's outline,
-                  and this is the reason the capsule itself survives the
-                  merge rather than dissolving into the dock with its
-                  buttons.
-
-                  It was moved to the dock's front card for one round -
-                  bigger, more central, the same stadium shape - and the
-                  user stopped it before it shipped, with the argument
-                  that settles it: this thing fires on EVERY save, which
-                  is every few seconds of typing, and a light travelling
-                  round a capsule directly under the line being read is
-                  "новорічна гірлянда з відстані 50 сантиметрів 2
-                  години". The corner is not a worse place for it, it is
-                  the RIGHT place - "вона одночасно і в центрі і не в
-                  центрі уваги". Peripheral vision notices a change
-                  without the eye having to read it.
-
-                  Rule for anything ambient that repeats: the middle of
-                  the screen is for what you act on, the corner for what
-                  you only need to notice. Last child, so it draws over
-                  the blur - and now that the capsule holds only the
-                  badge, the outline it traces IS the badge's own. */}
+              {/* The save indicator STAYS on the badge's own outline -
+                  see the corner-vs-middle reasoning in feedback_ambient_
+                  indicators. Last child, so it draws over the badge. */}
               <SaveRing saving={saveStatus === 'saving'} />
-            </GlassDrop>
+            </View>
           </View>
         </GlassPortal>
       )}
