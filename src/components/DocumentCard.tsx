@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CoverGradientView, coverById, defaultCoverFor } from '../theme/covers';
 import { useRecordColour, useTextScale } from '../theme/ThemeProvider';
@@ -44,6 +45,28 @@ const GRID_TITLE_MAX_LINES = 2;
 const GRID_TITLE_LINE_HEIGHT = 20;
 const GRID_DATE_LINE_HEIGHT = 14;
 const GRID_PREVIEW_LINE_HEIGHT = 17; // matches previewCompact.lineHeight below
+
+// A WIDE card's cover: a small square in the corner, the size a list
+// row's own thumbnail is, rather than a column down the side. The point
+// of the bigger card is that more TEXT fits - "щоб туди більше
+// інформації влізло" - so the cover takes as little of it as it can
+// while still being recognisable, and the text runs around it.
+const WIDE_THUMB_SIZE = 96;
+// Lines of preview that fit BESIDE that square, under the title; the
+// rest of the text carries on under it at the card's full width.
+const WIDE_BESIDE_LINES = Math.max(
+  1,
+  Math.floor((WIDE_THUMB_SIZE - GRID_TITLE_LINE_HEIGHT * GRID_TITLE_MAX_LINES) / GRID_PREVIEW_LINE_HEIGHT)
+);
+// And under it: everything left of the card's height once the square's
+// band and the date's own line are taken out.
+const WIDE_BELOW_LINES = Math.max(
+  1,
+  Math.floor(
+    (GRID_CARD_HEIGHT - GRID_CONTENT_PADDING * 2 - WIDE_THUMB_SIZE - GRID_CONTENT_GAP - GRID_DATE_LINE_HEIGHT) /
+      GRID_PREVIEW_LINE_HEIGHT
+  )
+);
 
 // gridContent (title + preview + date) always has to fit into whatever
 // height is LEFT after the reserved space passed in - GRID_CARD_HEIGHT
@@ -293,6 +316,15 @@ export default function DocumentCard({
   onProjectPress,
   wide,
 }: Props) {
+  // How much of the preview text the lines BESIDE a wide card's cover
+  // actually swallowed - React Native has no `float`, so the text cannot
+  // wrap around the square by itself. It is measured instead: the beside
+  // column reports the lines it laid out (onTextLayout hands back each
+  // line's own text), and whatever is left of the string carries on
+  // under the square at the card's full width. Keyed by the text it was
+  // measured from, so a card that changes says so rather than splitting
+  // the new text at the old point.
+  const [besideSplit, setBesideSplit] = useState<{ source: string; consumed: number } | null>(null);
   const recordColour = useRecordColour();
   const { background, text, textMuted } = recordColour(id);
   const isGrid = layout === 'grid';
@@ -368,6 +400,8 @@ export default function DocumentCard({
   );
 
   if (isGrid && wide) {
+    const besideText = besideSplit?.source === previewText ? previewText.slice(0, besideSplit.consumed) : previewText;
+    const belowText = besideSplit?.source === previewText ? previewText.slice(besideSplit.consumed).trimStart() : '';
     return (
       <View
         ref={cardRef}
@@ -382,17 +416,45 @@ export default function DocumentCard({
       >
         <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />
         <Pressable style={styles.wideTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
-          {/* Standing on the left edge, full height, instead of lying
-              across the top - the one thing that makes this card a
-              different shape rather than just a bigger one. */}
-          <View style={styles.wideThumb}>{thumbNode}</View>
-          <View style={styles.wideContent}>
-            {titleNode}
-            {previewBody}
-            <View style={[styles.dateCompactPinned, styles.dateRow]}>
-              <Text style={[styles.dateCompact, { color: textMuted }]}>{formatUpdatedAt(updatedAt)}</Text>
-              {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass />}
+          {/* The band the cover stands in: a small square, with the
+              title and the first lines of text beside it. */}
+          <View style={styles.wideBand}>
+            <View style={styles.wideThumb}>{thumbNode}</View>
+            <View style={styles.wideBandText}>
+              {titleNode}
+              {/* A preview that is a checklist or a strip of photos is
+                  not text and cannot be split around anything - it
+                  stays whole, beside the square. */}
+              {checklistItems.length > 0 || imageUris.length > 1 ? (
+                previewBody
+              ) : (
+                !!previewText && (
+                <Text
+                  style={[styles.previewCompact, { color: textMuted }]}
+                  numberOfLines={WIDE_BESIDE_LINES}
+                  onTextLayout={(e) => {
+                    // What actually fitted here, to the character - the
+                    // rest is what goes under the square.
+                    const consumed = e.nativeEvent.lines.reduce((total, line) => total + line.text.length, 0);
+                    if (besideSplit?.source === previewText && besideSplit.consumed === consumed) return;
+                    setBesideSplit({ source: previewText, consumed });
+                  }}
+                >
+                  {besideText}
+                </Text>
+                )
+              )}
             </View>
+          </View>
+          {/* ...and on under it, at the card's whole width. */}
+          {!!belowText && (
+            <Text style={[styles.previewCompact, { color: textMuted }]} numberOfLines={WIDE_BELOW_LINES}>
+              {belowText}
+            </Text>
+          )}
+          <View style={[styles.dateCompactPinned, styles.dateRow]}>
+            <Text style={[styles.dateCompact, { color: textMuted }]}>{formatUpdatedAt(updatedAt)}</Text>
+            {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass />}
           </View>
         </Pressable>
         {isSelectMode && (
@@ -681,25 +743,27 @@ const styles = StyleSheet.create({
   },
   wideTap: {
     flex: 1,
+    padding: GRID_CONTENT_PADDING,
+  },
+  wideBand: {
     flexDirection: 'row',
+    gap: 10,
   },
-  // A third of the card, floor to ceiling. The cover is the thing you
-  // recognise the note by, so it gets a real column rather than a strip.
   wideThumb: {
-    width: '34%',
+    width: WIDE_THUMB_SIZE,
+    height: WIDE_THUMB_SIZE,
+    borderRadius: 10,
     overflow: 'hidden',
-    borderRightWidth: THUMB_BORDER_WIDTH,
-    borderRightColor: 'rgba(0,0,0,0.12)',
   },
-  // Fills that column, rather than the grid's fixed strip height.
+  wideBandText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  // Fills the little square, whatever the picture's own shape.
   thumbWide: {
     flex: 1,
     width: '100%',
     backgroundColor: '#F3F4F6',
-  },
-  wideContent: {
-    flex: 1,
-    padding: 10,
   },
   titleCompact: {
     fontSize: 15,
