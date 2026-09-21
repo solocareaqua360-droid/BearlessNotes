@@ -1939,6 +1939,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   active: referencePanelOpen,
                   onPress: () => setReferencePanelOpen((v) => !v),
                 },
+                // The board's own "Скинути дошку?", mirrored here - free
+                // dragging on the canvas needs a way back to the default
+                // layout without undoing every card one at a time.
+                {
+                  key: 'reset',
+                  icon: 'refresh-outline',
+                  label: 'Скинути',
+                  onPress: confirmResetCanvas,
+                },
               ]
             : []),
           // Everything below came out of the "…" menu at the user's own
@@ -2656,6 +2665,28 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   function updateBlockFields(id: string, patch: Partial<Block>) {
     snapshotBeforeChange();
     setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+  }
+
+  // Clears every block's own canvas position (layOutBlocks falls straight
+  // back to its default single column, by block order, once `canvas` is
+  // gone) - the board's own "Скинути дошку?" is the model this mirrors,
+  // confirm-then-clear rather than an undoable drag.
+  function confirmResetCanvas() {
+    confirm({
+      title: 'Скинути полотно?',
+      message: 'Картки знову вишикуються в один стовпчик. Стрілки між ними лишаться.',
+      confirmLabel: 'Скинути',
+    }).then((yes) => {
+      if (!yes) return;
+      snapshotBeforeChange();
+      setBlocks((prev) =>
+        prev.map((b) => {
+          if (!b.canvas) return b;
+          const { canvas, ...rest } = b;
+          return rest;
+        })
+      );
+    });
   }
 
   // Android has no cross-app "reveal this file, highlighted, in Files"
