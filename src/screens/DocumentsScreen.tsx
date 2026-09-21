@@ -1331,7 +1331,18 @@ export default function DocumentsScreen({
             // The folders of this level, and the way up, above the cards.
             ListHeaderComponent={
               trashOpen ? (
-                <View style={[styles.explorerHead, folderColumns > 1 && styles.explorerHeadWide]}>
+                <View
+                  style={[
+                    styles.explorerHead,
+                    folderColumns > 1 && styles.explorerHeadWide,
+                    // In the wide column the LIST itself already carries
+                    // that 20 (see wideColumn), and a header inside it
+                    // would add its own on top - which is exactly how
+                    // the folders ended up inset twice as far as the
+                    // cards under them.
+                    drawnMode === 'wide' && styles.explorerHeadFlush,
+                  ]}
+                >
                   <View style={styles.explorerCrumb}>
                     <Pressable hitSlop={8} onPress={() => setTrashOpen(false)} style={styles.crumbUp}>
                       <Ionicons name="chevron-back" size={18} color={theme.ink.primary} />
@@ -1347,7 +1358,18 @@ export default function DocumentsScreen({
                   <Text style={styles.trashHint}>Затисни нотатку, щоб відновити або видалити назавжди. Через 30 днів кошик очищається сам.</Text>
                 </View>
               ) : explorerMode && (explorer.folders.length > 0 || (explorer.active && explorer.path !== '')) ? (
-                <View style={[styles.explorerHead, folderColumns > 1 && styles.explorerHeadWide]}>
+                <View
+                  style={[
+                    styles.explorerHead,
+                    folderColumns > 1 && styles.explorerHeadWide,
+                    // In the wide column the LIST itself already carries
+                    // that 20 (see wideColumn), and a header inside it
+                    // would add its own on top - which is exactly how
+                    // the folders ended up inset twice as far as the
+                    // cards under them.
+                    drawnMode === 'wide' && styles.explorerHeadFlush,
+                  ]}
+                >
                   {/* A folder row wears the document row's clothes - the
                       same card, with the tag's icon in a frame where a
                       document shows its picture - so the two read as one
@@ -1452,8 +1474,10 @@ export default function DocumentsScreen({
                 currentKind="document"
                 tags={tags}
                 // This list pads nothing: its own cards carry their side
-                // margin, so the sections have to bring the same one.
-                sidePadding={20}
+                // margin, so the sections have to bring the same one -
+                // except in the wide column, where the list itself
+                // carries it and a second one would double up.
+                sidePadding={drawnMode === 'wide' ? 0 : 20}
               />
             }
             numColumns={drawnMode === 'grid' ? gridColumns : 1}
@@ -2086,6 +2110,9 @@ const makeStyles = (t: Theme) =>
     paddingHorizontal: 20,
     gap: 8,
     marginBottom: 8,
+  },
+  explorerHeadFlush: {
+    paddingHorizontal: 0,
   },
   explorerCrumb: {
     flexDirection: 'row',
