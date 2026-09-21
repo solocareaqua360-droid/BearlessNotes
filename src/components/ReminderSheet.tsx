@@ -10,14 +10,7 @@ import {
   getMonthGrid,
   parseDateKey,
 } from '../utils/dateLocale';
-import {
-  GLASS_BACKDROP,
-  GLASS_DANGER,
-  GLASS_LINE,
-  GLASS_TEXT,
-  GLASS_TEXT_FAINT,
-  GLASS_TEXT_MUTED,
-} from '../constants/glass';
+import { GLASS_DANGER } from '../constants/glass';
 import Sheet from './surfaces/Sheet';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
@@ -54,7 +47,8 @@ export default function ReminderSheet({
   onSave,
   onClear,
 }: Props) {
-  const accent = useTheme().accent;
+  const theme = useTheme();
+  const accent = theme.accent;
   const styles = useStyles(makeStyles);
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const d = new Date();
@@ -132,10 +126,10 @@ export default function ReminderSheet({
             </Text>
             <View style={styles.calHeadArrows}>
               <Pressable hitSlop={8} onPress={() => changeMonth(-1)}>
-                <Ionicons name="chevron-back" size={18} color={GLASS_TEXT_MUTED} />
+                <Ionicons name="chevron-back" size={18} color={theme.ink.muted} />
               </Pressable>
               <Pressable hitSlop={8} onPress={() => changeMonth(1)}>
-                <Ionicons name="chevron-forward" size={18} color={GLASS_TEXT_MUTED} />
+                <Ionicons name="chevron-forward" size={18} color={theme.ink.muted} />
               </Pressable>
             </View>
           </View>
@@ -205,7 +199,7 @@ export default function ReminderSheet({
                   <Ionicons
                     name="notifications-outline"
                     size={15}
-                    color={kind === 'notify' ? accent : GLASS_TEXT_MUTED}
+                    color={kind === 'notify' ? accent : theme.ink.muted}
                   />
                   <Text style={[styles.kindTabLabel, kind === 'notify' && styles.kindTabLabelActive]}>
                     Сповіщення
@@ -215,7 +209,7 @@ export default function ReminderSheet({
                   style={[styles.kindTab, kind === 'alarm' && styles.kindTabActive]}
                   onPress={() => setKind('alarm')}
                 >
-                  <Ionicons name="alarm-outline" size={15} color={kind === 'alarm' ? accent : GLASS_TEXT_MUTED} />
+                  <Ionicons name="alarm-outline" size={15} color={kind === 'alarm' ? accent : theme.ink.muted} />
                   <Text style={[styles.kindTabLabel, kind === 'alarm' && styles.kindTabLabelActive]}>
                     Будильник
                   </Text>
@@ -281,7 +275,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 13.5,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   calHeadArrows: {
     flexDirection: 'row',
@@ -297,7 +291,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 10.5,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
   },
   grid: {
     flexDirection: 'row',
@@ -326,13 +320,17 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   dayNum: {
     fontSize: 12.5,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   dayNumMuted: {
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
   },
+  // On the accent, so it takes the theme's answer for what reads on it -
+  // white was right while the accent was always dark, and invisible the
+  // moment a theme's accent turned near-white (the black one's is
+  // #E5E7EB).
   dayNumSelected: {
-    color: '#fff',
+    color: t.onAccent,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
   },
@@ -343,18 +341,18 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 4,
     borderTopWidth: 1,
-    borderTopColor: GLASS_LINE,
+    borderTopColor: t.edge.hairline,
   },
   timeLabel: {
     fontSize: 14,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   timeHint: {
     fontSize: 11.5,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
     marginTop: -2,
     marginBottom: 6,
   },
@@ -383,7 +381,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   kindTabLabel: {
     fontSize: 12.5,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   kindTabLabelActive: {
     color: t.accent,
@@ -404,7 +402,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 12.5,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   timeToggleTextOn: {
     color: t.accent,
@@ -436,7 +434,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     fontVariant: ['tabular-nums'],
     width: 34,
     textAlign: 'center',
@@ -445,7 +443,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   actions: {
     flexDirection: 'row',
@@ -467,15 +465,15 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: 'rgba(120,120,120,0.08)',
+    backgroundColor: t.field.fill,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
+    borderColor: t.edge.hairline,
   },
   cancelBtnText: {
     fontSize: 14,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: '#6B6558',
+    color: t.ink.muted,
   },
   saveBtn: {
     flex: 1,
@@ -488,6 +486,6 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: '#fff',
+    color: t.onAccent,
   },
 });

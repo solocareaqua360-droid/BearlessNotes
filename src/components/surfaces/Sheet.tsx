@@ -2,15 +2,10 @@ import { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import GlassLayer from '../GlassLayer';
+import { useStyles } from '../../theme/ThemeProvider';
+import type { Theme } from '../../theme/tokens';
 import { useKeyboardHeight } from '../../hooks/useKeyboardHeight';
-import {
-  GLASS_BODY_BLURRED,
-  GLASS_LINE,
-  GLASS_TEXT,
-  GLASS_TEXT_FAINT,
-  SHEET_FRAME,
-  SHEET_WINDOW,
-} from '../../constants/glass';
+import { SHEET_FRAME, SHEET_WINDOW } from '../../constants/glass';
 import { FONT_BOLD, FONT_REGULAR } from '../../utils/fonts';
 
 // «Аркуш» - a panel of content over the screen, and the second of the
@@ -63,6 +58,7 @@ export default function Sheet({
   maxHeight?: ViewStyle['maxHeight'];
   children: ReactNode;
 }) {
+  const styles = useStyles(makeStyles);
   const keyboardHeight = useKeyboardHeight();
   const body = scroll ? (
     <ScrollView
@@ -99,13 +95,13 @@ export default function Sheet({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   frame: {
     ...SHEET_FRAME,
   },
   window: {
     ...SHEET_WINDOW,
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: t.raised,
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 24,
@@ -114,7 +110,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
     alignSelf: 'center',
     marginBottom: 12,
   },
@@ -125,13 +121,13 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
     marginTop: -4,
     marginBottom: 10,
   },

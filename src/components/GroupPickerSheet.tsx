@@ -13,13 +13,6 @@ import { addDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { Group } from '../types';
 import { groupKindFields } from '../utils/groups';
-import {
-  GLASS_BACKDROP,
-  GLASS_INPUT,
-  GLASS_LINE,
-  GLASS_TEXT,
-  GLASS_TEXT_FAINT,
-} from '../constants/glass';
 import Sheet from './surfaces/Sheet';
 import { FONT_REGULAR } from '../utils/fonts';
 import { confirm } from './surfaces/Ask';
@@ -65,7 +58,8 @@ export default function GroupPickerSheet({
   onClose,
   unassignedLabel = 'Без проекту',
 }: Props) {
-  const accent = useTheme().accent;
+  const theme = useTheme();
+  const accent = theme.accent;
   const styles = useStyles(makeStyles);
   const [newGroupName, setNewGroupName] = useState('');
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
@@ -110,7 +104,7 @@ export default function GroupPickerSheet({
     <Sheet visible={visible} onClose={onClose} title="Оберіть проект" scroll maxHeight="70%">
 
           <Pressable style={styles.row} onPress={() => onPick(null)}>
-            <View style={[styles.dot, { backgroundColor: GLASS_TEXT_FAINT }]} />
+            <View style={[styles.dot, { backgroundColor: theme.ink.faint }]} />
             <Text style={styles.rowText}>{unassignedLabel}</Text>
           </Pressable>
 
@@ -135,11 +129,11 @@ export default function GroupPickerSheet({
                   <Text style={styles.rowText}>{g.name}</Text>
                 </Pressable>
                 <Pressable hitSlop={8} onPress={() => startEditGroup(g)}>
-                  <Ionicons name="pencil-outline" size={16} color={GLASS_TEXT_FAINT} />
+                  <Ionicons name="pencil-outline" size={16} color={theme.ink.faint} />
                 </Pressable>
                 {g.id !== CAMERA_PHOTOS_GROUP_ID && (
                   <Pressable hitSlop={8} onPress={() => confirmDeleteGroup(g)}>
-                    <Ionicons name="close" size={16} color={GLASS_TEXT_FAINT} />
+                    <Ionicons name="close" size={16} color={theme.ink.faint} />
                   </Pressable>
                 )}
               </View>
@@ -154,7 +148,7 @@ export default function GroupPickerSheet({
               value={newGroupName}
               onChangeText={setNewGroupName}
               placeholder="Новий проект"
-              placeholderTextColor={GLASS_TEXT_FAINT}
+              placeholderTextColor={theme.ink.faint}
               onSubmitEditing={addGroup}
               returnKeyType="done"
             />
@@ -188,20 +182,20 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   renameInput: {
     flex: 1,
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     paddingVertical: 2,
     borderBottomWidth: 1,
     borderBottomColor: t.accent,
   },
   divider: {
     height: 1,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
     marginVertical: 8,
   },
   addRow: {
@@ -213,8 +207,8 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
-    backgroundColor: GLASS_INPUT,
+    color: t.ink.primary,
+    backgroundColor: t.field.fill,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,

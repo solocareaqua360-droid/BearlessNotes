@@ -2,7 +2,6 @@ import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import Sheet from './surfaces/Sheet';
 import { FONT_REGULAR } from '../utils/fonts';
 
@@ -23,7 +22,8 @@ type Props = {
 // The window itself is «Аркуш» now (surfaces/Sheet) rather than this
 // file's own copy of the backdrop, the frame, the handle and the title.
 export default function DocumentPickerModal({ visible, subtitle, documents, onPick, onClose }: Props) {
-  const accent = useTheme().accent;
+  const theme = useTheme();
+  const accent = theme.accent;
   const styles = useStyles(makeStyles);
   return (
     <Sheet visible={visible} onClose={onClose} title="Де вставлено" subtitle={subtitle}>
@@ -35,7 +35,7 @@ export default function DocumentPickerModal({ visible, subtitle, documents, onPi
           <Text style={styles.rowText} numberOfLines={1}>
             {d.title}
           </Text>
-          <Ionicons name="chevron-forward" size={16} color={GLASS_TEXT_FAINT} />
+          <Ionicons name="chevron-forward" size={16} color={theme.ink.faint} />
         </Pressable>
       ))}
     </Sheet>
@@ -60,7 +60,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   rowText: {
     fontSize: 16,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     flex: 1,
   },
 });
