@@ -261,6 +261,18 @@ function DocumentCanvasInner({
   const translateY = useSharedValue(120);
   const savedTranslateX = useSharedValue(translateX.value);
   const savedTranslateY = useSharedValue(translateY.value);
+  // The world point under the pinch's own focal (the midpoint between the
+  // two fingers), captured once when the pinch starts - see pinchGesture's
+  // own comment for why this is what keeps zoom anchored to the fingers
+  // instead of drifting toward the canvas's centre. Same fix as the board's
+  // own pinchGesture.
+  const pinchFocalWorldX = useSharedValue(0);
+  const pinchFocalWorldY = useSharedValue(0);
+  // Where the finger panGesture is tracking actually was when ITS OWN
+  // onStart fired - see panGesture's own comment for why its built-in
+  // translationX/Y can't be trusted right after a pinch.
+  const panTouchStartX = useSharedValue(0);
+  const panTouchStartY = useSharedValue(0);
 
   const [cardHeights, setCardHeights] = useState<Record<string, number>>({});
   const placements = useMemo(() => layOutBlocks(blocks, cardHeights), [blocks, cardHeights]);
@@ -486,11 +498,35 @@ function DocumentCanvasInner({
   }
 
   const pinchGesture = Gesture.Pinch()
+    .onStart((e) => {
+      savedScale.value = scale.value;
+      pinchFocalWorldX.value = (e.focalX - viewport.width / 2 - translateX.value) / scale.value;
+      pinchFocalWorldY.value = (e.focalY - viewport.height / 2 - translateY.value) / scale.value;
+    })
+    // The jump the anchoring above didn't fix: the moment one of the two
+    // fingers actually lifts, the platform's own pinch detector (Android's
+    // ScaleGestureDetector underneath this) recomputes its focal from
+    // whichever touch is left - jumping from the true midpoint of two
+    // fingers to that one finger's own position, in a single ordinary
+    // onUpdate frame indistinguishable from a real one, no matter how the
+    // math in that frame is written. Ending the gesture right here, on the
+    // touch-up itself, stops it from ever reading that jumped focal at
+    // all - panGesture picks up the one remaining finger right after,
+    // cleanly, from its own onStart. Same fix as the board's own
+    // pinchGesture.
+    .onTouchesUp((e, state) => {
+      if (e.numberOfTouches < 2) state.end();
+    })
     .onUpdate((e) => {
-      scale.value = Math.min(MAX_SCALE, Math.max(MIN_SCALE, savedScale.value * e.scale));
+      const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, savedScale.value * e.scale));
+      scale.value = nextScale;
+      translateX.value = e.focalX - viewport.width / 2 - pinchFocalWorldX.value * nextScale;
+      translateY.value = e.focalY - viewport.height / 2 - pinchFocalWorldY.value * nextScale;
     })
     .onEnd(() => {
       savedScale.value = scale.value;
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
     });
 
   const panGesture = Gesture.Pan()
@@ -503,13 +539,43 @@ function DocumentCanvasInner({
     // Where a drag draws a selection box, it is not also the way to move
     // the view - the trackpad is.
     .enabled(!DRAG_SELECTS && (editingId === null || !NEEDS_TAP_GUARDS))
+    // One finger only - two is a pinch (see canvasGesture's own
+    // Simultaneous below), and pinchGesture's own focal-tracking above
+    // already moves translateX/Y for a two-finger touch, scale changing or
+    // not. Letting this ALSO claim a two-finger touch meant both gestures
+    // wrote translateX/Y on the same frames, each from its own, different
+    // formula - fighting over the same value is what the diagonal drift
+    // actually was. Same fix as the board's own panGesture.
+    .minPointers(1)
+    .maxPointers(1)
     // The board's own number: a hold and a drag start the same way, and a
     // surface that takes the very first pixel moves before the press can
     // count as anything else.
     .minDistance(12)
+    // Same resync as pinchGesture's own onStart, same reason: a fit-to-
+    // bounds pan moves translateX/Y outside this gesture, and the next
+    // drag has to pick up from there, not from wherever the PREVIOUS drag
+    // happened to end. Also captures the finger's own absolute position
+    // right now - see onUpdate's own comment for why the gesture's built-
+    // in translationX/Y isn't used.
+    .onStart((e) => {
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+      panTouchStartX.value = e.absoluteX;
+      panTouchStartY.value = e.absoluteY;
+    })
     .onUpdate((e) => {
-      translateX.value = savedTranslateX.value + e.translationX;
-      translateY.value = savedTranslateY.value + e.translationY;
+      // Computed by hand from the finger's own absolute position, rather
+      // than the gesture's own translationX/Y - which measures from
+      // wherever THAT finger first touched down, not from this gesture's
+      // own onStart. Ordinarily the same instant, but not right after a
+      // two-finger pinch: the second finger may have been down (and
+      // drifting) for the whole pinch before it became this lone finger's
+      // own pan, and translationX would silently carry that drift as a
+      // jump the moment this gesture activated. Same fix as the board's
+      // own panGesture.
+      translateX.value = savedTranslateX.value + (e.absoluteX - panTouchStartX.value);
+      translateY.value = savedTranslateY.value + (e.absoluteY - panTouchStartY.value);
     })
     .onEnd(() => {
       savedTranslateX.value = translateX.value;
