@@ -61,7 +61,9 @@ just blocks. A full tag system (tree-based `TagsDrawer`, multi-select
 Мульти/Ізолюючий filter mode, per-item `TagPicker` with hide-from-
 suggestions and icon/color editing) is shared across Documents/Files/
 Photos/Links, plus a separate per-database-type "групування" field
-(`Group`, deliberately distinct from Tasks' own `Project`) with bulk
+(`Group`, shown in the UI as "Проект" — as of 2026-09-21 this is the
+app's one cross-database project/group mechanism, and Tasks' own former
+`Project` type has been retired in favour of it) with bulk
 select/tag/group/delete/copy-to-note on Files/Photos/Links. The Calendar
 screen (week strip + expandable month grid, inline daily-note editing,
 "only filled days" toggle) is also built and confirmed. None of this has
