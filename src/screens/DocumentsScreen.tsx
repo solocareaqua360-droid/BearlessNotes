@@ -1335,12 +1335,6 @@ export default function DocumentsScreen({
                   style={[
                     styles.explorerHead,
                     folderColumns > 1 && styles.explorerHeadWide,
-                    // In the wide column the LIST itself already carries
-                    // that 20 (see wideColumn), and a header inside it
-                    // would add its own on top - which is exactly how
-                    // the folders ended up inset twice as far as the
-                    // cards under them.
-                    drawnMode === 'wide' && styles.explorerHeadFlush,
                   ]}
                 >
                   <View style={styles.explorerCrumb}>
@@ -1362,12 +1356,6 @@ export default function DocumentsScreen({
                   style={[
                     styles.explorerHead,
                     folderColumns > 1 && styles.explorerHeadWide,
-                    // In the wide column the LIST itself already carries
-                    // that 20 (see wideColumn), and a header inside it
-                    // would add its own on top - which is exactly how
-                    // the folders ended up inset twice as far as the
-                    // cards under them.
-                    drawnMode === 'wide' && styles.explorerHeadFlush,
                   ]}
                 >
                   {/* A folder row wears the document row's clothes - the
@@ -1474,10 +1462,8 @@ export default function DocumentsScreen({
                 currentKind="document"
                 tags={tags}
                 // This list pads nothing: its own cards carry their side
-                // margin, so the sections have to bring the same one -
-                // except in the wide column, where the list itself
-                // carries it and a second one would double up.
-                sidePadding={drawnMode === 'wide' ? 0 : 20}
+                // margin, so the sections have to bring the same one.
+                sidePadding={20}
               />
             }
             numColumns={drawnMode === 'grid' ? gridColumns : 1}
@@ -1487,10 +1473,6 @@ export default function DocumentsScreen({
             contentContainerStyle={[
               styles.list,
               listClear,
-              // The tile grid gets its side margin from the row style it
-              // has and a column of wide cards does not, so it says so
-              // itself rather than sitting flush to both edges.
-              drawnMode === 'wide' && styles.wideColumn,
               { paddingTop: chromeBottom, paddingBottom: listBottomPad },
             ]}
             renderItem={({ item }) => {
@@ -1521,7 +1503,7 @@ export default function DocumentsScreen({
               // gesture opens the menu itself, on its own timing, rather
               // than racing it (see useExplorerCarry).
               const carried = !trashOpen && explorer.active;
-              return (
+              const card = (
                 <DocumentCard
                   id={item.id}
                   title={item.title}
@@ -1555,6 +1537,11 @@ export default function DocumentsScreen({
                   {...(carried ? carrying.cardProps(item, () => openDocumentMenu(item)) : {})}
                 />
               );
+              // In the wide column the card brings the side margin
+              // itself, the same way a list row does - so it ends on
+              // the same line as the folders above it instead of
+              // running to the screen's own edges.
+              return drawnMode === 'wide' ? <View style={styles.wideRow}>{card}</View> : card;
             }}
           />
           </GestureDetector>
@@ -1958,7 +1945,12 @@ const makeStyles = (t: Theme) =>
     gap: 12,
     paddingHorizontal: 20,
   },
-  wideColumn: {
+  // ...and a wide card is wrapped in this instead, so it carries the
+  // same 20 the folders above it and the sections below it each carry.
+  // That is what puts all three on one line - the card narrowing to the
+  // folders' width, rather than everything else widening to the card's:
+  // "картка все-таки повинна стати вужчою під рівень папок".
+  wideRow: {
     paddingHorizontal: 20,
   },
   // The field, in the same glass as the pills under it. Stops short of the
@@ -2110,9 +2102,6 @@ const makeStyles = (t: Theme) =>
     paddingHorizontal: 20,
     gap: 8,
     marginBottom: 8,
-  },
-  explorerHeadFlush: {
-    paddingHorizontal: 0,
   },
   explorerCrumb: {
     flexDirection: 'row',
