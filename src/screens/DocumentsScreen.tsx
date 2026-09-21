@@ -381,7 +381,12 @@ export default function DocumentsScreen({
   const [paneRect, setPaneRect] = useState({ x: 0, width: 0 });
   // Where the open document's own pane starts - what its rail stands in
   // from, on the left.
-  const [editorPaneLeft, setEditorPaneLeft] = useState(0);
+  // The pane's own RIGHT edge, as the distance in from the window's -
+  // the note's project badge stands in its top-right corner, and the
+  // badge is drawn through the portal, over the whole window, so it has
+  // to be told where this half ends. Full screen this is zero, which is
+  // the window's own edge.
+  const [editorPaneInset, setEditorPaneInset] = useState(0);
   // How many cards stand across the list, and how many folders.
   //
   // Two on a phone, as always. On the Fold's inner screen with no
@@ -1466,7 +1471,11 @@ export default function DocumentsScreen({
         {isTwoPane && !!openDoc && (
           <View
             style={styles.editorPane}
-            onLayout={(e) => setEditorPaneLeft(e.nativeEvent.layout.x)}
+            onLayout={(e) =>
+              setEditorPaneInset(
+                Math.max(0, windowWidth - (e.nativeEvent.layout.x + e.nativeEvent.layout.width))
+              )
+            }
           >
             {openDoc && (
               // Keyed by id so switching documents remounts the editor
@@ -1489,9 +1498,10 @@ export default function DocumentsScreen({
                   setPaneFullscreen(false);
                 }}
                 isFullscreen={paneFullscreen}
-                // Its rail stands on the window's LEFT edge - this pane
-                // is the left half, and the right edge is the list's.
-                railLeft={editorPaneLeft + RAIL_RIGHT}
+                // The badge sits in the note's own top-right corner
+                // wherever the note is - phone, half a window or all of
+                // it - so this half's right edge is where it stands.
+                railRight={editorPaneInset + RAIL_RIGHT}
                 // The line this screen's own cards start on, so the two
                 // halves begin together.
                 railTop={chromeBottom}

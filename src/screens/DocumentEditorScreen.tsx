@@ -156,10 +156,11 @@ import { dockRowWidth, useDockClearance } from '../navigation/dockGeometry';
 import SaveRing from '../components/SaveRing';
 import ProjectBadge from '../components/ProjectBadge';
 
-// The rail's capsule stood on its end is RAIL_WIDTH across; lying down on
-// a pane's left edge it is this tall - 19 of padding above and below a
-// 24px icon, inside the 1px border. What the title has to clear there.
-const HORIZONTAL_CAPSULE_HEIGHT = 19 * 2 + 24 + 2;
+// The project badge's own line: its height (3 of padding above and below
+// a 14px line, inside the 1px border) plus a gap. In a pane the title
+// starts on the line the list's cards do, which is the line the badge
+// stands on, so this is what the title has to clear there.
+const BADGE_ROW_HEIGHT = 3 * 2 + 14 + 2 + 12;
 
 // The subset of BLOCK_ACTIONS that make sense applied to a whole GROUP
 // of selected blocks at once - a type flip with no side effect on the
@@ -240,9 +241,6 @@ type Props =
       // in two panes the rail belongs on the pane's edge, not the
       // window's, or it lands on top of the other half.
       railRight?: number;
-      // With the document on the LEFT half, its rail belongs on the
-      // window's left edge - the right one is the list's.
-      railLeft?: number;
       // The line the list's own cards start on. In two panes the document
       // starts there too, so the two halves read as one row - and the
       // capsule sits on that line, over the cover.
@@ -294,15 +292,19 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const editorBlurTarget = useBlurTarget();
   const editorFocused = useIsFocused();
   const editorInsets = useSafeAreaInsets();
+  // The badge stands in the note's own top-right corner, always - phone,
+  // half a window, or all of it. It used to swap to the LEFT edge in a
+  // pane whose other half was to its right, a rule written for the old
+  // four-button capsule so that a whole column of buttons kept away from
+  // the neighbouring half's own chrome. A small pill has no such
+  // problem, and the rule cost the badge its place: full screen the pane
+  // starts at x=0, so the badge jumped to the left edge of the window.
+  //
+  // Drawn through the portal, i.e. over the whole window, so a pane says
+  // how far in from the window's right edge its own right edge is.
   const railRight = 'pane' in props ? (props.railRight ?? RAIL_RIGHT) : RAIL_RIGHT;
-  const railLeft = 'pane' in props ? props.railLeft : undefined;
   const railTop = 'pane' in props ? props.railTop : undefined;
-  // Which edge the rail stands on, and which way its menu opens from it.
-  const railSide = railLeft !== undefined ? { left: railLeft } : { right: railRight };
-  // On the left edge the capsule lies down: standing on its end there it
-  // ran straight through the title and the first blocks, which is the one
-  // thing the rail must never do on the side the text starts from.
-  const railHorizontal = railLeft !== undefined;
+  const railSide = { right: railRight };
   // The "…" panel used to open BESIDE the rail, so it needed to know
   // which edge the rail stood on. It drops out of the dock now and is as
   // wide as the dock, so it has no side to pick.
@@ -3670,16 +3672,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         style={[
           styles.header,
           // In a pane the document starts on the same line the list's
-          // cards do - so the cover, not empty space, is what the capsule
-          // lies across.
-          //
-          // Except where the capsule LIES DOWN, which is what it does on
-          // the left edge of a pane: there it is a bar across the top of
-          // the document, and starting the text on the same line put the
-          // title underneath it. Its own height plus a gap, so the title
-          // begins below it instead.
+          // cards do - and the badge stands on that same line, in the
+          // corner, so the title begins a badge's height below it rather
+          // than running into it.
           railTop !== undefined && {
-            paddingTop: railTop + (railHorizontal ? HORIZONTAL_CAPSULE_HEIGHT + 12 : 0),
+            paddingTop: railTop + BADGE_ROW_HEIGHT,
             paddingBottom: 0,
           },
         ]}
@@ -3722,11 +3719,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                 since ProjectBadge already carries its own (the same
                 `glass` look TagChips uses) - a pill, not a button. */}
             <View>
-              <ProjectBadge
-                project={groups.find((g) => g.id === groupId) ?? null}
-                onPress={() => setGroupPickerVisible(true)}
-                glass
-              />
+              <ProjectBadge project={groups.find((g) => g.id === groupId) ?? null} glass />
               {/* The save indicator STAYS on the badge's own outline -
                   see the corner-vs-middle reasoning in feedback_ambient_
                   indicators. Last child, so it draws over the badge. */}
