@@ -286,6 +286,11 @@ export default function CustomDatabaseScreen({
   // Which field the list is broken into groups by, if any - each group
   // headed by its own value and count.
   const [groupFieldId, setGroupFieldId] = useState<string | null>(null);
+  // Which group headers are collapsed, by the group's own key - session-
+  // only (not persisted), same as every other purely-visual fold in this
+  // app. Shared by every representation (list/table/gallery), since a
+  // group is the same set of rows however the cards themselves are drawn.
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   // This screen's own current property visibility - a field's database-
   // wide `hidden` flag (FieldDef.hidden) always wins, this only ever
   // hides MORE on top of that, per whichever capsule is active (see
@@ -910,6 +915,15 @@ export default function CustomDatabaseScreen({
   const groupFields = groupableFieldsOf(database);
   const groupField = groupFieldId ? (groupFields.find((f) => f.id === groupFieldId) ?? null) : null;
   const rowGroups = groupField ? groupRows(displayedRows, groupField, displayContext) : [];
+
+  function toggleGroupCollapsed(key: string) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
   const selectedRows = rows.filter((r) => selectedIds.has(r.id));
   const rowMenuRow = rowMenuId ? rows.find((r) => r.id === rowMenuId) ?? null : null;
   const rowPageRow = rowPageId ? rows.find((r) => r.id === rowPageId) ?? null : null;
@@ -1794,6 +1808,22 @@ export default function CustomDatabaseScreen({
       (f) => f.id !== firstField?.id && !hiddenFieldIds.includes(f.id)
     );
     const titleWidth = titleColumnWidth(displayedRows.map(titleOf), windowWidth);
+    // One flat sequence, group headers and rows alike, rendered in lockstep
+    // into BOTH the frozen column and the scrolling one below - same
+    // technique renderSchedule already uses for its own two parallel
+    // lists, which is what keeps a group header lined up across both
+    // halves of a frozen-column table without a second scroll to sync.
+    type TableItem =
+      | { kind: 'group'; key: string; label: string; count: number; collapsed: boolean }
+      | { kind: 'row'; row: CustomDatabaseRow };
+    const tableItems: TableItem[] = groupField
+      ? rowGroups.flatMap((group) => {
+          const key = group.key || '__empty__';
+          const collapsed = collapsedGroups.has(key);
+          const header: TableItem = { kind: 'group', key, label: group.label, count: group.rows.length, collapsed };
+          return collapsed ? [header] : [header, ...group.rows.map((row) => ({ kind: 'row' as const, row }))];
+        })
+      : displayedRows.map((row) => ({ kind: 'row' as const, row }));
     return (
       <View style={styles.tableWrap}>
         <View style={styles.tableHeaderRow}>
@@ -1821,31 +1851,49 @@ export default function CustomDatabaseScreen({
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.tableBody}>
           <View style={styles.tableBodyRow}>
             <View style={[styles.tableFrozenColumn, { width: TABLE_HANDLE_WIDTH + titleWidth }]}>
-              {displayedRows.map((row) => (
-                <View key={row.id} style={styles.tableRow}>
-                  {/* Tapping a cell edits that one cell; this button is the
-                      way to open the whole row as a card, per the user's own
-                      "a cell for one value, the card when I want them all". */}
+              {tableItems.map((item) =>
+                item.kind === 'group' ? (
                   <Pressable
-                    style={styles.tableRowHandle}
-                    onPress={() => (isSelectMode ? toggleSelected(row.id) : setRowPageId(row.id))}
-                    onLongPress={() => setRowMenuId(row.id)}
+                    key={item.key}
+                    style={styles.tableGroupHeader}
+                    onPress={() => toggleGroupCollapsed(item.key)}
                   >
                     <Ionicons
-                      name={
-                        isSelectMode
-                          ? selectedIds.has(row.id)
-                            ? 'checkmark-circle'
-                            : 'ellipse-outline'
-                          : 'open-outline'
-                      }
-                      size={16}
-                      color="rgba(255,255,255,0.75)"
+                      name={item.collapsed ? 'chevron-forward' : 'chevron-down'}
+                      size={13}
+                      color="rgba(255,255,255,0.6)"
                     />
+                    <Text style={styles.groupHeaderLabel} numberOfLines={1}>
+                      {item.label}
+                    </Text>
+                    <Text style={styles.groupHeaderCount}>{item.count}</Text>
                   </Pressable>
-                  {renderTableCell(row, firstField, titleWidth)}
-                </View>
-              ))}
+                ) : (
+                  <View key={item.row.id} style={styles.tableRow}>
+                    {/* Tapping a cell edits that one cell; this button is the
+                        way to open the whole row as a card, per the user's own
+                        "a cell for one value, the card when I want them all". */}
+                    <Pressable
+                      style={styles.tableRowHandle}
+                      onPress={() => (isSelectMode ? toggleSelected(item.row.id) : setRowPageId(item.row.id))}
+                      onLongPress={() => setRowMenuId(item.row.id)}
+                    >
+                      <Ionicons
+                        name={
+                          isSelectMode
+                            ? selectedIds.has(item.row.id)
+                              ? 'checkmark-circle'
+                              : 'ellipse-outline'
+                            : 'open-outline'
+                        }
+                        size={16}
+                        color="rgba(255,255,255,0.75)"
+                      />
+                    </Pressable>
+                    {renderTableCell(item.row, firstField, titleWidth)}
+                  </View>
+                )
+              )}
             </View>
 
             <ScrollView
@@ -1858,16 +1906,96 @@ export default function CustomDatabaseScreen({
               }
             >
               <View>
-                {displayedRows.map((row) => (
-                  <View key={row.id} style={styles.tableRow}>
-                    {restFields.map((field) => renderTableCell(row, field))}
-                  </View>
-                ))}
+                {tableItems.map((item) =>
+                  item.kind === 'group' ? (
+                    // Blank on this side - the frozen column already
+                    // carries the group's own label, and this only has to
+                    // match its height to stay lined up with it.
+                    <View key={item.key} style={styles.tableGroupHeaderSpacer} />
+                  ) : (
+                    <View key={item.row.id} style={styles.tableRow}>
+                      {restFields.map((field) => renderTableCell(item.row, field))}
+                    </View>
+                  )
+                )}
               </View>
             </ScrollView>
           </View>
         </ScrollView>
       </View>
+    );
+  }
+
+  function renderCards() {
+    const cardsGrid = (rows: CustomDatabaseRow[]) => (
+      <View style={[styles.cardGrid, { paddingHorizontal: CARD_GRID_PADDING }]}>
+        {rows.map((row) => (
+          <CustomRowGridCard
+            key={row.id}
+            rowId={row.id}
+            width={gridTileWidth}
+            display={rowDisplayFor(row)}
+            documentCount={documentIdsOf(row).length}
+            onPress={() => (isSelectMode ? toggleSelected(row.id) : setRowPageId(row.id))}
+            onLongPress={() => setRowMenuId(row.id)}
+            right={
+              isSelectMode ? (
+                <Ionicons
+                  name={selectedIds.has(row.id) ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={22}
+                  color="#fff"
+                />
+              ) : (
+                <Pressable hitSlop={8} onPress={() => setRowMenuId(row.id)}>
+                  <Ionicons name="ellipsis-horizontal" size={16} color="rgba(255,255,255,0.85)" />
+                </Pressable>
+              )
+            }
+          />
+        ))}
+      </View>
+    );
+
+    if (!groupField) {
+      return (
+        <ScrollView contentContainerStyle={{ paddingBottom: dockClear + insets.bottom }}>
+          {cardsGrid(displayedRows)}
+        </ScrollView>
+      );
+    }
+
+    // Same grouping as the list and the table - each group its own tile
+    // grid, collapsible the same way.
+    return (
+      <ScrollView contentContainerStyle={[styles.list, { paddingHorizontal: 0, paddingBottom: dockClear + insets.bottom }]}>
+        {rowGroups.map((group) => {
+          const key = group.key || '__empty__';
+          const collapsed = collapsedGroups.has(key);
+          return (
+            <View key={key} style={styles.groupSection}>
+              <Pressable
+                style={[styles.groupHeader, { paddingHorizontal: CARD_GRID_PADDING }]}
+                onPress={() => toggleGroupCollapsed(key)}
+              >
+                <Ionicons
+                  name={collapsed ? 'chevron-forward' : 'chevron-down'}
+                  size={14}
+                  color="rgba(255,255,255,0.6)"
+                />
+                <Text style={styles.groupHeaderLabel} numberOfLines={1}>
+                  {group.label}
+                </Text>
+                <Text style={styles.groupHeaderCount}>{group.rows.length}</Text>
+              </Pressable>
+              {!collapsed && cardsGrid(group.rows)}
+            </View>
+          );
+        })}
+        <View style={[styles.groupTotal, { paddingHorizontal: CARD_GRID_PADDING }]}>
+          <Text style={styles.groupTotalLabel}>Усього</Text>
+          <Text style={styles.groupTotalCount}>{displayedRows.length}</Text>
+        </View>
+      </ScrollView>
     );
   }
 
@@ -2615,50 +2743,33 @@ export default function CustomDatabaseScreen({
       ) : viewMode === 'table' ? (
         renderTable()
       ) : viewMode === 'cards' ? (
-        <ScrollView
-          contentContainerStyle={[styles.cardGrid, { paddingHorizontal: CARD_GRID_PADDING, paddingBottom: dockClear + insets.bottom }]}
-        >
-          {displayedRows.map((row) => (
-            <CustomRowGridCard
-              key={row.id}
-              rowId={row.id}
-              width={gridTileWidth}
-              display={rowDisplayFor(row)}
-              documentCount={documentIdsOf(row).length}
-              onPress={() => (isSelectMode ? toggleSelected(row.id) : setRowPageId(row.id))}
-              onLongPress={() => setRowMenuId(row.id)}
-              right={
-                isSelectMode ? (
-                  <Ionicons
-                    name={selectedIds.has(row.id) ? 'checkmark-circle' : 'ellipse-outline'}
-                    size={22}
-                    color="#fff"
-                  />
-                ) : (
-                  <Pressable hitSlop={8} onPress={() => setRowMenuId(row.id)}>
-                    <Ionicons name="ellipsis-horizontal" size={16} color="rgba(255,255,255,0.85)" />
-                  </Pressable>
-                )
-              }
-            />
-          ))}
-        </ScrollView>
+        renderCards()
       ) : groupField ? (
         // Grouped by one field: a header per value with its own count, and
         // the total under the last group - the "how many working, how many
-        // in for repair, how many altogether" read.
+        // in for repair, how many altogether" read. Collapsible, same as
+        // the table and gallery's own grouped rendering.
         <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }]}>
-          {rowGroups.map((group) => (
-            <View key={group.key || '__empty__'} style={styles.groupSection}>
-              <View style={styles.groupHeader}>
-                <Text style={styles.groupHeaderLabel} numberOfLines={1}>
-                  {group.label}
-                </Text>
-                <Text style={styles.groupHeaderCount}>{group.rows.length}</Text>
+          {rowGroups.map((group) => {
+            const key = group.key || '__empty__';
+            const collapsed = collapsedGroups.has(key);
+            return (
+              <View key={key} style={styles.groupSection}>
+                <Pressable style={styles.groupHeader} onPress={() => toggleGroupCollapsed(key)}>
+                  <Ionicons
+                    name={collapsed ? 'chevron-forward' : 'chevron-down'}
+                    size={14}
+                    color="rgba(255,255,255,0.6)"
+                  />
+                  <Text style={styles.groupHeaderLabel} numberOfLines={1}>
+                    {group.label}
+                  </Text>
+                  <Text style={styles.groupHeaderCount}>{group.rows.length}</Text>
+                </Pressable>
+                {!collapsed && group.rows.map(renderRowCard)}
               </View>
-              {group.rows.map(renderRowCard)}
-            </View>
-          ))}
+            );
+          })}
           <View style={styles.groupTotal}>
             <Text style={styles.groupTotalLabel}>Усього</Text>
             <Text style={styles.groupTotalCount}>{displayedRows.length}</Text>
@@ -5116,6 +5227,19 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     height: TABLE_ROW_HEIGHT,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.12)',
+  },
+  // A group header row inside the table - same fixed height on both the
+  // frozen and the scrolling side (tableGroupHeaderSpacer) is what keeps
+  // the two lined up without a second scroll position to sync.
+  tableGroupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    height: TABLE_ROW_HEIGHT,
+    paddingHorizontal: 8,
+  },
+  tableGroupHeaderSpacer: {
+    height: TABLE_ROW_HEIGHT,
   },
   // The narrow leading column: opens the row as a full card (and doubles as
   // the checkbox in select mode).
