@@ -6,15 +6,14 @@ import { CustomDatabase, CustomDatabaseRow, Group } from '../types';
 import { labelForKind } from '../utils/groups';
 import { rowTitleOf } from '../utils/customRowDisplay';
 
-// Everything a group can gather, and where each kind actually lives. Tasks
-// are still absent here - they're mid-migration onto this same mechanism
-// (from their own separate `projectId`/`projects`), not yet on `groupId`.
+// Everything a group can gather, and where each kind actually lives.
 const SOURCES: { kind: string; collectionName: string }[] = [
   { kind: 'document', collectionName: 'documents' },
   { kind: 'photo', collectionName: 'photos' },
   { kind: 'file', collectionName: 'files' },
   { kind: 'link', collectionName: 'links' },
   { kind: 'board', collectionName: 'boards' },
+  { kind: 'task', collectionName: 'tasks' },
   { kind: 'customRow', collectionName: 'customDatabaseRows' },
 ];
 
@@ -45,6 +44,7 @@ const ICON_BY_KIND: Record<string, keyof typeof Ionicons.glyphMap> = {
   'link-geo': 'location-outline',
   'link-other': 'link-outline',
   board: 'apps-outline',
+  task: 'checkbox-outline',
 };
 
 // Every group and everything filed under it, gathered once and shared by
@@ -119,6 +119,8 @@ export function useGroupItems() {
               title = (data.title as string) || (data.url as string) || 'Без назви';
             } else if (source.kind === 'board') {
               title = (data.title as string) || 'Без назви';
+            } else if (source.kind === 'task') {
+              title = (data.text as string) || 'Без назви';
             } else {
               databaseId = data.databaseId as string;
               kind = `customRow:${databaseId}`;

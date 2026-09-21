@@ -884,7 +884,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // a block has to be carried forward here too, or the very next edit
       // anywhere in this document (this runs on every save, not just task
       // edits) silently wipes it back out of the mirror.
-      if (b.projectId) taskDoc.projectId = b.projectId;
+      if (b.groupId) taskDoc.groupId = b.groupId;
       if (b.listId) taskDoc.listId = b.listId;
       if (b.recurrence) taskDoc.recurrence = b.recurrence;
       if (b.todayMarkedDate) taskDoc.todayMarkedDate = b.todayMarkedDate;

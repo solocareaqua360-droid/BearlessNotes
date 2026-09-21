@@ -240,7 +240,7 @@ export default function CalendarScreen() {
       reminderTime?: string;
       reminderDate?: string;
       reminderKind?: ReminderKind;
-      projectId?: string;
+      groupId?: string;
       listId?: string;
       recurrence?: Recurrence;
     }[]
@@ -916,7 +916,7 @@ export default function CalendarScreen() {
           reminderTime: docSnapshot.data().reminderTime,
           reminderDate: docSnapshot.data().reminderDate,
           reminderKind: docSnapshot.data().reminderKind,
-          projectId: docSnapshot.data().projectId,
+          groupId: docSnapshot.data().groupId,
           listId: docSnapshot.data().listId,
           recurrence: docSnapshot.data().recurrence,
         }))
@@ -937,7 +937,7 @@ export default function CalendarScreen() {
     reminderDate?: string;
     reminderTime?: string;
     reminderKind?: ReminderKind;
-    projectId?: string;
+    groupId?: string;
     listId?: string;
     recurrence?: Recurrence;
   }) {
@@ -946,7 +946,7 @@ export default function CalendarScreen() {
     // task spins up its next occurrence, one at a time.
     if (newChecked && task.recurrence && task.reminderDate) {
       createTaskOnDate(task.text ?? '', nextRecurrenceDate(task.recurrence, task.reminderDate), {
-        projectId: task.projectId,
+        groupId: task.groupId,
         listId: task.listId,
         recurrence: task.recurrence,
         reminderTime: task.reminderTime,

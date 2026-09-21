@@ -277,7 +277,7 @@ export async function createTaskInToday(
 export async function createTaskOnDate(
   text: string,
   targetDateKey: string,
-  carry: { projectId?: string; listId?: string; recurrence?: Recurrence; reminderTime?: string; reminderKind?: ReminderKind }
+  carry: { groupId?: string; listId?: string; recurrence?: Recurrence; reminderTime?: string; reminderKind?: ReminderKind }
 ): Promise<{ taskId: string; documentId: string }> {
   const documentId = `day_${targetDateKey}`;
   const documentRef = doc(db, 'documents', documentId);
@@ -297,7 +297,7 @@ export async function createTaskOnDate(
     checked: false,
     createdAt: now,
     reminderDate: targetDateKey,
-    ...(carry.projectId ? { projectId: carry.projectId } : {}),
+    ...(carry.groupId ? { groupId: carry.groupId } : {}),
     ...(carry.listId ? { listId: carry.listId } : {}),
     ...(carry.recurrence ? { recurrence: carry.recurrence } : {}),
     ...(carry.reminderTime
@@ -324,7 +324,7 @@ export async function createTaskOnDate(
     createdAt: now,
     reminderDate: targetDateKey,
   };
-  if (carry.projectId) taskDoc.projectId = carry.projectId;
+  if (carry.groupId) taskDoc.groupId = carry.groupId;
   if (carry.listId) taskDoc.listId = carry.listId;
   if (carry.recurrence) taskDoc.recurrence = carry.recurrence;
   if (carry.reminderTime) {

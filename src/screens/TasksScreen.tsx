@@ -31,12 +31,14 @@ import {
 } from '../firestore';
 import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
-import { Block, Project, Recurrence, Subtask, TaskList } from '../types';
+import { Block, Group, Recurrence, Subtask, TaskList } from '../types';
 import { nextRecurrenceDate, recurrenceLabel } from '../utils/recurrence';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import { hapticToggle } from '../utils/haptics';
 import { RootStackParamList } from '../navigation';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
+import GroupPickerSheet from '../components/GroupPickerSheet';
+import { groupAppliesTo } from '../utils/groups';
 import ReminderSheet from '../components/ReminderSheet';
 import SortMenuRows from '../components/SortMenuRows';
 import { useMultiSelect } from '../hooks/useMultiSelect';
@@ -66,7 +68,6 @@ import { confirm, notify } from '../components/surfaces/Ask';
 // DatabaseChrome makes.
 const DANGER = '#EF4444';
 const tasksCollection = collection(db, 'tasks');
-const projectsCollection = collection(db, 'projects');
 const taskListsCollection = collection(db, 'taskLists');
 
 function generateId(): string {
@@ -88,7 +89,7 @@ type Task = {
   text: string;
   checked: boolean;
   documentId: string;
-  projectId?: string;
+  groupId?: string;
   listId?: string;
   todayMarkedDate?: string;
   kanbanStatus?: KanbanStatus;
@@ -152,7 +153,7 @@ export default function TasksScreen() {
   const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [kanbanMode, setKanbanMode] = useState(false);
   const { width: windowWidth } = useWindowDimensions();
@@ -268,9 +269,6 @@ export default function TasksScreen() {
   const [recurrenceTaskId, setRecurrenceTaskId] = useState<string | null>(null);
   const [pickerTaskId, setPickerTaskId] = useState<string | null>(null);
   const [reminderTaskId, setReminderTaskId] = useState<string | null>(null);
-  const [newProjectName, setNewProjectName] = useState('');
-  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
-  const [editingProjectName, setEditingProjectName] = useState('');
   // Same three, for the list picker - see TaskList. Scoped to whichever
   // project the picked task already has (see openListPicker/assignTaskList).
   const [listPickerTaskId, setListPickerTaskId] = useState<string | null>(null);
@@ -329,7 +327,7 @@ export default function TasksScreen() {
         text: docSnapshot.data().text,
         checked: docSnapshot.data().checked,
         documentId: docSnapshot.data().documentId,
-        projectId: docSnapshot.data().projectId,
+        groupId: docSnapshot.data().groupId,
         listId: docSnapshot.data().listId,
         todayMarkedDate: docSnapshot.data().todayMarkedDate,
         kanbanStatus: docSnapshot.data().kanbanStatus,
@@ -356,14 +354,11 @@ export default function TasksScreen() {
   }, []);
 
   useEffect(() => {
-    return onSnapshot(ownedQuery('projects'), (snapshot) => {
-      setProjects(
+    return onSnapshot(ownedQuery('groups'), (snapshot) => {
+      setGroups(
         snapshot.docs
-          .map((docSnapshot) => ({
-            id: docSnapshot.id,
-            name: docSnapshot.data().name,
-            color: docSnapshot.data().color,
-          }))
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<Group, 'id'>) }))
+          .filter((g) => groupAppliesTo(g, 'task'))
           .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
       );
     }, (e) => notify('Проєкти не завантажилися', e.message));
@@ -378,7 +373,7 @@ export default function TasksScreen() {
             id: docSnapshot.id,
             name: docSnapshot.data().name,
             color: docSnapshot.data().color,
-            projectId: docSnapshot.data().projectId,
+            groupId: docSnapshot.data().groupId,
             description: docSnapshot.data().description,
           }))
           .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
@@ -395,24 +390,24 @@ export default function TasksScreen() {
   }, [taskLists]);
 
   const projectsById = useMemo(() => {
-    const map: Record<string, Project> = {};
-    projects.forEach((p) => {
-      map[p.id] = p;
+    const map: Record<string, Group> = {};
+    groups.forEach((g) => {
+      map[g.id] = g;
     });
     return map;
-  }, [projects]);
+  }, [groups]);
 
-  // A task whose projectId no longer resolves to a real project (the
-  // project was deleted) falls back to the "Без проекту" bucket here too,
-  // rather than needing every affected task rewritten the moment a project
-  // is deleted.
+  // A task whose groupId no longer resolves to a real project (the
+  // project was deleted, or un-kinded away from Tasks) falls back to the
+  // "Без проекту" bucket here too, rather than needing every affected task
+  // rewritten the moment that happens.
   const filteredTasks = useMemo(() => {
     const byProject =
       projectFilter === null
         ? tasks
         : projectFilter === UNASSIGNED_ID
-          ? tasks.filter((t) => !t.projectId)
-          : tasks.filter((t) => t.projectId === projectFilter);
+          ? tasks.filter((t) => !t.groupId)
+          : tasks.filter((t) => t.groupId === projectFilter);
     const needle = searchQuery.trim().toLowerCase();
     const found = needle ? byProject.filter((t) => t.text.toLowerCase().includes(needle)) : byProject;
     // Sorted once here rather than per-section below - every downstream
@@ -579,7 +574,7 @@ export default function TasksScreen() {
     if (!task.recurrence || !task.reminderDate) return;
     const nextDate = nextRecurrenceDate(task.recurrence, task.reminderDate);
     createTaskOnDate(task.text, nextDate, {
-      projectId: task.projectId,
+      groupId: task.groupId,
       listId: task.listId,
       recurrence: task.recurrence,
       reminderTime: task.reminderTime,
@@ -822,11 +817,12 @@ export default function TasksScreen() {
   }
 
   function openProjectPicker(taskId: string) {
-    setNewProjectName('');
     setPickerTaskId(taskId);
   }
 
-  async function assignProject(projectId: string | null) {
+  // GroupPickerSheet owns create/rename/delete of the project itself now
+  // (kind: 'task') - this only ever has to write the CHOICE onto the task.
+  async function assignGroup(groupId: string | null) {
     const taskId = pickerTaskId;
     const task = tasks.find((t) => t.id === taskId);
     setPickerTaskId(null);
@@ -835,9 +831,9 @@ export default function TasksScreen() {
     // (or clearing) the project makes any list already on the task
     // meaningless, since it was scoped to the OLD project. Left alone
     // only when the "new" project is actually the same one already set.
-    const dropsList = projectId !== (task.projectId ?? null) && !!task.listId;
+    const dropsList = groupId !== (task.groupId ?? null) && !!task.listId;
     updateDoc(doc(db, 'tasks', task.id), {
-      projectId: projectId ?? deleteField(),
+      groupId: groupId ?? deleteField(),
       ...(dropsList ? { listId: deleteField() } : {}),
     });
     const documentRef = doc(db, 'documents', task.documentId);
@@ -848,54 +844,12 @@ export default function TasksScreen() {
     const updatedBlocks = blocks.map((b) => {
       if (b.id !== task.id) return b;
       const next = { ...b };
-      if (projectId) next.projectId = projectId;
-      else delete next.projectId;
+      if (groupId) next.groupId = groupId;
+      else delete next.groupId;
       if (dropsList) delete next.listId;
       return next;
     });
     updateDoc(documentRef, { blocks: updatedBlocks });
-  }
-
-  async function addProject() {
-    const name = newProjectName.trim();
-    if (!name) return;
-    // From the theme's card palette, so a new project cannot be
-    // handed a colour the scheme would never produce.
-    const color = theme.cards[projects.length % theme.cards.length];
-    await addDoc(projectsCollection, { name, color });
-    setNewProjectName('');
-  }
-
-  function startEditProject(project: Project) {
-    setEditingProjectId(project.id);
-    setEditingProjectName(project.name);
-  }
-
-  async function saveEditProject() {
-    const name = editingProjectName.trim();
-    if (editingProjectId && name) {
-      await updateDoc(doc(db, 'projects', editingProjectId), { name });
-    }
-    setEditingProjectId(null);
-  }
-
-  function confirmDeleteProject(project: Project) {
-    // Closed FIRST - «Питання» is a layer inside this same window (see
-    // Ask.tsx's own comment on why it isn't a Modal), but the project
-    // picker IS one, and a native Modal is a separate window Android
-    // draws on top of everything else regardless of what's asked for
-    // behind it. Left open, the two windows' content interleaves instead
-    // of one cleanly covering the other - the overlapping text the user
-    // caught in a screenshot.
-    setPickerTaskId(null);
-    confirm({
-      title: 'Видалити проект?',
-      message: `Справи з проектом "${project.name}" стануть без проекту.`,
-      confirmLabel: 'Видалити',
-    }).then((yes) => {
-      if (!yes) return;
-      deleteDoc(doc(db, 'projects', project.id));
-    });
   }
 
   // Lists live INSIDE a project (see TaskList) - the picker only ever
@@ -918,11 +872,11 @@ export default function TasksScreen() {
     });
   }
 
-  async function addTaskList(projectId: string) {
+  async function addTaskList(groupId: string) {
     const name = newTaskListName.trim();
     if (!name) return;
     const color = theme.cards[taskLists.length % theme.cards.length];
-    await addDoc(taskListsCollection, { name, color, projectId });
+    await addDoc(taskListsCollection, { name, color, groupId });
     setNewTaskListName('');
   }
 
@@ -940,9 +894,12 @@ export default function TasksScreen() {
   }
 
   function confirmDeleteTaskList(list: TaskList) {
-    // Same reason as confirmDeleteProject - closed first, or the list
-    // picker's own Modal window interleaves with «Питання» instead of
-    // being cleanly covered by it.
+    // Closed first - «Питання» is a layer inside this same window (see
+    // Ask.tsx's own comment on why it isn't a Modal), but the list picker
+    // IS a native Modal, a separate window Android draws on top of
+    // everything else regardless of what's asked for behind it. Left
+    // open, the two windows' content interleaves instead of one cleanly
+    // covering the other.
     setListPickerTaskId(null);
     confirm({
       title: 'Видалити список?',
@@ -1007,7 +964,7 @@ export default function TasksScreen() {
   }
 
   function renderTaskRow(item: Task, opts: { showProjectChip: boolean; showListChip: boolean }) {
-    const project = item.projectId ? projectsById[item.projectId] : undefined;
+    const project = item.groupId ? projectsById[item.groupId] : undefined;
     const list = item.listId ? taskListsById[item.listId] : undefined;
     const isToday = isTaskToday(item, today);
     const isSelected = selectedIds.has(item.id);
@@ -1298,7 +1255,7 @@ export default function TasksScreen() {
   // now, so removing a task from Kanban means going back to that view
   // first (the header back button does exactly that while in Kanban).
   function renderKanbanCard(task: Task, columnIndex: number) {
-    const project = task.projectId ? projectsById[task.projectId] : undefined;
+    const project = task.groupId ? projectsById[task.groupId] : undefined;
     const reminderLabel = formatReminderBadge(task);
     const isCarrying = !!kanbanCarry.ghost?.items.some((one) => one.id === task.id);
     return (
@@ -1498,9 +1455,9 @@ export default function TasksScreen() {
           />
         )}
 
-        {!kanbanMode && projects.length > 0 && (
+        {!kanbanMode && groups.length > 0 && (
           <ProjectTabsRow
-            items={projects}
+            items={groups}
             selected={projectFilter}
             onSelect={setProjectFilter}
             // Not assigned to a project = in the inbox; the user's own rule.
@@ -1567,7 +1524,7 @@ export default function TasksScreen() {
                 showListChip: true,
               });
             }
-            const listsHere = taskLists.filter((l) => l.projectId === projectFilter);
+            const listsHere = taskLists.filter((l) => l.groupId === projectFilter);
             const unlisted = rest.filter((t) => !t.listId);
             return (
               <>
@@ -1610,74 +1567,22 @@ export default function TasksScreen() {
         </ScrollView>
         )}
 
-        <Modal visible={pickerTaskId !== null} transparent animationType="fade" onRequestClose={() => setPickerTaskId(null)}>
-          <Pressable style={[styles.modalBackdrop, { paddingBottom: keyboardHeight }]} onPress={() => setPickerTaskId(null)}>
-            <Pressable style={styles.modalSheet} onPress={() => {}}>
-              <View style={styles.modalHandle} />
-              <Text style={styles.modalTitle}>Оберіть проект</Text>
-
-              <Pressable style={styles.modalRow} onPress={() => assignProject(null)}>
-                <View style={[styles.modalDot, { backgroundColor: 'rgba(255,255,255,0.45)' }]} />
-                <Text style={styles.modalRowText}>Вхідні</Text>
-              </Pressable>
-
-              {projects.map((p) =>
-                editingProjectId === p.id ? (
-                  <View key={p.id} style={styles.modalRow}>
-                    <View style={[styles.modalDot, { backgroundColor: p.color }]} />
-                    <TextInput
-                      style={styles.modalRenameInput}
-                      value={editingProjectName}
-                      onChangeText={setEditingProjectName}
-                      autoFocus
-                      onSubmitEditing={saveEditProject}
-                      onBlur={saveEditProject}
-                      returnKeyType="done"
-                    />
-                  </View>
-                ) : (
-                  <View key={p.id} style={styles.modalRow}>
-                    <Pressable style={styles.modalRowTap} onPress={() => assignProject(p.id)}>
-                      <View style={[styles.modalDot, { backgroundColor: p.color }]} />
-                      <Text style={styles.modalRowText}>{p.name}</Text>
-                    </Pressable>
-                    <Pressable hitSlop={8} onPress={() => startEditProject(p)}>
-                      <Ionicons name="pencil-outline" size={16} color="#9CA3AF" />
-                    </Pressable>
-                    <Pressable hitSlop={8} onPress={() => confirmDeleteProject(p)}>
-                      <Ionicons name="close" size={16} color="#9CA3AF" />
-                    </Pressable>
-                  </View>
-                )
-              )}
-
-              <View style={styles.modalDivider} />
-
-              <View style={styles.modalAddRow}>
-                <TextInput
-                  style={styles.modalInput}
-                  value={newProjectName}
-                  onChangeText={setNewProjectName}
-                  placeholder="Новий проект"
-                  placeholderTextColor={theme.ink.faint}
-                  onSubmitEditing={addProject}
-                  returnKeyType="done"
-                />
-                <Pressable hitSlop={8} onPress={addProject}>
-                  <Ionicons name="add-circle" size={26} color={accent} />
-                </Pressable>
-              </View>
-            </Pressable>
-          </Pressable>
-        </Modal>
+        <GroupPickerSheet
+          visible={pickerTaskId !== null}
+          kind="task"
+          groups={groups}
+          onPick={assignGroup}
+          onClose={() => setPickerTaskId(null)}
+          unassignedLabel="Вхідні"
+        />
 
         {/* Scoped to whichever project the picked task already has -
             a list means nothing without one. */}
         {(() => {
           const listPickerTask = tasks.find((t) => t.id === listPickerTaskId);
-          const listPickerProjectId = listPickerTask?.projectId;
-          const listsHere = listPickerProjectId
-            ? taskLists.filter((l) => l.projectId === listPickerProjectId)
+          const listPickerGroupId = listPickerTask?.groupId;
+          const listsHere = listPickerGroupId
+            ? taskLists.filter((l) => l.groupId === listPickerGroupId)
             : [];
           return (
             <Modal
@@ -1729,7 +1634,7 @@ export default function TasksScreen() {
                     )
                   )}
 
-                  {listPickerProjectId && (
+                  {listPickerGroupId && (
                     <>
                       <View style={styles.modalDivider} />
                       <View style={styles.modalAddRow}>
@@ -1739,10 +1644,10 @@ export default function TasksScreen() {
                           onChangeText={setNewTaskListName}
                           placeholder="Новий список"
                           placeholderTextColor={theme.ink.faint}
-                          onSubmitEditing={() => addTaskList(listPickerProjectId)}
+                          onSubmitEditing={() => addTaskList(listPickerGroupId)}
                           returnKeyType="done"
                         />
-                        <Pressable hitSlop={8} onPress={() => addTaskList(listPickerProjectId)}>
+                        <Pressable hitSlop={8} onPress={() => addTaskList(listPickerGroupId)}>
                           <Ionicons name="add-circle" size={26} color={accent} />
                         </Pressable>
                       </View>

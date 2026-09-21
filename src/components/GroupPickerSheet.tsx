@@ -47,6 +47,10 @@ type Props = {
   groups: Group[];
   onPick: (groupId: string | null) => void;
   onClose: () => void;
+  // Tasks calls its own unassigned bucket "Вхідні" (inbox), matching the
+  // wording its own ProjectTabsRow already uses - everyone else keeps the
+  // default.
+  unassignedLabel?: string;
 };
 
 // Project assignment for Files/Photos/Links/Documents/Boards/custom
@@ -56,7 +60,14 @@ type Props = {
 // PER DATABASE TYPE - a project made while in Photos must not show up in
 // Files or Links, so every one carries a `kind` and every screen only
 // ever queries/creates its own.
-export default function GroupPickerSheet({ visible, kind, groups, onPick, onClose }: Props) {
+export default function GroupPickerSheet({
+  visible,
+  kind,
+  groups,
+  onPick,
+  onClose,
+  unassignedLabel = 'Без проекту',
+}: Props) {
   const accent = useTheme().accent;
   const styles = useStyles(makeStyles);
   const [newGroupName, setNewGroupName] = useState('');
@@ -118,7 +129,7 @@ export default function GroupPickerSheet({ visible, kind, groups, onPick, onClos
 
           <Pressable style={styles.row} onPress={() => onPick(null)}>
             <View style={[styles.dot, { backgroundColor: GLASS_TEXT_FAINT }]} />
-            <Text style={styles.rowText}>Без проекту</Text>
+            <Text style={styles.rowText}>{unassignedLabel}</Text>
           </Pressable>
 
           {groups.map((g) =>

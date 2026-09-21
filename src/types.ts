@@ -159,10 +159,13 @@ export interface Block {
   dbViewTitle?: string;
   // 'checkbox' blocks only - standard properties of the "справа" object
   // type (hardcoded, unlike a future user-defined type's properties).
-  projectId?: string; // references a doc in the 'projects' collection
+  // References a doc in the shared 'groups' collection (see Group) - a
+  // task's own "Проект" is the same mechanism every other database's
+  // group is, kind: 'task'.
+  groupId?: string;
   // 'checkbox' blocks only - references a doc in 'taskLists', which
-  // itself references the SAME project via its own projectId. Only
-  // meaningful alongside a matching projectId; a list picker has
+  // itself references the SAME project via its own groupId. Only
+  // meaningful alongside a matching groupId; a list picker has
   // nothing to offer a task with no project yet.
   listId?: string;
   // YYYY-MM-DD of the day it was marked "Сьогодні" - a mismatch with the
@@ -210,7 +213,7 @@ export interface Block {
   // 'checkbox' blocks only - see Recurrence. Checking a task that
   // carries this creates the NEXT occurrence (one at a time, never a
   // batch of future dates - the user's own choice) as a fresh sibling
-  // block, carrying this same rule, projectId and listId forward but
+  // block, carrying this same rule, groupId and listId forward but
   // never subtasks/comment/attachments, which start empty each time.
   recurrence?: Recurrence;
   // 'link' blocks only - a paragraph containing a bare URL auto-converts
@@ -270,23 +273,17 @@ export interface Recurrence {
   weekday?: number; // only meaningful when freq === 'weekday'
 }
 
-export interface Project {
-  id: string;
-  name: string;
-  color: string;
-}
-
-// A sub-grouping INSIDE one project - same shape as Project, and a
+// A sub-grouping INSIDE one project - same shape as Group, and a
 // manageable entity of its own (name, colour, rename, delete) by the
 // user's own choice, rather than a free-text tag. Scoped to exactly one
-// project via `projectId`: a list is meaningless without knowing which
+// project via `groupId`: a list is meaningless without knowing which
 // project's own list it is, so a task can only be assigned one once it
 // already has a project.
 export interface TaskList {
   id: string;
   name: string;
   color: string;
-  projectId: string;
+  groupId: string;
   // A short line shown under the list's own name, above its tasks - the
   // user's own ask, distinct from a task's own comment (Block.comment):
   // this describes the LIST, not any one thing in it.
@@ -297,16 +294,16 @@ export interface TaskList {
 // aside - `Group` and the `groups` collection are the original names and
 // stay that way in code (renaming either would mean losing every group any
 // database has today), but every screen now shows the word "Проект" for
-// it. Tasks used to keep a wholly separate `projectId`/`projects` pair for
-// the exact same idea; that's being retired in favour of this one, wider
-// mechanism (`kind: 'task'` joins document/photo/file/link-*/board/
-// customRow below) rather than the reverse, since this side already
-// touched more of the app. `kind` scopes membership to the one database an
-// item was created in - a project made while looking at Photos must not
-// show up as an option in Files or Links. Links split into their own
-// video/geo/other kinds, same as TaggableKind does for tags and for the
-// same reason: a video's projects and a geo point's projects are different
-// vocabularies in practice.
+// it. Tasks used to keep a wholly separate `projectId`/`projects` pair (the
+// now-removed `Project` type) for the exact same idea; that's retired in
+// favour of this one, wider mechanism (`kind: 'task'` joins document/
+// photo/file/link-*/board/customRow below) rather than the reverse, since
+// this side already touched more of the app. `kind` scopes membership to
+// the one database an item was created in - a project made while looking
+// at Photos must not show up as an option in Files or Links. Links split
+// into their own video/geo/other kinds, same as TaggableKind does for tags
+// and for the same reason: a video's projects and a geo point's projects
+// are different vocabularies in practice.
 // As opposed to a tag (the permanent library - a tree, hundreds of them,
 // one item filed in several places at once), a project/group is meant as a
 // looser, temporary gathering - "what I'm living with right now" - on the
@@ -317,7 +314,8 @@ export interface Group {
   name: string;
   color: string;
   // Which databases this group shows up in - 'document' | 'photo' | 'file'
-  // | 'link-*' | `customRow:${databaseId}`. A group used to belong to
+  // | 'link-*' | 'board' | 'task' | `customRow:${databaseId}`. A group
+  // used to belong to
   // exactly ONE of them (the `kind` field below); it can now span several,
   // which is what lets one theme collect items of different types.
   //

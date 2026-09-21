@@ -16,10 +16,10 @@ export const OWNED_COLLECTIONS = [
   'hiddenTags',
   'links',
   'photos',
-  'projects',
   'settings',
   'stickers',
   'tags',
+  'taskLists',
   'tasks',
 ] as const;
 

@@ -146,6 +146,9 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
       navigation.navigate('Links', { category });
     } else if (item.kind === 'board') {
       navigation.navigate('BoardCopy', { boardId: item.id });
+    } else if (item.kind === 'task') {
+      const documentId = item.data.documentId as string | undefined;
+      if (documentId) navigation.navigate('Editor', { documentId });
     } else if (item.databaseId) {
       navigation.navigate('CustomDatabase', { databaseId: item.databaseId, openRowId: item.id });
     }
@@ -288,6 +291,8 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
                   'link-video',
                   'link-geo',
                   'link-other',
+                  'board',
+                  'task',
                   ...customDatabases.map((d) => `customRow:${d.id}`),
                 ].map((kind) => {
                   const on = kindsEditorGroup ? kindsOf(kindsEditorGroup).includes(kind) : false;
