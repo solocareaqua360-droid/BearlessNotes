@@ -197,7 +197,7 @@ type ViewMode = 'list' | 'table' | 'cards' | 'schedule';
 // rail and three anchored lists; the user's own call was that they are one
 // window with three tabs, "як менше основного екрану по центру" - the
 // sheet shape this app already uses everywhere else.
-type ParamsTab = 'sort' | 'filter' | 'group' | 'views';
+type ParamsTab = 'sort' | 'filter' | 'group';
 type RowEditorState = { mode: 'new'; id: string } | { mode: 'edit'; row: CustomDatabaseRow };
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CustomDatabase'>;
@@ -729,19 +729,32 @@ export default function CustomDatabaseScreen({
         : [
             // The shape of the list - the icon says WHICH shape is in
             // force, the word says what the button is for.
-            { key: 'shape', icon: VIEW_ICONS[viewMode], label: 'Вигляд', active: openParam === 'view', onPress: () => openParamList('view') },
-            // Ordering, narrowing, grouping and the saved views, in one
-            // window with four tabs. Lit while any of them is in force or
-            // a saved view is on, since with one button nothing else says so.
+            // The shape's own popover also carries the pencil into the
+            // saved views (see the 'views' openParam branch) - lit while
+            // either is open, or a saved view is currently applied, since
+            // that's this button's own family now, not the params one's.
+            {
+              key: 'shape',
+              icon: VIEW_ICONS[viewMode],
+              label: 'Вигляд',
+              active: openParam === 'view' || openParam === 'views' || !!activeView,
+              onPress: () => openParamList('view'),
+            },
+            // Ordering, narrowing and grouping only - "Подача" (as in HOW
+            // the list is served up), same funnel icon the filter tab
+            // already used inside it. Saved views moved to 'Вигляд' above.
             {
               key: 'params',
-              icon: 'options-outline',
-              label: 'Параметри',
-              active: openParam === 'params' || activeParamCount > 0 || !!activeView,
+              icon: 'funnel-outline',
+              label: 'Подача',
+              active: openParam === 'params' || activeParamCount > 0,
               onPress: () => openParamList('params'),
             },
             { key: 'select', icon: 'checkmark-circle-outline', label: 'Вибір', onPress: () => toggleSelectMode() },
-            { key: 'menu', icon: 'ellipsis-horizontal-outline', label: 'Ще', active: menuOpen, onPress: () => setMenuOpen((v) => !v) },
+            // The rare, per-database housekeeping (rename, fields, import,
+            // delete) - "Параметри" freed up from the button above, gear
+            // icon since this is genuinely database settings now.
+            { key: 'menu', icon: 'settings-outline', label: 'Параметри', active: menuOpen, onPress: () => setMenuOpen((v) => !v) },
           ]
       : null
   );
@@ -2107,13 +2120,23 @@ export default function CustomDatabaseScreen({
           >
             {openParam === 'view' && (
               <>
-                <Pressable style={styles.paramExpandedHead} onPress={closeParamList}>
-                  <Ionicons name={VIEW_ICONS[viewMode]} size={13} color="#fff" />
-                  <Text style={styles.paramChipLabel} numberOfLines={1}>
-                    {VIEW_LABELS[viewMode]}
-                  </Text>
-                  <Ionicons name="chevron-up" size={12} color="rgba(255,255,255,0.6)" />
-                </Pressable>
+                <View style={styles.paramExpandedHead}>
+                  <Pressable style={styles.paramExpandedHeadMain} onPress={closeParamList}>
+                    <Ionicons name={VIEW_ICONS[viewMode]} size={13} color="#fff" />
+                    <Text style={styles.paramChipLabel} numberOfLines={1}>
+                      {VIEW_LABELS[viewMode]}
+                    </Text>
+                    <Ionicons name="chevron-up" size={12} color="rgba(255,255,255,0.6)" />
+                  </Pressable>
+                  {/* Notion-style: the shape picker above stays about WHICH
+                      shape is on screen, and this pencil is the way into
+                      the saved views themselves (rename, delete, create a
+                      new one from the current state, a schedule's own
+                      config) - see the 'views' branch just below. */}
+                  <Pressable hitSlop={8} style={styles.paramExpandedEditBtn} onPress={() => openParamList('views')}>
+                    <Ionicons name="pencil-outline" size={14} color="rgba(255,255,255,0.7)" />
+                  </Pressable>
+                </View>
                 <View style={styles.paramScrollWrap}>
                   <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
                     {(['list', 'cards', 'table'] as ViewMode[]).map((mode) => (
@@ -2169,6 +2192,94 @@ export default function CustomDatabaseScreen({
         </View>
       )}
 
+      {/* The pencil from 'Вигляд' above: every saved view (rename/apply/
+          delete via a long press), plus saving the current state as a new
+          one and a schedule's own setup - moved out of the old params
+          window's "Вигляди" tab, since a saved view IS a view, not a sort/
+          filter/group setting. */}
+      {openParam === 'views' && (
+        <View style={styles.paramOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeParamList} />
+          <View
+            style={[
+              styles.paramExpanded,
+              { bottom: dockClear + insets.bottom, right: 16, minWidth: 220 },
+            ]}
+          >
+            <View style={styles.paramExpandedHead}>
+              <Pressable style={styles.paramExpandedHeadMain} onPress={closeParamList}>
+                <Ionicons name="bookmark-outline" size={13} color="#fff" />
+                <Text style={styles.paramChipLabel} numberOfLines={1}>
+                  Вигляди
+                </Text>
+                <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
+              </Pressable>
+            </View>
+            <View style={styles.paramScrollWrap}>
+              <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+                {savedViews.map((view) => {
+                  const active = activeView?.id === view.id;
+                  return (
+                    <Pressable
+                      key={view.id}
+                      style={styles.paramOption}
+                      onPress={() => applySavedView(view)}
+                      onLongPress={() => openSavedViewMenu(view)}
+                    >
+                      <Ionicons
+                        name={VIEW_ICONS[view.viewMode]}
+                        size={14}
+                        color={active ? '#fff' : 'rgba(255,255,255,0.7)'}
+                      />
+                      <Text style={[styles.paramOptionLabel, active && styles.paramOptionLabelActive]} numberOfLines={1}>
+                        {view.name}
+                      </Text>
+                      {(view.filters?.length ?? 0) > 0 && (
+                        <Ionicons name="funnel" size={11} color="rgba(255,255,255,0.45)" />
+                      )}
+                      {active && <Ionicons name="checkmark" size={14} color="#fff" />}
+                    </Pressable>
+                  );
+                })}
+                {savedViews.length > 0 && <View style={styles.paramDivider} />}
+                {/* "Current state" (sort/filters/mode) means nothing for a
+                    schedule - it has its own real configuration instead
+                    (see createScheduleView) - so this button only makes
+                    sense outside schedule mode, same reason it's already
+                    disabled while a view already matches. */}
+                {viewMode !== 'schedule' && (
+                  <Pressable
+                    style={styles.paramOption}
+                    disabled={!!activeView}
+                    onPress={() => {
+                      closeParamList();
+                      setViewPrompt({ mode: 'new' });
+                    }}
+                  >
+                    <Ionicons name="add-circle-outline" size={15} color={activeView ? 'rgba(255,255,255,0.3)' : accent} />
+                    <Text style={[styles.paramOptionLabel, { color: activeView ? 'rgba(255,255,255,0.3)' : accent }]}>
+                      Зберегти поточний
+                    </Text>
+                  </Pressable>
+                )}
+                {scheduleRelationFields.length > 0 && scheduleDateFields.length > 0 && (
+                  <Pressable
+                    style={styles.paramOption}
+                    onPress={() => {
+                      closeParamList();
+                      setScheduleSetupVisible(true);
+                    }}
+                  >
+                    <Ionicons name="calendar-outline" size={15} color={accent} />
+                    <Text style={[styles.paramOptionLabel, { color: accent }]}>Створити графік</Text>
+                  </Pressable>
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+      )}
+
       {/* Sorting, filtering and grouping, in one window with three tabs.
           They were three buttons on the rail and three lists hanging off
           it; the user's own reading was that they are one family - all
@@ -2190,9 +2301,6 @@ export default function CustomDatabaseScreen({
                   { key: 'sort' as const, icon: 'swap-vertical-outline' as const, label: 'Сортування' },
                   { key: 'filter' as const, icon: 'funnel-outline' as const, label: 'Фільтр' },
                   { key: 'group' as const, icon: 'layers-outline' as const, label: 'Групування' },
-                  // A saved view is a saved set of the three above - it
-                  // belongs in their window, not on a button of its own.
-                  { key: 'views' as const, icon: 'bookmark-outline' as const, label: 'Вигляди' },
                 ] as const
               )
                 // A tab for something this database cannot do would be a
@@ -2369,79 +2477,6 @@ export default function CustomDatabaseScreen({
                         </Pressable>
                       )}
                     </>
-                  )}
-                </>
-              )}
-              {paramsTab === 'views' && (
-                <>
-                  {savedViews.map((view) => {
-                    const active = activeView?.id === view.id;
-                    return (
-                      <Pressable
-                        key={view.id}
-                        style={styles.paramOption}
-                        onPress={() => applySavedView(view)}
-                        onLongPress={() => openSavedViewMenu(view)}
-                      >
-                        <Ionicons
-                          name={VIEW_ICONS[view.viewMode]}
-                          size={14}
-                          color={active ? '#fff' : 'rgba(255,255,255,0.7)'}
-                        />
-                        <Text
-                          style={[styles.paramOptionLabel, active && styles.paramOptionLabelActive]}
-                          numberOfLines={1}
-                        >
-                          {view.name}
-                        </Text>
-                        {(view.filters?.length ?? 0) > 0 && (
-                          <Ionicons name="funnel" size={11} color="rgba(255,255,255,0.45)" />
-                        )}
-                        {active && <Ionicons name="checkmark" size={14} color="#fff" />}
-                      </Pressable>
-                    );
-                  })}
-                  {savedViews.length > 0 && <View style={styles.paramDivider} />}
-                  {/* "Current state" (sort/filters/mode) means nothing for
-                      a schedule - it has its own real configuration
-                      instead (see createScheduleView) - so this button
-                      only makes sense outside schedule mode, same reason
-                      it's already disabled while a view already matches. */}
-                  {viewMode !== 'schedule' && (
-                    <Pressable
-                      style={styles.paramOption}
-                      disabled={!!activeView}
-                      onPress={() => {
-                        closeParamList();
-                        setViewPrompt({ mode: 'new' });
-                      }}
-                    >
-                      <Ionicons
-                        name="add-circle-outline"
-                        size={15}
-                        color={activeView ? 'rgba(255,255,255,0.3)' : accent}
-                      />
-                      <Text
-                        style={[
-                          styles.paramOptionLabel,
-                          { color: activeView ? 'rgba(255,255,255,0.3)' : accent },
-                        ]}
-                      >
-                        Зберегти поточний
-                      </Text>
-                    </Pressable>
-                  )}
-                  {scheduleRelationFields.length > 0 && scheduleDateFields.length > 0 && (
-                    <Pressable
-                      style={styles.paramOption}
-                      onPress={() => {
-                        closeParamList();
-                        setScheduleSetupVisible(true);
-                      }}
-                    >
-                      <Ionicons name="calendar-outline" size={15} color={accent} />
-                      <Text style={[styles.paramOptionLabel, { color: accent }]}>Створити графік</Text>
-                    </Pressable>
                   )}
                 </>
               )}
@@ -4699,9 +4734,21 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   paramExpandedHead: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    justifyContent: 'space-between',
     paddingVertical: 7,
     paddingHorizontal: 13,
+  },
+  // The tappable icon+label+chevron part of the head - a sibling of the
+  // pencil button below rather than the whole head, so the pencil gets
+  // its own touch target instead of also closing the popover.
+  paramExpandedHeadMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    flex: 1,
+  },
+  paramExpandedEditBtn: {
+    paddingLeft: 8,
   },
   paramOption: {
     flexDirection: 'row',
