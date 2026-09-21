@@ -12,16 +12,13 @@ import {
 } from '../utils/dateLocale';
 import {
   GLASS_BACKDROP,
-  GLASS_BODY_BLURRED,
   GLASS_DANGER,
   GLASS_LINE,
   GLASS_TEXT,
   GLASS_TEXT_FAINT,
   GLASS_TEXT_MUTED,
-  SHEET_BACKDROP,
-  SHEET_WINDOW,
 } from '../constants/glass';
-import GlassLayer from './GlassLayer';
+import Sheet from './surfaces/Sheet';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
 const DANGER = GLASS_DANGER;
@@ -127,11 +124,7 @@ export default function ReminderSheet({
   const hasExistingReminder = Boolean(initialDate);
 
   return (
-    <GlassLayer visible={visible} onClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={() => {}}>
-          <View style={styles.handle} />
-          <Text style={styles.title}>Нагадування</Text>
+    <Sheet visible={visible} onClose={onClose} title="Нагадування">
 
           <View style={styles.calHead}>
             <Text style={styles.calHeadTitle}>
@@ -273,38 +266,11 @@ export default function ReminderSheet({
               <Text style={styles.saveBtnText}>Зберегти</Text>
             </Pressable>
           </View>
-        </Pressable>
-      </Pressable>
-    </GlassLayer>
+    </Sheet>
   );
 }
 
 const makeStyles = (t: Theme) => StyleSheet.create({
-  backdrop: {
-    ...SHEET_BACKDROP,
-  },
-  sheet: {
-    backgroundColor: GLASS_BODY_BLURRED,
-    ...SHEET_WINDOW,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 28,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    backgroundColor: GLASS_LINE,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 12,
-  },
-  title: {
-    fontSize: 17,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
-    marginBottom: 14,
-  },
   calHead: {
     flexDirection: 'row',
     alignItems: 'center',

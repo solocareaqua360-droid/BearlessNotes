@@ -1,7 +1,7 @@
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
-import { useEffect, useState } from 'react';
-import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   collection,
@@ -15,16 +15,13 @@ import { Group } from '../types';
 import { groupKindFields } from '../utils/groups';
 import {
   GLASS_BACKDROP,
-  GLASS_BODY_BLURRED,
   GLASS_INPUT,
   GLASS_LINE,
   GLASS_TEXT,
   GLASS_TEXT_FAINT,
-  SHEET_BACKDROP,
-  SHEET_WINDOW,
 } from '../constants/glass';
-import GlassLayer from './GlassLayer';
-import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
+import Sheet from './surfaces/Sheet';
+import { FONT_REGULAR } from '../utils/fonts';
 import { confirm } from './surfaces/Ask';
 
 const GROUP_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
@@ -73,20 +70,9 @@ export default function GroupPickerSheet({
   const [newGroupName, setNewGroupName] = useState('');
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingGroupName, setEditingGroupName] = useState('');
-  // This Android build doesn't resize the window under the keyboard
-  // (edge-to-edge delivers it as an inset, not a resize - confirmed on
-  // TasksScreen's own project-picker sheet, same bottom-sheet shape as
-  // this one), so the "Новий проект" input needs the same manual
-  // Keyboard-height tracking to stay clear of it.
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  useEffect(() => {
-    const showSub = Keyboard.addListener('keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
-    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
+  // The keyboard is «Аркуш»'s own business now - it pads the frame, so
+  // the window stays centred in what is left instead of this file
+  // tracking the IME's height for itself.
 
   async function addGroup() {
     const name = newGroupName.trim();
@@ -121,11 +107,7 @@ export default function GroupPickerSheet({
   }
 
   return (
-    <GlassLayer visible={visible} onClose={onClose}>
-      <Pressable style={[styles.backdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={() => {}}>
-          <View style={styles.handle} />
-          <Text style={styles.title}>Оберіть проект</Text>
+    <Sheet visible={visible} onClose={onClose} title="Оберіть проект" scroll maxHeight="70%">
 
           <Pressable style={styles.row} onPress={() => onPick(null)}>
             <View style={[styles.dot, { backgroundColor: GLASS_TEXT_FAINT }]} />
@@ -180,39 +162,11 @@ export default function GroupPickerSheet({
               <Ionicons name="add-circle" size={26} color={accent} />
             </Pressable>
           </View>
-        </Pressable>
-      </Pressable>
-    </GlassLayer>
+    </Sheet>
   );
 }
 
 const makeStyles = (t: Theme) => StyleSheet.create({
-  backdrop: {
-    ...SHEET_BACKDROP,
-  },
-  sheet: {
-    backgroundColor: GLASS_BODY_BLURRED,
-    ...SHEET_WINDOW,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 28,
-    maxHeight: '70%',
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    backgroundColor: GLASS_LINE,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 12,
-  },
-  title: {
-    fontSize: 17,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
-    marginBottom: 8,
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
