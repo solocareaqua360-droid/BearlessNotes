@@ -472,7 +472,10 @@ export default function TasksScreen() {
     }
     setCreatingBusy(true);
     try {
-      await createTaskInToday(text);
+      // A real project tab open (not "Всі"/"Вхідні") - the new task
+      // starts there instead of needing a second tap to catch up to
+      // where it was made.
+      await createTaskInToday(text, projectFilter && projectFilter !== UNASSIGNED_ID ? projectFilter : undefined);
       setCreating(false);
     } catch (e) {
       notify('Не збереглося', (e as Error).message);
@@ -1216,6 +1219,22 @@ export default function TasksScreen() {
               <Ionicons name="list-outline" size={11} color={list ? list.color : 'rgba(255,255,255,0.45)'} />
               <Text style={[styles.chipText, { color: list ? list.color : 'rgba(255,255,255,0.45)' }]}>
                 {list ? list.name : 'Без списку'}
+              </Text>
+            </View>
+          </Pressable>
+          {/* Setting a reminder used to only be reachable from the
+              calendar/diary sheet (or a long press on the star, which
+              nothing hinted at) - same "always here" treatment as the
+              project/list capsules above. */}
+          <Pressable onPress={() => openReminderPicker(item.id)}>
+            <View style={[styles.chip, item.reminderDate ? { backgroundColor: `${accent}1A` } : styles.chipEmpty]}>
+              <Ionicons
+                name={item.reminderKind === 'notify' ? 'notifications-outline' : 'alarm-outline'}
+                size={11}
+                color={item.reminderDate ? accent : 'rgba(255,255,255,0.45)'}
+              />
+              <Text style={[styles.chipText, { color: item.reminderDate ? accent : 'rgba(255,255,255,0.45)' }]}>
+                {formatReminderBadge(item) ?? 'Без дати'}
               </Text>
             </View>
           </Pressable>

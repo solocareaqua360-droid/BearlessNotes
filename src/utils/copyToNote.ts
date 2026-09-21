@@ -240,14 +240,26 @@ export async function clipBlocksToNote(title: string, blocks: Block[]): Promise<
 // the note to be opened. Carries the calendar's own `calendarDate` field,
 // or the day would not count as filled.
 export async function createTaskInToday(
-  text: string
+  text: string,
+  // Set when a real project tab (not "Всі"/"Вхідні") is open at creation
+  // time - the user's own ask, so a task made while looking at one
+  // project doesn't default to "Вхідні" and need a second step to land
+  // back where it was made.
+  groupId?: string
 ): Promise<{ taskId: string; documentId: string }> {
   const key = dateKey(new Date());
   const documentId = `day_${key}`;
   const documentRef = doc(db, 'documents', documentId);
   const data = (await getDoc(documentRef)).data();
   const now = Date.now();
-  const block: Block = { id: generateId(), type: 'checkbox', text, checked: false, createdAt: now };
+  const block: Block = {
+    id: generateId(),
+    type: 'checkbox',
+    text,
+    checked: false,
+    createdAt: now,
+    ...(groupId ? { groupId } : {}),
+  };
   const blocks: Block[] = [...((data?.blocks as Block[] | undefined) ?? []), block];
   await setDoc(
     documentRef,
@@ -265,6 +277,7 @@ export async function createTaskInToday(
     documentId,
     updatedAt: now,
     createdAt: now,
+    ...(groupId ? { groupId } : {}),
   });
   return { taskId: block.id, documentId };
 }
