@@ -428,9 +428,6 @@ export default function DocumentsScreen({
   // rail.
   const listWidth = (paneRect.width || layoutWidth) - 40;
   const gridCardWidth = Math.floor((listWidth - 12 * (gridColumns - 1)) / gridColumns);
-  // A wide card is as wide as the whole row - every cell plus the gaps
-  // between them.
-  const wideCardWidth = listWidth;
   // FlatList lays a grid out in fixed cells and has no notion of one
   // item spanning several. So the DATA is arranged instead: a wide card
   // is given a row of its own, and the rest of that row is filled with
@@ -1520,7 +1517,14 @@ export default function DocumentsScreen({
                   isSelected={selectedIds.has(item.id)}
                   onToggleSelect={() => toggleSelected(item.id)}
                   layout={drawnMode === 'list' ? 'list' : 'grid'}
-                  gridWidth={drawnMode === 'wide' || item.wideCard ? wideCardWidth : gridCardWidth}
+                  // In the wide COLUMN a card takes the row it is given
+                  // (no measured number to disagree with the list's own
+                  // padding); a wide card inside the TILE grid has to be
+                  // told the row's width, since its own cell is one
+                  // column of it.
+                  gridWidth={
+                    drawnMode === 'wide' ? undefined : item.wideCard ? listWidth : gridCardWidth
+                  }
                   wide={drawnMode === 'wide' || !!item.wideCard}
                   project={groups.find((g) => g.id === item.groupId) ?? null}
                   onProjectPress={() => setSingleGroupTargetId(item.id)}
