@@ -82,6 +82,7 @@ import {
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import RenamePrompt from '../components/RenamePrompt';
 import VideoPlayerModal from '../components/VideoPlayerModal';
+import InlineVideoPlayer from '../components/InlineVideoPlayer';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { linkDocId } from '../utils/linkId';
@@ -1207,6 +1208,11 @@ type DraggableCardProps = {
   onGroupDragEnd: (dx: number, dy: number) => void;
   onTap: (card: BoardCard) => void;
   onLongPress: (card: BoardCard) => void;
+  // This card is the one playing - see the board's own playingCardId.
+  // Only one card ever is: each player is a live WebView.
+  playing?: boolean;
+  onStopPlaying?: () => void;
+  onOpenFullscreen?: () => void;
   onResize: (id: string, width: number) => void;
   // The canvas's own "hold to reach for the marquee". A card's hold has
   // to beat it - see the card's longPressGesture.
@@ -1272,6 +1278,9 @@ function DraggableCard({
   onTap,
   onLongPress,
   onResize,
+  playing,
+  onStopPlaying,
+  onOpenFullscreen,
   canvasHoldGesture,
 }: DraggableCardProps) {
   const theme = useTheme();
@@ -1651,7 +1660,23 @@ function DraggableCard({
           </View>
         ) : type === 'link' ? (
           <View style={styles.refCard}>
-            {card.linkImageUrl ? (
+            {playing ? (
+              // In the card's own window, not over the whole screen -
+              // the board stays where it is behind it, and its two
+              // controls sit on the player: close, and full screen for
+              // when the card is too small to watch in.
+              <View style={styles.refThumb}>
+                <InlineVideoPlayer url={card.linkUrl ?? ''} />
+                <View style={styles.playerControls} pointerEvents="box-none">
+                  <Pressable hitSlop={8} style={styles.playerButton} onPress={onOpenFullscreen}>
+                    <Ionicons name="expand-outline" size={14} color="#fff" />
+                  </Pressable>
+                  <Pressable hitSlop={8} style={styles.playerButton} onPress={onStopPlaying}>
+                    <Ionicons name="close" size={14} color="#fff" />
+                  </Pressable>
+                </View>
+              </View>
+            ) : card.linkImageUrl ? (
               <Image source={{ uri: card.linkImageUrl }} style={styles.refThumb} resizeMode="cover" resizeMethod="resize" />
             ) : (
               <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
@@ -2067,6 +2092,10 @@ export default function BoardScreen() {
   // magnet is seen and felt before the finger lifts.
   const [hoverColumnId, setHoverColumnId] = useState<string | null>(null);
   const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
+  // Which card is playing IN ITS OWN WINDOW. One at a time on purpose:
+  // every player is a live WebView, and a board of video cards all
+  // playing at once is a board that stops responding.
+  const [playingCardId, setPlayingCardId] = useState<string | null>(null);
   // 'move' - single-finger drag pans the canvas (the original Stage 1
   // behaviour). 'select' - single-finger drag instead draws a marquee
   // rectangle over the world, selecting every card it overlaps, so several
@@ -3588,7 +3617,9 @@ export default function BoardScreen() {
       // A YouTube/TikTok card plays right here; any other link opens
       // externally, same split DocumentEditorScreen's own link blocks use.
       if (getVideoEmbedInfo(card.linkUrl)) {
-        setPlayingVideoUrl(card.linkUrl);
+        // In the card, not over the whole screen - full screen is one
+        // more press from there (see DraggableCard's own controls).
+        setPlayingCardId((current) => (current === card.id ? null : card.id));
       } else {
         Linking.openURL(card.linkUrl).catch(() => {});
       }
@@ -5337,6 +5368,12 @@ export default function BoardScreen() {
                     onDragEnd={commitCardDrag}
                     onGroupDragEnd={commitGroupDrag}
                     onTap={(c) => (isolateArmed ? pickIsolationAnchor(c.id) : handleCardTap(c))}
+                    playing={playingCardId === card.id}
+                    onStopPlaying={() => setPlayingCardId(null)}
+                    onOpenFullscreen={() => {
+                      setPlayingCardId(null);
+                      setPlayingVideoUrl(card.linkUrl ?? null);
+                    }}
                     onLongPress={handleCardLongPress}
                     onResize={commitCardResize}
                     canvasHoldGesture={holdToSelectGesture}
@@ -6331,6 +6368,23 @@ const makeStyles = (theme: Theme) =>
       width: '100%',
       height: 90,
       borderRadius: 6,
+      overflow: 'hidden',
+    },
+    // On the player, in its top-right corner.
+    playerControls: {
+      position: 'absolute',
+      top: 4,
+      right: 4,
+      flexDirection: 'row',
+      gap: 4,
+    },
+    playerButton: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     // imageBare cards only - no refCard wrapper around this one, so the
     // picture itself carries the card's own rounding and shadow.

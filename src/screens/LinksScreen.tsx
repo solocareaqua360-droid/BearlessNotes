@@ -56,6 +56,8 @@ import { appendBlocksToToday, blockFromLink, copyObjectsToNote } from '../utils/
 import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
 import SaveDestinationSheet from '../components/SaveDestinationSheet';
 import { linkDocId } from '../utils/linkId';
+import { getVideoEmbedInfo } from '../utils/videoEmbed';
+import VideoPlayerModal from '../components/VideoPlayerModal';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -165,6 +167,10 @@ export default function LinksScreen({
   // The badge on a single card, opened outside select mode - distinct
   // from the bulk sheet above, which acts on the whole selection.
   const [singleGroupTargetId, setSingleGroupTargetId] = useState<string | null>(null);
+  // Which card is playing in its own window, and the one full-screen
+  // player behind «розгорнути». One at a time: each is a live WebView.
+  const [playingLinkId, setPlayingLinkId] = useState<string | null>(null);
+  const [fullscreenVideoUrl, setFullscreenVideoUrl] = useState<string | null>(null);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
   const [addLinkUrlPromptVisible, setAddLinkUrlPromptVisible] = useState(false);
   const [isAddingLink, setIsAddingLink] = useState(false);
@@ -322,7 +328,15 @@ export default function LinksScreen({
     clearSelection();
   }
 
-  function openLinkUrl(url: string) {
+  // A YouTube/TikTok link plays IN ITS OWN CARD (see ItemCards' own
+  // `playing`), the same as a board's video card does; anything else
+  // still opens in the browser, which is the only thing this app can
+  // usefully do with a page.
+  function openLinkUrl(url: string, id?: string) {
+    if (id && getVideoEmbedInfo(url)) {
+      setPlayingLinkId((current) => (current === id ? null : id));
+      return;
+    }
     Linking.openURL(url).catch(() => {});
   }
 
@@ -551,7 +565,7 @@ export default function LinksScreen({
         key={item.id}
         link={item}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
-        onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkUrl(item.url))}
+        onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkUrl(item.url, item.id))}
         onLongPress={carried ? undefined : () => setCardMenuLinkId(item.id)}
         onMenu={() => setCardMenuLinkId(item.id)}
         onTagPress={() => setTagPickerForId(item.id)}
@@ -560,6 +574,12 @@ export default function LinksScreen({
         onToggleSelect={() => toggleSelected(item.id)}
         project={groups.find((g) => g.id === item.groupId) ?? null}
         onProjectPress={() => setSingleGroupTargetId(item.id)}
+        playing={playingLinkId === item.id}
+        onStopPlaying={() => setPlayingLinkId(null)}
+        onOpenFullscreen={() => {
+          setPlayingLinkId(null);
+          setFullscreenVideoUrl(item.url);
+        }}
         {...(carried ? carrying.cardProps(item, () => setCardMenuLinkId(item.id)) : {})}
       />
     );
@@ -578,7 +598,7 @@ export default function LinksScreen({
         columns={columns}
         link={item}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
-        onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkUrl(item.url))}
+        onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkUrl(item.url, item.id))}
         onLongPress={carried ? undefined : () => setCardMenuLinkId(item.id)}
         onMenu={() => setCardMenuLinkId(item.id)}
         onTagPress={() => setTagPickerForId(item.id)}
@@ -587,6 +607,12 @@ export default function LinksScreen({
         onToggleSelect={() => toggleSelected(item.id)}
         project={groups.find((g) => g.id === item.groupId) ?? null}
         onProjectPress={() => setSingleGroupTargetId(item.id)}
+        playing={playingLinkId === item.id}
+        onStopPlaying={() => setPlayingLinkId(null)}
+        onOpenFullscreen={() => {
+          setPlayingLinkId(null);
+          setFullscreenVideoUrl(item.url);
+        }}
         {...(carried ? carrying.cardProps(item, () => setCardMenuLinkId(item.id)) : {})}
       />
     );
@@ -880,6 +906,11 @@ export default function LinksScreen({
             onPick={assignSingleGroup}
             onClose={() => setSingleGroupTargetId(null)}
           />
+
+          {/* Where «розгорнути» on a playing card goes - the same
+              player, on a black screen, for a video worth watching
+              properly. */}
+          <VideoPlayerModal url={fullscreenVideoUrl} onClose={() => setFullscreenVideoUrl(null)} />
 
           <CopyToNoteModal
             visible={bulkCopyModalVisible}

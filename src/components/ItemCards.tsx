@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tag } from '../types';
 import TagChips from './TagChips';
 import ProjectBadge from './ProjectBadge';
+import InlineVideoPlayer from './InlineVideoPlayer';
 import { formatAddedOn, formatUpdatedAt } from '../utils/documentPreview';
 import { useFilePreview } from '../hooks/useFilePreview';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
@@ -54,7 +55,29 @@ type Common = {
   // even when unset (a gray "Без проекту" chip, see ProjectBadge).
   project?: { name: string; color: string } | null;
   onProjectPress?: () => void;
+  // A YouTube/TikTok card plays IN ITS OWN CARD rather than over the
+  // whole screen. Only one card on a screen is ever `playing`: each
+  // player is a live WebView, and a list running one per row is a list
+  // that stops scrolling.
+  playing?: boolean;
+  onStopPlaying?: () => void;
+  onOpenFullscreen?: () => void;
 };
+
+// The two controls that sit on a playing card: full screen, for when the
+// card is too small to watch in, and close.
+function PlayerControls({ onStop, onFullscreen }: { onStop?: () => void; onFullscreen?: () => void }) {
+  return (
+    <View style={styles.playerControls} pointerEvents="box-none">
+      <Pressable hitSlop={8} style={styles.playerButton} onPress={onFullscreen}>
+        <Ionicons name="expand-outline" size={14} color="#fff" />
+      </Pressable>
+      <Pressable hitSlop={8} style={styles.playerButton} onPress={onStop}>
+        <Ionicons name="close" size={14} color="#fff" />
+      </Pressable>
+    </View>
+  );
+}
 
 export type LinkCardItem = {
   id: string;
@@ -141,7 +164,12 @@ export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
   const info = LINK_CATEGORY_INFO[categoryFromSiteName(link.siteName)];
   const { background, text, textMuted } = recordColour(link.id);
   return (
-    <View ref={rest.cardRef} collapsable={false} style={[styles.row, { backgroundColor: background }, rest.dimmed && styles.dimmed]}>
+    <View
+      ref={rest.cardRef}
+      collapsable={false}
+      style={[styles.row, rest.playing && styles.rowPlaying, { backgroundColor: background }, rest.dimmed && styles.dimmed]}
+    >
+      <View style={styles.rowLine}>
       <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
         {link.imageUrl ? (
           <Image source={{ uri: link.imageUrl }} style={styles.rowThumbWide} resizeMode="cover" resizeMethod="resize" />
@@ -170,6 +198,17 @@ export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
         </View>
       </Pressable>
       <Trailing {...rest} text={text} textMuted={textMuted} />
+      </View>
+      {rest.playing && (
+        // A row's own thumbnail is 104 across - too small to watch
+        // anything in - so a playing row GROWS one instead: a full-width
+        // player under the title, inside the card, with the list behind
+        // it exactly where it was.
+        <View style={styles.rowPlayer}>
+          <InlineVideoPlayer url={link.url} />
+          <PlayerControls onStop={rest.onStopPlaying} onFullscreen={rest.onOpenFullscreen} />
+        </View>
+      )}
     </View>
   );
 }
@@ -204,8 +243,16 @@ export function LinkGridCell({ link, columns = 2, ...rest }: { link: LinkCardIte
         rest.dimmed && styles.dimmed,
       ]}
     >
+      {rest.playing && (
+        // The picture's own window is already 16/9 and the card's full
+        // width, so the player simply takes it.
+        <View style={[styles.gridThumb, styles.gridPlayer]}>
+          <InlineVideoPlayer url={link.url} />
+          <PlayerControls onStop={rest.onStopPlaying} onFullscreen={rest.onOpenFullscreen} />
+        </View>
+      )}
       <Pressable style={styles.gridTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
-        {link.imageUrl ? (
+        {rest.playing ? null : link.imageUrl ? (
           <Image source={{ uri: link.imageUrl }} style={styles.gridThumb} resizeMode="cover" resizeMethod="resize" />
         ) : (
           <View style={[styles.gridThumb, styles.gridThumbIcon, { backgroundColor: `${info.color}1A` }]}>
@@ -562,6 +609,48 @@ const styles = StyleSheet.create({
   },
   rowActionButton: {
     padding: 6,
+  },
+  // A playing row stops being one line and becomes a column: the line
+  // it always was, and the player under it.
+  rowPlaying: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 10,
+  },
+  // Inside the card, which is still a ROW for every other card type
+  // (FileRow, PhotoRow) - so this has to claim the width itself rather
+  // than rely on the card's own direction.
+  rowLine: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  rowPlayer: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  gridPlayer: {
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  playerControls: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    flexDirection: 'row',
+    gap: 4,
+  },
+  playerButton: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   gridCard: {
     overflow: 'hidden',
