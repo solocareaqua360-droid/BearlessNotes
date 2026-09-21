@@ -794,7 +794,7 @@ export default function CustomDatabaseScreen({
               key: 'save',
               icon: 'bookmark-outline',
               label: 'Зберегти',
-              onPress: () => (viewMode === 'schedule' ? setScheduleSetupVisible(true) : setViewPrompt({ mode: 'new' })),
+              onPress: confirmSaveNewView,
             },
             // Ordering, narrowing, grouping and representation (list/
             // table/gallery/graphic) - "Подача" (as in HOW the list is
@@ -998,6 +998,25 @@ export default function CustomDatabaseScreen({
       updatedAt: Date.now(),
     });
     selectCapsule(id);
+  }
+
+  // "Зберегти" on the dock - a schedule's own creation flow needs no extra
+  // confirmation (its setup sheet already asks for everything up front),
+  // but the generic snapshot-as-new-view does, since the dock button sits
+  // one accidental tap away from silently multiplying views.
+  function confirmSaveNewView() {
+    if (viewMode === 'schedule') {
+      setScheduleSetupVisible(true);
+      return;
+    }
+    confirm({
+      title: 'Зберегти новий вигляд?',
+      message: 'Поточні сортування, фільтр, групування, представлення й приховані поля збережуться як окремий вигляд.',
+      confirmLabel: 'Зберегти',
+      tone: 'primary',
+    }).then((yes) => {
+      if (yes) setViewPrompt({ mode: 'new' });
+    });
   }
 
   // Keeps a status's own id (and colour) when its label survives an edit
