@@ -354,6 +354,9 @@ export default function DocumentsScreen({
   const searchingAlone = searchOpen && keyboardUp;
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
+  // The badge on a single card, opened outside select mode - distinct
+  // from the bulk sheet above, which acts on the whole selection.
+  const [singleGroupTargetId, setSingleGroupTargetId] = useState<string | null>(null);
   const [freeStickers, setFreeStickers] = useState<StripSticker[]>([]);
   const [stickerComposerVisible, setStickerComposerVisible] = useState(false);
   const [editingTextSticker, setEditingTextSticker] = useState<{ id: string; text: string } | null>(null);
@@ -864,6 +867,13 @@ export default function DocumentsScreen({
     clearSelection();
   }
 
+  async function assignSingleGroup(groupId: string | null) {
+    const targetId = singleGroupTargetId;
+    setSingleGroupTargetId(null);
+    if (!targetId) return;
+    await updateDoc(doc(db, 'documents', targetId), { groupId: groupId ?? deleteField() });
+  }
+
   // Тhe loose stickers are a project of their own now - the last tab, the
   // one that can no more be removed than "Без проекту" can. Tapping it
   // swaps the list of documents for a list of stickers, in whichever
@@ -1117,6 +1127,8 @@ export default function DocumentsScreen({
                     onPress={() => openDocument(item.id)}
                     layout={drawnMode}
                     gridWidth={gridCardWidth}
+                    project={groups.find((g) => g.id === item.groupId) ?? null}
+                    onProjectPress={() => setSingleGroupTargetId(item.id)}
                   />
                 );
               }}
@@ -1357,6 +1369,8 @@ export default function DocumentsScreen({
                   onToggleSelect={() => toggleSelected(item.id)}
                   layout={drawnMode}
                     gridWidth={gridCardWidth}
+                  project={groups.find((g) => g.id === item.groupId) ?? null}
+                  onProjectPress={() => setSingleGroupTargetId(item.id)}
                   {...(carried ? carrying.cardProps(item, () => openDocumentMenu(item)) : {})}
                 />
               );
@@ -1572,6 +1586,14 @@ export default function DocumentsScreen({
         groups={groups}
         onPick={bulkAssignGroup}
         onClose={() => setBulkGroupPickerVisible(false)}
+      />
+
+      <GroupPickerSheet
+        visible={!!singleGroupTargetId}
+        kind="document"
+        groups={groups}
+        onPick={assignSingleGroup}
+        onClose={() => setSingleGroupTargetId(null)}
       />
 
     </View>

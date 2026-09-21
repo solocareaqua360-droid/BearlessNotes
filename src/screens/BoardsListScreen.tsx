@@ -28,6 +28,7 @@ import { readBoardPart } from '../utils/boardStorage';
 import BoardMiniMap from '../components/BoardMiniMap';
 import DatabaseChrome from '../components/DatabaseChrome';
 import GroupPickerSheet from '../components/GroupPickerSheet';
+import ProjectBadge from '../components/ProjectBadge';
 import TagPicker from '../components/TagPicker';
 import GroupSections from '../components/GroupSections';
 import { useDatabaseList } from '../hooks/useDatabaseList';
@@ -96,6 +97,9 @@ export default function BoardsListScreen({
   const [tagPickerBoardId, setTagPickerBoardId] = useState<string | null>(null);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
+  // The badge on a single card, opened outside select mode - distinct
+  // from the bulk sheet above, which acts on the whole selection.
+  const [singleGroupTargetId, setSingleGroupTargetId] = useState<string | null>(null);
 
   // The machine every database shares - see useDatabaseList. Boards were
   // "deliberately minimal next to Files/Links/Photos" for a long time; the
@@ -148,6 +152,13 @@ export default function BoardsListScreen({
     });
     await batch.commit();
     clearSelection();
+  }
+
+  async function assignSingleGroup(groupId: string | null) {
+    const targetId = singleGroupTargetId;
+    setSingleGroupTargetId(null);
+    if (!targetId) return;
+    await updateDoc(doc(db, 'boards', targetId), { groupId: groupId ?? deleteField() });
   }
 
   // Folders, and the path through them. A folder is a segment of a tag's
@@ -392,9 +403,18 @@ export default function BoardsListScreen({
           <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
             {item.title || 'Без назви'}
           </Text>
-          <Text style={[styles.rowMeta, { color: textMuted }]}>
-            {item.cards.length} {item.cards.length === 1 ? 'картка' : 'карток'}
-          </Text>
+          <View style={styles.rowMetaRow}>
+            <Text style={[styles.rowMeta, { color: textMuted }]}>
+              {item.cards.length} {item.cards.length === 1 ? 'картка' : 'карток'}
+            </Text>
+            {!isSelectMode && (
+              <ProjectBadge
+                project={groups.find((g) => g.id === item.groupId) ?? null}
+                onPress={() => setSingleGroupTargetId(item.id)}
+                glass
+              />
+            )}
+          </View>
         </View>
         {isSelectMode ? (
           <Pressable hitSlop={8} onPress={() => toggleSelected(item.id)} style={styles.rowActionButton}>
@@ -457,9 +477,18 @@ export default function BoardsListScreen({
           <Text style={[styles.rowTitle, { color: text }]} numberOfLines={1}>
             {item.title || 'Без назви'}
           </Text>
-          <Text style={[styles.rowMeta, { color: textMuted }]}>
-            {item.cards.length} {item.cards.length === 1 ? 'картка' : 'карток'}
-          </Text>
+          <View style={styles.rowMetaRow}>
+            <Text style={[styles.rowMeta, { color: textMuted }]}>
+              {item.cards.length} {item.cards.length === 1 ? 'картка' : 'карток'}
+            </Text>
+            {!isSelectMode && (
+              <ProjectBadge
+                project={groups.find((g) => g.id === item.groupId) ?? null}
+                onPress={() => setSingleGroupTargetId(item.id)}
+                glass
+              />
+            )}
+          </View>
         </View>
       </Pressable>
     );
@@ -546,6 +575,14 @@ export default function BoardsListScreen({
             groups={groups}
             onPick={bulkAssignGroup}
             onClose={() => setBulkGroupPickerVisible(false)}
+          />
+
+          <GroupPickerSheet
+            visible={!!singleGroupTargetId}
+            kind="board"
+            groups={groups}
+            onPick={assignSingleGroup}
+            onClose={() => setSingleGroupTargetId(null)}
           />
 
           <RenamePrompt
@@ -769,6 +806,12 @@ const makeStyles = (t: Theme) =>
   rowMeta: {
     fontSize: 12,
     fontFamily: FONT_REGULAR,
+  },
+  rowMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   rowActionButton: {
     padding: 6,

@@ -3,6 +3,7 @@ import { useRecordColour } from '../theme/ThemeProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { Tag } from '../types';
 import TagChips from './TagChips';
+import ProjectBadge from './ProjectBadge';
 import { formatAddedOn, formatUpdatedAt } from '../utils/documentPreview';
 import { useFilePreview } from '../hooks/useFilePreview';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
@@ -49,6 +50,10 @@ type Common = {
   isSelectMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: () => void;
+  // Shown at the date's own level, in the card's right corner - always,
+  // even when unset (a gray "Без проекту" chip, see ProjectBadge).
+  project?: { name: string; color: string } | null;
+  onProjectPress?: () => void;
 };
 
 export type LinkCardItem = {
@@ -149,11 +154,14 @@ export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
           <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
             {link.title || hostnameOf(link.url)}
           </Text>
-          <Text style={[styles.rowCaption, { color: textMuted }]} numberOfLines={1}>
-            {link.siteName ?? hostnameOf(link.url)}
-            {!!(link.createdAt ?? link.updatedAt) &&
-              ` · ${formatUpdatedAt((link.createdAt ?? link.updatedAt) as number)}`}
-          </Text>
+          <View style={styles.dateRow}>
+            <Text style={[styles.rowCaption, styles.dateRowText, { color: textMuted }]} numberOfLines={1}>
+              {link.siteName ?? hostnameOf(link.url)}
+              {!!(link.createdAt ?? link.updatedAt) &&
+                ` · ${formatUpdatedAt((link.createdAt ?? link.updatedAt) as number)}`}
+            </Text>
+            {rest.onProjectPress && <ProjectBadge project={rest.project} onPress={rest.onProjectPress} glass />}
+          </View>
           {rest.tags.length > 0 && (
             <View style={styles.rowMeta}>
               <TagChips tags={rest.tags} onPress={rest.onTagPress ?? (() => {})} glass />
@@ -207,9 +215,12 @@ export function LinkGridCell({ link, columns = 2, ...rest }: { link: LinkCardIte
         <Text style={[styles.gridTitle, { color: text }]} numberOfLines={2}>
           {link.title || hostnameOf(link.url)}
         </Text>
-        <Text style={[styles.gridCaption, { color: textMuted }]} numberOfLines={1}>
-          {link.siteName ?? hostnameOf(link.url)}
-        </Text>
+        <View style={styles.dateRow}>
+          <Text style={[styles.gridCaption, styles.dateRowText, { color: textMuted }]} numberOfLines={1}>
+            {link.siteName ?? hostnameOf(link.url)}
+          </Text>
+          {rest.onProjectPress && <ProjectBadge project={rest.project} onPress={rest.onProjectPress} glass />}
+        </View>
         {rest.tags.length > 0 && (
           <View style={styles.rowMeta}>
             <TagChips tags={rest.tags} onPress={rest.onTagPress ?? (() => {})} glass />
@@ -263,10 +274,15 @@ export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
               {preview.text}
             </Text>
           )}
-          {!!(file.createdAt ?? file.updatedAt) && (
-            <Text style={[styles.rowCaption, { color: textMuted }]}>
-              {formatUpdatedAt((file.createdAt ?? file.updatedAt) as number)}
-            </Text>
+          {(!!(file.createdAt ?? file.updatedAt) || rest.onProjectPress) && (
+            <View style={styles.dateRow}>
+              {!!(file.createdAt ?? file.updatedAt) && (
+                <Text style={[styles.rowCaption, styles.dateRowText, { color: textMuted }]}>
+                  {formatUpdatedAt((file.createdAt ?? file.updatedAt) as number)}
+                </Text>
+              )}
+              {rest.onProjectPress && <ProjectBadge project={rest.project} onPress={rest.onProjectPress} glass />}
+            </View>
           )}
           {rest.tags.length > 0 && (
             <View style={styles.rowMeta}>
@@ -316,10 +332,15 @@ export function FileGridCell({ file, columns = 2, ...rest }: { file: FileCardIte
         <Text style={[styles.gridTitle, { color: text }]} numberOfLines={2}>
           {file.title || file.fileName}
         </Text>
-        {!!(file.createdAt ?? file.updatedAt) && (
-          <Text style={[styles.gridCaption, { color: textMuted }]}>
-            {formatUpdatedAt((file.createdAt ?? file.updatedAt) as number)}
-          </Text>
+        {(!!(file.createdAt ?? file.updatedAt) || rest.onProjectPress) && (
+          <View style={styles.dateRow}>
+            {!!(file.createdAt ?? file.updatedAt) && (
+              <Text style={[styles.gridCaption, styles.dateRowText, { color: textMuted }]}>
+                {formatUpdatedAt((file.createdAt ?? file.updatedAt) as number)}
+              </Text>
+            )}
+            {rest.onProjectPress && <ProjectBadge project={rest.project} onPress={rest.onProjectPress} glass />}
+          </View>
         )}
         {rest.tags.length > 0 && (
           <View style={styles.rowMeta}>
@@ -372,10 +393,15 @@ export function PhotoRow({ photo, ...rest }: { photo: PhotoCardItem } & Common) 
           <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
             {photo.title || 'Без назви'}
           </Text>
-          {!!(photo.createdAt ?? photo.updatedAt) && (
-            <Text style={[styles.rowCaption, { color: textMuted }]}>
-              {formatAddedOn((photo.createdAt ?? photo.updatedAt) as number, true)}
-            </Text>
+          {(!!(photo.createdAt ?? photo.updatedAt) || rest.onProjectPress) && (
+            <View style={styles.dateRow}>
+              {!!(photo.createdAt ?? photo.updatedAt) && (
+                <Text style={[styles.rowCaption, styles.dateRowText, { color: textMuted }]}>
+                  {formatAddedOn((photo.createdAt ?? photo.updatedAt) as number, true)}
+                </Text>
+              )}
+              {rest.onProjectPress && <ProjectBadge project={rest.project} onPress={rest.onProjectPress} glass />}
+            </View>
           )}
           {docCount > 0 && (
             <Text style={[styles.rowCaption, { color: textMuted }]}>
@@ -427,18 +453,21 @@ export function PhotoCell({ photo, ...rest }: { photo: PhotoCardItem } & Common)
         // along the foot of the picture, so a grid cell says as much as
         // a row without stopping being a picture.
         <View style={styles.cellFooter} pointerEvents="box-none">
-          <View style={styles.cellFacts}>
-            {!!(photo.createdAt ?? photo.updatedAt) && (
-              <Text style={styles.cellFactLabel} numberOfLines={1}>
-                {formatAddedOn((photo.createdAt ?? photo.updatedAt) as number)}
-              </Text>
-            )}
-            {docCount > 0 && (
-              <>
-                <Ionicons name="document-text-outline" size={11} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.cellFactLabel}>{docCount}</Text>
-              </>
-            )}
+          <View style={styles.dateRow}>
+            <View style={styles.cellFacts}>
+              {!!(photo.createdAt ?? photo.updatedAt) && (
+                <Text style={styles.cellFactLabel} numberOfLines={1}>
+                  {formatAddedOn((photo.createdAt ?? photo.updatedAt) as number)}
+                </Text>
+              )}
+              {docCount > 0 && (
+                <>
+                  <Ionicons name="document-text-outline" size={11} color="rgba(255,255,255,0.8)" />
+                  <Text style={styles.cellFactLabel}>{docCount}</Text>
+                </>
+              )}
+            </View>
+            {rest.onProjectPress && <ProjectBadge project={rest.project} onPress={rest.onProjectPress} glass />}
           </View>
           {rest.tags.length > 0 && (
             <View style={styles.cellTagRow}>
@@ -520,6 +549,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginTop: 2,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  dateRowText: {
+    flex: 1,
+    minWidth: 0,
   },
   rowActionButton: {
     padding: 6,

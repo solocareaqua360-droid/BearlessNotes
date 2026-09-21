@@ -124,6 +124,9 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
   const [tagPickerForId, setTagPickerForId] = useState<string | null>(null);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
+  // The badge on a single card, opened outside select mode - distinct
+  // from the bulk sheet above, which acts on the whole selection.
+  const [singleGroupTargetId, setSingleGroupTargetId] = useState<string | null>(null);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
   const [cardMenuFileId, setCardMenuFileId] = useState<string | null>(null);
   // The file being looked at in the quick look, with the record it came
@@ -546,6 +549,13 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     clearSelection();
   }
 
+  async function assignSingleGroup(groupId: string | null) {
+    const targetId = singleGroupTargetId;
+    setSingleGroupTargetId(null);
+    if (!targetId) return;
+    await updateDoc(doc(db, 'files', targetId), { groupId: groupId ?? deleteField() });
+  }
+
   async function bulkCopyToExisting(documentId: string) {
     setBulkCopyModalVisible(false);
     const blocks = selectedFiles.map(blockFromFile);
@@ -587,6 +597,8 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         isSelectMode={isSelectMode}
         isSelected={selectedIds.has(item.id)}
         onToggleSelect={() => toggleSelected(item.id)}
+        project={groups.find((g) => g.id === item.groupId) ?? null}
+        onProjectPress={() => setSingleGroupTargetId(item.id)}
         {...(carried ? carrying.cardProps(item, () => setCardMenuFileId(item.id)) : {})}
       />
     );
@@ -612,6 +624,8 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         isSelectMode={isSelectMode}
         isSelected={selectedIds.has(item.id)}
         onToggleSelect={() => toggleSelected(item.id)}
+        project={groups.find((g) => g.id === item.groupId) ?? null}
+        onProjectPress={() => setSingleGroupTargetId(item.id)}
         {...(carried ? carrying.cardProps(item, () => setCardMenuFileId(item.id)) : {})}
       />
     );
@@ -936,6 +950,14 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
             groups={groups}
             onPick={bulkAssignGroup}
             onClose={() => setBulkGroupPickerVisible(false)}
+          />
+
+          <GroupPickerSheet
+            visible={!!singleGroupTargetId}
+            kind="file"
+            groups={groups}
+            onPick={assignSingleGroup}
+            onClose={() => setSingleGroupTargetId(null)}
           />
 
           <CopyToNoteModal

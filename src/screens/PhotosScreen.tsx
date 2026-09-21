@@ -121,6 +121,9 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
   const [tagPickerForId, setTagPickerForId] = useState<string | null>(null);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
+  // The badge on a single card, opened outside select mode - distinct
+  // from the bulk sheet above, which acts on the whole selection.
+  const [singleGroupTargetId, setSingleGroupTargetId] = useState<string | null>(null);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
   const [justAddedPhoto, setJustAddedPhoto] = useState<JustAddedPhoto | null>(null);
   // "Пошук зображень" from the "+" menu - see StockPhotoPicker.
@@ -647,6 +650,13 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     clearSelection();
   }
 
+  async function assignSingleGroup(groupId: string | null) {
+    const targetId = singleGroupTargetId;
+    setSingleGroupTargetId(null);
+    if (!targetId) return;
+    await updateDoc(doc(db, 'photos', targetId), { groupId: groupId ?? deleteField() });
+  }
+
   async function bulkCopyToExisting(documentId: string) {
     setBulkCopyModalVisible(false);
     const blocks = selectedPhotos.map(blockFromPhoto);
@@ -938,6 +948,14 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
             onClose={() => setBulkGroupPickerVisible(false)}
           />
 
+          <GroupPickerSheet
+            visible={!!singleGroupTargetId}
+            kind="photo"
+            groups={groups}
+            onPick={assignSingleGroup}
+            onClose={() => setSingleGroupTargetId(null)}
+          />
+
           <CopyToNoteModal
             visible={bulkCopyModalVisible}
             onPickExisting={bulkCopyToExisting}
@@ -1091,6 +1109,8 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                     onTagPress: () => setTagPickerForId(photo.id),
                     isSelectMode,
                     isSelected: selectedIds.has(photo.id),
+                    project: groups.find((g) => g.id === photo.groupId) ?? null,
+                    onProjectPress: () => setSingleGroupTargetId(photo.id),
                   };
               // Only the explorer carries; the bin never does.
               const carried =

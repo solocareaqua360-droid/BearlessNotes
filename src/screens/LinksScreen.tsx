@@ -162,6 +162,9 @@ export default function LinksScreen({
   const [cardMenuLinkId, setCardMenuLinkId] = useState<string | null>(null);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
+  // The badge on a single card, opened outside select mode - distinct
+  // from the bulk sheet above, which acts on the whole selection.
+  const [singleGroupTargetId, setSingleGroupTargetId] = useState<string | null>(null);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
   const [addLinkUrlPromptVisible, setAddLinkUrlPromptVisible] = useState(false);
   const [isAddingLink, setIsAddingLink] = useState(false);
@@ -508,6 +511,13 @@ export default function LinksScreen({
     clearSelection();
   }
 
+  async function assignSingleGroup(groupId: string | null) {
+    const targetId = singleGroupTargetId;
+    setSingleGroupTargetId(null);
+    if (!targetId) return;
+    await updateDoc(doc(db, 'links', targetId), { groupId: groupId ?? deleteField() });
+  }
+
   async function bulkCopyToExisting(documentId: string) {
     setBulkCopyModalVisible(false);
     const blocks = selectedLinks.map(blockFromLink);
@@ -548,6 +558,8 @@ export default function LinksScreen({
         isSelectMode={isSelectMode}
         isSelected={selectedIds.has(item.id)}
         onToggleSelect={() => toggleSelected(item.id)}
+        project={groups.find((g) => g.id === item.groupId) ?? null}
+        onProjectPress={() => setSingleGroupTargetId(item.id)}
         {...(carried ? carrying.cardProps(item, () => setCardMenuLinkId(item.id)) : {})}
       />
     );
@@ -573,6 +585,8 @@ export default function LinksScreen({
         isSelectMode={isSelectMode}
         isSelected={selectedIds.has(item.id)}
         onToggleSelect={() => toggleSelected(item.id)}
+        project={groups.find((g) => g.id === item.groupId) ?? null}
+        onProjectPress={() => setSingleGroupTargetId(item.id)}
         {...(carried ? carrying.cardProps(item, () => setCardMenuLinkId(item.id)) : {})}
       />
     );
@@ -857,6 +871,14 @@ export default function LinksScreen({
             groups={groups}
             onPick={bulkAssignGroup}
             onClose={() => setBulkGroupPickerVisible(false)}
+          />
+
+          <GroupPickerSheet
+            visible={!!singleGroupTargetId}
+            kind={groupKind}
+            groups={groups}
+            onPick={assignSingleGroup}
+            onClose={() => setSingleGroupTargetId(null)}
           />
 
           <CopyToNoteModal

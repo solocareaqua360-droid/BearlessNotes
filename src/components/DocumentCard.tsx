@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AttachmentImage from './AttachmentImage';
 import { PreviewChecklistItem, TextMatch, formatUpdatedAt } from '../utils/documentPreview';
 import { FONT_REGULAR, FONT_BOLD } from '../utils/fonts';
+import ProjectBadge from './ProjectBadge';
 
 // Fine grain laid over every card. Two things keep it reading as paper
 // tooth and not as dirt: the specks are half lighter and half darker than
@@ -243,6 +244,11 @@ type Props = {
   // Being carried right now - the card stays where it is and fades, the
   // ghost at the finger is the thing in hand.
   dimmed?: boolean;
+  // Shown at the date's own level, in the card's right corner - always,
+  // even when unset (a gray "Без проекту" chip, see ProjectBadge).
+  // Optional because SearchScreen, the card's other user, never sets it.
+  project?: { name: string; color: string } | null;
+  onProjectPress?: () => void;
 };
 
 // The card shared by Documents and Search: a thumbnail (the document's
@@ -278,6 +284,8 @@ export default function DocumentCard({
   flush,
   cardRef,
   dimmed,
+  project,
+  onProjectPress,
 }: Props) {
   const recordColour = useRecordColour();
   const { background, text, textMuted } = recordColour(id);
@@ -375,9 +383,10 @@ export default function DocumentCard({
                 title/preview group at the top, the date always anchors
                 this content block's own bottom edge (which, with no
                 thumbnail above it, is the whole card's bottom edge). */}
-            <Text style={[styles.dateCompact, styles.dateCompactPinned, { color: textMuted }]}>
-              {formatUpdatedAt(updatedAt)}
-            </Text>
+            <View style={[styles.dateCompactPinned, styles.dateRow]}>
+              <Text style={[styles.dateCompact, { color: textMuted }]}>{formatUpdatedAt(updatedAt)}</Text>
+              {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass />}
+            </View>
           </View>
         </Pressable>
         {isSelectMode && (
@@ -410,7 +419,10 @@ export default function DocumentCard({
         <View style={styles.body}>
           {titleNode}
           {previewBody}
-          <Text style={[styles.date, { color: textMuted }]}>{formatUpdatedAt(updatedAt)}</Text>
+          <View style={styles.dateRow}>
+            <Text style={[styles.date, { color: textMuted }]}>{formatUpdatedAt(updatedAt)}</Text>
+            {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass />}
+          </View>
         </View>
         {isSelectMode && <View style={styles.selectBox}>{selectIcon}</View>}
       </Pressable>
@@ -511,6 +523,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 2,
     fontFamily: FONT_REGULAR,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   checklist: {
     gap: 3,
