@@ -412,7 +412,8 @@ export default function DocumentsScreen({
   // not a grid of one column: the grid card is a fixed-height tile, and a
   // FlatList refuses columnWrapperStyle on a single column outright,
   // which is what the white screen was.
-  const drawnMode: 'list' | 'grid' = viewMode === 'grid' && isTwoPane && !!openDoc ? 'list' : viewMode;
+  const drawnMode: 'list' | 'grid' | 'wide' =
+    viewMode !== 'list' && isTwoPane && !!openDoc ? 'list' : viewMode;
   // Widths in PIXELS, from the width the list actually has, so a row of
   // cards ends on the same line as a row of folders above it. As
   // percentages the two could not agree: the gaps between cards are
@@ -584,6 +585,14 @@ export default function DocumentsScreen({
               ? [
                   { key: 'tag', icon: 'pricetag-outline' as const, label: 'Теги', onPress: () => setBulkTagPickerVisible(true) },
                   { key: 'group', icon: 'folder-outline' as const, label: 'Проект', onPress: () => setBulkGroupPickerVisible(true) },
+                  {
+                    key: 'wide',
+                    icon: selectedDocuments.every((d) => d.wideCard)
+                      ? 'contract-outline'
+                      : 'tablet-landscape-outline',
+                    label: 'Ширина',
+                    onPress: bulkToggleWideCard,
+                  },
                   { key: 'delete', icon: 'trash-outline' as const, label: 'Видалити', onPress: confirmDeleteSelected },
                 ]
               : []),
@@ -591,9 +600,18 @@ export default function DocumentsScreen({
         : [
             {
               key: 'view',
-              icon: viewMode === 'grid' ? 'grid-outline' : 'reorder-four-outline',
+              icon:
+                viewMode === 'grid'
+                  ? 'grid-outline'
+                  : viewMode === 'wide'
+                  ? 'tablet-landscape-outline'
+                  : 'reorder-four-outline',
               label: 'Вигляд',
-              onPress: () => changeViewMode(viewMode === 'grid' ? 'list' : 'grid'),
+              // Three ways round: a list, a grid of tiles, and a column
+              // of wide cards (cover on the left). The icon says which
+              // one is on, as it always did.
+              onPress: () =>
+                changeViewMode(viewMode === 'list' ? 'grid' : viewMode === 'grid' ? 'wide' : 'list'),
               closesStack: true,
             },
             {
@@ -944,6 +962,20 @@ export default function DocumentsScreen({
     clearSelection();
   }
 
+  // How the chosen notes are drawn in the grid - one whole row each,
+  // cover on the left, or the ordinary tile. From the SELECTION rather
+  // than from inside each note: "лізти в кожну нотатку, щоб змінити її
+  // вигляд, це дуже довго і незручно". All-wide turns them back.
+  async function bulkToggleWideCard() {
+    const makeWide = !selectedDocuments.every((d) => d.wideCard);
+    const batch = writeBatch(db);
+    selectedDocuments.forEach((d) => {
+      batch.update(doc(db, 'documents', d.id), { wideCard: makeWide ? true : deleteField() });
+    });
+    await batch.commit();
+    clearSelection();
+  }
+
   async function bulkAssignGroup(groupId: string | null) {
     setBulkGroupPickerVisible(false);
     const batch = writeBatch(db);
@@ -1212,7 +1244,7 @@ export default function DocumentsScreen({
                     titleMatch={titleMatch}
                     bodyMatch={bodyMatch}
                     onPress={() => openDocument(item.id)}
-                    layout={drawnMode}
+                    layout={drawnMode === 'list' ? 'list' : 'grid'}
                     gridWidth={gridCardWidth}
                     project={groups.find((g) => g.id === item.groupId) ?? null}
                     onProjectPress={() => setSingleGroupTargetId(item.id)}
@@ -1414,7 +1446,15 @@ export default function DocumentsScreen({
             columnWrapperStyle={drawnMode === 'grid' ? styles.gridRow : undefined}
             // The cards start below the floating tabs and scroll up under
             // them from there.
-            contentContainerStyle={[styles.list, listClear, { paddingTop: chromeBottom, paddingBottom: listBottomPad }]}
+            contentContainerStyle={[
+              styles.list,
+              listClear,
+              // The tile grid gets its side margin from the row style it
+              // has and a column of wide cards does not, so it says so
+              // itself rather than sitting flush to both edges.
+              drawnMode === 'wide' && styles.wideColumn,
+              { paddingTop: chromeBottom, paddingBottom: listBottomPad },
+            ]}
             renderItem={({ item }) => {
               // An empty cell beside a wide card - see padGridRows. It
               // holds the row's arithmetic and draws nothing.
@@ -1459,9 +1499,9 @@ export default function DocumentsScreen({
                   isSelectMode={isSelectMode}
                   isSelected={selectedIds.has(item.id)}
                   onToggleSelect={() => toggleSelected(item.id)}
-                  layout={drawnMode}
-                  gridWidth={item.wideCard && drawnMode === 'grid' ? wideCardWidth : gridCardWidth}
-                  wide={!!item.wideCard}
+                  layout={drawnMode === 'list' ? 'list' : 'grid'}
+                  gridWidth={drawnMode === 'wide' || item.wideCard ? wideCardWidth : gridCardWidth}
+                  wide={drawnMode === 'wide' || !!item.wideCard}
                   project={groups.find((g) => g.id === item.groupId) ?? null}
                   onProjectPress={() => setSingleGroupTargetId(item.id)}
                   {...(carried ? carrying.cardProps(item, () => openDocumentMenu(item)) : {})}
@@ -1868,6 +1908,9 @@ const makeStyles = (t: Theme) =>
   },
   gridRow: {
     gap: 12,
+    paddingHorizontal: 20,
+  },
+  wideColumn: {
     paddingHorizontal: 20,
   },
   // The field, in the same glass as the pills under it. Stops short of the

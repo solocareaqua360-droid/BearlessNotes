@@ -80,7 +80,12 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
   const [searchQuery, setSearchQuery] = useState('');
   // List or grid, for the databases that offer both - kept in the same
   // per-database preferences document as the sort and the hidden row.
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  // 'wide' is the documents list's own third way of drawing a card -
+  // one per row, cover standing on its left (see DocumentCard's own
+  // `wide`). Every other database offers two, and simply never sets it;
+  // their own checks read anything that is not 'grid' as a list, which
+  // is the right fallback if one ever inherits the preference.
+  const [viewMode, setViewMode] = useState<'list' | 'grid' | 'wide'>('list');
   // How the documents list is organised - ONE of three, because each
   // gives the list its one axis: 'groups' (the group tabs over the list),
   // 'list' (documents, folders through the drawer), 'explorer' (folders
@@ -101,7 +106,7 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
     () =>
       onSnapshot(prefsDoc, (snapshot) => {
         setGroupsRowHiddenPref(!!snapshot.data()?.groupsRowHidden);
-        setViewMode((snapshot.data()?.viewMode as 'list' | 'grid' | undefined) ?? 'list');
+        setViewMode((snapshot.data()?.viewMode as 'list' | 'grid' | 'wide' | undefined) ?? 'list');
         // The three-way mode; a preferences document from before it
         // existed is read through the two switches it had.
         const stored = snapshot.data()?.listMode as ListMode | undefined;
@@ -130,7 +135,7 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
     [groupKind]
   );
 
-  function changeViewMode(mode: 'list' | 'grid') {
+  function changeViewMode(mode: 'list' | 'grid' | 'wide') {
     setDoc(prefsDoc, { viewMode: mode }, { merge: true });
   }
 
