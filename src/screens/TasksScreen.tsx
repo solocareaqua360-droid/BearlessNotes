@@ -1092,6 +1092,8 @@ export default function TasksScreen() {
   function renderTaskDetails(item: Task) {
     const subtasks = item.subtasks ?? [];
     const attachments = item.attachments ?? [];
+    const project = item.groupId ? projectsById[item.groupId] : undefined;
+    const list = item.listId ? taskListsById[item.listId] : undefined;
     const draft = subtaskDrafts[item.id] ?? '';
     const commentDraft = commentDrafts[item.id] ?? item.comment ?? '';
     const submitSubtask = () => {
@@ -1173,6 +1175,33 @@ export default function TasksScreen() {
             {item.recurrence ? recurrenceLabel(item.recurrence) : 'Повторення: немає'}
           </Text>
         </Pressable>
+
+        {/* Always here now, whether or not either is set yet - the row's
+            own chips (see opts.showProjectChip/showListChip) only show up
+            when several projects are mixed on one screen, which left no
+            reliable way to assign a project (let alone a list, which
+            needs one first) once that stopped being true. */}
+        <View style={styles.detailsCapsuleRow}>
+          <Pressable onPress={() => openProjectPicker(item.id)}>
+            <View style={[styles.chip, project ? { backgroundColor: `${project.color}1A` } : styles.chipEmpty]}>
+              <Ionicons name="cube-outline" size={11} color={project ? project.color : 'rgba(255,255,255,0.45)'} />
+              <Text style={[styles.chipText, { color: project ? project.color : 'rgba(255,255,255,0.45)' }]}>
+                {project ? project.name : 'Вхідні'}
+              </Text>
+            </View>
+          </Pressable>
+          {/* A list lives INSIDE a project - tapping it before one is set
+              opens the project picker instead, rather than a list picker
+              with nothing in it to offer. */}
+          <Pressable onPress={() => (item.groupId ? openListPicker(item.id) : openProjectPicker(item.id))}>
+            <View style={[styles.chip, list ? { backgroundColor: `${list.color}1A` } : styles.chipEmpty]}>
+              <Ionicons name="list-outline" size={11} color={list ? list.color : 'rgba(255,255,255,0.45)'} />
+              <Text style={[styles.chipText, { color: list ? list.color : 'rgba(255,255,255,0.45)' }]}>
+                {list ? list.name : 'Без списку'}
+              </Text>
+            </View>
+          </Pressable>
+        </View>
       </View>
     );
   }
@@ -1962,6 +1991,11 @@ const makeStyles = (t: Theme) =>
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  detailsCapsuleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   chip: {
     flexDirection: 'row',
