@@ -156,6 +156,11 @@ import { dockRowWidth, useDockClearance } from '../navigation/dockGeometry';
 import SaveRing from '../components/SaveRing';
 import ProjectBadge from '../components/ProjectBadge';
 
+// Below this, a note has no room to stand beside «Референси» and the
+// drawer lies over it instead - see referencesSplit. 300 is the drawer's
+// own floor and the rest is a column of text still worth reading.
+const REFERENCES_SPLIT_MIN = 640;
+
 // The project badge's own line: its height (3 of padding above and below
 // a 14px line, inside the 1px border) plus a gap. In a pane the title
 // starts on the line the list's cards do, which is the line the badge
@@ -401,6 +406,29 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const [referencePanelOpen, setReferencePanelOpen] = useState(false);
   // The page's own drop target, for a record dragged out of that drawer.
   const blockListRef = useRef<BlockListHandle | null>(null);
+  // How much room this note actually has - NOT the window's width, which
+  // says nothing while the note is one half of it (see the Fold rules in
+  // fold_inner_screen_layout).
+  const [editorWidth, setEditorWidth] = useState(0);
+  // Two ways for the drawer to stand, decided by whether there is room
+  // for a second column rather than by which device this is:
+  //
+  //   - narrow (a phone, or a note that is one half of the Fold's inner
+  //     screen): it lies OVER the note. "Іншого варіанту я не бачу, бо
+  //     дисплей фолда 8 зовсім маленький."
+  //   - wide (the inner screen with the note filling it): a real split -
+  //     the drawer takes a column of its own and the note moves aside
+  //     into what is left, "повноцінне вікно", nothing covered.
+  //
+  // The threshold is what both halves need to stay usable: the drawer's
+  // own minimum plus a column of text worth reading. Below it, splitting
+  // would give two strips and no window - the "три вікна і жодного
+  // функціонального" this is here to avoid.
+  const referencesSplit =
+    referencePanelOpen && !embedded && !canvasMode && editorWidth >= REFERENCES_SPLIT_MIN;
+  const referencePanelWidth = referencesSplit
+    ? Math.round(Math.min(420, Math.max(300, editorWidth * 0.36)))
+    : undefined;
   // WHICH card is being typed into on the canvas, not just whether one
   // is. The id is what the "/" toolbar needs: the canvas edits the very
   // same Block objects the page does, so once this screen knows which
@@ -3683,11 +3711,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         embedded && styles.containerEmbedded,
         paperColor && { backgroundColor: paperColor.background },
       ]}
+      onLayout={(e) => setEditorWidth(e.nativeEvent.layout.width)}
     >
       {!embedded && (
       <View
         style={[
           styles.header,
+          referencesSplit && { paddingLeft: referencePanelWidth },
           // In a pane the document starts on the same line the list's
           // cards do - and the badge stands on that same line, in the
           // corner, so the title begins a badge's height below it rather
@@ -3981,7 +4011,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           list which gap the finger is in and shows the same drop-line a
           block being reordered gets. */}
       {!embedded && referencePanelOpen && (
-        <View style={styles.referencePanelDock} pointerEvents="box-none">
+        <View
+          style={[styles.referencePanelDock, referencesSplit && { width: referencePanelWidth }]}
+          pointerEvents="box-none"
+        >
           {/* Its own boundary: a panel that browses every database in the
               app has more ways to fail than the note it stands beside,
               and none of them should be able to take the note down. */}
@@ -4021,7 +4054,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       {!(canvasMode && !embedded) && (
       <ScrollView
         ref={scrollViewRef}
-        style={styles.scrollArea}
+        // Split, the note moves aside into what is left of the row
+        // rather than lying under the drawer - see referencesSplit.
+        style={[styles.scrollArea, referencesSplit && { paddingLeft: referencePanelWidth }]}
         contentContainerStyle={[
           embedded && styles.scrollAreaEmbedded,
           // Used to stop short of the rail the way a mail's text does
@@ -4456,7 +4491,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           at `bottom: keyboardHeight` by hand - nothing lifts it for us. */}
       {isToolbarVisible && (
         <Animated.View
-          style={[styles.pinnedToolbar, pinnedToolbarStyle]}
+          style={[
+            styles.pinnedToolbar,
+            // Centred on the note's own column, not on the window, while
+            // the drawer holds the other one.
+            referencesSplit && { paddingLeft: referencePanelWidth },
+            pinnedToolbarStyle,
+          ]}
           pointerEvents="box-none"
           // In a browser, pressing the mouse on anything takes the focus
           // off the field - so reaching for a toolbar button blurred the
