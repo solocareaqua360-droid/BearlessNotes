@@ -135,7 +135,7 @@ import type { colorForDocument } from '../utils/documentColor';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
 import UndoToast from '../components/UndoToast';
-import GlassDrop, { GlassIcon } from '../components/GlassDrop';
+import GlassDrop from '../components/GlassDrop';
 import { COVER_GRADIENTS, CoverGradientView } from '../theme/covers';
 import StockPhotoPicker from '../components/StockPhotoPicker';
 import AddExistingItemModal from '../components/AddExistingItemModal';
@@ -155,6 +155,7 @@ import { GLASS_DANGER, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
 import { dockRowWidth, useDockClearance } from '../navigation/dockGeometry';
 import SaveRing from '../components/SaveRing';
+import ProjectBadge from '../components/ProjectBadge';
 
 // The rail's capsule stood on its end is RAIL_WIDTH across; lying down on
 // a pane's left edge it is this tall - 19 of padding above and below a
@@ -1826,7 +1827,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   useDockBeads(
     !embedded
       ? {
-          icon: 'arrow-back-outline',
+          icon: canvasEditing ? 'checkmark-outline' : 'arrow-back-outline',
           onPress: () => {
             if (canvasEditing) {
               canvasApiRef.current?.stopEditing();
@@ -1841,7 +1842,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           },
         }
       : null,
-    null
+    // Only where there are two panes to collapse into one - the corner
+    // capsule's own expand/contract button moved here rather than
+    // disappearing, since it has no dock equivalent otherwise.
+    !embedded && onToggleFullscreen
+      ? {
+          icon: paneFullscreen ? 'contract-outline' : 'expand-outline',
+          onPress: onToggleFullscreen,
+        }
+      : null
   );
   // ...and to OPEN on them. A note has no context of its own, and the
   // dock's standing rule for that case is to open on the desks - right
@@ -3680,57 +3689,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             ]}
             pointerEvents="box-none"
           >
+            {/* Back, expand/contract and "..." all moved out to the dock's
+                own beads and cards (see useDockBeads/useDockActions above) -
+                every one of them already did the exact same thing from
+                there, so keeping a second way to reach them here was pure
+                duplication. What is left is the one thing with no dock
+                equivalent: which project this document belongs to. */}
             <GlassDrop style={[styles.headerRight, railHorizontal && styles.headerRightRow]}>
-              {/* The way out first, full screen in the middle, the menu
-                  last - reading order on a capsule lying down, and the
-                  one you reach for most at the end nearest the text. */}
-              <Pressable
-                hitSlop={8}
-                onPress={() => {
-                  // One step at a time: put the text down, then shut
-                  // the drawer, and leave the document only once there
-                  // is nothing left open. Back walking straight out of
-                  // the note while the reference drawer stood open is
-                  // what left it with no way to close at all.
-                  if (canvasEditing) {
-                    canvasApiRef.current?.stopEditing();
-                    return;
-                  }
-                  if (referencePanelOpen) {
-                    setReferencePanelOpen(false);
-                    return;
-                  }
-                  if (closePane) closePane();
-                  else navigation.goBack();
-                }}
-              >
-                <GlassIcon
-                  name={canvasEditing ? 'checkmark-outline' : 'arrow-back-outline'}
-                  size={24}
-                />
-              </Pressable>
-              {/* Only where there are two panes to collapse into one. */}
-              {!!onToggleFullscreen && (
-                <>
-                  <View
-                    style={[styles.headerRightDivider, railHorizontal && styles.headerRightDividerRow]}
-                  />
-                  <Pressable hitSlop={8} onPress={onToggleFullscreen}>
-                    <GlassIcon
-                      name={paneFullscreen ? 'contract-outline' : 'expand-outline'}
-                      size={24}
-                    />
-                  </Pressable>
-                </>
-              )}
-              <View style={[styles.headerRightDivider, railHorizontal && styles.headerRightDividerRow]} />
-              {/* Page/canvas moved into the "..." menu below (see "Вигляд")
-                  - a third icon on the capsule pushed the page's own text
-                  narrower than it needed to be, for a button used far less
-                  often than back or the menu itself. */}
-              <Pressable hitSlop={8} onPress={() => setExportMenuOpen((v) => !v)}>
-                <GlassIcon name="ellipsis-horizontal-outline" size={24} />
-              </Pressable>
+              <ProjectBadge
+                project={groups.find((g) => g.id === groupId) ?? null}
+                onPress={() => setGroupPickerVisible(true)}
+                glass
+              />
               {/* The save indicator STAYS on this capsule's outline,
                   and this is the reason the capsule itself survives the
                   merge rather than dissolving into the dock with its
@@ -3751,7 +3721,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   Rule for anything ambient that repeats: the middle of
                   the screen is for what you act on, the corner for what
                   you only need to notice. Last child, so it draws over
-                  the blur. */}
+                  the blur - and now that the capsule holds only the
+                  badge, the outline it traces IS the badge's own. */}
               <SaveRing saving={saveStatus === 'saving'} />
             </GlassDrop>
           </View>

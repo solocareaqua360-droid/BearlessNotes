@@ -95,17 +95,13 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  // "...", the way out and full screen in one capsule. Stood on its end
-  // against the right edge; laid down in the top-left corner, where it
-  // would otherwise run through the text.
+  // The project badge, with the save ring traced on its own outline.
+  // Stood on its end against the right edge; laid down in the top-left
+  // corner, where it would otherwise run through the text.
   headerRightRow: {
     flexDirection: 'row',
     paddingVertical: 19,
     paddingHorizontal: 18,
-  },
-  headerRightDividerRow: {
-    width: 1,
-    height: 20,
   },
   // The room inside the capsule; the glass is GlassDrop's.
   headerRight: {
@@ -113,12 +109,6 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     gap: 18,
     paddingVertical: 18,
     paddingHorizontal: 19,
-  },
-  // Turned with the capsule: a rule across it, not down it.
-  headerRightDivider: {
-    width: 20,
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.3)',
   },
   exportMenuBackdrop: {
     position: 'absolute',
