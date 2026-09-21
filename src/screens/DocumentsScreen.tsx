@@ -317,19 +317,10 @@ export default function DocumentsScreen({
       actions: [
         { id: 'move', label: 'Перемістити в…', icon: 'arrow-forward-outline' },
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
-        {
-          id: 'wide',
-          label: item.wideCard ? 'Звичайна картка' : 'Картка на всю ширину',
-          icon: item.wideCard ? 'contract-outline' : 'expand-outline',
-        },
         { id: 'bin', label: 'У кошик', icon: 'trash-outline', tone: 'danger' },
       ],
     });
-    if (choice === 'wide') {
-      await updateDoc(doc(db, 'documents', item.id), {
-        wideCard: item.wideCard ? deleteField() : true,
-      });
-    } else if (choice === 'rename') setDocRename(item);
+    if (choice === 'rename') setDocRename(item);
     else if (choice === 'bin') confirmDeleteDocument(item.id);
     else if (choice === 'move') {
       const dest = await explorer.pickDestination(`Перемістити «${item.title || 'Без назви'}» в…`);

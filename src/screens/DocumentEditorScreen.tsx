@@ -526,6 +526,16 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // separately-picked color, so a document always has exactly one color
   // identity across the whole app.
   const [paperColorEnabled, setPaperColorEnabled] = useState(false);
+  // How this note looks as a CARD in the documents grid - a whole row
+  // with the cover standing on its left, instead of one cell with the
+  // cover across its top (see Document.wideCard). It belongs next to
+  // the cover itself, which is the thing it rearranges.
+  //
+  // Written straight to the document rather than through this screen's
+  // own save shape: that shape is title/blocks/cover/paper/project/
+  // links, and nothing in it touches this field, so a direct write
+  // cannot be clobbered by the next autosave.
+  const [wideCard, setWideCard] = useState(false);
   const paperColor = paperColorEnabled ? recordColour(documentId) : null;
   // Same `groups` collection DocumentsScreen's own group tabs/bulk-assign
   // use (kind 'document') - this is just a second place to set the same
@@ -855,6 +865,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       setCoverImageUri(data?.coverImageUri);
       setCoverGradient(data?.coverGradient);
       setPaperColorEnabled(!!data?.paperColorEnabled);
+      setWideCard(!!data?.wideCard);
       setGroupId(data?.groupId ?? null);
       setSourceBoardId(data?.boardId ?? null);
       setCanvasLinks(data?.canvasLinks ?? {});
@@ -3894,6 +3905,20 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             <Ionicons name="color-palette-outline" size={17} color={GLASS_TEXT} />
             <Text style={styles.exportMenuRowLabel}>Колір паперу</Text>
             {paperColorEnabled && <Ionicons name="checkmark" size={18} color={theme.accent} />}
+          </Pressable>
+          <Pressable
+            style={styles.exportMenuRow}
+            onPress={() => {
+              const next = !wideCard;
+              setWideCard(next);
+              updateDoc(doc(db, 'documents', documentId), {
+                wideCard: next ? true : deleteField(),
+              }).catch(() => {});
+            }}
+          >
+            <Ionicons name="tablet-landscape-outline" size={17} color={GLASS_TEXT} />
+            <Text style={styles.exportMenuRowLabel}>Картка на всю ширину</Text>
+            {wideCard && <Ionicons name="checkmark" size={18} color={theme.accent} />}
           </Pressable>
           <Text style={styles.exportMenuLabel}>Організація</Text>
           <Pressable
