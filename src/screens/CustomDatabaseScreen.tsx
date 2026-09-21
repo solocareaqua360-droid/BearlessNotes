@@ -79,6 +79,7 @@ import {
   coverFieldOf,
   dateRangeOf,
   displayFieldValue,
+  formatDateRange,
   resolveRelationValue,
   resolveBacklinkRows,
   resolveRelationList,
@@ -673,6 +674,10 @@ export default function CustomDatabaseScreen({
     (f) => f.type === 'relation' && f.relationTarget?.kind === 'customDb' && !f.multiple
   ) ?? [];
   const scheduleDateFields = database?.fields.filter((f) => f.type === 'date') ?? [];
+  // Every field an event card COULD also show (a driver, a route) - the
+  // sheet itself excludes whichever relation/date field is picked as the
+  // row grouping and the card's own span, since those are redundant here.
+  const scheduleCardFieldCandidates = (database?.fields ?? []).filter((f) => !f.hidden && f.type !== 'section');
 
   // Everything this screen offered on the rail goes to the DOCK, as on
   // every database. Search on the left, a record on the right; and the
@@ -901,7 +906,13 @@ export default function CustomDatabaseScreen({
   // has no place to keep, so it only ever comes from this dedicated flow
   // (see ScheduleViewSetupSheet) rather than from "save what's on screen
   // right now" the other three view modes use.
-  async function createScheduleView(relationFieldId: string, dateFieldId: string, name: string, statusNames: string[]) {
+  async function createScheduleView(
+    relationFieldId: string,
+    dateFieldId: string,
+    name: string,
+    statusNames: string[],
+    cardFieldIds: string[]
+  ) {
     const relationField = database?.fields.find((f) => f.id === relationFieldId);
     if (!relationField || relationField.relationTarget?.kind !== 'customDb') return;
     setScheduleSetupVisible(false);
@@ -919,6 +930,7 @@ export default function CustomDatabaseScreen({
         rowRelationFieldId: relationFieldId,
         dateFieldId,
         ...(manualStatuses.length > 0 ? { manualStatuses } : {}),
+        ...(cardFieldIds.length > 0 ? { cardFieldIds } : {}),
       },
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -934,7 +946,8 @@ export default function CustomDatabaseScreen({
     relationFieldId: string,
     dateFieldId: string,
     name: string,
-    statusNames: string[]
+    statusNames: string[],
+    cardFieldIds: string[]
   ) {
     const relationField = database?.fields.find((f) => f.id === relationFieldId);
     if (!relationField || relationField.relationTarget?.kind !== 'customDb') return;
@@ -947,6 +960,7 @@ export default function CustomDatabaseScreen({
         rowRelationFieldId: relationFieldId,
         dateFieldId,
         ...(manualStatuses.length > 0 ? { manualStatuses } : {}),
+        ...(cardFieldIds.length > 0 ? { cardFieldIds } : {}),
       },
       updatedAt: Date.now(),
     });
@@ -1808,6 +1822,18 @@ export default function CustomDatabaseScreen({
       const [h, m] = time.split(':').map(Number);
       return (h * 60 + m) / (24 * 60);
     };
+    // Extra fields (a driver, a route) configured to also show on every
+    // event card - relation/date fields already used as the row axis or
+    // the card's own span are excluded at config time (see
+    // scheduleConfig.cardFieldIds), so nothing here repeats those.
+    const cardFields = (config.cardFieldIds ?? [])
+      .map((id) => database?.fields.find((f) => f.id === id))
+      .filter((f): f is FieldDef => f !== undefined);
+    // The event's own exact date/time is always shown too, on top of
+    // whatever fields are configured - the row needs room for all of it,
+    // though the default (no configured fields) case still fits the base
+    // row height unchanged.
+    const rowHeight = Math.max(SCHEDULE_ROW_HEIGHT, 20 + 16 + (cardFields.length + 1) * 13);
 
     if (!rowDatabase) {
       return (
@@ -1855,7 +1881,7 @@ export default function CustomDatabaseScreen({
               {rowRecords.map((row) => (
                 <Pressable
                   key={row.id}
-                  style={[styles.scheduleRowHeaderCell, { width: rowHeaderWidth }]}
+                  style={[styles.scheduleRowHeaderCell, { width: rowHeaderWidth, height: rowHeight }]}
                   onPress={() => navigation.navigate('CustomDatabase', { databaseId: config.rowDatabaseId, openRowId: row.id })}
                 >
                   <Text style={styles.scheduleRowHeaderLabel} numberOfLines={1}>
@@ -1900,7 +1926,7 @@ export default function CustomDatabaseScreen({
                     for (let i = s; i <= e; i++) coveredDays.add(i);
                   });
                   return (
-                    <View key={row.id} style={styles.scheduleRowTrack}>
+                    <View key={row.id} style={[styles.scheduleRowTrack, { height: rowHeight }]}>
                       {days.map((d, i) => {
                         const key = dateKey(d);
                         if (coveredDays.has(i)) {
@@ -1910,7 +1936,7 @@ export default function CustomDatabaseScreen({
                               style={[
                                 styles.scheduleDayCell,
                                 key === todayKey && styles.scheduleDayCellToday,
-                                { width: SCHEDULE_DAY_WIDTH },
+                                { width: SCHEDULE_DAY_WIDTH, height: rowHeight },
                               ]}
                             />
                           );
@@ -1927,7 +1953,7 @@ export default function CustomDatabaseScreen({
                             style={[
                               styles.scheduleDayCell,
                               key === todayKey && styles.scheduleDayCellToday,
-                              { width: SCHEDULE_DAY_WIDTH },
+                              { width: SCHEDULE_DAY_WIDTH, height: rowHeight },
                             ]}
                             onPress={() => pickScheduleCellStatus(viewId, config, row, key, status)}
                           >
@@ -1972,6 +1998,17 @@ export default function CustomDatabaseScreen({
                           >
                             <Text style={styles.scheduleEventCardLabel} numberOfLines={1}>
                               {rowTitleOf(database, eventRow)}
+                            </Text>
+                            {cardFields.map((field) => {
+                              const shown = displayFieldValue(field, eventRow.values[field.id], displayContext);
+                              return shown ? (
+                                <Text key={field.id} style={styles.scheduleEventCardMeta} numberOfLines={1}>
+                                  {shown}
+                                </Text>
+                              ) : null;
+                            })}
+                            <Text style={styles.scheduleEventCardMeta} numberOfLines={1}>
+                              {formatDateRange(range)}
                             </Text>
                           </Pressable>
                         );
@@ -2551,14 +2588,15 @@ export default function CustomDatabaseScreen({
         editingView={scheduleEditView}
         relationFields={scheduleRelationFields}
         dateFields={scheduleDateFields}
+        cardFieldCandidates={scheduleCardFieldCandidates}
         onCancel={() => {
           setScheduleSetupVisible(false);
           setScheduleEditView(null);
         }}
-        onSubmit={(relationFieldId, dateFieldId, name, statusNames) =>
+        onSubmit={(relationFieldId, dateFieldId, name, statusNames, cardFieldIds) =>
           scheduleEditView
-            ? updateScheduleView(scheduleEditView, relationFieldId, dateFieldId, name, statusNames)
-            : createScheduleView(relationFieldId, dateFieldId, name, statusNames)
+            ? updateScheduleView(scheduleEditView, relationFieldId, dateFieldId, name, statusNames, cardFieldIds)
+            : createScheduleView(relationFieldId, dateFieldId, name, statusNames, cardFieldIds)
         }
       />
 
@@ -4073,6 +4111,7 @@ function ScheduleViewSetupSheet({
   editingView,
   relationFields,
   dateFields,
+  cardFieldCandidates,
   onCancel,
   onSubmit,
 }: {
@@ -4080,14 +4119,22 @@ function ScheduleViewSetupSheet({
   editingView: CustomDatabaseView | null;
   relationFields: FieldDef[];
   dateFields: FieldDef[];
+  cardFieldCandidates: FieldDef[];
   onCancel: () => void;
-  onSubmit: (relationFieldId: string, dateFieldId: string, name: string, statusNames: string[]) => void;
+  onSubmit: (
+    relationFieldId: string,
+    dateFieldId: string,
+    name: string,
+    statusNames: string[],
+    cardFieldIds: string[]
+  ) => void;
 }) {
   const miniStyles = useStyles(makeMiniStyles);
   const [relationFieldId, setRelationFieldId] = useState<string | null>(null);
   const [dateFieldId, setDateFieldId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [statusesText, setStatusesText] = useState('');
+  const [cardFieldIds, setCardFieldIds] = useState<string[]>([]);
   const wasVisibleRef = useRef(false);
 
   useEffect(() => {
@@ -4097,9 +4144,20 @@ function ScheduleViewSetupSheet({
       setDateFieldId(config?.dateFieldId ?? dateFields[0]?.id ?? null);
       setName(editingView?.name ?? '');
       setStatusesText(config?.manualStatuses?.map((s) => s.label).join(', ') ?? '');
+      setCardFieldIds(config?.cardFieldIds ?? []);
     }
     wasVisibleRef.current = visible;
   }, [visible, editingView, relationFields, dateFields]);
+
+  function toggleCardField(fieldId: string) {
+    setCardFieldIds((prev) => (prev.includes(fieldId) ? prev.filter((id) => id !== fieldId) : [...prev, fieldId]));
+  }
+
+  // A card field that got picked as the row grouping or the date span in
+  // this same sheet is dropped from its own list rather than left
+  // checkable - it would just repeat what the row header/card span
+  // already show.
+  const availableCardFields = cardFieldCandidates.filter((f) => f.id !== relationFieldId && f.id !== dateFieldId);
 
   if (!visible) return null;
 
@@ -4157,6 +4215,30 @@ function ScheduleViewSetupSheet({
             placeholder="Наприклад: Черговий, Днювальний"
             placeholderTextColor={GLASS_TEXT_FAINT}
           />
+          {availableCardFields.length > 0 && (
+            <>
+              <Text style={miniStyles.scheduleSectionLabel}>Поля картки (необовʼязково)</Text>
+              {availableCardFields.map((field) => {
+                const checked = cardFieldIds.includes(field.id);
+                return (
+                  <Pressable
+                    key={field.id}
+                    style={[miniStyles.scheduleOptionRow, checked && miniStyles.scheduleOptionRowActive]}
+                    onPress={() => toggleCardField(field.id)}
+                  >
+                    <Ionicons
+                      name={checked ? 'checkbox' : 'square-outline'}
+                      size={18}
+                      color={checked ? GLASS_TEXT : GLASS_TEXT_FAINT}
+                    />
+                    <Text style={miniStyles.scheduleOptionLabel} numberOfLines={1}>
+                      {field.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </>
+          )}
           <View style={miniStyles.actionsRow}>
             <Pressable style={miniStyles.cancelBtn} onPress={onCancel}>
               <Text style={miniStyles.cancelBtnLabel}>Скасувати</Text>
@@ -4174,7 +4256,8 @@ function ScheduleViewSetupSheet({
                   statusesText
                     .split(',')
                     .map((s) => s.trim())
-                    .filter((s) => s !== '')
+                    .filter((s) => s !== ''),
+                  cardFieldIds.filter((id) => id !== relationFieldId && id !== dateFieldId)
                 )
               }
             >
@@ -4820,6 +4903,13 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 12,
     fontFamily: FONT_SEMIBOLD,
     color: '#0B1220',
+  },
+  // A configured extra field (driver, route) or the event's own exact
+  // date/time - smaller and softer than the title line above it.
+  scheduleEventCardMeta: {
+    fontSize: 10,
+    fontFamily: FONT_REGULAR,
+    color: 'rgba(11,18,32,0.75)',
   },
   // A manual status - "черговий" - fills the WHOLE day cell rather than
   // floating over it the way an event card does: unlike an event, it can

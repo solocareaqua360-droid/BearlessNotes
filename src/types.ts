@@ -825,6 +825,12 @@ export interface CustomDatabaseView {
     // FieldDef anywhere - it belongs to this ONE view, not to either
     // database's own schema.
     manualStatuses?: FieldOption[];
+    // Extra fields of THIS database (e.g. a driver relation, a route text
+    // field) shown as small lines on an event card, below its title - the
+    // event's exact date/time range is always shown too and isn't part of
+    // this list. Never includes rowRelationFieldId/dateFieldId themselves,
+    // since those are already the row grouping and the card's own span.
+    cardFieldIds?: string[];
   };
   // documentId -> true for every document embedding this view as a 'dbView'
   // block, same shape/purpose as CustomDatabaseRow.usedInDocuments below.
