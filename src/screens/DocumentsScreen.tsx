@@ -1244,7 +1244,7 @@ export default function DocumentsScreen({
                   // stayed blank. See useLiveRecords.
                   (item.blocks ?? []).map((b) => applyLiveRecord(b, liveRecords)),
                   item.coverImageUri,
-                  drawnMode === 'grid' ? EXPANDED_PREVIEW_LENGTH : undefined
+                  drawnMode === 'list' ? undefined : EXPANDED_PREVIEW_LENGTH
                 );
                 return (
                   <DocumentCard
@@ -1490,7 +1490,10 @@ export default function DocumentsScreen({
                 // stayed blank. See useLiveRecords.
                 (item.blocks ?? []).map((b) => applyLiveRecord(b, liveRecords)),
                 item.coverImageUri,
-                drawnMode === 'grid' ? EXPANDED_PREVIEW_LENGTH : undefined
+                // A wide card has MORE room than a tile, not less - it
+                // was taking the list row's own short preview and
+                // running out of text halfway down itself.
+                drawnMode === 'list' ? undefined : EXPANDED_PREVIEW_LENGTH
               );
               // Only in the explorer, and never in the bin - carried, the
               // card gives up its own onLongPress, since the list's drag
