@@ -1,18 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import {
-  GLASS_BODY_BLURRED,
-  GLASS_EDGE,
-  GLASS_INPUT,
-  GLASS_LINE,
-  GLASS_TEXT,
-  GLASS_TEXT_FAINT,
-  GLASS_TEXT_MUTED,
-  SHEET_FRAME,
-  SHEET_WINDOW,
-} from '../constants/glass';
+import { SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
 
 type Props = {
   visible: boolean;
@@ -66,6 +58,8 @@ export default function RenamePrompt({
   onCancel,
   onSave,
 }: Props) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const [value, setValue] = useState(initialValue);
   // Some Android keyboards (Samsung's own, confirmed on-device) silently
   // reset the cursor to the START of the field after every character
@@ -127,7 +121,7 @@ export default function RenamePrompt({
           selection={selection}
           onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
           placeholder={placeholder ?? 'Назва'}
-          placeholderTextColor={GLASS_TEXT_FAINT}
+          placeholderTextColor={theme.ink.faint}
           multiline={multiline}
           style={[styles.input, multiline && styles.inputTall, busy && styles.inputBusy]}
           onSubmitEditing={
@@ -137,7 +131,7 @@ export default function RenamePrompt({
         />
         {busy ? (
           <View style={styles.busyRow}>
-            <ActivityIndicator color={GLASS_TEXT} />
+            <ActivityIndicator color={theme.ink.primary} />
           </View>
         ) : (
           <View style={styles.buttons}>
@@ -166,33 +160,33 @@ export default function RenamePrompt({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   frame: SHEET_FRAME,
   card: {
     ...SHEET_WINDOW,
     // Lighter than an unblurred sheet: at the opaque strength the blur
     // underneath stops showing through at all.
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: t.raised,
     borderWidth: 1,
-    borderColor: GLASS_EDGE,
+    borderColor: t.edge.hairline,
     padding: 20,
     gap: 12,
   },
   title: {
     fontSize: 19,
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   input: {
-    backgroundColor: GLASS_INPUT,
+    backgroundColor: t.field.fill,
     borderWidth: 1,
-    borderColor: GLASS_LINE,
+    borderColor: t.edge.hairline,
     borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   inputTall: {
     minHeight: 110,
@@ -201,7 +195,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   inputBusy: {
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   // Same height the buttons row occupies, so swapping to the spinner
   // doesn't make the dialog jump.
@@ -229,10 +223,10 @@ const styles = StyleSheet.create({
   cancelLabel: {
     fontSize: 16,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   saveButton: {
-    backgroundColor: '#F5C77E',
+    backgroundColor: t.accent,
     borderRadius: 18,
     minHeight: 46,
     justifyContent: 'center',
@@ -244,6 +238,6 @@ const styles = StyleSheet.create({
   saveLabel: {
     fontSize: 16,
     fontFamily: FONT_SEMIBOLD,
-    color: '#171310',
+    color: t.onAccent,
   },
 });

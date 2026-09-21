@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
 import GradientSlider from './GradientSlider';
 import ColorWheel from './ColorWheel';
-import { useLift } from '../theme/ThemeProvider';
+import { useLift, useStyles } from '../theme/ThemeProvider';
 import {
   DEFAULT_SCHEME,
   SCHEME_LUM_RANGE,
@@ -15,7 +16,7 @@ import {
 import { hslToHex } from '../utils/color';
 import { contrastTextColor } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { GLASS_EDGE, GLASS_TEXT, GLASS_TEXT_MUTED, SHEET_FRAME } from '../constants/glass';
+import { SHEET_FRAME } from '../constants/glass';
 
 // Picking the colour of the WHOLE interface, not of a gradient.
 //
@@ -60,6 +61,7 @@ export default function InterfaceSchemeSheet({
   // і повернутись до стандартного".
   onReset: () => void;
 }) {
+  const styles = useStyles(makeStyles);
   const lift = useLift();
   const [scheme, setScheme] = useState<ColourScheme>(initial ?? DEFAULT_SCHEME);
 
@@ -179,19 +181,19 @@ export default function InterfaceSchemeSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 420,
     maxHeight: '86%',
     borderRadius: 26,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: GLASS_EDGE,
+    borderColor: t.edge.hairline,
     paddingTop: 18,
     paddingBottom: 14,
     paddingHorizontal: 18,
   },
-  title: { fontFamily: FONT_BOLD, fontSize: 18, color: GLASS_TEXT, marginBottom: 12 },
+  title: { fontFamily: FONT_BOLD, fontSize: 18, color: t.ink.primary, marginBottom: 12 },
   body: { flexGrow: 0 },
   bodyContent: { paddingBottom: 12 },
   wheelWrap: { alignItems: 'center', marginBottom: 14 },
@@ -206,16 +208,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: GLASS_EDGE,
+    borderColor: t.edge.hairline,
     alignItems: 'center',
   },
   schemeChipOn: { backgroundColor: 'rgba(255,255,255,0.14)' },
-  schemeLabel: { fontFamily: FONT_REGULAR, fontSize: 11, color: GLASS_TEXT_MUTED },
-  schemeLabelOn: { fontFamily: FONT_SEMIBOLD, color: GLASS_TEXT },
+  schemeLabel: { fontFamily: FONT_REGULAR, fontSize: 11, color: t.ink.muted },
+  schemeLabelOn: { fontFamily: FONT_SEMIBOLD, color: t.ink.primary },
   sliderLabel: {
     fontFamily: FONT_SEMIBOLD,
     fontSize: 12,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
     marginBottom: 6,
     marginTop: 4,
   },
@@ -227,13 +229,13 @@ const styles = StyleSheet.create({
   previewCards: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   previewCard: { width: 46, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   previewCardLabel: { fontFamily: FONT_SEMIBOLD, fontSize: 12 },
-  hint: { fontFamily: FONT_REGULAR, fontSize: 11, color: GLASS_TEXT_MUTED, lineHeight: 16, marginTop: 10 },
+  hint: { fontFamily: FONT_REGULAR, fontSize: 11, color: t.ink.muted, lineHeight: 16, marginTop: 10 },
   footer: {
     flexDirection: 'row',
     gap: 8,
     paddingTop: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: GLASS_EDGE,
+    borderTopColor: t.edge.hairline,
   },
   footerButton: {
     flex: 1,
@@ -241,9 +243,9 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     alignItems: 'center',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: GLASS_EDGE,
+    borderColor: t.edge.hairline,
   },
   footerPrimary: { backgroundColor: 'rgba(255,255,255,0.16)' },
-  footerLabel: { fontFamily: FONT_SEMIBOLD, fontSize: 13, color: GLASS_TEXT_MUTED },
-  footerPrimaryLabel: { color: GLASS_TEXT },
+  footerLabel: { fontFamily: FONT_SEMIBOLD, fontSize: 13, color: t.ink.muted },
+  footerPrimaryLabel: { color: t.ink.primary },
 });

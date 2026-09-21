@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
 import GradientSlider from './GradientSlider';
 import ColorWheel from './ColorWheel';
-import { useLift } from '../theme/ThemeProvider';
+import { useLift, useStyles } from '../theme/ThemeProvider';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { GLASS_BODY_BLURRED, GLASS_EDGE, GLASS_TEXT, GLASS_TEXT_MUTED, SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
+import { SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
 import { hexToHsl, hslToHex, toneCorrectedLightness } from '../utils/color';
 import type { SchemeKind } from '../theme/scheme';
 
@@ -53,6 +54,7 @@ export default function ColorSchemeSheet({
   onCancel: () => void;
   onSave: (colors: string[]) => void;
 }) {
+  const styles = useStyles(makeStyles);
   const lift = useLift();
   const [scheme, setScheme] = useState<SchemeKind>('complementary');
   const [baseHue, setBaseHue] = useState(205);
@@ -223,13 +225,13 @@ export default function ColorSchemeSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   card: {
     ...SHEET_WINDOW,
     maxHeight: '88%',
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: t.raised,
     borderWidth: 1,
-    borderColor: GLASS_EDGE,
+    borderColor: t.edge.hairline,
     padding: 18,
   },
   // flexShrink, not flex:1 - the sheet is only as tall as it needs to
@@ -244,7 +246,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 19,
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     marginBottom: 10,
   },
   wheelWrap: {
@@ -261,19 +263,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 9,
     borderWidth: 1,
-    borderColor: GLASS_EDGE,
+    borderColor: t.edge.hairline,
   },
   schemeChipOn: {
-    borderColor: '#F5C77E',
-    backgroundColor: 'rgba(245,199,126,0.16)',
+    borderColor: t.accent,
+    backgroundColor: t.selected,
   },
   schemeLabel: {
     fontSize: 12,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   schemeLabelOn: {
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   preview: {
     marginTop: 14,
@@ -289,11 +291,14 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
+    borderColor: t.edge.hairline,
   },
+  // The ring that says which stop is chosen - the theme's own ink, so
+  // it stays visible on a light swatch in the white theme instead of
+  // being white on near-white.
   stopSwatchOn: {
     borderWidth: 3,
-    borderColor: '#fff',
+    borderColor: t.ink.primary,
   },
   countButton: {
     width: 30,
@@ -302,20 +307,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: GLASS_EDGE,
+    borderColor: t.edge.hairline,
   },
   countButtonOff: {
     opacity: 0.35,
   },
   countLabel: {
     fontSize: 16,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     fontFamily: FONT_SEMIBOLD,
   },
   label: {
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
     marginTop: 12,
     marginBottom: 6,
   },
@@ -330,18 +335,18 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: GLASS_EDGE,
+    borderColor: t.edge.hairline,
   },
   buttonPrimary: {
-    backgroundColor: '#F5C77E',
-    borderColor: '#F5C77E',
+    backgroundColor: t.accent,
+    borderColor: t.accent,
   },
   buttonLabel: {
     fontSize: 15,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   buttonLabelPrimary: {
-    color: '#111827',
+    color: t.onAccent,
   },
 });

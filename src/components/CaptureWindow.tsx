@@ -6,15 +6,16 @@ import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
+import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
-import { GLASS_BODY_BLURRED, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED, SHEET_WINDOW } from '../constants/glass';
+import { SHEET_WINDOW } from '../constants/glass';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 import { sendChatMessage } from '../utils/chat';
 import { ChatAttachment, attachLinkToChat, pickFileForChat, pickMediaForChat } from '../utils/chatAttach';
 import * as Clipboard from 'expo-clipboard';
 import { Image } from 'react-native';
 import { hapticButtonDown } from '../utils/haptics';
-import { useTheme } from '../theme/ThemeProvider';
+import { useTheme, useStyles } from '../theme/ThemeProvider';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 
 // The capture window - what the dock's long press opens. Its whole job is
@@ -34,6 +35,7 @@ export function openCapture() {
 
 export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }) {
   const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const [visible, setVisible] = useState(false);
   const [text, setText] = useState('');
   const [listening, setListening] = useState(false);
@@ -199,7 +201,7 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
           <View style={styles.headRow}>
             <Text style={styles.title}>{listening ? 'Слухаю…' : 'Думка'}</Text>
             <Pressable hitSlop={10} onPress={onOpenChat}>
-              <Ionicons name="time-outline" size={22} color={GLASS_TEXT_MUTED} />
+              <Ionicons name="time-outline" size={22} color={theme.ink.muted} />
             </Pressable>
           </View>
 
@@ -215,7 +217,7 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
             }}
             multiline
             placeholder={listening ? 'Говоріть…' : 'Скажіть або напишіть'}
-            placeholderTextColor={GLASS_TEXT_FAINT}
+            placeholderTextColor={theme.ink.faint}
             style={styles.input}
           />
 
@@ -234,7 +236,7 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
                           : 'link-outline'
                     }
                     size={20}
-                    color={GLASS_TEXT_MUTED}
+                    color={theme.ink.muted}
                   />
                 </View>
               )}
@@ -249,7 +251,7 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
                 hitSlop={8}
                 onPress={() => setAttachments((prev) => prev.filter((_, i) => i !== index))}
               >
-                <Ionicons name="close" size={18} color={GLASS_TEXT_MUTED} />
+                <Ionicons name="close" size={18} color={theme.ink.muted} />
               </Pressable>
             </View>
           ))}
@@ -263,7 +265,7 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
               disabled={attaching}
               onPress={() => attach(pickMediaForChat)}
             >
-              <Ionicons name="image-outline" size={20} color={GLASS_TEXT_MUTED} />
+              <Ionicons name="image-outline" size={20} color={theme.ink.muted} />
             </Pressable>
             <Pressable
               hitSlop={8}
@@ -271,10 +273,10 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
               disabled={attaching}
               onPress={() => attach(pickFileForChat)}
             >
-              <Ionicons name="document-outline" size={20} color={GLASS_TEXT_MUTED} />
+              <Ionicons name="document-outline" size={20} color={theme.ink.muted} />
             </Pressable>
             <Pressable hitSlop={8} style={styles.attachButton} disabled={attaching} onPress={attachLink}>
-              <Ionicons name="link-outline" size={20} color={GLASS_TEXT_MUTED} />
+              <Ionicons name="link-outline" size={20} color={theme.ink.muted} />
             </Pressable>
           </View>
 
@@ -287,7 +289,7 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
                 inputRef.current?.focus();
               }}
             >
-              <Ionicons name="keypad-outline" size={22} color={GLASS_TEXT_MUTED} />
+              <Ionicons name="keypad-outline" size={22} color={theme.ink.muted} />
             </Pressable>
 
             <Pressable
@@ -304,7 +306,7 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
                   pulseStyle,
                 ]}
               >
-                <Ionicons name={listening ? 'stop' : 'mic'} size={30} color={GLASS_TEXT} />
+                <Ionicons name={listening ? 'stop' : 'mic'} size={30} color={theme.ink.primary} />
               </Animated.View>
             </Pressable>
 
@@ -320,7 +322,7 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
               <Ionicons
                 name="arrow-up"
                 size={22}
-                color={text.trim() || attachments.length > 0 ? theme.accent : GLASS_TEXT_FAINT}
+                color={text.trim() || attachments.length > 0 ? theme.accent : theme.ink.faint}
               />
             </Pressable>
           </View>
@@ -330,13 +332,13 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => StyleSheet.create({
   backdrop: {
     flex: 1,
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: t.raised,
     ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,
@@ -345,7 +347,7 @@ const styles = StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -359,7 +361,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   input: {
     minHeight: 96,
@@ -367,13 +369,13 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 24,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     textAlignVertical: 'top',
   },
   trouble: {
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
     marginTop: 6,
   },
   attached: {
@@ -400,7 +402,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   attachRow: {
     flexDirection: 'row',
