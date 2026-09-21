@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { View } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
 
@@ -152,9 +152,12 @@ type Value = {
   publishBase: (base: DockContext | null) => void;
   context: DockContext | null;
   actions: DockAction[] | null;
-  publishActions: (actions: DockAction[] | null) => void;
+  // One claim per publisher, under its own id - see the Claim comment
+  // below. Passing null withdraws that publisher's claim and nobody
+  // else's.
+  publishActions: (id: string, actions: DockAction[] | null) => void;
   beads: { left: DockBead | null; right: DockBead | null };
-  publishBeads: (beads: { left: DockBead | null; right: DockBead | null }) => void;
+  publishBeads: (id: string, beads: { left: DockBead | null; right: DockBead | null } | null) => void;
   leave: DockLeave | null;
   publishLeave: (leave: DockLeave | null) => void;
   publish: (context: DockContext | null) => void;
@@ -224,6 +227,57 @@ function beadSignature(beads: { left: DockBead | null; right: DockBead | null })
   return `${one(beads.left)}/${one(beads.right)}`;
 }
 
+// THE DOCK HAS ONE OF EACH AND CAN HAVE TWO SCREENS PUBLISHING AT ONCE.
+// A note opened in another screen's pane is a second publisher, not a
+// replacement for the first: both are mounted, both are "focused", and
+// both write every time their own contents change.
+//
+// Last-writer-wins settled that by accident of effect order - React runs
+// a child's effects before its parent's, so whoever re-rendered last
+// owned the dock. That is why its contents changed three times over
+// opening a note in a pane, growing it to full screen and shrinking it
+// back: three different screens winning three different races, with the
+// buttons changing identity under the finger ("людина буде нажахана").
+//
+// So every publisher keeps its own CLAIM instead, under its own id, and
+// two rules follow from that:
+//   - a publisher with nothing to say makes NO claim, rather than
+//     clobbering everyone else with emptiness;
+//   - withdrawing takes away only that publisher's OWN claim, so the one
+//     underneath simply shows again - nobody has to re-publish to get
+//     their buttons back.
+// That second rule is the one that was costing whole controls: closing a
+// note in a pane wiped the single slot, and the list behind it had no
+// reason to write again, so the documents screen was left with neither
+// search nor "new document" - "невже у мене немає можливості тепер
+// створити документ?".
+//
+// WHICH claim is drawn while two of them stand is deliberately still
+// what it was - the one written most recently - so this change fixes the
+// disappearing without quietly deciding the other half of the question
+// (who owns the dock while a note is open in a pane). That is a design
+// decision, not a mechanism one, and it is taken separately.
+type Claim<T> = { id: string; value: T };
+
+function topClaim<T>(claims: Claim<T>[]): T | null {
+  return claims.length > 0 ? claims[claims.length - 1].value : null;
+}
+
+function withClaim<T>(
+  claims: Claim<T>[],
+  id: string,
+  value: T | null,
+  same: (a: T, b: T) => boolean
+): Claim<T>[] {
+  const at = claims.findIndex((claim) => claim.id === id);
+  if (value === null) return at === -1 ? claims : claims.filter((claim) => claim.id !== id);
+  if (at !== -1 && same(claims[at].value, value)) return claims;
+  // Written last, so drawn: a claim that changes goes to the end of the
+  // queue, which is the same "most recent wins" the dock has always had
+  // between two screens that both have something to say.
+  return [...claims.filter((claim) => claim.id !== id), { id, value }];
+}
+
 export function NavDockProvider({ children }: { children: ReactNode }) {
   const [context, setContext] = useState<DockContext | null>(null);
   const publish = useCallback((next: DockContext | null) => {
@@ -278,17 +332,35 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
   // fresh on every render, and the handlers inside it close over state
   // that the signature already accounts for (an icon that changes with
   // the view mode, an `active` that changes with select mode).
-  const [actions, setActions] = useState<DockAction[] | null>(null);
-  const publishActions = useCallback((next: DockAction[] | null) => {
-    setActions((prev) => (actionSignature(prev) === actionSignature(next) ? prev : next));
+  const [actionClaims, setActionClaims] = useState<Claim<DockAction[]>[]>([]);
+  const publishActions = useCallback((id: string, next: DockAction[] | null) => {
+    setActionClaims((prev) =>
+      withClaim(
+        prev,
+        id,
+        next && next.length > 0 ? next : null,
+        (a, b) => actionSignature(a) === actionSignature(b)
+      )
+    );
   }, []);
-  const [beads, setBeads] = useState<{ left: DockBead | null; right: DockBead | null }>({
-    left: null,
-    right: null,
-  });
-  const publishBeads = useCallback((next: { left: DockBead | null; right: DockBead | null }) => {
-    setBeads((prev) => (beadSignature(prev) === beadSignature(next) ? prev : next));
-  }, []);
+  const actions = useMemo(() => topClaim(actionClaims), [actionClaims]);
+  const [beadClaims, setBeadClaims] = useState<Claim<{ left: DockBead | null; right: DockBead | null }>[]>(
+    []
+  );
+  const publishBeads = useCallback(
+    (id: string, next: { left: DockBead | null; right: DockBead | null } | null) => {
+      setBeadClaims((prev) =>
+        withClaim(
+          prev,
+          id,
+          next && (next.left || next.right) ? next : null,
+          (a, b) => beadSignature(a) === beadSignature(b)
+        )
+      );
+    },
+    []
+  );
+  const beads = useMemo(() => topClaim(beadClaims) ?? { left: null, right: null }, [beadClaims]);
   const [base, setBase] = useState<DockContext | null>(null);
   const publishBase = useCallback((next: DockContext | null) => {
     setBase((prev) => {
@@ -463,6 +535,7 @@ export function useNavDockLeave(): DockLeave | null {
 export function useDockActions(actions: DockAction[] | null) {
   const publish = useContext(NavDockContext)?.publishActions;
   const focused = useIsFocused();
+  const id = useId();
   const ref = useRef(actions);
   ref.current = actions;
   const wrappers = useRef(new Map<string, { onPress: () => void; onLongPress: () => void }>());
@@ -471,6 +544,7 @@ export function useDockActions(actions: DockAction[] | null) {
     if (!publish || !focused) return;
     const live = ref.current;
     publish(
+      id,
       live
         ? live.map((a) => {
             let w = wrappers.current.get(a.key);
@@ -485,8 +559,8 @@ export function useDockActions(actions: DockAction[] | null) {
           })
         : null
     );
-    return () => publish(null);
-  }, [publish, focused, signature]);
+    return () => publish(id, null);
+  }, [publish, focused, signature, id]);
 }
 
 export function useNavDockActions(): DockAction[] | null {
@@ -498,6 +572,7 @@ export function useNavDockActions(): DockAction[] | null {
 export function useDockBeads(left: DockBead | null, right: DockBead | null) {
   const publish = useContext(NavDockContext)?.publishBeads;
   const focused = useIsFocused();
+  const id = useId();
   const ref = useRef({ left, right });
   ref.current = { left, right };
   const wrap = useRef({
@@ -508,12 +583,12 @@ export function useDockBeads(left: DockBead | null, right: DockBead | null) {
   useEffect(() => {
     if (!publish || !focused) return;
     const { left: l, right: r } = ref.current;
-    publish({
+    publish(id, {
       left: l ? { ...l, onPress: wrap.current.left.onPress, onLongPress: l.onLongPress ? wrap.current.left.onLongPress : undefined } : null,
       right: r ? { ...r, onPress: wrap.current.right.onPress, onLongPress: r.onLongPress ? wrap.current.right.onLongPress : undefined } : null,
     });
-    return () => publish({ left: null, right: null });
-  }, [publish, focused, signature]);
+    return () => publish(id, null);
+  }, [publish, focused, signature, id]);
 }
 
 export function useNavDockBeads() {
