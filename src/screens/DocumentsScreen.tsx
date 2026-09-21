@@ -317,10 +317,19 @@ export default function DocumentsScreen({
       actions: [
         { id: 'move', label: 'Перемістити в…', icon: 'arrow-forward-outline' },
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+        {
+          id: 'wide',
+          label: item.wideCard ? 'Звичайна картка' : 'Картка на всю ширину',
+          icon: item.wideCard ? 'contract-outline' : 'expand-outline',
+        },
         { id: 'bin', label: 'У кошик', icon: 'trash-outline', tone: 'danger' },
       ],
     });
-    if (choice === 'rename') setDocRename(item);
+    if (choice === 'wide') {
+      await updateDoc(doc(db, 'documents', item.id), {
+        wideCard: item.wideCard ? deleteField() : true,
+      });
+    } else if (choice === 'rename') setDocRename(item);
     else if (choice === 'bin') confirmDeleteDocument(item.id);
     else if (choice === 'move') {
       const dest = await explorer.pickDestination(`Перемістити «${item.title || 'Без назви'}» в…`);
@@ -427,6 +436,39 @@ export default function DocumentsScreen({
   // rail.
   const listWidth = (paneRect.width || layoutWidth) - 40;
   const gridCardWidth = Math.floor((listWidth - 12 * (gridColumns - 1)) / gridColumns);
+  // A wide card is as wide as the whole row - every cell plus the gaps
+  // between them.
+  const wideCardWidth = listWidth;
+  // FlatList lays a grid out in fixed cells and has no notion of one
+  // item spanning several. So the DATA is padded instead: a wide card is
+  // pushed to the start of a row and the rest of that row is filled with
+  // empty cells, which keeps every other card exactly where the plain
+  // grid would have put it. The card itself then simply draws wider than
+  // its own cell, over cells with nothing in them.
+  function padGridRows(items: DocumentItem[]): DocumentItem[] {
+    if (drawnMode !== 'grid' || !items.some((d) => d.wideCard)) return items;
+    const out: DocumentItem[] = [];
+    let column = 0;
+    const filler = () => ({ id: `__cell__${out.length}`, gridFiller: true }) as unknown as DocumentItem;
+    for (const item of items) {
+      if (item.wideCard) {
+        while (column !== 0) {
+          out.push(filler());
+          column = (column + 1) % gridColumns;
+        }
+        out.push(item);
+        column = 1 % gridColumns;
+        while (column !== 0) {
+          out.push(filler());
+          column = (column + 1) % gridColumns;
+        }
+      } else {
+        out.push(item);
+        column = (column + 1) % gridColumns;
+      }
+    }
+    return out;
+  }
   const folderRowWidth = folderColumns > 1 ? Math.floor((listWidth - 10) / 2) : undefined;
   const insets = useSafeAreaInsets();
   const chromeTop = insets.top + CHROME_TOP;
@@ -692,6 +734,7 @@ export default function DocumentsScreen({
           createdAt: docSnapshot.data().createdAt,
           coverImageUri: docSnapshot.data().coverImageUri,
           coverGradient: docSnapshot.data().coverGradient as string | undefined,
+          wideCard: docSnapshot.data().wideCard as boolean | undefined,
           deletedAt: docSnapshot.data().deletedAt as number | undefined,
         }))
         .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
@@ -1247,7 +1290,7 @@ export default function DocumentsScreen({
             // FlatList throws if numColumns changes on an already-mounted
             // instance - key forces a clean remount when switching views.
             key={`${drawnMode}-${gridColumns}-${trashOpen ? 'trash' : 'list'}`}
-            data={trashOpen ? trashed : explorer.visibleItems}
+            data={trashOpen ? trashed : padGridRows(explorer.visibleItems)}
             // The folders of this level, and the way up, above the cards.
             ListHeaderComponent={
               trashOpen ? (
@@ -1382,6 +1425,11 @@ export default function DocumentsScreen({
             // them from there.
             contentContainerStyle={[styles.list, listClear, { paddingTop: chromeBottom, paddingBottom: listBottomPad }]}
             renderItem={({ item }) => {
+              // An empty cell beside a wide card - see padGridRows. It
+              // holds the row's arithmetic and draws nothing.
+              if ((item as { gridFiller?: boolean }).gridFiller) {
+                return <View style={{ width: gridCardWidth }} />;
+              }
               // Grid cards reclaim the thumbnail's space for text when a
               // document has no image (see DocumentCard's own noImage
               // handling) - list rows are unaffected, so they keep the
@@ -1421,7 +1469,8 @@ export default function DocumentsScreen({
                   isSelected={selectedIds.has(item.id)}
                   onToggleSelect={() => toggleSelected(item.id)}
                   layout={drawnMode}
-                    gridWidth={gridCardWidth}
+                  gridWidth={item.wideCard && drawnMode === 'grid' ? wideCardWidth : gridCardWidth}
+                  wide={!!item.wideCard}
                   project={groups.find((g) => g.id === item.groupId) ?? null}
                   onProjectPress={() => setSingleGroupTargetId(item.id)}
                   {...(carried ? carrying.cardProps(item, () => openDocumentMenu(item)) : {})}

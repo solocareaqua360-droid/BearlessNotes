@@ -666,6 +666,12 @@ export interface DocumentItem {
   // Absent = the note's own default gradient; a coverImageUri wins over
   // either.
   coverGradient?: string;
+  // Takes a WHOLE row of the documents grid instead of one cell, with
+  // the cover standing on its left - the user's own shape for a note
+  // that matters more than its neighbours: "картку розміром як дві,
+  // обкладинка ліворуч". Only the grid honours it; a list row is
+  // already full width.
+  wideCard?: boolean;
   // In the bin. A deleted note is not deleted: it is stamped with the
   // moment it went, every list leaves it out, and the bin shows it until
   // it is restored or thrown away for good (or thirty days pass). Its

@@ -249,6 +249,11 @@ type Props = {
   // Optional because SearchScreen, the card's other user, never sets it.
   project?: { name: string; color: string } | null;
   onProjectPress?: () => void;
+  // A grid card that takes the WHOLE row instead of one cell, with the
+  // cover standing on its left rather than lying across its top - the
+  // user's own shape: "картку розміром як дві, обкладинка ліворуч". The
+  // grid puts it on a row of its own (see DocumentsScreen's spacers).
+  wide?: boolean;
 };
 
 // The card shared by Documents and Search: a thumbnail (the document's
@@ -286,6 +291,7 @@ export default function DocumentCard({
   dimmed,
   project,
   onProjectPress,
+  wide,
 }: Props) {
   const recordColour = useRecordColour();
   const { background, text, textMuted } = recordColour(id);
@@ -352,6 +358,47 @@ export default function DocumentCard({
       color={isSelected ? text : textMuted}
     />
   );
+
+  if (isGrid && wide) {
+    return (
+      <View
+        ref={cardRef}
+        collapsable={false}
+        style={[
+          styles.gridCard,
+          styles.wideCard,
+          gridWidth !== undefined ? { width: gridWidth } : null,
+          { backgroundColor: background },
+          dimmed && styles.dimmed,
+        ]}
+      >
+        <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />
+        <Pressable style={styles.wideTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
+          {/* Standing on the left edge, full height, instead of lying
+              across the top - the one thing that makes this card a
+              different shape rather than just a bigger one. */}
+          <View style={styles.wideThumb}>{thumbNode}</View>
+          <View style={styles.wideContent}>
+            {titleNode}
+            {previewBody}
+            <View style={[styles.dateCompactPinned, styles.dateRow]}>
+              <Text style={[styles.dateCompact, { color: textMuted }]}>{formatUpdatedAt(updatedAt)}</Text>
+              {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass />}
+            </View>
+          </View>
+        </Pressable>
+        {isSelectMode && (
+          <View style={styles.gridSelectBox} pointerEvents="none">
+            <Ionicons
+              name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+              size={20}
+              color={isSelected ? text : '#fff'}
+            />
+          </View>
+        )}
+      </View>
+    );
+  }
 
   if (isGrid) {
     return (
@@ -616,6 +663,27 @@ const styles = StyleSheet.create({
   // one fixed gap this layout has lives on titleCompact's own marginBottom
   // instead, with nothing fixed between the preview and the date.
   gridContent: {
+    flex: 1,
+    padding: 10,
+  },
+  // The double-width card: the same height as an ordinary tile, so a row
+  // of one and a row of two still read as one grid.
+  wideCard: {
+    height: GRID_CARD_HEIGHT,
+  },
+  wideTap: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  // A third of the card, floor to ceiling. The cover is the thing you
+  // recognise the note by, so it gets a real column rather than a strip.
+  wideThumb: {
+    width: '34%',
+    overflow: 'hidden',
+    borderRightWidth: THUMB_BORDER_WIDTH,
+    borderRightColor: 'rgba(0,0,0,0.12)',
+  },
+  wideContent: {
     flex: 1,
     padding: 10,
   },
