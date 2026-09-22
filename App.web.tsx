@@ -38,6 +38,7 @@ import {
   hasDriveToken,
   subscribeToDriveToken,
 } from './src/utils/driveToken.web';
+import { prefetchState, startOfflinePrefetch, subscribeToPrefetch } from './src/utils/offlineCache.web';
 import {
   HandoffKind,
   handoffRequest,
@@ -250,6 +251,7 @@ export default function App() {
   // come back every hour to ask for something the app did not need. In
   // an ordinary browser tab there is no disk, so it still asks at once.
   const [needsDrive, setNeedsDrive] = useState(!isDesktopShell());
+  const [prefetch, setPrefetch] = useState(prefetchState());
 
   // Not a request - a look in the browser's storage for a token from
   // within the hour. Nothing is asked of Google here, because nothing
@@ -261,6 +263,19 @@ export default function App() {
       setDrive(hasDriveToken());
       setNeedsDrive(!isDesktopShell() || driveNeeded());
     });
+  }, [user]);
+
+  // Pull the whole library down in the background, once there is
+  // someone to pull it for. See offlineCache.web: it is what makes a
+  // note opened for the FIRST time on a train have its pictures.
+  useEffect(() => {
+    if (!user) return;
+    const stopWatching = startOfflinePrefetch();
+    const stopListening = subscribeToPrefetch(() => setPrefetch(prefetchState()));
+    return () => {
+      stopWatching();
+      stopListening();
+    };
   }, [user]);
 
   useEffect(() => {
@@ -344,6 +359,14 @@ export default function App() {
             never be the only way to find that out. */}
         <View style={styles.driveBar}>
           <Text style={styles.driveText}>{user.email ?? 'Акаунт Google'}</Text>
+          {/* In the corner with the account, not across the middle: it
+              repeats, it is nobody's business most of the time, and it
+              goes away by itself when the folder is full. */}
+          {prefetch.running && prefetch.total > 0 && (
+            <Text style={styles.driveText}>
+              {`Готую офлайн: ${prefetch.done} з ${prefetch.total}`}
+            </Text>
+          )}
           <Pressable
             style={styles.linkButton}
             onPress={async () => {

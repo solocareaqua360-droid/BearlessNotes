@@ -205,6 +205,25 @@ async function serveDesktopApi(req, res, pathname) {
     return done(204);
   }
 
+  // Which of these are NOT kept here yet - asked once for a whole
+  // library rather than one HEAD per file, because the answer for a few
+  // hundred attachments is what decides where the background download
+  // starts.
+  if (pathname === '/__desktop/cache/missing' && req.method === 'POST') {
+    const { ids } = await readBody(req);
+    if (!Array.isArray(ids)) return done(400, { error: 'ids expected' });
+    const dir = CACHE();
+    const missing = ids.filter((id) => {
+      if (typeof id !== 'string' || !SAFE_ID.test(id)) return false;
+      try {
+        return !fs.statSync(path.join(dir, id)).isFile();
+      } catch {
+        return true;
+      }
+    });
+    return done(200, { missing });
+  }
+
   // The kept copy of one attachment. GET answers with the bytes when
   // this machine already has them - which is what makes a picture appear
   // with no network and no Drive token - and 404 when it does not, which
