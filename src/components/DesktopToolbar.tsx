@@ -32,6 +32,12 @@ function ActionIcon({ icon, size, color }: { icon: string; size: number; color: 
   return <Ionicons name={icon as never} size={size} color={color} />;
 }
 
+// What it takes off the top of the window. Anything drawn in a PORTAL
+// sits at window level and cannot see this row taking its space, so it
+// has to be told - the project badge in the editor is exactly that, and
+// landed on top of these buttons until it was.
+export const DESKTOP_TOOLBAR_HEIGHT = 46;
+
 export default function DesktopToolbar() {
   const theme = useTheme();
   const styles = useStyles(makeStyles);

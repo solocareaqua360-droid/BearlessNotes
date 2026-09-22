@@ -5225,13 +5225,21 @@ export default function BoardScreen() {
         style={[
           styles.container,
           isTwoPane && paneDocId !== null && paneFullscreen ? styles.paneHidden : null,
-          // The panel pushes the canvas in rather than lying over it -
-          // and because this padding is what onLayout measures, the
-          // board's own viewport shrinks with it and its gestures keep
-          // agreeing with what is on screen. Only where a cursor is
-          // pointing: on a phone there is no room to give up, which is
-          // why the drawer lies over the board there.
-          pointerDensity && layersDrawerVisible ? { paddingRight: layersPanelWidth } : null,
+          // The panel pushes the canvas in rather than lying over it.
+          //
+          // A MARGIN and not a padding, which was the first attempt and
+          // did nothing: onLayout reports a view's own width, padding
+          // included, so the board went on believing it had the whole
+          // window - and the canvas surface is absolutely positioned
+          // inside, which ignores padding outright. A margin makes the
+          // view itself narrower, so the width onLayout reports is the
+          // width there actually is, and the board's screen-to-world
+          // maths keeps agreeing with what is drawn.
+          //
+          // Only where a cursor is pointing: on a phone there is no room
+          // to give up, which is why the drawer lies over the board
+          // there.
+          pointerDensity && layersDrawerVisible ? { marginRight: layersPanelWidth } : null,
         ]}
         onLayout={(e) =>
           setViewport({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })

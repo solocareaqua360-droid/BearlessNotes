@@ -160,6 +160,8 @@ import { CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
 import { dockRowWidth, useDockClearance } from '../navigation/dockGeometry';
 import SaveRing from '../components/SaveRing';
 import ProjectBadge from '../components/ProjectBadge';
+import { DESKTOP_TOOLBAR_HEIGHT } from '../components/DesktopToolbar';
+import { useDensity } from '../hooks/useDensity';
 import { listenError } from '../utils/listenError';
 
 // Below this, a note has no room to stand beside «Референси» and the
@@ -325,6 +327,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const railRight = 'pane' in props ? (props.railRight ?? RAIL_RIGHT) : RAIL_RIGHT;
   const railTop = 'pane' in props ? props.railTop : undefined;
   const railSide = { right: railRight };
+  const pointerDensity = useDensity() === 'pointer';
   // See paneLeft above - 0 for a standalone screen or a pane that is
   // already the window's own left edge.
   const paneLeft = 'pane' in props ? props.paneLeft ?? 0 : 0;
@@ -1781,6 +1784,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // the window actually changes is the same trap that broke the calendar's
   // week strip twice (see CalendarScreen's PLATE_MARGIN comment).
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+
+  // Which SIDE it takes. The right, where a panel of tools belongs on a
+  // desktop and where every editor in the world puts one - the user's
+  // own reckoning: "такі панелі повинні виїжджати з правого краю".
+  //
+  // How far from the window's right edge: the portal this is drawn in
+  // spans the WHOLE window, and the note does not - so the distance is
+  // everything to the right of this note, measured rather than assumed.
+  // On a Mac that is whatever the rail and the window leave; in a pane
+  // it is the rest of the board. The same reasoning the WIDTH already
+  // follows, and for the same reason.
+  const referencePanelRight = Math.max(0, windowWidth - paneLeft - editorWidth);
   useEffect(() => {
     if (focusedBlockId === null) activeInputBottomSV.value = -1;
   }, [focusedBlockId]);
@@ -3944,7 +3959,16 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               // needed CAPSULE_DROP to clear the scroll content below it;
               // a bare badge is short enough to sit in the strip above
               // the content instead, so it no longer needs that drop.
-              { top: railTop ?? editorInsets.top + CHROME_TOP },
+              // Below the desktop toolbar, not on it. This rail is
+              // drawn in a portal, which sits at WINDOW level - so the
+              // row of buttons above the screen takes no space as far
+              // as this is concerned, and the badge landed squarely on
+              // «Проект» and «Експорт» until it was told.
+              {
+                top:
+                  (railTop ?? editorInsets.top + CHROME_TOP) +
+                  (pointerDensity ? DESKTOP_TOOLBAR_HEIGHT : 0),
+              },
               railSide,
             ]}
             pointerEvents="box-none"
@@ -4210,7 +4234,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           block being reordered gets. */}
       {!embedded && referencePanelOpen && (
         <View
-          style={[styles.referencePanelDock, { left: paneLeft, width: referencePanelWidth }]}
+          style={[styles.referencePanelDock, { right: referencePanelRight, width: referencePanelWidth }]}
           pointerEvents="box-none"
         >
           {/* Its own boundary: a panel that browses every database in the
