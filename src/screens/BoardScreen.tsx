@@ -2121,6 +2121,9 @@ export default function BoardScreen() {
   // so the two must be the same rectangle.
   const [viewport, setViewport] = useState({ width: windowWidth, height: windowHeight });
   const pointerDensity = useDensity() === 'pointer';
+  // The width this board was laid out at last, to tell how much it
+  // just changed by - see the canvas's own onLayout.
+  const viewportWidthRef = useRef(0);
   const layersPanelWidth = Math.round(Math.min(340, windowWidth * 0.86));
   // Added on top of the fixed 104 the FAB/selection bar already clear the
   // floating tab bar by - a device with a tall gesture-nav inset needs more
@@ -5241,9 +5244,26 @@ export default function BoardScreen() {
           // there.
           pointerDensity && layersDrawerVisible ? { marginRight: layersPanelWidth } : null,
         ]}
-        onLayout={(e) =>
-          setViewport({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })
-        }
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout;
+          // Keep what is on screen where it is.
+          //
+          // Everything here is placed relative to the MIDDLE of the
+          // viewport, so narrowing it by 340 moves that middle 170 to
+          // the left and the whole board jumps with it - which is what
+          // opening «Шари» looked like. The canvas is endless, so
+          // there is no reason for the user to see the shift at all:
+          // giving translateX back half of whatever the width lost
+          // holds the LEFT edge still, and the only part that changes
+          // is the strip on the right that the panel is taking anyway.
+          //
+          // Also right on a window resize, which is the other way this
+          // number moves.
+          const previous = viewportWidthRef.current;
+          if (previous > 0 && width !== previous) translateX.value += (width - previous) / 2;
+          viewportWidthRef.current = width;
+          setViewport({ width, height });
+        }}
       >
         <GestureDetector gesture={canvasGesture}>
           <View ref={canvasRef} style={[StyleSheet.absoluteFill, styles.canvasSurface]}>
