@@ -4823,6 +4823,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       )}
       <DocumentPickerModal
         visible={documentPickerBlockId !== null}
+        title="Який документ?"
         subtitle="Картка з'явиться в цьому документі"
         documents={Array.from(documentIndex.values())
           // Not itself, and nothing already thrown away.

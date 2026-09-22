@@ -1,48 +1,135 @@
+import { useMemo, useState } from 'react';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Sheet from './surfaces/Sheet';
 import { FONT_REGULAR } from '../utils/fonts';
-
 
 export type PickableDocument = { id: string; title: string };
 
 type Props = {
   visible: boolean;
+  // «Де вставлено» is where this began - the answer to "this photo is in
+  // more than one note, which did you mean". Choosing a note to link to
+  // is the same window asking a different question, so it says so.
+  title?: string;
   subtitle?: string;
   documents: PickableDocument[];
   onPick: (documentId: string) => void;
   onClose: () => void;
 };
 
-// Shown when an object (link/photo/file) is used in more than one document -
-// its "go to document" icon opens this instead of navigating straight there.
+// Past this many rows a list is something to search rather than read,
+// and below it a search field is a box in the way.
+const SEARCH_FROM = 8;
+
+// Choosing a document. Two of them: the one that answers "which note did
+// you mean" for an object that is in several, and the one that picks a
+// note to link to.
 //
-// The window itself is «Аркуш» now (surfaces/Sheet) rather than this
-// file's own copy of the backdrop, the frame, the handle and the title.
-export default function DocumentPickerModal({ visible, subtitle, documents, onPick, onClose }: Props) {
+// It scrolls and it is capped, and it did neither until 2026-09-22: with
+// a dozen notes the difference does not show, and with seventy the sheet
+// grew past the screen and the rows below the fold could not be reached
+// at all. Both are one word each to the sheet - the trap is not that
+// they are hard, it is that nothing says they are missing until the list
+// gets long.
+export default function DocumentPickerModal({
+  visible,
+  title = 'Де вставлено',
+  subtitle,
+  documents,
+  onPick,
+  onClose,
+}: Props) {
   const theme = useTheme();
   const accent = theme.accent;
   const styles = useStyles(makeStyles);
+  const [query, setQuery] = useState('');
+
+  const searchable = documents.length >= SEARCH_FROM;
+  const shown = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return documents;
+    return documents.filter((d) => d.title.toLowerCase().includes(needle));
+  }, [documents, query]);
+
   return (
-    <Sheet visible={visible} onClose={onClose} title="Де вставлено" subtitle={subtitle}>
-      {documents.map((d) => (
-        <Pressable key={d.id} style={styles.row} onPress={() => onPick(d.id)}>
-          <View style={styles.docIcon}>
-            <Ionicons name="document-text-outline" size={16} color={accent} />
+    <Sheet
+      visible={visible}
+      onClose={onClose}
+      title={title}
+      subtitle={subtitle}
+      scroll
+      maxHeight="70%"
+      header={
+        searchable ? (
+          <View style={styles.search}>
+            <Ionicons name="search" size={16} color={theme.field.placeholder} />
+            <TextInput
+              style={styles.searchInput}
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Пошук"
+              placeholderTextColor={theme.field.placeholder}
+              autoCorrect={false}
+              returnKeyType="search"
+            />
+            {query.length > 0 && (
+              <Pressable hitSlop={8} onPress={() => setQuery('')}>
+                <Ionicons name="close-circle" size={16} color={theme.field.placeholder} />
+              </Pressable>
+            )}
           </View>
-          <Text style={styles.rowText} numberOfLines={1}>
-            {d.title}
-          </Text>
-          <Ionicons name="chevron-forward" size={16} color={theme.ink.faint} />
-        </Pressable>
-      ))}
+        ) : undefined
+      }
+    >
+      {shown.length === 0 ? (
+        <Text style={styles.empty}>Нічого не знайшлося</Text>
+      ) : (
+        shown.map((d) => (
+          <Pressable key={d.id} style={styles.row} onPress={() => onPick(d.id)}>
+            <View style={styles.docIcon}>
+              <Ionicons name="document-text-outline" size={16} color={accent} />
+            </View>
+            <Text style={styles.rowText} numberOfLines={1}>
+              {d.title}
+            </Text>
+            <Ionicons name="chevron-forward" size={16} color={theme.ink.faint} />
+          </Pressable>
+        ))
+      )}
     </Sheet>
   );
 }
 
 const makeStyles = (t: Theme) => StyleSheet.create({
+  search: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: t.field.fill,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: t.field.edge,
+    paddingHorizontal: 12,
+    height: 40,
+    marginBottom: 4,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: FONT_REGULAR,
+    color: t.field.ink,
+    padding: 0,
+  },
+  empty: {
+    fontSize: 14,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.faint,
+    paddingVertical: 20,
+    textAlign: 'center',
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

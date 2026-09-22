@@ -39,6 +39,7 @@ export default function Sheet({
   title,
   subtitle,
   handle = true,
+  header,
   scroll,
   maxHeight,
   children,
@@ -50,6 +51,11 @@ export default function Sheet({
   // The little grab bar at the top. On by default: it is what says
   // "this is a sheet and it closes" without a word.
   handle?: boolean;
+  // Something that must stay PUT while the body scrolls - a search
+  // field, most of the time. It cannot live in `children`, because with
+  // `scroll` those go inside the ScrollView and scroll away with the
+  // list they are meant to filter.
+  header?: ReactNode;
   // A list inside, rather than a few rows - see the trap above.
   scroll?: boolean;
   // A cap for a sheet whose content could otherwise grow past the
@@ -88,6 +94,7 @@ export default function Sheet({
               {subtitle}
             </Text>
           )}
+          {header}
           {body}
         </View>
       </View>
