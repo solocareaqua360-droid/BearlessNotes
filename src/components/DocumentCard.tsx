@@ -1,6 +1,7 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CoverGradientView, coverById, defaultCoverFor } from '../theme/covers';
 import { useRecordColour, useTextScale } from '../theme/ThemeProvider';
+import { useDensity } from '../hooks/useDensity';
 import { Ionicons } from '@expo/vector-icons';
 import AttachmentImage from './AttachmentImage';
 import { PreviewChecklistItem, TextMatch, formatUpdatedAt } from '../utils/documentPreview';
@@ -19,6 +20,13 @@ import ProjectBadge from './ProjectBadge';
 const GRAIN = require('../../assets/paper-grain.png');
 
 const THUMB_SIZE = 72;
+// The same row for a cursor. Nothing about it changes but the air: the
+// picture is smaller and the padding is thinner, so more of the list is
+// on screen at once - which is the whole difference between a list you
+// scroll and a list you read. See hooks/useDensity for why this is
+// decided by what is POINTING at the row and not by how wide the window
+// is.
+const THUMB_SIZE_DENSE = 52;
 const GRID_THUMB_HEIGHT = 96;
 // Every grid card is exactly this tall, image or not - 20% past what a
 // thumb + title + couple lines + date used to measure out to (~190).
@@ -296,6 +304,10 @@ export default function DocumentCard({
   const recordColour = useRecordColour();
   const { background, text, textMuted } = recordColour(id);
   const isGrid = layout === 'grid';
+  // Packed for a cursor, spaced for a thumb - see hooks/useDensity.
+  // Only the list row answers to this so far; a grid tile is sized by
+  // its picture, which is the thing being looked at rather than air.
+  const dense = useDensity() === 'pointer' && !isGrid;
   // "Розмір тексту" - only the LIST row's own size, never the grid
   // card's: `titleCompact`'s line height is measured against elsewhere
   // (EXPANDED_TEXT_LINES, a fixed-height tile), and scaling it would be
@@ -331,7 +343,11 @@ export default function DocumentCard({
   // column's whole height - the grid's own thumb is a fixed 96 tall
   // (right for a strip lying across the top, and a cut-off picture with
   // dead space under it here).
-  const thumbStyle = wide ? styles.thumbWide : isGrid ? styles.thumbGrid : styles.thumb;
+  const thumbStyle = wide
+    ? styles.thumbWide
+    : isGrid
+      ? styles.thumbGrid
+      : [styles.thumb, dense && styles.thumbDense];
   const thumbNode = gradient ? (
     <CoverGradientView gradient={gradient} style={thumbStyle} />
   ) : imageUri ? (
@@ -470,7 +486,7 @@ export default function DocumentCard({
     <View
       ref={cardRef}
       collapsable={false}
-      style={[styles.row, flush && styles.rowFlush, { backgroundColor: background }, dimmed && styles.dimmed]}
+      style={[styles.row, dense && styles.rowDense, flush && styles.rowFlush, { backgroundColor: background }, dimmed && styles.dimmed]}
     >
       <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />
       <Pressable style={styles.tap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
@@ -512,6 +528,14 @@ const styles = StyleSheet.create({
   rowFlush: {
     marginHorizontal: 0,
   },
+  // Only the air, and only downwards. The border, the radius and the
+  // colours are untouched, so the row still reads as the same card -
+  // there is just less of it that is nothing.
+  rowDense: {
+    marginBottom: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -550,6 +574,10 @@ const styles = StyleSheet.create({
     height: THUMB_SIZE,
     borderRadius: 12,
     backgroundColor: '#F3F4F6',
+  },
+  thumbDense: {
+    width: THUMB_SIZE_DENSE,
+    height: THUMB_SIZE_DENSE,
   },
   thumbPlaceholder: {
     backgroundColor: 'transparent',
