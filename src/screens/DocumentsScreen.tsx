@@ -37,6 +37,7 @@ import {
 } from '../firestore';
 import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import { onDesktopCommand } from '../utils/desktopCommands';
+import { usePublishRailTree } from '../navigation/navRail';
 import { BackHandler } from 'react-native';
 import { db } from '../firebase';
 import { DocumentItem, SketchElement, Tag } from '../types';
@@ -740,6 +741,25 @@ export default function DocumentsScreen({
   // coming back whole. Emptied by hand, or by time: thirty days.
   const [trashed, setTrashed] = useState<DocumentItem[]>([]);
   const [trashOpen, setTrashOpen] = useState(false);
+
+  // What the desktop rail draws beside this list - the folders it can
+  // move between, and the bin. Published rather than passed, because the
+  // rail stands outside every screen and this is the one that knows (see
+  // navigation/navRail). Only when this list is the screen, not a pane
+  // inside another one: two publishers would fight over one rail.
+  usePublishRailTree(
+    inPane
+      ? null
+      : {
+          paths: explorer.allFolderPaths,
+          current: trashOpen ? '\u0000bin' : explorer.path,
+          onGo: (next) => {
+            setTrashOpen(false);
+            explorer.setPath(next);
+          },
+          bin: { count: trashed.length, active: trashOpen, onOpen: () => setTrashOpen(true) },
+        }
+  );
   const TRASH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
   const purgedRef = useRef(new Set<string>());
 

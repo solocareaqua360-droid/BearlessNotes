@@ -28,6 +28,8 @@ import { GlassPortalHost } from './src/components/GlassPortal';
 import CrashBoundary from './src/components/CrashBoundary';
 import FatalErrorOverlay from './src/components/FatalErrorOverlay';
 import ContextDock from './src/components/ContextDock';
+import DesktopRail from './src/components/DesktopRail';
+import { useDensity } from './src/hooks/useDensity';
 import { NavDockProvider } from './src/navigation/navDock';
 import {
   adoptDriveToken,
@@ -104,6 +106,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Nunito_600SemiBold',
     color: '#171310',
+  },
+  deskRow: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  deskBody: {
+    flex: 1,
+    minWidth: 0,
   },
   driveBar: {
     flexDirection: 'row',
@@ -253,6 +263,7 @@ export default function App() {
   // an ordinary browser tab there is no disk, so it still asks at once.
   const [needsDrive, setNeedsDrive] = useState(!isDesktopShell());
   const [prefetch, setPrefetch] = useState(prefetchState());
+  const pointer = useDensity() === 'pointer';
 
   // Not a request - a look in the browser's storage for a token from
   // within the hour. Nothing is asked of Google here, because nothing
@@ -452,10 +463,25 @@ export default function App() {
               {/* The whole app, not the board alone - the same tree the
                   phone mounts, from src/AppNavigator. What the browser
                   leaves out is chosen file by file (.web siblings), not
-                  route by route here. */}
-              <RootNavigator />
+                  route by route here.
+
+                  Beside a rail where a cursor is pointing, and the dock
+                  stands down there: the dock is a bar at the bottom of
+                  the screen, which is where a thumb rests and where a
+                  cursor never goes. Where there is a finger, nothing
+                  about this changes - see hooks/useDensity. */}
+              {pointer ? (
+                <View style={styles.deskRow}>
+                  <DesktopRail />
+                  <View style={styles.deskBody}>
+                    <RootNavigator />
+                  </View>
+                </View>
+              ) : (
+                <RootNavigator />
+              )}
               {/* See App.tsx: inside the target, drawn by its own portal. */}
-              <ContextDock />
+              {!pointer && <ContextDock />}
             </GlassTargetProvider>
           </GlassPortalHost>
           </NavDockProvider>
