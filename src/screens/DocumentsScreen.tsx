@@ -626,22 +626,42 @@ export default function DocumentsScreen({
               : []),
           ]
         : [
-            {
-              key: 'view',
-              icon:
-                viewMode === 'grid'
-                  ? 'grid-outline'
-                  : viewMode === 'wide'
-                  ? 'tablet-landscape-outline'
-                  : 'reorder-four-outline',
-              label: 'Вигляд',
-              // Three ways round: a list, a grid of tiles, and a column
-              // of wide cards (cover on the left). The icon says which
-              // one is on, as it always did.
-              onPress: () =>
-                changeViewMode(viewMode === 'list' ? 'grid' : viewMode === 'grid' ? 'wide' : 'list'),
-              closesStack: true,
-            },
+            // Three ways round: a list, a grid of tiles, and a column
+            // of wide cards (cover on the left).
+            //
+            // On a phone that is ONE button that cycles, because three
+            // buttons is three of the four slots a dock card has. Where
+            // there is a rail and a row along the top there is room for
+            // all three at once, which is what every desktop app does
+            // and what Craft does in the screenshot this came from: one
+            // press picks a view rather than stepping towards it.
+            ...(pointerDensity
+              ? ([
+                  { key: 'view-list', icon: 'reorder-four-outline', mode: 'list' as const },
+                  { key: 'view-grid', icon: 'grid-outline', mode: 'grid' as const },
+                  { key: 'view-wide', icon: 'tablet-landscape-outline', mode: 'wide' as const },
+                ].map((entry) => ({
+                  key: entry.key,
+                  icon: entry.icon,
+                  active: viewMode === entry.mode,
+                  onPress: () => changeViewMode(entry.mode),
+                })))
+              : [
+                  {
+                    key: 'view',
+                    icon:
+                      viewMode === 'grid'
+                        ? 'grid-outline'
+                        : viewMode === 'wide'
+                        ? 'tablet-landscape-outline'
+                        : 'reorder-four-outline',
+                    label: 'Вигляд',
+                    // The icon says which one is on, as it always did.
+                    onPress: () =>
+                      changeViewMode(viewMode === 'list' ? 'grid' : viewMode === 'grid' ? 'wide' : 'list'),
+                    closesStack: true,
+                  },
+                ]),
             {
               key: 'sort',
               icon: 'filter-outline',
