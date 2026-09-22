@@ -223,6 +223,12 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
 const makeStyles = (t: Theme) => StyleSheet.create({
   rail: {
     width: RAIL_WIDTH,
+    // Its own ground, and it had none - so on a dark theme the light
+    // backing of the window showed straight through it and the labels
+    // went almost invisible on it. A column that stands beside every
+    // screen has to paint itself; only the screens have a background
+    // of their own.
+    backgroundColor: t.ground,
     borderRightWidth: StyleSheet.hairlineWidth,
     borderRightColor: t.edge.hairline,
     paddingTop: 10,

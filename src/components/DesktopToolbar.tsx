@@ -141,6 +141,9 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   frame: {
     width: '100%',
     alignItems: 'center',
+    // Same as the rail's: this strip sits above the screens rather than
+    // inside one, so nothing else paints behind it.
+    backgroundColor: t.ground,
   },
   bar: {
     width: '100%',
