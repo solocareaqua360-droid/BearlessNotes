@@ -454,17 +454,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // it measures its own viewport from whatever room its container
   // leaves it (see the wrapper around DocumentCanvas below), so pushing
   // it aside costs nothing this screen does not already do for the page.
-  const referencesSplit = referencePanelOpen && !embedded && editorWidth >= REFERENCES_SPLIT_MIN;
-  // Always a real number, off THIS pane's own measured width - never a
-  // percentage of the portal host, which spans the whole window and
-  // would size the drawer against the BOARD sharing that window with a
-  // narrow pane, not against the note itself ("дошки... площу не
-  // повинно бути видно" - the board's own area must stay clear, so the
-  // drawer's size and position both have to be read off the pane, never
-  // the window).
-  const referencePanelWidth = referencesSplit
-    ? Math.round(Math.min(420, Math.max(300, editorWidth * 0.36)))
-    : Math.round(Math.max(260, editorWidth * 0.45));
   // WHICH card is being typed into on the canvas, not just whether one
   // is. The id is what the "/" toolbar needs: the canvas edits the very
   // same Block objects the page does, so once this screen knows which
@@ -1785,6 +1774,28 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // week strip twice (see CalendarScreen's PLATE_MARGIN comment).
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
 
+  // What this note is actually as wide as.
+  //
+  // `editorWidth` comes from the root view's own onLayout and it comes
+  // back ZERO in a pane - which is why the references panel has never
+  // once split the note, on any screen: the test below could not pass.
+  // Rather than chase why that one measurement does not land, the width
+  // is worked out from the two that do: the window, minus where this
+  // note starts, minus what is to the right of it. Both are measured in
+  // window coordinates by whoever put the note in a pane.
+  const noteWidth = editorWidth || Math.max(0, windowWidth - paneLeft - railRight);
+  const referencesSplit = referencePanelOpen && !embedded && noteWidth >= REFERENCES_SPLIT_MIN;
+  // Always a real number, off THIS pane's own measured width - never a
+  // percentage of the portal host, which spans the whole window and
+  // would size the drawer against the BOARD sharing that window with a
+  // narrow pane, not against the note itself ("дошки... площу не
+  // повинно бути видно" - the board's own area must stay clear, so the
+  // drawer's size and position both have to be read off the pane, never
+  // the window).
+  const referencePanelWidth = referencesSplit
+    ? Math.round(Math.min(420, Math.max(300, noteWidth * 0.36)))
+    : Math.round(Math.max(260, noteWidth * 0.45));
+
   // Which SIDE it takes. The right, where a panel of tools belongs on a
   // desktop and where every editor in the world puts one - the user's
   // own reckoning: "такі панелі повинні виїжджати з правого краю".
@@ -1808,7 +1819,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // from the window's right edge this note's own right edge is" -
   // measured by whoever put the note in a pane, and nothing when it has
   // the window to itself. The project badge has used it all along.
-  const referencePanelRight = 'pane' in props ? (props.railRight ?? 0) : 0;
+  // `railRight` is the pane's own inset PLUS the badge's cosmetic 14 -
+  // a pill wants to stand off the edge, a full-height panel wants to
+  // meet it. Taking railRight whole left a 14-point white stripe down
+  // the right of the window. So the margin comes back off.
+  const referencePanelRight = 'pane' in props ? Math.max(0, (props.railRight ?? RAIL_RIGHT) - RAIL_RIGHT) : 0;
   useEffect(() => {
     if (focusedBlockId === null) activeInputBottomSV.value = -1;
   }, [focusedBlockId]);

@@ -390,6 +390,7 @@ export default function DocumentsScreen({
   // to be told where this half ends. Full screen this is zero, which is
   // the window's own edge.
   const [editorPaneInset, setEditorPaneInset] = useState(0);
+  const editorPaneRef = useRef<View>(null);
   // This pane's own left edge, in from the window's - see
   // DocumentEditorScreen's paneLeft. Not reliably 0: paneRow centres its
   // capped content on a screen wide enough (see MAX_CONTENT_WIDTH).
@@ -1640,17 +1641,28 @@ export default function DocumentsScreen({
             and shows more of itself instead. */}
         {isTwoPane && !!openDoc && (
           <View
+            ref={editorPaneRef}
             style={styles.editorPane}
-            onLayout={(e) => {
-              setEditorPaneInset(
-                Math.max(0, windowWidth - (e.nativeEvent.layout.x + e.nativeEvent.layout.width))
-              );
-              // paneRow centres its capped content on a wide-enough
-              // screen (see MAX_CONTENT_WIDTH) - this pane's own left
-              // edge is not reliably the window's, so it is measured
-              // the same way the right edge already is.
-              setEditorPaneLeft(e.nativeEvent.layout.x);
-            }}
+            // Measured IN THE WINDOW, not in the parent - and that
+            // distinction is the whole bug it fixes.
+            //
+            // `layout.x` is an offset inside whatever contains this
+            // view, and it was being subtracted from windowWidth as if
+            // it were an offset inside the WINDOW. Those were the same
+            // number for as long as this screen started at the window's
+            // left edge. The desktop rail takes 240 there, and from
+            // then on every value derived from it was 240 out: the
+            // note's right edge came back as 254 instead of 14, which
+            // is why the references panel stood a rail's width short of
+            // the edge, and its left edge came back as 0, which is
+            // where it is inside the parent and not where it is on
+            // screen.
+            onLayout={() =>
+              editorPaneRef.current?.measureInWindow((x, _y, width) => {
+                setEditorPaneLeft(x);
+                setEditorPaneInset(Math.max(0, windowWidth - (x + width)));
+              })
+            }
           >
             {openDoc && (
               // Keyed by id so switching documents remounts the editor
