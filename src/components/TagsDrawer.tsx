@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -415,6 +415,29 @@ function TagsDrawerInner({
   // the island is going away, so it must never show a stale address.
   const [accountEmail, setAccountEmail] = useState<string | null>(auth.currentUser?.email ?? null);
   useEffect(() => onAuthStateChanged(auth, (user) => setAccountEmail(user?.email ?? null)), []);
+
+  // Escape closes it, and that is not a nicety on a desktop.
+  //
+  // On a phone the drawer has two ways out that are always to hand: the
+  // dim behind it takes a tap anywhere, and the system back button is
+  // right there. On a Mac the dim is the only one - there is no back
+  // button, and a click has to land on the part of the window the panel
+  // does not cover, which on a wide window is a strip the user has to
+  // find. Someone who opened this by accident (a two-finger swipe on a
+  // trackpad arrives as the same gesture a thumb makes) was left with a
+  // panel over two thirds of the screen and nothing obvious to press.
+  //
+  // Only on the web, because that is the only place a hardware Escape
+  // exists - and only while it is open, so nothing else's Escape is
+  // swallowed.
+  useEffect(() => {
+    if (!isOpen || Platform.OS !== 'web') return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeDrawer();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen]);
   const [groupsCollapsed, setGroupsCollapsed] = useState(false);
   const [foldersCollapsed, setFoldersCollapsed] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
