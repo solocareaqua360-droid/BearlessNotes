@@ -162,6 +162,7 @@ import SaveRing from '../components/SaveRing';
 import ProjectBadge from '../components/ProjectBadge';
 import { DESKTOP_TOOLBAR_HEIGHT } from '../components/DesktopToolbar';
 import { useDensity } from '../hooks/useDensity';
+import { openTab } from '../navigation/desktopTabs';
 import { listenError } from '../utils/listenError';
 
 // Below this, a note has no room to stand beside «Референси» and the
@@ -374,6 +375,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
   const documentId =
     'embedded' in props ? props.documentId : 'pane' in props ? props.documentId : props.route.params.documentId;
+
+  // A note that is open is a tab. Registered by the note itself rather
+  // than by whatever opened it: a card inside another note, the list,
+  // «Пов'язані з цим документом» and the menu's ⌘N are four different
+  // routes in, and none of them should have to remember.
+  useEffect(() => {
+    if (!pointerDensity || embedded || 'pane' in props) return;
+    openTab(documentId);
+  }, [pointerDensity, embedded, documentId]);
   const navigation = props.navigation;
   const extraFields = 'embedded' in props ? (props.extraFields ?? {}) : {};
   const onSelectModeChange = 'embedded' in props ? props.onSelectModeChange : undefined;

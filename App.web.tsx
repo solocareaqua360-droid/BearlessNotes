@@ -30,6 +30,7 @@ import FatalErrorOverlay from './src/components/FatalErrorOverlay';
 import ContextDock from './src/components/ContextDock';
 import DesktopRail from './src/components/DesktopRail';
 import DesktopToolbar from './src/components/DesktopToolbar';
+import DesktopTabs from './src/components/DesktopTabs';
 import { useDensity } from './src/hooks/useDensity';
 import { NavDockProvider } from './src/navigation/navDock';
 import {
@@ -507,6 +508,10 @@ export default function App() {
                     {/* The dock, unrolled - the path on the left and
                         what this screen can do on the right, off the
                         same publications the dock reads. */}
+                    {/* Above everything the screen says about itself:
+                        the tabs are what you are switching BETWEEN, the
+                        toolbar is about whichever one is in front. */}
+                    <DesktopTabs />
                     <DesktopToolbar />
                     <View style={styles.deskBody}>
                       <RootNavigator />

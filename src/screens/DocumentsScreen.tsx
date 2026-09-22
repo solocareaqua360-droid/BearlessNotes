@@ -37,6 +37,7 @@ import {
 } from '../firestore';
 import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import { onDesktopCommand } from '../utils/desktopCommands';
+import { useDensity } from '../hooks/useDensity';
 import { usePublishRailTree } from '../navigation/navRail';
 import { BackHandler } from 'react-native';
 import { db } from '../firebase';
@@ -151,7 +152,16 @@ export default function DocumentsScreen({
   // database there now), where there is no room to split again - so the
   // list is the whole of this screen and a tapped document is pushed,
   // exactly as on a phone.
-  const isTwoPane = responsive.isTwoPane && !inPane;
+  const pointerDensity = useDensity() === 'pointer';
+  // Not where a cursor is pointing. The user's own conclusion, after
+  // Craft: "документ можна відкрити тільки на повний екран... на фолді
+  // це здавалось зручним а на ноутбуці ні". And the pane is where most
+  // of a day's bugs lived - it is a rectangle inside the window, so
+  // everything drawn OVER it (the project badge, «Референси», «Шари»)
+  // has to be told separately where its edges are, and each of them got
+  // that wrong in its own way. Tabs are what replace it: you switch
+  // between notes rather than seeing two at once.
+  const isTwoPane = responsive.isTwoPane && !inPane && !pointerDensity;
   // Drawn in another screen's LEFT pane, the window's outer edge is the
   // left one - so the rail stands there instead of against the divider in
   // the middle of the screen, where it would be in the way of both halves.
