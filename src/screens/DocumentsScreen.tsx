@@ -415,7 +415,18 @@ export default function DocumentsScreen({
   const wideList = isTwoPane && !openDoc;
   // With a document open beside it the list is half a screen wide, and
   // the user's call is one card to a line there, not two squeezed ones.
-  const gridColumns = wideList ? (layoutWidth > layoutHeight ? 4 : 3) : 2;
+  // How many tiles fit, rather than how many a device is assumed to
+  // want. Once the grid may use the whole window (see styles.paneFull),
+  // a fixed three or four leaves tiles the size of postcards on a
+  // monitor - the count follows the room, and a tile keeps the width it
+  // reads well at.
+  const gridColumns = pointerDensity
+    ? Math.max(2, Math.min(8, Math.floor(((paneRect.width || layoutWidth) - 40) / 260)))
+    : wideList
+      ? layoutWidth > layoutHeight
+        ? 4
+        : 3
+      : 2;
   // Two folders to a line whenever the list has the whole inner screen,
   // standing up as well as lying down - the user's call once the rows
   // lined up. A folder row is an icon, a name and two small numbers, and
@@ -1146,7 +1157,20 @@ export default function DocumentsScreen({
             the list keeps its scroll position and its subscriptions, so
             coming back out of full screen lands where it left off. */}
         <View
-          style={[styles.pane, isTwoPane && !!openDoc && paneFullscreen && styles.paneHidden]}
+          style={[
+            styles.pane,
+            // The cap is about ROWS, and a grid has none.
+            //
+            // 760 exists so a list row does not become a hairline of
+            // text with its date a foot away - true of a list, and of
+            // the wide cards, which are rows with a cover on the left.
+            // A GRID spends width on COLUMNS instead: the tile stays
+            // the size it was and there are simply more of them, which
+            // is what the empty strips either side were being kept
+            // from. So the cap comes off for the grid alone.
+            drawnMode === 'grid' && pointerDensity ? styles.paneFull : null,
+            isTwoPane && !!openDoc && paneFullscreen && styles.paneHidden,
+          ]}
           onLayout={(e) => setPaneRect({ x: e.nativeEvent.layout.x, width: e.nativeEvent.layout.width })}
         >
 
@@ -1891,6 +1915,9 @@ const makeStyles = (t: Theme) =>
     // tabs and the filter chips follow by themselves: they already take
     // their left edge from this pane's measured x.
     maxWidth: MAX_CONTENT_WIDTH,
+  },
+  paneFull: {
+    maxWidth: undefined,
   },
   paneHidden: {
     display: 'none',
