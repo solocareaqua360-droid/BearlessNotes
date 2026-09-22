@@ -748,7 +748,9 @@ export default function DocumentsScreen({
   // navigation/navRail). Only when this list is the screen, not a pane
   // inside another one: two publishers would fight over one rail.
   usePublishRailTree(
-    inPane
+    // See DatabaseChrome's own: the claim belongs to whoever is in
+    // front, not to whoever rendered last.
+    inPane || !isFocused
       ? null
       : {
           paths: explorer.allFolderPaths,

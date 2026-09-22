@@ -23,6 +23,7 @@ import { useDockActions, useDockBeads, useDockShowContext } from '../navigation/
 import { useDockClearance } from '../navigation/dockGeometry';
 import ScreenBackdrop from './ScreenBackdrop';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from './TagsDrawer';
+import { usePublishRailTree } from '../navigation/navRail';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -92,6 +93,14 @@ export type DatabaseChromeProps<T extends { id: string }> = {
     onChangeMode: (mode: 'groups' | 'list' | 'explorer') => void;
     active: boolean;
     onNewFolder: () => void;
+    // The tree itself, for the desktop rail - every folder path, where
+    // this list is standing, and how to go somewhere. The drawer builds
+    // its own tree from the tags; the rail is outside every screen and
+    // has to be told (see navigation/navRail).
+    paths: string[];
+    path: string;
+    onGo: (path: string) => void;
+    onNewFolderIn: (parent: string) => void;
     onBack: () => void;
     onForward: () => void;
     canBack: boolean;
@@ -178,6 +187,26 @@ export default function DatabaseChrome<T extends { id: string }>({
   const [columnWidth, setColumnWidth] = useState(0);
   const blurTarget = useBlurTarget();
   const isFocused = useIsFocused();
+
+  // The same tree the documents list publishes, from every other
+  // database that has one. Not from a pane: two publishers would fight
+  // over one rail, and the rail belongs to whatever is the SCREEN.
+  usePublishRailTree(
+    // Only while this screen is the one being looked at. Every screen
+    // that has ever been opened stays mounted and goes on rendering, and
+    // the rail takes the most recent claim - so without this the last
+    // one to re-render won, which is not the same thing as the one in
+    // front: opening Files from Boards left the BOARDS' folders in the
+    // rail.
+    isFocused && explorer && railSide !== 'left'
+      ? {
+          paths: explorer.paths,
+          current: explorer.path,
+          onGo: explorer.onGo,
+          onNewFolder: explorer.onNewFolderIn,
+        }
+      : null
+  );
   const insets = useSafeAreaInsets();
   // The top capsule is three buttons now: search, "...", and the way out.
   // Ordering left it for the actions capsule, where the same button sits
