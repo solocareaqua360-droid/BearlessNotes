@@ -39,6 +39,7 @@ import {
   subscribeToDriveToken,
 } from './src/utils/driveToken.web';
 import { prefetchState, startOfflinePrefetch, subscribeToPrefetch } from './src/utils/offlineCache.web';
+import { onDesktopCommand } from './src/utils/desktopCommands';
 import {
   HandoffKind,
   handoffRequest,
@@ -277,6 +278,21 @@ export default function App() {
       stopListening();
     };
   }, [user]);
+
+  // The two menu commands that are only a navigation. «Новий документ»
+  // is NOT here: it belongs to the list that knows which folder and
+  // which project it is standing in - see DocumentsScreen.
+  useEffect(() => {
+    const go = (screen: 'Search' | 'Settings') => () => {
+      if (navigationRef.isReady()) navigationRef.navigate(screen);
+    };
+    const stopSearch = onDesktopCommand('search', go('Search'));
+    const stopSettings = onDesktopCommand('settings', go('Settings'));
+    return () => {
+      stopSearch();
+      stopSettings();
+    };
+  }, []);
 
   useEffect(() => {
     ensureSignedIn();

@@ -418,6 +418,21 @@ function rememberBounds(window) {
 // macOS puts copy/paste/undo in the menu bar, and a window whose app has
 // no menu has no working keyboard shortcuts for them either. The default
 // roles are exactly right here; only the app menu's name needs to be ours.
+// Say what was asked for; let the app decide what that means.
+//
+// The menu deliberately does NOT act: making a note, for one, has to
+// join the folder and project the list is currently standing in, and
+// only that screen knows them (see utils/desktopCommands.web). One
+// CustomEvent is the whole bridge - no preload, no channel, because the
+// page is our own and served from localhost.
+function command(name) {
+  const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  if (!window) return;
+  window.webContents.executeJavaScript(
+    `window.dispatchEvent(new CustomEvent('mindeva:command', { detail: ${JSON.stringify(name)} }))`
+  );
+}
+
 function installMenu() {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
@@ -428,6 +443,8 @@ function installMenu() {
         label: app.name,
         submenu: [
           { role: 'about' },
+          { type: 'separator' },
+          { label: 'Налаштування…', accelerator: 'Cmd+,', click: () => command('settings') },
           { type: 'separator' },
           { label: 'Папка вкладень…', click: () => chooseCacheFolder() },
           {
@@ -452,6 +469,17 @@ function installMenu() {
           { role: 'unhide' },
           { type: 'separator' },
           { role: 'quit' },
+        ],
+      },
+      // A File menu, before Edit, because that is where a Mac looks for
+      // "make a new one" and "find something".
+      {
+        label: 'Файл',
+        submenu: [
+          { label: 'Новий документ', accelerator: 'CmdOrCtrl+N', click: () => command('new-note') },
+          { label: 'Пошук', accelerator: 'CmdOrCtrl+F', click: () => command('search') },
+          { type: 'separator' },
+          { role: 'close', label: 'Закрити вікно' },
         ],
       },
       { role: 'editMenu' },

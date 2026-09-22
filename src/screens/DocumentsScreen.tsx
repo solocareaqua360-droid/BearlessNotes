@@ -36,6 +36,7 @@ import {
   writeBatch,
 } from '../firestore';
 import { addDoc, ownedQuery, setDoc } from '../utils/owned';
+import { onDesktopCommand } from '../utils/desktopCommands';
 import { BackHandler } from 'react-native';
 import { db } from '../firebase';
 import { DocumentItem, SketchElement, Tag } from '../types';
@@ -871,6 +872,22 @@ export default function DocumentsScreen({
     }
     navigation.navigate('Editor', autoFocusTitle ? { documentId: id, autoFocusTitle: true } : { documentId: id });
   }
+
+  // ⌘N from the Mac menu bar. Answered HERE rather than by the menu,
+  // because a note made from this list joins the folder it is standing
+  // in and the project it is filtered to - see createDocument below.
+  // Not when this list is a pane inside another screen: two copies
+  // would both answer and make two notes.
+  useEffect(() => {
+    if (inPane) return;
+    return onDesktopCommand('new-note', () => {
+      void createDocument();
+    });
+    // createDocument closes over the current folder and filters, and is
+    // rebuilt every render; the subscription is not worth rebuilding
+    // with it, and it reads the fresh one through the closure anyway.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inPane]);
 
   async function createDocument() {
     const now = Date.now();
