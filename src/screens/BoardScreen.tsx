@@ -92,6 +92,7 @@ import { linkDocId } from '../utils/linkId';
 import { blockFromFile, blockFromLink, blockFromPhoto } from '../utils/copyToNote';
 import { backupFileToDrive } from '../utils/googleDrive';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
+import { useDensity } from '../hooks/useDensity';
 import { contentEqual } from '../utils/contentEqual';
 import { keyedAll, keyedDiff, readBoardPart } from '../utils/boardStorage';
 import GroupImportSheet from '../components/GroupImportSheet';
@@ -2119,6 +2120,8 @@ export default function BoardScreen() {
   // the window - the gestures report x/y relative to the canvas surface,
   // so the two must be the same rectangle.
   const [viewport, setViewport] = useState({ width: windowWidth, height: windowHeight });
+  const pointerDensity = useDensity() === 'pointer';
+  const layersPanelWidth = Math.round(Math.min(340, windowWidth * 0.86));
   // Added on top of the fixed 104 the FAB/selection bar already clear the
   // floating tab bar by - a device with a tall gesture-nav inset needs more
   // than that fixed number to keep either from sitting partly behind it.
@@ -5219,7 +5222,17 @@ export default function BoardScreen() {
           screen - hidden rather than unmounted, so the canvas comes back
           at the same pan and zoom. */}
       <View
-        style={[styles.container, isTwoPane && paneDocId !== null && paneFullscreen ? styles.paneHidden : null]}
+        style={[
+          styles.container,
+          isTwoPane && paneDocId !== null && paneFullscreen ? styles.paneHidden : null,
+          // The panel pushes the canvas in rather than lying over it -
+          // and because this padding is what onLayout measures, the
+          // board's own viewport shrinks with it and its gestures keep
+          // agreeing with what is on screen. Only where a cursor is
+          // pointing: on a phone there is no room to give up, which is
+          // why the drawer lies over the board there.
+          pointerDensity && layersDrawerVisible ? { paddingRight: layersPanelWidth } : null,
+        ]}
         onLayout={(e) =>
           setViewport({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })
         }
@@ -6127,7 +6140,7 @@ export default function BoardScreen() {
           <GlassPortal>
             <View style={styles.layersLayer} pointerEvents="box-none">
               <View style={[StyleSheet.absoluteFill, styles.layersDim]} pointerEvents="none" />
-              <View style={[styles.layersPanel, { width: Math.min(340, windowWidth * 0.86) }]}>
+              <View style={[styles.layersPanel, { width: layersPanelWidth }]}>
                 <BlurView
                   intensity={60}
                   tint="dark"
@@ -6929,14 +6942,17 @@ const makeStyles = (theme: Theme) =>
     layersDim: {
       backgroundColor: 'rgba(17,24,39,0.35)',
     },
+    // The RIGHT edge, where a panel of tools belongs beside a canvas -
+    // the user's own reckoning, and the same side «Референси» takes in
+    // the editor now: "такі панелі повинні виїжджати з правого краю".
     layersPanel: {
       position: 'absolute',
-      left: 0,
+      right: 0,
       top: 0,
       bottom: 0,
       overflow: 'hidden',
-      borderRightWidth: 1,
-      borderRightColor: GLASS_EDGE,
+      borderLeftWidth: 1,
+      borderLeftColor: GLASS_EDGE,
       paddingTop: 56,
       paddingHorizontal: 14,
       paddingBottom: 16,

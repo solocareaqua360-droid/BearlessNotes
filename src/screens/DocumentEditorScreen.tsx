@@ -3910,7 +3910,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       <View
         style={[
           styles.header,
-          referencesSplit && { paddingLeft: referencePanelWidth },
+          referencesSplit && { paddingRight: referencePanelWidth },
           // In a pane the document starts on the same line the list's
           // cards do - and the badge stands on that same line, in the
           // corner, so the title begins a badge's height below it rather
@@ -4142,7 +4142,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         // DocumentCanvas measures its own viewport from whatever room
         // this leaves it (see its own onLayout) - marginLeft is enough
         // to push it aside split, and nothing to add when not.
-        <View style={[{ flex: 1 }, referencesSplit && { marginLeft: referencePanelWidth }]}>
+        <View style={[{ flex: 1 }, referencesSplit && { marginRight: referencePanelWidth }]}>
         <DocumentCanvas
           ref={canvasApiRef}
           onEditingChange={(id) => {
@@ -4254,7 +4254,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         ref={scrollViewRef}
         // Split, the note moves aside into what is left of the row
         // rather than lying under the drawer - see referencesSplit.
-        style={[styles.scrollArea, referencesSplit && { paddingLeft: referencePanelWidth }]}
+        style={[styles.scrollArea, referencesSplit && { paddingRight: referencePanelWidth }]}
         contentContainerStyle={[
           embedded && styles.scrollAreaEmbedded,
           // Used to stop short of the rail the way a mail's text does
@@ -4704,7 +4704,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             styles.pinnedToolbar,
             // Centred on the note's own column, not on the window, while
             // the drawer holds the other one.
-            referencesSplit && { paddingLeft: referencePanelWidth },
+            referencesSplit && { paddingRight: referencePanelWidth },
             pinnedToolbarStyle,
           ]}
           pointerEvents="box-none"
