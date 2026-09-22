@@ -80,7 +80,7 @@ import SketchEditor from '../components/SketchEditor';
 import EditorToolbar, { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolbar';
 import { BLOCK_ACTIONS, BlockAction } from '../components/blockActions';
 import { clearCopiedObject, getCopiedObject, useCopiedObject } from '../utils/objectClipboard';
-import { backupFileToDrive } from '../utils/googleDrive';
+import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
 import { ensureFileIsHere, openFileExternally } from '../utils/openFileExternally';
 import TextRecognizer, {
   RecognizeProgress,
@@ -498,6 +498,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // skipped entirely in embedded mode (CalendarScreen's daily notes),
   // matching the header/title/tags block right above them.
   const [coverImageUri, setCoverImageUri] = useState<string | undefined>(undefined);
+  // The cover's own copy on Drive. See applyCover, and types.ts for why a
+  // cover needs one of its own rather than borrowing a block's.
+  const [coverDrive, setCoverDrive] = useState<{ fileId: string; bytes: number } | undefined>(undefined);
   // The chosen cover gradient's id - see theme/covers. Saved beside the
   // cover picture and synced the same way.
   const [coverGradient, setCoverGradient] = useState<string | undefined>(undefined);
@@ -709,6 +712,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     title: string;
     blocks: Block[];
     coverImageUri: string | undefined;
+    coverDrive: { fileId: string; bytes: number } | undefined;
     coverGradient: string | undefined;
     paperColorEnabled: boolean;
     groupId: string | null;
@@ -733,6 +737,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       title: (data?.title as string) ?? '',
       blocks: blocksNow,
       coverImageUri: (data?.coverImageUri as string | undefined) || undefined,
+      coverDrive: data?.coverDriveFileId
+        ? {
+            fileId: data.coverDriveFileId as string,
+            bytes: (data.coverDriveBytes as number | undefined) ?? 0,
+          }
+        : undefined,
       coverGradient: (data?.coverGradient as string | undefined) || undefined,
       paperColorEnabled: !!data?.paperColorEnabled,
       groupId: (data?.groupId as string | undefined) ?? null,
@@ -745,6 +755,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     return (
       server.title === shape.title &&
       server.coverImageUri === shape.coverImageUri &&
+      stableStringify(server.coverDrive) === stableStringify(shape.coverDrive) &&
       server.coverGradient === shape.coverGradient &&
       server.paperColorEnabled === shape.paperColorEnabled &&
       server.groupId === shape.groupId &&
@@ -802,6 +813,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     }
     if (server && server.title === title) setTitle(remote.title);
     if (server && server.coverImageUri === coverImageUri) setCoverImageUri(remote.coverImageUri);
+    if (server && stableStringify(server.coverDrive) === stableStringify(coverDrive))
+      setCoverDrive(remote.coverDrive);
     if (server && server.coverGradient === coverGradient) setCoverGradient(remote.coverGradient);
     if (server && server.paperColorEnabled === paperColorEnabled) setPaperColorEnabled(remote.paperColorEnabled);
     if (server && server.groupId === groupId) setGroupId(remote.groupId);
@@ -853,6 +866,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       setCalendarDate((data?.calendarDate as string | undefined) ?? null);
       setTagIds(data?.tagIds ?? []);
       setCoverImageUri(data?.coverImageUri);
+      setCoverDrive(
+        data?.coverDriveFileId
+          ? { fileId: data.coverDriveFileId as string, bytes: (data.coverDriveBytes as number) ?? 0 }
+          : undefined
+      );
       setCoverGradient(data?.coverGradient);
       setPaperColorEnabled(!!data?.paperColorEnabled);
       setGroupId(data?.groupId ?? null);
@@ -1259,7 +1277,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // which is the case the moment a note has been opened, and the case
     // when another device's version has just been merged in. See
     // serverRef.
-    const shape: ServerShape = { title, blocks, coverImageUri: coverImageUri || undefined, coverGradient: coverGradient || undefined, paperColorEnabled, groupId, canvasLinks };
+    const shape: ServerShape = { title, blocks, coverImageUri: coverImageUri || undefined, coverDrive, coverGradient: coverGradient || undefined, paperColorEnabled, groupId, canvasLinks };
     if (sameAsServer(shape)) return;
     syncLog('will save: differs from server', {
       dirtyBlocks: blocks.filter((b) => serverBlockRef.current.get(b.id) !== stableStringify(b)).map((b) => b.id.slice(-4)).join(','),
@@ -1296,6 +1314,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // having been set has to actually clear the field, not leave the
           // old uri sitting there under merge:true.
           coverImageUri: coverImageUri || deleteField(),
+          coverDriveFileId: coverDrive?.fileId ?? deleteField(),
+          coverDriveBytes: coverDrive?.bytes ?? deleteField(),
           coverGradient: coverGradient || deleteField(),
           groupId: groupId ?? deleteField(),
           // A map written under merge:true MERGES its keys - a link
@@ -1316,7 +1336,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         { merge: true }
       )
         .then(() => {
-          rememberServer({ title, blocks, coverImageUri: coverImageUri || undefined, coverGradient: coverGradient || undefined, paperColorEnabled, groupId, canvasLinks });
+          rememberServer({ title, blocks, coverImageUri: coverImageUri || undefined, coverDrive, coverGradient: coverGradient || undefined, paperColorEnabled, groupId, canvasLinks });
           setSaveStatus('saved');
           syncLog('saved', { blocks: blocks.length });
         })
@@ -1339,7 +1359,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, blocks, coverImageUri, coverGradient, paperColorEnabled, groupId, canvasLinks, isLoaded]);
+  }, [title, blocks, coverImageUri, coverDrive, coverGradient, paperColorEnabled, groupId, canvasLinks, isLoaded]);
 
   // Whoever set focusIdRef wants that block to be the live input next. A
   // block only has a TextInput while it's the active one, so this first
@@ -3014,7 +3034,45 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     }).then((answer) => {
       if (answer === 'gallery' || answer === 'camera') pickCoverImage(answer);
       else if (answer === 'stock') setSearchingCover(true);
-      else if (answer === 'remove') setCoverImageUri(undefined);
+      else if (answer === 'remove') applyCover(undefined);
+    });
+  }
+
+  // Setting, changing or removing the cover - every path goes through
+  // here, so the Drive copy is never left to one of them to remember.
+  //
+  // The copy is the whole point. A cover used to have none of its own: it
+  // looked for a block in this same note whose picture happened to be the
+  // same file and borrowed that block's. Which works only when the cover
+  // WAS a picture already in the note - pick one from the gallery, the
+  // camera or the stock search and there is no such block, so nothing was
+  // ever backed up, and every other device drew an empty frame. That is
+  // the bug this fixes.
+  //
+  // Copying the app's own backdrop would have been the obvious shortcut
+  // and is exactly wrong: that one uploads a new copy every time it
+  // changes and never removes the old, so a Drive folder quietly fills
+  // with backdrops nobody can see. This follows Photos and Files instead,
+  // which delete theirs.
+  function applyCover(uri: string | undefined) {
+    const previous = coverDrive;
+    setCoverImageUri(uri);
+    setCoverDrive(undefined);
+
+    // The old copy goes - unless a block in this note is looking at the
+    // same one. A cover CAN be a picture that is also in the text, and
+    // then the copy belongs to both; deleting it would blank the picture
+    // inside the note. Changing the cover must never do that.
+    if (previous && !contentRef.current.blocks.some((b) => b.driveFileId === previous.fileId)) {
+      deleteFileFromDrive(previous.fileId, previous.bytes).catch(() => null);
+    }
+
+    if (!uri) return;
+    // Quietly, after the picture is already on screen - the same order
+    // every other attachment uses. A failure is not an error here: the
+    // cover still works on this device, it just will not travel yet.
+    backupFileToDrive(uri, `cover-${documentId}.jpg`, 'image/jpeg', 'Photos').then((uploaded) => {
+      if (uploaded) setCoverDrive({ fileId: uploaded.fileId, bytes: uploaded.bytes });
     });
   }
 
@@ -3027,7 +3085,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       uri,
       async (width, height) => {
         const compressed = await compressPickedImage(uri, width, height);
-        setCoverImageUri(compressed);
+        applyCover(compressed);
         setCoverGradient(undefined);
       },
       () => notify('Не вдалося встановити заставку', 'Не визначився розмір зображення')
@@ -3047,7 +3105,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
     const uri = await compressPickedImage(asset.uri, asset.width, asset.height);
-    setCoverImageUri(uri);
+    applyCover(uri);
     // A picture is the cover now; a gradient chosen earlier lets go, or
     // it would keep winning over the picture in the card.
     setCoverGradient(undefined);
@@ -3881,7 +3939,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   hitSlop={4}
                   onPress={() => {
                     setCoverGradient(on ? undefined : g.id);
-                    if (!on) setCoverImageUri(undefined);
+                    if (!on) applyCover(undefined);
                   }}
                   style={[styles.coverSwatch, on && styles.coverSwatchOn]}
                 >
@@ -4122,14 +4180,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       >
         {!embedded && coverImageUri && (
           <Pressable onPress={openCoverImageOptions}>
-            {/* A cover stores only its path, not a Drive id of its own. It
-                is always one of the document's own pictures, though, so
-                the block that carries the same path knows where the copy
-                is - and a cover with no such block simply shows its
-                state, as any picture here does. See AttachmentImage. */}
+            {/* Its own copy first (see applyCover). The block lookup
+                stays behind it for every cover set before covers had one
+                - those still borrow from a block whose picture is the
+                same file, which is all they ever had. */}
             <AttachmentImage
               uri={coverImageUri}
-              driveFileId={blocks.find((b) => b.imageUri === coverImageUri)?.driveFileId}
+              driveFileId={
+                coverDrive?.fileId ?? blocks.find((b) => b.imageUri === coverImageUri)?.driveFileId
+              }
               style={styles.coverImage}
               countsAsUse
             />

@@ -756,6 +756,7 @@ export default function DocumentsScreen({
           groupId: docSnapshot.data().groupId,
           createdAt: docSnapshot.data().createdAt,
           coverImageUri: docSnapshot.data().coverImageUri,
+          coverDriveFileId: docSnapshot.data().coverDriveFileId as string | undefined,
           coverGradient: docSnapshot.data().coverGradient as string | undefined,
           wideCard: docSnapshot.data().wideCard as boolean | undefined,
           deletedAt: docSnapshot.data().deletedAt as number | undefined,
@@ -1241,7 +1242,8 @@ export default function DocumentsScreen({
                   // stayed blank. See useLiveRecords.
                   (item.blocks ?? []).map((b) => applyLiveRecord(b, liveRecords)),
                   item.coverImageUri,
-                  drawnMode === 'list' ? undefined : EXPANDED_PREVIEW_LENGTH
+                  drawnMode === 'list' ? undefined : EXPANDED_PREVIEW_LENGTH,
+                  item.coverDriveFileId
                 );
                 return (
                   <DocumentCard
@@ -1496,7 +1498,8 @@ export default function DocumentsScreen({
                 // A wide card has MORE room than a tile, not less - it
                 // was taking the list row's own short preview and
                 // running out of text halfway down itself.
-                drawnMode === 'list' ? undefined : EXPANDED_PREVIEW_LENGTH
+                drawnMode === 'list' ? undefined : EXPANDED_PREVIEW_LENGTH,
+                item.coverDriveFileId
               );
               // Only in the explorer, and never in the bin - carried, the
               // card gives up its own onLongPress, since the list's drag

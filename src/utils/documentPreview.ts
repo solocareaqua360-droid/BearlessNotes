@@ -73,7 +73,8 @@ const PREVIEW_IMAGE_LIMIT = 4;
 export function extractPreview(
   blocks: Block[] | undefined,
   coverImageUri?: string,
-  maxTextLength: number = PREVIEW_LENGTH
+  maxTextLength: number = PREVIEW_LENGTH,
+  coverDriveFileId?: string
 ): {
   imageUri: string | null;
   // Where the bytes behind imageUri / imageUris are, for where the paths
@@ -96,15 +97,24 @@ export function extractPreview(
     .filter((t) => t.length > 0)
     .join(' ')
     .slice(0, maxTextLength);
-  // The picture the card leads with, and where its bytes are. A cover is
-  // stored as a path alone, but it is always one of the document's own
-  // pictures, so the block carrying the same path knows the Drive copy.
+  // The picture the card leads with, and where its bytes are.
+  //
+  // A cover now carries a Drive copy of its own (see types.ts), and that
+  // is the one to use. The block lookup below it is what covers had
+  // INSTEAD, and all that any cover set before this has: the block whose
+  // picture is the same file. It found nothing for a cover picked from
+  // the gallery, the camera or the stock search - no block has that
+  // picture - which is why those cards were blank on every device but
+  // the one that set them.
   const leadUri = coverImageUri ?? imageBlocks[0]?.imageUri ?? null;
   const leadBlock = leadUri ? imageBlocks.find((b) => b.imageUri === leadUri) : undefined;
+  const leadDriveFileId =
+    (coverImageUri && leadUri === coverImageUri ? coverDriveFileId : undefined) ??
+    leadBlock?.driveFileId;
   const stripBlocks = imageBlocks.slice(0, PREVIEW_IMAGE_LIMIT);
   return {
     imageUri: leadUri,
-    imageDriveFileId: leadBlock?.driveFileId,
+    imageDriveFileId: leadDriveFileId,
     imageUris: stripBlocks.map((b) => b.imageUri as string),
     imageDriveFileIds: stripBlocks.map((b) => b.driveFileId),
     previewText,

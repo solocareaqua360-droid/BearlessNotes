@@ -200,7 +200,9 @@ export default function GroupSections({
                     const { imageUri, imageDriveFileId, imageUris, imageDriveFileIds, previewText, checklistItems } = extractPreview(
                       // Records as they are now - see DocumentsScreen's same line.
                       (row.blocks as Block[] | undefined)?.map((b) => applyLiveRecord(b, liveRecords)),
-                      row.coverImageUri as string | undefined
+                      row.coverImageUri as string | undefined,
+                      undefined,
+                      row.coverDriveFileId as string | undefined
                     );
                     return (
                       <DocumentCard

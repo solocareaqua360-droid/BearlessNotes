@@ -662,6 +662,17 @@ export interface DocumentItem {
   // priority over any image block as the document's card thumbnail (see
   // extractPreview's own coverImageUri parameter).
   coverImageUri?: string;
+  // The cover's own backup on Drive, and the size of it (which a later
+  // delete needs, to take the same amount back off the storage counter).
+  //
+  // Its own, and that is the point. The cover used to look for a copy by
+  // hunting through this note's blocks for one whose picture happened to
+  // be the same file - so a cover set from the gallery, the camera or the
+  // stock search, which matches no block, had no copy anywhere, and every
+  // other device drew an empty frame where it should be. Absent on any
+  // cover set before this shipped.
+  coverDriveFileId?: string;
+  coverDriveBytes?: number;
   // The gradient the user chose for the cover, by id (see theme/covers).
   // Absent = the note's own default gradient; a coverImageUri wins over
   // either.
