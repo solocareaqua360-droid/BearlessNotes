@@ -3964,6 +3964,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         style={[
           styles.header,
           referencesSplit && { paddingRight: referencePanelWidth },
+          // The 56 above is a PHONE's clearance: the status bar, and the
+          // buttons that float over the top of the note there. On the
+          // desktop the toolbar already stands in that space, so the 56
+          // buys nothing - it is 68px of empty row, and the container's
+          // own paper shows through it as a light band across the top of
+          // a dark page. Measured in the running app rather than guessed
+          // at: an element 1200x68 with nothing inside it.
+          pointerDensity && { paddingTop: 12, paddingBottom: 0 },
           // In a pane the document starts on the same line the list's
           // cards do - and the badge stands on that same line, in the
           // corner, so the title begins a badge's height below it rather
