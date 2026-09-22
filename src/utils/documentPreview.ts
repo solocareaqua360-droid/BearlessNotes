@@ -84,6 +84,11 @@ export function extractPreview(
   imageDriveFileIds: (string | undefined)[];
   imageUris: string[];
   previewText: string;
+  // previewText without the checklist's own rows. A card that draws the
+  // rows as rows then has something to fill the space under them with:
+  // previewText itself repeats them first, since it is every block's
+  // text joined, and a card would say each task twice.
+  previewTail: string;
   checklistItems: PreviewChecklistItem[];
 } {
   const list = blocks ?? [];
@@ -93,6 +98,12 @@ export function extractPreview(
     .slice(0, PREVIEW_CHECKLIST_LIMIT)
     .map((b) => ({ text: stripFormatting(b.text).trim(), checked: !!b.checked }));
   const previewText = list
+    .map((b) => stripFormatting(b.text ?? '').trim())
+    .filter((t) => t.length > 0)
+    .join(' ')
+    .slice(0, maxTextLength);
+  const previewTail = list
+    .filter((b) => (b.type ?? 'paragraph') !== 'checkbox')
     .map((b) => stripFormatting(b.text ?? '').trim())
     .filter((t) => t.length > 0)
     .join(' ')
@@ -118,6 +129,7 @@ export function extractPreview(
     imageUris: stripBlocks.map((b) => b.imageUri as string),
     imageDriveFileIds: stripBlocks.map((b) => b.driveFileId),
     previewText,
+    previewTail,
     checklistItems,
   };
 }

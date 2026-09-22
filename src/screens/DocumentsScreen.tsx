@@ -1343,7 +1343,7 @@ export default function DocumentsScreen({
                 // does the card show the snippet around it instead.
                 const titleMatch = findTitleMatch(item.title ?? '', needle);
                 const bodyMatch = titleMatch ? null : findBodyMatch(item.blocks, needle);
-                const { imageUri, imageDriveFileId, imageUris, imageDriveFileIds, previewText, checklistItems } = extractPreview(
+                const { imageUri, imageDriveFileId, imageUris, imageDriveFileIds, previewText, previewTail, checklistItems } = extractPreview(
                   // Through the records as they are NOW - a block inserted before the
                   // Drive backup existed carries no driveFileId of its own; the record
                   // does. The editor overlays the same way, and the Photos database reads
@@ -1365,6 +1365,8 @@ export default function DocumentsScreen({
                     imageUris={imageUris}
                     imageDriveFileIds={imageDriveFileIds}
                     previewText={previewText}
+                    previewTail={previewTail}
+                    blocks={(item.blocks ?? []).map((b) => applyLiveRecord(b, liveRecords))}
                     checklistItems={checklistItems}
                     titleMatch={titleMatch}
                     bodyMatch={bodyMatch}
@@ -1597,7 +1599,7 @@ export default function DocumentsScreen({
               // document has no image (see DocumentCard's own noImage
               // handling) - list rows are unaffected, so they keep the
               // short default length.
-              const { imageUri, imageDriveFileId, imageUris, imageDriveFileIds, previewText, checklistItems } = extractPreview(
+              const { imageUri, imageDriveFileId, imageUris, imageDriveFileIds, previewText, previewTail, checklistItems } = extractPreview(
                 // Through the records as they are NOW - a block inserted before the
                 // Drive backup existed carries no driveFileId of its own; the record
                 // does. The editor overlays the same way, and the Photos database reads
@@ -1627,6 +1629,10 @@ export default function DocumentsScreen({
                   imageUris={imageUris}
                   imageDriveFileIds={imageDriveFileIds}
                   previewText={previewText}
+                  previewTail={previewTail}
+                  // The card draws the page itself where it has the
+                  // room - see CardPreview.
+                  blocks={(item.blocks ?? []).map((b) => applyLiveRecord(b, liveRecords))}
                   checklistItems={checklistItems}
                   onPress={() => (trashOpen ? openTrashMenu(item) : openDocument(item.id))}
                   onLongPress={

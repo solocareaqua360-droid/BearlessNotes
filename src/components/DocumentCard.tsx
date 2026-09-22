@@ -2,7 +2,9 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CoverGradientView, coverById, defaultCoverFor } from '../theme/covers';
 import { useRecordColour, useTextScale } from '../theme/ThemeProvider';
 import { useDensity } from '../hooks/useDensity';
+import CardPreview from './CardPreview';
 import { Ionicons } from '@expo/vector-icons';
+import type { Block } from '../types';
 import AttachmentImage from './AttachmentImage';
 import { PreviewChecklistItem, TextMatch, formatUpdatedAt } from '../utils/documentPreview';
 import { FONT_REGULAR, FONT_BOLD } from '../utils/fonts';
@@ -118,13 +120,19 @@ function HighlightedLine({
 
 // The "live content" body: real checklist rows (with strikethrough on a
 // checked one) take priority over a photo strip, which takes priority over
-// the plain text snippet - a card only ever shows one of these three, not
-// a mix, and each is capped to what extractPreview already trimmed it to.
+// the plain text snippet - and each is capped to what extractPreview
+// already trimmed it to.
+//
+// The checklist is no longer exclusive: it draws its rows and then
+// spends whatever is left of the card's line budget on the text that is
+// NOT in those rows (previewTail). A note with two tasks and six
+// paragraphs used to show the two tasks and nothing else.
 function PreviewBody({
   checklistItems,
   imageUris,
   imageDriveFileIds = [],
   previewText,
+  previewTail,
   bodyMatch,
   textColor,
   mutedColor,
@@ -135,6 +143,9 @@ function PreviewBody({
   imageUris: string[];
   imageDriveFileIds?: (string | undefined)[];
   previewText: string;
+  // Optional: a caller that has no separate tail (SearchScreen) simply
+  // shows the rows, as it always did.
+  previewTail?: string;
   bodyMatch?: TextMatch | null;
   textColor: string;
   mutedColor: string;
@@ -153,6 +164,14 @@ function PreviewBody({
   const textScale = useTextScale();
   const scaledPreview = compact ? null : { fontSize: Math.round(15 * textScale), lineHeight: Math.round(21 * textScale) };
   if (checklistItems.length > 0) {
+    // What is LEFT of the card after the rows. textLines is the card's
+    // own line budget (see previewLinesFitting), and a checklist row is
+    // one line of it - so whatever the rows do not spend, the text
+    // below can. It used to spend nothing: a note with two tasks and
+    // six paragraphs showed the two tasks and stopped, and the rest of
+    // the card was empty. "Показує не весь вміст" - and on a tall card
+    // there was a lot of it left to show.
+    const linesLeft = textLines - checklistItems.length - 1;
     return (
       <View style={styles.checklist}>
         {checklistItems.map((item, index) => (
@@ -174,10 +193,26 @@ function PreviewBody({
             </Text>
           </View>
         ))}
+        {!!previewTail && linesLeft > 0 && (
+          <Text
+            style={[
+              compact ? styles.previewCompact : styles.preview,
+              { color: mutedColor },
+              scaledPreview,
+              styles.checklistTail,
+            ]}
+            numberOfLines={linesLeft}
+          >
+            {previewTail}
+          </Text>
+        )}
       </View>
     );
   }
   if (imageUris.length > 1) {
+    // Same idea as the checklist's tail above would be, but a photo
+    // strip is a fixed block rather than a count of lines - left alone
+    // until there is a reason to work its height out too.
     return (
       <View style={styles.photoStrip}>
         {imageUris.slice(0, compact ? 3 : 4).map((uri, index) => (
@@ -223,6 +258,16 @@ type Props = {
   imageDriveFileId?: string;
   imageDriveFileIds?: (string | undefined)[];
   previewText: string;
+  // previewText without the checklist's rows - what a card fills the
+  // space under those rows with. See extractPreview.
+  previewTail?: string;
+  // The note's own blocks. Given them, a GRID card stops summarising
+  // and draws a miniature of the page instead - text, checkboxes,
+  // headings, file chips, in the order they are actually in. See
+  // CardPreview. Optional: a list row is one line beside a thumbnail
+  // and has no room to be a page, and SearchScreen has only the
+  // matched text anyway.
+  blocks?: Block[];
   // "Live content" preview - a checklist-heavy document shows its actual
   // rows (checked ones struck through), a photo-heavy one shows a strip of
   // thumbnails, instead of just previewText's flattened text. Optional so
@@ -298,6 +343,8 @@ export default function DocumentCard({
   coverGradient,
   imageDriveFileId,
   previewText,
+  previewTail,
+  blocks,
   imageUris = [],
   imageDriveFileIds = [],
   checklistItems = [],
@@ -379,12 +426,18 @@ export default function DocumentCard({
     </View>
   );
 
-  const previewBody = (
+  // A page, where there is a page's worth of room. A list row is a line
+  // of text beside a thumbnail - there is nothing to miniaturise into
+  // it - so the summary below still serves it.
+  const previewBody = isGrid && blocks && blocks.length > 0 ? (
+    <CardPreview blocks={blocks} color={text} mutedColor={textMuted} />
+  ) : (
     <PreviewBody
       checklistItems={checklistItems}
       imageUris={imageUris}
       imageDriveFileIds={imageDriveFileIds}
       previewText={previewText}
+      previewTail={previewTail}
       bodyMatch={bodyMatch}
       textColor={text}
       mutedColor={textMuted}
@@ -661,6 +714,11 @@ const styles = StyleSheet.create({
   checklistTextDone: {
     textDecorationLine: 'line-through',
     opacity: 0.6,
+  },
+  // A line of air between the rows and the text that follows them, so
+  // the two read as two things rather than one run-on list.
+  checklistTail: {
+    marginTop: 4,
   },
   photoStrip: {
     flexDirection: 'row',

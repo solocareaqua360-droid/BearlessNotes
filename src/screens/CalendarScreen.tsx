@@ -1287,6 +1287,8 @@ export default function CalendarScreen() {
                         imageUris={preview.imageUris}
                         imageDriveFileIds={preview.imageDriveFileIds}
                         previewText={preview.previewText}
+                        previewTail={preview.previewTail}
+                        blocks={day.blocks}
                         checklistItems={preview.checklistItems}
                         layout="grid"
                         gridWidth={DESKTOP_CALENDAR_WIDTH - 40}
