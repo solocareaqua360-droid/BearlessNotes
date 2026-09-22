@@ -11,6 +11,7 @@ import { useStyles, useTheme } from '../theme/ThemeProvider';
 import { useDensity } from '../hooks/useDensity';
 import { makeStyles } from './documentEditorStyles';
 import { columnLetter, displayValueOf, parseFormattedText } from '../utils/documentBlocks';
+import { ask } from './surfaces/Ask';
 import FormattedText from './FormattedText';
 
 // A table in a note, in TWO faces.
@@ -226,20 +227,69 @@ export default function TableBlockContent({
     onUpdate({ tableRows: [...rows.map((row) => ({ cells: [...row.cells] })), { cells: sumCells }] });
   }
 
+  async function openTableMenu() {
+    const here = selected;
+    const chosen = await ask({
+      title: 'Таблиця',
+      message: here ? `Виділено ${columnLetter(here.c)}${here.r + 1}` : undefined,
+      actions: [
+        ...(here && rows.length > 1
+          ? [{ id: 'delRow', label: `Видалити рядок ${here.r + 1}`, tone: 'danger' as const }]
+          : []),
+        ...(here && columnCount > 1
+          ? [{ id: 'delCol', label: `Видалити колонку ${columnLetter(here.c)}`, tone: 'danger' as const }]
+          : []),
+        { id: 'sum', label: 'Рядок підсумків' },
+        { id: 'headerRow', label: headerRow ? 'Прибрати шапку-рядок' : 'Перший рядок — шапка' },
+        { id: 'headerCol', label: headerColumn ? 'Прибрати шапку-колонку' : 'Перша колонка — шапка' },
+        { id: 'resetWidths', label: 'Скинути ширину колонок' },
+      ],
+    });
+    if (chosen === 'delRow' && here) removeRow(here.r);
+    if (chosen === 'delCol' && here) removeColumn(here.c);
+    if (chosen === 'sum') addSumRow();
+    if (chosen === 'headerRow') onUpdate({ tableHeaderRow: !headerRow });
+    if (chosen === 'headerCol') onUpdate({ tableHeaderColumn: !headerColumn });
+    if (chosen === 'resetWidths') onUpdate({ tableColumnWidths: [] });
+  }
+
   const selectedRaw = selected ? rows[selected.r]?.cells[selected.c] ?? '' : '';
+  const composingFormula = selectedRaw.trim().startsWith('=');
 
   // ---- READING ----------------------------------------------------
   if (!canEdit) {
+    // NOT styles.tableBlock: it carries flex: 1, and a flex: 1 child of a
+    // parent measured by its own content collapses to nothing - which is
+    // what a table became the moment editing ended, "просто тоненька
+    // лінія, оце і є наша таблиця". The same trap is written up in
+    // SortableBlockRow, about this same editor, in September. A
+    // horizontal scroller takes its height from what is inside it.
     return (
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tableBlock}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.tableReadFrame}
+      >
         <View>
           {rows.map((row, r) => (
             <View
               key={r}
-              style={[styles.tableReadRow, headerRow && r === 0 && styles.tableReadHeaderRow]}
+              style={[
+                styles.tableGridRow,
+                r === rows.length - 1 && styles.tableGridRowLast,
+                headerRow && r === 0 && styles.tableGridHeaderRow,
+              ]}
             >
               {row.cells.map((_, c) => (
-                <View key={c} style={[styles.tableReadCell, { width: widthOf(c) }]}>
+                <View
+                  key={c}
+                  style={[
+                    styles.tableGridCell,
+                    c === row.cells.length - 1 && styles.tableGridCellLast,
+                    headerColumn && c === 0 && styles.tableGridHeaderCell,
+                    { width: widthOf(c) },
+                  ]}
+                >
                   <CellText
                     rows={rows}
                     r={r}
@@ -290,7 +340,12 @@ export default function TableBlockContent({
         )}
       </View>
 
-      {!!selected && (
+      {/* Only while a formula is actually being written. Standing there
+          for every selected cell, it was seven more symbols around a
+          two-by-two table for no reason - "оце от навколо купа
+          символів". A cell whose text starts with "=" is the only place
+          an operator means anything. */}
+      {composingFormula && (
         <View style={styles.tableOperatorRow}>
           {OPERATORS.map((op) => (
             <Pressable key={op} style={styles.tableOperatorKey} onPress={() => appendToFormula(op)}>
@@ -301,7 +356,7 @@ export default function TableBlockContent({
       )}
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always">
-        <View>
+        <View style={styles.tableFrame}>
           <View style={styles.tableHeaderRow}>
             <View style={styles.tableGutterCell} />
             {Array.from({ length: columnCount }, (_, c) => (
@@ -318,8 +373,15 @@ export default function TableBlockContent({
             ))}
           </View>
           {rows.map((row, r) => (
-            <View key={r} style={styles.tableRow}>
-              <View style={styles.tableGutterCell}>
+            <View
+              key={r}
+              style={[
+                styles.tableGridRow,
+                r === rows.length - 1 && styles.tableGridRowLast,
+                headerRow && r === 0 && styles.tableGridHeaderRow,
+              ]}
+            >
+              <View style={[styles.tableGutterCell, styles.tableGridCell]}>
                 <Text style={styles.tableGutterText}>{r + 1}</Text>
               </View>
               {row.cells.map((_, c) => {
@@ -337,8 +399,10 @@ export default function TableBlockContent({
                         cellRefs.current.set(`${r}:${c}`, node);
                       }}
                       style={[
-                        styles.tableCell,
+                        styles.tableGridCell,
                         styles.tableCellInput,
+                        c === row.cells.length - 1 && styles.tableGridCellLast,
+                        headerColumn && c === 0 && styles.tableGridHeaderCell,
                         { width: widthOf(c) },
                         isSelected && styles.tableCellSelected,
                       ]}
@@ -365,7 +429,13 @@ export default function TableBlockContent({
                 return (
                   <Pressable
                     key={c}
-                    style={[styles.tableCell, { width: widthOf(c) }, isSelected && styles.tableCellSelected]}
+                    style={[
+                      styles.tableGridCell,
+                      c === row.cells.length - 1 && styles.tableGridCellLast,
+                      headerColumn && c === 0 && styles.tableGridHeaderCell,
+                      { width: widthOf(c) },
+                      isSelected && styles.tableCellSelected,
+                    ]}
                     onPress={() => handleCellPress(r, c)}
                   >
                     <CellText
@@ -380,11 +450,6 @@ export default function TableBlockContent({
                   </Pressable>
                 );
               })}
-              {rows.length > 1 && (
-                <Pressable hitSlop={8} onPress={() => removeRow(r)} style={styles.tableRowRemove}>
-                  <Ionicons name="close" size={14} color="#9CA3AF" />
-                </Pressable>
-              )}
             </View>
           ))}
         </View>
@@ -400,31 +465,14 @@ export default function TableBlockContent({
             <Ionicons name="add" size={14} color="#6B7280" />
             <Text style={styles.tableControlLabel}>Колонка</Text>
           </Pressable>
-          {!!selected && columnCount > 1 && (
-            <Pressable style={styles.tableControlBtn} onPress={() => removeColumn(selected.c)}>
-              <Ionicons name="remove" size={14} color="#6B7280" />
-              <Text style={styles.tableControlLabel}>Колонка {columnLetter(selected.c)}</Text>
-            </Pressable>
-          )}
-          <Pressable style={styles.tableControlBtn} onPress={addSumRow}>
-            <Ionicons name="calculator-outline" size={14} color="#6B7280" />
-            <Text style={styles.tableControlLabel}>Підсумок</Text>
-          </Pressable>
-          {/* Two switches, not one convention: whether a table's first
-              row names the others is a fact only its author knows. */}
-          <Pressable
-            style={[styles.tableControlBtn, headerRow && styles.tableControlBtnOn]}
-            onPress={() => onUpdate({ tableHeaderRow: !headerRow })}
-          >
-            <Ionicons name="reorder-two-outline" size={14} color="#6B7280" />
-            <Text style={styles.tableControlLabel}>Шапка</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.tableControlBtn, headerColumn && styles.tableControlBtnOn]}
-            onPress={() => onUpdate({ tableHeaderColumn: !headerColumn })}
-          >
-            <Ionicons name="reorder-three-outline" size={14} color="#6B7280" />
-            <Text style={styles.tableControlLabel}>Перша колонка</Text>
+          {/* Everything else is behind one button. Six controls under a
+              two-by-two table is more chrome than table; adding a row
+              and a column are the two anyone does often, and the rest
+              are worth a tap. This also gives row DELETION a home: it
+              used to be an × on every single row, which is where a lot
+              of the clutter came from. */}
+          <Pressable style={styles.tableControlBtn} onPress={openTableMenu}>
+            <Ionicons name="ellipsis-horizontal" size={14} color="#6B7280" />
           </Pressable>
         </View>
       </ScrollView>

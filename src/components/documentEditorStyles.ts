@@ -380,6 +380,52 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     marginVertical: 12,
     marginHorizontal: 4,
   },
+  // --- one grid, drawn the same way whether it is being read or edited ---
+  //
+  // The table had no outline of ITS OWN and every cell had one of its
+  // own instead - a rounded box each, with a gap between them. On a
+  // phone, beside a formula bar and a row of operators, that read as
+  // "каша із пікселів", and nothing like the database's table, which
+  // the user holds up as the one that looks right whatever is typed
+  // into it. So: one border round the whole thing, hairlines between
+  // cells, and no box anywhere else.
+  tableFrame: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: t.paper.edge,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  tableReadFrame: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: t.paper.edge,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  tableGridRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.paper.edge,
+  },
+  tableGridRowLast: {
+    borderBottomWidth: 0,
+  },
+  tableGridHeaderRow: {
+    backgroundColor: t.field.fill,
+  },
+  tableGridCell: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    justifyContent: 'center',
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: t.paper.edge,
+  },
+  tableGridCellLast: {
+    borderRightWidth: 0,
+  },
+  tableGridHeaderCell: {
+    backgroundColor: t.field.fill,
+  },
   // --- reading face ---
   // No box round a cell and no gutter: a rule between rows is what a
   // table is on paper, and what Claude's own tables are.
