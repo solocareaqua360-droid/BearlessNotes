@@ -29,6 +29,7 @@ import CrashBoundary from './src/components/CrashBoundary';
 import FatalErrorOverlay from './src/components/FatalErrorOverlay';
 import ContextDock from './src/components/ContextDock';
 import DesktopRail from './src/components/DesktopRail';
+import DesktopToolbar from './src/components/DesktopToolbar';
 import { useDensity } from './src/hooks/useDensity';
 import { NavDockProvider } from './src/navigation/navDock';
 import {
@@ -474,7 +475,13 @@ export default function App() {
                 <View style={styles.deskRow}>
                   <DesktopRail />
                   <View style={styles.deskBody}>
-                    <RootNavigator />
+                    {/* The dock, unrolled - the path on the left and
+                        what this screen can do on the right, off the
+                        same publications the dock reads. */}
+                    <DesktopToolbar />
+                    <View style={styles.deskBody}>
+                      <RootNavigator />
+                    </View>
                   </View>
                 </View>
               ) : (

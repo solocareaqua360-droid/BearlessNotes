@@ -1,0 +1,188 @@
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useNavDockActions, useNavDockBeads, useNavDockContext } from '../navigation/navDock';
+import { MAX_CONTENT_WIDTH } from './ContentColumn';
+import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
+
+// Where a cursor is pointing, this is the dock - unrolled.
+//
+// It renders the very same things the dock does, off the very same
+// publications: the path the screen is standing in, what it can do, and
+// its two beads. Nothing here is a second implementation, which is the
+// point - a screen that gains a button gains it in both places, and the
+// two can never drift.
+//
+// Why a row above the list rather than a bar at the bottom: a bar at the
+// bottom of the screen is where a THUMB rests. A pointer starts at what
+// it last clicked, which is the list, so the controls belong at the top
+// of it - and the path belongs there too, being a line rather than a
+// column (which is why it is here and not in the rail).
+//
+// Held to the content's own 760 rather than the full window, so it lines
+// up with the cards instead of running away to the edges - the same
+// reason ContentColumn exists at all.
+
+function ActionIcon({ icon, size, color }: { icon: string; size: number; color: string }) {
+  // "mc:<name>" is a MaterialCommunityIcons one - see DockAction.icon.
+  if (icon.startsWith('mc:')) {
+    return <MaterialCommunityIcons name={icon.slice(3) as never} size={size} color={color} />;
+  }
+  return <Ionicons name={icon as never} size={size} color={color} />;
+}
+
+export default function DesktopToolbar() {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
+  const context = useNavDockContext();
+  const actions = useNavDockActions();
+  const beads = useNavDockBeads();
+
+  // «Папки» opens the drawer of them, and the drawer of them is the
+  // rail now - standing permanently open two hundred points to the left.
+  // A button for it would be a button that opens what is already open.
+  const shown = (actions ?? []).filter((a) => a.key !== 'tags');
+
+  const crumbs = context?.kind === 'path' ? context.crumbs : [];
+  const onGo = context?.kind === 'path' ? context.onGo : undefined;
+
+  // Nothing published means nothing to show - a board, say, which owns
+  // its whole window.
+  if (!shown.length && !beads.left && !beads.right && crumbs.length === 0) return null;
+
+  return (
+    <View style={styles.frame} pointerEvents="box-none">
+      <View style={styles.bar}>
+        <View style={styles.crumbs}>
+          {crumbs.length > 0 && (
+            <Pressable style={styles.crumb} onPress={() => onGo?.('')}>
+              <Ionicons name="home-outline" size={14} color={theme.ink.muted} />
+            </Pressable>
+          )}
+          {crumbs.map((name, index) => {
+            const last = index === crumbs.length - 1;
+            return (
+              <View key={`${name}-${index}`} style={styles.crumbCell}>
+                <Ionicons name="chevron-forward" size={12} color={theme.ink.faint} />
+                <Pressable
+                  style={styles.crumb}
+                  onPress={() => onGo?.(crumbs.slice(0, index + 1).join('/'))}
+                >
+                  <Text style={[styles.crumbLabel, last && styles.crumbLast]} numberOfLines={1}>
+                    {name}
+                  </Text>
+                </Pressable>
+              </View>
+            );
+          })}
+        </View>
+
+        <View style={styles.controls}>
+          {!!beads.left && (
+            <Pressable
+              style={[styles.button, beads.left.active && styles.buttonOn]}
+              onPress={beads.left.onPress}
+              onLongPress={beads.left.onLongPress}
+            >
+              <ActionIcon icon={beads.left.icon} size={17} color={theme.ink.primary} />
+            </Pressable>
+          )}
+          {shown.map((action) => (
+            <Pressable
+              key={action.key}
+              style={[styles.button, action.active && styles.buttonOn]}
+              onPress={action.onPress}
+              onLongPress={action.onLongPress}
+            >
+              <ActionIcon icon={action.icon} size={17} color={theme.ink.primary} />
+              {!!action.label && <Text style={styles.buttonLabel}>{action.label}</Text>}
+            </Pressable>
+          ))}
+          {!!beads.right && (
+            // The one filled button: the thing this screen is FOR.
+            <Pressable
+              style={styles.primary}
+              onPress={beads.right.onPress}
+              onLongPress={beads.right.onLongPress}
+            >
+              <Ionicons name="add" size={18} color={theme.onAccent} />
+            </Pressable>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const makeStyles = (t: Theme) => StyleSheet.create({
+  frame: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  bar: {
+    width: '100%',
+    maxWidth: MAX_CONTENT_WIDTH,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  crumbs: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
+  },
+  crumbCell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
+  },
+  crumb: {
+    paddingHorizontal: 4,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  crumbLabel: {
+    fontSize: 13,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.muted,
+  },
+  crumbLast: {
+    fontFamily: FONT_SEMIBOLD,
+    color: t.ink.primary,
+  },
+  controls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    height: 30,
+    paddingHorizontal: 9,
+    borderRadius: 8,
+  },
+  buttonOn: {
+    backgroundColor: t.selected,
+  },
+  buttonLabel: {
+    fontSize: 12,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.muted,
+  },
+  primary: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: t.accent,
+    marginLeft: 4,
+  },
+});
