@@ -1795,7 +1795,20 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // On a Mac that is whatever the rail and the window leave; in a pane
   // it is the rest of the board. The same reasoning the WIDTH already
   // follows, and for the same reason.
-  const referencePanelRight = Math.max(0, windowWidth - paneLeft - editorWidth);
+  // HOW FAR from the window's right edge, and this is the part that
+  // went wrong. The portal it is drawn in spans the whole window; the
+  // note does not. The first attempt worked the distance out as
+  // `windowWidth - paneLeft - editorWidth`, which assumes the note is
+  // laid out from the LEFT of the window - and with the desktop rail
+  // taking 240 there, the note's right edge IS the window's, so that
+  // subtraction pushed the panel a rail's width inward and, before the
+  // measurement landed, clean off the screen.
+  //
+  // The answer was already here. `railRight` is exactly "how far in
+  // from the window's right edge this note's own right edge is" -
+  // measured by whoever put the note in a pane, and nothing when it has
+  // the window to itself. The project badge has used it all along.
+  const referencePanelRight = 'pane' in props ? (props.railRight ?? 0) : 0;
   useEffect(() => {
     if (focusedBlockId === null) activeInputBottomSV.value = -1;
   }, [focusedBlockId]);
