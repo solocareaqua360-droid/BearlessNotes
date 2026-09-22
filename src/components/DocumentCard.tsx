@@ -33,6 +33,13 @@ const GRID_THUMB_HEIGHT = 96;
 // Fixed rather than a minimum: uniform card height is what keeps the grid
 // gap-free without needing a masonry/waterfall layout at all.
 const GRID_CARD_HEIGHT = 228;
+// Taller where a cursor is looking at it. The user picked this off
+// Craft's own grid: its cards are not richer than ours - they already
+// carry the same checklist and photo strip - they are TALLER, and the
+// height is what lets several lines of the note itself show instead of
+// two. A phone keeps 228: there the scarce thing is how many cards fit
+// on the screen at once.
+const GRID_CARD_HEIGHT_POINTER = 320;
 
 // The pixel budget below is what gridContent's own layout actually spends
 // (see its style) - kept as named constants, and lineHeight set EXPLICITLY
@@ -60,9 +67,9 @@ const GRID_PREVIEW_LINE_HEIGHT = 17; // matches previewCompact.lineHeight below
 // (2 full lines, not however many THIS title actually wraps to) so a
 // card's line count stays consistent from one document to the next
 // instead of shifting with how long a given title happens to be.
-function previewLinesFitting(reservedHeight: number): number {
+function previewLinesFitting(reservedHeight: number, cardHeight: number): number {
   const available =
-    GRID_CARD_HEIGHT -
+    cardHeight -
     reservedHeight -
     GRID_CONTENT_PADDING * 2 -
     GRID_TITLE_LINE_HEIGHT * GRID_TITLE_MAX_LINES -
@@ -72,13 +79,22 @@ function previewLinesFitting(reservedHeight: number): number {
 }
 
 // No image: gridContent fills the entire card, nothing reserved.
-const EXPANDED_TEXT_LINES = previewLinesFitting(0);
+const EXPANDED_TEXT_LINES = previewLinesFitting(0, GRID_CARD_HEIGHT);
 // With one: reserves the thumbnail's own height plus its 1px bottom
 // border (see thumbGrid) - noticeably fewer lines fit, which is exactly
 // why this needed computing separately rather than reusing one constant
 // for both cases.
 const THUMB_BORDER_WIDTH = 1;
-const COMPACT_TEXT_LINES = previewLinesFitting(GRID_THUMB_HEIGHT + THUMB_BORDER_WIDTH);
+const COMPACT_TEXT_LINES = previewLinesFitting(GRID_THUMB_HEIGHT + THUMB_BORDER_WIDTH, GRID_CARD_HEIGHT);
+// The same two sums against the taller card. Computed, not guessed at:
+// the extra height is worth nothing if the text still stops at the line
+// count the short card could hold, and the card would simply gain empty
+// space at the bottom - which is the opposite of what the height is for.
+const EXPANDED_TEXT_LINES_POINTER = previewLinesFitting(0, GRID_CARD_HEIGHT_POINTER);
+const COMPACT_TEXT_LINES_POINTER = previewLinesFitting(
+  GRID_THUMB_HEIGHT + THUMB_BORDER_WIDTH,
+  GRID_CARD_HEIGHT_POINTER
+);
 
 function HighlightedLine({
   match,
@@ -307,7 +323,12 @@ export default function DocumentCard({
   // Packed for a cursor, spaced for a thumb - see hooks/useDensity.
   // Only the list row answers to this so far; a grid tile is sized by
   // its picture, which is the thing being looked at rather than air.
-  const dense = useDensity() === 'pointer' && !isGrid;
+  const pointer = useDensity() === 'pointer';
+  const dense = pointer && !isGrid;
+  // The tile's own height, and with it how much of the note shows.
+  const gridHeight = pointer ? GRID_CARD_HEIGHT_POINTER : GRID_CARD_HEIGHT;
+  const expandedLines = pointer ? EXPANDED_TEXT_LINES_POINTER : EXPANDED_TEXT_LINES;
+  const compactLines = pointer ? COMPACT_TEXT_LINES_POINTER : COMPACT_TEXT_LINES;
   // "Розмір тексту" - only the LIST row's own size, never the grid
   // card's: `titleCompact`'s line height is measured against elsewhere
   // (EXPANDED_TEXT_LINES, a fixed-height tile), and scaling it would be
@@ -371,7 +392,7 @@ export default function DocumentCard({
       // A wide card's cover is BESIDE the text, not above it, so the
       // text column has the card's full height to itself - the same
       // budget a tile with no picture at all gets.
-      textLines={wide ? EXPANDED_TEXT_LINES : isGrid ? (noImage ? EXPANDED_TEXT_LINES : COMPACT_TEXT_LINES) : 2}
+      textLines={wide ? expandedLines : isGrid ? (noImage ? expandedLines : compactLines) : 2}
     />
   );
 
@@ -391,6 +412,7 @@ export default function DocumentCard({
         style={[
           styles.gridCard,
           styles.wideCard,
+          { height: gridHeight },
           // A card spanning cells of a TILE grid has to be told the row's
           // width (its own cell is one column); one in the wide column
           // takes the row it is given, which is what keeps it from
@@ -435,6 +457,7 @@ export default function DocumentCard({
         collapsable={false}
         style={[
           styles.gridCard,
+          { height: gridHeight },
           gridWidth !== undefined ? { width: gridWidth } : styles.gridCardHalf,
           { backgroundColor: background },
           dimmed && styles.dimmed,
