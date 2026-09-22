@@ -266,7 +266,7 @@ export default function CalendarScreen() {
   // whichever day's note is currently mounted - noteEditorRef is how the
   // header's select button reaches back down to actually toggle it.
   const [noteSelectMode, setNoteSelectMode] = useState(false);
-  const [noteSaveStatus, setNoteSaveStatus] = useState<'saved' | 'saving'>('saved');
+  const [noteSaveStatus, setNoteSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const noteEditorRef = useRef<DocumentEditorHandle>(null);
   // The calendar folds away entirely while the keyboard is up: on a phone
   // the strip (let alone the month grid) plus the keyboard leaves almost

@@ -230,7 +230,7 @@ type Props =
       // state - these mirror it out, and the ref below lets it drive the
       // toggle without lifting isSelectMode into two-way controlled props.
       onSelectModeChange?: (isSelectMode: boolean) => void;
-      onSaveStatusChange?: (status: 'saved' | 'saving') => void;
+      onSaveStatusChange?: (status: 'saved' | 'saving' | 'error') => void;
     }
   // Pane mode (DocumentsScreen's two-pane layout on a wide screen): the
   // WHOLE editor, header and title and cover included - unlike embedded
@@ -277,7 +277,7 @@ type Props =
       // Mirrored out so the screen around this pane can hold off writing
       // the same document while there are keystrokes here that haven't
       // been saved yet - see BoardScreen's live rebuild.
-      onSaveStatusChange?: (status: 'saved' | 'saving') => void;
+      onSaveStatusChange?: (status: 'saved' | 'saving' | 'error') => void;
     };
 
 export type DocumentEditorHandle = {
@@ -602,7 +602,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // The blocks are the event: once they are in, the block can be found.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, focusLinkTo, blocks.length]);
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
+  // 'error' is not just 'saved' with a message: the ring has to stop
+  // turning, and saying "saved" about a write that was refused is the
+  // lie that would be told in its place. Whoever is listening (a pane's
+  // host, the calendar's own ring) only ever asks whether it is
+  // 'saving', so a third state costs them nothing.
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSelectMode, setIsSelectMode] = useState(false);
   // The title behaves like a block: plain text until tapped, a live input
@@ -1352,6 +1357,16 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // nothing scheduled, and the listener above reads this to tell
       // "waiting to write" from "nothing pending".
       saveTimeoutRef.current = null;
+      // Wrapped, because the throw that matters here is not the one a
+      // rejected promise carries. Firestore validates the data
+      // SYNCHRONOUSLY - an undefined anywhere in a block and setDoc
+      // throws before it ever returns a promise, so `.catch` below never
+      // sees it and the error goes all the way up as a fatal one: a
+      // full-screen «Помилка поза екраном» over the note, instead of the
+      // «Не збереглося» this already knows how to show. It cost exactly
+      // that once (a docRefTitle written as undefined), and the next
+      // malformed field would have cost it again.
+      Promise.resolve().then(() =>
       setDoc(
         doc(db, 'documents', documentId),
         {
@@ -1390,6 +1405,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         },
         { merge: true }
       )
+      )
         .then(() => {
           rememberServer({ title, blocks, coverImageUri: coverImageUri || undefined, coverDrive, coverGradient: coverGradient || undefined, paperColorEnabled, groupId, canvasLinks });
           setSaveStatus('saved');
@@ -1400,6 +1416,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // nothing said why. The rule from the web work - an error must
           // reach the screen.
           syncLog('SAVE FAILED', { message: e.message });
+          // The ring has to stop too. It is set to 'saving' before the
+          // write and only ever cleared on success, so a failure left it
+          // turning for ever - which reads as "still working on it"
+          // beside a message saying it did not.
+          setSaveStatus('error');
           notify('Не збереглося', e.message);
         });
       syncTasksForDocument(blocks);
@@ -2752,11 +2773,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const picked = documentIndex.get(documentId);
     snapshotBeforeChange();
     setBlocks((prev) =>
-      prev.map((b) =>
-        b.id === blockId
-          ? { ...blockFromDocument({ id: documentId, title: picked?.title }), id: b.id, canvas: b.canvas }
-          : b
-      )
+      prev.map((b) => {
+        if (b.id !== blockId) return b;
+        // The block keeps its own id and its place on the canvas IF it
+        // had one - spread in rather than assigned, because a block on
+        // the page has no `canvas` at all and writing the key as
+        // undefined is a value Firestore refuses.
+        const made = blockFromDocument({ id: documentId, title: picked?.title });
+        return { ...made, id: b.id, ...(b.canvas ? { canvas: b.canvas } : {}) };
+      })
     );
   }
 

@@ -189,14 +189,22 @@ export async function appendBlocksToToday(
 // reasonably be pointed at twice from one document, and a block keyed by
 // its target could only ever appear once.
 export function blockFromDocument(document: { id: string; title?: string }): Block {
-  return {
+  const block: Block = {
     id: generateId(),
     text: '',
     type: 'docRef',
     docRefId: document.id,
-    docRefTitle: document.title?.trim() || undefined,
     createdAt: Date.now(),
   };
+  // Added only when there IS one, never as `undefined`. A block goes
+  // into the document whole, and Firestore refuses an undefined value
+  // outright - "Unsupported field value: undefined", thrown out of the
+  // save, which on the phone is a full-screen error over the note. An
+  // untitled note simply has no snapshot to keep; that is what the
+  // fallback in DocumentRefBlockCard is for.
+  const title = document.title?.trim();
+  if (title) block.docRefTitle = title;
+  return block;
 }
 
 export function blockFromCustomRow(row: { id: string; databaseId: string; title: string; createdAt?: number }): Block {
