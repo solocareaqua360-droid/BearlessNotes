@@ -62,6 +62,7 @@ import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import { listenError } from '../utils/listenError';
 
 // The same half-strength tint the documents screen's add button takes -
 // the blur behind it is what separates it, so the colour only tints.
@@ -253,7 +254,7 @@ export default function LinksScreen({
       setLinks(all.filter((l) => !l.deletedAt));
       setTrashedLinks(all.filter((l) => !!l.deletedAt).sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0)));
       setIsLoading(false);
-    });
+    }, listenError('LinksScreen:links'));
   }, []);
 
   // Folders, read off the tag tree - see useExplorer. One screen, three

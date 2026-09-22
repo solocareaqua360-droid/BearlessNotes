@@ -5,6 +5,7 @@ import { ownedQuery } from '../utils/owned';
 import { CustomDatabase, CustomDatabaseRow, Group } from '../types';
 import { labelForKind } from '../utils/groups';
 import { rowTitleOf } from '../utils/customRowDisplay';
+import { listenError } from '../utils/listenError';
 
 // Everything a group can gather, and where each kind actually lives.
 const SOURCES: { kind: string; collectionName: string }[] = [
@@ -72,13 +73,13 @@ export function useGroupItems() {
           .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
       );
       setIsLoading(false);
-    });
+    }, listenError('useGroupItems:groups'));
   }, []);
 
   useEffect(() => {
     return onSnapshot(ownedQuery('customDatabases'), (snapshot) => {
       setCustomDatabases(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabase, 'id'>) })));
-    });
+    }, listenError('useGroupItems:customDatabases'));
   }, []);
 
   useEffect(() => {
@@ -88,7 +89,7 @@ export function useGroupItems() {
         map[d.id] = { id: d.id, ...(d.data() as Omit<CustomDatabaseRow, 'id'>) };
       });
       setCustomRowsById(map);
-    });
+    }, listenError('useGroupItems:customDatabaseRows'));
   }, []);
 
   useEffect(() => {
@@ -137,7 +138,7 @@ export function useGroupItems() {
           });
           return next;
         });
-      })
+      }, listenError('useGroupItems:useGroupItems'))
     );
     return () => unsubs.forEach((u) => u());
   }, []);

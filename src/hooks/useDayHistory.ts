@@ -4,6 +4,7 @@ import { ownedQuery } from '../utils/owned';
 import { CustomDatabase } from '../types';
 import { rowTitleOf } from '../utils/customRowDisplay';
 import { dateKey } from '../utils/dateLocale';
+import { listenError } from '../utils/listenError';
 
 // "Everything that appeared this day" is derived entirely from records that
 // already exist for other reasons - every kind here already carries its own
@@ -75,7 +76,7 @@ function useCreatedAtItems(
         else next.push(mapped);
       });
       setItems(next);
-    });
+    }, listenError('useDayHistory:useDayHistory'));
     // mapItem is a fresh closure every render by design (it captures things
     // like customDatabases below) - re-subscribing on every change of the
     // range is the real dependency; mapItem changing more often than that
@@ -126,7 +127,7 @@ export function useDayHistory(
         };
       });
       setCustomDatabases(next);
-    });
+    }, listenError('useDayHistory:customDatabases'));
   }, []);
 
   const files = useCreatedAtItems('files', startMs, endMs, (id, data) => ({

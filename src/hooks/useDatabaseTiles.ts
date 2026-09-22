@@ -3,6 +3,7 @@ import { onSnapshot } from '../firestore';
 import { ownedQuery } from '../utils/owned';
 import { CustomDatabase } from '../types';
 import { defaultColorFor, tileColorsDoc } from '../constants/databaseTiles';
+import { listenError } from '../utils/listenError';
 
 // What both drawings of the database menu need: the colours the user has
 // picked for the built-in tiles, and the databases they have made
@@ -15,7 +16,7 @@ export function useDatabaseTiles() {
   useEffect(() => {
     return onSnapshot(tileColorsDoc, (snapshot) => {
       setTileColors((snapshot.data() as Record<string, string> | undefined) ?? {});
-    });
+    }, listenError('useDatabaseTiles:useDatabaseTiles'));
   }, []);
 
   useEffect(() => {
@@ -36,7 +37,7 @@ export function useDatabaseTiles() {
           })
           .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
       );
-    });
+    }, listenError('useDatabaseTiles:customDatabases'));
   }, []);
 
   function colorFor(key: string): string {

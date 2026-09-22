@@ -64,6 +64,7 @@ import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT , railClear } from '../constants/r
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
 import CardCarryOverlay from '../components/CardCarryOverlay';
+import { listenError } from '../utils/listenError';
 
 // The same half-strength tint the documents screen's add button takes -
 // the blur behind it is what separates it, so the colour only tints.
@@ -210,7 +211,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
       setFiles(all.filter((f) => !f.deletedAt));
       setTrashedFiles(all.filter((f) => !!f.deletedAt).sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0)));
       setIsLoading(false);
-    });
+    }, listenError('FilesScreen:files'));
   }, []);
 
   // Folders, read off the tag tree - see useExplorer. Every database that

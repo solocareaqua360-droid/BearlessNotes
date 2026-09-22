@@ -6,6 +6,7 @@ import { CustomDatabase, CustomDatabaseRow, CustomDatabaseView } from '../types'
 import { applyRowFilters, sortRows } from '../utils/customRowQuery';
 import { RowDisplayContext } from '../utils/customRowDisplay';
 import { databaseFrom, rowFrom, useRowDisplayContext } from './useCustomRowData';
+import { listenError } from '../utils/listenError';
 
 function viewFrom(id: string, data: Record<string, unknown>): CustomDatabaseView {
   return {
@@ -53,7 +54,7 @@ export function useCustomDatabaseViewData(
     return onSnapshot(doc(db, 'customDatabases', databaseId), (snapshot) => {
       const data = snapshot.data();
       setDatabase(data ? databaseFrom(databaseId, data) : null);
-    });
+    }, listenError('useCustomDatabaseViewData:customDatabases'));
   }, [databaseId]);
 
   useEffect(() => {
@@ -64,7 +65,7 @@ export function useCustomDatabaseViewData(
     return onSnapshot(doc(db, 'customDatabaseViews', viewId), (snapshot) => {
       const data = snapshot.data();
       setView(data ? viewFrom(viewId, data) : null);
-    });
+    }, listenError('useCustomDatabaseViewData:customDatabaseViews'));
   }, [viewId]);
 
   useEffect(() => {
@@ -80,7 +81,7 @@ export function useCustomDatabaseViewData(
           .map((d) => rowFrom(d.id, d.data()))
           .filter((r) => r.databaseId === databaseId)
       );
-    });
+    }, listenError('useCustomDatabaseViewData:customDatabaseRows'));
   }, [databaseId]);
 
   const context = useRowDisplayContext(database);

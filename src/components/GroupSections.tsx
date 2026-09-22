@@ -19,6 +19,7 @@ import { openFileExternally } from '../utils/openFileExternally';
 import { categoryFromSiteName } from '../utils/linkCategory';
 import { FONT_BOLD, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_LINE, GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
+import { listenError } from '../utils/listenError';
 
 // What else is in this group. A group is the one thing in the app that
 // deliberately crosses databases (see the Group comment in types.ts), and
@@ -64,7 +65,7 @@ function useCollection(name: string, enabled: boolean): Row[] {
     }
     return onSnapshot(ownedQuery(name), (snapshot) => {
       setRows(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) })));
-    });
+    }, listenError(`GroupSections:${name}`));
   }, [name, enabled]);
   return rows;
 }

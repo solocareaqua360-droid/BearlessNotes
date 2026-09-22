@@ -70,6 +70,7 @@ import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import Menu from '../components/surfaces/Menu';
+import { listenError } from '../utils/listenError';
 
 // calendarPlate carries its own marginHorizontal:16 on each side, so the
 // week strip's actual scrollable viewport is this much narrower than the
@@ -353,7 +354,7 @@ export default function CalendarScreen() {
       // whatever was saved before this update still means the same thing.
       const stored = data?.compactFilter as 'none' | 'filled' | 'history' | undefined;
       setCompactFilterState(stored ?? (data?.onlyFilledDays ? 'filled' : 'none'));
-    });
+    }, listenError('CalendarScreen:calendarPrefs'));
   }, []);
 
   useEffect(() => {
@@ -921,7 +922,7 @@ export default function CalendarScreen() {
           recurrence: docSnapshot.data().recurrence,
         }))
       );
-    });
+    }, listenError('CalendarScreen:tasks'));
   }, [selectedKey]);
 
   // Excludes a task physically written in this same day's own note - that

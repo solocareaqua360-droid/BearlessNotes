@@ -5,6 +5,7 @@ import { ownedQuery } from '../utils/owned';
 import { Block, CustomDatabase } from '../types';
 import { TextMatch, documentMatchesQuery, findBodyMatch, findTitleMatch } from '../utils/documentPreview';
 import { categoryFromSiteName } from '../utils/linkCategory';
+import { listenError } from '../utils/listenError';
 
 // One search over every database. Firestore has no query that reaches
 // across collections, so this is what "search everything" means here: a
@@ -80,7 +81,7 @@ function useCollection(name: string): Row[] {
     () =>
       onSnapshot(ownedQuery(name), (snapshot) => {
         setRows(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) })));
-      }),
+      }, listenError('useGlobalSearch:useGlobalSearch')),
     [name]
   );
   return rows;

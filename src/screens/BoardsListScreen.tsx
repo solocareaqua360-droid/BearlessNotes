@@ -46,6 +46,7 @@ import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { railClear } from '../constants/rail';
 import { ask, confirm } from '../components/surfaces/Ask';
+import { listenError } from '../utils/listenError';
 
 // The "+" fill: the accent at half strength, since the blur behind it is
 // what separates it from the screen (see DatabaseChrome).
@@ -87,7 +88,7 @@ export default function BoardsListScreen({
     return onSnapshot(doc(db, 'settings', 'boardsPrefs'), (snapshot) => {
       const mode = snapshot.data()?.viewMode;
       if (mode === 'list' || mode === 'cards') setViewMode(mode);
-    });
+    }, listenError('BoardsListScreen:settings'));
   }, []);
   async function changeViewMode(mode: 'list' | 'cards') {
     setViewMode(mode);

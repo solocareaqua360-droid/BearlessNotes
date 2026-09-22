@@ -7,6 +7,7 @@ import {
 import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { TaggableKind } from '../types';
+import { listenError } from '../utils/listenError';
 
 function hiddenTagsDoc(kind: TaggableKind) {
   return doc(db, 'hiddenTags', kind);
@@ -22,7 +23,7 @@ export function useHiddenTags(kind: TaggableKind) {
   useEffect(() => {
     return onSnapshot(hiddenTagsDoc(kind), (snapshot) => {
       setHiddenIds(new Set(snapshot.data()?.tagIds ?? []));
-    });
+    }, listenError('useHiddenTags:useHiddenTags'));
   }, [kind]);
 
   async function hideTag(tagId: string) {

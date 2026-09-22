@@ -14,6 +14,7 @@ import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { listenError } from '../utils/listenError';
 
 type PickableDocument = { id: string; title: string };
 
@@ -47,7 +48,7 @@ export default function CopyToNoteModal({ visible, onPickExisting, onPickNew, on
           .filter((docSnapshot) => !docSnapshot.data().calendarDate && !docSnapshot.data().deletedAt)
           .map((docSnapshot) => ({ id: docSnapshot.id, title: docSnapshot.data().title }))
       );
-    });
+    }, listenError('CopyToNoteModal:documents'));
   }, [visible]);
 
   // Reset between openings - a search left over from copying into one note

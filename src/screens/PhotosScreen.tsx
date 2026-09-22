@@ -68,6 +68,7 @@ import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
 import DownloadToast from '../components/DownloadToast';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
+import { listenError } from '../utils/listenError';
 
 // The same half-strength tint the documents screen's add button takes -
 // the blur behind it is what separates it, so the colour only tints.
@@ -215,7 +216,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
       setPhotos(all.filter((p) => !p.deletedAt));
       setTrashedPhotos(all.filter((p) => !!p.deletedAt).sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0)));
       setIsLoading(false);
-    });
+    }, listenError('PhotosScreen:photos'));
   }, []);
 
   // The fixed "Фото" group every camera capture lands in (see

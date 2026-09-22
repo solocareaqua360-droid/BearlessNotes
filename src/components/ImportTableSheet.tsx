@@ -30,6 +30,7 @@ import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { ensureLocalFile } from '../utils/googleDrive';
 import { notify } from './surfaces/Ask';
+import { listenError } from '../utils/listenError';
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -102,7 +103,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
           })
           .filter((f) => isTableFileName(f.fileName) || isTableFileName(f.title ?? ''))
       );
-    });
+    }, listenError('ImportTableSheet:files'));
   }, [visible]);
 
   const sheet = sheets?.[sheetIndex] ?? null;

@@ -4,6 +4,7 @@ import { ownedQuery } from '../utils/owned';
 import { Block } from '../types';
 import { linkDocId } from '../utils/linkId';
 import { refreshLinkPreviewIfExpired } from '../utils/linkPreviewRefresh';
+import { listenError } from '../utils/listenError';
 
 // A photo, file or link block showing what its record says NOW.
 //
@@ -74,7 +75,7 @@ export function useLiveRecords(enabled: boolean): LiveRecords {
           });
           return next;
         });
-      }),
+      }, listenError('useLiveRecords:photos')),
       onSnapshot(ownedQuery('files'), (snapshot) => {
         setRecords((prev) => {
           const next = { ...prev };
@@ -91,7 +92,7 @@ export function useLiveRecords(enabled: boolean): LiveRecords {
           });
           return next;
         });
-      }),
+      }, listenError('useLiveRecords:files')),
       onSnapshot(ownedQuery('links'), (snapshot) => {
         // A cover past its deadline is fetched again and written to the
         // record; this listener then delivers the live one. Outside the
@@ -115,7 +116,7 @@ export function useLiveRecords(enabled: boolean): LiveRecords {
           });
           return next;
         });
-      }),
+      }, listenError('useLiveRecords:links')),
     ];
     return () => unsubscribes.forEach((u) => u());
   }, [enabled]);

@@ -118,7 +118,12 @@ export default function ReminderSheet({
   const hasExistingReminder = Boolean(initialDate);
 
   return (
-    <Sheet visible={visible} onClose={onClose} title="Нагадування">
+    // Scrolling, and capped. What is in here - a whole month grid, a
+    // time, the repeat options and the buttons - is taller than a phone
+    // in one go, and a sheet that outgrows the screen does not clip
+    // visibly: it simply has rows that cannot be reached, which reads as
+    // them not existing. The same omission the document picker had.
+    <Sheet visible={visible} onClose={onClose} title="Нагадування" scroll maxHeight="80%">
 
           <View style={styles.calHead}>
             <Text style={styles.calHeadTitle}>

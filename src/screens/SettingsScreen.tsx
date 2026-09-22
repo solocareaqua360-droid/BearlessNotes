@@ -61,6 +61,7 @@ import RenamePrompt from '../components/RenamePrompt';
 import ColorSchemeSheet from '../components/ColorSchemeSheet';
 import InterfaceSchemeSheet from '../components/InterfaceSchemeSheet';
 import GradientSlider from '../components/GradientSlider';
+import { listenError } from '../utils/listenError';
 
 // The app's own warm action colour (the one RenamePrompt's save button
 // and the browser's sign-in use), not the system blue this screen was
@@ -307,7 +308,7 @@ export default function SettingsScreen() {
     return onSnapshot(driveStatsDoc, (snapshot) => {
       const data = snapshot.data();
       setStats(data ? { totalBytesStored: data.totalBytesStored ?? 0, fileCount: data.fileCount ?? 0 } : null);
-    });
+    }, listenError('SettingsScreen:driveStats'));
   }, []);
 
   async function loadQuota() {

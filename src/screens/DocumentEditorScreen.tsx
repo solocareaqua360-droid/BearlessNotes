@@ -160,6 +160,7 @@ import { CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
 import { dockRowWidth, useDockClearance } from '../navigation/dockGeometry';
 import SaveRing from '../components/SaveRing';
 import ProjectBadge from '../components/ProjectBadge';
+import { listenError } from '../utils/listenError';
 
 // Below this, a note has no room to stand beside «Референси» and the
 // drawer lies over it instead - see referencesSplit. 300 is the drawer's
@@ -563,7 +564,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           .filter((g) => groupAppliesTo(g, 'document'))
           .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
       );
-    });
+    }, listenError('DocumentEditorScreen:groups'));
   }, [embedded]);
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
   const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
@@ -986,7 +987,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         order: remote.blocks.map((b) => b.id.slice(-4)).join('>'),
       });
       mergeRemoteRef.current(remote);
-    });
+    }, listenError('DocumentEditorScreen:documents'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, documentId]);
 

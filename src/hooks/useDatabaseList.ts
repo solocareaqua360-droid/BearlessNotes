@@ -12,6 +12,7 @@ import { useSortPref } from '../hooks/useSortPref';
 import { useTags } from '../hooks/useTags';
 import { sortItems } from '../utils/sortItems';
 import { GLASS_TEXT_MUTED } from '../constants/glass';
+import { listenError } from '../utils/listenError';
 
 // Everything every database screen does with its records before it draws
 // them: the groups that apply to it, the group and tag filters, the
@@ -113,7 +114,7 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
         setListModeState(
           stored ?? (snapshot.data()?.explorerMode ? 'explorer' : snapshot.data()?.groupsRowHidden ? 'list' : 'groups')
         );
-      }),
+      }, listenError('useDatabaseList:useDatabaseList')),
     [prefsKey]
   );
 
@@ -131,7 +132,7 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
             .filter((g) => groupAppliesTo(g, groupKind))
             .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
         );
-      }),
+      }, listenError('useDatabaseList:groups')),
     [groupKind]
   );
 

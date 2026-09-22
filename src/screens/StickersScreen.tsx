@@ -31,6 +31,7 @@ import DatabaseChrome, { menuStyles } from '../components/DatabaseChrome';
 import { useDatabaseList } from '../hooks/useDatabaseList';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR } from '../utils/fonts';
 import { notify } from '../components/surfaces/Ask';
+import { listenError } from '../utils/listenError';
 
 const STICKER_YELLOW = '#FBE97A';
 const STICKER_DARK = '#4a3f05';
@@ -91,7 +92,7 @@ export default function StickersScreen({
           .map((d) => ({ id: d.id, ...(d.data() as Omit<StickerItem, 'id'>) }))
       );
       setIsLoading(false);
-    });
+    }, listenError('StickersScreen:stickers'));
   }, []);
 
   // The one time the sticker this screen was opened FOR becomes

@@ -134,6 +134,7 @@ import { GLASS_ISLAND } from '../constants/glass';
 import { CHROME_TOP } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
 import Menu from '../components/surfaces/Menu';
+import { listenError } from '../utils/listenError';
 
 // The foot the lists keep clear for the dock - DatabaseChrome's reckoning.
 // The same half-strength tint the documents screen's add button takes.
@@ -515,7 +516,7 @@ export default function CustomDatabaseScreen({
           .map((d) => ({ id: d.id, ...(d.data() as Omit<Group, 'id'>) }))
           .filter((g) => groupAppliesTo(g, customRowKind))
       );
-    });
+    }, listenError('CustomDatabaseScreen:groups'));
   }, [customRowKind]);
 
   // See photosList's own comment above - unconditional, same as groups/tags.
@@ -527,7 +528,7 @@ export default function CustomDatabaseScreen({
           return { id: d.id, imageUri: data.imageUri, title: data.title, driveFileId: data.driveFileId };
         })
       );
-    });
+    }, listenError('CustomDatabaseScreen:photos'));
   }, []);
 
   useEffect(() => {
@@ -538,7 +539,7 @@ export default function CustomDatabaseScreen({
           return { id: d.id, title: data.title, fileName: data.fileName };
         })
       );
-    });
+    }, listenError('CustomDatabaseScreen:files'));
   }, []);
 
   useEffect(() => {
@@ -558,7 +559,7 @@ export default function CustomDatabaseScreen({
           };
         })
       );
-    });
+    }, listenError('CustomDatabaseScreen:links'));
   }, []);
 
   useEffect(() => {
@@ -566,7 +567,7 @@ export default function CustomDatabaseScreen({
       setOtherDatabases(
         snapshot.docs.filter((d) => d.id !== databaseId).map((d) => ({ id: d.id, name: d.data().name ?? 'База' }))
       );
-    });
+    }, listenError('CustomDatabaseScreen:customDatabases'));
   }, [databaseId]);
 
   // Which OTHER databases a 'relation' field here actually points at right
@@ -598,7 +599,7 @@ export default function CustomDatabaseScreen({
           ...prev,
           [id]: { id, name: data.name, icon: data.icon, color: data.color, fields: data.fields ?? [], createdAt: data.createdAt, updatedAt: data.updatedAt },
         }));
-      })
+      }, listenError('CustomDatabaseScreen:customDatabases'))
     );
     return () => unsubs.forEach((u) => u());
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -630,7 +631,7 @@ export default function CustomDatabaseScreen({
         (grouped[data.databaseId] ??= []).push(row);
       });
       setRelatedRows(grouped);
-    });
+    }, listenError('CustomDatabaseScreen:customDatabaseRows'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [referencedDbIdsKey]);
 

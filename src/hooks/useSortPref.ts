@@ -6,6 +6,7 @@ import {
 import { setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { DEFAULT_SORT_PREF, SortField, SortPref, defaultDirFor } from '../utils/sortItems';
+import { listenError } from '../utils/listenError';
 
 // Persists the chosen sort field/direction to the screen's own
 // `settings/<settingsKey>` doc (the same singleton-doc pattern as
@@ -21,7 +22,7 @@ export function useSortPref(settingsKey: string) {
       if (data?.sortField) {
         setSortPrefState({ field: data.sortField, dir: data.sortDir ?? defaultDirFor(data.sortField) });
       }
-    });
+    }, listenError('useSortPref:settings'));
   }, [settingsKey]);
 
   function selectSortField(field: SortField) {

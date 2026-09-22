@@ -122,6 +122,7 @@ import { useBlurTarget } from '../components/GlassTarget';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { useDockActions, useDockBeads, useDockLeave } from '../navigation/navDock';
 import { ask, confirm } from '../components/surfaces/Ask';
+import { listenError } from '../utils/listenError';
 
 const AUTOSAVE_DELAY_MS = 600;
 // How many steps back undo keeps - a plain cap on a session-only stack,
@@ -2766,7 +2767,7 @@ export default function BoardScreen() {
         });
         return changed ? next : prev;
       });
-    });
+    }, listenError('BoardScreen:documents'));
   }, [paneDocId]);
 
   useFocusEffect(
@@ -3625,7 +3626,7 @@ export default function BoardScreen() {
         return;
       }
       applyRemote(incomingCards, incomingColumns);
-    });
+    }, listenError('BoardScreen:boards'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, boardId, draggedCardId, draggingColumnId, applyRemote]);
 
@@ -3677,7 +3678,7 @@ export default function BoardScreen() {
           };
         })
       );
-    });
+    }, listenError('BoardScreen:tasks'));
   }, []);
 
   useEffect(() => {
@@ -3687,7 +3688,7 @@ export default function BoardScreen() {
           .map((d) => ({ id: d.id, ...(d.data() as Omit<Group, 'id'>) }))
           .filter((g) => groupAppliesTo(g, 'task'))
       );
-    });
+    }, listenError('BoardScreen:groups'));
   }, []);
 
   useEffect(() => {
@@ -3698,7 +3699,7 @@ export default function BoardScreen() {
           return { id: d.id, name: (data.name as string) ?? '', groupId: data.groupId as string };
         })
       );
-    });
+    }, listenError('BoardScreen:taskLists'));
   }, []);
 
   // Arriving from the document's own "show the board" button: the document

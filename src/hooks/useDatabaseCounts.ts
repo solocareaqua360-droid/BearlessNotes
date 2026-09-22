@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { onSnapshot } from '../firestore';
 import { ownedQuery } from '../utils/owned';
 import { categoryFromSiteName } from '../utils/linkCategory';
+import { listenError } from '../utils/listenError';
 
 // What each database has in it, for the tiles to show. A tile that only
 // carries an icon gets emptier the bigger it is made; a count and the
@@ -41,7 +42,7 @@ function useCollection(name: string): Row[] {
     () =>
       onSnapshot(ownedQuery(name), (snapshot) => {
         setRows(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) })));
-      }),
+      }, listenError(`useDatabaseCounts:${name}`)),
     [name]
   );
   return rows;

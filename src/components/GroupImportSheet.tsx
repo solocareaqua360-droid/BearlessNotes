@@ -10,6 +10,7 @@ import { hapticSelectItem, hapticWarning } from '../utils/haptics';
 import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { listenError } from '../utils/listenError';
 
 type BoardRow = { id: string; title: string };
 
@@ -65,7 +66,7 @@ export default function GroupImportSheet({
           .sort((a, b) => ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0))
           .map((d) => ({ id: d.id, title: (d.data().title as string) || 'Без назви' }))
       );
-    });
+    }, listenError('GroupImportSheet:boards'));
   }, [visible]);
 
   const kinds = Array.from(new Set(items.map((i) => i.kind)));

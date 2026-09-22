@@ -14,6 +14,7 @@ import {
 import { auth, db } from '../firebase';
 import { ownedQuery } from '../utils/owned';
 import { Tag, TaggableKind } from '../types';
+import { listenError } from '../utils/listenError';
 
 const tagsCollection = collection(db, 'tags');
 
@@ -101,7 +102,7 @@ export function useTags() {
         })
       );
       setIsLoading(false);
-    });
+    }, listenError('useTags:tags'));
   }, []);
 
   // Autocomplete only kicks in from 2 letters, per the picker's own caption.

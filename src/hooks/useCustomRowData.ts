@@ -5,6 +5,7 @@ import { categoryFromSiteName } from '../utils/linkCategory';
 import { ownedQuery } from '../utils/owned';
 import { CustomDatabase, CustomDatabaseRow } from '../types';
 import { EMPTY_ROW_DISPLAY_CONTEXT, RowDisplayContext } from '../utils/customRowDisplay';
+import { listenError } from '../utils/listenError';
 
 export function databaseFrom(id: string, data: Record<string, unknown>): CustomDatabase {
   return {
@@ -74,7 +75,7 @@ export function useRowDisplayContext(database: CustomDatabase | null): RowDispla
           return { id: d.id, imageUri: data.imageUri, title: data.title, driveFileId: data.driveFileId };
         })
       );
-    });
+    }, listenError('useCustomRowData:photos'));
   }, [needsPhotos]);
 
   // Only the name of each file - the bytes stay where they are; a
@@ -91,7 +92,7 @@ export function useRowDisplayContext(database: CustomDatabase | null): RowDispla
           return { id: d.id, title: data.title, fileName: data.fileName };
         })
       );
-    });
+    }, listenError('useCustomRowData:files'));
   }, [needsFiles]);
 
   // All three link databases at once: they are one collection, and the
@@ -114,7 +115,7 @@ export function useRowDisplayContext(database: CustomDatabase | null): RowDispla
           };
         })
       );
-    });
+    }, listenError('useCustomRowData:links'));
   }, [needsLinks]);
 
   useEffect(() => {
@@ -124,7 +125,7 @@ export function useRowDisplayContext(database: CustomDatabase | null): RowDispla
         const data = snapshot.data();
         if (!data) return;
         setRelatedDatabases((prev) => ({ ...prev, [id]: databaseFrom(id, data) }));
-      })
+      }, listenError('useCustomRowData:customDatabases'))
     );
     return () => unsubs.forEach((u) => u());
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -143,7 +144,7 @@ export function useRowDisplayContext(database: CustomDatabase | null): RowDispla
         (grouped[data.databaseId as string] ??= []).push(rowFrom(d.id, data));
       });
       setRelatedRows(grouped);
-    });
+    }, listenError('useCustomRowData:customDatabaseRows'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [referencedDbIdsKey]);
 
@@ -176,7 +177,7 @@ export function useCustomRowData(
     return onSnapshot(doc(db, 'customDatabases', databaseId), (snapshot) => {
       const data = snapshot.data();
       setDatabase(data ? databaseFrom(databaseId, data) : null);
-    });
+    }, listenError('useCustomRowData:customDatabases'));
   }, [databaseId]);
 
   useEffect(() => {
@@ -187,7 +188,7 @@ export function useCustomRowData(
     return onSnapshot(doc(db, 'customDatabaseRows', rowId), (snapshot) => {
       const data = snapshot.data();
       setRow(data ? rowFrom(rowId, data) : null);
-    });
+    }, listenError('useCustomRowData:customDatabaseRows'));
   }, [rowId]);
 
   const context = useRowDisplayContext(database);

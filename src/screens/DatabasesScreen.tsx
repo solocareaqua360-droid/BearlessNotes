@@ -77,6 +77,7 @@ import { useDockBeads } from '../navigation/navDock';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { useBlurTarget } from '../components/GlassTarget';
 import { CHROME_TOP } from '../constants/rail';
+import { listenError } from '../utils/listenError';
 
 const NEW_TILE_KEY = '__new__';
 const PIN_TILE_KEY = '__pin__';
@@ -279,7 +280,7 @@ export default function DatabasesScreen() {
   useEffect(() => {
     return onSnapshot(tileSizesDoc, (snapshot) => {
       setTileSizes((snapshot.data() as Record<string, string> | undefined) ?? {});
-    });
+    }, listenError('DatabasesScreen:tileSizes'));
   }, []);
   useEffect(() => {
     return onSnapshot(
@@ -293,20 +294,20 @@ export default function DatabasesScreen() {
     return onSnapshot(tilePinsDoc, (snapshot) => {
       const stored = snapshot.data()?.keys;
       setPinnedKeys(Array.isArray(stored) ? (stored as string[]) : []);
-    });
+    }, listenError('DatabasesScreen:DatabasesScreen'));
   }, []);
 
   useEffect(() => {
     return onSnapshot(tileBackgroundsDoc, (snapshot) => {
       setTileBackgrounds((snapshot.data() as Record<string, string> | undefined) ?? {});
-    });
+    }, listenError('DatabasesScreen:DatabasesScreen'));
   }, []);
 
   useEffect(() => {
     return onSnapshot(tileOrderDoc, (snapshot) => {
       const stored = snapshot.data()?.order;
       setOrder(Array.isArray(stored) ? (stored as string[]) : null);
-    });
+    }, listenError('DatabasesScreen:DatabasesScreen'));
   }, []);
   const [creatingDatabase, setCreatingDatabase] = useState(false);
   const [importing, setImporting] = useState(false);

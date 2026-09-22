@@ -85,6 +85,7 @@ import { useDockClearance } from '../navigation/dockGeometry';
 import { useBlurTarget } from '../components/GlassTarget';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import TagEditSheet from '../components/TagEditSheet';
+import { listenError } from '../utils/listenError';
 
 // Палітра №3 (Теплий Теракотовий) - the create/edit action color across
 // this redesign; replaces the old blue accent wherever this screen used it.
@@ -696,7 +697,7 @@ export default function DocumentsScreen({
           .map((d) => ({ id: d.id, ...(d.data() as Omit<StripSticker, 'id'>) }))
           .filter((s) => !s.trashed && Object.keys(s.usedInDocuments ?? {}).length === 0)
       );
-    });
+    }, listenError('DocumentsScreen:stickers'));
   }, []);
 
   function openStickerComposer() {
@@ -775,7 +776,7 @@ export default function DocumentsScreen({
         }
       });
       setIsLoading(false);
-    });
+    }, listenError('DocumentsScreen:documents'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

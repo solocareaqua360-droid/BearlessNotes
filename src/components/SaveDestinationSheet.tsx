@@ -14,6 +14,7 @@ import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { listenError } from '../utils/listenError';
 
 type PickableDocument = { id: string; title: string };
 type PickableBoard = { id: string; title: string };
@@ -84,7 +85,7 @@ export default function SaveDestinationSheet({
           .filter((d) => !d.data().calendarDate && !d.data().deletedAt)
           .map((d) => ({ id: d.id, title: d.data().title }))
       );
-    });
+    }, listenError('SaveDestinationSheet:documents'));
   }, [visible]);
 
   useEffect(() => {
@@ -95,7 +96,7 @@ export default function SaveDestinationSheet({
           .sort((a, b) => ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0))
           .map((d) => ({ id: d.id, title: d.data().title }))
       );
-    });
+    }, listenError('SaveDestinationSheet:boards'));
   }, [visible]);
 
   // Reset between openings - a search left over from one add shouldn't
