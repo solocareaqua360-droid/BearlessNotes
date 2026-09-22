@@ -473,6 +473,16 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     color: t.paper.ink,
   },
   // --- the column boundary, which is its own handle ---
+  // Two points wide and the accent's own colour: it is a promise about
+  // where the edge is going, not a part of the table.
+  tableGuide: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 2,
+    backgroundColor: t.accent,
+    zIndex: 2,
+  },
   tableResizeHandle: {
     position: 'absolute',
     right: -6,

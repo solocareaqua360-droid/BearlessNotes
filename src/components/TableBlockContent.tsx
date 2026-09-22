@@ -83,19 +83,40 @@ export default function TableBlockContent({
   // way to tell "still composing" from "done, tap normally now".
   const [formulaFocused, setFormulaFocused] = useState(false);
   const formulaInputRef = useRef<TextInput>(null);
-  // The width being dragged right now. Local, so the column follows the
-  // finger at once; the block is written only when the finger lifts,
-  // because every write here is a document save.
-  const [draft, setDraft] = useState<{ c: number; width: number } | null>(null);
+  // Where the boundary WILL land, not where it is.
+  //
+  // The column used to follow the finger, and a table that reflows on
+  // every frame is a torn picture - which this project already learned
+  // once, dragging blocks: nothing moves during the gesture, a drop
+  // line shows where it will go, and the list reorders when the finger
+  // lifts (see SortableBlockRow). Craft resizes a column exactly that
+  // way, and the user pointed at both at once: "таблиця не змінюється
+  // на льоту, вона зміниться тоді коли ти відпустиш палець".
+  //
+  // So this holds the guide's own offset in the grid, and the width it
+  // stands for. The grid is not told anything until the end.
+  const [guide, setGuide] = useState<{ c: number; x: number; width: number } | null>(null);
   const resizeStartRef = useRef(0);
+  // onEnd runs with the closure of the render the gesture was BUILT in,
+  // where `guide` is still null - so the last position is read from a
+  // ref that every update writes.
+  const guideRef = useRef<{ c: number; x: number; width: number } | null>(null);
+  guideRef.current = guide;
 
   const headerRow = !!block.tableHeaderRow;
   const headerColumn = !!block.tableHeaderColumn;
 
   function widthOf(c: number): number {
-    if (draft && draft.c === c) return draft.width;
     const stored = block.tableColumnWidths?.[c];
     return stored && stored > 0 ? stored : DEFAULT_COLUMN_WIDTH;
+  }
+
+  // The boundary's resting place: the row-number column, then every
+  // column up to and including this one.
+  function boundaryX(c: number): number {
+    let x = GUTTER_WIDTH;
+    for (let i = 0; i <= c; i += 1) x += widthOf(i);
+    return x;
   }
 
   function commitWidth(c: number, width: number) {
@@ -398,6 +419,10 @@ export default function TableBlockContent({
               </View>
             ))}
           </View>
+          {/* The guide. Inside the frame, so it scrolls with the grid and
+              is clipped by it; drawn over everything, because it is
+              standing on the boundary it is about to move. */}
+          {!!guide && <View pointerEvents="none" style={[styles.tableGuide, { left: guide.x }]} />}
           {rows.map((row, r) => (
             <View
               key={r}
@@ -538,15 +563,19 @@ export default function TableBlockContent({
       .runOnJS(true)
       .onStart(() => {
         resizeStartRef.current = widthOf(c);
-        setDraft({ c, width: resizeStartRef.current });
+        setGuide({ c, x: boundaryX(c), width: resizeStartRef.current });
       })
       .onUpdate((e) => {
-        setDraft({ c, width: clampWidth(resizeStartRef.current + e.translationX) });
-      })
-      .onEnd((e) => {
+        // Clamped as a WIDTH and then turned back into a position, so
+        // the line stops exactly where the column would stop rather
+        // than running on past it and lying about where it will land.
         const width = clampWidth(resizeStartRef.current + e.translationX);
-        setDraft(null);
-        commitWidth(c, width);
+        setGuide({ c, x: boundaryX(c) - resizeStartRef.current + width, width });
+      })
+      .onEnd(() => {
+        const landed = guideRef.current;
+        setGuide(null);
+        if (landed) commitWidth(c, landed.width);
       });
   }
 }
@@ -595,6 +624,9 @@ function CellText({
 // Wide enough for a short word plus its padding, narrow enough that
 // three fit on a phone.
 const DEFAULT_COLUMN_WIDTH = 110;
+// Must match tableGutterCell's own width - the guide is positioned in
+// the grid's coordinates and the row-number column comes first.
+const GUTTER_WIDTH = 28;
 const MIN_COLUMN_WIDTH = 56;
 // Past this a column is a paragraph, and a paragraph belongs in a
 // paragraph.
