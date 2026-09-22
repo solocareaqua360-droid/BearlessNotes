@@ -380,6 +380,63 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     marginVertical: 12,
     marginHorizontal: 4,
   },
+  // --- reading face ---
+  // No box round a cell and no gutter: a rule between rows is what a
+  // table is on paper, and what Claude's own tables are.
+  tableReadRow: {
+    flexDirection: 'row',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.paper.edge,
+  },
+  tableReadHeaderRow: {
+    borderBottomWidth: 1,
+    borderBottomColor: t.paper.inkFaint,
+  },
+  tableReadCell: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    justifyContent: 'center',
+  },
+  tableReadStrong: {
+    fontFamily: FONT_SEMIBOLD,
+    fontWeight: '700',
+  },
+  // --- the operator row over the keyboard ---
+  tableOperatorRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  tableOperatorKey: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: t.field.fill,
+  },
+  tableOperatorLabel: {
+    fontSize: 15,
+    fontFamily: FONT_REGULAR,
+    color: t.paper.ink,
+  },
+  // --- the column boundary, which is its own handle ---
+  tableResizeHandle: {
+    position: 'absolute',
+    right: -6,
+    top: 0,
+    bottom: 0,
+    width: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tableResizeGrip: {
+    width: 2,
+    height: 12,
+    borderRadius: 1,
+    backgroundColor: t.paper.inkFaint,
+  },
+  tableControlBtnOn: {
+    backgroundColor: t.field.fill,
+  },
   tableBlock: {
     flex: 1,
     gap: 6,

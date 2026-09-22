@@ -263,6 +263,20 @@ export interface Block {
   // evaluated at render time (never stored), so a result can never go
   // stale against edited cells.
   tableRows?: TableRow[];
+  // 'table' blocks only. Each column's width in points, by index. Absent
+  // (or short) means the default - a column nobody has touched keeps it.
+  // Widths and not fractions: the table scrolls sideways when the sum
+  // exceeds the screen, which is the user's own call - "чи зможемо ми
+  // бачити чи змінити ширину полів нехай навіть так щоб вони
+  // прокручувались за межі". A fraction cannot say that.
+  tableColumnWidths?: number[];
+  // 'table' blocks only. Whether the first row / first column is a
+  // HEADER: drawn strong, and never counted as data. Two switches rather
+  // than one convention, and off by default - a table in a note is free
+  // shape, so whether its first row names the others is a fact only its
+  // author knows. Craft asks the same two questions in the same words.
+  tableHeaderRow?: boolean;
+  tableHeaderColumn?: boolean;
 }
 
 export interface TableRow {
