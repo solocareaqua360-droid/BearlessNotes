@@ -3,10 +3,12 @@ import {
   GoogleAuthProvider,
   getAuth,
   onAuthStateChanged,
+  signInWithCredential,
   signInWithPopup,
   signOut,
 } from 'firebase/auth';
-import { clearDriveToken, getDriveToken } from './utils/driveToken.web';
+import { adoptDriveToken, clearDriveToken, getDriveToken } from './utils/driveToken.web';
+import { isDesktopShell, requestFromBrowser } from './utils/desktopBridge.web';
 import {
   initializeFirestore,
   persistentLocalCache,
@@ -102,6 +104,24 @@ export type GoogleSignInResult = { uid: string; email: string | null; hadToSwitc
 // the second window as a hint, so it has nothing to ask but permission,
 // and after that it is silent for ever.
 export async function signInWithGoogleAccount(): Promise<GoogleSignInResult> {
+  // Inside the macOS shell none of what follows is allowed to happen
+  // here: Google refuses to finish a sign-in in a window an application
+  // drew, and says so only after the address has been typed. So the
+  // asking is done by the user's own browser and this receives the
+  // answer - see desktopBridge.web for the whole reasoning.
+  if (isDesktopShell()) {
+    const handoff = await requestFromBrowser('signin');
+    if (!handoff.idToken) throw new Error('Браузер не повернув підтвердження');
+    const credential = await signInWithCredential(
+      auth,
+      GoogleAuthProvider.credential(handoff.idToken)
+    );
+    // The Drive grant travelled with it, in the same window, for the
+    // same reason it does below: one trip rather than two.
+    if (handoff.driveToken) adoptDriveToken(handoff.driveToken);
+    return { uid: credential.user.uid, email: credential.user.email, hadToSwitch: false };
+  }
+
   const provider = new GoogleAuthProvider();
   // Ask WHICH account. Without this Google takes the one the browser is
   // already signed into and never shows a chooser - and on a machine
@@ -136,6 +156,20 @@ export async function signInWithGoogleAccount(): Promise<GoogleSignInResult> {
   getDriveToken(true, credential.user.email).catch(() => null);
 
   return { uid: credential.user.uid, email: credential.user.email, hadToSwitch: false };
+}
+
+// The browser half of the desktop handoff: an ordinary sign-in, in an
+// ordinary browser tab, whose RESULT is handed back to the application
+// rather than kept. Google's own ID token is what travels - Firebase
+// will take it and issue a session of its own on the other side, which
+// is what makes this a one-time trip rather than a login every launch.
+export async function signInForHandoff(): Promise<{ idToken: string; email: string | null }> {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  const result = await signInWithPopup(auth, provider);
+  const credential = GoogleAuthProvider.credentialFromResult(result);
+  if (!credential?.idToken) throw new Error('Google не повернув підтвердження');
+  return { idToken: credential.idToken, email: result.user.email };
 }
 
 export async function signOutEverywhere(): Promise<void> {

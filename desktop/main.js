@@ -49,12 +49,91 @@ const MIME = {
   '.jslib': 'text/javascript; charset=utf-8',
 };
 
+// The port that took, once it has. The handoff has to send the browser
+// to the same address this window is on - a different one would be a
+// different origin, and Google would refuse it.
+let servedPort = null;
+
+// What the browser tab handed back, waiting to be collected exactly
+// once. In memory and nowhere else: it holds a Google ID token, it is
+// good for minutes, and it is consumed the moment the window asks.
+let handoff = null;
+
+function readBody(req) {
+  return new Promise((resolve) => {
+    let raw = '';
+    req.on('data', (chunk) => {
+      raw += chunk;
+      // Nothing legitimate here is large; refuse to grow without bound.
+      if (raw.length > 64 * 1024) req.destroy();
+    });
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(raw || '{}'));
+      } catch {
+        resolve({});
+      }
+    });
+  });
+}
+
+// The shell's own endpoints, the whole of the seam between the window
+// and the user's real browser. See src/utils/desktopBridge.web.ts for
+// why any of this exists: Google refuses to finish a sign-in inside a
+// window an application drew, so the asking happens in the browser and
+// only the answer comes back through here.
+//
+// Reachable only from 127.0.0.1, because that is all the server listens
+// on - and the window and the browser tab are both on it.
+async function serveDesktopApi(req, res, pathname) {
+  const done = (status, body) => {
+    res.writeHead(status, body ? { 'Content-Type': 'application/json' } : undefined);
+    res.end(body ? JSON.stringify(body) : undefined);
+  };
+
+  if (pathname === '/__desktop/handoff/open' && req.method === 'POST') {
+    const { kind, hint } = await readBody(req);
+    if (kind !== 'signin' && kind !== 'drive') return done(400, { error: 'unknown handoff' });
+    const query = new URLSearchParams({ handoff: kind });
+    if (hint) query.set('hint', hint);
+    // The user's own browser, on this same origin - which is why none of
+    // this needs anything added to the Cloud console.
+    shell.openExternal(`http://localhost:${servedPort}/?${query.toString()}`);
+    return done(204);
+  }
+
+  if (pathname === '/__desktop/handoff/clear' && req.method === 'POST') {
+    handoff = null;
+    return done(204);
+  }
+
+  if (pathname === '/__desktop/handoff/result') {
+    if (req.method === 'POST') {
+      handoff = await readBody(req);
+      return done(204);
+    }
+    if (!handoff) return done(204);
+    const answer = handoff;
+    handoff = null;
+    return done(200, answer);
+  }
+
+  return done(404, { error: 'no such endpoint' });
+}
+
 function serve(req, res) {
   let pathname;
   try {
     pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
   } catch {
     pathname = '/';
+  }
+
+  // The shell's own endpoints come first - they are not files, and the
+  // fallback below would otherwise answer them with index.html.
+  if (pathname.startsWith('/__desktop/')) {
+    serveDesktopApi(req, res, pathname);
+    return;
   }
 
   let filePath = path.join(ROOT, pathname);
@@ -174,7 +253,10 @@ function createWindow(port) {
 
   rememberBounds(window);
   window.once('ready-to-show', () => window.show());
-  window.loadURL(`http://localhost:${port}/`);
+  // `desktop=1` is how the page knows it is here rather than in an
+  // ordinary browser tab, and so that signing in has to go out to the
+  // browser. Nothing else sets it.
+  window.loadURL(`http://localhost:${port}/?desktop=1`);
 
   // Signing in is a popup, and it has to open as a real window inside the
   // app for the answer to come back to the page that asked. Two different
@@ -279,6 +361,7 @@ app.whenReady().then(async () => {
 
   const server = http.createServer(serve);
   const port = await listenOnFirstFreePort(server, PORTS);
+  servedPort = port;
 
   if (port === null) {
     dialog.showErrorBox(

@@ -12,6 +12,11 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DefaultTheme, NavigationContainer, Theme as NavTheme } from '@react-navigation/native';
 import { auth, ensureSignedIn, signInWithGoogleAccount, signOutEverywhere } from './src/firebase';
+// Straight at the web file, not through './src/firebase'. That path is
+// resolved by the bundler per platform, so TypeScript reads the PHONE's
+// module for it - and this export exists only on the browser side. Both
+// specifiers land on the same file here, so it is the same module.
+import { signInForHandoff } from './src/firebase.web';
 import { onAuthStateChanged } from 'firebase/auth';
 import RootNavigator from './src/AppNavigator';
 import { navigationRef } from './src/navigationRef';
@@ -24,7 +29,21 @@ import CrashBoundary from './src/components/CrashBoundary';
 import FatalErrorOverlay from './src/components/FatalErrorOverlay';
 import ContextDock from './src/components/ContextDock';
 import { NavDockProvider } from './src/navigation/navDock';
-import { driveTokenError, getDriveToken, hasDriveToken, subscribeToDriveToken } from './src/utils/driveToken.web';
+import {
+  adoptDriveToken,
+  driveTokenError,
+  exportDriveToken,
+  getDriveToken,
+  hasDriveToken,
+  subscribeToDriveToken,
+} from './src/utils/driveToken.web';
+import {
+  HandoffKind,
+  handoffRequest,
+  isDesktopShell,
+  reportToShell,
+  requestFromBrowser,
+} from './src/utils/desktopBridge.web';
 
 // The browser build: the whole app.
 //
@@ -136,6 +155,79 @@ function ThemedNavigationContainer({ children }: { children: React.ReactNode }) 
   );
 }
 
+// The browser half of the desktop handoff, and the whole of what that
+// tab is for. It is not the app: the shell opened this window with one
+// job, and when the job is done the window says so and can be closed.
+//
+// Why a button rather than starting on its own: signing in opens
+// Google's own window, and a browser opens one only in answer to a
+// click. Arriving here and immediately asking would be blocked, and the
+// blocking is silent.
+function HandoffScreen({ request }: { request: { kind: HandoffKind; hint: string | null } }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      if (request.kind === 'signin') {
+        const { idToken, email } = await signInForHandoff();
+        // Drive in the same trip. It is a separate grant from a separate
+        // Cloud project (see driveToken.web), so it is a second window -
+        // but the account has just been chosen, and carrying it as a
+        // hint leaves that window nothing to ask but permission.
+        await getDriveToken(true, email).catch(() => null);
+        await reportToShell({ kind: 'signin', idToken, email, driveToken: exportDriveToken() });
+      } else {
+        await getDriveToken(true, request.hint);
+        const granted = exportDriveToken();
+        if (!granted) throw new Error(driveTokenError() ?? 'Диск не відповів');
+        await reportToShell({ kind: 'drive', driveToken: granted });
+      }
+      setDone(true);
+    } catch (e) {
+      const message = (e as Error).message;
+      setError(message);
+      // The application is waiting, and a failure it never hears about
+      // leaves it waiting the full three minutes for nothing.
+      await reportToShell({ kind: request.kind, error: message }).catch(() => false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View style={styles.centre}>
+      <Text style={styles.title}>mindEva</Text>
+      {done ? (
+        <Text style={styles.body}>
+          Готово. Повернись у програму mindEva - вона вже підхопила вхід. Цю вкладку можна закрити.
+        </Text>
+      ) : (
+        <Text style={styles.body}>
+          {request.kind === 'signin'
+            ? 'Програма для Mac не може показати вікно Google у себе всередині - Google цього не дозволяє. Тому вхід відбувається тут, у твоєму браузері, а програма отримає готовий результат.'
+            : 'Підтверди доступ до Google Диска тут, у браузері - програма отримає результат сама.'}
+        </Text>
+      )}
+      {!!error && <Text style={styles.error}>{error}</Text>}
+      {!done && (
+        <Pressable style={styles.button} disabled={busy} onPress={run}>
+          {busy ? (
+            <ActivityIndicator color="#171310" />
+          ) : (
+            <Text style={styles.buttonLabel}>
+              {request.kind === 'signin' ? 'Увійти через Google' : 'Підключити Диск'}
+            </Text>
+          )}
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
 export default function App() {
   const [fontsLoaded] = useFonts({
     Nunito_400Regular,
@@ -172,7 +264,22 @@ export default function App() {
     );
   }, []);
 
-  if (!fontsLoaded || user === undefined) {
+  if (!fontsLoaded) {
+    return (
+      <View style={styles.centre}>
+        <ActivityIndicator color="#F5C77E" />
+      </View>
+    );
+  }
+
+  // Opened by the macOS shell to do one thing and hand back the answer.
+  // Checked before the session is: this tab has no session of its own
+  // to wait for, and waiting for one would leave a spinner where the
+  // button belongs. Not a hook, so it can sit below the ones above.
+  const handoff = handoffRequest();
+  if (handoff) return <HandoffScreen request={handoff} />;
+
+  if (user === undefined) {
     return (
       <View style={styles.centre}>
         <ActivityIndicator color="#F5C77E" />
@@ -256,7 +363,19 @@ export default function App() {
               </Text>
               <Pressable
                 style={styles.driveButton}
-                onPress={() => getDriveToken(true, user.email).then(() => setDrive(hasDriveToken()))}
+                onPress={async () => {
+                  // Same wall as signing in: inside the shell, Google
+                  // will not finish a grant in a window an application
+                  // drew. So the browser is asked and the token is
+                  // carried back - see desktopBridge.web.
+                  if (isDesktopShell()) {
+                    const granted = await requestFromBrowser('drive', user.email).catch(() => null);
+                    if (granted?.driveToken) adoptDriveToken(granted.driveToken);
+                  } else {
+                    await getDriveToken(true, user.email);
+                  }
+                  setDrive(hasDriveToken());
+                }}
               >
                 <Text style={styles.driveButtonLabel}>Підключити Диск</Text>
               </Pressable>

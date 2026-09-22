@@ -90,6 +90,29 @@ export function driveTokenError(): string | null {
   return lastError;
 }
 
+// A token granted somewhere else and handed to us.
+//
+// The desktop shell cannot ask Google for one itself: Google refuses
+// OAuth to a browser embedded in an application, so the asking happens
+// in the user's real browser and the answer is carried back (see
+// desktopBridge.web). What arrives is the ordinary short-lived token
+// this module would have obtained on its own, so it goes through the
+// same door - stored, and everyone waiting for pictures told.
+export function adoptDriveToken(granted: { token: string; expiresAt: number }): void {
+  if (!granted.token || Date.now() >= granted.expiresAt) return;
+  token = granted.token;
+  expiresAt = granted.expiresAt;
+  lastError = null;
+  writeStored({ token, expiresAt });
+  listeners.forEach((l) => l());
+}
+
+// What this page holds, for handing to the shell after a grant in the
+// browser. Null when there is nothing worth carrying.
+export function exportDriveToken(): { token: string; expiresAt: number } | null {
+  return hasDriveToken() ? { token: token as string, expiresAt } : null;
+}
+
 export function clearDriveToken(): void {
   token = null;
   expiresAt = 0;
