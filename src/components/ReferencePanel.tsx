@@ -116,10 +116,12 @@ const makeStyles = (t: Theme) =>
     panel: {
       flex: 1,
       backgroundColor: '#181513',
-      // The edge faces the note, and the note is to the RIGHT of this
-      // panel - see referencePanelDock.
-      borderRightWidth: 1,
-      borderRightColor: GLASS_LINE,
+      // The edge faces the note, and the note is to the LEFT of this
+      // panel now that it docks against the window's right edge - see
+      // referencePanelDock. It was on the other side, from when the
+      // panel was.
+      borderLeftWidth: 1,
+      borderLeftColor: GLASS_LINE,
     },
     header: {
       flexDirection: 'row',
