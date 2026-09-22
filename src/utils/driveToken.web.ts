@@ -82,6 +82,28 @@ export function hasDriveToken(): boolean {
   return !!token && Date.now() < expiresAt;
 }
 
+// Whether anything has actually WANTED Drive since the token ran out.
+//
+// The token lasts an hour, and the bar that asks for a new one used to
+// appear the moment it expired - which was right while every picture
+// came down from Drive on every look. On the desktop they come off the
+// disk instead, so an expired token usually means nothing at all: the
+// app is complete without it, and a bar saying otherwise every hour is
+// asking for a thing it does not need. So the asking waits for a real
+// miss - a file that is not kept here and could not be fetched, or an
+// upload that had nowhere to go.
+let needed = false;
+
+export function driveNeeded(): boolean {
+  return needed;
+}
+
+export function markDriveNeeded(): void {
+  if (needed) return;
+  needed = true;
+  listeners.forEach((l) => l());
+}
+
 // A token belongs to the account that granted it. Change accounts and
 // keeping it would mean the boards say one person and the pictures come
 // from another - so switching signs this out too, and the next "Підключити
@@ -103,6 +125,7 @@ export function adoptDriveToken(granted: { token: string; expiresAt: number }): 
   token = granted.token;
   expiresAt = granted.expiresAt;
   lastError = null;
+  needed = false;
   writeStored({ token, expiresAt });
   listeners.forEach((l) => l());
 }
@@ -185,6 +208,7 @@ export async function getDriveToken(interactive: boolean, hint?: string | null):
           // A minute short of the real expiry, so a request never goes
           // out with a token that dies on the way.
           expiresAt = Date.now() + (response.expires_in ?? 3600) * 1000 - 60_000;
+          needed = false;
           writeStored({ token, expiresAt });
           listeners.forEach((l) => l());
         }

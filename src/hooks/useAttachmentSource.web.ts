@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CacheStatus } from './useCachedAttachment';
-import { getDriveToken, subscribeToDriveToken } from '../utils/driveToken.web';
+import { getDriveToken, markDriveNeeded, subscribeToDriveToken } from '../utils/driveToken.web';
+import { keepAttachment, keptAttachmentUrl } from '../utils/desktopBridge.web';
 
 // The browser's answer to "where is this picture".
 //
@@ -12,6 +13,14 @@ import { getDriveToken, subscribeToDriveToken } from '../utils/driveToken.web';
 //
 // Fetched once per file per session and kept, because a board redraws
 // constantly - dragging one card must not re-download the other twelve.
+//
+// Inside the macOS shell there is a second, longer-lived keep behind
+// this one: a folder on disk (see desktopBridge.web). The difference is
+// the whole point of the desktop build. A tab's memory dies with the
+// tab, so every launch re-downloaded everything, nothing appeared
+// without a network, and "Підключити Диск" came round every hour
+// because the fetch is what needed the token. Asked of the disk first,
+// a file is downloaded once ever and none of those three happen again.
 
 const cache = new Map<string, string>();
 const inFlight = new Map<string, Promise<string | null>>();
@@ -23,17 +32,36 @@ async function fetchFromDrive(driveFileId: string): Promise<string | null> {
   if (running) return running;
 
   const job = (async () => {
+    // The disk, before anything else - no token, no network, no Drive.
+    // Outside the shell this answers null at once and costs a function
+    // call.
+    const kept = await keptAttachmentUrl(driveFileId);
+    if (kept) {
+      cache.set(driveFileId, kept);
+      return kept;
+    }
+
     // Never interactive from here: a download is not a click, and a popup
     // nobody asked for is blocked anyway. The banner asks once; after
     // that the token comes back silently.
     const token = await getDriveToken(false);
-    if (!token) return null;
+    if (!token) {
+      // Not kept here and no way to fetch it: this is the one case that
+      // genuinely wants the bar back. See driveToken.web.
+      markDriveNeeded();
+      return null;
+    }
     const response = await fetch(
       `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
     if (!response.ok) return null;
     const blob = await response.blob();
+    // Handed to the shell to keep, so this is the last time it is ever
+    // downloaded on this machine. Not awaited: the picture is wanted
+    // now, and a copy that fails to be kept only costs a fetch next
+    // time.
+    keepAttachment(driveFileId, blob);
     const url = URL.createObjectURL(blob);
     cache.set(driveFileId, url);
     return url;

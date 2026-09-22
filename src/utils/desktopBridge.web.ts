@@ -105,3 +105,48 @@ export async function reportToShell(handoff: Handoff): Promise<boolean> {
   const response = await shell('handoff/result', handoff);
   return !!response && response.ok;
 }
+
+// --- the kept copies -------------------------------------------------
+//
+// In a browser tab the bytes behind a picture live in memory and die
+// with the tab. The macOS shell has a folder instead, and these are the
+// two ends of it: ask whether it already holds a file, and hand it one
+// it does not.
+//
+// What that buys, in order of how much it matters: a picture appears
+// with no network; it is downloaded once ever instead of once per
+// launch; and the hourly "Підключити Диск" stops coming round, because
+// the token was only ever needed by the fetch this now avoids.
+
+function cacheUrl(driveFileId: string): string {
+  return `/__desktop/cache/${encodeURIComponent(driveFileId)}`;
+}
+
+// The address to read it from, or null when this machine has not got it.
+// A HEAD rather than a GET: the answer wanted here is yes or no, and the
+// bytes would be fetched twice - once to ask, once by the <img>.
+export async function keptAttachmentUrl(driveFileId: string): Promise<string | null> {
+  if (!isDesktopShell()) return null;
+  try {
+    const response = await fetch(cacheUrl(driveFileId), { method: 'HEAD' });
+    return response.ok ? cacheUrl(driveFileId) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Keep this one. Fire-and-forget by contract: the picture is already on
+// screen by the time this runs, and a copy that fails to be kept only
+// means it is fetched again next time.
+export async function keepAttachment(driveFileId: string, blob: Blob): Promise<void> {
+  if (!isDesktopShell()) return;
+  try {
+    await fetch(cacheUrl(driveFileId), {
+      method: 'PUT',
+      headers: { 'Content-Type': blob.type || 'application/octet-stream' },
+      body: blob,
+    });
+  } catch {
+    /* next time, then */
+  }
+}

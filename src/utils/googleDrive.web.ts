@@ -28,7 +28,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, increment } from '../firestore';
 import { setDoc } from './owned';
 import { db } from '../firebase';
-import { getDriveToken } from './driveToken.web';
+import { getDriveToken, markDriveNeeded } from './driveToken.web';
 
 const driveStatsDoc = doc(db, 'settings', 'driveStats');
 
@@ -47,7 +47,10 @@ const SUBFOLDER_ID_STORAGE_KEY: Record<DriveSubFolder, string> = {
 // click, so this takes the token already held or gives up.
 async function driveFetch(url: string, init: RequestInit = {}): Promise<Response> {
   const token = await getDriveToken(false);
-  if (!token) throw new Error('Google Диск не підключено в цій вкладці');
+  if (!token) {
+    markDriveNeeded();
+    throw new Error('Google Диск не підключено в цій вкладці');
+  }
   return fetch(url, {
     ...init,
     headers: { ...(init.headers ?? {}), Authorization: `Bearer ${token}` },

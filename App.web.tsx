@@ -31,6 +31,7 @@ import ContextDock from './src/components/ContextDock';
 import { NavDockProvider } from './src/navigation/navDock';
 import {
   adoptDriveToken,
+  driveNeeded,
   driveTokenError,
   exportDriveToken,
   getDriveToken,
@@ -242,6 +243,13 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [drive, setDrive] = useState(hasDriveToken());
+  // In the macOS shell the bar waits until something has actually wanted
+  // Drive - a picture that is not kept on this machine, or an upload
+  // with nowhere to go. Attachments come off the disk there, so an
+  // expired token usually means nothing at all, and the bar used to
+  // come back every hour to ask for something the app did not need. In
+  // an ordinary browser tab there is no disk, so it still asks at once.
+  const [needsDrive, setNeedsDrive] = useState(!isDesktopShell());
 
   // Not a request - a look in the browser's storage for a token from
   // within the hour. Nothing is asked of Google here, because nothing
@@ -249,7 +257,10 @@ export default function App() {
   // pictures are simply there too.
   useEffect(() => {
     if (user) getDriveToken(false, user.email).then(() => setDrive(hasDriveToken()));
-    return subscribeToDriveToken(() => setDrive(hasDriveToken()));
+    return subscribeToDriveToken(() => {
+      setDrive(hasDriveToken());
+      setNeedsDrive(!isDesktopShell() || driveNeeded());
+    });
   }, [user]);
 
   useEffect(() => {
@@ -351,7 +362,7 @@ export default function App() {
               moment. See driveToken.web for why there is no quieter way
               without a server, and the storage decision that was parked
               rather than made. */}
-          {!drive && (
+          {!drive && needsDrive && (
             <>
               <Text style={styles.driveText}>
                 {/* The reason, when there is one. This bar used to say the

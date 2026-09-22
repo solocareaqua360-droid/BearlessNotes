@@ -26,6 +26,88 @@ const path = require('path');
 const PORTS = [8899, 8081];
 const ROOT = path.join(__dirname, 'app');
 
+// Where pictures and files are kept once they have been seen.
+//
+// This is the difference between a window onto the data and an
+// application that holds it. In a browser tab the bytes behind a picture
+// live in memory: they are fetched from Drive on the first look and die
+// with the tab, so every launch re-downloads everything, nothing appears
+// without a network, and the hourly "Підключити Диск" comes round again
+// because a fetch is what needs the token.
+//
+// On disk, each of those goes away. A file is downloaded once, ever.
+// Under userData rather than in Documents because it is derived - every
+// byte of it can be fetched again from Drive - and a folder the user did
+// not ask for is clutter.
+// Where they go is the user's to choose - some want them out of sight,
+// some want a folder they can open in Finder and back up themselves. The
+// default is out of sight, because it is derived data: every byte can be
+// fetched from Drive again.
+const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
+
+function readSettings() {
+  try {
+    return JSON.parse(fs.readFileSync(settingsFile(), 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function writeSettings(next) {
+  try {
+    fs.writeFileSync(settingsFile(), JSON.stringify(next, null, 2));
+  } catch {
+    /* the choice is lost, the default still works */
+  }
+}
+
+const CACHE = () => readSettings().attachmentsDir || path.join(app.getPath('userData'), 'attachments');
+
+async function chooseCacheFolder() {
+  const from = CACHE();
+  const picked = await dialog.showOpenDialog({
+    title: 'Папка для картинок і файлів',
+    message: 'mindEva триматиме тут копії вкладень, щоб вони відкривалися без інтернету.',
+    properties: ['openDirectory', 'createDirectory'],
+    buttonLabel: 'Обрати',
+    defaultPath: fs.existsSync(from) ? from : app.getPath('documents'),
+  });
+  if (picked.canceled || !picked.filePaths[0]) return;
+  const to = picked.filePaths[0];
+  if (to === from) return;
+
+  // Carry what is already kept, so choosing a folder does not throw the
+  // downloads away. Copied rather than renamed: the new folder may be on
+  // another disk, where a rename fails outright.
+  let carried = 0;
+  try {
+    for (const name of fs.existsSync(from) ? fs.readdirSync(from) : []) {
+      try {
+        fs.copyFileSync(path.join(from, name), path.join(to, name));
+        fs.rmSync(path.join(from, name), { force: true });
+        if (!name.endsWith('.type')) carried += 1;
+      } catch {
+        /* one file that would not move is not worth stopping for */
+      }
+    }
+  } catch {
+    /* nor is a folder that would not be read */
+  }
+
+  writeSettings({ ...readSettings(), attachmentsDir: to });
+  dialog.showMessageBox({
+    type: 'info',
+    message: 'Папку змінено',
+    detail:
+      `Картинки й файли тепер зберігаються тут:\n${to}` +
+      (carried > 0 ? `\n\nПеренесено вже завантажених: ${carried}.` : ''),
+    buttons: ['Добре'],
+  });
+}
+
+// A Drive id, and nothing that could climb out of the folder.
+const SAFE_ID = /^[A-Za-z0-9_-]{1,128}$/;
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -58,6 +140,27 @@ let servedPort = null;
 // once. In memory and nowhere else: it holds a Google ID token, it is
 // good for minutes, and it is consumed the moment the window asks.
 let handoff = null;
+
+// The whole body as bytes. The JSON one below cannot be used for a
+// picture: it would have to become a string first, and that is both the
+// slow way and the lossy one.
+function readBytes(req, limitBytes) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    req.on('data', (chunk) => {
+      total += chunk.length;
+      if (total > limitBytes) {
+        req.destroy();
+        reject(new Error('too large'));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
 
 function readBody(req) {
   return new Promise((resolve) => {
@@ -100,6 +203,83 @@ async function serveDesktopApi(req, res, pathname) {
     // this needs anything added to the Cloud console.
     shell.openExternal(`http://localhost:${servedPort}/?${query.toString()}`);
     return done(204);
+  }
+
+  // The kept copy of one attachment. GET answers with the bytes when
+  // this machine already has them - which is what makes a picture appear
+  // with no network and no Drive token - and 404 when it does not, which
+  // is the page's signal to fetch it from Drive and PUT it back here.
+  if (pathname.startsWith('/__desktop/cache/')) {
+    const id = pathname.slice('/__desktop/cache/'.length);
+    if (!SAFE_ID.test(id)) return done(400, { error: 'bad id' });
+    const file = path.join(CACHE(), id);
+
+    // HEAD as well as GET, and that is not a detail: asking whether a
+    // file is kept is the FIRST thing the page does for every picture,
+    // and it asks with HEAD so the bytes are not fetched twice - once to
+    // find out, once by the <img>. Answering 405 to it made every
+    // picture look absent, so every one was downloaded again and the
+    // folder might as well not have existed.
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      let stat;
+      try {
+        stat = fs.statSync(file);
+      } catch {
+        return done(404);
+      }
+      let type = 'application/octet-stream';
+      try {
+        type = fs.readFileSync(file + '.type', 'utf8') || type;
+      } catch {
+        /* written beside the bytes; an older copy may not have one */
+      }
+      res.writeHead(200, {
+        'Content-Type': type,
+        'Content-Length': stat.size,
+        // Safe to keep: the name IS the content. A Drive file id never
+        // points at different bytes later.
+        'Cache-Control': 'private, max-age=31536000, immutable',
+      });
+      if (req.method === 'HEAD') {
+        res.end();
+        return undefined;
+      }
+      fs.createReadStream(file).pipe(res);
+      return undefined;
+    }
+
+    if (req.method === 'PUT') {
+      let bytes;
+      try {
+        bytes = await readBytes(req, 256 * 1024 * 1024);
+      } catch {
+        return done(413, { error: 'too large' });
+      }
+      try {
+        fs.mkdirSync(CACHE(), { recursive: true });
+        // Written beside, then moved, so a half-finished download can
+        // never be read back as a whole file.
+        const temporary = file + '.part';
+        fs.writeFileSync(temporary, bytes);
+        fs.renameSync(temporary, file);
+        fs.writeFileSync(file + '.type', req.headers['content-type'] || 'application/octet-stream');
+      } catch (e) {
+        return done(500, { error: String(e) });
+      }
+      return done(204);
+    }
+
+    if (req.method === 'DELETE') {
+      try {
+        fs.rmSync(file, { force: true });
+        fs.rmSync(file + '.type', { force: true });
+      } catch {
+        /* nothing to remove is the same outcome */
+      }
+      return done(204);
+    }
+
+    return done(405, { error: 'method not allowed' });
   }
 
   if (pathname === '/__desktop/handoff/clear' && req.method === 'POST') {
@@ -222,7 +402,39 @@ function rememberBounds(window) {
 function installMenu() {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
-      { role: 'appMenu' },
+      // The standard macOS app menu, written out rather than taken from
+      // the `appMenu` role, because one item has to be added to it: where
+      // the kept copies live.
+      {
+        label: app.name,
+        submenu: [
+          { role: 'about' },
+          { type: 'separator' },
+          { label: 'Папка вкладень…', click: () => chooseCacheFolder() },
+          {
+            label: 'Показати папку вкладень',
+            // Made first: on a fresh install nothing has been kept yet,
+            // and Finder cannot open a folder that is not there.
+            click: () => {
+              const dir = CACHE();
+              try {
+                fs.mkdirSync(dir, { recursive: true });
+              } catch {
+                /* openPath will say so */
+              }
+              shell.openPath(dir);
+            },
+          },
+          { type: 'separator' },
+          { role: 'services' },
+          { type: 'separator' },
+          { role: 'hide' },
+          { role: 'hideOthers' },
+          { role: 'unhide' },
+          { type: 'separator' },
+          { role: 'quit' },
+        ],
+      },
       { role: 'editMenu' },
       { role: 'viewMenu' },
       { role: 'windowMenu' },
