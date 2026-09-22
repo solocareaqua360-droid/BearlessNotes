@@ -123,7 +123,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { useBlurTarget } from '../components/GlassTarget';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { useDockActions, useDockBeads, useDockLeave } from '../navigation/navDock';
-import { ask, confirm } from '../components/surfaces/Ask';
+import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { listenError } from '../utils/listenError';
 
 const AUTOSAVE_DELAY_MS = 600;
@@ -2094,7 +2094,7 @@ export default function BoardScreen() {
   // typed against.
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList & BoardsStackParamList>>();
   const { params } = useRoute<Props['route']>();
-  const { boardId, openDocumentId } = params;
+  const { boardId, openDocumentId, focusCardIds } = params;
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const { isTwoPane } = useResponsiveLayout();
   // A document card opened beside the board instead of over it: the board
@@ -2140,6 +2140,10 @@ export default function BoardScreen() {
   // Boards to choose from, fetched when the picker opens rather than
   // listened to: it is a one-off question, asked while a sheet is up.
   const [boardPickerOpen, setBoardPickerOpen] = useState(false);
+  // The same picker, asking a different question: not "which board goes
+  // ON this one" but "which board do these objects go TO".
+  const [movePickerOpen, setMovePickerOpen] = useState(false);
+  const [moving, setMoving] = useState(false);
   const [pickableBoards, setPickableBoards] = useState<{ id: string; title: string }[]>([]);
   const [existingItemPickerVisible, setExistingItemPickerVisible] = useState(false);
   // Set when the pane's document was just made out of another one's
@@ -3200,6 +3204,25 @@ export default function BoardScreen() {
     if (selectedCardIds.size < 2) setAlignMenuVisible(false);
   }, [selectedCardIds]);
 
+  // Arriving with objects that were just moved here: look at THEM.
+  // Without this the board opens wherever it was last left, which is
+  // usually nowhere near where the group landed - and a move that ends
+  // on an empty stretch of canvas reads as a move that lost them.
+  //
+  // Once per set of ids, and only after the cards are really here: the
+  // first snapshot of a board opened fresh is empty, and fitting to
+  // nothing would just reset the view.
+  const focusedIdsRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isLoaded || !focusCardIds || focusCardIds.length === 0) return;
+    const key = focusCardIds.join(',');
+    if (focusedIdsRef.current === key) return;
+    const here = focusCardIds.filter((id) => cards.some((c) => c.id === id));
+    if (here.length === 0) return;
+    focusedIdsRef.current = key;
+    fitViewToBounds(new Set(here));
+  }, [isLoaded, focusCardIds, cards]);
+
   const clearSelection = useCallback(() => {
     setSelectedShapeId(null);
     setSelectedCardIds(new Set());
@@ -3522,6 +3545,134 @@ export default function BoardScreen() {
         .sort((a, b) => a.title.localeCompare(b.title))
     );
     setBoardPickerOpen(true);
+  }
+
+  // Everything selected, onto another board - "інколи дошка розростається
+  // і ти розумієш що для чогось треба окрема дошка".
+  //
+  // Three rules, and each of them is a decision rather than an accident:
+  //
+  // - A CONNECTION travels only when BOTH its ends do. A line to a card
+  //   that stayed behind has nothing to point at over there.
+  // - A COLUMN, an area or a layer is that board's own furniture and
+  //   stays. A card that stood in one arrives free, because the
+  //   alternative is dragging half the board along with it.
+  // - The group's own arrangement is kept exactly. Its bounding box is
+  //   moved to the origin and set down below whatever the target board
+  //   already holds, so it never lands on top of something and you see
+  //   the same construction you selected.
+  //
+  // The write is a WHOLE keyed map, not a diff. The target board may
+  // still be in the old array shape, and merging a keyed patch onto an
+  // array field replaces it - see boardStorage. Reading it first and
+  // writing the whole thing is what BoardScreen's own `whole` path does
+  // for exactly this reason.
+  async function moveSelectionTo(targetId: string) {
+    if (moving) return;
+    const cardIds = new Set(selectedCardIds);
+    const shapeIds = new Set(selectedShapeIds);
+    if (cardIds.size === 0 && shapeIds.size === 0) return;
+    setMoving(true);
+    setMovePickerOpen(false);
+    try {
+      const movingCards = cards.filter((c) => cardIds.has(c.id));
+      const movingShapes = shapes.filter((s) => shapeIds.has(s.id));
+      const movingConnections = connections.filter(
+        (c) => cardIds.has(c.fromCardId) && cardIds.has(c.toCardId)
+      );
+
+      const targetSnapshot = await getDoc(doc(db, 'boards', targetId));
+      const targetData = targetSnapshot.data() ?? {};
+      const targetCards = readBoardPart<BoardCard>(targetData.cards);
+      const targetShapes = readBoardPart<BoardShape>(targetData.shapes);
+      const targetConnections = readBoardPart<BoardConnection>(targetData.connections);
+
+      // Where the group sits now, and where it is going to sit.
+      const xs = [...movingCards.map((c) => c.x), ...movingShapes.map((s) => s.x)];
+      const ys = [...movingCards.map((c) => c.y), ...movingShapes.map((s) => s.y)];
+      const fromX = Math.min(...xs);
+      const fromY = Math.min(...ys);
+      const occupiedBottom = [
+        ...targetCards.map((c) => c.y + APPROX_CARD_HEIGHT),
+        ...targetShapes.map((s) => s.y + (s.height ?? 120)),
+      ];
+      const toX = targetCards.length + targetShapes.length === 0 ? WORLD_CENTER : Math.min(
+        ...[...targetCards.map((c) => c.x), ...targetShapes.map((s) => s.x)]
+      );
+      const toY = occupiedBottom.length > 0 ? Math.max(...occupiedBottom) + 60 : WORLD_CENTER;
+      const shiftX = toX - fromX;
+      const shiftY = toY - fromY;
+
+      // columnId/order/layerId belong to the board being left. Dropped
+      // rather than carried: over there they name nothing.
+      const landedCards = movingCards.map(({ columnId: _c, order: _o, layerId: _l, ...card }) => ({
+        ...card,
+        x: card.x + shiftX,
+        y: card.y + shiftY,
+      })) as BoardCard[];
+      const landedShapes = movingShapes.map(({ layerId: _l, ...shape }) => ({
+        ...shape,
+        x: shape.x + shiftX,
+        y: shape.y + shiftY,
+      })) as BoardShape[];
+
+      await setDoc(
+        doc(db, 'boards', targetId),
+        {
+          cards: keyedAll([...targetCards, ...landedCards]),
+          shapes: keyedAll([...targetShapes, ...landedShapes]),
+          connections: keyedAll([...targetConnections, ...movingConnections]),
+          updatedAt: Date.now(),
+        },
+        { merge: true }
+      );
+
+      // Only once the other board has them. A failed write must not be
+      // able to take the objects off this board as well.
+      setCards((prev) => prev.filter((c) => !cardIds.has(c.id)));
+      setShapes((prev) => prev.filter((s) => !shapeIds.has(s.id)));
+      setConnections((prev) =>
+        prev.filter((c) => !cardIds.has(c.fromCardId) && !cardIds.has(c.toCardId))
+      );
+      clearSelection();
+      // No "done" dialog. The target board opens on the group a moment
+      // later, which says it better than a box with one button - and a
+      // box with one button is a tap the move does not need.
+      navigation.navigate('Board', {
+        boardId: targetId,
+        focusCardIds: landedCards.map((c) => c.id),
+      });
+    } catch (e) {
+      notify('Не вдалося перенести', String(e));
+    } finally {
+      setMoving(false);
+    }
+  }
+
+  async function openMovePicker() {
+    const snapshot = await getDocs(ownedQuery('boards'));
+    setPickableBoards(
+      snapshot.docs
+        .filter((d) => d.id !== boardId && !d.data().trashed)
+        .map((d) => ({ id: d.id, title: (d.data().title as string)?.trim() || 'Без назви' }))
+        .sort((a, b) => a.title.localeCompare(b.title))
+    );
+    setMovePickerOpen(true);
+  }
+
+  // The board that does not exist yet, which is usually the whole point
+  // of moving things off this one. Born KEYED - see BoardsListScreen's
+  // own comment and the board_shape_doubt memory: a board born as an
+  // array sits in "which shape is this" for ever and saves nothing.
+  async function moveSelectionToNewBoard() {
+    const now = Date.now();
+    const created = await addDoc(collection(db, 'boards'), {
+      title: 'Без назви',
+      cards: {},
+      createdAt: now,
+      updatedAt: now,
+    });
+    await moveSelectionTo(created.id);
   }
 
   function addBoardCard(picked: string) {
@@ -5160,6 +5311,12 @@ export default function BoardScreen() {
                   },
                 ]
               : []),
+            {
+              key: 'move',
+              icon: 'mc:arrow-right-bold-box-outline',
+              label: 'Перенести',
+              onPress: openMovePicker,
+            },
             { key: 'delete', icon: 'trash-outline', label: 'Видалити', onPress: deleteSelection },
           ]
         : [
@@ -6076,6 +6233,18 @@ export default function BoardScreen() {
           excludeIds={existingItemExcludeIds}
           includeDocuments
           onPickDocument={addDocumentCard}
+        />
+
+        <DocumentPickerModal
+          visible={movePickerOpen}
+          title="Куди перенести?"
+          subtitle="Виділене поїде на цю дошку"
+          icon="easel-outline"
+          documents={pickableBoards}
+          onPick={moveSelectionTo}
+          onCreateNew={moveSelectionToNewBoard}
+          createLabel="Нова дошка"
+          onClose={() => setMovePickerOpen(false)}
         />
 
         <DocumentPickerModal

@@ -21,6 +21,14 @@ type Props = {
   icon?: ComponentProps<typeof Ionicons>['name'];
   documents: PickableDocument[];
   onPick: (documentId: string) => void;
+  // A row above the list that makes a NEW one instead of choosing an
+  // existing one. Moving objects off a board is the case this exists
+  // for: the reason you are moving them is usually that they deserve a
+  // board of their own, and that board does not exist yet - so having
+  // to leave, make it, come back and select it would be the whole task
+  // done twice.
+  onCreateNew?: () => void;
+  createLabel?: string;
   onClose: () => void;
 };
 
@@ -48,6 +56,8 @@ export default function DocumentPickerModal({
   icon = 'document-text-outline',
   documents,
   onPick,
+  onCreateNew,
+  createLabel = 'Створити нову',
   onClose,
 }: Props) {
   const theme = useTheme();
@@ -92,6 +102,16 @@ export default function DocumentPickerModal({
         ) : undefined
       }
     >
+      {!!onCreateNew && (
+        <Pressable style={[styles.row, styles.createRow]} onPress={onCreateNew}>
+          <View style={styles.docIcon}>
+            <Ionicons name="add" size={16} color={accent} />
+          </View>
+          <Text style={[styles.rowText, { color: accent }]} numberOfLines={1}>
+            {createLabel}
+          </Text>
+        </Pressable>
+      )}
       {shown.length === 0 ? (
         <Text style={styles.empty}>Нічого не знайшлося</Text>
       ) : (
@@ -112,6 +132,13 @@ export default function DocumentPickerModal({
 }
 
 const makeStyles = (t: Theme) => StyleSheet.create({
+  // Above the list and ruled off from it: it is not one of the things
+  // being chosen between.
+  createRow: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.edge.hairline,
+    marginBottom: 4,
+  },
   search: {
     flexDirection: 'row',
     alignItems: 'center',

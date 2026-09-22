@@ -26,7 +26,7 @@ export type RootStackParamList = {
     // by recursing into BoardsStack itself, no extra plumbing needed there.
     | {
         screen: 'Дошки';
-        params: { screen: 'Board'; params: { boardId: string; openDocumentId?: string } };
+        params: { screen: 'Board'; params: { boardId: string; openDocumentId?: string; focusCardIds?: string[] } };
       };
   // autoFocusTitle: set only right after creating a brand-new document
   // (DocumentsScreen's own addDoc) - focuses the title field and raises the
@@ -108,5 +108,9 @@ export type BoardsStackParamList = {
   // openDocumentId: opened straight into the board's document pane - how
   // a generated document jumps back to the board it came from with itself
   // still on screen.
-  Board: { boardId: string; openDocumentId?: string };
+  // focusCardIds: arrive looking AT these. Set when objects have just
+  // been moved here from another board - the board opens on the group
+  // that was moved rather than wherever it was last left, which would
+  // usually be nowhere near it.
+  Board: { boardId: string; openDocumentId?: string; focusCardIds?: string[] };
 };
