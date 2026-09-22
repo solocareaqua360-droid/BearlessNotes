@@ -452,6 +452,14 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
   },
+  // One key, so it takes its own width rather than a seventh of the row.
+  tableFunctionKey: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: t.field.fill,
+  },
   tableOperatorKey: {
     flex: 1,
     alignItems: 'center',
@@ -531,8 +539,13 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     gap: 4,
     marginBottom: 2,
   },
+  // The row-number column. Its own width and NO horizontal padding: it
+  // is drawn with the grid cell's style for its border, and that style
+  // carries 10 either side - on a 24pt column that left four points for
+  // the number, and "1" came out as a sliver against the frame.
   tableGutterCell: {
-    width: 24,
+    paddingHorizontal: 0,
+    width: 28,
     alignItems: 'center',
     justifyContent: 'center',
   },

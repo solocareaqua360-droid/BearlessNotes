@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 // Deliberately gesture-handler's ScrollView, not react-native's - see the
 // same note in DocumentEditorScreen.tsx (this component moved out of that
@@ -8,7 +8,6 @@ import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handl
 import { Ionicons } from '@expo/vector-icons';
 import { Block, TableRow } from '../types';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
-import { useDensity } from '../hooks/useDensity';
 import { makeStyles } from './documentEditorStyles';
 import { columnLetter, displayValueOf, parseFormattedText } from '../utils/documentBlocks';
 import { ask } from './surfaces/Ask';
@@ -68,7 +67,10 @@ export default function TableBlockContent({
   // swapped for an input on tap, because swapping remounts the cell
   // mid-layout and throws the horizontal scroll back to the first
   // column.
-  const pointer = useDensity() === 'pointer';
+  // What the focused cell holds RIGHT NOW, before it is committed. The
+  // table has to know the instant "=" is typed, and the stored value
+  // does not learn that until editing ends.
+  const [draftText, setDraftText] = useState<string | null>(null);
   const cellRefs = useRef(new Map<string, TextInput | null>());
   const rows = block.tableRows && block.tableRows.length > 0 ? block.tableRows : [{ cells: ['', ''] }];
   const columnCount = rows[0]?.cells.length ?? 0;
@@ -85,6 +87,7 @@ export default function TableBlockContent({
   // finger at once; the block is written only when the finger lifts,
   // because every write here is a document save.
   const [draft, setDraft] = useState<{ c: number; width: number } | null>(null);
+  const resizeStartRef = useRef(0);
 
   const headerRow = !!block.tableHeaderRow;
   const headerColumn = !!block.tableHeaderColumn;
@@ -121,28 +124,27 @@ export default function TableBlockContent({
   // other cells normally.
   function handleCellPress(r: number, c: number) {
     if (!canEdit) return;
-    if (selected && formulaFocused) {
-      const currentRaw = rows[selected.r]?.cells[selected.c] ?? '';
-      if (currentRaw.trim().startsWith('=')) {
-        setCell(selected.r, selected.c, currentRaw + columnLetter(c) + String(r + 1));
-        formulaInputRef.current?.focus();
-        return;
-      }
+    if (formulaMode && selected) {
+      setDraftText((draftText ?? selectedRaw) + columnLetter(c) + String(r + 1));
+      formulaInputRef.current?.focus();
+      return;
     }
     selectCell(r, c);
   }
 
-  // Straight into the formula, at the caret's own place - on a phone
-  // every one of these means switching the keyboard to its symbol layer,
-  // and ":" for a range is needed in almost every formula there is.
-  // Craft puts the same row in the same place, for the same reason.
-  function appendToFormula(token: string) {
+  // The FUNCTIONS, not the operators.
+  //
+  // This row held "+ - * / ( ) :" first, on the argument that each of
+  // them costs a keyboard-layer switch on a phone. The user's answer
+  // retired that argument: every one of those symbols is already on the
+  // keyboard, so the row was duplicating what was a tap away anyway -
+  // "в мене все є на клавіатурі навіщо дублювати ці символи". What is
+  // NOT on any keyboard is SUM, MIN, MAX, AVG, COUNT, and typing one of
+  // those by hand is six letters and a bracket. Craft's own row holds
+  // exactly these five.
+  function insertFunction(name: string) {
     if (!selected) return;
-    const current = rows[selected.r]?.cells[selected.c] ?? '';
-    // A cell holding a plain "5" becomes "=5+" rather than "5+", which
-    // is nothing at all: pressing an operator says "this is a formula".
-    const base = current.trim().startsWith('=') ? current : current.trim() ? `=${current}` : '=';
-    setCell(selected.r, selected.c, base + token);
+    setDraftText(`${draftText ?? selectedRaw}${name}(`);
     formulaInputRef.current?.focus();
   }
 
@@ -185,6 +187,8 @@ export default function TableBlockContent({
   }
 
   function confirmFormula() {
+    if (selected && draftText !== null) setCell(selected.r, selected.c, draftText);
+    setDraftText(null);
     formulaInputRef.current?.blur();
   }
 
@@ -254,7 +258,24 @@ export default function TableBlockContent({
   }
 
   const selectedRaw = selected ? rows[selected.r]?.cells[selected.c] ?? '' : '';
-  const composingFormula = selectedRaw.trim().startsWith('=');
+  // THE rule of this component, and the user's own words for it: "поки
+  // ти не ввів равно, ти просто перемикаєшся між клітинками, все
+  // логічно. Як тільки ти, як в Excel, ввів равно - все зрозуміло, що
+  // формули".
+  //
+  // Until then a table is a table: you type into a cell, you move to
+  // the next one, and there is no bar, no operators and no addresses on
+  // screen. From "=" onwards the same grid means something else - a
+  // tap on a cell is its ADDRESS rather than a place to go - and that
+  // is the only state in which a formula field is worth the room it
+  // takes.
+  const formulaMode = (draftText ?? selectedRaw).trim().startsWith('=');
+  // Entering formula mode hands the keyboard to the bar. Without this
+  // the cell keeps focus and has just become non-editable, so typing
+  // goes nowhere - which is the worst of the three possible states.
+  useEffect(() => {
+    if (formulaMode) formulaInputRef.current?.focus();
+  }, [formulaMode]);
 
   // ---- READING ----------------------------------------------------
   if (!canEdit) {
@@ -311,6 +332,7 @@ export default function TableBlockContent({
   // ---- EDITING ----------------------------------------------------
   return (
     <View style={styles.tableBlock}>
+      {formulaMode && (
       <View style={styles.tableFormulaBar}>
         <View style={styles.tableFormulaRefBadge}>
           <Text style={styles.tableFormulaRefText}>
@@ -320,12 +342,15 @@ export default function TableBlockContent({
         <TextInput
           ref={formulaInputRef}
           style={styles.tableFormulaInput}
-          value={selectedRaw}
+          // The bar owns the text while the formula is being written -
+          // the cell underneath shows the same string and is not
+          // editable, so there is one place typing goes.
+          value={draftText ?? selectedRaw}
           editable={canEdit}
-          onChangeText={(value) => selected && setCell(selected.r, selected.c, value)}
+          onChangeText={setDraftText}
           onFocus={() => setFormulaFocused(true)}
           onBlur={() => setFormulaFocused(false)}
-          placeholder={selected ? 'Значення або =SUM(A1:A3)' : 'Виберіть клітинку'}
+          placeholder="=SUM(A1:A3)"
           placeholderTextColor="#9CA3AF"
           autoCapitalize="none"
           autoCorrect={false}
@@ -333,23 +358,24 @@ export default function TableBlockContent({
           onSubmitEditing={confirmFormula}
           blurOnSubmit
         />
-        {formulaFocused && (
-          <Pressable hitSlop={8} onPress={confirmFormula} style={styles.tableFormulaDoneButton}>
-            <Ionicons name="checkmark" size={18} color="#fff" />
-          </Pressable>
-        )}
+        <Pressable hitSlop={8} onPress={confirmFormula} style={styles.tableFormulaDoneButton}>
+          <Ionicons name="checkmark" size={18} color="#fff" />
+        </Pressable>
       </View>
+      )}
 
-      {/* Only while a formula is actually being written. Standing there
-          for every selected cell, it was seven more symbols around a
-          two-by-two table for no reason - "оце от навколо купа
-          символів". A cell whose text starts with "=" is the only place
-          an operator means anything. */}
-      {composingFormula && (
+      {/* With the bar, and only with it: a function name is worth a key
+          when a formula is being written and is noise at every other
+          moment. */}
+      {formulaMode && (
         <View style={styles.tableOperatorRow}>
-          {OPERATORS.map((op) => (
-            <Pressable key={op} style={styles.tableOperatorKey} onPress={() => appendToFormula(op)}>
-              <Text style={styles.tableOperatorLabel}>{op}</Text>
+          {FUNCTIONS.map((fn) => (
+            <Pressable
+              key={fn.label}
+              style={styles.tableFunctionKey}
+              onPress={() => insertFunction(fn.name)}
+            >
+              <Text style={styles.tableOperatorLabel}>{fn.label}</Text>
             </Pressable>
           ))}
         </View>
@@ -381,12 +407,19 @@ export default function TableBlockContent({
                 headerRow && r === 0 && styles.tableGridHeaderRow,
               ]}
             >
-              <View style={[styles.tableGutterCell, styles.tableGridCell]}>
+              <View style={[styles.tableGridCell, styles.tableGutterCell]}>
                 <Text style={styles.tableGutterText}>{r + 1}</Text>
               </View>
               {row.cells.map((_, c) => {
                 const isSelected = selected?.r === r && selected?.c === c;
-                if (pointer) {
+                // In formula mode every OTHER cell stops being a field
+                // and becomes an address to tap. Only the cell the
+                // formula lives in stays editable, and even it is typed
+                // through the bar above - which is the whole difference
+                // the user described: the same grid means "go here"
+                // before "=" and "this one" after it.
+                const asAddress = formulaMode && !isSelected;
+                if (!asAddress) {
                   const raw = row.cells[c] ?? '';
                   return (
                     <TextInput
@@ -407,8 +440,16 @@ export default function TableBlockContent({
                         isSelected && styles.tableCellSelected,
                       ]}
                       defaultValue={raw}
-                      onFocus={() => setSelected({ r, c })}
-                      onEndEditing={(e) => setCell(r, c, e.nativeEvent.text)}
+                      editable={!formulaMode}
+                      onFocus={() => {
+                        setSelected({ r, c });
+                        setDraftText(raw);
+                      }}
+                      onChangeText={(value) => setDraftText(value)}
+                      onEndEditing={(e) => {
+                        setCell(r, c, e.nativeEvent.text);
+                        setDraftText(null);
+                      }}
                       onKeyPress={(e) => {
                         const native = e.nativeEvent as unknown as {
                           key: string;
@@ -479,19 +520,31 @@ export default function TableBlockContent({
     </View>
   );
 
-  // Declared last, and a function so it closes over the current widths
-  // rather than a stale copy: a drag that starts from the width the
-  // column had two renders ago jumps before it moves.
+  // The width the finger STARTED from, captured when the drag starts and
+  // not a moment later.
+  //
+  // It used to be read at render time - `const startWidth = widthOf(c)`
+  // in the body of this function - and `widthOf` returns the width the
+  // drag has already produced. So every frame rebuilt the gesture with
+  // the NEW width as its origin and added the whole translation to it
+  // again: the column grew by the distance dragged so far on every
+  // single update, and a millimetre of movement threw it to the cap.
+  // "Міліметр в сторону і таблиця розширилась в безкінечність."
+  //
+  // A ref, set in onStart, is the origin the whole drag is measured
+  // from - which is what makes the column follow the finger one to one.
   function resizeGesture(c: number) {
-    const startWidth = widthOf(c);
     return Gesture.Pan()
       .runOnJS(true)
-      .onStart(() => setDraft({ c, width: startWidth }))
+      .onStart(() => {
+        resizeStartRef.current = widthOf(c);
+        setDraft({ c, width: resizeStartRef.current });
+      })
       .onUpdate((e) => {
-        setDraft({ c, width: clampWidth(startWidth + e.translationX) });
+        setDraft({ c, width: clampWidth(resizeStartRef.current + e.translationX) });
       })
       .onEnd((e) => {
-        const width = clampWidth(startWidth + e.translationX);
+        const width = clampWidth(resizeStartRef.current + e.translationX);
         setDraft(null);
         commitWidth(c, width);
       });
@@ -548,8 +601,15 @@ const MIN_COLUMN_WIDTH = 56;
 const MAX_COLUMN_WIDTH = 420;
 // A cell may wrap, but it is still a cell. Four lines is a sentence.
 const CELL_MAX_LINES = 4;
-// A plain hyphen, not a typographic minus: this text is PARSED.
-const OPERATORS = ['+', '-', '*', '/', '(', ')', ':'];
+// ONE, and the user was explicit about why: "ніяких мін максів я
+// виводити не буду. Максимум, що мені знадобиться від таблиці, це
+// підбити суму... Для цього є Excel."
+//
+// The engine still knows MIN, MAX, AVERAGE and COUNT - a formula typed
+// by hand or synced from elsewhere keeps working - but a key each is
+// four keys for something this app is not for. Everything else anyone
+// here needs is + - * / and brackets, and those are on the keyboard.
+const FUNCTIONS = [{ label: 'SUM', name: 'SUM' }];
 
 function clampWidth(width: number): number {
   return Math.round(Math.max(MIN_COLUMN_WIDTH, Math.min(MAX_COLUMN_WIDTH, width)));
