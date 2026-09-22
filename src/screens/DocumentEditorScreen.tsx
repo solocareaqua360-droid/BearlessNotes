@@ -4272,7 +4272,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             <ReferencePanel
               visible
               onClose={() => setReferencePanelOpen(false)}
-              hint={canvasMode ? 'Затисни й перетягни на полотно' : 'Затисни й перетягни в текст'}
+              // The hint has to match the gesture - see useReferenceDrag:
+              // a pointer drags at once, a finger holds first.
+              hint={
+                pointerDensity
+                  ? canvasMode
+                    ? 'Перетягни на полотно'
+                    : 'Перетягни в текст'
+                  : canvasMode
+                    ? 'Затисни й перетягни на полотно'
+                    : 'Затисни й перетягни в текст'
+              }
               onDragMove={
                 canvasMode ? undefined : (_x, y) => blockListRef.current?.hoverExternal(y)
               }

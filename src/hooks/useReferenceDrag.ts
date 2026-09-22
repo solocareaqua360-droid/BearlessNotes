@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { useDensity } from './useDensity';
 import { View } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
 import { hapticDrop, hapticPickUp, hapticWarning } from '../utils/haptics';
@@ -46,6 +47,7 @@ export function useReferenceDrag({
   // the ghost moving is itself a render, so that would be every frame of
   // every drag). Held in refs, so the gesture closes over something that
   // never changes and still calls the latest one.
+  const pointer = useDensity() === 'pointer';
   const onDropRef = useRef(onDrop);
   onDropRef.current = onDrop;
   const onMoveRef = useRef(onMove);
@@ -131,10 +133,18 @@ export function useReferenceDrag({
   // Built ONCE. A fresh Gesture object on every render hands
   // GestureDetector a new configuration mid-drag - and the ghost moving
   // is itself a render, so that is every frame of every drag.
+  // A finger has to HOLD first, because a finger that moves without
+  // holding is scrolling the list. A mouse has a wheel for that, so
+  // holding is pure delay - and the user's own verdict on it:
+  // "затискання в ноутбуці не найкращій варіант". With a pointer the
+  // drag starts on the move itself, past a few pixels so a plain click
+  // is still a click.
   const gesture = useMemo(
     () =>
-      Gesture.Pan()
-        .activateAfterLongPress(LONG_PRESS_MS)
+      (pointer
+        ? Gesture.Pan().minDistance(4)
+        : Gesture.Pan().activateAfterLongPress(LONG_PRESS_MS)
+      )
         .runOnJS(true)
         .onStart((e) => pickUpAt(e.absoluteX, e.absoluteY))
         .onUpdate((e) => updateDrag(e.absoluteX, e.absoluteY))
@@ -142,7 +152,7 @@ export function useReferenceDrag({
           if (success) endDrag();
         })
         .onFinalize(() => cancelDrag()),
-    [pickUpAt, updateDrag, endDrag, cancelDrag]
+    [pointer, pickUpAt, updateDrag, endDrag, cancelDrag]
   );
 
   return { ghost, gesture, registerRow, dragging: ghost !== null };
