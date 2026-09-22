@@ -427,11 +427,6 @@ export default function DocumentsScreen({
         ? 4
         : 3
       : 2;
-  // Two folders to a line whenever the list has the whole inner screen,
-  // standing up as well as lying down - the user's call once the rows
-  // lined up. A folder row is an icon, a name and two small numbers, and
-  // half the inner screen is plenty for that.
-  const folderColumns = wideList ? 2 : 1;
   // What the list actually draws. With a document open beside it the list
   // is half a screen wide, and one card to a line there is the LIST row -
   // not a grid of one column: the grid card is a fixed-height tile, and a
@@ -500,7 +495,25 @@ export default function DocumentsScreen({
     return out;
   }
 
-  const folderRowWidth = folderColumns > 1 ? Math.floor((listWidth - 10) / 2) : undefined;
+  // Two folders to a line whenever the list has the whole inner screen,
+  // standing up as well as lying down - the user's call once the rows
+  // lined up. A folder row is an icon, a name and two small numbers, and
+  // half the inner screen is plenty for that.
+  //
+  // In the grid on a pointer they go further and join the grid itself:
+  // the same count, the same width and the same gap as the tiles below,
+  // so a folder stands in a column instead of drawing a full-width line
+  // across the page above them. That line is what was left of the two
+  // empty strips - the tiles had already stopped leaving them, and the
+  // folders above still did. Craft's own structure, and the reason its
+  // page reads as one field of cards rather than a header and a grid.
+  const foldersInGrid = pointerDensity && drawnMode === 'grid';
+  const folderColumns = foldersInGrid ? gridColumns : wideList ? 2 : 1;
+  const folderRowWidth = foldersInGrid
+    ? gridCardWidth
+    : folderColumns > 1
+      ? Math.floor((listWidth - 10) / 2)
+      : undefined;
   const insets = useSafeAreaInsets();
   const chromeTop = insets.top + CHROME_TOP;
   const chromeBottom = chromeTop + chromeHeight + 8;
@@ -1454,6 +1467,7 @@ export default function DocumentsScreen({
                   style={[
                     styles.explorerHead,
                     folderColumns > 1 && styles.explorerHeadWide,
+                    foldersInGrid && styles.explorerHeadGrid,
                   ]}
                 >
                   {/* A folder row wears the document row's clothes - the
@@ -2275,6 +2289,12 @@ const makeStyles = (t: Theme) =>
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
+  },
+  // The grid's own gap, so a folder ends on the same line a tile below
+  // it starts - 10 and 12 look identical alone and drift a column apart
+  // over four of them.
+  explorerHeadGrid: {
+    gap: 12,
   },
   // The path is a place, not an item: it keeps its own full-width line
   // above the pairs.
