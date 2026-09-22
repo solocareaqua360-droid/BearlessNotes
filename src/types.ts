@@ -448,6 +448,11 @@ export interface BoardCard extends Omit<Block, 'type'> {
   // render. Absent means an empty/text-free/image-free document.
   documentPreviewText?: string;
   documentPreviewImageUri?: string;
+  // Where that picture's bytes actually are. The uri above is a path on
+  // the device that made it, which no other device can read - so without
+  // this the card drew a title and blank space everywhere else, while
+  // the very same document showed its cover the moment it was opened.
+  documentPreviewDriveFileId?: string;
   // Set while the card sits in a kanban column (see BoardColumn) - the
   // card's x/y are then owned by that column's own stacking rather than by
   // wherever it was last dropped, and are recomputed whenever the column's

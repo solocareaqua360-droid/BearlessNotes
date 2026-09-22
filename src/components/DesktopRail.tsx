@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRailTree } from '../navigation/navRail';
+import { useNavDockLeave } from '../navigation/navDock';
 import { navigationRef } from '../navigationRef';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
@@ -57,6 +58,12 @@ export default function DesktopRail() {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const tree = useRailTree();
+  // The way OUT of a screen that was pushed over the tabs - a board, a
+  // database, a note. It lived on the dock, and the dock is not here, so
+  // hiding the dock took the only exit with it: the user opened a board
+  // and had no way back at all. It belongs at the top of the rail, which
+  // is where a Mac keeps "back" anyway.
+  const leave = useNavDockLeave();
   const [open, setOpen] = useState<Set<string>>(new Set());
 
   // Which of the four is showing. Read through the global ref, not
@@ -130,6 +137,12 @@ export default function DesktopRail() {
 
   return (
     <View style={styles.rail}>
+      {!!leave && (
+        <Pressable style={styles.leave} onPress={leave.onLeave}>
+          <Ionicons name="chevron-back" size={16} color={theme.ink.primary} />
+          <Text style={styles.leaveLabel}>Назад</Text>
+        </Pressable>
+      )}
       <View style={styles.sections}>
         {SECTIONS.map((s) => {
           const active = section === s.name;
@@ -198,6 +211,22 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     borderRightColor: t.edge.hairline,
     paddingTop: 10,
     paddingBottom: 10,
+  },
+  leave: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 30,
+    marginHorizontal: 8,
+    marginBottom: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: t.selected,
+  },
+  leaveLabel: {
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
+    color: t.ink.primary,
   },
   sections: {
     paddingHorizontal: 8,

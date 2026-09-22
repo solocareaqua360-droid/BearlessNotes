@@ -353,6 +353,7 @@ export function FileGridCell({ file, columns = 2, ...rest }: { file: FileCardIte
       collapsable={false}
       style={[
         styles.gridCard,
+        styles.gridCardRatio,
         { backgroundColor: background, flexBasis: gridBasis(columns) },
       ,
         rest.dimmed && styles.dimmed,
@@ -661,7 +662,6 @@ const styles = StyleSheet.create({
     // what every version of this card being "deformed" came from.
     flexBasis: '46%',
     flexGrow: 1,
-    aspectRatio: 1 / GRID_CARD_RATIO,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(176,176,176,0.5)',
@@ -673,9 +673,23 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 4,
   },
+  // The fixed shape - height is width times GRID_CARD_RATIO - so a
+  // wrapped row is a row of the same shape rather than the ragged one
+  // the user kept calling deformed.
+  //
+  // NOT on a link card, deliberately, and that is the fix: its content
+  // does not grow with its width (the picture is 16/9, the title stays
+  // two lines, the date stays one), so the wider the card the more of it
+  // was nothing - most of the lower half on a laptop. Left to its
+  // content it is as tall as it needs, and a wrapped row is still even,
+  // because items in a flex row stretch to the tallest of themselves.
+  gridCardRatio: {
+    aspectRatio: 1 / GRID_CARD_RATIO,
+  },
   gridTap: {
     gap: 4,
   },
+
   gridThumb: {
     width: '100%',
     aspectRatio: 16 / 9,

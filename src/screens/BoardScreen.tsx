@@ -57,6 +57,7 @@ import { Block, BlockType, BoardCard, BoardColumn, BoardConnection, BoardContain
 import { useCardCarry } from '../hooks/useCardCarry';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import CustomRowBlockCard from '../components/CustomRowBlockCard';
+import AttachmentImage from '../components/AttachmentImage';
 import { hapticDrop, hapticPickUp, hapticSuccess, hapticToggle } from '../utils/haptics';
 import {
   APPROX_CARD_HEIGHT,
@@ -367,7 +368,7 @@ function newBoardCard(board: { id: string; title: string }, index: number, at: {
 
 function newDocumentCard(
   document: { id: string; title: string },
-  preview: { text?: string; imageUri?: string },
+  preview: { text?: string; imageUri?: string; driveFileId?: string },
   index: number,
   at: { x: number; y: number }
 ): BoardCard {
@@ -385,6 +386,7 @@ function newDocumentCard(
   };
   if (preview.text) card.documentPreviewText = preview.text;
   if (preview.imageUri) card.documentPreviewImageUri = preview.imageUri;
+  if (preview.driveFileId) card.documentPreviewDriveFileId = preview.driveFileId;
   return card;
 }
 
@@ -417,6 +419,14 @@ function blocksToPreviewText(blocks: Block[]): string {
 
 function firstImageUri(blocks: Block[]): string | undefined {
   return blocks.find((b) => b.type === 'image' && b.imageUri)?.imageUri;
+}
+
+// And where its bytes are. A block usually carries no driveFileId of its
+// own - the mirror record in Photos does (see useLiveRecords) - so this
+// answers for the ones that do and leaves the rest to the cover, which
+// after 2026-09-22 has an id of its own.
+function firstImageDriveFileId(blocks: Block[]): string | undefined {
+  return blocks.find((b) => b.type === 'image' && b.imageUri)?.driveFileId;
 }
 
 // A card's real rendered height, reported by its own onLayout (see
@@ -1617,7 +1627,12 @@ function DraggableCard({
           <View style={styles.refCard}>
             {!card.documentExpanded &&
               (card.documentPreviewImageUri ? (
-                <Image source={{ uri: card.documentPreviewImageUri }} style={styles.refThumb} resizeMode="cover" resizeMethod="resize" />
+                <AttachmentImage
+                  uri={card.documentPreviewImageUri}
+                  driveFileId={card.documentPreviewDriveFileId}
+                  style={styles.refThumb}
+                  countsAsUse={false}
+                />
               ) : (
                 <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
                   <Ionicons name="document-text-outline" size={22} color="#6B7280" />
@@ -2685,7 +2700,7 @@ export default function BoardScreen() {
     ];
     if (documentIds.length === 0) return;
     const snapshots = await Promise.all(documentIds.map((id) => getDoc(doc(db, 'documents', id))));
-    const fresh = new Map<string, { title: string; text: string; imageUri?: string }>();
+    const fresh = new Map<string, { title: string; text: string; imageUri?: string; driveFileId?: string }>();
     snapshots.forEach((snapshot, index) => {
       // A document deleted elsewhere is left alone rather than blanked -
       // the card keeps showing what it last knew instead of silently
@@ -2700,6 +2715,9 @@ export default function BoardScreen() {
         // priority over a body image block, same rule extractPreview
         // uses for the Documents/Search/Diary list cards.
         imageUri: data?.coverImageUri ?? firstImageUri(blocks),
+        driveFileId: data?.coverImageUri
+          ? (data?.coverDriveFileId as string | undefined)
+          : firstImageDriveFileId(blocks),
       });
     });
     setCards((prev) => {
@@ -2711,7 +2729,8 @@ export default function BoardScreen() {
         if (
           card.documentTitle === current.title &&
           (card.documentPreviewText ?? '') === current.text &&
-          card.documentPreviewImageUri === current.imageUri
+          card.documentPreviewImageUri === current.imageUri &&
+          card.documentPreviewDriveFileId === current.driveFileId
         ) {
           return card;
         }
@@ -2724,6 +2743,8 @@ export default function BoardScreen() {
         else delete updated.documentPreviewText;
         if (current.imageUri) updated.documentPreviewImageUri = current.imageUri;
         else delete updated.documentPreviewImageUri;
+        if (current.driveFileId) updated.documentPreviewDriveFileId = current.driveFileId;
+        else delete updated.documentPreviewDriveFileId;
         return updated;
       });
       return changed ? next : prev;
@@ -2743,6 +2764,9 @@ export default function BoardScreen() {
       const title = (data.title as string) ?? 'Без назви';
       const text = blocksToPreviewText(blocks).slice(0, 20000);
       const imageUri = (data.coverImageUri as string | undefined) ?? firstImageUri(blocks);
+      const driveFileId = data.coverImageUri
+        ? (data.coverDriveFileId as string | undefined)
+        : firstImageDriveFileId(blocks);
       setCards((prev) => {
         let changed = false;
         const next = prev.map((card) => {
@@ -2750,7 +2774,8 @@ export default function BoardScreen() {
           if (
             card.documentTitle === title &&
             (card.documentPreviewText ?? '') === text &&
-            card.documentPreviewImageUri === imageUri
+            card.documentPreviewImageUri === imageUri &&
+            card.documentPreviewDriveFileId === driveFileId
           ) {
             return card;
           }
@@ -2763,6 +2788,8 @@ export default function BoardScreen() {
           else delete updated.documentPreviewText;
           if (imageUri) updated.documentPreviewImageUri = imageUri;
           else delete updated.documentPreviewImageUri;
+          if (driveFileId) updated.documentPreviewDriveFileId = driveFileId;
+          else delete updated.documentPreviewDriveFileId;
           return updated;
         });
         return changed ? next : prev;
@@ -3516,6 +3543,11 @@ export default function BoardScreen() {
       // Cover image takes priority over a body image block - see
       // refreshDocumentPreviews' identical rule.
       imageUri: data?.coverImageUri ?? firstImageUri(blocks),
+      // And WHERE that picture is, which the uri alone does not say -
+      // see the card's own field in types.ts.
+      driveFileId: (data?.coverImageUri
+        ? (data?.coverDriveFileId as string | undefined)
+        : firstImageDriveFileId(blocks)) as string | undefined,
     };
     setCards((prev) => [...prev, newDocumentCard(document, preview, prev.length, viewCenter())]);
   }
