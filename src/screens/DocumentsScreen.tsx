@@ -1916,8 +1916,12 @@ const makeStyles = (t: Theme) =>
     // their left edge from this pane's measured x.
     maxWidth: MAX_CONTENT_WIDTH,
   },
+  // '100%' and not `undefined`. A style value of undefined is DROPPED
+  // when styles are flattened, so it overrides nothing at all and the
+  // cap below simply stayed - which is why removing it changed nothing
+  // on screen. The same trap the grid card's aspectRatio had.
   paneFull: {
-    maxWidth: undefined,
+    maxWidth: '100%',
   },
   paneHidden: {
     display: 'none',
