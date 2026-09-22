@@ -41,17 +41,19 @@ import {
   doc,
   getDoc,
   getDocFromCache,
+  getDocs,
   onSnapshot,
   updateDoc,
 } from '../firestore';
 import { addDoc, ownedQuery, setDoc } from '../utils/owned';
+import DocumentPickerModal from '../components/DocumentPickerModal';
 import { groupAppliesTo } from '../utils/groups';
 import { applyLiveRecord, recordIdFor, useLiveRecords } from '../hooks/useLiveRecords';
 import * as Clipboard from 'expo-clipboard';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import { db } from '../firebase';
 import { BoardsStackParamList, RootStackParamList } from '../navigation';
-import { Block, BoardCard, BoardColumn, BoardConnection, BoardContainer, BoardLayer, BoardShape, BoardShapeKind } from '../types';
+import { Block, BlockType, BoardCard, BoardColumn, BoardConnection, BoardContainer, BoardLayer, BoardShape, BoardShapeKind } from '../types';
 import { useCardCarry } from '../hooks/useCardCarry';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import CustomRowBlockCard from '../components/CustomRowBlockCard';
@@ -342,6 +344,26 @@ function cardFromExistingBlock(block: Block, index: number): BoardCard {
 // usedInDocuments concern for a document reference (it's just a documentId
 // pointer), so nothing stops the same document from being pinned to the
 // board more than once.
+// Another board, as a card. The title is a snapshot, refreshed the same
+// way a document card's is (see refreshDocumentPreviews) - what it is
+// NOT is live, because a board is not in memory here the way documents
+// are in the editor, and one fetch per open is cheaper than a listener
+// on every board that any board mentions.
+function newBoardCard(board: { id: string; title: string }, index: number): BoardCard {
+  const jitter = (index % 6) * 24;
+  return {
+    id: generateId(),
+    text: '',
+    type: 'board',
+    createdAt: Date.now(),
+    boardId: board.id,
+    boardTitle: board.title,
+    x: WORLD_CENTER - DEFAULT_CARD_WIDTH / 2 + jitter,
+    y: WORLD_CENTER - 60 + jitter,
+    width: DEFAULT_CARD_WIDTH,
+  };
+}
+
 function newDocumentCard(
   document: { id: string; title: string },
   preview: { text?: string; imageUri?: string },
@@ -1577,7 +1599,19 @@ function DraggableCard({
         ]}
         pointerEvents={dimmed ? 'none' : 'auto'}
       >
-        {type === 'document' ? (
+        {type === 'board' ? (
+          // Another board. Deliberately plainer than a document card:
+          // there is nothing to preview - a board is a surface, not a
+          // text - so what it shows is what it IS, a named place to go.
+          <View style={styles.refCard}>
+            <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
+              <Ionicons name="easel-outline" size={22} color="#6B7280" />
+            </View>
+            <Text style={styles.refLabel} numberOfLines={2}>
+              {card.boardTitle || 'Без назви'}
+            </Text>
+          </View>
+        ) : type === 'document' ? (
           <View style={styles.refCard}>
             {!card.documentExpanded &&
               (card.documentPreviewImageUri ? (
@@ -2080,6 +2114,10 @@ export default function BoardScreen() {
   const [cards, setCards] = useState<BoardCard[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [addSheetVisible, setAddSheetVisible] = useState(false);
+  // Boards to choose from, fetched when the picker opens rather than
+  // listened to: it is a one-off question, asked while a sheet is up.
+  const [boardPickerOpen, setBoardPickerOpen] = useState(false);
+  const [pickableBoards, setPickableBoards] = useState<{ id: string; title: string }[]>([]);
   const [existingItemPickerVisible, setExistingItemPickerVisible] = useState(false);
   // Set when the pane's document was just made out of another one's
   // blocks - the offer to put it on a board rides in with it.
@@ -2583,6 +2621,39 @@ export default function BoardScreen() {
   // document changes while its card exists is that you left the board to
   // edit it - including via the card's own "Редагувати", which opens the
   // editor as a modal over this screen and blurs it.
+  // A board card carries its target's name as a snapshot, so a board
+  // renamed elsewhere would keep showing the old one for ever. Refreshed
+  // beside the document previews, at the same moments and for the same
+  // reason - and a board that has been deleted is left alone rather than
+  // blanked, exactly as a missing document is.
+  const refreshBoardCardTitles = useCallback(async () => {
+    const boardIds = [
+      ...new Set(
+        cardsRef.current
+          .filter((c) => (c.type ?? 'paragraph') === 'board' && c.boardId)
+          .map((c) => c.boardId as string)
+      ),
+    ];
+    if (boardIds.length === 0) return;
+    const snapshots = await Promise.all(boardIds.map((id) => getDoc(doc(db, 'boards', id))));
+    const fresh = new Map<string, string>();
+    snapshots.forEach((snapshot, index) => {
+      if (!snapshot.exists()) return;
+      fresh.set(boardIds[index], (snapshot.data()?.title as string)?.trim() || 'Без назви');
+    });
+    setCards((prev) => {
+      let changed = false;
+      const next = prev.map((card) => {
+        if (!card.boardId) return card;
+        const title = fresh.get(card.boardId);
+        if (!title || card.boardTitle === title) return card;
+        changed = true;
+        return { ...card, boardTitle: title };
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
   const refreshDocumentPreviews = useCallback(async () => {
     const documentIds = [
       ...new Set(
@@ -2682,13 +2753,14 @@ export default function BoardScreen() {
     useCallback(() => {
       if (!isLoaded) return;
       refreshDocumentPreviews();
+      refreshBoardCardTitles();
       // The editor saves on a 600ms debounce, so closing it right after
       // typing hands focus back here before that write is even issued -
       // the read above would then see the previous version. A second pass
       // safely past that window catches it.
       const timeout = setTimeout(refreshDocumentPreviews, 1000);
       return () => clearTimeout(timeout);
-    }, [isLoaded, refreshDocumentPreviews])
+    }, [isLoaded, refreshDocumentPreviews, refreshBoardCardTitles])
   );
 
   // Positions and measured heights outlive the cards they belong to
@@ -3383,6 +3455,27 @@ export default function BoardScreen() {
     setCards((prev) => [...prev, cardFromExistingBlock(block, prev.length)]);
   }
 
+  async function openBoardPicker() {
+    setAddSheetVisible(false);
+    const snapshot = await getDocs(ownedQuery('boards'));
+    setPickableBoards(
+      snapshot.docs
+        // Not this one: a board holding a card of itself is a loop with
+        // nothing at the end of it.
+        .filter((d) => d.id !== boardId && !d.data().trashed)
+        .map((d) => ({ id: d.id, title: (d.data().title as string)?.trim() || 'Без назви' }))
+        .sort((a, b) => a.title.localeCompare(b.title))
+    );
+    setBoardPickerOpen(true);
+  }
+
+  function addBoardCard(picked: string) {
+    const board = pickableBoards.find((b) => b.id === picked);
+    setBoardPickerOpen(false);
+    if (!board) return;
+    setCards((prev) => [...prev, newBoardCard(board, prev.length)]);
+  }
+
   async function addDocumentCard(document: { id: string; title: string }) {
     setExistingItemPickerVisible(false);
     // One extra read at add-time to snapshot a preview (full text, first
@@ -3611,6 +3704,11 @@ export default function BoardScreen() {
     if (type === 'paragraph') {
       setEditingCard(card);
       setEditingText(card.text);
+    } else if (type === 'board') {
+      // Straight there. push rather than navigate, so walking from one
+      // board into another and back retraces the path - the same
+      // reasoning a note's own card follows.
+      if (card.boardId) navigation.push('Board', { boardId: card.boardId });
     } else if (type === 'document') {
       toggleDocumentExpanded(card);
     } else if (type === 'link' && card.linkUrl) {
@@ -4114,7 +4212,10 @@ export default function BoardScreen() {
   // What one row of the drawer's object list shows, across all three
   // kinds of board furniture it can hold.
   function labelForCard(card: BoardCard): string {
-    return card.documentTitle || card.fileTitle || card.imageTitle || card.linkTitle || card.text?.trim() || 'Картка';
+    return (
+      card.documentTitle || card.boardTitle || card.fileTitle || card.imageTitle || card.linkTitle ||
+      card.text?.trim() || 'Картка'
+    );
   }
   function iconForCard(card: BoardCard): keyof typeof Ionicons.glyphMap {
     switch (card.type) {
@@ -4541,8 +4642,15 @@ export default function BoardScreen() {
       documentExpanded: _expanded,
       ...block
     } = card;
-    const asBlock = { ...(block as Block), type: (card.type === 'document' ? 'paragraph' : card.type) ?? 'paragraph' };
-    copyObject({ label: card.type === 'document' ? 'текст' : labelForBlock(asBlock), block: asBlock });
+    // Neither a document nor a board can be a block inside a note, so
+    // copying one out of here carries its TEXT in a plain paragraph -
+    // see the comment further down on why.
+    const isReference = card.type === 'document' || card.type === 'board';
+    const asBlock: Block = {
+      ...(block as Block),
+      type: isReference ? 'paragraph' : ((card.type as BlockType | undefined) ?? 'paragraph'),
+    };
+    copyObject({ label: isReference ? 'текст' : labelForBlock(asBlock), block: asBlock });
 
     const text = await textOfCard(card);
     if (text.trim()) {
@@ -5771,6 +5879,12 @@ export default function BoardScreen() {
                 <Ionicons name="document-text-outline" size={18} color="#111827" />
                 <Text style={styles.sheetRowLabel}>Документ</Text>
               </Pressable>
+              {/* Beside «Документ», because it is the same move one step
+                  out: a card that stands for somewhere else. */}
+              <Pressable style={styles.sheetRow} onPress={openBoardPicker}>
+                <Ionicons name="easel-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>Інша дошка</Text>
+              </Pressable>
               <Pressable style={styles.sheetRow} onPress={() => openLinkPrompt('other')}>
                 <Ionicons name="link-outline" size={18} color="#111827" />
                 <Text style={styles.sheetRowLabel}>Посилання</Text>
@@ -5864,6 +5978,16 @@ export default function BoardScreen() {
           excludeIds={existingItemExcludeIds}
           includeDocuments
           onPickDocument={addDocumentCard}
+        />
+
+        <DocumentPickerModal
+          visible={boardPickerOpen}
+          title="Яка дошка?"
+          subtitle="Картка зʼявиться на цій дошці"
+          icon="easel-outline"
+          documents={pickableBoards}
+          onPick={addBoardCard}
+          onClose={() => setBoardPickerOpen(false)}
         />
 
         <VideoPlayerModal url={playingVideoUrl} onClose={() => setPlayingVideoUrl(null)} />

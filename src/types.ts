@@ -401,7 +401,7 @@ export interface Tag {
 // INSIDE another document, so that fifth type only ever makes sense here on
 // the board, never in DocumentEditorScreen's own block list.
 export interface BoardCard extends Omit<Block, 'type'> {
-  type?: BlockType | 'document';
+  type?: BlockType | 'document' | 'board';
   x: number;
   y: number;
   // Where this card sits in its column, counted from the top. The place
@@ -412,6 +412,12 @@ export interface BoardCard extends Omit<Block, 'type'> {
   // writing them back. An index is the same everywhere.
   order?: number;
   width: number;
+  // 'board' cards only - another board, and its name as it was when the
+  // card was made. A board on a board is the same idea as a document on
+  // one, and lives here for the same reason 'document' does: a board can
+  // never be a block inside a note.
+  boardId?: string;
+  boardTitle?: string;
   // 'paragraph' (sticky-note) cards only - no other Block usage in the app
   // has a per-block color, so this lives here rather than on Block itself.
   color?: string;

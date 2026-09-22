@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import type { ComponentProps } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import Sheet from './surfaces/Sheet';
 import { FONT_REGULAR } from '../utils/fonts';
@@ -15,6 +16,9 @@ type Props = {
   // is the same window asking a different question, so it says so.
   title?: string;
   subtitle?: string;
+  // What each row is. A note by default; a board when this is picking
+  // one of those - the list itself is the same either way.
+  icon?: ComponentProps<typeof Ionicons>['name'];
   documents: PickableDocument[];
   onPick: (documentId: string) => void;
   onClose: () => void;
@@ -38,6 +42,7 @@ export default function DocumentPickerModal({
   visible,
   title = 'Де вставлено',
   subtitle,
+  icon = 'document-text-outline',
   documents,
   onPick,
   onClose,
@@ -90,7 +95,7 @@ export default function DocumentPickerModal({
         shown.map((d) => (
           <Pressable key={d.id} style={styles.row} onPress={() => onPick(d.id)}>
             <View style={styles.docIcon}>
-              <Ionicons name="document-text-outline" size={16} color={accent} />
+              <Ionicons name={icon} size={16} color={accent} />
             </View>
             <Text style={styles.rowText} numberOfLines={1}>
               {d.title}
