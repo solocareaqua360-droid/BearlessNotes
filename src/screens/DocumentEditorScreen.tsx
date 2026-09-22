@@ -154,6 +154,7 @@ import {
 } from '../navigation/navDock';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
+import { useEditorAccessory } from '../components/editorAccessory';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_DANGER, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import { CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
@@ -1732,6 +1733,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // card's own id now (see canvasEditingId), and since both surfaces
   // edit the same Block objects, the same bar acts on either one.
   const toolbarBlockId = focusedBlockId ?? canvasEditingId;
+  // What the focused BLOCK wants standing above the keyboard instead of
+  // the toolbar - the table's formula field, so far. See
+  // editorAccessory for why a block publishes it rather than building
+  // its own bar: the hard half, holding a bar steady against Android's
+  // keyboard, is already solved here and is not worth solving twice.
+  const blockAccessory = useEditorAccessory();
   const isToolbarVisible = toolbarBlockId !== null;
   toolbarHeightRef.current = isToolbarVisible ? EDITOR_TOOLBAR_HEIGHT : 0;
 
@@ -4799,6 +4806,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             ? ({ onMouseDown: (e: { preventDefault: () => void }) => e.preventDefault() } as object)
             : {})}
         >
+          {blockAccessory ?? (
           <EditorToolbar
             canvas={canvasMode}
             focusedBlockId={toolbarBlockId}
@@ -4811,6 +4819,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             onApplyMarker={applyMarkerToSelection}
             onApplyColor={applyColorToSelection}
           />
+          )}
         </Animated.View>
       )}
 

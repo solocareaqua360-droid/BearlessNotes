@@ -458,6 +458,8 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: t.paper.edge,
     backgroundColor: t.field.fill,
   },
   tableOperatorKey: {
@@ -505,6 +507,20 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     gap: 6,
     paddingVertical: 4,
+  },
+  // The published bar's own wrapper: it stands in the editor's pinned
+  // toolbar, which has no padding of its own to give it.
+  tableAccessory: {
+    width: '100%',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    // A ground of its own. The editor's toolbar brings its own capsule,
+    // and this replaces it - left transparent it hung over the text of
+    // the note, right where the keyboard meets the page.
+    backgroundColor: t.paper.fill,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.paper.edge,
   },
   tableFormulaBar: {
     flexDirection: 'row',

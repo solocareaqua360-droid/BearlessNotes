@@ -11,6 +11,7 @@ import { useStyles, useTheme } from '../theme/ThemeProvider';
 import { makeStyles } from './documentEditorStyles';
 import { columnLetter, displayValueOf, parseFormattedText } from '../utils/documentBlocks';
 import { ask } from './surfaces/Ask';
+import { usePublishEditorAccessory } from './editorAccessory';
 import FormattedText from './FormattedText';
 
 // A table in a note, in TWO faces.
@@ -210,6 +211,10 @@ export default function TableBlockContent({
   function confirmFormula() {
     if (selected && draftText !== null) setCell(selected.r, selected.c, draftText);
     setDraftText(null);
+    // Let the cell go, too. Still selected, it stayed a field showing
+    // its own formula, so a finished "=A1+B1" never turned into its
+    // answer - exactly what the user saw.
+    setSelected(null);
     formulaInputRef.current?.blur();
   }
 
@@ -295,8 +300,68 @@ export default function TableBlockContent({
   // the cell keeps focus and has just become non-editable, so typing
   // goes nowhere - which is the worst of the three possible states.
   useEffect(() => {
-    if (formulaMode) formulaInputRef.current?.focus();
+    if (!formulaMode) return;
+    // The bar is published, and the editor draws it a render later - so
+    // the ref is not attached yet when this runs. One short wait.
+    const timer = setTimeout(() => formulaInputRef.current?.focus(), 60);
+    return () => clearTimeout(timer);
   }, [formulaMode]);
+
+  // Above the keyboard, in the editor's own pinned bar - the place it
+  // has already made safe. A formula field belongs under the thumb, not
+  // over the table, and the editor's toolbar steps aside while one is
+  // being written. See editorAccessory.
+  usePublishEditorAccessory(
+    canEdit && formulaMode ? (
+      <View style={styles.tableAccessory}>
+
+      <View style={styles.tableFormulaBar}>
+        <View style={styles.tableFormulaRefBadge}>
+          <Text style={styles.tableFormulaRefText}>
+            {selected ? `${columnLetter(selected.c)}${selected.r + 1}` : '—'}
+          </Text>
+        </View>
+        <TextInput
+          ref={formulaInputRef}
+          style={styles.tableFormulaInput}
+          // The bar owns the text while the formula is being written -
+          // the cell underneath shows the same string and is not
+          // editable, so there is one place typing goes.
+          value={draftText ?? selectedRaw}
+          editable={canEdit}
+          onChangeText={setDraftText}
+          onFocus={() => setFormulaFocused(true)}
+          onBlur={() => setFormulaFocused(false)}
+          placeholder="=SUM(A1:A3)"
+          placeholderTextColor="#9CA3AF"
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="done"
+          onSubmitEditing={confirmFormula}
+          blurOnSubmit
+        />
+        <Pressable hitSlop={8} onPress={confirmFormula} style={styles.tableFormulaDoneButton}>
+          <Ionicons name="checkmark" size={18} color="#fff" />
+        </Pressable>
+      </View>
+
+        <View style={styles.tableOperatorRow}>
+          {FUNCTIONS.map((fn) => (
+            <Pressable
+              key={fn.label}
+              style={styles.tableFunctionKey}
+              onPress={() => insertFunction(fn.name)}
+            >
+              <Text style={styles.tableOperatorLabel}>{fn.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    ) : null,
+    // Everything the bar reads. Its handlers otherwise use setters and
+    // refs, which do not change.
+    [canEdit, formulaMode, draftText, selectedRaw, selected?.r, selected?.c]
+  );
 
   // ---- READING ----------------------------------------------------
   if (!canEdit) {
@@ -353,54 +418,7 @@ export default function TableBlockContent({
   // ---- EDITING ----------------------------------------------------
   return (
     <View style={styles.tableBlock}>
-      {formulaMode && (
-      <View style={styles.tableFormulaBar}>
-        <View style={styles.tableFormulaRefBadge}>
-          <Text style={styles.tableFormulaRefText}>
-            {selected ? `${columnLetter(selected.c)}${selected.r + 1}` : '—'}
-          </Text>
-        </View>
-        <TextInput
-          ref={formulaInputRef}
-          style={styles.tableFormulaInput}
-          // The bar owns the text while the formula is being written -
-          // the cell underneath shows the same string and is not
-          // editable, so there is one place typing goes.
-          value={draftText ?? selectedRaw}
-          editable={canEdit}
-          onChangeText={setDraftText}
-          onFocus={() => setFormulaFocused(true)}
-          onBlur={() => setFormulaFocused(false)}
-          placeholder="=SUM(A1:A3)"
-          placeholderTextColor="#9CA3AF"
-          autoCapitalize="none"
-          autoCorrect={false}
-          returnKeyType="done"
-          onSubmitEditing={confirmFormula}
-          blurOnSubmit
-        />
-        <Pressable hitSlop={8} onPress={confirmFormula} style={styles.tableFormulaDoneButton}>
-          <Ionicons name="checkmark" size={18} color="#fff" />
-        </Pressable>
-      </View>
-      )}
 
-      {/* With the bar, and only with it: a function name is worth a key
-          when a formula is being written and is noise at every other
-          moment. */}
-      {formulaMode && (
-        <View style={styles.tableOperatorRow}>
-          {FUNCTIONS.map((fn) => (
-            <Pressable
-              key={fn.label}
-              style={styles.tableFunctionKey}
-              onPress={() => insertFunction(fn.name)}
-            >
-              <Text style={styles.tableOperatorLabel}>{fn.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      )}
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always">
         <View style={styles.tableFrame}>
@@ -444,7 +462,13 @@ export default function TableBlockContent({
                 // the user described: the same grid means "go here"
                 // before "=" and "this one" after it.
                 const asAddress = formulaMode && !isSelected;
-                if (!asAddress) {
+                // A formula cell that is not the one being edited shows its
+                // RESULT, the way every spreadsheet does - as a field it
+                // showed "=A1+B1", which read as "formulas stopped
+                // working". The formula itself is seen in the bar, once
+                // the cell is chosen.
+                const showsResult = !isSelected && (row.cells[c] ?? '').trim().startsWith('=');
+                if (!asAddress && !showsResult) {
                   const raw = row.cells[c] ?? '';
                   return (
                     <TextInput

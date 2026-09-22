@@ -69,6 +69,9 @@ import { confirm, notify } from '../components/surfaces/Ask';
 const DANGER = '#EF4444';
 const tasksCollection = collection(db, 'tasks');
 const taskListsCollection = collection(db, 'taskLists');
+// What the project and list windows are opened FOR when it is every
+// selected task rather than one - a value no task id can take.
+const BULK = '__bulk__';
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -208,7 +211,26 @@ export default function TasksScreen() {
               },
             },
             ...(selectedIds.size > 0
-              ? [{ key: 'delete', icon: 'trash-outline' as const, label: 'Видалити', onPress: confirmBulkDeleteTasks }]
+              ? [
+                  // Many at once, through the same two windows one task
+                  // uses - "не по одному, а масово".
+                  {
+                    key: 'project',
+                    icon: 'folder-open-outline' as const,
+                    label: 'Проект',
+                    onPress: () => setPickerTaskId(BULK),
+                  },
+                  {
+                    key: 'list',
+                    icon: 'list-outline' as const,
+                    label: 'Список',
+                    onPress: () => {
+                      setNewTaskListName('');
+                      setListPickerTaskId(BULK);
+                    },
+                  },
+                  { key: 'delete', icon: 'trash-outline' as const, label: 'Видалити', onPress: confirmBulkDeleteTasks },
+                ]
               : []),
           ]
         : [
@@ -516,6 +538,42 @@ export default function TasksScreen() {
     const blocks: Block[] = data.blocks ?? [];
     const updatedBlocks = blocks.map((b) => (b.id === task.id ? blockPatch(b) : b));
     updateDoc(documentRef, { blocks: updatedBlocks });
+  }
+
+  // The same two-sided write as updateTaskBothSides, for MANY tasks at
+  // once - and not simply that function in a loop. Several tasks usually
+  // live in one note, and each call reads the note's blocks, patches one
+  // and writes them all back: run side by side, the last write wins and
+  // every other task's change in that note is silently undone. So the
+  // tasks are grouped by the note they live in, and each note is read
+  // once and written once with every change applied.
+  async function updateTasksBothSides(
+    targets: Task[],
+    mirrorPatchFor: (task: Task) => Record<string, unknown>,
+    blockPatchFor: (task: Task, b: Block) => Block
+  ) {
+    targets.forEach((task) => updateDoc(doc(db, 'tasks', task.id), mirrorPatchFor(task)));
+    const byDocument = new Map<string, Task[]>();
+    targets.forEach((task) => {
+      const list = byDocument.get(task.documentId) ?? [];
+      list.push(task);
+      byDocument.set(task.documentId, list);
+    });
+    await Promise.all(
+      Array.from(byDocument.entries()).map(async ([documentId, tasksHere]) => {
+        const documentRef = doc(db, 'documents', documentId);
+        const snapshot = await getDoc(documentRef);
+        const data = snapshot.data();
+        if (!data) return;
+        const byId = new Map(tasksHere.map((task) => [task.id, task]));
+        const blocks: Block[] = data.blocks ?? [];
+        const updatedBlocks = blocks.map((b) => {
+          const task = byId.get(b.id);
+          return task ? blockPatchFor(task, b) : b;
+        });
+        await updateDoc(documentRef, { blocks: updatedBlocks });
+      })
+    );
   }
 
   function saveTaskComment(task: Task, comment: string) {
@@ -845,8 +903,28 @@ export default function TasksScreen() {
   // (kind: 'task') - this only ever has to write the CHOICE onto the task.
   async function assignGroup(groupId: string | null) {
     const taskId = pickerTaskId;
-    const task = tasks.find((t) => t.id === taskId);
     setPickerTaskId(null);
+    if (taskId === BULK) {
+      // A list belongs to one project, so a task moved to ANOTHER
+      // project loses its list - the same rule as the single case below.
+      const targets = tasks.filter((t) => selectedIds.has(t.id));
+      await updateTasksBothSides(
+        targets,
+        (task) => {
+          const dropsList = groupId !== (task.groupId ?? null) && !!task.listId;
+          return { groupId: groupId ?? deleteField(), ...(dropsList ? { listId: deleteField() } : {}) };
+        },
+        (task, b) => {
+          const next = { ...b };
+          if (groupId) next.groupId = groupId;
+          else delete next.groupId;
+          if (groupId !== (task.groupId ?? null)) delete next.listId;
+          return next;
+        }
+      );
+      return;
+    }
+    const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
     // A list belongs to exactly one project (see TaskList) - changing
     // (or clearing) the project makes any list already on the task
@@ -883,8 +961,21 @@ export default function TasksScreen() {
 
   function assignTaskList(listId: string | null) {
     const taskId = listPickerTaskId;
-    const task = tasks.find((t) => t.id === taskId);
     setListPickerTaskId(null);
+    if (taskId === BULK) {
+      const targets = tasks.filter((t) => selectedIds.has(t.id));
+      updateTasksBothSides(
+        targets,
+        () => ({ listId: listId ?? deleteField() }),
+        (_task, b) => {
+          if (listId) return { ...b, listId };
+          const { listId: _drop, ...rest } = b;
+          return rest;
+        }
+      );
+      return;
+    }
+    const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
     updateTaskBothSides(task, { listId: listId ?? deleteField() }, (b) => {
       if (listId) return { ...b, listId };
@@ -1645,8 +1736,17 @@ export default function TasksScreen() {
         {/* Scoped to whichever project the picked task already has -
             a list means nothing without one. */}
         {(() => {
+          // Many tasks: the lists of the ONE project they all share. A list
+          // lives inside a project, so tasks spread over several have no
+          // list in common - the sheet says so rather than offering lists
+          // that would be wrong for most of them.
+          const selectedTasks = tasks.filter((t) => selectedIds.has(t.id));
+          const sharedGroupIds = new Set(selectedTasks.map((t) => t.groupId ?? ''));
+          const bulkGroupId =
+            sharedGroupIds.size === 1 ? selectedTasks[0]?.groupId : undefined;
           const listPickerTask = tasks.find((t) => t.id === listPickerTaskId);
-          const listPickerGroupId = listPickerTask?.groupId;
+          const listPickerGroupId =
+            listPickerTaskId === BULK ? bulkGroupId : listPickerTask?.groupId;
           const listsHere = listPickerGroupId
             ? taskLists.filter((l) => l.groupId === listPickerGroupId)
             : [];
@@ -1663,7 +1763,14 @@ export default function TasksScreen() {
               >
                 <Pressable style={styles.modalSheet} onPress={() => {}}>
                   <View style={styles.modalHandle} />
-                  <Text style={styles.modalTitle}>Оберіть список</Text>
+                  <Text style={styles.modalTitle}>
+                    {listPickerTaskId === BULK ? `Список для ${selectedIds.size}` : 'Оберіть список'}
+                  </Text>
+                  {listPickerTaskId === BULK && !listPickerGroupId && (
+                    <Text style={styles.modalRowText}>
+                      Виділені справи в різних проектах. Спершу перенесіть їх в один проект — список живе всередині проекту.
+                    </Text>
+                  )}
 
                   <Pressable style={styles.modalRow} onPress={() => assignTaskList(null)}>
                     <View style={[styles.modalDot, { backgroundColor: theme.ink.faint }]} />
