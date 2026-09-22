@@ -24,9 +24,12 @@ type Props = {
   onClose: () => void;
 };
 
-// Past this many rows a list is something to search rather than read,
-// and below it a search field is a box in the way.
-const SEARCH_FROM = 8;
+// Always, now. It was eight - "below this a search box is in the way" -
+// and that reasoning was about the BOX, not about the person: someone
+// who has just been shown a list looks for the field whether there are
+// three rows in it or seventy, and not finding it reads as the window
+// being unfinished rather than as the list being short.
+const SEARCH_FROM = 1;
 
 // Choosing a document. Two of them: the one that answers "which note did
 // you mean" for an object that is in several, and the one that picks a

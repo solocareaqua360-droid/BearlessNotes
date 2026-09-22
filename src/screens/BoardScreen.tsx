@@ -315,26 +315,26 @@ async function compressPickedImage(uri: string, width: number, height: number): 
   }
 }
 
-function newTextCard(index: number): BoardCard {
+function newTextCard(index: number, at: { x: number; y: number }): BoardCard {
   const jitter = (index % 6) * 24;
   return {
     id: generateId(),
     text: '',
     type: 'paragraph',
     createdAt: Date.now(),
-    x: WORLD_CENTER - DEFAULT_CARD_WIDTH / 2 + jitter,
-    y: WORLD_CENTER - 60 + jitter,
+    x: at.x - DEFAULT_CARD_WIDTH / 2 + jitter,
+    y: at.y - 60 + jitter,
     width: DEFAULT_CARD_WIDTH,
     color: STICKY_COLORS[index % STICKY_COLORS.length],
   };
 }
 
-function cardFromExistingBlock(block: Block, index: number): BoardCard {
+function cardFromExistingBlock(block: Block, index: number, at: { x: number; y: number }): BoardCard {
   const jitter = (index % 6) * 24;
   return {
     ...block,
-    x: WORLD_CENTER - DEFAULT_CARD_WIDTH / 2 + jitter,
-    y: WORLD_CENTER - 60 + jitter,
+    x: at.x - DEFAULT_CARD_WIDTH / 2 + jitter,
+    y: at.y - 60 + jitter,
     width: DEFAULT_CARD_WIDTH,
   };
 }
@@ -349,7 +349,7 @@ function cardFromExistingBlock(block: Block, index: number): BoardCard {
 // NOT is live, because a board is not in memory here the way documents
 // are in the editor, and one fetch per open is cheaper than a listener
 // on every board that any board mentions.
-function newBoardCard(board: { id: string; title: string }, index: number): BoardCard {
+function newBoardCard(board: { id: string; title: string }, index: number, at: { x: number; y: number }): BoardCard {
   const jitter = (index % 6) * 24;
   return {
     id: generateId(),
@@ -358,8 +358,8 @@ function newBoardCard(board: { id: string; title: string }, index: number): Boar
     createdAt: Date.now(),
     boardId: board.id,
     boardTitle: board.title,
-    x: WORLD_CENTER - DEFAULT_CARD_WIDTH / 2 + jitter,
-    y: WORLD_CENTER - 60 + jitter,
+    x: at.x - DEFAULT_CARD_WIDTH / 2 + jitter,
+    y: at.y - 60 + jitter,
     width: DEFAULT_CARD_WIDTH,
   };
 }
@@ -367,7 +367,8 @@ function newBoardCard(board: { id: string; title: string }, index: number): Boar
 function newDocumentCard(
   document: { id: string; title: string },
   preview: { text?: string; imageUri?: string },
-  index: number
+  index: number,
+  at: { x: number; y: number }
 ): BoardCard {
   const jitter = (index % 6) * 24;
   const card: BoardCard = {
@@ -377,8 +378,8 @@ function newDocumentCard(
     createdAt: Date.now(),
     documentId: document.id,
     documentTitle: document.title,
-    x: WORLD_CENTER - DEFAULT_CARD_WIDTH / 2 + jitter,
-    y: WORLD_CENTER - 60 + jitter,
+    x: at.x - DEFAULT_CARD_WIDTH / 2 + jitter,
+    y: at.y - 60 + jitter,
     width: DEFAULT_CARD_WIDTH,
   };
   if (preview.text) card.documentPreviewText = preview.text;
@@ -2260,6 +2261,25 @@ export default function BoardScreen() {
   >(null);
 
   const scale = useSharedValue(1);
+  // Where a new card should land: the middle of what is on screen right
+  // now, in the world's own coordinates.
+  //
+  // It used to be WORLD_CENTER - the middle of the whole canvas - which
+  // is only where you are looking on a board you have never moved. Pan
+  // anywhere at all and everything added afterwards appeared somewhere
+  // off behind you, with nothing to say where: "потім доводиться шукати
+  // по всьому полотну".
+  //
+  // The inverse of the screen-to-world conversion the taps use, taken at
+  // the centre of the screen - where `e.x` is viewport.width / 2, the
+  // whole viewport term cancels and this is what is left.
+  function viewCenter(): { x: number; y: number } {
+    return {
+      x: WORLD_CENTER - translateX.value / scale.value,
+      y: WORLD_CENTER - translateY.value / scale.value,
+    };
+  }
+
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -3265,7 +3285,7 @@ export default function BoardScreen() {
 
   function addTextCard() {
     setAddSheetVisible(false);
-    const card = newTextCard(cards.length);
+    const card = newTextCard(cards.length, viewCenter());
     setCards((prev) => [...prev, card]);
     setEditingCard(card);
     setEditingText('');
@@ -3292,7 +3312,7 @@ export default function BoardScreen() {
       updatedAt: now,
       blocks: [],
     });
-    setCards((prev) => [...prev, newDocumentCard({ id: created.id, title: 'Без назви' }, {}, prev.length)]);
+    setCards((prev) => [...prev, newDocumentCard({ id: created.id, title: 'Без назви' }, {}, prev.length, viewCenter())]);
   }
 
   // One flow behind all three link menu entries. The category a link ends
@@ -3344,7 +3364,7 @@ export default function BoardScreen() {
     await setDoc(doc(db, 'links', id), data, { merge: true });
     setCards((prev) => [
       ...prev,
-      cardFromExistingBlock(blockFromLink({ url, title, imageUrl: preview.imageUrl, siteName: preview.siteName }), prev.length),
+      cardFromExistingBlock(blockFromLink({ url, title, imageUrl: preview.imageUrl, siteName: preview.siteName }), prev.length, viewCenter()),
     ]);
   }
 
@@ -3408,7 +3428,7 @@ export default function BoardScreen() {
     });
     setCards((prev) => [
       ...prev,
-      cardFromExistingBlock(blockFromPhoto({ id, imageUri, imageFit: 'contain', createdAt: now }), prev.length),
+      cardFromExistingBlock(blockFromPhoto({ id, imageUri, imageFit: 'contain', createdAt: now }), prev.length, viewCenter()),
     ]);
   }
 
@@ -3445,14 +3465,15 @@ export default function BoardScreen() {
       ...prev,
       cardFromExistingBlock(
         blockFromFile({ id, fileUri, fileName: asset.name, mimeType: asset.mimeType, createdAt: now }),
-        prev.length
+        prev.length,
+        viewCenter()
       ),
     ]);
   }
 
   function addExistingCard(block: Block) {
     setExistingItemPickerVisible(false);
-    setCards((prev) => [...prev, cardFromExistingBlock(block, prev.length)]);
+    setCards((prev) => [...prev, cardFromExistingBlock(block, prev.length, viewCenter())]);
   }
 
   async function openBoardPicker() {
@@ -3473,7 +3494,7 @@ export default function BoardScreen() {
     const board = pickableBoards.find((b) => b.id === picked);
     setBoardPickerOpen(false);
     if (!board) return;
-    setCards((prev) => [...prev, newBoardCard(board, prev.length)]);
+    setCards((prev) => [...prev, newBoardCard(board, prev.length, viewCenter())]);
   }
 
   async function addDocumentCard(document: { id: string; title: string }) {
@@ -3495,7 +3516,7 @@ export default function BoardScreen() {
       // refreshDocumentPreviews' identical rule.
       imageUri: data?.coverImageUri ?? firstImageUri(blocks),
     };
-    setCards((prev) => [...prev, newDocumentCard(document, preview, prev.length)]);
+    setCards((prev) => [...prev, newDocumentCard(document, preview, prev.length, viewCenter())]);
   }
 
   // Tapping a document card toggles it in place (see BoardCard's
@@ -3829,11 +3850,12 @@ export default function BoardScreen() {
 
   function addColumn() {
     setColumns((prev) => {
+      const centre = viewCenter();
       const x =
         prev.length === 0
-          ? WORLD_CENTER - COLUMN_WIDTH / 2
+          ? centre.x - COLUMN_WIDTH / 2
           : Math.max(...prev.map((c) => c.x)) + COLUMN_WIDTH + COLUMN_SPACING;
-      const y = prev.length === 0 ? WORLD_CENTER - COLUMN_MIN_HEIGHT / 2 : prev[0].y;
+      const y = prev.length === 0 ? centre.y - COLUMN_MIN_HEIGHT / 2 : prev[0].y;
       return [...prev, { id: generateId(), title: `Стовпчик ${prev.length + 1}`, x, y }];
     });
     setAddSheetVisible(false);
@@ -3847,12 +3869,13 @@ export default function BoardScreen() {
   function addLiveTaskColumns(entries: { title: string; source: NonNullable<BoardColumn['liveTaskSource']> }[]) {
     setColumns((prev) => {
       const next = [...prev];
+      const centre = viewCenter();
       entries.forEach(({ title, source }) => {
         const x =
           next.length === 0
-            ? WORLD_CENTER - COLUMN_WIDTH / 2
+            ? centre.x - COLUMN_WIDTH / 2
             : Math.max(...next.map((c) => c.x)) + COLUMN_WIDTH + COLUMN_SPACING;
-        const y = next.length === 0 ? WORLD_CENTER - COLUMN_MIN_HEIGHT / 2 : next[0].y;
+        const y = next.length === 0 ? centre.y - COLUMN_MIN_HEIGHT / 2 : next[0].y;
         next.push({ id: generateId(), title, x, y, liveTaskSource: source });
       });
       return next;
@@ -3968,9 +3991,9 @@ export default function BoardScreen() {
       // створюються одна на одній".
       const x =
         prev.length === 0
-          ? WORLD_CENTER - CONTAINER_DEFAULT_WIDTH / 2
+          ? viewCenter().x - CONTAINER_DEFAULT_WIDTH / 2
           : Math.max(...prev.map((c) => c.x + c.width)) + CONTAINER_SPACING;
-      const y = prev.length === 0 ? WORLD_CENTER - CONTAINER_DEFAULT_HEIGHT / 2 : prev[0].y;
+      const y = prev.length === 0 ? viewCenter().y - CONTAINER_DEFAULT_HEIGHT / 2 : prev[0].y;
       return [
         ...prev,
         {
@@ -4554,11 +4577,12 @@ export default function BoardScreen() {
     // Born where a new card is born, and nudged the same way, so two
     // made in a row do not land exactly on top of each other.
     const jitter = (shapes.length % 6) * 24;
+    const centre = viewCenter();
     const shape: BoardShape = {
       id: generateId(),
       kind,
-      x: WORLD_CENTER - birth.width / 2 + jitter,
-      y: WORLD_CENTER - birth.height / 2 + jitter,
+      x: centre.x - birth.width / 2 + jitter,
+      y: centre.y - birth.height / 2 + jitter,
       width: birth.width,
       height: birth.height,
     };
