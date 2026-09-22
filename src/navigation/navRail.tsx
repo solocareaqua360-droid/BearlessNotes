@@ -21,6 +21,12 @@ export type RailTree = {
   // Where the list is standing. '' is the root.
   current: string;
   onGo: (path: string) => void;
+  // Make one, inside the folder given. A button of its own rather than
+  // a long press: holding a button is a phone's answer to having no
+  // room for a second one, and a rail has room. It is also simply the
+  // wrong gesture with a mouse - "затискання в ноутбуці не найкращій
+  // варіант".
+  onNewFolder?: (parent: string) => void;
   bin?: RailBin;
 };
 

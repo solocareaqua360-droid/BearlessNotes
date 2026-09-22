@@ -168,6 +168,18 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
       {!!tree && (
         <>
           <View style={styles.rule} />
+          {!!tree.onNewFolder && (
+            <Pressable
+              style={styles.newFolder}
+              // Inside whichever folder the list is standing in, which is
+              // what "new folder" means anywhere else a folder tree
+              // exists.
+              onPress={() => tree.onNewFolder?.(tree.current)}
+            >
+              <Ionicons name="add" size={15} color={theme.ink.muted} />
+              <Text style={styles.newFolderLabel}>Нова папка</Text>
+            </Pressable>
+          )}
           <ScrollView style={styles.tree} contentContainerStyle={styles.treeContent}>
             <Pressable
               style={[styles.folder, styles.rootRow, tree.current === '' && !tree.bin?.active && styles.folderHere]}
@@ -261,6 +273,21 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     backgroundColor: t.edge.hairline,
     marginVertical: 10,
     marginHorizontal: 12,
+  },
+  newFolder: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 26,
+    marginHorizontal: 8,
+    marginBottom: 2,
+    paddingHorizontal: 10,
+    borderRadius: 7,
+  },
+  newFolderLabel: {
+    fontSize: 12,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.faint,
   },
   tree: {
     flex: 1,

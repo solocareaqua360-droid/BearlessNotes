@@ -39,10 +39,18 @@ export default function DesktopToolbar() {
   const actions = useNavDockActions();
   const beads = useNavDockBeads();
 
-  // «Папки» opens the drawer of them, and the drawer of them is the
-  // rail now - standing permanently open two hundred points to the left.
-  // A button for it would be a button that opens what is already open.
-  const shown = (actions ?? []).filter((a) => a.key !== 'tags');
+  // «Папки» stays, and dropping it was a mistake worth writing down.
+  //
+  // The rail did take over the folder TREE, so the button no longer
+  // opens something that is not already open - but the drawer behind it
+  // was never only folders. It also holds the tag FILTER (the
+  // Мульти/Ізолюючий choice), the tag editing, and the three-way mode
+  // switch that decides whether this list is in «Провідник» at all.
+  // Removing the button took all three away with it, and on the Mac
+  // that left no way to make a folder at all.
+  //
+  // So it is back, under the name of what it actually is now.
+  const shown = (actions ?? []).map((a) => (a.key === 'tags' ? { ...a, label: 'Теги' } : a));
 
   const crumbs = context?.kind === 'path' ? context.crumbs : [];
   const onGo = context?.kind === 'path' ? context.onGo : undefined;

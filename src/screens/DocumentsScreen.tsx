@@ -757,6 +757,7 @@ export default function DocumentsScreen({
             setTrashOpen(false);
             explorer.setPath(next);
           },
+          onNewFolder: (parent) => explorer.setFolderPrompt({ mode: 'new', parent }),
           bin: { count: trashed.length, active: trashOpen, onOpen: () => setTrashOpen(true) },
         }
   );
