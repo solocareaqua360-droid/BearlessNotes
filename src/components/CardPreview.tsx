@@ -80,7 +80,7 @@ export default function CardPreview({
                 />
                 <Text
                   numberOfLines={1}
-                  style={[styles.text, { color: mutedColor }, block.checked && styles.done]}
+                  style={[styles.text, styles.rowText, { color: mutedColor }, block.checked && styles.done]}
                 >
                   {text}
                 </Text>
@@ -90,7 +90,7 @@ export default function CardPreview({
             return (
               <View key={block.id} style={styles.row}>
                 <Text style={[styles.bullet, { color: mutedColor }]}>•</Text>
-                <Text numberOfLines={1} style={[styles.text, { color: mutedColor }]}>
+                <Text numberOfLines={1} style={[styles.text, styles.rowText, { color: mutedColor }]}>
                   {text}
                 </Text>
               </View>
@@ -100,7 +100,7 @@ export default function CardPreview({
             return (
               <View key={block.id} style={styles.row}>
                 <Text style={[styles.bullet, { color: mutedColor }]}>{numbered}.</Text>
-                <Text numberOfLines={1} style={[styles.text, { color: mutedColor }]}>
+                <Text numberOfLines={1} style={[styles.text, styles.rowText, { color: mutedColor }]}>
                   {text}
                 </Text>
               </View>
@@ -247,6 +247,7 @@ const makeStyles = (_t: Theme) =>
       gap: 3,
     },
     heading: {
+      flexShrink: 0,
       fontSize: 12,
       fontWeight: '700',
       lineHeight: 15,
@@ -259,15 +260,32 @@ const makeStyles = (_t: Theme) =>
       fontSize: 11.5,
       lineHeight: 14,
     },
+    // NEVER shrinks. This same style is used twice: standing alone in
+    // the column, and inside a row. In a row, flexShrink means "give up
+    // width" - which is what a long task title needs. In the COLUMN it
+    // means "give up HEIGHT", and Yoga took it: once the blocks added
+    // up to more than the card, it squeezed every line into a few
+    // pixels and the card became a stack of sliced glyphs. That is what
+    // the user saw as "артефакти замість тексту".
+    //
+    // Nothing here may shrink. The page is supposed to OVERFLOW and be
+    // clipped - that is how a card shows the top of a note - and a
+    // child that shrinks instead of overflowing destroys itself trying
+    // to fit.
     text: {
-      flexShrink: 1,
+      flexShrink: 0,
       fontSize: 11,
       lineHeight: 14,
+    },
+    // Sideways only, and only inside a row.
+    rowText: {
+      flexShrink: 1,
     },
     done: {
       textDecorationLine: 'line-through',
     },
     row: {
+      flexShrink: 0,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 5,
@@ -278,19 +296,23 @@ const makeStyles = (_t: Theme) =>
       minWidth: 9,
     },
     divider: {
+      flexShrink: 0,
       borderBottomWidth: StyleSheet.hairlineWidth,
       marginVertical: 2,
       opacity: 0.5,
     },
     image: {
+      flexShrink: 0,
       width: '100%',
       height: 54,
       borderRadius: 6,
     },
     gap: {
+      flexShrink: 0,
       height: 4,
     },
     chip: {
+      flexShrink: 0,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 5,
@@ -306,6 +328,7 @@ const makeStyles = (_t: Theme) =>
       fontSize: 10.5,
     },
     code: {
+      flexShrink: 0,
       fontSize: 10,
       lineHeight: 13,
       fontFamily: 'monospace',
