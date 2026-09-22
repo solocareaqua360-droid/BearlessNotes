@@ -16,6 +16,11 @@ type Props = {
   fallbackTitle?: string;
   index: DocumentIndex;
   onOpen: (documentId: string) => void;
+  // A second way in, when there is one: open that note AT the place it
+  // mentions this one, rather than at its top. Used by the list of
+  // related documents; a card sitting in the body of a note has no such
+  // place to go, so it shows the plain chevron instead.
+  onOpenAt?: (documentId: string) => void;
 };
 
 // Another note, embedded in this one as a card ('docRef' block).
@@ -29,7 +34,7 @@ type Props = {
 // was deleted would take a line out of this note without saying so - and
 // a note in the BIN is not gone at all, it is restorable for thirty
 // days, so saying "deleted" about it would be a lie that reads as final.
-export default function DocumentRefBlockCard({ documentId, fallbackTitle, index, onOpen }: Props) {
+export default function DocumentRefBlockCard({ documentId, fallbackTitle, index, onOpen, onOpenAt }: Props) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const target = documentId ? index.get(documentId) : undefined;
@@ -78,7 +83,17 @@ export default function DocumentRefBlockCard({ documentId, fallbackTitle, index,
           {binned ? 'У кошику' : target?.updatedAt ? formatUpdatedAt(target.updatedAt) : 'Документ'}
         </Text>
       </View>
-      <Ionicons name="chevron-forward" size={18} color={theme.paper.inkFaint} />
+      {onOpenAt && documentId ? (
+        <Pressable
+          hitSlop={8}
+          style={styles.jump}
+          onPress={() => onOpenAt(documentId)}
+        >
+          <Ionicons name="return-down-forward-outline" size={17} color={theme.paper.inkMuted} />
+        </Pressable>
+      ) : (
+        <Ionicons name="chevron-forward" size={18} color={theme.paper.inkFaint} />
+      )}
     </Pressable>
   );
 }
@@ -116,6 +131,10 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 11,
     fontFamily: FONT_REGULAR,
     color: t.paper.inkFaint,
+  },
+  jump: {
+    padding: 6,
+    borderRadius: 8,
   },
   missing: {
     flex: 1,

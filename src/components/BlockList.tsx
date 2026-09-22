@@ -81,6 +81,9 @@ export type BlockListHandle = {
   // list at all.
   hoverExternal: (screenY: number, answer?: (index: number | null) => void) => void;
   endExternalHover: () => void;
+  // Where a block sits inside the list, for scrolling to it. Null until
+  // that row has been laid out - the caller is expected to ask again.
+  offsetOf: (blockId: string) => number | null;
 };
 
 const NOTHING_DRAGGING: Set<string> = new Set();
@@ -177,6 +180,10 @@ function BlockList({
       });
     },
     endExternalHover: () => setExternalIndex(null),
+    // Where a row sits, so the screen can scroll to it - see the
+    // editor's focusLinkTo. Null while that row has not been laid out
+    // yet, which is the first frame after opening a long note.
+    offsetOf: (blockId: string) => rowLayouts.current[blockId]?.y ?? null,
   }));
 
   function handleRowLayout(id: string, e: LayoutChangeEvent) {

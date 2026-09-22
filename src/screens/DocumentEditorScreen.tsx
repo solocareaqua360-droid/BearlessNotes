@@ -139,6 +139,7 @@ import { COVER_GRADIENTS, CoverGradientView } from '../theme/covers';
 import StockPhotoPicker from '../components/StockPhotoPicker';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import DocumentPickerModal from '../components/DocumentPickerModal';
+import RelatedDocuments from '../components/RelatedDocuments';
 import { useDocumentIndex } from '../hooks/useDocumentIndex';
 import { blockFromDocument } from '../utils/copyToNote';
 import { documentLinksIn } from '../utils/documentLinks';
@@ -383,6 +384,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // navigation.ts's own comment on this param.
   const autoFocusTitle =
     'pane' in props ? !!props.autoFocusTitle : !embedded && !('pane' in props) && !!props.route.params.autoFocusTitle;
+  // Opened FROM another note's "related" list, to see the place that
+  // mentions it. What arrives is the note we came from, not a block id:
+  // the block is found here, because only this screen has the blocks.
+  const focusLinkTo =
+    'embedded' in props || 'pane' in props ? undefined : props.route.params.focusLinkTo;
   // This note was just cut out of another one, and the offer to put it on
   // a board came in with it - see clipSelectedToNote. Shown once: state,
   // not the param itself, so dismissing it actually dismisses it.
@@ -562,6 +568,40 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
   const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
   const [isLoaded, setIsLoaded] = useState(false);
+
+  // Landing on the card that mentions the note we came from, rather than
+  // at the top of this one.
+  //
+  // Retried rather than done once: a row reports where it is through
+  // onLayout, and the whole list has not been laid out on the frame the
+  // blocks arrive - asking then answers null for every block below the
+  // fold, which is exactly the case this exists for. Six tries over a
+  // second and a half, and then it gives up quietly: landing at the top
+  // of the right note is a worse outcome than landing on the right
+  // block, and a much better one than a spinner or a jump that never
+  // comes.
+  useEffect(() => {
+    if (!isLoaded || !focusLinkTo) return;
+    const target = blocks.find(
+      (b) => (b.type ?? 'paragraph') === 'docRef' && b.docRefId === focusLinkTo
+    );
+    if (!target) return;
+    let tries = 0;
+    const attempt = () => {
+      const y = blockListRef.current?.offsetOf(target.id);
+      if (y === null || y === undefined) {
+        if (++tries < 6) timer = setTimeout(attempt, 250);
+        return;
+      }
+      // A little above it, so the card is not flush against the top edge
+      // and the line before it says what it is part of.
+      scrollViewRef.current?.scrollTo({ y: Math.max(0, y - 80), animated: true });
+    };
+    let timer = setTimeout(attempt, 250);
+    return () => clearTimeout(timer);
+    // The blocks are the event: once they are in, the block can be found.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, focusLinkTo, blocks.length]);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSelectMode, setIsSelectMode] = useState(false);
@@ -2695,8 +2735,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // push rather than navigate, deliberately: following a link from one
   // note to another to a third and then going back should walk that
   // path in reverse, and navigate would collapse it to one step.
-  function openReferencedDocument(documentId: string) {
-    navigation.push('Editor', { documentId });
+  function openReferencedDocument(target: string) {
+    navigation.push('Editor', { documentId: target });
+  }
+
+  // The same jump, but landing on the card that mentions THIS note
+  // rather than at the top of a note that may be pages long.
+  function openReferencedDocumentAt(target: string) {
+    navigation.push('Editor', { documentId: target, focusLinkTo: documentId });
   }
 
   // The card the picker makes, in place of the empty block it was opened
@@ -4361,6 +4407,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               </Pressable>
             )}
           </View>
+        )}
+        {!embedded && (
+          <RelatedDocuments
+            documentId={documentId}
+            index={documentIndex}
+            onOpen={openReferencedDocument}
+            onOpenAt={openReferencedDocumentAt}
+          />
         )}
         <Animated.View style={bottomSpacerStyle} />
       </ScrollView>
