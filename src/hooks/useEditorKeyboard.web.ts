@@ -1,4 +1,5 @@
 import { DependencyList } from 'react';
+import type { IKeyboardState } from 'react-native-keyboard-controller';
 
 // A browser has no soft keyboard, so there is nothing to follow.
 //
@@ -20,3 +21,32 @@ import { DependencyList } from 'react';
 type Handlers = Record<string, unknown>;
 
 export function useEditorKeyboard(_handlers: Handlers, _deps?: DependencyList): void {}
+
+// The keyboard's state, which here is permanently "down".
+//
+// Missing from this file until 2026-09-22, and the omission was invisible
+// for as long as the browser only ever showed ONE column: the editor is
+// the only caller, and on a narrow window the documents list does not
+// mount it. Open the same list wide enough for the two-pane layout - the
+// Mac window is, by default - and the editor mounts beside it and brings
+// this down with "(0 , $.useKeyboardState) is not a function", drawn as
+// the app's own crash screen over the whole page.
+//
+// The shape has to be the real one, not an empty object: callers select a
+// field out of it, and a selector reading `undefined.height` fails just
+// as loudly as the missing function did.
+const DOWN: IKeyboardState = {
+  isVisible: false,
+  height: 0,
+  duration: 0,
+  timestamp: 0,
+  target: -1,
+  type: 'default',
+  appearance: 'light',
+};
+
+export function useKeyboardState<T = IKeyboardState>(
+  selector?: (state: IKeyboardState) => T
+): T {
+  return (selector ? selector(DOWN) : DOWN) as T;
+}

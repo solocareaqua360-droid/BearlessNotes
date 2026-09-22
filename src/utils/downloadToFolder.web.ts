@@ -31,3 +31,14 @@ export async function downloadToFolder(
   notify('Зберегти у браузері', 'Відкрий файл - він з\'явиться у новій вкладці, і звідти його можна зберегти.');
   return null;
 }
+
+// Showing a file that was just saved. On the phone this fires a VIEW
+// intent at the content:// URI the download produced; here there is no
+// such URI and no such intent, because nothing was written to a folder
+// in the first place - downloadToFolder above says so and returns null.
+//
+// Kept because PhotosScreen calls it, and a missing export is not a
+// no-op: the browser build crashes on the symbol itself.
+export async function showDownloadedFile(_uri: string, _mimeType: string): Promise<void> {
+  notify('Файл у вкладці', 'У браузері файл відкривається у новій вкладці - звідти його зберігає сам браузер.');
+}

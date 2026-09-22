@@ -57,3 +57,17 @@ export async function deleteFileFromDrive(): Promise<string | null> {
 export async function ensureLocalFile(): Promise<boolean> {
   return true;
 }
+
+// On the phone this notices that the account which just signed in
+// already carries the Drive scope, so Settings can stop offering to
+// "connect" what is connected. Here the two are genuinely separate
+// grants from two Cloud projects (see driveToken.web), and the Drive
+// half lives in that module rather than this one - so there is nothing
+// to adopt and no email to report.
+//
+// It exists because SettingsScreen calls it, and the file's own rule at
+// the top says every export of the real module is kept: a missing one
+// is not a quiet no-op, it takes the screen down on the symbol.
+export async function adoptSignedInAccountForDrive(): Promise<string | null> {
+  return null;
+}
