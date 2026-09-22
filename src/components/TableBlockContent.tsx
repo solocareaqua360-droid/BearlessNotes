@@ -7,9 +7,11 @@ import { Pressable, Text, TextInput, View } from 'react-native';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { Block, TableRow } from '../types';
-import { useStyles } from '../theme/ThemeProvider';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import { useDensity } from '../hooks/useDensity';
 import { makeStyles } from './documentEditorStyles';
-import { columnLetter, displayValueOf } from '../utils/documentBlocks';
+import { columnLetter, displayValueOf, parseFormattedText } from '../utils/documentBlocks';
+import FormattedText from './FormattedText';
 
 // A table in a note, in TWO faces.
 //
@@ -50,6 +52,23 @@ export default function TableBlockContent({
   onUpdate: (patch: Partial<Block>) => void;
 }) {
   const styles = useStyles(makeStyles);
+  const theme = useTheme();
+  // A cell is typed INTO where there is a cursor and a hardware
+  // keyboard. On a phone the formula bar stays the way in - it is a
+  // full width for a formula instead of a 110pt cell, and this editor
+  // has a real history of Android focus trouble with many inputs side
+  // by side. The bar stays on the desktop too, because a long formula
+  // still reads better there; the cell is simply also editable.
+  //
+  // Worth recording WHY this is possible at all: the database's own
+  // table has had a TextInput per cell for months, and its comment
+  // holds the recipe - an UNCONTROLLED input (defaultValue, committed
+  // when editing ends) keyed on the stored value, never a Pressable
+  // swapped for an input on tap, because swapping remounts the cell
+  // mid-layout and throws the horizontal scroll back to the first
+  // column.
+  const pointer = useDensity() === 'pointer';
+  const cellRefs = useRef(new Map<string, TextInput | null>());
   const rows = block.tableRows && block.tableRows.length > 0 ? block.tableRows : [{ cells: ['', ''] }];
   const columnCount = rows[0]?.cells.length ?? 0;
   const [selected, setSelected] = useState<{ r: number; c: number } | null>(null);
@@ -126,6 +145,44 @@ export default function TableBlockContent({
     formulaInputRef.current?.focus();
   }
 
+  // Tab walks the row and wraps onto the next; the arrows walk the grid;
+  // Enter drops a row, as it does in every spreadsheet anyone has used.
+  function moveSelection(dr: number, dc: number) {
+    if (!selected) return;
+    let r = selected.r + dr;
+    let c = selected.c + dc;
+    if (c >= columnCount) {
+      c = 0;
+      r += 1;
+    } else if (c < 0) {
+      c = columnCount - 1;
+      r -= 1;
+    }
+    if (r < 0 || r >= rows.length) return;
+    setSelected({ r, c });
+    cellRefs.current.get(`${r}:${c}`)?.focus();
+  }
+
+  function handleCellKey(key: string, shift: boolean): boolean {
+    if (key === 'Tab') {
+      moveSelection(0, shift ? -1 : 1);
+      return true;
+    }
+    if (key === 'Enter') {
+      moveSelection(shift ? -1 : 1, 0);
+      return true;
+    }
+    if (key === 'ArrowDown') {
+      moveSelection(1, 0);
+      return true;
+    }
+    if (key === 'ArrowUp') {
+      moveSelection(-1, 0);
+      return true;
+    }
+    return false;
+  }
+
   function confirmFormula() {
     formulaInputRef.current?.blur();
   }
@@ -183,15 +240,15 @@ export default function TableBlockContent({
             >
               {row.cells.map((_, c) => (
                 <View key={c} style={[styles.tableReadCell, { width: widthOf(c) }]}>
-                  <Text
-                    style={[
-                      styles.tableCellText,
-                      ((headerRow && r === 0) || (headerColumn && c === 0)) && styles.tableReadStrong,
-                    ]}
-                    numberOfLines={CELL_MAX_LINES}
-                  >
-                    {displayValueOf(rows, r, c)}
-                  </Text>
+                  <CellText
+                    rows={rows}
+                    r={r}
+                    c={c}
+                    strong={(headerRow && r === 0) || (headerColumn && c === 0)}
+                    style={styles.tableCellText}
+                    strongStyle={styles.tableReadStrong}
+                    ink={theme.paper.ink}
+                  />
                 </View>
               ))}
             </View>
@@ -267,21 +324,59 @@ export default function TableBlockContent({
               </View>
               {row.cells.map((_, c) => {
                 const isSelected = selected?.r === r && selected?.c === c;
+                if (pointer) {
+                  const raw = row.cells[c] ?? '';
+                  return (
+                    <TextInput
+                      // Re-seeded when the STORED value changes (a
+                      // formula recomputing, the other device writing) -
+                      // never on every keystroke, which is the whole
+                      // point of leaving it uncontrolled.
+                      key={`${c}:${raw}`}
+                      ref={(node) => {
+                        cellRefs.current.set(`${r}:${c}`, node);
+                      }}
+                      style={[
+                        styles.tableCell,
+                        styles.tableCellInput,
+                        { width: widthOf(c) },
+                        isSelected && styles.tableCellSelected,
+                      ]}
+                      defaultValue={raw}
+                      onFocus={() => setSelected({ r, c })}
+                      onEndEditing={(e) => setCell(r, c, e.nativeEvent.text)}
+                      onKeyPress={(e) => {
+                        const native = e.nativeEvent as unknown as {
+                          key: string;
+                          shiftKey?: boolean;
+                          preventDefault?: () => void;
+                        };
+                        if (handleCellKey(native.key, !!native.shiftKey)) {
+                          // Tab would otherwise leave the table entirely,
+                          // and Enter would put a newline in a cell.
+                          native.preventDefault?.();
+                        }
+                      }}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                  );
+                }
                 return (
                   <Pressable
                     key={c}
                     style={[styles.tableCell, { width: widthOf(c) }, isSelected && styles.tableCellSelected]}
                     onPress={() => handleCellPress(r, c)}
                   >
-                    <Text
-                      style={[
-                        styles.tableCellText,
-                        ((headerRow && r === 0) || (headerColumn && c === 0)) && styles.tableReadStrong,
-                      ]}
-                      numberOfLines={CELL_MAX_LINES}
-                    >
-                      {displayValueOf(rows, r, c)}
-                    </Text>
+                    <CellText
+                      rows={rows}
+                      r={r}
+                      c={c}
+                      strong={(headerRow && r === 0) || (headerColumn && c === 0)}
+                      style={styles.tableCellText}
+                      strongStyle={styles.tableReadStrong}
+                      ink={theme.paper.ink}
+                    />
                   </Pressable>
                 );
               })}
@@ -353,6 +448,47 @@ export default function TableBlockContent({
         commitWidth(c, width);
       });
   }
+}
+
+// One cell's text, drawn the way the rest of a note is drawn.
+//
+// It used to be the RAW string, so a cell holding "**Тонування**"
+// showed the asterisks - a table was the one place in the app where
+// this app's own inline markup was not rendered. parseFormattedText and
+// FormattedText already exist for every other block; a table simply
+// never asked them.
+//
+// A FORMULA is the exception: its raw text is "=SUM(A1:A3)" and what
+// belongs on screen is the number that comes out of it. displayValueOf
+// already decides that, and a computed number has no markup in it.
+function CellText({
+  rows,
+  r,
+  c,
+  strong,
+  style,
+  strongStyle,
+  ink,
+}: {
+  rows: TableRow[];
+  r: number;
+  c: number;
+  strong: boolean;
+  style: object;
+  strongStyle: object;
+  ink: string;
+}) {
+  const raw = rows[r]?.cells[c] ?? '';
+  const isFormula = raw.trim().startsWith('=');
+  return (
+    <Text style={[style, strong && strongStyle]} numberOfLines={CELL_MAX_LINES}>
+      {isFormula ? (
+        displayValueOf(rows, r, c)
+      ) : (
+        <FormattedText segments={parseFormattedText(raw)} defaultColor={ink} />
+      )}
+    </Text>
+  );
 }
 
 // Wide enough for a short word plus its padding, narrow enough that

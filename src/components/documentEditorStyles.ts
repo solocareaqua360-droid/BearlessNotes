@@ -522,6 +522,15 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     borderColor: t.paper.edge,
     borderRadius: 6,
   },
+  // The cell as a field: the same box, with the text sitting where the
+  // drawn text sits so nothing shifts when a cell takes focus.
+  tableCellInput: {
+    fontSize: 14,
+    fontFamily: FONT_REGULAR,
+    color: t.paper.ink,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+  },
   tableCellSelected: {
     borderColor: t.accent,
     borderWidth: 2,
