@@ -74,12 +74,19 @@ const SHOW_IN_DATABASE_KINDS: HistoryItemKind[] = ['task'];
 export default function DayHistoryList({
   items,
   fill,
+  dense,
   expanded: expandedProp,
   onToggleExpanded,
   hideHeader,
 }: {
   items: HistoryItem[];
   fill?: boolean;
+  // A column beside a page, read with a cursor, rather than a strip of
+  // cards under a day's note on a phone. Same cards, half the height:
+  // the time goes on the title's own line instead of under it, and the
+  // padding and the lift come off. Three cards became eight in the same
+  // column, which is what the user meant by "вони повинні бути меншими".
+  dense?: boolean;
   // Driven from outside when the button that opens it isn't the pill
   // here - CalendarScreen moved that button onto its rail, and a control
   // somewhere else can only work if the state is somewhere both can see.
@@ -214,14 +221,17 @@ export default function DayHistoryList({
   function renderPlainCard(item: HistoryItem) {
     const { background, text, textMuted } = recordColour(item.id);
     return (
-      <View style={[styles.card, { backgroundColor: background }]}>
+      <View style={[styles.card, dense && styles.cardDense, { backgroundColor: background }]}>
         <Pressable
           style={styles.cardTap}
           onPress={() => openNaturally(item).catch((e) => notify('Не вдалося відкрити', String(e)))}
         >
           <Ionicons name={ICON_BY_KIND[item.kind]} size={16} color={textMuted} />
-          <View style={styles.cardBody}>
-            <Text style={[styles.cardTitle, { color: text }]} numberOfLines={2}>
+          <View style={[styles.cardBody, dense && styles.cardBodyDense]}>
+            <Text
+              style={[styles.cardTitle, dense && styles.cardTitleDense, { color: text }]}
+              numberOfLines={dense ? 1 : 2}
+            >
               {item.title}
             </Text>
             <Text style={[styles.cardCaption, { color: textMuted }]}>{formatTime(item.createdAt)}</Text>
@@ -246,7 +256,10 @@ export default function DayHistoryList({
         {items.length === 0 ? (
           <Text style={styles.emptyLabel}>Цього дня нічого не додано</Text>
         ) : (
-          <ScrollView style={styles.columnList} contentContainerStyle={styles.listContent}>
+          <ScrollView
+            style={styles.columnList}
+            contentContainerStyle={[styles.listContent, dense && styles.listContentDense]}
+          >
             {items.map((item) => (
               <View key={`${item.kind}-${item.id}`}>
                 {item.kind === 'photo' || item.kind === 'file' || item.kind.startsWith('link-')
@@ -374,6 +387,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  // The lift comes off as well as the padding. A shadow says "this card
+  // is above the page"; a reference list beside the page is not above
+  // anything, and eight lifted cards in a narrow column read as clutter.
+  cardDense: {
+    padding: 6,
+    borderRadius: 10,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  cardBodyDense: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  cardTitleDense: {
+    flexShrink: 1,
+  },
+  listContentDense: {
+    gap: 5,
   },
   cardBody: {
     flex: 1,

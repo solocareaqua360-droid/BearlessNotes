@@ -578,9 +578,16 @@ export default function CalendarScreen() {
   // The options card is deliberately NOT in that ring. The user's own
   // line: the bead is for the two places you go, and options are what
   // the swipe is for.
-  useDockBeads(
-    calendarFocused ? { icon: 'search-outline', onPress: () => navigation.navigate('Diary') } : null,
-    calendarFocused
+  // Named once, drawn in one of two places. On a pointer these are NOT
+  // published: they stand at the head of the calendar's own column,
+  // beside the month they act on, instead of on a toolbar over the sheet
+  // they have nothing to do with - the user's call. Published AND drawn
+  // would be the same control twice, which is the one thing the dock's
+  // whole publish/subscribe shape exists to avoid.
+  const searchBead = calendarFocused
+    ? { icon: 'search-outline', onPress: () => navigation.navigate('Diary') }
+    : null;
+  const todayBead = calendarFocused
       ? {
           icon: 'today-outline',
           active: selectedKeyForDock !== todayKey,
@@ -593,10 +600,8 @@ export default function CalendarScreen() {
             setDockFace(dockFace === 'context' ? 'desks' : 'context');
           },
         }
-      : null
-  );
-  useDockActions(
-    calendarFocused
+      : null;
+  const calendarActions = calendarFocused
       ? [
           ...(!onlyFilledDays && !isTwoPane
             ? [
@@ -648,8 +653,19 @@ export default function CalendarScreen() {
             },
           },
         ]
-      : null
-  );
+      : null;
+  useDockBeads(pointerDensity ? null : searchBead, pointerDensity ? null : todayBead);
+  useDockActions(pointerDensity ? null : calendarActions);
+  // The same list, for the column head. A bead and an action differ only
+  // in where the dock puts them, and this row has no such two places.
+  const columnControls: { key: string; icon: string; active?: boolean; onPress: () => void }[] =
+    pointerDensity
+      ? [
+          ...(searchBead ? [{ key: 'search', ...searchBead }] : []),
+          ...(todayBead ? [{ key: 'today', ...todayBead }] : []),
+          ...(calendarActions ?? []).map((a) => ({ key: a.key, icon: a.icon, active: a.active, onPress: a.onPress })),
+        ]
+      : [];
   const showContext = useDockShowContext();
   const [dockFace, setDockFace] = useNavDockFace();
   const publishToDock = useNavDockPublisher();
@@ -899,7 +915,31 @@ export default function CalendarScreen() {
   // ref.
   function renderDayNote(key: string, primary: boolean) {
     return (
-      <View style={[styles.noteArea, isTwoPane && styles.notePane, stackedWide && styles.noteBelow]}>
+      <View
+        style={[
+          styles.noteArea,
+          isTwoPane && styles.notePane,
+          stackedWide && styles.noteBelow,
+          // The white belongs to the EMBEDDED EDITOR, not to this frame -
+          // so a heading added above the editor landed on the app's dark
+          // ground, over the page rather than on it. The frame carries
+          // the same paper, and the date is on the sheet.
+          pointerDensity && styles.notePaper,
+        ]}
+      >
+        {/* The day IS the page's title, so on a pointer it stands ON the
+            sheet, where a document's own name stands, instead of in a
+            small line floating above it. A daily note has no title of its
+            own to collide with - the date is the only name it will ever
+            have. */}
+        {pointerDensity && primary && (
+          <View style={styles.sheetHead}>
+            <Text style={styles.sheetDate}>
+              {WEEKDAY_SHORT[mondayIndex(selectedDate)]}, {formatBigDate(selectedDate)}
+            </Text>
+            <SaveRing saving={noteSaveStatus === 'saving'} color={theme.paper.inkMuted} />
+          </View>
+        )}
         <DocumentEditorScreen
           key={`day_${key}`}
           ref={primary ? noteEditorRef : undefined}
@@ -989,6 +1029,7 @@ export default function CalendarScreen() {
           here. */}
       <ScreenBackdrop id="calendarBg" />
 
+      {!pointerDensity && (
       <View style={[styles.headerRow, { paddingTop: headerPadTop }]}>
         <View
           style={styles.headerLeft}
@@ -1030,6 +1071,7 @@ export default function CalendarScreen() {
           </Pressable>
         </View>
       </View>
+      )}
 
       {/* One column on a phone (calendar, then the note under it), two on
           a wide screen (calendar left, note right). Both halves are flex:1
@@ -1042,6 +1084,10 @@ export default function CalendarScreen() {
           // "this half" goes on meaning what it did. Only which edge it
           // stands against changes.
           !stackedWide && isTwoPane && pointerDensity && styles.paneRowReversed,
+          // The header line above used to hold everything off the top of
+          // the window. It is gone on a pointer (the date moved onto the
+          // sheet), so the room it gave has to be said here instead.
+          !stackedWide && isTwoPane && pointerDensity && styles.paneRowTop,
         ]}
       >
         <View
@@ -1066,6 +1112,19 @@ export default function CalendarScreen() {
               card and the sheet are siblings BELOW this, and a flex:1 here
               swallowed the whole column and pushed all three off the
               bottom of the screen. */}
+          {columnControls.length > 0 && (
+            <View style={styles.columnControls}>
+              {columnControls.map((c) => (
+                <Pressable
+                  key={c.key}
+                  style={[styles.columnControl, c.active && styles.columnControlOn]}
+                  onPress={c.onPress}
+                >
+                  <Ionicons name={c.icon as never} size={16} color={theme.ink.primary} />
+                </Pressable>
+              ))}
+            </View>
+          )}
           <View style={stackedWide ? styles.topRow : isTwoPane ? styles.topStack : undefined}>
           {/* The ONE thing that measures the calendar's width, whichever
               way the screen is turned. It used to be measured on the band
@@ -1272,7 +1331,7 @@ export default function CalendarScreen() {
                 stackedWide && { height: windowHeight },
               ]}
             >
-              <DayHistoryList items={historyByDate.get(selectedKey) ?? []} fill />
+              <DayHistoryList items={historyByDate.get(selectedKey) ?? []} fill dense={pointerDensity} />
             </View>
           )}
           </View>
@@ -1703,6 +1762,48 @@ const makeStyles = (t: Theme) =>
   },
   paneRowReversed: {
     flexDirection: 'row-reverse',
+  },
+  paneRowTop: {
+    paddingTop: 14,
+  },
+  // The date on the sheet. Paper ink, not the screen's: this sits on the
+  // note's own white page, not on the app's ground behind it.
+  notePaper: {
+    backgroundColor: t.paper.fill,
+  },
+  sheetHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingLeft: 20,
+    paddingRight: 20,
+    paddingTop: 22,
+    paddingBottom: 2,
+  },
+  sheetDate: {
+    fontSize: 26,
+    fontWeight: '700',
+    fontFamily: FONT_SEMIBOLD,
+    color: t.paper.ink,
+  },
+  // The calendar column's own head: the controls that act on the month
+  // and the day, standing over the month.
+  columnControls: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 6,
+    paddingRight: 20,
+    paddingTop: 14,
+    paddingBottom: 10,
+  },
+  columnControl: {
+    padding: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: t.edge.strong,
+  },
+  columnControlOn: {
+    backgroundColor: t.edge.strong,
   },
   // The calendar and the history take a column each; the note takes a
   // little more, since it's the one column whose content is text being

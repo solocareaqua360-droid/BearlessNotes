@@ -128,7 +128,12 @@ export default function DesktopToolbar() {
               onPress={beads.right.onPress}
               onLongPress={beads.right.onLongPress}
             >
-              <Ionicons name="add" size={18} color={theme.onAccent} />
+              {/* The bead's OWN icon. It was a hardcoded "add", which is
+                  right on a list and a lie everywhere else - on the
+                  calendar the right bead is "go to today", and it was
+                  drawn as a plus. A filled button is a claim about
+                  importance, not about what the button does. */}
+              <ActionIcon icon={beads.right.icon} size={18} color={theme.onAccent} />
             </Pressable>
           )}
         </View>
