@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRailTree } from '../navigation/navRail';
+import { useRailPanel, useRailTree } from '../navigation/navRail';
 import { useNavDockLeave } from '../navigation/navDock';
 import { navigationRef } from '../navigationRef';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -58,6 +58,7 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const tree = useRailTree();
+  const panel = useRailPanel();
   // The way OUT of a screen that was pushed over the tabs - a board, a
   // database, a note. It lived on the dock, and the dock is not here, so
   // hiding the dock took the only exit with it: the user opened a board
@@ -212,6 +213,11 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
           )}
         </>
       )}
+      {/* Whatever the screen puts here - the calendar's month and the
+          day's history. Under the sections, above the account, in the
+          same place the folder tree stands for a list. */}
+      {!!panel && <View style={styles.panel}>{panel}</View>}
+
       {/* Whose data this is, at the foot of the column - where a sidebar
           keeps it. It is the same strip the phone shows across the top;
           only its place changes. */}
@@ -338,6 +344,11 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   bin: {
     marginTop: 4,
     marginHorizontal: 8,
+  },
+  panel: {
+    flex: 1,
+    minHeight: 0,
+    paddingTop: 10,
   },
   footer: {
     borderTopWidth: StyleSheet.hairlineWidth,

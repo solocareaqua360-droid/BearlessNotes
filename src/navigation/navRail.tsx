@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { ReactNode, useEffect, useId, useState } from 'react';
 
 // What the desktop rail shows about the screen it is standing beside.
 //
@@ -65,4 +65,50 @@ export function useRailTree(): RailTree | null {
     };
   }, []);
   return tree;
+}
+
+
+// The rail's second publication: not a folder tree, but whatever the
+// screen wants standing in the rail under the sections. The calendar
+// puts its month, its "today" and the day's history there - the month
+// is NAVIGATION, and the rail is where this app keeps navigation, the
+// same as the folders above.
+//
+// A node rather than a description of one, because there is nothing
+// general to describe: a month grid and a folder tree have no shape in
+// common, and inventing one would mean the rail knowing about both.
+// The claims work exactly as the tree's do.
+
+type PanelClaim = { id: string; value: ReactNode };
+
+let panelClaims: PanelClaim[] = [];
+const panelListeners = new Set<() => void>();
+
+function publishPanel(id: string, value: ReactNode | null) {
+  panelClaims =
+    value === null
+      ? panelClaims.filter((c) => c.id !== id)
+      : [...panelClaims.filter((c) => c.id !== id), { id, value }];
+  panelListeners.forEach((l) => l());
+}
+
+export function usePublishRailPanel(value: ReactNode | null): void {
+  const id = useId();
+  useEffect(() => {
+    publishPanel(id, value);
+  });
+  useEffect(() => () => publishPanel(id, null), [id]);
+}
+
+export function useRailPanel(): ReactNode | null {
+  const [panel, setPanel] = useState<ReactNode | null>(() => panelClaims[panelClaims.length - 1]?.value ?? null);
+  useEffect(() => {
+    const listener = () => setPanel(panelClaims[panelClaims.length - 1]?.value ?? null);
+    panelListeners.add(listener);
+    listener();
+    return () => {
+      panelListeners.delete(listener);
+    };
+  }, []);
+  return panel;
 }

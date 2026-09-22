@@ -47,6 +47,9 @@ import { hasNoteContent } from '../utils/documentPreview';
 import { useDayHistory } from '../hooks/useDayHistory';
 import DayHistoryList from '../components/DayHistoryList';
 import { useDensity } from '../hooks/useDensity';
+import DocumentCard from '../components/DocumentCard';
+import { extractPreview } from '../utils/documentPreview';
+import { usePublishRailPanel } from '../navigation/navRail';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { DockMark, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useNavDockPublisher } from '../navigation/navDock';
@@ -245,6 +248,49 @@ export default function CalendarScreen() {
   // Sorted view of whichever set the active compact strip shows - date keys
   // (YYYY-MM-DD) sort lexicographically the same as chronologically.
   const filledDatesSorted = useMemo(() => Array.from(filledDates).sort(), [filledDates]);
+  // A pointer gets a FEED instead of a month grid beside the note: every
+  // day that holds something, newest first, each drawn as the document
+  // card it would be in the documents list - "видно весь контент як на
+  // самих великих картках". The fill is then visible without a filter,
+  // which is why the filter button is gone on this density: it was a
+  // control describing something that can simply be shown.
+  const feedMode = pointerDensity && isTwoPane;
+  const [dayFeed, setDayFeed] = useState<
+    { key: string; title: string; blocks: Block[]; coverImageUri?: string; coverGradient?: string; coverDriveFileId?: string; updatedAt: number }[]
+  >([]);
+  useEffect(() => {
+    if (!feedMode) return;
+    // No range on calendarDate. Firestore needs a composite index for an
+    // equality and a range on two different fields, and ownedQuery's
+    // ownerId is that equality - so `where('calendarDate', ...)` is
+    // refused outright with failed-precondition until someone creates
+    // one by hand in the console. The days are picked out here instead:
+    // this is one person's own documents, tens of them, and reading
+    // them all costs less than a backend that has to be set up by hand
+    // before the screen works.
+    return onSnapshot(
+      ownedQuery('documents'),
+      (snapshot) => {
+        const items = snapshot.docs
+          .map((d) => {
+            const data = d.data();
+            return {
+              key: data.calendarDate as string,
+              title: (data.title as string) ?? '',
+              blocks: (data.blocks as Block[]) ?? [],
+              coverImageUri: data.coverImageUri as string | undefined,
+              coverGradient: data.coverGradient as string | undefined,
+              coverDriveFileId: data.coverDrive?.fileId as string | undefined,
+              updatedAt: (data.updatedAt as number) ?? 0,
+            };
+          })
+          .filter((i) => !!i.key && hasNoteContent(i.title, i.blocks))
+          .sort((a, b) => (a.key < b.key ? 1 : -1));
+        setDayFeed(items);
+      },
+      () => setDayFeed([])
+    );
+  }, [feedMode]);
   const historyDatesSorted = useMemo(() => Array.from(historyDates).sort(), [historyDates]);
   const activeDatesSorted = compactFilter === 'history' ? historyDatesSorted : filledDatesSorted;
   const [dueReminders, setDueReminders] = useState<
@@ -456,16 +502,23 @@ export default function CalendarScreen() {
     // ownerId condition Firestore denies the whole thing, the listener
     // throws, and the app goes down with it - which is exactly what
     // happened the first time the rules were published.
-    const filledQuery = ownedQuery(
-      'documents',
-      where('calendarDate', '>=', monthStartKey),
-      where('calendarDate', '<=', monthEndKey)
-    );
+    // The range is applied HERE, not in the query. Asked of Firestore it
+    // needs a composite index over ownerId and calendarDate that this
+    // project never had - so this listener has been failing with
+    // failed-precondition and falling into its own error handler, which
+    // sets an empty set. The dots a day's note earns have therefore been
+    // dark all along, and the screen said "nothing here" instead of
+    // "the read was refused". Exactly the trap already written down as
+    // firestore_silent_empty, this time sprung by an index rather than
+    // by the rules.
+    const filledQuery = ownedQuery('documents');
     return onSnapshot(filledQuery, (snapshot) => {
       const filled = new Set<string>();
       snapshot.docs.forEach((docSnapshot) => {
         const data = docSnapshot.data();
-        if (hasNoteContent(data.title ?? '', data.blocks ?? [])) filled.add(data.calendarDate as string);
+        const day = data.calendarDate as string | undefined;
+        if (!day || day < monthStartKey || day > monthEndKey) return;
+        if (hasNoteContent(data.title ?? '', data.blocks ?? [])) filled.add(day);
       });
       setNoteFilledDates(filled);
     },
@@ -663,8 +716,15 @@ export default function CalendarScreen() {
       ? [
           ...(searchBead ? [{ key: 'search', ...searchBead }] : []),
           ...(todayBead ? [{ key: 'today', ...todayBead }] : []),
-          ...(calendarActions ?? []).map((a) => ({ key: a.key, icon: a.icon, active: a.active, onPress: a.onPress })),
-        ]
+          // In feed mode the rest have all gone somewhere better: today
+          // to the rail with the month it belongs to, select onto the
+          // sheet beside the day it acts on, and the filter nowhere at
+          // all. Only search is left, and the user asked for it to stay
+          // here - "пошук там залишиться".
+          ...(feedMode
+            ? []
+            : (calendarActions ?? []).map((a) => ({ key: a.key, icon: a.icon, active: a.active, onPress: a.onPress }))),
+        ].filter((c) => !(feedMode && c.key === 'today'))
       : [];
   const showContext = useDockShowContext();
   const [dockFace, setDockFace] = useNavDockFace();
@@ -938,6 +998,25 @@ export default function CalendarScreen() {
               {WEEKDAY_SHORT[mondayIndex(selectedDate)]}, {formatBigDate(selectedDate)}
             </Text>
             <SaveRing saving={noteSaveStatus === 'saving'} color={theme.paper.inkMuted} />
+            <View style={styles.sheetHeadSpace} />
+            {/* Block select, standing opposite the day it acts on. It
+                came off the toolbar, and this is now the ONLY way into
+                it for a daily note - so it moves in the same step it is
+                removed from, never before. */}
+            <Pressable
+              hitSlop={6}
+              style={[styles.sheetSelect, noteSelectMode && styles.sheetSelectOn]}
+              onPress={() => {
+                if (noteSelectMode) showContext();
+                noteEditorRef.current?.toggleSelectMode();
+              }}
+            >
+              <Ionicons
+                name={noteSelectMode ? 'close-outline' : 'ellipse-outline'}
+                size={16}
+                color={theme.paper.inkMuted}
+              />
+            </Pressable>
           </View>
         )}
         <DocumentEditorScreen
@@ -956,6 +1035,73 @@ export default function CalendarScreen() {
 
   const selectedKey = dateKey(selectedDate);
   const dailyDocId = `day_${selectedKey}`;
+
+  // The month is NAVIGATION - it says which day to look at, it is not
+  // the day - so on a pointer it stands in the rail, where this app
+  // keeps navigation, beside the folder tree's own place. The history
+  // goes with it: it is a list of ways INTO other things, which is the
+  // same job.
+  usePublishRailPanel(
+    feedMode ? (
+      <View style={styles.railPanel}>
+        <View style={styles.railMonthNav}>
+          <Pressable hitSlop={8} onPress={() => changeVisibleMonth(-1)}>
+            <Ionicons name="chevron-back" size={16} color={theme.ink.muted} />
+          </Pressable>
+          <Text style={styles.railMonthLabel}>
+            {MONTH_FULL[visibleMonth.month]} {visibleMonth.year}
+          </Text>
+          <Pressable hitSlop={8} onPress={() => changeVisibleMonth(1)}>
+            <Ionicons name="chevron-forward" size={16} color={theme.ink.muted} />
+          </Pressable>
+        </View>
+        <View style={styles.railWeekdays}>
+          {WEEKDAY_SHORT.map((d) => (
+            <Text key={d} style={styles.railWeekday}>
+              {d}
+            </Text>
+          ))}
+        </View>
+        {Array.from({ length: monthRows }, (_, row) => (
+          <View key={row} style={styles.railWeek}>
+            {monthGrid.slice(row * 7, row * 7 + 7).map(({ date, inMonth }) => {
+              const key = dateKey(date);
+              const here = key === selectedKey;
+              return (
+                <Pressable
+                  key={key}
+                  style={[styles.railDay, here && styles.railDayHere]}
+                  onPress={() => selectDay(date)}
+                >
+                  <Text
+                    style={[
+                      styles.railDayLabel,
+                      !inMonth && styles.railDayMuted,
+                      key === todayKey && styles.railDayToday,
+                      here && styles.railDayLabelHere,
+                    ]}
+                  >
+                    {date.getDate()}
+                  </Text>
+                  {/* The dot stays even here, where the feed already
+                      shows what a day holds: in the grid it is the only
+                      thing that says a day is not empty. */}
+                  <View style={[styles.railDot, filledDates.has(key) && styles.railDotOn]} />
+                </Pressable>
+              );
+            })}
+          </View>
+        ))}
+        <Pressable style={styles.railToday} onPress={jumpToToday}>
+          <Ionicons name="today-outline" size={14} color={theme.ink.primary} />
+          <Text style={styles.railTodayLabel}>Сьогодні</Text>
+        </Pressable>
+        <View style={styles.railHistory}>
+          <DayHistoryList items={historyByDate.get(selectedKey) ?? []} fill dense />
+        </View>
+      </View>
+    ) : null
+  );
 
   // The actual tasks due on the selected day (not just whether the day
   // counts as "filled") - a task written in a DIFFERENT document but
@@ -1101,17 +1247,6 @@ export default function CalendarScreen() {
                   : null
           }
         >
-          {/* The fold gesture lives on the plate only - never on the
-              history list under it, where a drag is someone scrolling
-              their own past. Off entirely where the month cannot fold:
-              beside the note there is room for it always, and in
-              "only filled days" the strip is not a real week. */}
-          {/* Standing up: the band's row. Side by side: a column that
-              fills, because the history lives inside it and takes what the
-              plate leaves. On a PHONE neither - there the history, the due
-              card and the sheet are siblings BELOW this, and a flex:1 here
-              swallowed the whole column and pushed all three off the
-              bottom of the screen. */}
           {columnControls.length > 0 && (
             <View style={styles.columnControls}>
               {columnControls.map((c) => (
@@ -1125,6 +1260,56 @@ export default function CalendarScreen() {
               ))}
             </View>
           )}
+          {feedMode ? (
+            <>
+              {/* Newest first, and it just keeps going: the days that
+                  hold nothing are not drawn at all, so the column IS the
+                  record of what was done. Tapping one opens that day on
+                  the sheet beside it. */}
+              {dayFeed.length === 0 ? (
+                <Text style={styles.feedEmpty}>Ще немає жодного заповненого дня</Text>
+              ) : (
+                <ScrollView contentContainerStyle={styles.feedContent} showsVerticalScrollIndicator={false}>
+                  {dayFeed.map((day) => {
+                    const date = parseDateKey(day.key);
+                    const preview = extractPreview(day.blocks, day.coverImageUri, undefined, day.coverDriveFileId);
+                    return (
+                      <DocumentCard
+                        key={day.key}
+                        id={`day_${day.key}`}
+                        // The DAY is the card's name, the same as it is
+                        // the sheet's - a daily note has no other.
+                        title={`${WEEKDAY_SHORT[mondayIndex(date)]}, ${formatBigDate(date)}`}
+                        updatedAt={day.updatedAt}
+                        imageUri={preview.imageUri}
+                        coverGradient={day.coverGradient}
+                        imageDriveFileId={preview.imageDriveFileId}
+                        imageUris={preview.imageUris}
+                        imageDriveFileIds={preview.imageDriveFileIds}
+                        previewText={preview.previewText}
+                        checklistItems={preview.checklistItems}
+                        layout="grid"
+                        gridWidth={DESKTOP_CALENDAR_WIDTH - 40}
+                        onPress={() => selectDay(date)}
+                      />
+                    );
+                  })}
+                </ScrollView>
+              )}
+            </>
+          ) : (
+            <>
+          {/* The fold gesture lives on the plate only - never on the
+              history list under it, where a drag is someone scrolling
+              their own past. Off entirely where the month cannot fold:
+              beside the note there is room for it always, and in
+              "only filled days" the strip is not a real week. */}
+          {/* Standing up: the band's row. Side by side: a column that
+              fills, because the history lives inside it and takes what the
+              plate leaves. On a PHONE neither - there the history, the due
+              card and the sheet are siblings BELOW this, and a flex:1 here
+              swallowed the whole column and pushed all three off the
+              bottom of the screen. */}
           <View style={stackedWide ? styles.topRow : isTwoPane ? styles.topStack : undefined}>
           {/* The ONE thing that measures the calendar's width, whichever
               way the screen is turned. It used to be measured on the band
@@ -1386,6 +1571,8 @@ export default function CalendarScreen() {
               <Ionicons name={noteCollapsed ? 'chevron-down' : 'chevron-up'} size={14} color="rgba(255,255,255,0.6)" />
               <Text style={styles.collapseNoteLabel}>{noteCollapsed ? 'Показати нотатку дня' : 'Згорнути нотатку дня'}</Text>
             </Pressable>
+          )}
+            </>
           )}
         </View>
 
@@ -1795,6 +1982,117 @@ const makeStyles = (t: Theme) =>
     paddingRight: 20,
     paddingTop: 14,
     paddingBottom: 10,
+  },
+  sheetHeadSpace: {
+    flex: 1,
+  },
+  sheetSelect: {
+    padding: 6,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: t.paper.inkFaint,
+  },
+  sheetSelectOn: {
+    backgroundColor: t.paper.inkFaint,
+  },
+  // The month, in a 240 column. Every cell is worked out from that
+  // width rather than measured: the rail is the one place in this app
+  // whose width never changes.
+  railPanel: {
+    flex: 1,
+    paddingHorizontal: 12,
+    gap: 2,
+  },
+  railMonthNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 6,
+  },
+  railMonthLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    fontFamily: FONT_SEMIBOLD,
+    color: t.ink.primary,
+  },
+  railWeekdays: {
+    flexDirection: 'row',
+  },
+  railWeekday: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 9.5,
+    color: t.ink.faint,
+  },
+  railWeek: {
+    flexDirection: 'row',
+  },
+  railDay: {
+    flex: 1,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 7,
+  },
+  railDayHere: {
+    backgroundColor: t.edge.strong,
+  },
+  railDayLabel: {
+    fontSize: 12,
+    color: t.ink.primary,
+  },
+  railDayLabelHere: {
+    fontWeight: '700',
+  },
+  railDayMuted: {
+    color: t.ink.faint,
+  },
+  railDayToday: {
+    color: t.accent,
+    fontWeight: '700',
+  },
+  // Always drawn, so a filled day and an empty one are the same height
+  // and the rows do not jump by two pixels as the month changes.
+  railDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 2,
+    marginTop: 1,
+    backgroundColor: 'transparent',
+  },
+  railDotOn: {
+    backgroundColor: t.accent,
+  },
+  railToday: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: t.edge.strong,
+  },
+  railTodayLabel: {
+    fontSize: 12,
+    color: t.ink.primary,
+  },
+  railHistory: {
+    flex: 1,
+    minHeight: 0,
+    marginTop: 10,
+  },
+  feedContent: {
+    gap: 10,
+    paddingRight: 20,
+    paddingBottom: 24,
+  },
+  feedEmpty: {
+    paddingRight: 20,
+    paddingTop: 8,
+    fontSize: 13,
+    color: t.ink.faint,
   },
   columnControl: {
     padding: 7,
