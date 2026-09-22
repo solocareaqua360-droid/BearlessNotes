@@ -29,7 +29,16 @@ export type BlockType =
   // as a live-filtered, live-sorted slice of its rows - same two-way link
   // as 'dbRow', one level up: the block shows whichever rows currently
   // match the view's filter, not a fixed list picked at insert time.
-  | 'dbView';
+  | 'dbView'
+  // Another DOCUMENT, embedded as a card. The user's own words: "вставити
+  // в документ картку іншого документа (як посилання)".
+  //
+  // Live, like 'dbRow' and for the same reason: rename a note and every
+  // note that mentions it should say the new name. What is stored on the
+  // block is the id and a snapshot of the title - the snapshot is the
+  // fallback, for a note that has been deleted and for the first frame
+  // before the listener answers, exactly as useLiveRecords describes.
+  | 'docRef';
 
 // One freehand stroke OR simple shape (line/rectangle/circle) in a
 // 'sketch' block - `d` is a plain SVG path `d` attribute. A freehand
@@ -131,6 +140,11 @@ export interface Block {
   // duplicate.
   driveFileId?: string;
   driveBytes?: number;
+  // 'docRef' blocks only - which document this card stands for, and its
+  // title as it was when the card was made (see the type above for why
+  // both).
+  docRefId?: string;
+  docRefTitle?: string;
   // 'image' blocks only - a user-given name, always renamable (see
   // PhotosScreen). Absent until the user names it; the photo grid falls
   // back to a generic "Без назви" label, never the raw local file path.
@@ -673,6 +687,13 @@ export interface DocumentItem {
   // cover set before this shipped.
   coverDriveFileId?: string;
   coverDriveBytes?: number;
+  // Every other document this one points at, kept up to date on save the
+  // same way its tasks, links and photos are (see
+  // syncDocumentLinksForDocument). Derived - it holds nothing that is not
+  // already in `blocks` - and it exists so the question can be asked the
+  // other way round: "which notes mention THIS one". Absent on any
+  // document not saved since links existed, which reads as none.
+  linksTo?: string[];
   // The gradient the user chose for the cover, by id (see theme/covers).
   // Absent = the note's own default gradient; a coverImageUri wins over
   // either.

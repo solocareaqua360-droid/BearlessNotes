@@ -7,6 +7,7 @@ import { makeStyles } from './documentEditorStyles';
 import type { colorForDocument } from '../utils/documentColor';
 import { hapticDrop, hapticPickUp, hapticSnapTick } from '../utils/haptics';
 import SortableBlockRow from './SortableBlockRow';
+import type { DocumentIndex } from '../hooks/useDocumentIndex';
 
 // Pulled out of DocumentEditorScreen.tsx (2026-09-19) alongside BlockRow/
 // SortableBlockRow - a plain, prop-only component.
@@ -57,6 +58,9 @@ type BlockListProps = {
   // live row's own tagIds) and "open this row in its database".
   allTags: Tag[];
   onOpenCustomRow: (databaseId: string, rowId: string) => void;
+  // Passed straight through to a 'docRef' row - see BlockRow.
+  documentIndex?: DocumentIndex;
+  onOpenDocument?: (documentId: string) => void;
   // 'dbView' blocks only - "open this view's own database, with that view
   // applied" (tapping the block's header, as opposed to one of its rows).
   onOpenCustomView: (databaseId: string, viewId: string) => void;
@@ -114,6 +118,8 @@ function BlockList({
   onOpenSketch,
   allTags,
   onOpenCustomRow,
+  documentIndex,
+  onOpenDocument,
   onOpenCustomView,
   onInputRef,
   paperColor,
@@ -385,6 +391,8 @@ function BlockList({
           onOpenSketch={onOpenSketch}
           allTags={allTags}
           onOpenCustomRow={onOpenCustomRow}
+          documentIndex={documentIndex}
+          onOpenDocument={onOpenDocument}
           onOpenCustomView={onOpenCustomView}
           inputRef={(ref) => onInputRef(item.id, ref)}
           paperColor={paperColor}

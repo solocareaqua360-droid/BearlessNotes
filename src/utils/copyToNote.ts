@@ -184,6 +184,21 @@ export async function appendBlocksToToday(
 // the record's OWN id, so one row embedded in two documents stays one
 // record listed in both - see CustomDatabaseRow.usedInDocuments. The title
 // is only a fallback label: the card renders the row live.
+// Another note, as a card. The id is a fresh one rather than the target
+// document's: unlike a photo or a database row, the SAME note can
+// reasonably be pointed at twice from one document, and a block keyed by
+// its target could only ever appear once.
+export function blockFromDocument(document: { id: string; title?: string }): Block {
+  return {
+    id: generateId(),
+    text: '',
+    type: 'docRef',
+    docRefId: document.id,
+    docRefTitle: document.title?.trim() || undefined,
+    createdAt: Date.now(),
+  };
+}
+
 export function blockFromCustomRow(row: { id: string; databaseId: string; title: string; createdAt?: number }): Block {
   const block: Block = { id: row.id, text: '', type: 'dbRow', dbRowDatabaseId: row.databaseId };
   if (row.title) block.dbRowTitle = row.title;

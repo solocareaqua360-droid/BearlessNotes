@@ -13,6 +13,7 @@ export type BlockAction =
   | 'scan'
   | 'sketch'
   | 'table'
+  | 'document'
   | 'existing';
 
 // Ionicons has no numbered-list glyph at all (only "list"/"list-circle"),
@@ -46,6 +47,7 @@ export const BLOCK_ACTIONS: BlockActionEntry[] = [
   { key: 'sketch', family: 'ionicons', icon: 'brush-outline', label: 'Малюнок' },
   { key: 'table', family: 'ionicons', icon: 'grid-outline', label: 'Таблиця' },
   { key: 'code', family: 'ionicons', icon: 'code-slash-outline', label: 'Код' },
+  { key: 'document', family: 'ionicons', icon: 'link-outline', label: 'Документ' },
   { key: 'existing', family: 'ionicons', icon: 'search-outline', label: 'З бази даних' },
 ];
 

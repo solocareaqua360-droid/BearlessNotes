@@ -38,6 +38,10 @@ import {
 import FormattedText from './FormattedText';
 import TableBlockContent from './TableBlockContent';
 import CustomRowBlockCard from './CustomRowBlockCard';
+import DocumentRefBlockCard from './DocumentRefBlockCard';
+import type { DocumentIndex } from '../hooks/useDocumentIndex';
+
+const EMPTY_DOCUMENT_INDEX: DocumentIndex = new Map();
 import CustomDatabaseViewBlockCard from './CustomDatabaseViewBlockCard';
 
 // Pulled out of DocumentEditorScreen.tsx (2026-09-19), which had grown to
@@ -88,6 +92,10 @@ type BlockRowProps = {
   // live row's own tagIds) and "open this row in its database".
   allTags: Tag[];
   onOpenCustomRow: (databaseId: string, rowId: string) => void;
+  // 'docRef' blocks only - every document, reduced to what it takes to
+  // draw one (see useDocumentIndex), and where a tap on the card goes.
+  documentIndex?: DocumentIndex;
+  onOpenDocument?: (documentId: string) => void;
   // 'dbView' blocks only - "open this view's own database, with that view
   // applied" (tapping the block's header, as opposed to one of its rows).
   onOpenCustomView: (databaseId: string, viewId: string) => void;
@@ -128,6 +136,8 @@ export default function BlockRow({
   onOpenSketch,
   allTags,
   onOpenCustomRow,
+  documentIndex,
+  onOpenDocument,
   onOpenCustomView,
   inputRef,
   paperColor,
@@ -565,6 +575,21 @@ export default function BlockRow({
           fallbackTitle={item.dbRowTitle}
           tags={allTags}
           onOpen={onOpenCustomRow}
+        />
+      </View>
+    );
+  } else if (type === 'docRef') {
+    // Another document, as a card. Live from the document index, so a
+    // note renamed anywhere is renamed here - the same choice 'dbRow'
+    // makes just below. Inert in select mode so a tap selects the block
+    // instead of navigating away from it.
+    content = (
+      <View style={styles.dbRowBlock} pointerEvents={isSelectMode ? 'none' : 'auto'}>
+        <DocumentRefBlockCard
+          documentId={item.docRefId}
+          fallbackTitle={item.docRefTitle}
+          index={documentIndex ?? EMPTY_DOCUMENT_INDEX}
+          onOpen={(id) => onOpenDocument?.(id)}
         />
       </View>
     );

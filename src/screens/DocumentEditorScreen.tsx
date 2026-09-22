@@ -138,6 +138,10 @@ import UndoToast from '../components/UndoToast';
 import { COVER_GRADIENTS, CoverGradientView } from '../theme/covers';
 import StockPhotoPicker from '../components/StockPhotoPicker';
 import AddExistingItemModal from '../components/AddExistingItemModal';
+import DocumentPickerModal from '../components/DocumentPickerModal';
+import { useDocumentIndex } from '../hooks/useDocumentIndex';
+import { blockFromDocument } from '../utils/copyToNote';
+import { documentLinksIn } from '../utils/documentLinks';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import {
@@ -341,6 +345,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         !!b.sketchElements?.length ||
         !!b.dbRowDatabaseId ||
         !!b.dbViewDatabaseId ||
+        !!b.docRefId ||
         b.type === 'divider' ||
         b.type === 'table'
     );
@@ -501,6 +506,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // The cover's own copy on Drive. See applyCover, and types.ts for why a
   // cover needs one of its own rather than borrowing a block's.
   const [coverDrive, setCoverDrive] = useState<{ fileId: string; bytes: number } | undefined>(undefined);
+  // Every other document, live - what a 'docRef' card draws itself
+  // from, and what the picker below chooses out of.
+  const documentIndex = useDocumentIndex();
+  // Which block is waiting for a document to be chosen for it.
+  const [documentPickerBlockId, setDocumentPickerBlockId] = useState<string | null>(null);
   // The chosen cover gradient's id - see theme/covers. Saved beside the
   // cover picture and synced the same way.
   const [coverGradient, setCoverGradient] = useState<string | undefined>(undefined);
@@ -1313,6 +1323,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // (which Firestore rejects outright) - a cover removed after
           // having been set has to actually clear the field, not leave the
           // old uri sitting there under merge:true.
+          // Every other note this one points at - see documentLinks.ts.
+          // Derived from the blocks on the way past, so it can never
+          // drift from them, and written here rather than by a separate
+          // sync because it is one field, not a collection.
+          linksTo: documentLinksIn(blocks),
           coverImageUri: coverImageUri || deleteField(),
           coverDriveFileId: coverDrive?.fileId ?? deleteField(),
           coverDriveBytes: coverDrive?.bytes ?? deleteField(),
@@ -2473,7 +2488,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       return;
     }
 
-    if (!['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'link', 'divider'].includes(currentType)) {
+    if (!['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'docRef', 'link', 'divider'].includes(currentType)) {
       const inserted = insertedPiece(current?.text ?? '', text);
       if (inserted && /[\n\t]/.test(inserted.piece)) {
         const parsed = parsePastedText(inserted.piece);
@@ -2485,7 +2500,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     }
     // A slash typed into an EMPTY block, and only then - a "/" in the
     // middle of a sentence is a slash.
-    if (text === '/' && (current?.text ?? '') === '' && !['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'link', 'divider'].includes(currentType)) {
+    if (text === '/' && (current?.text ?? '') === '' && !['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'docRef', 'link', 'divider'].includes(currentType)) {
       openSlashMenu(id);
     }
 
@@ -2673,6 +2688,30 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // already offer through their little database button.
   function openCustomRowBlock(databaseId: string, rowId: string) {
     navigation.navigate('CustomDatabase', { databaseId, openRowId: rowId });
+  }
+
+  // Tapping a 'docRef' card opens the note it stands for - the same
+  // "jump to the thing behind this block" move as openCustomRowBlock.
+  // push rather than navigate, deliberately: following a link from one
+  // note to another to a third and then going back should walk that
+  // path in reverse, and navigate would collapse it to one step.
+  function openReferencedDocument(documentId: string) {
+    navigation.push('Editor', { documentId });
+  }
+
+  // The card the picker makes, in place of the empty block it was opened
+  // from. Same shape as every other "fill this block with a thing"
+  // handler here.
+  function insertDocumentReference(blockId: string, documentId: string) {
+    const picked = documentIndex.get(documentId);
+    snapshotBeforeChange();
+    setBlocks((prev) =>
+      prev.map((b) =>
+        b.id === blockId
+          ? { ...blockFromDocument({ id: documentId, title: picked?.title }), id: b.id, canvas: b.canvas }
+          : b
+      )
+    );
   }
 
   // Tapping an embedded view's header opens its own database with that
@@ -3365,6 +3404,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         return;
       case 'table':
         convertBlockType(blockId, 'table');
+        return;
+      case 'document':
+        setDocumentPickerBlockId(blockId);
         return;
       case 'existing':
         setExistingItemPickerBlockId(blockId);
@@ -4294,6 +4336,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           onOpenSketch={openSketchBlock}
           allTags={tags}
           onOpenCustomRow={openCustomRowBlock}
+          documentIndex={documentIndex}
+          onOpenDocument={openReferencedDocument}
           onOpenCustomView={openCustomViewBlock}
           onInputRef={registerInputRef}
           paperColor={paperColor}
@@ -4723,6 +4767,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           }}
         />
       )}
+      <DocumentPickerModal
+        visible={documentPickerBlockId !== null}
+        subtitle="Картка з'явиться в цьому документі"
+        documents={Array.from(documentIndex.values())
+          // Not itself, and nothing already thrown away.
+          .filter((d) => d.id !== documentId && !d.deletedAt)
+          .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+          .map((d) => ({ id: d.id, title: d.title?.trim() || 'Без назви' }))}
+        onPick={(picked) => {
+          if (documentPickerBlockId) insertDocumentReference(documentPickerBlockId, picked);
+          setDocumentPickerBlockId(null);
+        }}
+        onClose={() => setDocumentPickerBlockId(null)}
+      />
+
       <AddExistingItemModal
         visible={existingItemPickerBlockId !== null}
         includeCustomDatabases

@@ -5,6 +5,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 import { Block, Tag } from '../types';
 import type { colorForDocument } from '../utils/documentColor';
 import BlockRow from './BlockRow';
+import type { DocumentIndex } from '../hooks/useDocumentIndex';
 
 // react-native-draggable-flatlist AND react-native-swipeable-item both
 // have the same underlying assumption: they render their content inside a
@@ -63,6 +64,9 @@ type SortableBlockRowProps = {
   // live row's own tagIds) and "open this row in its database".
   allTags: Tag[];
   onOpenCustomRow: (databaseId: string, rowId: string) => void;
+  // Straight through to BlockRow, for a 'docRef' row.
+  documentIndex?: DocumentIndex;
+  onOpenDocument?: (documentId: string) => void;
   // 'dbView' blocks only - "open this view's own database, with that view
   // applied" (tapping the block's header, as opposed to one of its rows).
   onOpenCustomView: (databaseId: string, viewId: string) => void;
@@ -113,6 +117,8 @@ export default function SortableBlockRow({
   onOpenSketch,
   allTags,
   onOpenCustomRow,
+  documentIndex,
+  onOpenDocument,
   onOpenCustomView,
   inputRef,
   paperColor,
@@ -198,6 +204,8 @@ export default function SortableBlockRow({
             onOpenSketch={onOpenSketch}
             allTags={allTags}
             onOpenCustomRow={onOpenCustomRow}
+            documentIndex={documentIndex}
+            onOpenDocument={onOpenDocument}
             onOpenCustomView={onOpenCustomView}
             inputRef={inputRef}
           />
