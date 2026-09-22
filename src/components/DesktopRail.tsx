@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRailTree } from '../navigation/navRail';
@@ -54,7 +54,7 @@ function buildTree(paths: string[]): Node[] {
 // scroll. Popovers exist because a 60-point bar has nowhere to put
 // anything; 240 by 753 has room, so they have no reason to exist. If
 // something cannot fit here expanded, it does not belong here.
-export default function DesktopRail() {
+export default function DesktopRail({ footer }: { footer?: ReactNode }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const tree = useRailTree();
@@ -200,6 +200,10 @@ export default function DesktopRail() {
           )}
         </>
       )}
+      {/* Whose data this is, at the foot of the column - where a sidebar
+          keeps it. It is the same strip the phone shows across the top;
+          only its place changes. */}
+      {!!footer && <View style={styles.footer}>{footer}</View>}
     </View>
   );
 }
@@ -301,5 +305,11 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   bin: {
     marginTop: 4,
     marginHorizontal: 8,
+  },
+  footer: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.edge.hairline,
+    marginTop: 8,
+    paddingTop: 8,
   },
 });

@@ -125,6 +125,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     backgroundColor: '#171310',
   },
+  // In the rail it is a column, on the app's own paper rather than the
+  // black strip - the black was there to separate a bar from the screen
+  // under it, and at the foot of a sidebar there is nothing to separate
+  // it from.
+  driveBarRail: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    justifyContent: 'flex-start',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    backgroundColor: 'transparent',
+  },
+  driveTextRail: {
+    fontSize: 11,
+    textAlign: 'left',
+  },
   driveText: {
     fontSize: 13,
     fontFamily: 'Nunito_400Regular',
@@ -374,6 +391,76 @@ export default function App() {
     );
   }
 
+  // The account strip, built once and placed twice: across the top
+  // under a finger, at the foot of the rail under a cursor. Forty
+  // points of full-width chrome for something looked at once a month
+  // earns its place on a phone, which has no rail to put it in, and
+  // does not on a Mac, where every sidebar in the world keeps the
+  // account at the bottom.
+  const accountStrip = (
+    <View style={[styles.driveBar, pointer && styles.driveBarRail]}>
+      <Text style={[styles.driveText, pointer && styles.driveTextRail]} numberOfLines={1}>
+        {user.email ?? 'Акаунт Google'}
+      </Text>
+      {/* In the corner with the account, not across the middle: it
+          repeats, it is nobody's business most of the time, and it
+          goes away by itself when the folder is full. */}
+      {prefetch.running && prefetch.total > 0 && (
+        <Text style={[styles.driveText, pointer && styles.driveTextRail]}>
+          {`Готую офлайн: ${prefetch.done} з ${prefetch.total}`}
+        </Text>
+      )}
+      <Pressable
+        style={styles.linkButton}
+        onPress={async () => {
+          await signOutEverywhere();
+          await signInWithGoogleAccount().catch(() => {});
+        }}
+      >
+        <Text style={styles.linkLabel}>Змінити акаунт</Text>
+      </Pressable>
+      {/* The one click Drive costs in a browser, and it is a real
+          cost rather than a leftover: Google's token client opens a
+          popup, a browser allows a popup only from a click, and the
+          token it gives lasts an hour. So this appears on a fresh
+          browser, and again once an hour - and with the consent
+          already given, the window it opens closes in the same
+          moment. See driveToken.web for why there is no quieter way
+          without a server, and the storage decision that was parked
+          rather than made. */}
+      {!drive && needsDrive && (
+        <>
+          <Text style={[styles.driveText, pointer && styles.driveTextRail]} numberOfLines={2}>
+            {/* The reason, when there is one. This bar used to say the
+                same sentence whether Drive had never been asked, had
+                refused, or had answered and been ignored - so a
+                failure was indistinguishable from a fresh start, and
+                the only way to find out was to guess. */}
+            {driveTokenError() ?? 'Картинки лежать на Google Диску'}
+          </Text>
+          <Pressable
+            style={styles.driveButton}
+            onPress={async () => {
+              // Same wall as signing in: inside the shell, Google
+              // will not finish a grant in a window an application
+              // drew. So the browser is asked and the token is
+              // carried back - see desktopBridge.web.
+              if (isDesktopShell()) {
+                const granted = await requestFromBrowser('drive', user.email).catch(() => null);
+                if (granted?.driveToken) adoptDriveToken(granted.driveToken);
+              } else {
+                await getDriveToken(true, user.email);
+              }
+              setDrive(hasDriveToken());
+            }}
+          >
+            <Text style={styles.driveButtonLabel}>Підключити Диск</Text>
+          </Pressable>
+        </>
+      )}
+    </View>
+  );
+
   return (
     // Same place the phone mounts it - see App.tsx.
     <ThemeProvider>
@@ -385,65 +472,7 @@ export default function App() {
             popup used to pick one without asking - looks like an app with
             no boards in it rather than a mistake. An empty screen must
             never be the only way to find that out. */}
-        <View style={styles.driveBar}>
-          <Text style={styles.driveText}>{user.email ?? 'Акаунт Google'}</Text>
-          {/* In the corner with the account, not across the middle: it
-              repeats, it is nobody's business most of the time, and it
-              goes away by itself when the folder is full. */}
-          {prefetch.running && prefetch.total > 0 && (
-            <Text style={styles.driveText}>
-              {`Готую офлайн: ${prefetch.done} з ${prefetch.total}`}
-            </Text>
-          )}
-          <Pressable
-            style={styles.linkButton}
-            onPress={async () => {
-              await signOutEverywhere();
-              await signInWithGoogleAccount().catch(() => {});
-            }}
-          >
-            <Text style={styles.linkLabel}>Змінити акаунт</Text>
-          </Pressable>
-          {/* The one click Drive costs in a browser, and it is a real
-              cost rather than a leftover: Google's token client opens a
-              popup, a browser allows a popup only from a click, and the
-              token it gives lasts an hour. So this appears on a fresh
-              browser, and again once an hour - and with the consent
-              already given, the window it opens closes in the same
-              moment. See driveToken.web for why there is no quieter way
-              without a server, and the storage decision that was parked
-              rather than made. */}
-          {!drive && needsDrive && (
-            <>
-              <Text style={styles.driveText}>
-                {/* The reason, when there is one. This bar used to say the
-                    same sentence whether Drive had never been asked, had
-                    refused, or had answered and been ignored - so a
-                    failure was indistinguishable from a fresh start, and
-                    the only way to find out was to guess. */}
-                {driveTokenError() ?? 'Картинки лежать на Google Диску'}
-              </Text>
-              <Pressable
-                style={styles.driveButton}
-                onPress={async () => {
-                  // Same wall as signing in: inside the shell, Google
-                  // will not finish a grant in a window an application
-                  // drew. So the browser is asked and the token is
-                  // carried back - see desktopBridge.web.
-                  if (isDesktopShell()) {
-                    const granted = await requestFromBrowser('drive', user.email).catch(() => null);
-                    if (granted?.driveToken) adoptDriveToken(granted.driveToken);
-                  } else {
-                    await getDriveToken(true, user.email);
-                  }
-                  setDrive(hasDriveToken());
-                }}
-              >
-                <Text style={styles.driveButtonLabel}>Підключити Диск</Text>
-              </Pressable>
-            </>
-          )}
-        </View>
+        {!pointer && accountStrip}
         {/* Below the account bar, not above it: a crash inside the board
             or the editor must still leave a way to change account or sign
             out, and the bar is that way. */}
@@ -473,7 +502,7 @@ export default function App() {
                   about this changes - see hooks/useDensity. */}
               {pointer ? (
                 <View style={styles.deskRow}>
-                  <DesktopRail />
+                  <DesktopRail footer={accountStrip} />
                   <View style={styles.deskBody}>
                     {/* The dock, unrolled - the path on the left and
                         what this screen can do on the right, off the
