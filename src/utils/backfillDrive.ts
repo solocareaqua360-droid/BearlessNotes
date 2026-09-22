@@ -18,6 +18,12 @@ import { backupFileToDrive } from './googleDrive';
 // of the eight board images on this account - so the browser had nowhere
 // to read them from, however well the board itself synced.
 //
+// Note COVERS are walked too, and they are the worst case of the three.
+// A cover never had a copy of its own at all: it looked for a block in
+// its own note whose picture was the same file and read that block's -
+// so every cover chosen from the gallery, the camera or the stock search
+// has nothing anywhere, however old the note is.
+//
 // This walks them and uploads whatever this device still has locally. It
 // can only be run where the bytes are; anywhere else every one of them is
 // counted as "gone" and left alone, never deleted.
@@ -46,10 +52,11 @@ export async function backfillDriveCopies(
 ): Promise<BackfillResult> {
   const result: BackfillResult = { uploaded: 0, missing: 0, failed: 0 };
 
-  const [photos, files, boards] = await Promise.all([
+  const [photos, files, boards, documents] = await Promise.all([
     getDocs(ownedQuery('photos')),
     getDocs(ownedQuery('files')),
     getDocs(ownedQuery('boards')),
+    getDocs(ownedQuery('documents')),
   ]);
 
   // Where the resulting driveFileId has to be written back. A collection
@@ -66,7 +73,8 @@ export async function backfillDriveCopies(
   // the same one-off migration addItemToBoard does for the same reason.
   type Target =
     | { kind: 'record'; collectionName: 'photos' | 'files'; id: string }
-    | { kind: 'card'; boardId: string; cardId: string };
+    | { kind: 'card'; boardId: string; cardId: string }
+    | { kind: 'cover'; documentId: string };
 
   const jobs: {
     target: Target;
@@ -99,6 +107,29 @@ export async function backfillDriveCopies(
       folder: 'Files',
     });
   });
+  // A note's cover, which until now had no copy of ANY kind unless it
+  // happened to be a picture also sitting in the note as a block - see
+  // types.ts. Every cover chosen from the gallery, the camera or the
+  // stock search is therefore here, however old the note is.
+  //
+  // Skipped when a block in that same note already has a copy of the same
+  // file: the cover reads that one (see extractPreview), so uploading a
+  // second would be a duplicate nobody asked for.
+  documents.docs.forEach((snapshot) => {
+    const data = snapshot.data();
+    const cover = data.coverImageUri as string | undefined;
+    if (!cover || data.coverDriveFileId) return;
+    const blocks = (data.blocks as { imageUri?: string; driveFileId?: string }[] | undefined) ?? [];
+    if (blocks.some((b) => b.imageUri === cover && b.driveFileId)) return;
+    jobs.push({
+      target: { kind: 'cover', documentId: snapshot.id },
+      uri: cover,
+      name: `cover-${snapshot.id}.jpg`,
+      mimeType: 'image/jpeg',
+      folder: 'Photos',
+    });
+  });
+
   // Boards that still hold arrays and have at least one card to upload.
   const toConvert: string[] = [];
   boards.docs.forEach((snapshot) => {
@@ -166,6 +197,13 @@ export async function backfillDriveCopies(
         await updateDoc(doc(db, job.target.collectionName, job.target.id), {
           driveFileId: uploaded.fileId,
           driveBytes: uploaded.bytes,
+        });
+      } else if (job.target.kind === 'cover') {
+        // Two fields on the note itself, not a block - a cover is the
+        // note's own, and nothing else reads them.
+        await updateDoc(doc(db, 'documents', job.target.documentId), {
+          coverDriveFileId: uploaded.fileId,
+          coverDriveBytes: uploaded.bytes,
         });
       } else {
         // One card, merged - not the whole `cards` map. The board is very
