@@ -46,6 +46,7 @@ import DocumentEditorScreen, { DocumentEditorHandle } from './DocumentEditorScre
 import { hasNoteContent } from '../utils/documentPreview';
 import { useDayHistory } from '../hooks/useDayHistory';
 import DayHistoryList from '../components/DayHistoryList';
+import { useDensity } from '../hooks/useDensity';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { DockMark, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useNavDockPublisher } from '../navigation/navDock';
@@ -88,6 +89,14 @@ import { listenError } from '../utils/listenError';
 // one - the columns drift apart and the last days of the week fall off
 // the right edge, which is exactly how this screen has broken twice.
 const PLATE_MARGIN = 16;
+// The calendar's own column where a cursor is reading the screen. Half
+// the window is what a FINGER needs: there the month grid is the thing
+// being touched. With a pointer the day's sheet is the page and the
+// month is a reference standing beside it - the user's own words,
+// "календар ... повинен знаходитися праворуч від аркуша ... і вони
+// повинні бути меншими". 360 fits seven 46px columns and the history
+// cards under them without either having to wrap.
+const DESKTOP_CALENDAR_WIDTH = 360;
 const calendarPrefsDoc = doc(db, 'settings', 'calendarPrefs');
 
 // The week strip pages between exactly 3 in-memory weeks (prev/current/next)
@@ -147,6 +156,7 @@ export default function CalendarScreen() {
   // most: under the calendar it's a pill that drops a 360px-tall list,
   // which is exactly the cramped feeling a column of its own removes.
   const { isTwoPane, isThreePane } = useResponsiveLayout();
+  const pointerDensity = useDensity() === 'pointer';
   // The calendar's own column, measured rather than assumed: in two panes
   // the window is no longer the space the strip has, and a strip whose
   // pages are sized against the wrong width is exactly how this screen
@@ -185,8 +195,13 @@ export default function CalendarScreen() {
   // there the measured half is right - so this is the lying-down case
   // only. Spelled out rather than reusing stackedWide, which is declared
   // further down with the rest of the writing state.
-  const calendarPaneWidthFixed =
-    isTwoPane && windowWidth >= windowHeight ? Math.floor(windowWidth / 2.3) : null;
+  const calendarPaneWidthFixed = !isTwoPane
+    ? null
+    : pointerDensity
+      ? DESKTOP_CALENDAR_WIDTH
+      : windowWidth >= windowHeight
+        ? Math.floor(windowWidth / 2.3)
+        : null;
   const paneFallback = isTwoPane ? windowWidth / 2 : windowWidth;
   const stripWidth =
     (calendarPaneWidthFixed ??
@@ -1019,7 +1034,16 @@ export default function CalendarScreen() {
       {/* One column on a phone (calendar, then the note under it), two on
           a wide screen (calendar left, note right). Both halves are flex:1
           in the row, so they split the window evenly. */}
-      <View style={stackedWide ? styles.stack : isTwoPane ? styles.paneRow : styles.stack}>
+      <View
+        style={[
+          stackedWide ? styles.stack : isTwoPane ? styles.paneRow : styles.stack,
+          // Reversed rather than reordered: the calendar is still the
+          // first child, so every measurement, gesture and comment about
+          // "this half" goes on meaning what it did. Only which edge it
+          // stands against changes.
+          !stackedWide && isTwoPane && pointerDensity && styles.paneRowReversed,
+        ]}
+      >
         <View
           style={
             stackedWide
@@ -1676,6 +1700,9 @@ const makeStyles = (t: Theme) =>
   paneRow: {
     flex: 1,
     flexDirection: 'row',
+  },
+  paneRowReversed: {
+    flexDirection: 'row-reverse',
   },
   // The calendar and the history take a column each; the note takes a
   // little more, since it's the one column whose content is text being
