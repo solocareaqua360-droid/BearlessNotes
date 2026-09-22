@@ -58,6 +58,14 @@ export default function DesktopToolbar() {
   // So it is back, under the name of what it actually is now.
   const shown = (actions ?? []).map((a) => (a.key === 'tags' ? { ...a, label: 'Теги' } : a));
 
+  // Words under the icons only while they fit. A note publishes seven
+  // actions - «Полотно», «Референси», «Вибір», «Вигляд», «Проект»,
+  // «Експорт», «Видалити» - and seven labelled buttons are wider than
+  // the row, so they ran back over the path on the left and the two
+  // were drawn on top of each other. Past five it is icons, which is
+  // what the dock itself does when it runs out of room.
+  const withLabels = shown.length <= 5;
+
   const crumbs = context?.kind === 'path' ? context.crumbs : [];
   const onGo = context?.kind === 'path' ? context.onGo : undefined;
 
@@ -110,7 +118,7 @@ export default function DesktopToolbar() {
               onLongPress={action.onLongPress}
             >
               <ActionIcon icon={action.icon} size={17} color={theme.ink.primary} />
-              {!!action.label && <Text style={styles.buttonLabel}>{action.label}</Text>}
+              {!!action.label && withLabels && <Text style={styles.buttonLabel}>{action.label}</Text>}
             </Pressable>
           ))}
           {!!beads.right && (
@@ -148,7 +156,12 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    // Both, and they are not the same thing: minWidth lets the row
+    // shrink below its content, overflow stops what is left of the
+    // content being painted outside it. Without the pair, a long path
+    // and a full set of buttons met in the middle.
     minWidth: 0,
+    overflow: 'hidden',
   },
   crumbCell: {
     flexDirection: 'row',
@@ -161,6 +174,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     borderRadius: 6,
   },
   crumbLabel: {
+    flexShrink: 1,
     fontSize: 13,
     fontFamily: FONT_REGULAR,
     color: t.ink.muted,
@@ -173,6 +187,9 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    // Never squeezed: a button that has shrunk is a button that cannot
+    // be hit. The path gives way instead.
+    flexShrink: 0,
   },
   button: {
     flexDirection: 'row',
