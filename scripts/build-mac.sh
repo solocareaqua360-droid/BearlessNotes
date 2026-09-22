@@ -41,6 +41,27 @@ fi
 echo "==> Packaging"
 (cd desktop && npm run dist)
 
+# Sign the bundle to itself.
+#
+# electron-builder is told not to sign (there is no Apple developer
+# account here and none is needed), which leaves the Electron binary's
+# own ad-hoc signature covering the executable and nothing else - so
+# `spctl` reports "code has no resources but signature indicates they
+# must be present". It still launches, but the signature is incoherent,
+# and macOS identifies an app by its signature: a different one each
+# build means permissions granted to the last build do not carry over.
+#
+# `--sign -` is an ad-hoc signature: no certificate, no account, no
+# network. It makes the bundle internally consistent and stable across
+# rebuilds.
+echo "==> Signing it to itself"
+codesign --force --deep --sign - desktop/release/mac-arm64/mindEva.app 2>/dev/null
+
 echo
 echo "Done: desktop/release/mac-arm64/mindEva.app"
-echo "The build is unsigned, so the first launch is right-click -> Open."
+# No right-click needed: macOS only asks about an app carrying the
+# com.apple.quarantine attribute, which is put there by whatever
+# DOWNLOADED it. Nothing downloads this one - it is built here - so it
+# opens with a double click like any other app.
+echo "Open it with a double click - it is built locally, so macOS does not"
+echo "treat it as downloaded and will not ask."
