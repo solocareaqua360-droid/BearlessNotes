@@ -99,6 +99,12 @@ export default function DocumentRefBlockCard({ documentId, fallbackTitle, index,
 }
 
 const makeStyles = (t: Theme) => StyleSheet.create({
+  // Padded all round, with the picture inset - the shape every other
+  // reference card in the app has (see CustomRowCard, which a 'dbRow'
+  // block draws through). It sat flush against the card's own edge
+  // before, so its left side was cut to the card's corner radius while
+  // its right side stayed square: rounded on one end and not the other,
+  // which is what reads as unfinished.
   card: {
     flex: 1,
     flexDirection: 'row',
@@ -108,18 +114,19 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     borderWidth: 1,
     borderColor: t.paper.edge,
     backgroundColor: t.paper.tint,
-    paddingRight: 12,
+    padding: 10,
     marginVertical: 4,
-    overflow: 'hidden',
   },
+  // Its own square, with its own corners - 56 and 12, the same two
+  // numbers the row card uses.
   thumb: {
     width: 56,
     height: 56,
+    borderRadius: 12,
     overflow: 'hidden',
   },
   body: {
     flex: 1,
-    paddingVertical: 10,
     gap: 2,
   },
   title: {
