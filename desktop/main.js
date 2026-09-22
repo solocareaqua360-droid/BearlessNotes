@@ -15,7 +15,7 @@
 // window there. Nothing has to be added to the console, and the page is
 // indistinguishable from the browser build as far as Google is concerned.
 
-const { app, BrowserWindow, Menu, shell, dialog } = require('electron');
+const { app, BrowserWindow, Menu, session, shell, dialog } = require('electron');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -225,13 +225,57 @@ app.whenReady().then(async () => {
   }
 
   // Google refuses OAuth to anything that looks like an embedded browser,
-  // and Electron says so in its user agent by default ("Electron/38.0.0",
-  // plus the app's own name). Stripping both leaves a plain Chrome string,
-  // which is the truth as far as the rendering engine goes.
+  // and Electron announces itself in TWO places, not one. Cleaning only
+  // the first gets "Не вдається ввійти в обліковий запис - можливо, цей
+  // веб-переглядач або додаток небезпечний", which reads like a warning
+  // about the account and is actually this.
+  //
+  // 1. The user agent string, which carries "Electron/44.0.0" and the
+  //    app's own name. Stripped here.
   const userAgent = app.userAgentFallback
     .replace(/\sElectron\/[\d.]+/, '')
     .replace(/\smindEva\/[\d.]+/, '');
   app.userAgentFallback = userAgent;
+
+  // 2. The Client Hints headers, which Chromium sends alongside it and
+  //    which list "Electron" as one of the browser brands. They are not
+  //    part of the user agent string and survive stripping it, so the
+  //    sign-in page still saw an embedded browser. Rewritten to the plain
+  //    Chrome brands for the sign-in hosts only - everything else keeps
+  //    the honest headers.
+  const chromeVersion = (userAgent.match(/Chrome\/(\d+)/) || [])[1] || '152';
+  const chromeFull = (userAgent.match(/Chrome\/([\d.]+)/) || [])[1] || `${chromeVersion}.0.0.0`;
+  const brands = `"Chromium";v="${chromeVersion}", "Google Chrome";v="${chromeVersion}", "Not?A_Brand";v="24"`;
+  const fullVersions =
+    `"Chromium";v="${chromeFull}", "Google Chrome";v="${chromeFull}", "Not?A_Brand";v="24.0.0.0"`;
+
+  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    let host = '';
+    try {
+      host = new URL(details.url).hostname;
+    } catch {
+      host = '';
+    }
+    const isSignInHost =
+      host.endsWith('.google.com') ||
+      host === 'google.com' ||
+      host.endsWith('.googleapis.com') ||
+      host.endsWith('.firebaseapp.com') ||
+      host.endsWith('.gstatic.com');
+    if (!isSignInHost) {
+      callback({ requestHeaders: details.requestHeaders });
+      return;
+    }
+    const headers = { ...details.requestHeaders };
+    for (const name of Object.keys(headers)) {
+      const lower = name.toLowerCase();
+      if (lower === 'sec-ch-ua') headers[name] = brands;
+      else if (lower === 'sec-ch-ua-full-version-list') headers[name] = fullVersions;
+      else if (lower === 'sec-ch-ua-full-version') headers[name] = `"${chromeFull}"`;
+      else if (lower === 'user-agent') headers[name] = userAgent;
+    }
+    callback({ requestHeaders: headers });
+  });
 
   const server = http.createServer(serve);
   const port = await listenOnFirstFreePort(server, PORTS);
