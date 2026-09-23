@@ -65,6 +65,9 @@ type BlockListProps = {
   // applied" (tapping the block's header, as opposed to one of its rows).
   onOpenCustomView: (databaseId: string, viewId: string) => void;
   onInputRef: (id: string, ref: TextInput | null) => void;
+  // See BlockRow: the field keeps focus while the insert panel stands
+  // where the keyboard was.
+  softInputDisabled?: boolean;
   paperColor: ReturnType<typeof colorForDocument> | null;
 };
 
@@ -125,6 +128,7 @@ function BlockList({
   onOpenDocument,
   onOpenCustomView,
   onInputRef,
+  softInputDisabled,
   paperColor,
   hideHandle,
 }: BlockListProps, ref: ForwardedRef<BlockListHandle>) {
@@ -401,6 +405,7 @@ function BlockList({
           documentIndex={documentIndex}
           onOpenDocument={onOpenDocument}
           onOpenCustomView={onOpenCustomView}
+          softInputDisabled={softInputDisabled}
           inputRef={(ref) => onInputRef(item.id, ref)}
           paperColor={paperColor}
         />

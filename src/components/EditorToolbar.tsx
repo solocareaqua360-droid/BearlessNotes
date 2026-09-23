@@ -25,8 +25,8 @@ import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 // every theme), and a highlighter needs to stay a pale wash whatever the
 // interface scheme is doing - unlike a card fill or a section colour,
 // nothing here is app chrome.
-const TEXT_COLORS = ['#111827', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
-const HIGHLIGHT_COLORS = ['#FEF08A', '#BBF7D0', '#BFDBFE', '#FBCFE8', '#E9D5FF'];
+export const TEXT_COLORS = ['#111827', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
+export const HIGHLIGHT_COLORS = ['#FEF08A', '#BBF7D0', '#BFDBFE', '#FBCFE8', '#E9D5FF'];
 
 // THIS BAR IS MADE OF THE DOCK, not of GlassDrop with its numbers
 // turned up (2026-09-19).

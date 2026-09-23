@@ -155,6 +155,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useEditorAccessory } from '../components/editorAccessory';
+import EditorInsertPanel, { PanelGroup, PanelSection } from '../components/EditorInsertPanel';
+import EditorPanelBar from '../components/EditorPanelBar';
+import { HIGHLIGHT_COLORS, TEXT_COLORS } from '../components/EditorToolbar';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_DANGER, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import { CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
@@ -619,6 +622,16 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // autoFocusTitle), which is what raises the keyboard onto it right away.
   const [titleActive, setTitleActive] = useState(autoFocusTitle);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  // The panel that stands where the keyboard was - null while it is
+  // closed. See EditorInsertPanel; phone only.
+  const [panelSection, setPanelSection] = useState<PanelSection | null>(null);
+  const [panelJump, setPanelJump] = useState<{ section: PanelSection; at: number } | null>(null);
+  const panelOpenRef = useRef(false);
+  panelOpenRef.current = panelSection !== null;
+  // The height the keyboard HAD. The panel takes exactly it, so nothing
+  // moves as one replaces the other - and by the time the panel opens
+  // the live height is already on its way to zero.
+  const lastKeyboardHeightRef = useRef(0);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [activeSelection, setActiveSelection] = useState<{ blockId: string; start: number; end: number } | null>(
@@ -1551,6 +1564,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // own listener stays for what it hasn't been shown to break:
       // toggling the toolbar's visibility and scheduling the scroll
       // safety net below.
+      if (height > 0) lastKeyboardHeightRef.current = height;
       setKeyboardHeight(height);
       scheduleScrollAdjust(height);
     });
@@ -1601,6 +1615,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       if (deactivateTimeoutRef.current) clearTimeout(deactivateTimeoutRef.current);
       deactivateTimeoutRef.current = setTimeout(() => {
         deactivateTimeoutRef.current = null;
+        // Unless WE put it away. Opening the insert panel hides the
+        // keyboard on purpose and needs the block to stay focused and
+        // its selection intact - half of what the panel offers (bold,
+        // italic, colour) acts on a selection, and deactivating here
+        // would wipe it the moment the panel appeared. Every other
+        // hide still means editing is over.
+        if (panelOpenRef.current) return;
         deactivateActiveInput();
       }, 400);
     });
@@ -1677,6 +1698,37 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     }, 350);
   }
 
+  // Opening the panel does NOT dismiss the keyboard - see BlockRow's
+  // showSoftInputOnFocus. The field is told to stop asking for it and
+  // then blurred-and-refocused, which is the only way Android applies
+  // the flag to a field that already has focus; the caret and the
+  // selection survive that round trip because the editor's own state
+  // holds them, not the native field.
+  function openPanel(section: PanelSection) {
+    panelHeightSV.value = lastKeyboardHeightRef.current;
+    setPanelSection(section);
+    setPanelJump({ section, at: Date.now() });
+    const id = focusedBlockIdRef.current;
+    if (id) {
+      const input = inputRefs.current[id];
+      // A frame apart: the flag has to be on the field before the focus
+      // comes back, or Android raises the keyboard again on the way.
+      input?.blur();
+      requestAnimationFrame(() => inputRefs.current[id]?.focus());
+    }
+  }
+
+  function closePanel() {
+    panelHeightSV.value = 0;
+    setPanelSection(null);
+    const id = focusedBlockIdRef.current;
+    if (id) {
+      const input = inputRefs.current[id];
+      input?.blur();
+      requestAnimationFrame(() => inputRefs.current[id]?.focus());
+    }
+  }
+
   function scheduleScrollAdjust(currentKeyboardHeight: number) {
     if (scrollAdjustTimeoutRef.current) clearTimeout(scrollAdjustTimeoutRef.current);
     scrollAdjustTimeoutRef.current = setTimeout(() => {
@@ -1739,6 +1791,93 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // its own bar: the hard half, holding a bar steady against Android's
   // keyboard, is already solved here and is not worth solving twice.
   const blockAccessory = useEditorAccessory();
+  // PHONE ONLY, and the user's own line: "такий варіант реалізовуємо
+  // тільки на телефоні, для ноутбуку буде окремий проект". A laptop has
+  // no soft keyboard to replace and keeps the toolbar it has. Keyed on
+  // the POINTER, not on width - see useDensity.
+  const phonePanel = useDensity() === 'touch' && Platform.OS !== 'web';
+  // What the panel holds. Step one: only what this editor can already
+  // do - heading levels, the three kinds of rule, the page break, the
+  // external link and the toggle list are each their own piece of work
+  // and arrive after this.
+  // Every panel item acts on the block the caret is in - the same block
+  // the old toolbar acted on.
+  const action = (key: BlockAction) => () => {
+    const id = toolbarBlockId;
+    if (id) handleBlockAction(key, id);
+  };
+  const panelGroups: PanelGroup[] = [
+    {
+      section: 'lists',
+      title: 'Списки',
+      items: [
+        { key: 'bulleted', label: 'З крапками', family: 'material-community', icon: 'format-list-bulleted', onPress: action('bulleted') },
+        { key: 'numbered', label: 'Нумерований', family: 'material-community', icon: 'format-list-numbered', onPress: action('numbered') },
+        { key: 'checkbox', label: 'З чекбоксами', family: 'ionicons', icon: 'checkbox-outline', onPress: action('checkbox') },
+      ],
+    },
+    {
+      section: 'format',
+      title: 'Форматування',
+      items: [
+        { key: 'bold', label: 'Жирний', family: 'material-community', icon: 'format-bold', onPress: () => applyMarkerToSelection('**', '**') },
+        { key: 'italic', label: 'Курсив', family: 'material-community', icon: 'format-italic', onPress: () => applyMarkerToSelection('*', '*') },
+        { key: 'underline', label: 'Підкреслений', family: 'material-community', icon: 'format-underline', onPress: () => applyMarkerToSelection('__', '__') },
+        { key: 'strike', label: 'Закреслений', family: 'material-community', icon: 'format-strikethrough', onPress: () => applyMarkerToSelection('~~', '~~') },
+      ],
+    },
+    {
+      section: 'format',
+      title: 'Колір тексту',
+      compact: true,
+      items: TEXT_COLORS.map((hex) => ({
+        key: `c${hex}`,
+        label: 'Колір',
+        icon: '',
+        swatch: hex,
+        onPress: () => applyColorToSelection('c', hex),
+      })),
+    },
+    {
+      section: 'format',
+      title: 'Виділення',
+      compact: true,
+      items: HIGHLIGHT_COLORS.map((hex) => ({
+        key: `h${hex}`,
+        label: 'Виділення',
+        icon: '',
+        swatch: hex,
+        onPress: () => applyColorToSelection('h', hex),
+      })),
+    },
+    {
+      section: 'size',
+      title: 'Розмір тексту',
+      items: [
+        { key: 'heading', label: 'Заголовок', family: 'material-community', icon: 'format-header-2', onPress: action('heading') },
+      ],
+    },
+    {
+      section: 'rules',
+      title: 'Роздільні лінії',
+      items: [
+        { key: 'divider', label: 'Лінія', family: 'ionicons', icon: 'remove-outline', onPress: action('divider') },
+      ],
+    },
+    {
+      section: 'insert',
+      title: 'Вставка',
+      items: [
+        { key: 'image', label: 'Зображення', family: 'ionicons', icon: 'image-outline', onPress: action('image') },
+        { key: 'camera', label: 'Фото', family: 'ionicons', icon: 'camera-outline', onPress: action('camera') },
+        { key: 'sketch', label: 'Малюнок', family: 'ionicons', icon: 'brush-outline', onPress: action('sketch') },
+        { key: 'table', label: 'Таблиця', family: 'ionicons', icon: 'grid-outline', onPress: action('table') },
+        { key: 'code', label: 'Код', family: 'ionicons', icon: 'code-slash-outline', onPress: action('code') },
+        { key: 'file', label: 'Файл', family: 'ionicons', icon: 'document-outline', onPress: action('file') },
+        { key: 'scan', label: 'Сканкопія', family: 'ionicons', icon: 'scan-outline', onPress: action('scan') },
+      ],
+    },
+  ];
   const isToolbarVisible = toolbarBlockId !== null;
   toolbarHeightRef.current = isToolbarVisible ? EDITOR_TOOLBAR_HEIGHT : 0;
 
@@ -1753,6 +1892,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // keyboard then move as one motion, the way iOS does it. The old pass
   // stays as a safety net (it no-ops within a few px of the target).
   const keyboardSV = useSharedValue(0); // live keyboard height, mid-animation
+  // The panel's own height, as a shared value so the bar's position can
+  // read BOTH without a render. The bar sits on whichever is taller:
+  // while the keyboard falls and the panel rises they cross, and taking
+  // the larger of the two means the bar does not move at all - which is
+  // the whole trick against the jump the user was worried about.
+  const panelHeightSV = useSharedValue(0);
   // TRIED AND REVERTED (2026-09-19): a third "final word" here, resyncing
   // `keyboardSV` from react-native-keyboard-controller's own reactive
   // `useKeyboardState`, on the theory that switching apps left one of
@@ -2277,10 +2422,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // Web has no keyboard events to drive any of it, so it keeps the bar
   // plainly visible whenever a block is focused, exactly as before.
   const pinnedToolbarStyle = useAnimatedStyle(() => {
-    if (Platform.OS === 'web') return { bottom: keyboardSV.value, opacity: 1, transform: [] };
-    const shown = Math.min(1, Math.max(0, keyboardSV.value / 48));
+    if (Platform.OS === 'web') return { bottom: Math.max(keyboardSV.value, panelHeightSV.value), opacity: 1, transform: [] };
+    const floor = Math.max(keyboardSV.value, panelHeightSV.value);
+    const shown = Math.min(1, Math.max(0, floor / 48));
     return {
-      bottom: keyboardSV.value,
+      bottom: floor,
       opacity: shown,
       transform: [{ translateY: (1 - shown) * (EDITOR_TOOLBAR_HEIGHT + 24) }],
     };
@@ -4806,7 +4952,19 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             ? ({ onMouseDown: (e: { preventDefault: () => void }) => e.preventDefault() } as object)
             : {})}
         >
-          {blockAccessory ?? (
+          {blockAccessory ?? (phonePanel ? (
+            <EditorPanelBar
+              canUndo={canUndo}
+              canRedo={canRedo}
+              onUndo={undo}
+              onRedo={redo}
+              openSection={panelSection}
+              onOpenSection={openPanel}
+              onClosePanel={closePanel}
+              onPickFromDatabase={() => action('existing')()}
+              onCreateInDatabase={() => action('document')()}
+            />
+          ) : (
           <EditorToolbar
             canvas={canvasMode}
             focusedBlockId={toolbarBlockId}
@@ -4819,8 +4977,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             onApplyMarker={applyMarkerToSelection}
             onApplyColor={applyColorToSelection}
           />
-          )}
+          ))}
         </Animated.View>
+      )}
+
+      {/* Where the keyboard was. Its own layer at the very bottom, not a
+          child of the bar above it - the bar rides the keyboard's live
+          height and this does not move at all. */}
+      {phonePanel && panelSection !== null && (
+        <View style={styles.insertPanelDock}>
+          <EditorInsertPanel
+            height={lastKeyboardHeightRef.current || 300}
+            groups={panelGroups}
+            jumpTo={panelJump}
+          />
+        </View>
       )}
 
       <DocumentQuickLook

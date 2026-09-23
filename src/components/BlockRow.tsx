@@ -100,6 +100,7 @@ type BlockRowProps = {
   // applied" (tapping the block's header, as opposed to one of its rows).
   onOpenCustomView: (databaseId: string, viewId: string) => void;
   inputRef: (ref: TextInput | null) => void;
+  softInputDisabled?: boolean;
   // null when "Колір паперу" is off, OR for a sticker block specifically -
   // a sticker keeps its own yellow/dark treatment regardless of the
   // document's paper color (see the isSticker comment in types.ts).
@@ -140,6 +141,7 @@ export default function BlockRow({
   onOpenDocument,
   onOpenCustomView,
   inputRef,
+  softInputDisabled,
   paperColor,
 }: BlockRowProps) {
   const theme = useTheme();
@@ -612,6 +614,12 @@ export default function BlockRow({
   } else {
     const textField = canEditText ? (
       <TextInput
+        // The panel that stands where the keyboard was needs this field
+        // to KEEP FOCUS while the keyboard is gone - otherwise the text
+        // selection goes with it, and bold/italic/colour have nothing to
+        // act on. showSoftInputOnFocus does exactly that: the caret and
+        // the selection stay, only the soft keyboard steps aside.
+        showSoftInputOnFocus={!softInputDisabled}
         // Android's TextInput doesn't reliably pick up a dynamic `editable`
         // change on an already-mounted view; keying on canEditText forces
         // a clean remount so the native EditText is created with the

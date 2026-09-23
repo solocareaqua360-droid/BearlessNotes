@@ -181,6 +181,12 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
   scrollArea: {
     flex: 1,
   },
+  insertPanelDock: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   pinnedToolbar: {
     position: 'absolute',
     left: 0,

@@ -71,6 +71,7 @@ type SortableBlockRowProps = {
   // applied" (tapping the block's header, as opposed to one of its rows).
   onOpenCustomView: (databaseId: string, viewId: string) => void;
   inputRef: (ref: TextInput | null) => void;
+  softInputDisabled?: boolean;
   // Attached to the one active row only, so the screen's keyboard handler
   // can measure it on the UI thread the instant the keyboard starts rising.
   paperColor: ReturnType<typeof colorForDocument> | null;
@@ -121,6 +122,7 @@ export default function SortableBlockRow({
   onOpenDocument,
   onOpenCustomView,
   inputRef,
+  softInputDisabled,
   paperColor,
 }: SortableBlockRowProps) {
   // This gesture's whole job is JS-side (finding the nearest gap, updating
@@ -208,6 +210,7 @@ export default function SortableBlockRow({
             onOpenDocument={onOpenDocument}
             onOpenCustomView={onOpenCustomView}
             inputRef={inputRef}
+            softInputDisabled={softInputDisabled}
           />
         </Animated.View>
       </GestureDetector>

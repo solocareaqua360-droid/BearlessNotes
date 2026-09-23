@@ -1,0 +1,145 @@
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
+import type { PanelSection } from './EditorInsertPanel';
+
+// The short row above the keyboard, on a PHONE.
+//
+// What it replaces: fourteen icons in a strip that scrolled sideways.
+// Everything was in it and nothing could be found without dragging -
+// "щоб не робити безкінечну полосу над клавіатурою". Here the row is
+// short and fixed, and every button but undo/redo is a DOOR: it opens
+// the panel where the keyboard was, scrolled to its own section.
+//
+// undo and redo open nothing, because they are not doors - they act.
+// The close button appears only while the panel is open, for the same
+// reason: with the keyboard up there is nothing for it to close, and
+// the user said so before it was ever built.
+//
+// The two database buttons are NOT doors into this panel. They open the
+// windows they already open today, over everything - picking a record
+// out of a database is a search through hundreds of rows, not a choice
+// among eight tiles.
+
+export type PanelBarProps = {
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
+  // null while the panel is closed.
+  openSection: PanelSection | null;
+  onOpenSection: (section: PanelSection) => void;
+  onClosePanel: () => void;
+  onPickFromDatabase: () => void;
+  onCreateInDatabase: () => void;
+};
+
+type Door = {
+  section: PanelSection;
+  family: 'ionicons' | 'material-community';
+  icon: string;
+  label: string;
+};
+
+const DOORS: Door[] = [
+  { section: 'lists', family: 'material-community', icon: 'format-list-bulleted', label: 'Списки' },
+  { section: 'format', family: 'material-community', icon: 'format-bold', label: 'Форматування' },
+  { section: 'size', family: 'material-community', icon: 'format-size', label: 'Розмір тексту' },
+  { section: 'rules', family: 'ionicons', icon: 'remove-outline', label: 'Лінії' },
+  { section: 'insert', family: 'ionicons', icon: 'add-circle-outline', label: 'Вставка' },
+];
+
+export default function EditorPanelBar({
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
+  openSection,
+  onOpenSection,
+  onClosePanel,
+  onPickFromDatabase,
+  onCreateInDatabase,
+}: PanelBarProps) {
+  const styles = useStyles(makeStyles);
+  const theme = useTheme();
+  const ink = theme.glass.ink;
+  const inkMuted = theme.glass.inkMuted;
+
+  return (
+    <View style={styles.row}>
+      <Pressable style={styles.button} hitSlop={4} disabled={!canUndo} onPress={onUndo}>
+        <Ionicons name="arrow-undo-outline" size={20} color={canUndo ? ink : inkMuted} />
+      </Pressable>
+      <Pressable style={styles.button} hitSlop={4} disabled={!canRedo} onPress={onRedo}>
+        <Ionicons name="arrow-redo-outline" size={20} color={canRedo ? ink : inkMuted} />
+      </Pressable>
+
+      <View style={[styles.divider, { backgroundColor: inkMuted }]} />
+
+      {DOORS.map((door) => (
+        <Pressable
+          key={door.section}
+          style={[styles.button, openSection === door.section && styles.buttonOn]}
+          hitSlop={4}
+          accessibilityLabel={door.label}
+          onPress={() => onOpenSection(door.section)}
+        >
+          {door.family === 'material-community' ? (
+            <MaterialCommunityIcons name={door.icon as never} size={20} color={ink} />
+          ) : (
+            <Ionicons name={door.icon as never} size={20} color={ink} />
+          )}
+        </Pressable>
+      ))}
+
+      <View style={[styles.divider, { backgroundColor: inkMuted }]} />
+
+      <Pressable style={styles.button} hitSlop={4} accessibilityLabel="З бази даних" onPress={onPickFromDatabase}>
+        <Ionicons name="search-outline" size={20} color={ink} />
+      </Pressable>
+      <Pressable
+        style={styles.button}
+        hitSlop={4}
+        accessibilityLabel="Створити в базі"
+        onPress={onCreateInDatabase}
+      >
+        <MaterialCommunityIcons name="database-plus-outline" size={20} color={ink} />
+      </Pressable>
+
+      {/* Only with the panel. With the keyboard up there is nothing here
+          to close, and a button that does nothing is worse than none. */}
+      {openSection !== null && (
+        <Pressable style={styles.button} hitSlop={4} accessibilityLabel="Закрити" onPress={onClosePanel}>
+          <Ionicons name="chevron-down" size={22} color={ink} />
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
+    // Nine or ten buttons across a phone: each takes what it needs and
+    // the row shares what is left, so nothing has to scroll.
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 10,
+      height: 44,
+    },
+    button: {
+      paddingHorizontal: 6,
+      paddingVertical: 6,
+      borderRadius: 9,
+    },
+    buttonOn: {
+      backgroundColor: t.edge.strong,
+    },
+    divider: {
+      width: StyleSheet.hairlineWidth,
+      height: 18,
+      opacity: 0.5,
+    },
+  });
