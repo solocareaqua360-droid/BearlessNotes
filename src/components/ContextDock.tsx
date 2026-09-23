@@ -364,6 +364,13 @@ function useEaseTo(target: number, ms: number): number {
   return value;
 }
 
+// The desk capsule under the dock. It lives in the band between the dock
+// (DOCK_BOTTOM above the inset) and the screen's own bottom edge, and it
+// travels up behind the dock to hide.
+const DESK_HINT_H = 16;
+const DESK_HINT_BOTTOM = 3;
+const DESK_HINT_TRAVEL = 18;
+
 export default function ContextDock() {
   const theme = useTheme();
   const { width: windowW } = useWindowDimensions();
@@ -583,6 +590,24 @@ export default function ContextDock() {
     : faces.includes('desks')
       ? 'desks'
       : (faces[0] ?? 'context');
+  // THE DESKS, PEEKING OUT FROM UNDER THE DOCK whenever another card -
+  // a path, the calendar strip, the actions - is in front of them.
+  //
+  // The desks are one card of this stack, and flipping to another card
+  // hid them completely: nothing on screen said the four workspaces were
+  // still one swipe away. The user's idea, from the capsule of four dots
+  // the dock used to shrink into on a long press (a press since given to
+  // the capture window): "якщо ми не на доці перемикання столів, то
+  // внизу показувалась би така капсула". It slides down from behind the
+  // dock, sits in the band between the dock and the screen's edge, and
+  // tucks back under the moment the desks card itself is in front - two
+  // copies of the same four places on one screen would say nothing.
+  //
+  // A dot is a desk, not a picture of one: tapping it goes there.
+  const deskHintDesks = desksCard?.kind === 'desks' ? desksCard.desks : null;
+  const deskHintWanted = !!deskHintDesks && faces.includes('desks') && showing !== 'desks';
+  const deskHint = useEase01(deskHintWanted, 220);
+
   // The two numbers the whole stack is drawn from: how many cards it
   // holds, and which of them is in front.
   const ringSize = Math.max(1, faces.length);
@@ -1415,6 +1440,41 @@ export default function ContextDock() {
 
   return (
     <GlassPortal>
+      {/* Drawn BEFORE the dock, so it is behind it - it comes out from
+          under the dock rather than over it. */}
+      {deskHintDesks && deskHint > 0.001 && (
+        <View
+          pointerEvents={deskHintWanted ? 'box-none' : 'none'}
+          style={[
+            styles.deskHintWrap,
+            {
+              bottom: bottomInset + DESK_HINT_BOTTOM,
+              opacity: deskHint,
+              transform: [{ translateY: (1 - deskHint) * -DESK_HINT_TRAVEL }],
+            },
+          ]}
+        >
+          {/* No live blur: this slides on every frame while it comes out
+              and goes back, and a real-time blur on a moving surface is
+              the ANR this project has already met (android_live_blur_
+              moving_surface). The frost's own fill carries it. */}
+          <DockFrost style={styles.deskHint} radius={DESK_HINT_H / 2} blur={false}>
+            <View style={styles.deskHintRow}>
+              {deskHintDesks.map((desk) => (
+                <Pressable key={desk.key} hitSlop={10} onPress={desk.onPress} accessibilityLabel={desk.key}>
+                  <View
+                    style={[
+                      styles.dot,
+                      { backgroundColor: desk.active ? theme.glass.ink : theme.glass.inkMuted },
+                      desk.active && styles.dotActive,
+                    ]}
+                  />
+                </Pressable>
+              ))}
+            </View>
+          </DockFrost>
+        </View>
+      )}
       <View
         style={[styles.wrap, { bottom: DOCK_BOTTOM + bottomInset, paddingHorizontal: edgeInsetNow }]}
         pointerEvents="box-none"
@@ -1828,6 +1888,22 @@ const styles = StyleSheet.create({
   // reference has no beads inside its capsule.
   here: {
     backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  deskHintWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  deskHint: {
+    height: DESK_HINT_H,
+    paddingHorizontal: 10,
+    justifyContent: 'center',
+  },
+  deskHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
   },
   dotsShell: {
     paddingHorizontal: 10,
