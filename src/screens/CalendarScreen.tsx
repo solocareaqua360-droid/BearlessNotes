@@ -1249,13 +1249,21 @@ export default function CalendarScreen() {
   // before that (from a row's own onLayout, as it was) is clamped to the
   // content that exists so far, which is the top of the list: the newest
   // day. And kept in place when a newer month is added above.
+  //
+  // Placed AGAIN on every change of the content's size, and a frame later
+  // too, until the user's own finger first moves the list: one scrollTo
+  // on the first change was still landing on the newest day on the
+  // device ("я стою на цій даті"), so no single moment is trusted.
   function settleOverviewScroll() {
     const first = overviewDays[0]?.key ?? null;
     if (!overviewScrolledRef.current) {
       if (overviewAnchorIndex < 0) return;
-      overviewScrolledRef.current = true;
       overviewFirstKeyRef.current = first;
-      overviewScrollRef.current?.scrollTo({ y: overviewAnchorIndex * overviewItemH, animated: false });
+      const y = overviewAnchorIndex * overviewItemH;
+      overviewScrollRef.current?.scrollTo({ y, animated: false });
+      requestAnimationFrame(() => {
+        if (!overviewScrolledRef.current) overviewScrollRef.current?.scrollTo({ y, animated: false });
+      });
       return;
     }
     const previousFirst = overviewFirstKeyRef.current;
@@ -1845,6 +1853,13 @@ export default function CalendarScreen() {
               ]}
               showsVerticalScrollIndicator={false}
               onContentSizeChange={settleOverviewScroll}
+              // From here on the list is the user's: nothing places it
+              // again except a newer month being added above.
+              onScrollBeginDrag={() => {
+                overviewScrolledRef.current = true;
+              }}
+              contentOffset={overviewAnchorIndex >= 0 ? { x: 0, y: overviewAnchorIndex * overviewItemH } : undefined}
+              onLayout={settleOverviewScroll}
               onScroll={(e) => (overviewScrollYRef.current = e.nativeEvent.contentOffset.y)}
               scrollEventThrottle={32}
               onScrollEndDrag={checkOverviewEdges}
