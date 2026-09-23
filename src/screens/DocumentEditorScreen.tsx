@@ -1991,6 +1991,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // the larger of the two means the bar does not move at all - which is
   // the whole trick against the jump the user was worried about.
   const panelHeightSV = useSharedValue(0);
+  // Where the keyboard is GOING, known on its first frame. See
+  // bottomSpacerStyle for why the room has to exist before the keyboard
+  // does.
+  const keyboardTargetSV = useSharedValue(0);
   // TRIED AND REVERTED (2026-09-19): a third "final word" here, resyncing
   // `keyboardSV` from react-native-keyboard-controller's own reactive
   // `useKeyboardState`, on the theory that switching apps left one of
@@ -2096,6 +2100,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         'worklet';
         if (appActiveSV.value === 0) return; // see onMove
         syncShift.value = 0;
+        // Opening: the full height is the target from this frame on.
+        // Closing: let go at once, so the spacer follows the keyboard
+        // down frame by frame exactly as it always did - shrinking it at
+        // the END instead would snap a page scrolled to its bottom.
+        keyboardTargetSV.value = e.progress === 1 ? e.height : 0;
         if (e.progress !== 1) return; // closing - nothing to bring into view
         runOnJS(setKeyboardHeight)(e.height);
         // Title, or nothing measured yet: the safety net handles it.
@@ -2219,8 +2228,27 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // it: "полотно документа трохи прокручується при вмиканні панелі".
   // The panel occupies exactly the room the keyboard had, so the page
   // has no reason to move at all.
+  // The room at the bottom of the page is made on the keyboard's FIRST
+  // frame, at the height it is going to reach - not grown frame by frame
+  // alongside it.
+  //
+  // Measured on the phone, with the trace: the synced scroll set out to
+  // move the page 281 and stopped at 254, because on every frame it
+  // reached the end of content that had not been added yet - the spacer
+  // was growing with the same keyboard at the same moment. Twenty-seven
+  // points short, the field was left under the keyboard, and 235ms after
+  // the tap the safety net found it 20 below where it belonged and fetched
+  // it with a scroll of its own. That second scroll is the "одна строчка
+  // або половина" the user kept seeing.
+  //
+  // With the room there from the start, the synced scroll is never
+  // clamped, reaches its target in step with the keyboard, and the safety
+  // net finds nothing left to do.
   const bottomSpacerStyle = useAnimatedStyle(() => ({
-    height: Math.max(160, Math.max(keyboardSV.value, panelHeightSV.value) + 80 + EDITOR_TOOLBAR_HEIGHT),
+    height: Math.max(
+      160,
+      Math.max(keyboardSV.value, keyboardTargetSV.value, panelHeightSV.value) + 80 + EDITOR_TOOLBAR_HEIGHT
+    ),
   }));
   // "Is the keyboard up", taken from the one value that has been proved
   // clean (the frame handler's own live height) rather than from the
