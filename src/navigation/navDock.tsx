@@ -145,6 +145,11 @@ export type DockBead = {
 type Value = {
   face: DockFace;
   setFace: (face: DockFace) => void;
+  // A face change that should be SEEN happening - see ContextDock's own
+  // `flip`. `at` is what makes each request its own: asking for the same
+  // card twice in a row is two flips, not one.
+  flip: { face: DockFace; at: number } | null;
+  requestFlip: (face: DockFace) => void;
   // What the dock falls back to when no screen has anything more
   // specific to say: the desks. A path or a calendar takes the front
   // while it exists; putting one away lands here rather than nowhere.
@@ -378,6 +383,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
   // action that finishes somewhere else (a sort chosen in a menu, a
   // select mode left) should put the path in front again.
   const [face, setFace] = useState<DockFace>('context');
+  const [flip, setFlip] = useState<{ face: DockFace; at: number } | null>(null);
+  const requestFlip = useCallback((next: DockFace) => setFlip({ face: next, at: Date.now() }), []);
   const [hidden, setHidden] = useState(false);
   const [tabsInFlux, setTabsInFlux] = useState(false);
   const publishTabsInFlux = useCallback((inFlux: boolean) => {
@@ -399,6 +406,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
     () => ({
       face,
       setFace,
+      flip,
+      requestFlip,
       base,
       publishBase,
       context,
@@ -422,6 +431,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
     }),
     [
       face,
+      flip,
+      requestFlip,
       base,
       publishBase,
       context,
@@ -623,6 +634,17 @@ export function useDockBase(base: DockContext | null) {
 }
 
 // Which card of the stack is in front, and how to change it.
+// What the DOCK reads: the standing request, if any.
+export function useNavDockFlipRequest(): { face: DockFace; at: number } | null {
+  return useContext(NavDockContext)?.flip ?? null;
+}
+
+// What a SCREEN calls: turn the dock to that card, visibly.
+export function useNavDockFlip(): (face: DockFace) => void {
+  const request = useContext(NavDockContext)?.requestFlip;
+  return useCallback((next: DockFace) => request?.(next), [request]);
+}
+
 export function useNavDockFace(): [DockFace, (face: DockFace) => void] {
   const value = useContext(NavDockContext);
   return [value?.face ?? 'context', value?.setFace ?? (() => {})];

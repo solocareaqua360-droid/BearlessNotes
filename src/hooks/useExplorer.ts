@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useIsFocused } from '@react-navigation/native';
 import { Tag, TaggableKind } from '../types';
-import { useNavDockPublisher } from '../navigation/navDock';
+import { useNavDockFlip, useNavDockPublisher } from '../navigation/navDock';
 import { TAG_COLORS } from '../constants/tags';
 import { ask, confirm } from '../components/surfaces/Ask';
 
@@ -340,6 +340,20 @@ export function useExplorer<T extends { id: string }>(options: ExplorerOptions<T
   const focused = useIsFocused();
   const crumbKey = path;
   const goToCrumb = useCallback((target: string) => setPath(target), []);
+  // STEPPING INTO A FOLDER TURNS THE DOCK to what can be done in it -
+  // drawn as a swipe, not as a swap (see ContextDock's `flip`): "панель
+  // повинна прогортатись на вкладку функцій так як ніби я її прогорнув
+  // пальцем". Only on the way DOWN: walking back out to the root takes
+  // the path away with it, and there is nothing left to have turned.
+  const flipDock = useNavDockFlip();
+  const lastDepthRef = useRef(path === '' ? 0 : path.split('/').length);
+  useEffect(() => {
+    const depth = path === '' ? 0 : path.split('/').length;
+    const wasDeeper = depth > lastDepthRef.current;
+    lastDepthRef.current = depth;
+    if (!focused || !active || !wasDeeper) return;
+    flipDock('actions');
+  }, [path, focused, active, flipDock]);
   useEffect(() => {
     if (!publishToDock) return;
     if (!focused || !active || crumbKey === '') return;

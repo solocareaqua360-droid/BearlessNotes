@@ -23,6 +23,7 @@ import {
   useNavDockBeads,
   useNavDockDesks,
   useNavDockFace,
+  useNavDockFlipRequest,
   useNavDockHidden,
   useNavDockLeave,
   useNavDockOwnContext,
@@ -370,6 +371,9 @@ function useEaseTo(target: number, ms: number): number {
 // The wrap's own vertical slack - see `wrap`. Named because the path
 // above the dock has to know where the front card's top edge is.
 const DOCK_WRAP_PAD = 6;
+// The path strip's own side padding - named because its width is worked
+// out from its content plus exactly this.
+const PATH_PAD = 4;
 const DESK_HINT_H = 16;
 const DESK_HINT_BOTTOM = 3;
 const DESK_HINT_TRAVEL = 18;
@@ -812,6 +816,22 @@ export default function ContextDock() {
   const edgeInsetNow = Math.round(EDGE_INSET + (screenW * INSET_WIDE_F - EDGE_INSET) * stretch);
   const rowWidthNow = screenW - edgeInsetNow * 2;
   const cardWidthNow = rowWidthNow - beadSlotW * 2 - GAP * 2;
+  // HOW WIDE THE PATH STRIP STANDS. It starts on the dock card's own
+  // width and grows only as far as its crumbs actually need - "тільки
+  // якщо потребує цього" - out to the whole row at most, which is the
+  // search bead's left edge and the new-document bead's right edge:
+  // the two red marks on the user's screenshot. Past that it scrolls,
+  // as it always did.
+  //
+  // Measured from the crumbs themselves (the scroller's content), not
+  // guessed from the number of segments: a folder's name decides its
+  // width, and a measured number is the only one that can be right for
+  // every name.
+  const [pathContentW, setPathContentW] = useState(0);
+  const pathWidthNow = useEaseTo(
+    Math.min(rowWidthNow, Math.max(cardWidthNow, pathContentW + PATH_PAD * 2)),
+    220
+  );
   // HOW THE DOCK PARTS FROM THE SCREEN. In the black theme that is the
   // glow, and the glow is the whole reason this is here: the two pills
   // that still wore it were the editor's pre-dock chrome, the last two
@@ -920,6 +940,37 @@ export default function ContextDock() {
         }),
     []
   );
+
+  // A FLIP NOBODY SWIPED, drawn as though somebody had.
+  //
+  // `setFace` alone changes `faceIndex`, and `pos` IS `faceIndex` - so
+  // the new card is simply there in the next frame. Asked for a flip
+  // (entering a folder asks for one), the ring instead travels the same
+  // arc a finger's release travels, from where it stands to the card
+  // asked for: "так як ніби я її прогорнув пальцем - вздовж всього
+  // шляху анімації". Forward around the ring, because that is the one
+  // direction the stack's own geometry draws.
+  const flip = useNavDockFlipRequest();
+  const flipHandledRef = useRef(flip?.at ?? 0);
+  useEffect(() => {
+    if (!flip || flip.at === flipHandledRef.current) return;
+    flipHandledRef.current = flip.at;
+    const ring = facesRef.current;
+    const target = ring.indexOf(flip.face);
+    // Not in this screen's ring, or already in front: nothing to travel.
+    if (target < 0 || ring.length < 2 || ring[faceIndexRef.current] === flip.face) return;
+    const from = faceIndexRef.current;
+    const to = from + ((((target - from) % ring.length) + ring.length) % ring.length);
+    setDrag(from);
+    glide(
+      from,
+      to,
+      320,
+      (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2),
+      () => land.commit(flip.face)
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flip?.at]);
 
   // A card being carried can step onto a crumb - the same registry the
   // folder rows use, handed up by whichever screen is carrying.
@@ -1525,10 +1576,16 @@ export default function ContextDock() {
               keyboard over typed text, which this is not. */}
           <View style={[liftStyle(theme, theme.lift, 1), { borderRadius: DOCK_PATH_H / 2 }]}>
             <DockFrost
-              style={[styles.pathShell, styles.cardEdge, { width: cardWidthNow }]}
+              style={[styles.pathShell, styles.cardEdge, { width: pathWidthNow }]}
               radius={DOCK_PATH_H / 2}
             >
-              <ScrollView ref={trailRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.trailStrip}>
+              <ScrollView
+                ref={trailRef}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.trailStrip}
+                onContentSizeChange={(w) => setPathContentW(w)}
+              >
                 <View ref={targets?.('')} collapsable={false}>
                   <Pressable onPress={() => shownPath.onGo('')} style={styles.trailRoot}>
                     <Ionicons name={shownPath.icon as keyof typeof Ionicons.glyphMap} size={19} color={theme.glass.ink} />
@@ -1985,7 +2042,7 @@ const styles = StyleSheet.create({
   },
   pathShell: {
     height: DOCK_PATH_H,
-    paddingHorizontal: 4,
+    paddingHorizontal: PATH_PAD,
     justifyContent: 'center',
   },
   // A step shorter than the in-dock one, to sit inside the thinner strip.
