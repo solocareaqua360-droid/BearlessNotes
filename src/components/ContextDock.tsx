@@ -13,7 +13,7 @@ import { liftStyle } from '../theme/tokens';
 import { hapticButtonDown } from '../utils/haptics';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { DOCK_BOTTOM, dockCardHeight, dockEdgeInset, dockRowWidth } from '../navigation/dockGeometry';
+import { DOCK_BOTTOM, DOCK_PATH_GAP, DOCK_PATH_H, dockCardHeight, dockEdgeInset, dockRowWidth } from '../navigation/dockGeometry';
 import { navigationRef } from '../navigationRef';
 import {
   DockAction,
@@ -367,6 +367,9 @@ function useEaseTo(target: number, ms: number): number {
 // The desk capsule under the dock. It lives in the band between the dock
 // (DOCK_BOTTOM above the inset) and the screen's own bottom edge, and it
 // travels up behind the dock to hide.
+// The wrap's own vertical slack - see `wrap`. Named because the path
+// above the dock has to know where the front card's top edge is.
+const DOCK_WRAP_PAD = 6;
 const DESK_HINT_H = 16;
 const DESK_HINT_BOTTOM = 3;
 const DESK_HINT_TRAVEL = 18;
@@ -467,7 +470,14 @@ export default function ContextDock() {
   const screenKey = useScreenKey();
   const suppress = tabsInFlux;
   const own = suppress ? null : ownPublished;
+  // THE PATH IS NOT A CARD OF THE RING ANY MORE. It rises from behind the
+  // dock the moment a folder is entered and goes back under only at the
+  // root - "пролистування на нього більше не впливає, він виїжджає за
+  // дока при вході в папки". So the ring is built from what is left:
+  // the calendar's strip, the actions, the desks.
+  const ringOwn = own && own.kind !== 'path' ? own : null;
   const dock = hidden ? desksCard : (own ?? desksCard);
+  const ringDock = hidden ? desksCard : (ringOwn ?? desksCard);
   // The way out of the SCREEN, which is true even at a database's root,
   // where there is no path to show. The user's own ask: standing in a
   // database, the way back to the databases was the small arrow in the
@@ -527,11 +537,11 @@ export default function ContextDock() {
   // test and fall back to desks anyway - said here instead of left to
   // that fallback, because the actions row is simply always visible in
   // split mode regardless of which ring face fronts it.
-  const opensOn: DockFace = !own
+  const opensOn: DockFace = !ringOwn
     ? prefersActions && !splitActive
       ? 'actions'
       : 'desks'
-    : own.kind === 'strip'
+    : ringOwn.kind === 'strip'
       ? 'desks'
       : 'context';
   // Whether the ring has anything ELSE for actions to be split FROM.
@@ -554,7 +564,7 @@ export default function ContextDock() {
   // and the reason this never showed up as a bug on the note itself: a
   // note has no context of its own either, so its own actions
   // (Полотно/Референси) were never pulled out to begin with.
-  const ringHasOtherContent = !!own || !!desksCard;
+  const ringHasOtherContent = !!ringOwn || !!desksCard;
   // The cards this screen actually has, in the order they are wanted:
   // what you are in, what you can do in it, where else you could be. A
   // card with nothing on it is not a card and is simply not in the ring.
@@ -578,9 +588,9 @@ export default function ContextDock() {
   // behaviour was only ever agreed for the screen that has room to show
   // everything at once.
   const faces: DockFace[] = [
-    ...(own && !(splitActive && hidden) ? (['context'] as DockFace[]) : []),
+    ...(ringOwn && !(splitActive && hidden) ? (['context'] as DockFace[]) : []),
     ...(actions?.length && !(splitActive && ringHasOtherContent) ? (['actions'] as DockFace[]) : []),
-    ...(desksCard && !(splitActive && own && !hidden) ? (['desks'] as DockFace[]) : []),
+    ...(desksCard && !(splitActive && ringOwn && !hidden) ? (['desks'] as DockFace[]) : []),
   ];
   // When the card asked for is not in this screen's ring, fall back to
   // where you could go before what you could do - never land someone on
@@ -607,6 +617,13 @@ export default function ContextDock() {
   const deskHintDesks = desksCard?.kind === 'desks' ? desksCard.desks : null;
   const deskHintWanted = !!deskHintDesks && faces.includes('desks') && showing !== 'desks';
   const deskHint = useEase01(deskHintWanted, 220);
+  // The path above the dock - see `ringOwn`. Kept drawn from the last
+  // path it had while it goes back under, so the root does not empty it
+  // in the middle of its way down.
+  const pathUpWanted = own?.kind === 'path';
+  const pathUp = useEase01(pathUpWanted, 240);
+  const lastPathRef = useRef<Extract<NonNullable<typeof own>, { kind: 'path' }> | null>(null);
+  if (own?.kind === 'path') lastPathRef.current = own;
 
   // The two numbers the whole stack is drawn from: how many cards it
   // holds, and which of them is in front.
@@ -633,7 +650,9 @@ export default function ContextDock() {
   // files and photos both open on a path with a database's glyph - and
   // then it alone never changes between them. A layout effect, so this
   // lands before the frame is shown rather than after it.
-  const contextKey = dock ? `${dock.kind}:${dock.icon}` : '';
+  // The RING's context, not the path's: stepping into a folder raises
+  // the path above the dock and must not also turn the card in front.
+  const contextKey = ringDock ? `${ringDock.kind}:${ringDock.icon}` : '';
   useLayoutEffect(() => {
     setFace(opensOn);
   }, [screenKey, contextKey, opensOn, setFace]);
@@ -907,6 +926,10 @@ export default function ContextDock() {
   const targets = useNavDockTargets();
 
   const trail = own?.kind === 'path' ? own : null;
+  // Always true now - kept as a name so the old in-ring drawing below
+  // says plainly why it no longer draws.
+  const liftedPath = true;
+  const shownPath = trail ?? lastPathRef.current;
   const strip = own?.kind === 'strip' ? own : null;
   const desks = desksCard?.kind === 'desks' ? desksCard : null;
   const trailRef = useRef<ScrollView>(null);
@@ -1228,7 +1251,7 @@ export default function ContextDock() {
             </View>
           )}
 
-          {f === 'context' && trail && (
+          {f === 'context' && trail && !liftedPath && (
             <View style={[styles.shell, styles.trailShell, dims.card]}>
               <View style={[styles.trailRow, dims.rowHeight]}>
                 <ScrollView ref={trailRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.trailStrip}>
@@ -1316,7 +1339,7 @@ export default function ContextDock() {
   // the desks, nothing else. `faces` only ever puts them in this order
   // (context, then desks - see its own construction above), so checking
   // the two positions directly is enough; no need to search the array.
-  const isTwoWaySwap = faces.length === 2 && faces[0] === 'context' && faces[1] === 'desks' && !!trail && !!desks;
+  const isTwoWaySwap = !liftedPath && faces.length === 2 && faces[0] === 'context' && faces[1] === 'desks' && !!trail && !!desks;
   // One card's whole content for the two-way swap - both rows always
   // mounted, stacked on the SAME spot, each icon's own opacity is the
   // only thing that moves. See staggerOut/staggerIn's own comment for
@@ -1472,6 +1495,59 @@ export default function ContextDock() {
                 </Pressable>
               ))}
             </View>
+          </DockFrost>
+        </View>
+      )}
+      {/* THE PATH, risen from behind the dock - drawn before it for the
+          same reason as the desks below: it comes out from UNDER the
+          dock. Its hidden place is exactly behind the front card, so
+          the way up and the way down are one short slide. */}
+      {shownPath && pathUp > 0.001 && (
+        <View
+          pointerEvents={pathUpWanted ? 'box-none' : 'none'}
+          style={[
+            styles.pathWrap,
+            {
+              bottom: DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD + CARD_H + BEHIND_EDGE * 2 + DOCK_PATH_GAP,
+              opacity: pathUp,
+              transform: [{ translateY: (1 - pathUp) * (DOCK_PATH_H + DOCK_PATH_GAP + BEHIND_EDGE * 2) }],
+            },
+          ]}
+        >
+          {/* No live blur, as with the desks: it moves on every frame of
+              its way up (android_live_blur_moving_surface). */}
+          <DockFrost style={[styles.pathShell, { width: cardWidthNow }]} radius={DOCK_PATH_H / 2} blur={false}>
+            <ScrollView ref={trailRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.trailStrip}>
+              <View ref={targets?.('')} collapsable={false}>
+                <Pressable onPress={() => shownPath.onGo('')} style={styles.trailRoot}>
+                  <Ionicons name={shownPath.icon as keyof typeof Ionicons.glyphMap} size={19} color={theme.glass.ink} />
+                </Pressable>
+              </View>
+              {shownPath.crumbs.map((segment, index) => {
+                const isLast = index === shownPath.crumbs.length - 1;
+                const target = shownPath.crumbs.slice(0, index + 1).join('/');
+                return (
+                  <View key={target} style={styles.trailPair}>
+                    <Ionicons name="chevron-forward" size={13} color={theme.glass.inkMuted} />
+                    {isLast ? (
+                      <View style={[styles.trailCurrent, styles.pathCurrent, styles.here]}>
+                        <Text style={[styles.trailLabel, styles.trailLabelCurrent, { color: theme.glass.ink }]} numberOfLines={1}>
+                          {segment}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View ref={targets?.(target)} collapsable={false}>
+                        <Pressable onPress={() => shownPath.onGo(target)} style={styles.trailSegment}>
+                          <Text style={[styles.trailLabel, { color: theme.glass.inkMuted }]} numberOfLines={1}>
+                            {segment}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </ScrollView>
           </DockFrost>
         </View>
       )}
@@ -1746,7 +1822,7 @@ const styles = StyleSheet.create({
     // Slack above and below, and no clipping: a bead's bottom point
     // was going missing, and the one thing every ancestor here can be
     // made to promise is that it is not the one cutting it.
-    paddingVertical: 6,
+    paddingVertical: DOCK_WRAP_PAD,
     overflow: 'visible',
   },
   row: {
@@ -1888,6 +1964,21 @@ const styles = StyleSheet.create({
   // reference has no beads inside its capsule.
   here: {
     backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  pathWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  pathShell: {
+    height: DOCK_PATH_H,
+    paddingHorizontal: 4,
+    justifyContent: 'center',
+  },
+  // A step shorter than the in-dock one, to sit inside the thinner strip.
+  pathCurrent: {
+    paddingVertical: 6,
   },
   deskHintWrap: {
     position: 'absolute',
