@@ -1200,9 +1200,14 @@ export default function CalendarScreen() {
       })
     : [];
   const overviewAnchorIndex = overviewDays.findIndex((d) => d.key === overviewAnchor);
-  const overviewShown = overviewWarm
-    ? overviewDays
-    : overviewDays.filter((_, i) => Math.abs(i - overviewAnchorIndex) <= 2);
+  // Every day of the loaded months takes its place in the list from the
+  // start; before the zoom has landed, only the day and two either side
+  // are actually DRAWN, the rest hold their room empty. Adding them later
+  // used to push everything down - and the list, already scrolled to your
+  // day, was left showing a newer one: "переходить до сьогоднішньої".
+  const overviewDrawn = (index: number) => overviewWarm || Math.abs(index - overviewAnchorIndex) <= 2;
+  const overviewScrollYRef = useRef(0);
+  const overviewFirstKeyRef = useRef<string | null>(null);
   function extendOverview(direction: 'older' | 'newer') {
     setOverviewMonths((current) => {
       if (!current) return current;
@@ -1237,6 +1242,30 @@ export default function CalendarScreen() {
   const miniTop = (containerHRef.current || windowHeight) / 2 - miniH / 2;
   const OVERVIEW_LABEL_H = 30;
   const OVERVIEW_GAP = 18;
+  // Every day is the same height, so where any of them stands is
+  // arithmetic, not a measurement to wait for.
+  const overviewItemH = OVERVIEW_LABEL_H + miniH + OVERVIEW_GAP;
+  // Placed once the list's content really is that long - a scrollTo made
+  // before that (from a row's own onLayout, as it was) is clamped to the
+  // content that exists so far, which is the top of the list: the newest
+  // day. And kept in place when a newer month is added above.
+  function settleOverviewScroll() {
+    const first = overviewDays[0]?.key ?? null;
+    if (!overviewScrolledRef.current) {
+      if (overviewAnchorIndex < 0) return;
+      overviewScrolledRef.current = true;
+      overviewFirstKeyRef.current = first;
+      overviewScrollRef.current?.scrollTo({ y: overviewAnchorIndex * overviewItemH, animated: false });
+      return;
+    }
+    const previousFirst = overviewFirstKeyRef.current;
+    overviewFirstKeyRef.current = first;
+    if (!previousFirst || previousFirst === first) return;
+    const added = overviewDays.findIndex((d) => d.key === previousFirst);
+    if (added > 0) {
+      overviewScrollRef.current?.scrollTo({ y: overviewScrollYRef.current + added * overviewItemH, animated: false });
+    }
+  }
 
   // The month is NAVIGATION - it says which day to look at, it is not
   // the day - so on a pointer it stands in the rail, where this app
@@ -1808,54 +1837,48 @@ export default function CalendarScreen() {
               contentContainerStyle={[
                 styles.overviewContent,
                 {
-                  gap: OVERVIEW_GAP,
                   // The first page, unscrolled, stands where the page
                   // shrinks to; the last can still be scrolled up there.
                   paddingTop: Math.max(calendarInsets.top, miniTop - OVERVIEW_LABEL_H),
-                  paddingBottom: Math.max(overviewClear, (containerHRef.current || windowHeight) - miniTop - miniH),
+                  paddingBottom: Math.max(overviewClear, (containerHRef.current || windowHeight) - miniTop - miniH - OVERVIEW_GAP),
                 },
               ]}
               showsVerticalScrollIndicator={false}
-              // A newer month is PREPENDED; this keeps the page in view
-              // where it was instead of shoving it down by a month.
-              maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+              onContentSizeChange={settleOverviewScroll}
+              onScroll={(e) => (overviewScrollYRef.current = e.nativeEvent.contentOffset.y)}
+              scrollEventThrottle={32}
               onScrollEndDrag={checkOverviewEdges}
               onMomentumScrollEnd={checkOverviewEdges}
             >
-              {overviewShown.map((day) => {
+              {overviewDays.map((day, index) => {
                 const date = parseDateKey(day.key);
                 return (
                   <Animated.View
                     key={day.key}
-                    style={day.key === overviewAnchor ? overviewLateStyle : overviewEarlyStyle}
-                    onLayout={
-                      day.key === overviewAnchor
-                        ? (e) => {
-                            if (overviewScrolledRef.current) return;
-                            overviewScrolledRef.current = true;
-                            const y = e.nativeEvent.layout.y + OVERVIEW_LABEL_H - miniTop;
-                            overviewScrollRef.current?.scrollTo({ y: Math.max(0, y), animated: false });
-                          }
-                        : undefined
-                    }
+                    style={[
+                      { height: OVERVIEW_LABEL_H + miniH, marginBottom: OVERVIEW_GAP },
+                      day.key === overviewAnchor ? overviewLateStyle : overviewEarlyStyle,
+                    ]}
                   >
-                  <Pressable
-                    onPress={() => {
-                      if (day.key === selectedKey) closeOverview();
-                      else selectDay(date);
-                    }}
-                  >
-                    <Text style={[styles.overviewDate, { height: OVERVIEW_LABEL_H }]} numberOfLines={1}>
-                      {WEEKDAY_SHORT[mondayIndex(date)]}, {formatBigDate(date)}
-                    </Text>
-                    <DayPageMiniature
-                      blocks={day.blocks}
-                      pageWidth={noteRect.width}
-                      pageHeight={noteRect.height}
-                      scale={OVERVIEW_PAGE_SCALE}
-                      radius={16 * OVERVIEW_PAGE_SCALE}
-                    />
-                  </Pressable>
+                    {overviewDrawn(index) && (
+                      <Pressable
+                        onPress={() => {
+                          if (day.key === selectedKey) closeOverview();
+                          else selectDay(date);
+                        }}
+                      >
+                        <Text style={[styles.overviewDate, { height: OVERVIEW_LABEL_H }]} numberOfLines={1}>
+                          {WEEKDAY_SHORT[mondayIndex(date)]}, {formatBigDate(date)}
+                        </Text>
+                        <DayPageMiniature
+                          blocks={day.blocks}
+                          pageWidth={noteRect.width}
+                          pageHeight={noteRect.height}
+                          scale={OVERVIEW_PAGE_SCALE}
+                          radius={16 * OVERVIEW_PAGE_SCALE}
+                        />
+                      </Pressable>
+                    )}
                   </Animated.View>
                 );
               })}

@@ -62,6 +62,12 @@ function DayPageMiniature({
           },
         ]}
       >
+        {/* Rows go in a column of their OWN height. Laid straight into
+            the fixed-height page, they overflowed it, and Yoga answered
+            by shrinking whatever could shrink: a task's row is flex:1
+            (it fills its line in the editor), so every task collapsed to
+            nothing and only its "Нагадування" line was left. */}
+        <View>
         {shown.map((item, index) => {
           if (item.type === 'numbered') {
             runningNumber = index > 0 && shown[index - 1].type === 'numbered' ? runningNumber + 1 : 1;
@@ -106,6 +112,7 @@ function DayPageMiniature({
             />
           );
         })}
+        </View>
       </View>
     </View>
   );
