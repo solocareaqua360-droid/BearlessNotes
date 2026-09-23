@@ -445,10 +445,14 @@ function useStripLift(wanted: LiftKind) {
     kind: wanted,
     stage: wanted ? 2 : 0,
   }));
+  // What is actually on screen, which is behind the stage it was told to
+  // go to by however long that move takes - read when handing the place
+  // over, and never as a dependency: it changes every frame.
+  const stepRef = useRef(wanted ? 2 : 0);
   useEffect(() => {
-    // Already showing what is wanted.
-    if (lift.kind === wanted) {
-      if (wanted === null || lift.stage === 2) return;
+    // Already holding the place, and wanted there.
+    if (lift.kind !== null && lift.kind === wanted) {
+      if (lift.stage === 2) return;
       // Rising: up first, wide after.
       if (lift.stage === 0) {
         setLift({ kind: lift.kind, stage: 1 });
@@ -457,7 +461,7 @@ function useStripLift(wanted: LiftKind) {
       const id = setTimeout(() => setLift({ kind: lift.kind, stage: 2 }), PATH_STEP_MS);
       return () => clearTimeout(id);
     }
-    // Something else is wanted: put this one away first, narrow then down.
+    // Not wanted: away, narrow first and down after.
     if (lift.stage === 2) {
       setLift({ kind: lift.kind, stage: 1 });
       return;
@@ -466,10 +470,19 @@ function useStripLift(wanted: LiftKind) {
       const id = setTimeout(() => setLift({ kind: lift.kind, stage: 0 }), PATH_STEP_MS);
       return () => clearTimeout(id);
     }
-    // The place is free - hand it over.
-    setLift({ kind: wanted, stage: 0 });
+    // Told to go down. Nothing else wants the place, so leave it holding
+    // it: it simply stops being drawn once it has actually arrived. The
+    // kind is NOT cleared here - clearing it took the strip off the
+    // screen at the moment the descent began rather than when it ended:
+    // "смужки пропадають раніше аніж сховаються вниз за док".
+    if (wanted === null) return;
+    // Something else wants it. Hand it over once this one has arrived,
+    // not when it was told to leave.
+    const id = setTimeout(() => setLift({ kind: wanted, stage: 0 }), stepRef.current <= 0.001 ? 0 : PATH_STEP_MS);
+    return () => clearTimeout(id);
   }, [wanted, lift]);
   const step = useEaseOutTo(lift.stage, PATH_STEP_MS);
+  stepRef.current = step;
   return {
     kind: lift.kind,
     step,
@@ -952,6 +965,12 @@ export default function ContextDock() {
   // The days open to the whole row too - the outer edges of the search
   // and today beads, which is what the row IS.
   const dayWidthNow = cardWidthNow + (rowWidthNow - cardWidthNow) * dayWide;
+  // NOT FADED, either way. A strip that fades as it goes is most of the
+  // way gone before it has moved - "пропадають раніше аніж сховаються
+  // вниз за док". It does not need to fade: by the time it travels it
+  // has narrowed to the dock's own width, which is exactly what the dock
+  // covers, and it is drawn before the dock, so it really does go behind
+  // it.
   // Both strips stand in the same place; they are never up together.
   const liftedBottom = DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD + CARD_H + BEHIND_EDGE * 2 + DOCK_PATH_GAP;
   const liftedTravel = DOCK_PATH_H + DOCK_PATH_GAP + BEHIND_EDGE * 2;
@@ -1706,7 +1725,6 @@ export default function ContextDock() {
             styles.pathWrap,
             {
               bottom: liftedBottom,
-              opacity: dayUp,
               transform: [{ translateY: (1 - dayUp) * liftedTravel }],
             },
           ]}
@@ -1777,7 +1795,6 @@ export default function ContextDock() {
             styles.pathWrap,
             {
               bottom: liftedBottom,
-              opacity: pathUp,
               transform: [{ translateY: (1 - pathUp) * liftedTravel }],
             },
           ]}
