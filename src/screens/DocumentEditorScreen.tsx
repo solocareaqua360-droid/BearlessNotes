@@ -645,6 +645,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // What the panel is actually drawn at - the same number the bar stands
   // on, frozen at the moment it opened.
   const [panelHeight, setPanelHeight] = useState(0);
+  // ⌨ was pressed and the keyboard is on its way up. The panel stays
+  // drawn - and the bar stays standing on it - until the keyboard has
+  // arrived, so the keyboard rises UNDER them rather than the bar falling
+  // and the page showing through for a third of a second first.
+  const [panelClosing, setPanelClosing] = useState(false);
   // Whether the panel has been opened AT ALL in this editing session.
   //
   // Before it has, the field is never told anything about the soft
@@ -1765,8 +1770,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
 
   function closePanel() {
     lowerAllRef.current = false;
-    panelHeightSV.value = 0;
+    // panelHeightSV is NOT zeroed here - see panelClosing.
+    setPanelClosing(true);
     setPanelSection(null);
+  }
+
+  // The keyboard has arrived (or failed to - see the fallback in the
+  // close effect): the panel can go, and the bar is now standing on the
+  // keyboard, so letting go of the panel's height moves nothing.
+  function finishPanelClose() {
+    setPanelClosing(false);
+    panelHeightSV.value = 0;
   }
 
   // ⌄: lower whatever stands at the bottom and stop editing. With the
@@ -1835,17 +1849,33 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       return;
     }
     const sel = activeSelection;
-    inputRefs.current[id]?.focus();
-    // The caret goes back where it was, not to the end of the text -
-    // focusing a field is not the same as returning to it.
-    if (sel && sel.blockId === id) {
-      requestAnimationFrame(() => setSelection(inputRefs.current[id], sel.start, sel.end));
-    }
+    // A plain focus() did not raise the keyboard: "кнопка клавіатури
+    // прибирає слеш рядок, а потім і саму панель", and no keyboard came.
+    // Android raises it reliably only on a blur/focus round trip - the
+    // same one the return-from-another-app path uses - and the blur is
+    // marked as ours so it does not end the session it is resuming.
+    resumeRefocusRef.current = true;
+    inputRefs.current[id]?.blur();
+    requestAnimationFrame(() => {
+      inputRefs.current[id]?.focus();
+      resumeRefocusRef.current = false;
+      // The caret goes back where it was, not to the end of the text -
+      // focusing a field is not the same as returning to it.
+      if (sel && sel.blockId === id) {
+        requestAnimationFrame(() => setSelection(inputRefs.current[id], sel.start, sel.end));
+      }
+    });
     // Once the keyboard is back up, stop saying anything to the field
     // about it. Long enough for the focus and the keyboard's own
     // animation to finish, so the flag is not withdrawn mid-rise.
     const settle = setTimeout(() => setSoftInputManaged(false), 500);
-    return () => clearTimeout(settle);
+    // And if the keyboard never arrives, the panel must not stand there
+    // for ever waiting for it.
+    const fallback = setTimeout(finishPanelClose, 600);
+    return () => {
+      clearTimeout(settle);
+      clearTimeout(fallback);
+    };
   }, [panelSection]);
 
   function scheduleScrollAdjust(currentKeyboardHeight: number) {
@@ -2193,6 +2223,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         // arrived and the synced scroll has landed. See
         // scrollFocusedBlockIntoView for why the timer alone was wrong.
         if (e.height > 0) runOnJS(scheduleScrollAdjust)(e.height);
+        // ...and if the panel was waiting for this keyboard, it can go.
+        if (e.height > 0) runOnJS(finishPanelClose)();
       },
     },
     [windowHeight]
@@ -5227,7 +5259,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       {/* Where the keyboard was. Its own layer at the very bottom, not a
           child of the bar above it - the bar rides the keyboard's live
           height and this does not move at all. */}
-      {phonePanel && panelSection !== null && (
+      {phonePanel && (panelSection !== null || panelClosing) && (
         <View style={styles.insertPanelDock}>
           <EditorInsertPanel
             height={panelHeight || lastKeyboardHeightRef.current || 300}
