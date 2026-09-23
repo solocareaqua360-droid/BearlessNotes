@@ -25,7 +25,11 @@ import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 // stops asking for the soft keyboard, so the caret and the selection
 // stay exactly where they were.
 
-export type PanelSection = 'lists' | 'format' | 'size' | 'rules' | 'insert';
+// «B» is gone and «Тт» carries everything to do with text - the user's
+// call: "кнопку B можна прибрати та залишити лише Тт, все що пов'язано
+// з текстом буде за нею". Bold, colour, highlight and size are four
+// groups under one door rather than two doors into the same subject.
+export type PanelSection = 'lists' | 'text' | 'rules' | 'insert';
 
 export type PanelItem = {
   key: string;
@@ -89,7 +93,15 @@ export default function EditorInsertPanel({
         {groups.map((group) => (
           <View
             key={group.section + group.title}
-            onLayout={(e) => offsets.current.set(group.section, e.nativeEvent.layout.y)}
+            onLayout={(e) => {
+              // The FIRST group of a section, not the last. Four groups
+              // share «текст» now, and each one overwriting the offset
+              // would land the jump on «Розмір» instead of the top of
+              // the subject.
+              const y = e.nativeEvent.layout.y;
+              const known = offsets.current.get(group.section);
+              if (known === undefined || y < known) offsets.current.set(group.section, y);
+            }}
           >
             <Text style={styles.sectionTitle}>{group.title}</Text>
             <View style={group.compact ? styles.swatchRow : styles.tiles}>

@@ -44,8 +44,9 @@ type Door = {
 
 const DOORS: Door[] = [
   { section: 'lists', family: 'material-community', icon: 'format-list-bulleted', label: 'Списки' },
-  { section: 'format', family: 'material-community', icon: 'format-bold', label: 'Форматування' },
-  { section: 'size', family: 'material-community', icon: 'format-size', label: 'Розмір тексту' },
+  // One door for text, not two. Bold and size are the same subject, and
+  // the row is shorter for it.
+  { section: 'text', family: 'material-community', icon: 'format-size', label: 'Текст' },
   { section: 'rules', family: 'ionicons', icon: 'remove-outline', label: 'Лінії' },
   { section: 'insert', family: 'ionicons', icon: 'add-circle-outline', label: 'Вставка' },
 ];

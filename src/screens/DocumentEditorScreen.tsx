@@ -635,6 +635,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // What the panel is actually drawn at - the same number the bar stands
   // on, frozen at the moment it opened.
   const [panelHeight, setPanelHeight] = useState(0);
+  // Whether the panel has been opened AT ALL in this editing session.
+  //
+  // Before it has, the field is never told anything about the soft
+  // keyboard - passing the prop at all makes Android call
+  // setShowSoftInputOnFocus on every update, and that nudged the IME
+  // into jerking the page on a plain tap. After the panel has been
+  // used, the flag has to be set BOTH ways: left at `undefined` on the
+  // way out, RN never turns it back on, and the field stayed silent for
+  // the rest of the session - the keyboard would not come back when the
+  // panel closed.
+  const panelEverOpenedRef = useRef(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [activeSelection, setActiveSelection] = useState<{ blockId: string; start: number; end: number } | null>(
@@ -1720,6 +1731,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // back to the shorter event value - the panel shrank on the second
     // press. "Панель все одно опускається нижче при натисканні на
     // кнопку B... ти їх вирівняв тільки по кнопці списку."
+    panelEverOpenedRef.current = true;
     if (panelSection === null) {
       const height = keyboardSV.value || lastKeyboardHeightRef.current;
       panelHeightSV.value = height;
@@ -1874,7 +1886,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       ],
     },
     {
-      section: 'format',
+      section: 'text',
       title: 'Форматування',
       items: [
         { key: 'bold', label: 'Жирний', family: 'material-community', icon: 'format-bold', onPress: () => applyMarkerToSelection('**', '**') },
@@ -1884,7 +1896,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       ],
     },
     {
-      section: 'format',
+      section: 'text',
       title: 'Колір тексту',
       compact: true,
       items: TEXT_COLORS.map((hex) => ({
@@ -1896,7 +1908,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       })),
     },
     {
-      section: 'format',
+      section: 'text',
       title: 'Виділення',
       compact: true,
       items: HIGHLIGHT_COLORS.map((hex) => ({
@@ -1908,7 +1920,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       })),
     },
     {
-      section: 'size',
+      section: 'text',
       title: 'Розмір тексту',
       items: [
         { key: 'heading', label: 'Заголовок', family: 'material-community', icon: 'format-header-2', onPress: action('heading') },
@@ -4722,7 +4734,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           documentIndex={documentIndex}
           onOpenDocument={openReferencedDocument}
           onOpenCustomView={openCustomViewBlock}
-          softInputDisabled={panelSection !== null}
+          softInputDisabled={panelEverOpenedRef.current ? panelSection !== null : undefined}
           onInputRef={registerInputRef}
           paperColor={paperColor}
         />

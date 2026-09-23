@@ -625,7 +625,7 @@ export default function BlockRow({
         // IME - the page jerked twice on a plain tap into a field.
         // Absent, RN does not touch it and the field behaves exactly as
         // it did before the panel existed.
-        showSoftInputOnFocus={softInputDisabled ? false : undefined}
+        showSoftInputOnFocus={softInputDisabled === undefined ? undefined : !softInputDisabled}
         // Android's TextInput doesn't reliably pick up a dynamic `editable`
         // change on an already-mounted view; keying on canEditText forces
         // a clean remount so the native EditText is created with the
