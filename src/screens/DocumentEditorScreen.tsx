@@ -632,6 +632,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // moves as one replaces the other - and by the time the panel opens
   // the live height is already on its way to zero.
   const lastKeyboardHeightRef = useRef(0);
+  // What the panel is actually drawn at - the same number the bar stands
+  // on, frozen at the moment it opened.
+  const [panelHeight, setPanelHeight] = useState(0);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [activeSelection, setActiveSelection] = useState<{ blockId: string; start: number; end: number } | null>(
@@ -1705,7 +1708,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // selection survive that round trip because the editor's own state
   // holds them, not the native field.
   function openPanel(section: PanelSection) {
-    panelHeightSV.value = lastKeyboardHeightRef.current;
+    // From the FRAME HANDLER's own live height, not from RN's keyboard
+    // event. The two APIs disagree - this file already records the event
+    // under-reporting by the suggestion strip - and the bar stands on
+    // the frame handler's number. Taking the panel's height from the
+    // other one left it short by the gesture bar, so the panel and the
+    // keyboard were not the same height and the bar moved between them.
+    const height = keyboardSV.value || lastKeyboardHeightRef.current;
+    panelHeightSV.value = height;
+    setPanelHeight(height);
     setPanelSection(section);
     setPanelJump({ section, at: Date.now() });
   }
@@ -5047,7 +5058,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       {phonePanel && panelSection !== null && (
         <View style={styles.insertPanelDock}>
           <EditorInsertPanel
-            height={lastKeyboardHeightRef.current || 300}
+            height={panelHeight || lastKeyboardHeightRef.current || 300}
             groups={panelGroups}
             jumpTo={panelJump}
           />
