@@ -150,6 +150,7 @@ import {
   useDockBeads,
   useDockOpensOnActions,
   useDockShowContext,
+  useNavDockFlip,
   useNavDockFace,
 } from '../navigation/navDock';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -2534,6 +2535,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // Whatever the count, including none: the way OUT of select mode is
   // the first of those buttons, and the daily note had no other.
   const embeddedSelect = embedded && isSelectMode;
+  // ...and the dock turns to them as they are picked, since on the
+  // calendar that card exists for nothing else: "док нам буде потрібен
+  // тільки при виділенні блоків". Drawn as a swipe, the same as stepping
+  // into a folder - see ContextDock's own `flip`.
+  const flipDock = useNavDockFlip();
+  useEffect(() => {
+    if (!embeddedSelect) return;
+    flipDock('actions');
+  }, [embeddedSelect, flipDock]);
   useDockActions(
     !dockLive && !embeddedSelect
       ? null

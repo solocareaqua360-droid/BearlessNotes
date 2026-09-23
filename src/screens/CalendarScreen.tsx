@@ -791,59 +791,19 @@ export default function CalendarScreen() {
           },
         }
       : null;
-  const calendarActions = calendarFocused
-      ? [
-          ...(!onlyFilledDays && !isTwoPane
-            ? [
-                {
-                  key: 'month',
-                  icon: 'calendar-outline',
-                  label: 'Місяць',
-                  active: isMonthExpanded,
-                  onPress: () => setIsMonthExpanded((prev) => !prev),
-                },
-              ]
-            : []),
-          ...(!isTwoPane && (historyByDate.get(dateKey(selectedDate))?.length ?? 0) > 0
-            ? [
-                {
-                  key: 'history',
-                  icon: 'time-outline',
-                  label: 'Історія',
-                  active: historyExpanded,
-                  onPress: () => setHistoryExpanded((v) => !v),
-                },
-              ]
-            : []),
-          // Two switches were one filter with three states all along:
-          // every day, then only the days that hold something, then only
-          // the days something was added on. Pressing it walks the three
-          // - and the icon says which one is in force, which two separate
-          // buttons could only say by both being off.
-          {
-            key: 'filter',
-            label: 'Фільтр',
-            icon:
-              compactFilter === 'filled'
-                ? 'filter'
-                : compactFilter === 'history'
-                  ? 'hourglass-outline'
-                  : 'filter-outline',
-            active: compactFilter !== 'none',
-            onPress: cycleCompactFilter,
-          },
-          {
-            key: 'select',
-            icon: noteSelectMode ? 'close-outline' : 'ellipse-outline',
-            label: noteSelectMode ? 'Вийти' : 'Вибір',
-            active: noteSelectMode,
-            onPress: () => {
-              if (noteSelectMode) showContext();
-              noteEditorRef.current?.toggleSelectMode();
-            },
-          },
-        ]
-      : null;
+  // THE DOCK IS FOR PICKED BLOCKS NOW, and for nothing else here - the
+  // user's own call. «Місяць» is gone: the date at the top of the screen
+  // already opens the month, and it says which month it would open.
+  // «Фільтр» is gone too: its "only the days that hold something" is
+  // what the swipe up now shows, as whole pages. «Вибір» moved up beside
+  // the date, opposite it. What is left is the history, which is the one
+  // thing that still has nowhere else to stand - see the note below.
+  // Nothing at all now. «Історія» was the last of them and it stands
+  // under the opened month instead, as its own heading - the user's own
+  // answer to where those cards belong: "при розгортанні календаря
+  // верхньою кнопкою під ним з'явиться ще одна кнопка(заголовок)
+  // розгортання карток історії".
+  const calendarActions = null;
   useDockBeads(pointerDensity ? null : searchBead, pointerDensity ? null : todayBead);
   useDockActions(pointerDensity ? null : calendarActions);
   // The same list, for the column head. A bead and an action differ only
@@ -858,9 +818,9 @@ export default function CalendarScreen() {
           // sheet beside the day it acts on, and the filter nowhere at
           // all. Only search is left, and the user asked for it to stay
           // here - "пошук там залишиться".
-          ...(feedMode
-            ? []
-            : (calendarActions ?? []).map((a) => ({ key: a.key, icon: a.icon, active: a.active, onPress: a.onPress }))),
+          // Nothing else: the dock's own list is empty now (see
+          // calendarActions), and everything that was in it either moved
+          // beside the thing it acts on or stopped being a button.
         ].filter((c) => !(feedMode && c.key === 'today'))
       : [];
   const showContext = useDockShowContext();
@@ -931,6 +891,11 @@ export default function CalendarScreen() {
 
   // One switch, three states, walked in a ring: every day, then the days
   // that hold something, then the days something was added on.
+  // Nothing calls this any more - «Фільтр» left the dock, and the swipe
+  // up shows the days that hold something as whole pages instead. Kept
+  // because the THIRD state it walked to has no such replacement: "only
+  // the days something was added on" is reachable from nowhere now, and
+  // this is what a control for it would call.
   async function cycleCompactFilter() {
     const next = compactFilter === 'none' ? 'filled' : compactFilter === 'filled' ? 'history' : 'none';
     await setDoc(calendarPrefsDoc, { compactFilter: next }, { merge: true });
@@ -1184,6 +1149,7 @@ export default function CalendarScreen() {
   }
 
   const selectedKey = dateKey(selectedDate);
+  const dayHistoryCount = historyByDate.get(selectedKey)?.length ?? 0;
   const dailyDocId = `day_${selectedKey}`;
   // Another day picked - from a card here, or from the dock's own days -
   // is that day's page, so the overview gives way to it.
@@ -1468,6 +1434,24 @@ export default function CalendarScreen() {
             )}
           </Pressable>
         </View>
+        {/* Opposite the day's own name, which is what it acts on - the
+            user's own placement. It was a dock action, and the dock here
+            is for the blocks themselves now. */}
+        <Pressable
+          style={[styles.headerSelect, noteSelectMode && styles.headerSelectOn]}
+          hitSlop={8}
+          accessibilityLabel={noteSelectMode ? 'Вийти з вибору' : 'Вибір блоків'}
+          onPress={() => {
+            if (noteSelectMode) showContext();
+            noteEditorRef.current?.toggleSelectMode();
+          }}
+        >
+          <Ionicons
+            name={noteSelectMode ? 'close-outline' : 'ellipse-outline'}
+            size={18}
+            color={theme.ink.muted}
+          />
+        </Pressable>
       </Animated.View>
       )}
 
@@ -1780,10 +1764,25 @@ export default function CalendarScreen() {
           )}
           </View>
 
-          {!foldedAway && !isTwoPane && (
+          {/* THE HISTORY, under the month and only while it is open.
+              The day's own note has the screen when the month is folded
+              away, and a row of cards with nothing to head it was what
+              the dock's «Історія» button used to answer for. */}
+          {!foldedAway && !isTwoPane && monthOpen && dayHistoryCount > 0 && (
+            <Pressable style={styles.historyHead} onPress={() => setHistoryExpanded((v) => !v)}>
+              <Ionicons name="time-outline" size={14} color={theme.ink.muted} />
+              <Text style={styles.historyHeadLabel}>Історія</Text>
+              <Text style={styles.historyHeadCount}>{dayHistoryCount}</Text>
+              <View style={styles.historyHeadSpace} />
+              <Ionicons
+                name={historyExpanded ? 'chevron-up' : 'chevron-down'}
+                size={14}
+                color={theme.ink.faint}
+              />
+            </Pressable>
+          )}
+          {!foldedAway && !isTwoPane && monthOpen && dayHistoryCount > 0 && (
             <View style={styles.capsuleRow}>
-              {/* Only the list itself: both buttons that used to head this
-                  row now stand on the rail. */}
               <DayHistoryList
                 items={historyByDate.get(selectedKey) ?? []}
                 expanded={historyExpanded}
@@ -2005,6 +2004,15 @@ const makeStyles = (t: Theme) =>
   StyleSheet.create({
   container: {
     flex: 1,
+  },
+  headerSelect: {
+    padding: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: t.edge.hairline,
+  },
+  headerSelectOn: {
+    backgroundColor: t.edge.strong,
   },
   headerRow: {
     flexDirection: 'row',
@@ -2522,6 +2530,27 @@ const makeStyles = (t: Theme) =>
     flex: 1,
     marginRight: 16,
     marginBottom: 8,
+  },
+  historyHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: 16,
+    marginRight: 20,
+    paddingVertical: 8,
+  },
+  historyHeadLabel: {
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
+    color: t.ink.muted,
+  },
+  historyHeadCount: {
+    fontSize: 12,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.faint,
+  },
+  historyHeadSpace: {
+    flex: 1,
   },
   capsuleRow: {
     flexDirection: 'row',
