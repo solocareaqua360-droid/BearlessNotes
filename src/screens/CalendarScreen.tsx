@@ -321,6 +321,12 @@ export default function CalendarScreen() {
   const stackYRef = useRef(0);
   const noteRectRef = useRef<{ y: number; width: number; height: number } | null>(null);
   const containerHRef = useRef(0);
+  function updatePageShift() {
+    const rect = noteRectRef.current;
+    const containerH = containerHRef.current;
+    if (!rect || !containerH) return;
+    pageShiftSV.value = containerH / 2 - (stackYRef.current + rect.y + rect.height / 2);
+  }
   function openOverview() {
     if (overviewOpenRef.current) return;
     overviewOpenRef.current = true;
@@ -362,15 +368,32 @@ export default function CalendarScreen() {
     [phoneOverview, overviewOpen]
   );
   const OVERVIEW_PAGE_SCALE = 0.82;
+  // How far the page's centre has to travel to the screen's centre,
+  // where its miniature stands - "перша картка має бути прям по центру".
+  const pageShiftSV = useSharedValue(0);
+  // The page SHRINKS the whole way, visibly, and only in the last fifth
+  // does it hand over to its miniature ("анімація звужування від цілого
+  // полотна до такого вигляду") - it used to be half gone before it was
+  // half the size. It travels to the centre in step with its shrinking,
+  // so fingers and the pull both land it in the same place.
   const noteZoomStyle = useAnimatedStyle(() => {
     const p = overviewSV.value;
+    const shrink = pinchScale.value + (OVERVIEW_PAGE_SCALE - pinchScale.value) * p;
+    const toward = Math.min(1, Math.max(0, (1 - shrink) / (1 - OVERVIEW_PAGE_SCALE)));
     return {
-      opacity: 1 - p,
-      transform: [{ scale: pinchScale.value + (OVERVIEW_PAGE_SCALE - pinchScale.value) * p }],
+      opacity: p < 0.8 ? 1 : (1 - p) / 0.2,
+      transform: [{ translateY: toward * pageShiftSV.value }, { scale: shrink }],
     };
   });
-  const overviewStyle = useAnimatedStyle(() => ({
-    opacity: overviewSV.value,
+  // The other days come in as the page shrinks...
+  // Not from the very start: while the page is still nearly full size
+  // its edges reach past where the neighbours stand.
+  const overviewEarlyStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(1, Math.max(0, (overviewSV.value - 0.4) / 0.6)),
+  }));
+  // ...the ground and the day's own miniature only as the page hands over.
+  const overviewLateStyle = useAnimatedStyle(() => ({
+    opacity: overviewSV.value < 0.8 ? 0 : (overviewSV.value - 0.8) / 0.2,
   }));
   useEffect(() => {
     if (!overviewOpen) return;
@@ -1073,6 +1096,7 @@ export default function CalendarScreen() {
             ? (e) => {
                 const { y, width, height } = e.nativeEvent.layout;
                 noteRectRef.current = { y, width, height };
+                updatePageShift();
               }
             : undefined
         }
@@ -1155,7 +1179,7 @@ export default function CalendarScreen() {
   const miniW = noteRect.width * OVERVIEW_PAGE_SCALE;
   const miniH = noteRect.height * OVERVIEW_PAGE_SCALE;
   // Where the shrunk page's top edge is: scaled about its own centre.
-  const miniTop = stackYRef.current + noteRect.y + (noteRect.height - miniH) / 2;
+  const miniTop = (containerHRef.current || windowHeight) / 2 - miniH / 2;
   const OVERVIEW_LABEL_H = 30;
   const OVERVIEW_GAP = 18;
 
@@ -1289,7 +1313,10 @@ export default function CalendarScreen() {
   }
 
   return (
-    <View style={styles.container} onLayout={(e) => (containerHRef.current = e.nativeEvent.layout.height)}>
+    <View style={styles.container} onLayout={(e) => {
+        containerHRef.current = e.nativeEvent.layout.height;
+        updatePageShift();
+      }}>
       {/* The theme's own ground - drawn by hand here before, so it stood
           on the colour theme's brown gradient whatever the setting said.
           The daily-note editor below (`noteArea`) stays white on its own
@@ -1346,7 +1373,10 @@ export default function CalendarScreen() {
           a wide screen (calendar left, note right). Both halves are flex:1
           in the row, so they split the window evenly. */}
       <View
-        onLayout={(e) => (stackYRef.current = e.nativeEvent.layout.y)}
+        onLayout={(e) => {
+          stackYRef.current = e.nativeEvent.layout.y;
+          updatePageShift();
+        }}
         style={[
           stackedWide ? styles.stack : isTwoPane ? styles.paneRow : styles.stack,
           // Reversed rather than reordered: the calendar is still the
@@ -1707,12 +1737,16 @@ export default function CalendarScreen() {
       </View>
 
       {phoneOverview && overviewOpen && (
-        <Animated.View style={[StyleSheet.absoluteFill, overviewStyle]}>
-          <ScreenBackdrop id="calendarOverviewBg" />
+        <View style={StyleSheet.absoluteFill}>
+          <Animated.View style={[StyleSheet.absoluteFill, overviewLateStyle]} pointerEvents="none">
+            <ScreenBackdrop id="calendarOverviewBg" />
+          </Animated.View>
           {dayFeedLoaded && dayFeed.length === 0 ? (
-            <Text style={[styles.feedEmpty, styles.overviewEmpty, { paddingTop: calendarInsets.top + 24 }]}>
+            <Animated.Text
+              style={[styles.feedEmpty, styles.overviewEmpty, { paddingTop: calendarInsets.top + 24 }, overviewLateStyle]}
+            >
               Ще немає жодного заповненого дня
-            </Text>
+            </Animated.Text>
           ) : (
             <ScrollView
               ref={overviewScrollRef}
@@ -1731,8 +1765,9 @@ export default function CalendarScreen() {
               {dayFeed.map((day) => {
                 const date = parseDateKey(day.key);
                 return (
-                  <Pressable
+                  <Animated.View
                     key={day.key}
+                    style={day.key === overviewAnchor ? overviewLateStyle : overviewEarlyStyle}
                     onLayout={
                       day.key === overviewAnchor
                         ? (e) => {
@@ -1743,6 +1778,8 @@ export default function CalendarScreen() {
                           }
                         : undefined
                     }
+                  >
+                  <Pressable
                     onPress={() => {
                       if (day.key === selectedKey) closeOverview();
                       else selectDay(date);
@@ -1758,11 +1795,12 @@ export default function CalendarScreen() {
                       radius={16 * OVERVIEW_PAGE_SCALE}
                     />
                   </Pressable>
+                  </Animated.View>
                 );
               })}
             </ScrollView>
           )}
-        </Animated.View>
+        </View>
       )}
     </View>
   );
