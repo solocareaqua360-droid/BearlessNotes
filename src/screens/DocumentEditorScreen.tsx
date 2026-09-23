@@ -645,7 +645,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // way out, RN never turns it back on, and the field stayed silent for
   // the rest of the session - the keyboard would not come back when the
   // panel closed.
-  const panelEverOpenedRef = useRef(false);
+  // ...and it goes back to silence once the keyboard is up again.
+  //
+  // Left true for the rest of the session, the field kept being told
+  // about the soft keyboard on every update, and that is the nudge that
+  // jerked the page - which is why the jerk survived at half strength:
+  // gone until the panel was first opened, back for good afterwards.
+  // Set while the panel is being used, cleared once the keyboard has
+  // returned.
+  const [softInputManaged, setSoftInputManaged] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [activeSelection, setActiveSelection] = useState<{ blockId: string; start: number; end: number } | null>(
@@ -1731,7 +1739,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // back to the shorter event value - the panel shrank on the second
     // press. "Панель все одно опускається нижче при натисканні на
     // кнопку B... ти їх вирівняв тільки по кнопці списку."
-    panelEverOpenedRef.current = true;
+    setSoftInputManaged(true);
     if (panelSection === null) {
       const height = keyboardSV.value || lastKeyboardHeightRef.current;
       panelHeightSV.value = height;
@@ -1796,6 +1804,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     if (sel && sel.blockId === id) {
       requestAnimationFrame(() => setSelection(inputRefs.current[id], sel.start, sel.end));
     }
+    // Once the keyboard is back up, stop saying anything to the field
+    // about it. Long enough for the focus and the keyboard's own
+    // animation to finish, so the flag is not withdrawn mid-rise.
+    const settle = setTimeout(() => setSoftInputManaged(false), 500);
+    return () => clearTimeout(settle);
   }, [panelSection]);
 
   function scheduleScrollAdjust(currentKeyboardHeight: number) {
@@ -4734,7 +4747,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           documentIndex={documentIndex}
           onOpenDocument={openReferencedDocument}
           onOpenCustomView={openCustomViewBlock}
-          softInputDisabled={panelEverOpenedRef.current ? panelSection !== null : undefined}
+          softInputDisabled={softInputManaged ? panelSection !== null : undefined}
           onInputRef={registerInputRef}
           paperColor={paperColor}
         />
