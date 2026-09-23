@@ -327,10 +327,23 @@ export default function CalendarScreen() {
     if (!rect || !containerH) return;
     pageShiftSV.value = containerH / 2 - (stackYRef.current + rect.y + rect.height / 2);
   }
+  // A MONTH AT A TIME, the way Craft does it: the overview opens on the
+  // month of the day you were on, and the next month is drawn only when
+  // the list is pulled to its end - where Android's own stretch holds
+  // the edge for the moment that takes. Months with nothing in them are
+  // skipped: a step is always to the next month that HAS a day.
+  const [overviewMonths, setOverviewMonths] = useState<{ older: string; newer: string } | null>(null);
+  // For the length of the zoom only the day and its near neighbours are
+  // mounted; the rest of the month follows once the page has landed, so
+  // a month of real pages is not laid out under a running animation.
+  const [overviewWarm, setOverviewWarm] = useState(false);
   function openOverview() {
     if (overviewOpenRef.current) return;
     overviewOpenRef.current = true;
     overviewScrolledRef.current = false;
+    setOverviewMonths(null);
+    setOverviewWarm(false);
+    setTimeout(() => setOverviewWarm(true), 380);
     Keyboard.dismiss();
     setOverviewOpen(true);
     overviewSV.value = withTiming(1, { duration: 300, easing: Easing.out(Easing.cubic) });
@@ -1174,7 +1187,49 @@ export default function CalendarScreen() {
   // Where the overview opens: the day you were on, or the nearest filled
   // one before it - the list is newest first, so the days after it are
   // above and the ones before it below.
-  const overviewAnchor = dayFeed.find((d) => d.key <= selectedKey)?.key ?? null;
+  const overviewAnchor = dayFeed.find((d) => d.key <= selectedKey)?.key ?? dayFeed[dayFeed.length - 1]?.key ?? null;
+  useEffect(() => {
+    if (!overviewOpen || overviewMonths || !overviewAnchor) return;
+    const month = overviewAnchor.slice(0, 7);
+    setOverviewMonths({ older: month, newer: month });
+  }, [overviewOpen, overviewMonths, overviewAnchor]);
+  const overviewDays = overviewMonths
+    ? dayFeed.filter((d) => {
+        const month = d.key.slice(0, 7);
+        return month >= overviewMonths.older && month <= overviewMonths.newer;
+      })
+    : [];
+  const overviewAnchorIndex = overviewDays.findIndex((d) => d.key === overviewAnchor);
+  const overviewShown = overviewWarm
+    ? overviewDays
+    : overviewDays.filter((_, i) => Math.abs(i - overviewAnchorIndex) <= 2);
+  function extendOverview(direction: 'older' | 'newer') {
+    setOverviewMonths((current) => {
+      if (!current) return current;
+      if (direction === 'older') {
+        // Newest first, so the first day before the oldest month drawn
+        // is the nearest older one that has anything.
+        const next = dayFeed.find((d) => d.key.slice(0, 7) < current.older);
+        return next ? { ...current, older: next.key.slice(0, 7) } : current;
+      }
+      let nearest: string | null = null;
+      for (const d of dayFeed) {
+        const month = d.key.slice(0, 7);
+        if (month > current.newer) nearest = month;
+        else break;
+      }
+      return nearest ? { ...current, newer: nearest } : current;
+    });
+  }
+  // Checked when a drag or a fling comes to rest, not on every frame: a
+  // month of pages is not something to lay out in the middle of a fling.
+  function checkOverviewEdges(e: NativeSyntheticEvent<NativeScrollEvent>) {
+    if (!overviewWarm) return;
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    const near = layoutMeasurement.height * 0.6;
+    if (contentSize.height - (contentOffset.y + layoutMeasurement.height) < near) extendOverview('older');
+    if (contentOffset.y < near) extendOverview('newer');
+  }
   const noteRect = noteRectRef.current ?? { y: 120, width: windowWidth - 32, height: windowHeight * 0.7 };
   const miniW = noteRect.width * OVERVIEW_PAGE_SCALE;
   const miniH = noteRect.height * OVERVIEW_PAGE_SCALE;
@@ -1761,8 +1816,13 @@ export default function CalendarScreen() {
                 },
               ]}
               showsVerticalScrollIndicator={false}
+              // A newer month is PREPENDED; this keeps the page in view
+              // where it was instead of shoving it down by a month.
+              maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+              onScrollEndDrag={checkOverviewEdges}
+              onMomentumScrollEnd={checkOverviewEdges}
             >
-              {dayFeed.map((day) => {
+              {overviewShown.map((day) => {
                 const date = parseDateKey(day.key);
                 return (
                   <Animated.View
@@ -1790,8 +1850,9 @@ export default function CalendarScreen() {
                     </Text>
                     <DayPageMiniature
                       blocks={day.blocks}
-                      width={miniW}
-                      height={miniH}
+                      pageWidth={noteRect.width}
+                      pageHeight={noteRect.height}
+                      scale={OVERVIEW_PAGE_SCALE}
                       radius={16 * OVERVIEW_PAGE_SCALE}
                     />
                   </Pressable>
