@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import type { Block } from '../types';
 import BlockRow from './BlockRow';
@@ -62,12 +62,15 @@ function DayPageMiniature({
           },
         ]}
       >
-        {/* Rows go in a column of their OWN height. Laid straight into
-            the fixed-height page, they overflowed it, and Yoga answered
-            by shrinking whatever could shrink: a task's row is flex:1
-            (it fills its line in the editor), so every task collapsed to
-            nothing and only its "Нагадування" line was left. */}
-        <View>
+        {/* The rows are laid out inside a scroll view, exactly as the
+            editor lays them out - one that never scrolls. Under a plain
+            View of fixed height a task's row (flex:1, which fills its
+            line in the editor) and a link card's title came out at no
+            height at all, even on a page with room to spare: only the
+            "Нагадування" line and the picture were left. A scroll view's
+            content is measured with no height limit, which is the
+            condition every row here was written against. */}
+        <ScrollView scrollEnabled={false} style={styles.fill} contentContainerStyle={styles.content}>
         {shown.map((item, index) => {
           if (item.type === 'numbered') {
             runningNumber = index > 0 && shown[index - 1].type === 'numbered' ? runningNumber + 1 : 1;
@@ -112,7 +115,7 @@ function DayPageMiniature({
             />
           );
         })}
-        </View>
+        </ScrollView>
       </View>
     </View>
   );
@@ -131,8 +134,13 @@ const styles = StyleSheet.create({
   // padding, and the scroll area's small top.
   page: {
     position: 'absolute',
+    overflow: 'hidden',
+  },
+  fill: {
+    flex: 1,
+  },
+  content: {
     paddingHorizontal: 12,
     paddingTop: 4,
-    overflow: 'hidden',
   },
 });
