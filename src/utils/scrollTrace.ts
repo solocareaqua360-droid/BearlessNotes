@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react';
 // Remove this file, its overlay and every traceScroll() call once the
 // jerk is found - see DIAG in DocumentEditorScreen.
 
-export type TraceEvent = { t: number; src: string; text: string };
+export type TraceEvent = { t: number; src: string; text: string; count?: number };
 
 const events: TraceEvent[] = [];
 let burstStart = 0;
@@ -19,21 +19,29 @@ const listeners = new Set<() => void>();
 
 // A pause of more than two seconds starts a fresh list, so every tap is
 // read from zero instead of being mixed into the last one.
-export function traceScroll(src: string, text: string) {
+// `tag` says WHICH editor wrote the line. The first run showed two
+// content heights growing in step - two editors alive at once, both
+// answering the same keyboard - and without a tag the two streams were
+// one unreadable list.
+export function traceScroll(src: string, text: string, tag = '') {
   const now = Date.now();
   if (now - lastAt > 2000) {
     events.length = 0;
     burstStart = now;
   }
   lastAt = now;
-  const last = events[events.length - 1];
-  // An animated scroll fires dozens of times; one line per scroll, with
-  // its start and where it has got to, is what can be read on a phone.
-  if (src === 'scroll' && last && last.src === 'scroll') {
-    last.text = `${last.text.split('→')[0]}→${text}`;
+  const key = `${tag}${src}`;
+  // A stream that repeats - an animated scroll, a spacer growing with the
+  // keyboard frame by frame - collapses into ONE line showing where it
+  // started and where it has got to. Uncollapsed, the first run's sixteen
+  // lines were all "size" and pushed out every line that mattered.
+  const same = [...events].reverse().find((e) => e.src === key);
+  if ((src === 'scroll' || src === 'size') && same && events.indexOf(same) >= events.length - 4) {
+    same.text = `${same.text.split('→')[0]}→${text}`;
+    same.count = (same.count ?? 1) + 1;
   } else {
-    events.push({ t: now - burstStart, src, text });
-    if (events.length > 16) events.shift();
+    events.push({ t: now - burstStart, src: key, text });
+    if (events.length > 22) events.shift();
   }
   listeners.forEach((l) => l());
 }

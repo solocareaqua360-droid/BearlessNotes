@@ -384,6 +384,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
   const documentId =
     'embedded' in props ? props.documentId : 'pane' in props ? props.documentId : props.route.params.documentId;
+  // DIAG: which editor wrote a trace line. Two were alive at once on the
+  // first run. `*` marks the one on screen (editorFocused, above).
+  const diagTag = `${embedded ? 'E' : ''}${documentId.slice(0, 3)}${editorFocused ? '*' : ' '}:`;
+  const diagTagRef = useRef(diagTag);
+  diagTagRef.current = diagTag;
 
   // A note that is open is a tab. Registered by the note itself rather
   // than by whatever opened it: a card inside another note, the list,
@@ -1554,7 +1559,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // positioned by hand from this height.
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
-      if (DIAG) traceScroll('kbShow', `h=${Math.round(e.endCoordinates.height)}`);
+      if (DIAG) traceScroll('kbShow', `h=${Math.round(e.endCoordinates.height)}`, diagTagRef.current);
       // Not on screen: nothing here means anything (see appActiveRef).
       // Scrolling a block into view behind a home screen is the clearest
       // case - by the time anyone looks, the measurement it scrolled to
@@ -2107,7 +2112,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         if (DIAG) {
           runOnJS(traceScroll)(
             'sync',
-            `from=${Math.round(syncBaseOffset.value)} shift=${Math.round(syncShift.value)} kb=${Math.round(e.height)}`
+            `from=${Math.round(syncBaseOffset.value)} shift=${Math.round(syncShift.value)} kb=${Math.round(e.height)}`,
+            diagTag
           );
         }
       },
@@ -2563,7 +2569,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       if (DIAG) {
         traceScroll(
           'safety',
-          `over=${Math.round(overflow)} kbH=${Math.round(effectiveKeyboardHeight)} bar=${toolbarHeightRef.current}`
+          `over=${Math.round(overflow)} kbH=${Math.round(effectiveKeyboardHeight)} bar=${toolbarHeightRef.current}`,
+          diagTagRef.current
         );
       }
       if (overflow > 4) {
@@ -2602,7 +2609,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   function handleBlockFocus(id: string) {
-    if (DIAG) traceScroll('focus', `y=${Math.round(scrollOffsetRef.current)} kb=${keyboardHeight}`);
+    if (DIAG) traceScroll('focus', `y=${Math.round(scrollOffsetRef.current)} kb=${keyboardHeight}`, diagTag);
     focusedBlockIdRef.current = id;
     setFocusedBlockId(id);
     if (keyboardHeight > 0) {
@@ -4643,14 +4650,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         scrollsChildToFocus={false}
         onScroll={(e) => {
           const y = e.nativeEvent.contentOffset.y;
-          if (DIAG && Math.abs(y - scrollOffsetRef.current) >= 1) traceScroll('scroll', `${Math.round(y)}`);
+          if (DIAG && Math.abs(y - scrollOffsetRef.current) >= 1) traceScroll('scroll', `${Math.round(y)}`, diagTag);
           scrollOffsetRef.current = y;
           scrollOffsetSV.value = y;
         }}
         // A block changing height moves everything below it without any
         // scroll at all - the one kind of jerk the lines above cannot see.
         onContentSizeChange={
-          DIAG ? (_w: number, h: number) => traceScroll('size', `h=${Math.round(h)}`) : undefined
+          DIAG ? (_w: number, h: number) => traceScroll('size', `h=${Math.round(h)}`, diagTag) : undefined
         }
         scrollEventThrottle={16}
       >
@@ -5317,7 +5324,7 @@ function ScrollTraceOverlay() {
     >
       {events.map((e, i) => (
         <Text key={i} style={{ color: '#9EF01A', fontSize: 11, fontFamily: 'monospace' }}>
-          {`+${String(e.t).padStart(4, ' ')}ms ${e.src.padEnd(7, ' ')} ${e.text}`}
+          {`+${String(e.t).padStart(4, ' ')}ms ${e.src.padEnd(13, ' ')} ${e.text}${e.count ? ` ×${e.count}` : ''}`}
         </Text>
       ))}
     </View>
