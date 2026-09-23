@@ -2025,6 +2025,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   controllerKeyboardHeightRef.current = controllerKeyboardHeight;
   const syncBaseOffset = useSharedValue(0);
   const syncShift = useSharedValue(0);
+  // Where the field's bottom stood on screen when the keyboard started up
+  // - see onMove for why the page waits for the keyboard to reach it.
+  const syncInputBottom = useSharedValue(0);
   // The active input's bottom edge (screen coords) and the list offset at
   // the moment it was measured - taken with the plain RN measure right
   // after activation (see the focus effect), which is the same call the
@@ -2126,6 +2129,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         const visibleBottom = windowHeight - e.height - EDITOR_TOOLBAR_HEIGHT;
         syncBaseOffset.value = scrollOffsetSV.value;
         syncShift.value = Math.max(0, inputBottom - visibleBottom + 24);
+        syncInputBottom.value = inputBottom;
         if (DIAG) {
           runOnJS(traceScroll)(
             'sync',
@@ -2145,7 +2149,25 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         if (appActiveSV.value === 0) return;
         keyboardSV.value = e.height;
         if (syncShift.value > 0) {
-          scrollTo(scrollViewRef, 0, syncBaseOffset.value + syncShift.value * e.progress, false);
+          // The keyboard PUSHES the line; the page does not run ahead of it.
+          //
+          // This was `shift * progress` - the page travelling its whole
+          // distance in proportion to the keyboard's own - and Android's
+          // first keyboard frame already reports about a fifth of the way.
+          // So the page jumped 20 points (58 on the outer screen) in a
+          // single frame, while the keyboard was still far below the line
+          // and nothing was in danger. That first frame is the "на строчку
+          // або половину" the user saw, and it happened only where a
+          // scroll was needed - a line in the top half, which never
+          // scrolls, never jerked.
+          //
+          // Now the page holds still until the keyboard's edge actually
+          // reaches the line, then moves exactly as much as that edge
+          // does. The motion starts from zero and cannot jump, and it ends
+          // in the same place as before.
+          const visibleBottomNow = windowHeight - e.height - EDITOR_TOOLBAR_HEIGHT;
+          const need = Math.min(syncShift.value, Math.max(0, syncInputBottom.value - visibleBottomNow + 24));
+          scrollTo(scrollViewRef, 0, syncBaseOffset.value + need, false);
         }
       },
       onEnd: (e) => {
