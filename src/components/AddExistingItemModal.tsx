@@ -423,6 +423,11 @@ export default function AddExistingItemModal({
               placeholder="Пошук за назвою"
               placeholderTextColor={GLASS_TEXT_FAINT}
               style={styles.searchInput}
+              // As a window, it opens TYPING: the list is hundreds of rows
+              // and the field is the way into it - "клавіатура повинна
+              // підійматись там же пошук". Docked beside a note it stays
+              // quiet; the note is what is being written there.
+              autoFocus={!docked}
             />
           </View>
 
@@ -725,7 +730,15 @@ export default function AddExistingItemModal({
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <Text style={styles.title}>Додати з бази даних</Text>
+          {/* A way out that is a BUTTON. Tapping outside and dragging the
+              handle both close it, but neither says so - and with the
+              keyboard up there is hardly any "outside" left to tap. */}
+          <View style={styles.titleRow}>
+            <Text style={[styles.title, styles.titleInRow]}>Додати з бази даних</Text>
+            <Pressable hitSlop={10} onPress={onClose} accessibilityLabel="Закрити">
+              <Ionicons name="close" size={22} color={GLASS_TEXT} />
+            </Pressable>
+          </View>
           {body}
         </View>
       </View>
@@ -769,6 +782,16 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  titleInRow: {
+    marginBottom: 0,
+    flexShrink: 1,
   },
   title: {
     fontSize: 17,

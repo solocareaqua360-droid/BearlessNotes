@@ -634,6 +634,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const [panelSection, setPanelSection] = useState<PanelSection | null>(null);
   const [panelJump, setPanelJump] = useState<{ section: PanelSection; at: number } | null>(null);
   const panelOpenRef = useRef(false);
+  // The blur the resume path causes on purpose, to raise the keyboard
+  // again - not the end of editing.
+  const resumeRefocusRef = useRef(false);
   panelOpenRef.current = panelSection !== null;
   // The height the keyboard HAD. The panel takes exactly it, so nothing
   // moves as one replaces the other - and by the time the panel opens
@@ -666,6 +669,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const [activeSelection, setActiveSelection] = useState<{ blockId: string; start: number; end: number } | null>(
     null
   );
+  // The resume path reads it from an effect registered once - through a
+  // ref, or it would read the selection of the first render for ever.
+  const activeSelectionRef = useRef(activeSelection);
+  activeSelectionRef.current = activeSelection;
   // The block the pinned toolbar currently acts on - null (title focused,
   // or nothing) hides the bar entirely, since there's no block for its
   // buttons to apply to.
@@ -1757,6 +1764,23 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   function closePanel() {
+    lowerAllRef.current = false;
+    panelHeightSV.value = 0;
+    setPanelSection(null);
+  }
+
+  // ⌄: lower whatever stands at the bottom and stop editing. With the
+  // panel open it goes WITHOUT the keyboard coming back - closePanel is
+  // the button that brings the keyboard; this is the one that finishes.
+  // With the keyboard up it simply puts the keyboard away, and the
+  // editor's own keyboardDidHide path ends the session as it always has.
+  const lowerAllRef = useRef(false);
+  function lowerAll() {
+    if (panelSection === null) {
+      Keyboard.dismiss();
+      return;
+    }
+    lowerAllRef.current = true;
     panelHeightSV.value = 0;
     setPanelSection(null);
   }
@@ -1804,6 +1828,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       return;
     }
     if (!id) return;
+    if (lowerAllRef.current) {
+      // Finished, not returning: hand the block back to plain text.
+      lowerAllRef.current = false;
+      deactivateActiveInput();
+      return;
+    }
     const sel = activeSelection;
     inputRefs.current[id]?.focus();
     // The caret goes back where it was, not to the end of the text -
@@ -2220,7 +2250,38 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           : 0;
         keyboardSV.value = height;
         setKeyboardHeight(height);
-        if (height === 0) deactivateActiveInput();
+        if (height !== 0) return;
+        // No keyboard on return used to END the editing session, and
+        // with it went the bar above the keyboard: "при перемиканні між
+        // застосунками слеш панель зникає". Two cases, neither of which
+        // is the person finishing:
+        //
+        // The PANEL was open. It stands where the keyboard would, so "no
+        // keyboard" is simply true and means nothing - the session, the
+        // bar and the panel stay exactly as they were left.
+        if (panelOpenRef.current) return;
+        // The keyboard was up and Android did not bring it back. The
+        // person left in the middle of writing, so they come back to the
+        // middle of writing: the field is focused again, which raises the
+        // keyboard, and the caret goes back where it stood. A blur/focus
+        // round trip is the only way Android raises it on a field that
+        // still holds focus, and the blur is marked as ours so it does
+        // not end the session it is restoring.
+        const id = focusedBlockIdRef.current;
+        if (!id) {
+          deactivateActiveInput();
+          return;
+        }
+        const sel = activeSelectionRef.current;
+        resumeRefocusRef.current = true;
+        inputRefs.current[id]?.blur();
+        requestAnimationFrame(() => {
+          inputRefs.current[id]?.focus();
+          resumeRefocusRef.current = false;
+          if (sel && sel.blockId === id) {
+            requestAnimationFrame(() => setSelection(inputRefs.current[id], sel.start, sel.end));
+          }
+        });
       }, 250);
     });
     return () => {
@@ -2646,6 +2707,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // on the ref so a blur that lands after the NEXT block has already taken
   // over doesn't knock that block back out.
   function handleBlockBlur(id: string) {
+    // The resume path's own round trip - see the AppState effect.
+    if (resumeRefocusRef.current) return;
     // The panel took the keyboard down on purpose. The field is blurred
     // and stays blurred, but the editing session is not over - the bar
     // above the panel still acts on this block, and its selection is
@@ -5139,7 +5202,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               onRedo={redo}
               openSection={panelSection}
               onOpenSection={openPanel}
-              onClosePanel={closePanel}
+              onShowKeyboard={closePanel}
+              onLowerAll={lowerAll}
               onPickFromDatabase={() => action('existing')()}
               onCreateInDatabase={() => action('document')()}
             />

@@ -30,7 +30,11 @@ export type PanelBarProps = {
   // null while the panel is closed.
   openSection: PanelSection | null;
   onOpenSection: (section: PanelSection) => void;
-  onClosePanel: () => void;
+  // Back to the keyboard: the panel goes, the keyboard returns.
+  onShowKeyboard: () => void;
+  // Lower whatever is standing there - the panel, or the keyboard - and
+  // stop editing.
+  onLowerAll: () => void;
   onPickFromDatabase: () => void;
   onCreateInDatabase: () => void;
 };
@@ -58,7 +62,8 @@ export default function EditorPanelBar({
   onRedo,
   openSection,
   onOpenSection,
-  onClosePanel,
+  onShowKeyboard,
+  onLowerAll,
   onPickFromDatabase,
   onCreateInDatabase,
 }: PanelBarProps) {
@@ -110,13 +115,30 @@ export default function EditorPanelBar({
         <MaterialCommunityIcons name="database-plus-outline" size={20} color={ink} />
       </Pressable>
 
-      {/* Only with the panel. With the keyboard up there is nothing here
-          to close, and a button that does nothing is worse than none. */}
-      {openSection !== null && (
-        <Pressable style={styles.button} hitSlop={4} accessibilityLabel="Закрити" onPress={onClosePanel}>
-          <Ionicons name="chevron-down" size={22} color={ink} />
+      {/* Two slots at the right edge that are ALWAYS there, so nothing
+          in the row moves when the panel opens. The close button used to
+          appear only with the panel, and space-between handed its width
+          out of the other buttons as it arrived - the whole row shifted
+          under the finger. "Місце під кнопку опускання цієї панелі
+          повинно бути завжди."
+
+          ⌨ goes back to the keyboard. With the keyboard already up it
+          has nothing to do, so its slot is held empty at the same size
+          rather than taken away.
+
+          ⌄ lowers whatever is standing there and ends the editing - the
+          panel without bringing the keyboard back, or the keyboard
+          itself. */}
+      {openSection !== null ? (
+        <Pressable style={styles.button} hitSlop={4} accessibilityLabel="Клавіатура" onPress={onShowKeyboard}>
+          <MaterialCommunityIcons name="keyboard-outline" size={21} color={ink} />
         </Pressable>
+      ) : (
+        <View style={[styles.button, styles.slotHeld]} />
       )}
+      <Pressable style={styles.button} hitSlop={4} accessibilityLabel="Опустити" onPress={onLowerAll}>
+        <Ionicons name="chevron-down" size={22} color={ink} />
+      </Pressable>
     </View>
   );
 }
@@ -149,6 +171,11 @@ const makeStyles = (t: Theme) =>
       paddingHorizontal: 6,
       paddingVertical: 6,
       borderRadius: 9,
+    },
+    // The same footprint as an icon button, holding the slot open.
+    slotHeld: {
+      width: 33,
+      height: 33,
     },
     buttonOn: {
       backgroundColor: t.edge.strong,
