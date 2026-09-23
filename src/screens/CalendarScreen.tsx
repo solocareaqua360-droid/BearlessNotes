@@ -389,12 +389,18 @@ export default function CalendarScreen() {
   // полотна до такого вигляду") - it used to be half gone before it was
   // half the size. It travels to the centre in step with its shrinking,
   // so fingers and the pull both land it in the same place.
+  // THE HAND-OVER WITHOUT A BLINK: the page stays fully opaque until the
+  // miniature above it has fully faded in over it, and only then goes.
+  // Fading both at once let the dark ground show through the middle of
+  // the crossfade - "перехід відбувається блиманням". Coming back it is
+  // the same the other way: the page is whole again the moment the
+  // overview starts to leave, and the miniature fades off it.
   const noteZoomStyle = useAnimatedStyle(() => {
     const p = overviewSV.value;
     const shrink = pinchScale.value + (OVERVIEW_PAGE_SCALE - pinchScale.value) * p;
     const toward = Math.min(1, Math.max(0, (1 - shrink) / (1 - OVERVIEW_PAGE_SCALE)));
     return {
-      opacity: p < 0.8 ? 1 : (1 - p) / 0.2,
+      opacity: p >= 0.999 ? 0 : 1,
       transform: [{ translateY: toward * pageShiftSV.value }, { scale: shrink }],
     };
   });
@@ -404,7 +410,11 @@ export default function CalendarScreen() {
   const overviewEarlyStyle = useAnimatedStyle(() => ({
     opacity: Math.min(1, Math.max(0, (overviewSV.value - 0.4) / 0.6)),
   }));
-  // ...the ground and the day's own miniature only as the page hands over.
+  // The heading and whatever stands above the page, going as it shrinks.
+  const overviewFadeStyle = useAnimatedStyle(() => ({
+    opacity: Math.max(0, 1 - overviewSV.value * 1.4),
+  }));
+  // ...and the day's own miniature only as the page hands over.
   const overviewLateStyle = useAnimatedStyle(() => ({
     opacity: overviewSV.value < 0.8 ? 0 : (overviewSV.value - 0.8) / 0.2,
   }));
@@ -1418,7 +1428,7 @@ export default function CalendarScreen() {
       <ScreenBackdrop id="calendarBg" />
 
       {!pointerDensity && (
-      <View style={[styles.headerRow, { paddingTop: headerPadTop }]}>
+      <Animated.View style={[styles.headerRow, { paddingTop: headerPadTop }, phoneOverview && overviewFadeStyle]}>
         <View
           style={styles.headerLeft}
           onLayout={(e) => setHeaderContentHeight(e.nativeEvent.layout.height)}
@@ -1458,7 +1468,7 @@ export default function CalendarScreen() {
             )}
           </Pressable>
         </View>
-      </View>
+      </Animated.View>
       )}
 
       {/* One column on a phone (calendar, then the note under it), two on
@@ -1482,16 +1492,17 @@ export default function CalendarScreen() {
           !stackedWide && isTwoPane && pointerDensity && styles.paneRowTop,
         ]}
       >
-        <View
-          style={
+        <Animated.View
+          style={[
             stackedWide
               ? [styles.topBand, { height: bandHeight }, foldedAway && styles.bandFolded]
               : calendarPaneWidthFixed !== null
                 ? [styles.sidePane, { width: calendarPaneWidthFixed, flexGrow: 0, flexShrink: 0, flexBasis: 'auto' }]
                 : isTwoPane
                   ? styles.sidePane
-                  : null
-          }
+                  : null,
+            phoneOverview && overviewFadeStyle,
+          ]}
         >
           {columnControls.length > 0 && (
             <View style={styles.columnControls}>
@@ -1822,7 +1833,7 @@ export default function CalendarScreen() {
           )}
             </>
           )}
-        </View>
+        </Animated.View>
 
         {!(compactFilter === 'history' && noteCollapsed) && renderDayNote(selectedKey, true)}
 
@@ -1830,9 +1841,12 @@ export default function CalendarScreen() {
 
       {phoneOverview && overviewOpen && (
         <View style={StyleSheet.absoluteFill}>
-          <Animated.View style={[StyleSheet.absoluteFill, overviewLateStyle]} pointerEvents="none">
-            <ScreenBackdrop id="calendarOverviewBg" />
-          </Animated.View>
+          {/* No ground of its own: the screen's own backdrop is already
+              under everything, and the heading and the rest above the page
+              fade away by themselves (overviewFadeStyle). A ground laid
+              over them faded in over the PAGE as well, and the page, the
+              ground and the miniature all half-transparent at once is
+              what read as a blink at the hand-over. */}
           {dayFeedLoaded && dayFeed.length === 0 ? (
             <Animated.Text
               style={[styles.feedEmpty, styles.overviewEmpty, { paddingTop: calendarInsets.top + 24 }, overviewLateStyle]}
