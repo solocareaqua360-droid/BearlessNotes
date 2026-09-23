@@ -415,27 +415,33 @@ type LiftKind = 'path' | 'strip' | null;
 // The throw is the user's own: "коло піднімається трохи вище ніж йому
 // потрібно і потім падає на поточну висоту і якраз від падіння
 // розтягується в стрічку."
-const RISE_MS = 170;
-const FALL_MS = 130;
+// Three diameters is a long way to be thrown, and the same times that
+// carried one would blur it - these grew with the distance.
+const RISE_MS = 230;
+const FALL_MS = 190;
 // The spread outlives the landing by this much, so the impact has
-// somewhere to travel to rather than stopping with the circle.
-const SPREAD_TAIL_MS = 60;
+// somewhere to travel to rather than stopping with the circle. It is
+// most of what the spread's own pace is: the spread runs from the top of
+// the throw to the very end, which is FALL_MS + this.
+const SPREAD_TAIL_MS = 170;
 const LIFT_IN_MS = RISE_MS + FALL_MS + SPREAD_TAIL_MS;
 // Leaving is the same in reverse and WITHOUT the throw: a strip that
 // bounced on its way out would read as hesitation.
-const OUT_CONTRACT_MS = 170;
-const OUT_DROP_MS = 150;
+// Gathering back into a circle is the half worth watching, so it takes
+// the longer share - the user asked for this one slower by name.
+const OUT_CONTRACT_MS = 300;
+const OUT_DROP_MS = 220;
 const LIFT_OUT_MS = OUT_CONTRACT_MS + OUT_DROP_MS;
 // How far a strip travels between its place behind the dock and its
 // resting line. Named here rather than worked out where it is used, so
 // the throw below can be a real distance instead of a guessed fraction.
 const LIFT_TRAVEL = DOCK_PATH_H + DOCK_PATH_GAP + BEHIND_EDGE * 2;
-// HOW HIGH THE CIRCLE IS THROWN past its resting line: its own diameter,
-// the user's own measure - "мінімум на висоту (діаметр) кола". Ten
-// points, which is what a fraction of the travel came to, was a nudge
-// rather than a throw, and a landing is only worth as much as the fall
-// before it.
-const LIFT_OVERSHOOT = DOCK_PATH_H / LIFT_TRAVEL;
+// HOW HIGH THE CIRCLE IS THROWN past its resting line: three of its own
+// diameters, counted up by the user one diameter at a time. Ten points,
+// which is what a fraction of the travel came to, was a nudge rather
+// than a throw, and a landing is only worth as much as the fall before
+// it.
+const LIFT_OVERSHOOT = (DOCK_PATH_H * 3) / LIFT_TRAVEL;
 
 const easeOutCubic = (k: number) => 1 - Math.pow(1 - k, 3);
 const easeInQuad = (k: number) => k * k;
