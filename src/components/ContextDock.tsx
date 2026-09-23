@@ -381,29 +381,97 @@ const PATH_STEP_MS = 190;
 // by side now, not stacked, so the strip can be as short as the path's.
 const STRIP_ROW_ITEM = 64;
 
-// THE TWO STEPS EVERY LIFTED STRIP TAKES, in this order: it rises from
-// behind the dock at the dock's own width, and only then widens out to
-// what its content needs; leaving, it narrows back to the dock's width
-// and only then drops behind it.
+// AWAY FAST, BRAKING INTO THE REST - "швидкість в розширенні на початку
+// і гальмування в самому кінці". `useEaseTo`'s own cubic is gentler at
+// both ends; this is a quartic, which leaves most of its distance in the
+// first third and spends the last third arriving.
 //
-// One number carries both, so the steps cannot overlap or race: 0 is
-// away behind the dock, 1 is up at the dock's width, 2 is up and as wide
-// as it needs. Every move is one whole step, so one duration describes
-// the pace of both.
-function useLiftedStep(wanted: boolean) {
-  const [stage, setStage] = useState(wanted ? 2 : 0);
-  const wantedRef = useRef(wanted);
+// Its own clock rather than useEaseTo's, because that one's half-point
+// tolerance is meant for WIDTHS in pixels, and what rides this is a 0..2
+// step where half a point is the whole animation.
+function useEaseOutTo(target: number, ms: number): number {
+  const [value, setValue] = useState(target);
+  const raf = useRef<number | null>(null);
+  const ref = useRef(value);
+  ref.current = value;
   useEffect(() => {
-    // The first run is the mount, where the strip is already at rest in
-    // whichever state it belongs - there is nothing to play.
-    if (wantedRef.current === wanted) return;
-    wantedRef.current = wanted;
-    setStage(1);
-    const id = setTimeout(() => setStage(wanted ? 2 : 0), PATH_STEP_MS);
-    return () => clearTimeout(id);
-  }, [wanted]);
-  const step = useEaseTo(stage, PATH_STEP_MS);
+    const from = ref.current;
+    if (Math.abs(from - target) < 0.001) {
+      if (from !== target) setValue(target);
+      return;
+    }
+    if (raf.current !== null) cancelAnimationFrame(raf.current);
+    const t0 = Date.now();
+    const step = () => {
+      const k = Math.min(1, (Date.now() - t0) / ms);
+      const e = 1 - Math.pow(1 - k, 4);
+      setValue(from + (target - from) * e);
+      if (k < 1) {
+        raf.current = requestAnimationFrame(step);
+        return;
+      }
+      raf.current = null;
+    };
+    raf.current = requestAnimationFrame(step);
+    return () => {
+      if (raf.current !== null) {
+        cancelAnimationFrame(raf.current);
+        raf.current = null;
+      }
+    };
+  }, [target, ms]);
+  return value;
+}
+
+type LiftKind = 'path' | 'strip' | null;
+
+// THE ONE PLACE ABOVE THE DOCK, and the two steps whatever stands there
+// takes: it rises at the dock's own width and only then widens out to
+// what it needs; leaving, it narrows back to the dock's width and only
+// then drops behind it.
+//
+// One number carries both, so the steps can never overlap: 0 is away
+// behind the dock, 1 is up at the dock's width, 2 is up and as wide as
+// it needs.
+//
+// And ONE machine for both strips rather than one each, because the
+// place is one: handing it from the path to the days means the first
+// must be all the way down before the second starts, in either
+// direction. Two machines could only ever gate on each other's live
+// value, which is a circle - and a circle that settles is a strip that
+// never comes back up.
+function useStripLift(wanted: LiftKind) {
+  const [lift, setLift] = useState<{ kind: LiftKind; stage: number }>(() => ({
+    kind: wanted,
+    stage: wanted ? 2 : 0,
+  }));
+  useEffect(() => {
+    // Already showing what is wanted.
+    if (lift.kind === wanted) {
+      if (wanted === null || lift.stage === 2) return;
+      // Rising: up first, wide after.
+      if (lift.stage === 0) {
+        setLift({ kind: lift.kind, stage: 1 });
+        return;
+      }
+      const id = setTimeout(() => setLift({ kind: lift.kind, stage: 2 }), PATH_STEP_MS);
+      return () => clearTimeout(id);
+    }
+    // Something else is wanted: put this one away first, narrow then down.
+    if (lift.stage === 2) {
+      setLift({ kind: lift.kind, stage: 1 });
+      return;
+    }
+    if (lift.stage === 1) {
+      const id = setTimeout(() => setLift({ kind: lift.kind, stage: 0 }), PATH_STEP_MS);
+      return () => clearTimeout(id);
+    }
+    // The place is free - hand it over.
+    setLift({ kind: wanted, stage: 0 });
+  }, [wanted, lift]);
+  const step = useEaseOutTo(lift.stage, PATH_STEP_MS);
   return {
+    kind: lift.kind,
     step,
     up: Math.min(1, step),
     // 0 at the dock's width, 1 at the content's own.
@@ -661,18 +729,19 @@ export default function ContextDock() {
   // mark: the strip has two steps to get through and they have to be
   // under way before the screen has visibly moved.
   const tabsDrifting = useNavDockTabsDrifting();
-  const pathUpWanted = own?.kind === 'path' && !tabsDrifting;
-  const pathLift = useLiftedStep(pathUpWanted);
-  const pathStep = pathLift.step;
-  const pathUp = pathLift.up;
-  const pathWide = pathLift.wide;
-  // THE DAYS, lifted exactly as the path is - the user's own ask, down
-  // to the width it opens to. It waits for the path to be all the way
-  // down first: "календарна смужка з'являється не раніше ніж сховається
-  // смужка вкладень", which on a swipe from a folder to the calendar is
-  // the difference between two strips crossing and two taking turns.
-  const dayUpWanted = own?.kind === 'strip' && !tabsDrifting && pathStep <= 0.001;
-  const dayLift = useLiftedStep(dayUpWanted);
+  // What the place above the dock is being asked to hold - see
+  // useStripLift, which is what makes the two take turns rather than
+  // cross, in EITHER direction.
+  const liftWanted: LiftKind = tabsDrifting ? null : (own?.kind === 'path' || own?.kind === 'strip' ? own.kind : null);
+  const stripLift = useStripLift(liftWanted);
+  const pathUpWanted = liftWanted === 'path';
+  const pathStep = stripLift.kind === 'path' ? stripLift.step : 0;
+  const pathUp = stripLift.kind === 'path' ? stripLift.up : 0;
+  const pathWide = stripLift.kind === 'path' ? stripLift.wide : 0;
+  const dayUpWanted = liftWanted === 'strip';
+  const dayStep = stripLift.kind === 'strip' ? stripLift.step : 0;
+  const dayUp = stripLift.kind === 'strip' ? stripLift.up : 0;
+  const dayWide = stripLift.kind === 'strip' ? stripLift.wide : 0;
   const lastPathRef = useRef<Extract<NonNullable<typeof own>, { kind: 'path' }> | null>(null);
   if (own?.kind === 'path') lastPathRef.current = own;
   const lastStripRef = useRef<Extract<NonNullable<typeof own>, { kind: 'strip' }> | null>(null);
@@ -882,7 +951,7 @@ export default function ContextDock() {
     (Math.min(rowWidthNow, Math.max(cardWidthNow, pathContentW + PATH_PAD * 2)) - cardWidthNow) * pathWide;
   // The days open to the whole row too - the outer edges of the search
   // and today beads, which is what the row IS.
-  const dayWidthNow = cardWidthNow + (rowWidthNow - cardWidthNow) * dayLift.wide;
+  const dayWidthNow = cardWidthNow + (rowWidthNow - cardWidthNow) * dayWide;
   // Both strips stand in the same place; they are never up together.
   const liftedBottom = DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD + CARD_H + BEHIND_EDGE * 2 + DOCK_PATH_GAP;
   const liftedTravel = DOCK_PATH_H + DOCK_PATH_GAP + BEHIND_EDGE * 2;
@@ -1630,15 +1699,15 @@ export default function ContextDock() {
           не зливались в одне слово". The marks follow the number, after
           the day rather than inside it: a dot between the letters and
           the figures would split the one thing this cell says. */}
-      {shownStrip && dayLift.step > 0.001 && (
+      {shownStrip && dayStep > 0.001 && (
         <View
           pointerEvents={dayUpWanted ? 'box-none' : 'none'}
           style={[
             styles.pathWrap,
             {
               bottom: liftedBottom,
-              opacity: dayLift.up,
-              transform: [{ translateY: (1 - dayLift.up) * liftedTravel }],
+              opacity: dayUp,
+              transform: [{ translateY: (1 - dayUp) * liftedTravel }],
             },
           ]}
         >
