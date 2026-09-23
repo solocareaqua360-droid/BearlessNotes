@@ -426,9 +426,16 @@ const LIFT_IN_MS = RISE_MS + FALL_MS + SPREAD_TAIL_MS;
 const OUT_CONTRACT_MS = 170;
 const OUT_DROP_MS = 150;
 const LIFT_OUT_MS = OUT_CONTRACT_MS + OUT_DROP_MS;
-// How far above its resting line the circle is thrown, as a fraction of
-// the travel it rises through - about ten points.
-const LIFT_OVERSHOOT = 0.19;
+// How far a strip travels between its place behind the dock and its
+// resting line. Named here rather than worked out where it is used, so
+// the throw below can be a real distance instead of a guessed fraction.
+const LIFT_TRAVEL = DOCK_PATH_H + DOCK_PATH_GAP + BEHIND_EDGE * 2;
+// HOW HIGH THE CIRCLE IS THROWN past its resting line: its own diameter,
+// the user's own measure - "мінімум на висоту (діаметр) кола". Ten
+// points, which is what a fraction of the travel came to, was a nudge
+// rather than a throw, and a landing is only worth as much as the fall
+// before it.
+const LIFT_OVERSHOOT = DOCK_PATH_H / LIFT_TRAVEL;
 
 const easeOutCubic = (k: number) => 1 - Math.pow(1 - k, 3);
 const easeInQuad = (k: number) => k * k;
@@ -1018,7 +1025,7 @@ export default function ContextDock() {
   const liftContentAlpha = (spread: number) => Math.max(0, Math.min(1, (spread - 0.3) / 0.45));
   // Both strips stand in the same place; they are never up together.
   const liftedBottom = DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD + CARD_H + BEHIND_EDGE * 2 + DOCK_PATH_GAP;
-  const liftedTravel = DOCK_PATH_H + DOCK_PATH_GAP + BEHIND_EDGE * 2;
+  const liftedTravel = LIFT_TRAVEL;
   // HOW THE DOCK PARTS FROM THE SCREEN. In the black theme that is the
   // glow, and the glow is the whole reason this is here: the two pills
   // that still wore it were the editor's pre-dock chrome, the last two
