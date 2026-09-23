@@ -321,7 +321,7 @@ function useEase01(wanted: boolean, ms: number): number {
       raf.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wanted]);
+  }, [wanted, ms]);
   return value;
 }
 
@@ -732,9 +732,6 @@ export default function ContextDock() {
   // copies of the same four places on one screen would say nothing.
   //
   // A dot is a desk, not a picture of one: tapping it goes there.
-  const deskHintDesks = desksCard?.kind === 'desks' ? desksCard.desks : null;
-  const deskHintWanted = !!deskHintDesks && faces.includes('desks') && showing !== 'desks';
-  const deskHint = useEase01(deskHintWanted, 220);
   // The path above the dock - see `ringOwn`. Kept drawn from the last
   // path it had while it goes back under, so the root does not empty it
   // in the middle of its way down.
@@ -822,6 +819,20 @@ export default function ContextDock() {
   // moves nothing on screen.
   const [drag, setDrag] = useState<number | null>(null);
   const pos = drag ?? faceIndex;
+  // THE DOTS ARE THE DESKS CARD'S OWN SHADOW, so they are never out
+  // while that card is the one moving. Dragged up, or flipping on its
+  // own, the card rose with the dots still sitting under it and the eye
+  // read two capsules; tucked away before the move begins, it reads as
+  // the one capsule going up - the user's own test for this: "повинно
+  // складатись враження що це одна і та сама капсула".
+  //
+  // Away FASTER than back, and that asymmetry is the whole trick: the
+  // dots have to be gone before the card has visibly left, while coming
+  // back they may take their time behind a card already at rest.
+  const ringMoving = drag !== null;
+  const deskHintDesks = desksCard?.kind === 'desks' ? desksCard.desks : null;
+  const deskHintWanted = !!deskHintDesks && faces.includes('desks') && showing !== 'desks' && !ringMoving;
+  const deskHint = useEase01(deskHintWanted, deskHintWanted ? 240 : 110);
   const faceIndexRef = useRef(faceIndex);
   faceIndexRef.current = faceIndex;
   const startRef = useRef(0);
