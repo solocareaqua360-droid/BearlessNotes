@@ -49,6 +49,7 @@ import { useDayHistory } from '../hooks/useDayHistory';
 import DayHistoryList from '../components/DayHistoryList';
 import { useDensity } from '../hooks/useDensity';
 import DocumentCard from '../components/DocumentCard';
+import DayPageMiniature from '../components/DayPageMiniature';
 import { extractPreview } from '../utils/documentPreview';
 import { usePublishRailPanel } from '../navigation/navRail';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
@@ -314,6 +315,12 @@ export default function CalendarScreen() {
   const overviewOpenRef = useRef(false);
   const overviewScrolledRef = useRef(false);
   const overviewScrollRef = useRef<ScrollView>(null);
+  // Where the page stands, so the overview can put the day's miniature
+  // exactly where the page shrinks to - the page and its miniature are
+  // then one sheet changing, not two things swapping.
+  const stackYRef = useRef(0);
+  const noteRectRef = useRef<{ y: number; width: number; height: number } | null>(null);
+  const containerHRef = useRef(0);
   function openOverview() {
     if (overviewOpenRef.current) return;
     overviewOpenRef.current = true;
@@ -364,7 +371,6 @@ export default function CalendarScreen() {
   });
   const overviewStyle = useAnimatedStyle(() => ({
     opacity: overviewSV.value,
-    transform: [{ scale: 1.08 - 0.08 * overviewSV.value }],
   }));
   useEffect(() => {
     if (!overviewOpen) return;
@@ -1062,6 +1068,14 @@ export default function CalendarScreen() {
     const zooms = primary && phoneOverview;
     const note = (
       <Animated.View
+        onLayout={
+          zooms
+            ? (e) => {
+                const { y, width, height } = e.nativeEvent.layout;
+                noteRectRef.current = { y, width, height };
+              }
+            : undefined
+        }
         style={[
           styles.noteArea,
           isTwoPane && styles.notePane,
@@ -1137,6 +1151,13 @@ export default function CalendarScreen() {
   // one before it - the list is newest first, so the days after it are
   // above and the ones before it below.
   const overviewAnchor = dayFeed.find((d) => d.key <= selectedKey)?.key ?? null;
+  const noteRect = noteRectRef.current ?? { y: 120, width: windowWidth - 32, height: windowHeight * 0.7 };
+  const miniW = noteRect.width * OVERVIEW_PAGE_SCALE;
+  const miniH = noteRect.height * OVERVIEW_PAGE_SCALE;
+  // Where the shrunk page's top edge is: scaled about its own centre.
+  const miniTop = stackYRef.current + noteRect.y + (noteRect.height - miniH) / 2;
+  const OVERVIEW_LABEL_H = 30;
+  const OVERVIEW_GAP = 18;
 
   // The month is NAVIGATION - it says which day to look at, it is not
   // the day - so on a pointer it stands in the rail, where this app
@@ -1268,7 +1289,7 @@ export default function CalendarScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} onLayout={(e) => (containerHRef.current = e.nativeEvent.layout.height)}>
       {/* The theme's own ground - drawn by hand here before, so it stood
           on the colour theme's brown gradient whatever the setting said.
           The daily-note editor below (`noteArea`) stays white on its own
@@ -1325,6 +1346,7 @@ export default function CalendarScreen() {
           a wide screen (calendar left, note right). Both halves are flex:1
           in the row, so they split the window evenly. */}
       <View
+        onLayout={(e) => (stackYRef.current = e.nativeEvent.layout.y)}
         style={[
           stackedWide ? styles.stack : isTwoPane ? styles.paneRow : styles.stack,
           // Reversed rather than reordered: the calendar is still the
@@ -1696,48 +1718,46 @@ export default function CalendarScreen() {
               ref={overviewScrollRef}
               contentContainerStyle={[
                 styles.overviewContent,
-                { paddingTop: calendarInsets.top + 16, paddingBottom: overviewClear + calendarInsets.bottom },
+                {
+                  gap: OVERVIEW_GAP,
+                  // The first page, unscrolled, stands where the page
+                  // shrinks to; the last can still be scrolled up there.
+                  paddingTop: Math.max(calendarInsets.top, miniTop - OVERVIEW_LABEL_H),
+                  paddingBottom: Math.max(overviewClear, (containerHRef.current || windowHeight) - miniTop - miniH),
+                },
               ]}
               showsVerticalScrollIndicator={false}
             >
               {dayFeed.map((day) => {
                 const date = parseDateKey(day.key);
-                const preview = extractPreview(day.blocks, day.coverImageUri, undefined, day.coverDriveFileId);
                 return (
-                  <View
+                  <Pressable
                     key={day.key}
                     onLayout={
                       day.key === overviewAnchor
                         ? (e) => {
                             if (overviewScrolledRef.current) return;
                             overviewScrolledRef.current = true;
-                            const y = e.nativeEvent.layout.y;
-                            overviewScrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: false });
+                            const y = e.nativeEvent.layout.y + OVERVIEW_LABEL_H - miniTop;
+                            overviewScrollRef.current?.scrollTo({ y: Math.max(0, y), animated: false });
                           }
                         : undefined
                     }
+                    onPress={() => {
+                      if (day.key === selectedKey) closeOverview();
+                      else selectDay(date);
+                    }}
                   >
-                    <DocumentCard
-                      id={`day_${day.key}`}
-                      title={`${WEEKDAY_SHORT[mondayIndex(date)]}, ${formatBigDate(date)}`}
-                      updatedAt={day.updatedAt}
-                      imageUri={preview.imageUri}
-                      coverGradient={day.coverGradient}
-                      imageDriveFileId={preview.imageDriveFileId}
-                      imageUris={preview.imageUris}
-                      imageDriveFileIds={preview.imageDriveFileIds}
-                      previewText={preview.previewText}
-                      previewTail={preview.previewTail}
+                    <Text style={[styles.overviewDate, { height: OVERVIEW_LABEL_H }]} numberOfLines={1}>
+                      {WEEKDAY_SHORT[mondayIndex(date)]}, {formatBigDate(date)}
+                    </Text>
+                    <DayPageMiniature
                       blocks={day.blocks}
-                      checklistItems={preview.checklistItems}
-                      layout="grid"
-                      gridWidth={windowWidth - 32}
-                      onPress={() => {
-                        if (day.key === selectedKey) closeOverview();
-                        else selectDay(date);
-                      }}
+                      width={miniW}
+                      height={miniH}
+                      radius={16 * OVERVIEW_PAGE_SCALE}
                     />
-                  </View>
+                  </Pressable>
                 );
               })}
             </ScrollView>
@@ -2254,8 +2274,13 @@ const makeStyles = (t: Theme) =>
   },
   // The phone's overview: the cards run the width the page had.
   overviewContent: {
-    gap: 12,
-    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  overviewDate: {
+    fontSize: 15,
+    fontFamily: FONT_SEMIBOLD,
+    color: t.ink.primary,
+    paddingLeft: 4,
   },
   overviewEmpty: {
     paddingHorizontal: 20,
