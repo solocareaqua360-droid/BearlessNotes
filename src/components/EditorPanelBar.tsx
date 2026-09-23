@@ -63,8 +63,10 @@ export default function EditorPanelBar({
 }: PanelBarProps) {
   const styles = useStyles(makeStyles);
   const theme = useTheme();
-  const ink = theme.glass.ink;
-  const inkMuted = theme.glass.inkMuted;
+  // The theme's own ink, not the glass ink: this bar is no longer a
+  // pill floating on the page, it is a surface of its own.
+  const ink = theme.ink.primary;
+  const inkMuted = theme.ink.faint;
 
   return (
     <View style={styles.row}>
@@ -122,12 +124,25 @@ const makeStyles = (t: Theme) =>
   StyleSheet.create({
     // Nine or ten buttons across a phone: each takes what it needs and
     // the row shares what is left, so nothing has to scroll.
+    // Edge to edge, on its own ground. It used to inherit the pinned
+    // toolbar's centred glass pill and carried no background of its
+    // own, so the note's text showed straight through it and it sat in
+    // the middle of the screen rather than across it - "занадто
+    // прозора і його можна рівномірно розтягнути по всій ширині".
+    //
+    // It is one piece with the panel below: the same ground, and a
+    // hairline only on top, so the two read as one surface standing
+    // where the keyboard stood.
     row: {
+      width: '100%',
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: 10,
-      height: 44,
+      paddingHorizontal: 12,
+      height: 46,
+      backgroundColor: t.ground,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: t.edge.hairline,
     },
     button: {
       paddingHorizontal: 6,

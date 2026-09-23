@@ -2129,8 +2129,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // Generous even with the keyboard down (160): the last line of a long
   // document was ending up pinned against the bottom edge. Costs nothing
   // on a short document, which doesn't scroll at all.
+  // The SAME floor the bar stands on - the keyboard's live height or the
+  // panel's, whichever is taller. Read from the keyboard alone, this
+  // collapsed the moment the panel opened and the page slid up under
+  // it: "полотно документа трохи прокручується при вмиканні панелі".
+  // The panel occupies exactly the room the keyboard had, so the page
+  // has no reason to move at all.
   const bottomSpacerStyle = useAnimatedStyle(() => ({
-    height: Math.max(160, keyboardSV.value + 80 + EDITOR_TOOLBAR_HEIGHT),
+    height: Math.max(160, Math.max(keyboardSV.value, panelHeightSV.value) + 80 + EDITOR_TOOLBAR_HEIGHT),
   }));
   // "Is the keyboard up", taken from the one value that has been proved
   // clean (the frame handler's own live height) rather than from the
@@ -2244,7 +2250,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // could not anyway, now that it publishes a bead (the stretch only
   // runs where both bead slots are genuinely empty).
   const showActions = () => setDockFace('actions');
-  const dockLive = !embedded && editorFocused && !keyboardOpen;
+  // The dock shows only when nothing is standing in the bottom of the
+  // screen. The panel is such a thing - it stands where the keyboard
+  // stood - so it hides the dock for the same reason, or the dock's
+  // capsule floats over the panel's own tiles.
+  const dockLive = !embedded && editorFocused && !keyboardOpen && panelSection === null;
   useDockActions(
     !dockLive
       ? null
