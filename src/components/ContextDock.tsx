@@ -1477,25 +1477,29 @@ export default function ContextDock() {
             },
           ]}
         >
-          {/* No live blur: this slides on every frame while it comes out
-              and goes back, and a real-time blur on a moving surface is
-              the ANR this project has already met (android_live_blur_
-              moving_surface). The frost's own fill carries it. */}
-          <DockFrost style={styles.deskHint} radius={DESK_HINT_H / 2} blur={false}>
-            <View style={styles.deskHintRow}>
-              {deskHintDesks.map((desk) => (
-                <Pressable key={desk.key} hitSlop={10} onPress={desk.onPress} accessibilityLabel={desk.key}>
-                  <View
-                    style={[
-                      styles.dot,
-                      { backgroundColor: desk.active ? theme.glass.ink : theme.glass.inkMuted },
-                      desk.active && styles.dotActive,
-                    ]}
-                  />
-                </Pressable>
-              ))}
-            </View>
-          </DockFrost>
+          {/* The dock's material - "прирівняти по матеріалу і кольору до
+              дока" - with the live blur switched on only at rest: while
+              it slides, a real-time blur is the ANR this project has
+              already met (android_live_blur_moving_surface). */}
+          {/* The shadow on a box the capsule's own size - on the full-width
+              wrap it would draw a band across the screen. */}
+          <View style={[liftStyle(theme, theme.lift, 1), { borderRadius: DESK_HINT_H / 2 }]}>
+            <DockFrost style={[styles.deskHint, styles.cardEdge]} radius={DESK_HINT_H / 2} blur={deskHint >= 1 && deskHintWanted}>
+              <View style={styles.deskHintRow}>
+                {deskHintDesks.map((desk) => (
+                  <Pressable key={desk.key} hitSlop={10} onPress={desk.onPress} accessibilityLabel={desk.key}>
+                    <View
+                      style={[
+                        styles.dot,
+                        { backgroundColor: desk.active ? theme.glass.ink : theme.glass.inkMuted },
+                        desk.active && styles.dotActive,
+                      ]}
+                    />
+                  </Pressable>
+                ))}
+              </View>
+            </DockFrost>
+          </View>
         </View>
       )}
       {/* THE PATH, risen from behind the dock - drawn before it for the
@@ -1514,41 +1518,50 @@ export default function ContextDock() {
             },
           ]}
         >
-          {/* No live blur, as with the desks: it moves on every frame of
-              its way up (android_live_blur_moving_surface). */}
-          <DockFrost style={[styles.pathShell, { width: cardWidthNow }]} radius={DOCK_PATH_H / 2} blur={false}>
-            <ScrollView ref={trailRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.trailStrip}>
-              <View ref={targets?.('')} collapsable={false}>
-                <Pressable onPress={() => shownPath.onGo('')} style={styles.trailRoot}>
-                  <Ionicons name={shownPath.icon as keyof typeof Ionicons.glyphMap} size={19} color={theme.glass.ink} />
-                </Pressable>
-              </View>
-              {shownPath.crumbs.map((segment, index) => {
-                const isLast = index === shownPath.crumbs.length - 1;
-                const target = shownPath.crumbs.slice(0, index + 1).join('/');
-                return (
-                  <View key={target} style={styles.trailPair}>
-                    <Ionicons name="chevron-forward" size={13} color={theme.glass.inkMuted} />
-                    {isLast ? (
-                      <View style={[styles.trailCurrent, styles.pathCurrent, styles.here]}>
-                        <Text style={[styles.trailLabel, styles.trailLabelCurrent, { color: theme.glass.ink }]} numberOfLines={1}>
-                          {segment}
-                        </Text>
-                      </View>
-                    ) : (
-                      <View ref={targets?.(target)} collapsable={false}>
-                        <Pressable onPress={() => shownPath.onGo(target)} style={styles.trailSegment}>
-                          <Text style={[styles.trailLabel, { color: theme.glass.inkMuted }]} numberOfLines={1}>
+          {/* The dock's own material, live blur included - but only once
+              it has ARRIVED. On its way up and down it moves on every
+              frame, and a live blur on a moving surface is the ANR this
+              project has already met (android_live_blur_moving_surface);
+              the flat fill carries those few frames. */}
+          <View style={[liftStyle(theme, theme.lift, 1), { borderRadius: DOCK_PATH_H / 2 }]}>
+            <DockFrost
+              style={[styles.pathShell, styles.cardEdge, { width: cardWidthNow }]}
+              radius={DOCK_PATH_H / 2}
+              blur={pathUp >= 1 && pathUpWanted}
+            >
+              <ScrollView ref={trailRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.trailStrip}>
+                <View ref={targets?.('')} collapsable={false}>
+                  <Pressable onPress={() => shownPath.onGo('')} style={styles.trailRoot}>
+                    <Ionicons name={shownPath.icon as keyof typeof Ionicons.glyphMap} size={19} color={theme.glass.ink} />
+                  </Pressable>
+                </View>
+                {shownPath.crumbs.map((segment, index) => {
+                  const isLast = index === shownPath.crumbs.length - 1;
+                  const target = shownPath.crumbs.slice(0, index + 1).join('/');
+                  return (
+                    <View key={target} style={styles.trailPair}>
+                      <Ionicons name="chevron-forward" size={13} color={theme.glass.inkMuted} />
+                      {isLast ? (
+                        <View style={[styles.trailCurrent, styles.pathCurrent, styles.here]}>
+                          <Text style={[styles.trailLabel, styles.trailLabelCurrent, { color: theme.glass.ink }]} numberOfLines={1}>
                             {segment}
                           </Text>
-                        </Pressable>
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
-            </ScrollView>
-          </DockFrost>
+                        </View>
+                      ) : (
+                        <View ref={targets?.(target)} collapsable={false}>
+                          <Pressable onPress={() => shownPath.onGo(target)} style={styles.trailSegment}>
+                            <Text style={[styles.trailLabel, { color: theme.glass.inkMuted }]} numberOfLines={1}>
+                              {segment}
+                            </Text>
+                          </Pressable>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </DockFrost>
+          </View>
         </View>
       )}
       <View
