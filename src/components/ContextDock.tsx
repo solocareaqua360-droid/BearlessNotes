@@ -122,11 +122,33 @@ const BEHIND_EDGE = 3;
 // Between them, and back to what these were always meant to be: a
 // hint that there is another card there, not a second dock.
 const BACK_SCALE = 0.91;
-const BACK_Y = 7;
+// NOTHING PEEKS OUT AT REST any more. The sliver was the stack's way of
+// saying "there is another card, swipe" - a job the dots below the dock
+// and the arriving card's own fall now do between them, and better: a
+// card that only shows when it is actually coming cannot be mistaken for
+// a second dock sitting under the first. The cards behind are still
+// really there, still scaled - they simply stand exactly under the one
+// in front. The user's call, once the fall was in.
+const BACK_Y = 0;
 // How high the departing card rises at the peak of its arc. A full card
 // height: short of that the drag never visibly clears the dock's own top
 // edge - "картка навіть не дотягується до верхнього краю дока".
 const RISE_F = 1.0;
+// HOW FAR THE CARD COMING FORWARD FALLS OUT from under the one leaving,
+// as a fraction of a card's height - the user's own number. The front
+// card climbs an arc far faster than the finger does, and the desk dots
+// under it had to vanish in a snap to keep out of its way. This is the
+// other half of the answer: the arriving card drops INTO the band the
+// dots just left, so the two read as one capsule changing rather than
+// one leaving and another arriving.
+//
+// Only while it travels - at rest the stack is the sliver it always
+// was, since the fall is a sine that is zero at both ends.
+const FALL_F = 0.25;
+// Points of finger travel that move nothing at all, so the dots have
+// somewhere to go before anything else starts. Measured from the
+// gesture's own activation, which is itself 10 points in.
+const DRAG_DEAD = 18;
 // `eps` alternates between 0 and a hundredth of a point. It exists to
 // be READ - see `tick` at the call site - and is far too small to see.
 // Where card `i` stands when the ring's front is at position `f`, said
@@ -145,7 +167,7 @@ function slotPlace(i: number, f: number, n: number, cardH: number) {
     y = -Math.sin(Math.min(1, t) * Math.PI) * cardH * RISE_F + slot * BACK_Y;
   } else {
     slot = rel - t;
-    y = slot * BACK_Y;
+    y = slot * BACK_Y + (rel === 1 ? Math.sin(Math.min(1, t) * Math.PI) * cardH * FALL_F : 0);
   }
   return { y, s: Math.pow(BACK_SCALE, slot), z: Math.round((n - slot) * 10) };
 }
@@ -1053,7 +1075,7 @@ export default function ContextDock() {
           // crossed the midpoint: "я не дотягнув догори, воно вже
           // перелиснуло". A drag may only ever rise; the descent onto
           // the back spot belongs to the release.
-          const dragged = Math.max(0, -e.translationY) / cardHRef.current;
+          const dragged = Math.max(0, -e.translationY - DRAG_DEAD) / cardHRef.current;
           dragRef.current = startRef.current + Math.min(0.5, dragged);
           setDrag(dragRef.current);
         })
