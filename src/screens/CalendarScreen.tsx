@@ -835,15 +835,21 @@ export default function CalendarScreen() {
   // там вже є календар". With no context of its own the calendar's dock
   // becomes what every other screen's is at this width - the desks,
   // with its own actions in the permanent zone beside them.
+  // ...and not while the MONTH is open either, for exactly the same
+  // reason it is not published in two panes: the grid above is already
+  // the days, and a strip of the same week under it says them twice.
+  // `monthOpen` covers both (it is two-pane OR expanded), so the strip
+  // narrows away behind the dock as the month unfolds and comes back out
+  // as it folds - the user's own words for what should happen.
   useEffect(() => {
     if (!publishToDock || !calendarFocused) return;
-    if (isTwoPane) {
+    if (monthOpen) {
       publishToDock(null);
       return;
     }
     publishToDock({ kind: 'strip', icon: 'calendar-outline', items: stripItems, selected: selectedKeyForDock, onPick: pickDay });
     return () => publishToDock(null);
-  }, [publishToDock, calendarFocused, isTwoPane, stripItems, selectedKeyForDock, pickDay]);
+  }, [publishToDock, calendarFocused, monthOpen, stripItems, selectedKeyForDock, pickDay]);
 
   function jumpToToday() {
     selectDay(new Date());
