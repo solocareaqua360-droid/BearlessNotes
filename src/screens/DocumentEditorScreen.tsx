@@ -309,6 +309,12 @@ export type DocumentEditorHandle = {
 // Set to false, and then remove, once the half-line jerk is found.
 const DIAG = true;
 
+// How far past the last block the page can scroll while the keyboard is
+// up, on top of the keyboard and the bar. Was 80, and a measured 27 short
+// of letting the last line of a note clear the keyboard - see
+// bottomSpacerStyle.
+const KEYBOARD_ROOM = 180;
+
 function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHandle>) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
@@ -2244,10 +2250,22 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // With the room there from the start, the synced scroll is never
   // clamped, reaches its target in step with the keyboard, and the safety
   // net finds nothing left to do.
+  //
+  // And there has to be ENOUGH of it. The second trace, with the room
+  // already made up front, still showed the scroll stopping at 254 of
+  // the 281 it set out for: the content ended there. So it was never only
+  // WHEN the room appeared but HOW MUCH - "keyboard + 80 + bar", where the
+  // 80 was never derived from anything, left the last line of a note 27
+  // short of clearing the keyboard. KEYBOARD_ROOM gives it several times
+  // that. Blank page below the last block while the keyboard is up costs
+  // nothing anyone sees; a page that cannot be scrolled far enough costs a
+  // jerk on every tap.
   const bottomSpacerStyle = useAnimatedStyle(() => ({
     height: Math.max(
       160,
-      Math.max(keyboardSV.value, keyboardTargetSV.value, panelHeightSV.value) + 80 + EDITOR_TOOLBAR_HEIGHT
+      Math.max(keyboardSV.value, keyboardTargetSV.value, panelHeightSV.value) +
+        KEYBOARD_ROOM +
+        EDITOR_TOOLBAR_HEIGHT
     ),
   }));
   // "Is the keyboard up", taken from the one value that has been proved
