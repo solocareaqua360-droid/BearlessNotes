@@ -650,6 +650,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // arrived, so the keyboard rises UNDER them rather than the bar falling
   // and the page showing through for a third of a second first.
   const [panelClosing, setPanelClosing] = useState(false);
+  // Re-renders after a text-version bump, which lives in a ref.
+  const [, forceRender] = useState(0);
   // Whether the panel has been opened AT ALL in this editing session.
   //
   // Before it has, the field is never told anything about the soft
@@ -1849,22 +1851,28 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       return;
     }
     const sel = activeSelection;
-    // A plain focus() did not raise the keyboard: "кнопка клавіатури
-    // прибирає слеш рядок, а потім і саму панель", and no keyboard came.
-    // Android raises it reliably only on a blur/focus round trip - the
-    // same one the return-from-another-app path uses - and the blur is
-    // marked as ours so it does not end the session it is resuming.
+    // The field is REMOUNTED, not refocused. Two tries at focus() - plain,
+    // then a blur/focus round trip - both left the keyboard down, and the
+    // reason was already written above this very field in BlockRow:
+    // "Mount-time focus is what reliably raises the keyboard on Android".
+    // focus() on an EditText that already exists is unreliable there; a
+    // field that has just been created with autoFocus is not. Bumping the
+    // block's text version changes the field's key, which is exactly that
+    // remount - the same mechanism the Enter-split already uses.
+    //
+    // The old field's blur on the way out is ours, not the end of editing.
     resumeRefocusRef.current = true;
-    inputRefs.current[id]?.blur();
-    requestAnimationFrame(() => {
-      inputRefs.current[id]?.focus();
-      resumeRefocusRef.current = false;
-      // The caret goes back where it was, not to the end of the text -
-      // focusing a field is not the same as returning to it.
-      if (sel && sel.blockId === id) {
-        requestAnimationFrame(() => setSelection(inputRefs.current[id], sel.start, sel.end));
-      }
-    });
+    bumpTextVersion(id);
+    forceRender((n) => n + 1);
+    // Two frames: one to mount the new field, one for it to take focus.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        resumeRefocusRef.current = false;
+        // The caret goes back where it was, not to the end of the text -
+        // a freshly mounted field starts at the end.
+        if (sel && sel.blockId === id) setSelection(inputRefs.current[id], sel.start, sel.end);
+      })
+    );
     // Once the keyboard is back up, stop saying anything to the field
     // about it. Long enough for the focus and the keyboard's own
     // animation to finish, so the flag is not withdrawn mid-rise.
@@ -2440,7 +2448,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // own chevron closes it, and back is one tap further where it always
   // was.
   useDockBeads(
-    !embedded && panelSection === null
+    !embedded && panelSection === null && !panelClosing
       ? {
           icon: canvasEditing ? 'checkmark-outline' : 'arrow-back-outline',
           onPress: () => {
@@ -2453,7 +2461,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // Only where there are two panes to collapse into one - the corner
     // capsule's own expand/contract button moved here rather than
     // disappearing, since it has no dock equivalent otherwise.
-    !embedded && onToggleFullscreen && panelSection === null
+    !embedded && onToggleFullscreen && panelSection === null && !panelClosing
       ? {
           icon: paneFullscreen ? 'contract-outline' : 'expand-outline',
           onPress: onToggleFullscreen,
@@ -2482,7 +2490,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // screen. The panel is such a thing - it stands where the keyboard
   // stood - so it hides the dock for the same reason, or the dock's
   // capsule floats over the panel's own tiles.
-  const dockLive = !embedded && editorFocused && !keyboardOpen && panelSection === null;
+  // ...nor while it is on its way back: ⌨ has closed the panel and the
+  // keyboard is still rising, and for that moment nothing "stands" at
+  // the bottom - which let the dock pop up for a second.
+  const dockLive = !embedded && editorFocused && !keyboardOpen && panelSection === null && !panelClosing;
   useDockActions(
     !dockLive
       ? null
