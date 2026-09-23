@@ -397,37 +397,62 @@ const DOCK_WRAP_PAD = 6;
 // The path strip's own side padding - named because its width is worked
 // out from its content plus exactly this.
 const PATH_PAD = 4;
-// How long ONE of the strip's two steps takes - see `pathStage`.
-const PATH_STEP_MS = 190;
-// A day cell in the lifted strip: the weekday and the number stand side
-// by side now, not stacked, so the strip can be as short as the path's.
 const STRIP_ROW_ITEM = 64;
 
-// AWAY FAST, BRAKING INTO THE REST - "швидкість в розширенні на початку
-// і гальмування в самому кінці". `useEaseTo`'s own cubic is gentler at
-// both ends; this is a quartic, which leaves most of its distance in the
-// first third and spends the last third arriving.
+type LiftKind = 'path' | 'strip' | null;
+
+// A CIRCLE THAT IS THROWN, LANDS, AND SPREADS INTO A STRIP.
 //
-// Its own clock rather than useEaseTo's, because that one's half-point
-// tolerance is meant for WIDTHS in pixels, and what rides this is a 0..2
-// step where half a point is the whole animation.
-function useEaseOutTo(target: number, ms: number): number {
-  const [value, setValue] = useState(target);
+// What this replaces, and why: the strip used to grow from the dock's
+// width to the row's, which is barely twice over, along a plain eased
+// curve. The user read exactly what that is - "дуже механічним, лінійним
+// та роботизованим": too little amplitude for the eye to see an event,
+// so all that was left to see was the curve. A circle the height of the
+// strip is a tenth of the row, so the same move now covers ten times the
+// distance; and the spread is no longer something the strip simply does,
+// it is what HAPPENS TO IT when it lands.
+//
+// The throw is the user's own: "коло піднімається трохи вище ніж йому
+// потрібно і потім падає на поточну висоту і якраз від падіння
+// розтягується в стрічку."
+const RISE_MS = 170;
+const FALL_MS = 130;
+// The spread outlives the landing by this much, so the impact has
+// somewhere to travel to rather than stopping with the circle.
+const SPREAD_TAIL_MS = 60;
+const LIFT_IN_MS = RISE_MS + FALL_MS + SPREAD_TAIL_MS;
+// Leaving is the same in reverse and WITHOUT the throw: a strip that
+// bounced on its way out would read as hesitation.
+const OUT_CONTRACT_MS = 170;
+const OUT_DROP_MS = 150;
+const LIFT_OUT_MS = OUT_CONTRACT_MS + OUT_DROP_MS;
+// How far above its resting line the circle is thrown, as a fraction of
+// the travel it rises through - about ten points.
+const LIFT_OVERSHOOT = 0.19;
+
+const easeOutCubic = (k: number) => 1 - Math.pow(1 - k, 3);
+const easeInQuad = (k: number) => k * k;
+
+// The clock is LINEAR and the shaping is done on top of it, because the
+// two things being shaped - how high it is, how wide it is - are on
+// different schedules that overlap. One eased value could not hold both.
+function useLiftClock(up: boolean, ms: number): number {
+  const [p, setP] = useState(up ? 1 : 0);
   const raf = useRef<number | null>(null);
-  const ref = useRef(value);
-  ref.current = value;
+  const ref = useRef(p);
+  ref.current = p;
   useEffect(() => {
+    const to = up ? 1 : 0;
     const from = ref.current;
-    if (Math.abs(from - target) < 0.001) {
-      if (from !== target) setValue(target);
-      return;
-    }
+    if (from === to) return;
     if (raf.current !== null) cancelAnimationFrame(raf.current);
     const t0 = Date.now();
+    // Turned round mid-flight, it has only the distance left to cover -
+    // not a whole move's worth of time to cover a sliver of it.
+    const span = Math.max(1, Math.abs(to - from) * ms);
     const step = () => {
-      const k = Math.min(1, (Date.now() - t0) / ms);
-      const e = 1 - Math.pow(1 - k, 4);
-      setValue(from + (target - from) * e);
+      const k = Math.min(1, (Date.now() - t0) / span);
+      setP(from + (to - from) * k);
       if (k < 1) {
         raf.current = requestAnimationFrame(step);
         return;
@@ -441,77 +466,57 @@ function useEaseOutTo(target: number, ms: number): number {
         raf.current = null;
       }
     };
-  }, [target, ms]);
-  return value;
+  }, [up, ms]);
+  return p;
 }
 
-type LiftKind = 'path' | 'strip' | null;
+// `rise` is 1 at the resting line and goes past it on the throw; `spread`
+// is 0 as a circle and 1 as the whole strip.
+function shapeIn(p: number) {
+  const top = RISE_MS / LIFT_IN_MS;
+  const land = (RISE_MS + FALL_MS) / LIFT_IN_MS;
+  const peak = 1 + LIFT_OVERSHOOT;
+  const rise =
+    p <= top
+      ? easeOutCubic(p / top) * peak
+      : p <= land
+        // Falling, so it gathers speed rather than losing it.
+        ? peak + (1 - peak) * easeInQuad((p - top) / (land - top))
+        : 1;
+  // Nothing spreads on the way up: the throw has to read as one object
+  // before it can read as that object landing.
+  const spread = p <= top ? 0 : easeOutCubic((p - top) / (1 - top));
+  return { rise, spread };
+}
 
-// THE ONE PLACE ABOVE THE DOCK, and the two steps whatever stands there
-// takes: it rises at the dock's own width and only then widens out to
-// what it needs; leaving, it narrows back to the dock's width and only
-// then drops behind it.
+function shapeOut(p: number) {
+  const q = 1 - p;
+  const gathered = OUT_CONTRACT_MS / LIFT_OUT_MS;
+  const spread = 1 - easeOutCubic(Math.min(1, q / gathered));
+  const rise = 1 - easeInQuad(Math.max(0, (q - gathered) / (1 - gathered)));
+  return { rise, spread };
+}
+
+// THE ONE PLACE ABOVE THE DOCK, and the one thing standing in it.
 //
-// One number carries both, so the steps can never overlap: 0 is away
-// behind the dock, 1 is up at the dock's width, 2 is up and as wide as
-// it needs.
-//
-// And ONE machine for both strips rather than one each, because the
-// place is one: handing it from the path to the days means the first
-// must be all the way down before the second starts, in either
-// direction. Two machines could only ever gate on each other's live
-// value, which is a circle - and a circle that settles is a strip that
-// never comes back up.
+// One machine for both strips rather than one each, because the place is
+// one: handing it from the path to the days means the first must be all
+// the way down before the second is thrown. Two machines could only ever
+// gate on each other's live value, which is a circle - and a circle that
+// settles is a strip that never comes back up.
 function useStripLift(wanted: LiftKind) {
-  const [lift, setLift] = useState<{ kind: LiftKind; stage: number }>(() => ({
-    kind: wanted,
-    stage: wanted ? 2 : 0,
-  }));
-  // What is actually on screen, which is behind the stage it was told to
-  // go to by however long that move takes - read when handing the place
-  // over, and never as a dependency: it changes every frame.
-  const stepRef = useRef(wanted ? 2 : 0);
+  const [shown, setShown] = useState<LiftKind>(wanted);
+  const up = shown !== null && shown === wanted;
+  const p = useLiftClock(up, up ? LIFT_IN_MS : LIFT_OUT_MS);
   useEffect(() => {
-    // Already holding the place, and wanted there.
-    if (lift.kind !== null && lift.kind === wanted) {
-      if (lift.stage === 2) return;
-      // Rising: up first, wide after.
-      if (lift.stage === 0) {
-        setLift({ kind: lift.kind, stage: 1 });
-        return;
-      }
-      const id = setTimeout(() => setLift({ kind: lift.kind, stage: 2 }), PATH_STEP_MS);
-      return () => clearTimeout(id);
-    }
-    // Not wanted: away, narrow first and down after.
-    if (lift.stage === 2) {
-      setLift({ kind: lift.kind, stage: 1 });
-      return;
-    }
-    if (lift.stage === 1) {
-      const id = setTimeout(() => setLift({ kind: lift.kind, stage: 0 }), PATH_STEP_MS);
-      return () => clearTimeout(id);
-    }
-    // Told to go down. Nothing else wants the place, so leave it holding
-    // it: it simply stops being drawn once it has actually arrived. The
-    // kind is NOT cleared here - clearing it took the strip off the
-    // screen at the moment the descent began rather than when it ended:
-    // "смужки пропадають раніше аніж сховаються вниз за док".
-    if (wanted === null) return;
-    // Something else wants it. Hand it over once this one has arrived,
-    // not when it was told to leave.
-    const id = setTimeout(() => setLift({ kind: wanted, stage: 0 }), stepRef.current <= 0.001 ? 0 : PATH_STEP_MS);
-    return () => clearTimeout(id);
-  }, [wanted, lift]);
-  const step = useEaseOutTo(lift.stage, PATH_STEP_MS);
-  stepRef.current = step;
-  return {
-    kind: lift.kind,
-    step,
-    up: Math.min(1, step),
-    // 0 at the dock's width, 1 at the content's own.
-    wide: Math.max(0, step - 1),
-  };
+    // Handed over only once this one has actually gone - told to leave is
+    // not the same as gone, and unmounting on the telling took strips off
+    // the screen at the start of their own descent.
+    if (shown === wanted || p > 0.001) return;
+    setShown(wanted);
+  }, [shown, wanted, p]);
+  const shape = up ? shapeIn(p) : shapeOut(p);
+  return { kind: shown, live: p, rise: shape.rise, spread: shape.spread };
 }
 const DESK_HINT_H = 16;
 const DESK_HINT_BOTTOM = 3;
@@ -767,13 +772,13 @@ export default function ContextDock() {
   const liftWanted: LiftKind = tabsDrifting ? null : (own?.kind === 'path' || own?.kind === 'strip' ? own.kind : null);
   const stripLift = useStripLift(liftWanted);
   const pathUpWanted = liftWanted === 'path';
-  const pathStep = stripLift.kind === 'path' ? stripLift.step : 0;
-  const pathUp = stripLift.kind === 'path' ? stripLift.up : 0;
-  const pathWide = stripLift.kind === 'path' ? stripLift.wide : 0;
+  const pathLive = stripLift.kind === 'path' ? stripLift.live : 0;
+  const pathRise = stripLift.kind === 'path' ? stripLift.rise : 0;
+  const pathSpread = stripLift.kind === 'path' ? stripLift.spread : 0;
   const dayUpWanted = liftWanted === 'strip';
-  const dayStep = stripLift.kind === 'strip' ? stripLift.step : 0;
-  const dayUp = stripLift.kind === 'strip' ? stripLift.up : 0;
-  const dayWide = stripLift.kind === 'strip' ? stripLift.wide : 0;
+  const dayLive = stripLift.kind === 'strip' ? stripLift.live : 0;
+  const dayRise = stripLift.kind === 'strip' ? stripLift.rise : 0;
+  const daySpread = stripLift.kind === 'strip' ? stripLift.spread : 0;
   const lastPathRef = useRef<Extract<NonNullable<typeof own>, { kind: 'path' }> | null>(null);
   if (own?.kind === 'path') lastPathRef.current = own;
   const lastStripRef = useRef<Extract<NonNullable<typeof own>, { kind: 'strip' }> | null>(null);
@@ -992,18 +997,25 @@ export default function ContextDock() {
   // every name.
   const [pathContentW, setPathContentW] = useState(0);
   // Not eased here: `pathWide` is what moves, and it is the step above.
-  const pathWidthNow =
-    cardWidthNow +
-    (Math.min(rowWidthNow, Math.max(cardWidthNow, pathContentW + PATH_PAD * 2)) - cardWidthNow) * pathWide;
+  // A circle exactly as tall as the strip, which the capsule's own
+  // radius already makes round.
+  const LIFT_CIRCLE = DOCK_PATH_H;
+  const pathFullW = Math.min(rowWidthNow, Math.max(cardWidthNow, pathContentW + PATH_PAD * 2));
+  const pathWidthNow = LIFT_CIRCLE + (pathFullW - LIFT_CIRCLE) * pathSpread;
   // The days open to the whole row too - the outer edges of the search
   // and today beads, which is what the row IS.
-  const dayWidthNow = cardWidthNow + (rowWidthNow - cardWidthNow) * dayWide;
+  const dayWidthNow = LIFT_CIRCLE + (rowWidthNow - LIFT_CIRCLE) * daySpread;
   // NOT FADED, either way. A strip that fades as it goes is most of the
   // way gone before it has moved - "пропадають раніше аніж сховаються
   // вниз за док". It does not need to fade: by the time it travels it
   // has narrowed to the dock's own width, which is exactly what the dock
   // covers, and it is drawn before the dock, so it really does go behind
   // it.
+  // What the circle carries while it is thrown, and what the strip shows
+  // once it has spread - never both at once, and each has the other's
+  // opacity out of its way before it draws.
+  const liftIconAlpha = (spread: number) => Math.max(0, Math.min(1, 1 - spread / 0.3));
+  const liftContentAlpha = (spread: number) => Math.max(0, Math.min(1, (spread - 0.3) / 0.45));
   // Both strips stand in the same place; they are never up together.
   const liftedBottom = DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD + CARD_H + BEHIND_EDGE * 2 + DOCK_PATH_GAP;
   const liftedTravel = DOCK_PATH_H + DOCK_PATH_GAP + BEHIND_EDGE * 2;
@@ -1751,14 +1763,14 @@ export default function ContextDock() {
           не зливались в одне слово". The marks follow the number, after
           the day rather than inside it: a dot between the letters and
           the figures would split the one thing this cell says. */}
-      {shownStrip && dayStep > 0.001 && (
+      {shownStrip && dayLive > 0.001 && (
         <View
           pointerEvents={dayUpWanted ? 'box-none' : 'none'}
           style={[
             styles.pathWrap,
             {
               bottom: liftedBottom,
-              transform: [{ translateY: (1 - dayUp) * liftedTravel }],
+              transform: [{ translateY: (1 - dayRise) * liftedTravel }],
             },
           ]}
         >
@@ -1767,11 +1779,20 @@ export default function ContextDock() {
               style={[styles.pathShell, styles.cardEdge, { width: dayWidthNow }]}
               radius={DOCK_PATH_H / 2}
             >
+              {/* The day you are on, alone in the circle - the user's
+                  own call for what the calendar's one carries. */}
+              {liftIconAlpha(daySpread) > 0.001 && (
+                <View style={[styles.liftIcon, { opacity: liftIconAlpha(daySpread) }]} pointerEvents="none">
+                  <Text style={[styles.dayNumber, { color: theme.glass.ink }]}>
+                    {shownStrip.items.find((item) => item.key === shownStrip.selected)?.label ?? ''}
+                  </Text>
+                </View>
+              )}
               <ScrollView
                 ref={stripRef}
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                style={styles.stripViewport}
+                style={[styles.stripViewport, { opacity: liftContentAlpha(daySpread) }]}
                 onLayout={(e) => {
                   const width = e.nativeEvent.layout.width;
                   setStripWidth(width);
@@ -1821,14 +1842,14 @@ export default function ContextDock() {
           same reason as the desks below: it comes out from UNDER the
           dock. Its hidden place is exactly behind the front card, so
           the way up and the way down are one short slide. */}
-      {shownPath && pathStep > 0.001 && (
+      {shownPath && pathLive > 0.001 && (
         <View
           pointerEvents={pathUpWanted ? 'box-none' : 'none'}
           style={[
             styles.pathWrap,
             {
               bottom: liftedBottom,
-              transform: [{ translateY: (1 - pathUp) * liftedTravel }],
+              transform: [{ translateY: (1 - pathRise) * liftedTravel }],
             },
           ]}
         >
@@ -1844,12 +1865,20 @@ export default function ContextDock() {
               style={[styles.pathShell, styles.cardEdge, { width: pathWidthNow }]}
               radius={DOCK_PATH_H / 2}
             >
+              {/* The database's own glyph, and nothing else, for as long
+                  as this is a circle in the air. */}
+              {liftIconAlpha(pathSpread) > 0.001 && (
+                <View style={[styles.liftIcon, { opacity: liftIconAlpha(pathSpread) }]} pointerEvents="none">
+                  <Ionicons name={shownPath.icon as keyof typeof Ionicons.glyphMap} size={19} color={theme.glass.ink} />
+                </View>
+              )}
               <ScrollView
                 ref={trailRef}
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.trailStrip}
                 onContentSizeChange={(w) => setPathContentW(w)}
+                style={{ opacity: liftContentAlpha(pathSpread) }}
               >
                 <View ref={targets?.('')} collapsable={false}>
                   <Pressable onPress={() => shownPath.onGo('')} style={styles.trailRoot}>
@@ -2298,6 +2327,16 @@ const styles = StyleSheet.create({
   // reference has no beads inside its capsule.
   here: {
     backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  // Dead centre of the capsule whatever width it currently has.
+  liftIcon: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pathWrap: {
     position: 'absolute',
