@@ -153,7 +153,10 @@ export function useExplorerCarry<T extends { id: string }>({
     .onUpdate((e) => carry.updateCarry(e.absoluteX, e.absoluteY))
     .onEnd((_e, success) => {
       if (success) {
-        carry.endCarry();
+        // Lifted and let go where it lay: the same as the short hold.
+        // The window for the short hold alone (380-650 ms) was too narrow
+        // to find - "затискання призводить тільки до переміщення".
+        carry.endCarry(() => carry.menuAt(downAt.current.x, downAt.current.y));
       } else if (Date.now() - downAt.current.at >= MENU_HOLD_MS) {
         // Not long enough to lift, longer than a tap: the short hold,
         // which is the card's own menu - opened on this gesture's clock

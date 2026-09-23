@@ -135,6 +135,12 @@ export function useCardCarry<T extends { id: string }>({
   // tall, and picking one up by its top put the centre a hundred points
   // below - past the folder being aimed at, every time.
   const fingerRef = useRef({ x: 0, y: 0 });
+  // Where the card was lifted, and whether the carry has gone anywhere
+  // since: the finger travelled, a second finger scrolled, or a folder
+  // was stepped into. A card lifted and let go where it lay was not
+  // carried at all - see endCarry's `onStill`.
+  const liftedAt = useRef({ x: 0, y: 0 });
+  const wandered = useRef(false);
   // Every folder row currently on screen, by path - registered by
   // ExplorerHead (or a screen's own folder rows) as they mount, cleared
   // as they unmount. A `measure`-able node, not a rect: rects go stale
@@ -228,6 +234,8 @@ export function useCardCarry<T extends { id: string }>({
       hapticPickUp();
       const finger = { x: x + touchX, y: y + touchY };
       fingerRef.current = finger;
+      liftedAt.current = finger;
+      wandered.current = false;
       originRef.current = path;
       aliveAt.current = Date.now();
       const next = { items, x: finger.x + GHOST_NUDGE_X, y: finger.y + GHOST_NUDGE_Y };
@@ -242,6 +250,10 @@ export function useCardCarry<T extends { id: string }>({
     if (!current) return;
     aliveAt.current = Date.now();
     fingerRef.current = { x: absoluteX, y: absoluteY };
+    // A few points is a steady hand, not a carry - the lifted card
+    // shrinks under the finger, and the finger itself never holds
+    // perfectly still.
+    if (Math.hypot(absoluteX - liftedAt.current.x, absoluteY - liftedAt.current.y) > 12) wandered.current = true;
     const next = { ...current, x: absoluteX + GHOST_NUDGE_X, y: absoluteY + GHOST_NUDGE_Y };
     ghostRef.current = next;
     setGhost(next);
@@ -254,6 +266,7 @@ export function useCardCarry<T extends { id: string }>({
   // letting go of the card.
   const hitTargetAt = useCallback((x: number, y: number, onHit: (path: string) => void) => {
     aliveAt.current = Date.now();
+    wandered.current = true;
     // Both registers: stepping is what the dock's crumbs are FOR, and a
     // folder row can be stepped into as well as dropped on.
     [folderNodes.current, stepNodes.current].forEach((register) => {
@@ -265,9 +278,19 @@ export function useCardCarry<T extends { id: string }>({
     });
   }, []);
 
-  const endCarry = useCallback(() => {
+  // `onStill`: what a lift that went nowhere means instead of a drop -
+  // the explorer's cards are SELECTED by it, the way a held block is in
+  // the editor. Without it such a lift settles back where it was, as it
+  // always has.
+  const endCarry = useCallback((onStill?: () => void) => {
     const current = ghostRef.current;
     if (!current) return;
+    if (onStill && !wandered.current) {
+      ghostRef.current = null;
+      setGhost(null);
+      onStill();
+      return;
+    }
     const { items } = current;
     const { x: cx, y: cy } = fingerRef.current;
     let matched: string | null | undefined;
@@ -361,6 +384,7 @@ export function useCardCarry<T extends { id: string }>({
     cancelCarry,
     scrollBy: (dx: number, dy: number) => {
       aliveAt.current = Date.now();
+      wandered.current = true;
       scrollBy(dx, dy);
     },
   };
