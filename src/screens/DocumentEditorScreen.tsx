@@ -310,10 +310,11 @@ export type DocumentEditorHandle = {
 const DIAG = true;
 
 // How far past the last block the page can scroll while the keyboard is
-// up, on top of the keyboard and the bar. Was 80, and a measured 27 short
-// of letting the last line of a note clear the keyboard - see
-// bottomSpacerStyle.
-const KEYBOARD_ROOM = 180;
+// up, on top of the keyboard and the bar. Raised to 180 once on the
+// theory that the page ENDED short of the scroll; the next trace showed
+// the content 100 taller and the scroll stopping in exactly the same
+// place, which disproved it. Back to what it was.
+const KEYBOARD_ROOM = 80;
 
 function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHandle>) {
   const theme = useTheme();
@@ -2105,6 +2106,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       onStart: (e) => {
         'worklet';
         if (appActiveSV.value === 0) return; // see onMove
+        if (DIAG) runOnJS(traceScroll)('kbStart', `p=${e.progress.toFixed(2)} h=${Math.round(e.height)} shift=${Math.round(syncShift.value)}`, diagTag);
+        // A SECOND animation while the keyboard is already up - Android
+        // settles its height after the first one (the trace shows the
+        // event saying 323 while the frames reach 338) - must not throw
+        // away the scroll that is still in flight. This used to zero the
+        // shift unconditionally and then return for anything that was not
+        // an opening, so a settling animation arriving mid-scroll killed
+        // it: the page stopped at 251 of 281 and the safety net fetched
+        // the rest with a jerk. Only a real close (height going to 0)
+        // lets go now.
+        if (e.progress !== 1 && e.height > 0) return;
         syncShift.value = 0;
         // Opening: the full height is the target from this frame on.
         // Closing: let go at once, so the spacer follows the keyboard
@@ -2149,6 +2161,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       onEnd: (e) => {
         'worklet';
         if (appActiveSV.value === 0) return; // see onMove
+        if (DIAG) runOnJS(traceScroll)('kbEnd', `h=${Math.round(e.height)} shift=${Math.round(syncShift.value)} to=${Math.round(syncBaseOffset.value + syncShift.value)}`, diagTag);
         keyboardSV.value = e.height;
         if (syncShift.value > 0) {
           scrollTo(scrollViewRef, 0, syncBaseOffset.value + syncShift.value, false);
@@ -2250,16 +2263,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // With the room there from the start, the synced scroll is never
   // clamped, reaches its target in step with the keyboard, and the safety
   // net finds nothing left to do.
-  //
-  // And there has to be ENOUGH of it. The second trace, with the room
-  // already made up front, still showed the scroll stopping at 254 of
-  // the 281 it set out for: the content ended there. So it was never only
-  // WHEN the room appeared but HOW MUCH - "keyboard + 80 + bar", where the
-  // 80 was never derived from anything, left the last line of a note 27
-  // short of clearing the keyboard. KEYBOARD_ROOM gives it several times
-  // that. Blank page below the last block while the keyboard is up costs
-  // nothing anyone sees; a page that cannot be scrolled far enough costs a
-  // jerk on every tap.
   const bottomSpacerStyle = useAnimatedStyle(() => ({
     height: Math.max(
       160,
