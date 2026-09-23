@@ -1478,13 +1478,11 @@ export default function ContextDock() {
           ]}
         >
           {/* The dock's material - "прирівняти по матеріалу і кольору до
-              дока" - with the live blur switched on only at rest: while
-              it slides, a real-time blur is the ANR this project has
-              already met (android_live_blur_moving_surface). */}
+              дока" - blur and all, moving or not; see the path above. */}
           {/* The shadow on a box the capsule's own size - on the full-width
               wrap it would draw a band across the screen. */}
           <View style={[liftStyle(theme, theme.lift, 1), { borderRadius: DESK_HINT_H / 2 }]}>
-            <DockFrost style={[styles.deskHint, styles.cardEdge]} radius={DESK_HINT_H / 2} blur={deskHint >= 1 && deskHintWanted}>
+            <DockFrost style={[styles.deskHint, styles.cardEdge]} radius={DESK_HINT_H / 2}>
               <View style={styles.deskHintRow}>
                 {deskHintDesks.map((desk) => (
                   <Pressable key={desk.key} hitSlop={10} onPress={desk.onPress} accessibilityLabel={desk.key}>
@@ -1518,16 +1516,17 @@ export default function ContextDock() {
             },
           ]}
         >
-          {/* The dock's own material, live blur included - but only once
-              it has ARRIVED. On its way up and down it moves on every
-              frame, and a live blur on a moving surface is the ANR this
-              project has already met (android_live_blur_moving_surface);
-              the flat fill carries those few frames. */}
+          {/* The dock's own material, live blur included, ALL the way -
+              switched on only at rest, the capsule changed colour as it
+              stopped: "змінюють свій колір під час підіймання". The
+              slide is a quarter of a second, the same kind of move the
+              dock's own blurred cards make on every swipe; the ANR in
+              android_live_blur_moving_surface was a bar riding the
+              keyboard over typed text, which this is not. */}
           <View style={[liftStyle(theme, theme.lift, 1), { borderRadius: DOCK_PATH_H / 2 }]}>
             <DockFrost
               style={[styles.pathShell, styles.cardEdge, { width: cardWidthNow }]}
               radius={DOCK_PATH_H / 2}
-              blur={pathUp >= 1 && pathUpWanted}
             >
               <ScrollView ref={trailRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.trailStrip}>
                 <View ref={targets?.('')} collapsable={false}>
