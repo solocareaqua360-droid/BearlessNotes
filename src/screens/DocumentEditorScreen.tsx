@@ -2520,8 +2520,22 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // keyboard is still rising, and for that moment nothing "stands" at
   // the bottom - which let the dock pop up for a second.
   const dockLive = !embedded && editorFocused && !keyboardOpen && panelSection === null && !panelClosing;
+  // THE DAILY NOTE'S SELECT MODE REACHES THE DOCK TOO, though the note
+  // itself has no card there (the calendar owns the dock's context).
+  //
+  // It used to draw a dark capsule of its own above the keyboard, and
+  // that capsule now stands in exactly the place the lifted day strip
+  // does - the two overlapped, which is what the user caught: "панелі
+  // накладуються при виборі блоку документу... ці кнопки повинні
+  // з'являтись в доці а не окремим вікном". Published as a claim, so it
+  // simply takes the dock's actions card for as long as blocks are
+  // picked and gives it back to the calendar afterwards.
+  //
+  // Whatever the count, including none: the way OUT of select mode is
+  // the first of those buttons, and the daily note had no other.
+  const embeddedSelect = embedded && isSelectMode;
   useDockActions(
-    !dockLive
+    !dockLive && !embeddedSelect
       ? null
       : isSelectMode
       ? [
@@ -5113,39 +5127,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           </>
         )}
       </ScrollView>
-      )}
-
-      {embedded && selectedIds.size > 0 && (
-        // Embedded only (CalendarScreen's daily note) - there is no
-        // Полотно dock there to share a slot with (that dock is
-        // !embedded-only, since CalendarScreen owns its own header
-        // capsule), so this stays the plain dark capsule it always was.
-        // The regular document editor's own select mode now shares the
-        // docDock slot above instead - see selectedIds.size there.
-        <View
-          style={[
-            styles.selectedActionsWrap,
-            embedded && keyboardHeight > 0 && { bottom: keyboardHeight + 16 },
-          ]}
-          pointerEvents="box-none"
-        >
-          <View style={styles.selectedActionsCapsule}>
-            <Text style={styles.selectedActionsCount}>{selectedIds.size}</Text>
-            <View style={styles.selectedActionsDivider} />
-            <Pressable style={styles.selectedActionBtn} hitSlop={6} onPress={copySelectedBlocks}>
-              <Ionicons name="copy-outline" size={18} color="#fff" />
-              <Text style={styles.selectedActionLabel}>Копіювати</Text>
-            </Pressable>
-            <Pressable style={styles.selectedActionBtn} hitSlop={6} onPress={clipSelectedToNote}>
-              <Ionicons name="document-text-outline" size={18} color="#fff" />
-              <Text style={styles.selectedActionLabel}>В нотатку</Text>
-            </Pressable>
-            <Pressable style={styles.selectedActionBtn} hitSlop={6} onPress={deleteSelectedBlocks}>
-              <Ionicons name="trash-outline" size={18} color="#fff" />
-              <Text style={styles.selectedActionLabel}>Видалити</Text>
-            </Pressable>
-          </View>
-        </View>
       )}
 
       {/* The offer that rides in with a clipping - accept or refuse, and
