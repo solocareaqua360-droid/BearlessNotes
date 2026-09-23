@@ -843,13 +843,17 @@ export default function CalendarScreen() {
   // as it folds - the user's own words for what should happen.
   useEffect(() => {
     if (!publishToDock || !calendarFocused) return;
-    if (monthOpen) {
+    // ...nor while the overview is up. The swipe up leaves this one day
+    // for all of them, so a strip of this week has nothing left to be
+    // about: it gathers back into its circle and drops behind the dock
+    // as the page shrinks.
+    if (monthOpen || overviewOpen) {
       publishToDock(null);
       return;
     }
     publishToDock({ kind: 'strip', icon: 'calendar-outline', items: stripItems, selected: selectedKeyForDock, onPick: pickDay });
     return () => publishToDock(null);
-  }, [publishToDock, calendarFocused, monthOpen, stripItems, selectedKeyForDock, pickDay]);
+  }, [publishToDock, calendarFocused, monthOpen, overviewOpen, stripItems, selectedKeyForDock, pickDay]);
 
   function jumpToToday() {
     selectDay(new Date());
