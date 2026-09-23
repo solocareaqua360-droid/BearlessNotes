@@ -239,6 +239,10 @@ type Props =
       // toggle without lifting isSelectMode into two-way controlled props.
       onSelectModeChange?: (isSelectMode: boolean) => void;
       onSaveStatusChange?: (status: 'saved' | 'saving' | 'error') => void;
+      // Pulled on past the end of the note: the calendar zooms out to
+      // every filled day. Given, the page always scrolls a little past
+      // its end, however short the note - see PULL_ZONE.
+      onPullPastEnd?: () => void;
     }
   // Pane mode (DocumentsScreen's two-pane layout on a wide screen): the
   // WHOLE editor, header and title and cover included - unlike embedded
@@ -310,6 +314,9 @@ export type DocumentEditorHandle = {
 // the content 100 taller and the scroll stopping in exactly the same
 // place, which disproved it. Back to what it was.
 const KEYBOARD_ROOM = 80;
+// The strip past the end of a daily note that pulling into opens the
+// calendar's overview - see `onPullPastEnd`.
+const PULL_ZONE = 110;
 
 function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHandle>) {
   const theme = useTheme();
@@ -398,6 +405,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const navigation = props.navigation;
   const extraFields = 'embedded' in props ? (props.extraFields ?? {}) : {};
   const onSelectModeChange = 'embedded' in props ? props.onSelectModeChange : undefined;
+  const onPullPastEnd = 'embedded' in props ? props.onPullPastEnd : undefined;
+  const [scrollViewportH, setScrollViewportH] = useState(0);
   const onSaveStatusChange =
     'embedded' in props ? props.onSaveStatusChange : 'pane' in props ? props.onSaveStatusChange : undefined;
   // In a pane there is nothing on a stack to go back to - the arrow empties
@@ -4881,6 +4890,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         style={[styles.scrollArea, referencesSplit && { paddingRight: referencePanelWidth }]}
         contentContainerStyle={[
           embedded && styles.scrollAreaEmbedded,
+          onPullPastEnd && scrollViewportH > 0 && { minHeight: scrollViewportH + PULL_ZONE },
           // Used to stop short of the rail the way a mail's text does
           // under its capsule - narrowing every block on the page, at
           // every scroll position, to clear a capsule that only ever
@@ -4916,6 +4926,28 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           scrollOffsetSV.value = y;
         }}
         scrollEventThrottle={16}
+        onLayout={onPullPastEnd ? (e) => setScrollViewportH(e.nativeEvent.layout.height) : undefined}
+        // Let go with most of the pull zone in view: that was a pull, not
+        // a scroll that happened to reach the end. Never while writing -
+        // with the keyboard up the end of the page is where the caret is.
+        onScrollEndDrag={
+          onPullPastEnd
+            ? (e) => {
+                const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+                const hidden = contentSize.height - (contentOffset.y + layoutMeasurement.height);
+                if (hidden > PULL_ZONE * 0.35 || keyboardOpen) return;
+                onPullPastEnd();
+                // Tucked back out of sight behind the overview, so coming
+                // back to this day does not land on the zone itself.
+                setTimeout(() => {
+                  scrollViewRef.current?.scrollTo({
+                    y: Math.max(0, contentSize.height - layoutMeasurement.height - PULL_ZONE),
+                    animated: false,
+                  });
+                }, 350);
+              }
+            : undefined
+        }
       >
         {!embedded && coverImageUri && (
           <Pressable onPress={openCoverImageOptions}>
@@ -5069,6 +5101,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           />
         )}
         <Animated.View style={bottomSpacerStyle} />
+        {onPullPastEnd && scrollViewportH > 0 && (
+          <>
+            {/* Whatever the note's length, the page is a pull zone taller
+                than its window, and the zone is its very end. */}
+            <View style={{ flexGrow: 1 }} pointerEvents="none" />
+            <View style={styles.pullZone} pointerEvents="none">
+              <Ionicons name="albums-outline" size={20} color={paperColor?.textMuted ?? theme.paper.inkFaint} />
+              <Text style={[styles.pullZoneLabel, { color: paperColor?.textMuted ?? theme.paper.inkFaint }]}>Усі дні</Text>
+            </View>
+          </>
+        )}
       </ScrollView>
       )}
 

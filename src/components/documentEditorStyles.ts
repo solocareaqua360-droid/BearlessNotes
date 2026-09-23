@@ -181,6 +181,18 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
   scrollArea: {
     flex: 1,
   },
+  // The end of a daily note: pulled into, the calendar zooms out to
+  // every filled day.
+  pullZone: {
+    height: 110,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  pullZoneLabel: {
+    fontSize: 12,
+    fontFamily: FONT_REGULAR,
+  },
   insertPanelDock: {
     position: 'absolute',
     left: 0,

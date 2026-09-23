@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import {
+  BackHandler,
   Keyboard,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -72,6 +73,7 @@ import { useBlurTarget } from '../components/GlassTarget';
 import SaveRing from '../components/SaveRing';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import ScreenBackdrop from '../components/ScreenBackdrop';
+import { useDockClearance } from '../navigation/dockGeometry';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import Menu from '../components/surfaces/Menu';
 import { listenError } from '../utils/listenError';
@@ -255,11 +257,19 @@ export default function CalendarScreen() {
   // which is why the filter button is gone on this density: it was a
   // control describing something that can simply be shown.
   const feedMode = pointerDensity && isTwoPane;
+  // THE OVERVIEW, on a phone: the day's page zooms out into the same feed
+  // of big day cards, newest at the top, the day you were on first in
+  // view and the ones before it below. Two ways in, both the user's
+  // choice: two fingers pinched together on the page, or a pull on past
+  // the end of it. Only filled days; a tap on one opens it.
+  const phoneOverview = !isTwoPane && !pointerDensity;
+  const [overviewOpen, setOverviewOpen] = useState(false);
+  const [dayFeedLoaded, setDayFeedLoaded] = useState(false);
   const [dayFeed, setDayFeed] = useState<
     { key: string; title: string; blocks: Block[]; coverImageUri?: string; coverGradient?: string; coverDriveFileId?: string; updatedAt: number }[]
   >([]);
   useEffect(() => {
-    if (!feedMode) return;
+    if (!feedMode && !overviewOpen) return;
     // No range on calendarDate. Firestore needs a composite index for an
     // equality and a range on two different fields, and ownedQuery's
     // ownerId is that equality - so `where('calendarDate', ...)` is
@@ -287,10 +297,85 @@ export default function CalendarScreen() {
           .filter((i) => !!i.key && hasNoteContent(i.title, i.blocks))
           .sort((a, b) => (a.key < b.key ? 1 : -1));
         setDayFeed(items);
+        setDayFeedLoaded(true);
       },
-      () => setDayFeed([])
+      () => {
+        setDayFeed([]);
+        setDayFeedLoaded(true);
+      }
     );
-  }, [feedMode]);
+  }, [feedMode, overviewOpen]);
+  // 0 = the page, 1 = the overview. The page shrinks toward a card as the
+  // feed comes in over it, slightly larger than it will settle - one
+  // zoom, drawn by two layers.
+  const overviewSV = useSharedValue(0);
+  // The fingers' own scale while the page is being pinched; 1 otherwise.
+  const pinchScale = useSharedValue(1);
+  const overviewOpenRef = useRef(false);
+  const overviewScrolledRef = useRef(false);
+  const overviewScrollRef = useRef<ScrollView>(null);
+  function openOverview() {
+    if (overviewOpenRef.current) return;
+    overviewOpenRef.current = true;
+    overviewScrolledRef.current = false;
+    Keyboard.dismiss();
+    setOverviewOpen(true);
+    overviewSV.value = withTiming(1, { duration: 300, easing: Easing.out(Easing.cubic) });
+  }
+  function closeOverview() {
+    if (!overviewOpenRef.current) return;
+    overviewOpenRef.current = false;
+    // Hidden behind a page at exactly the shrunk size, so resetting the
+    // fingers' scale here shows nothing; the page then grows from it.
+    pinchScale.value = 1;
+    overviewSV.value = withTiming(0, { duration: 280, easing: Easing.out(Easing.cubic) }, (done) => {
+      if (done) runOnJS(setOverviewOpen)(false);
+    });
+  }
+  const openOverviewRef = useRef(openOverview);
+  openOverviewRef.current = openOverview;
+  const openOverviewFromGesture = useCallback(() => openOverviewRef.current(), []);
+  // Built once per state, not per render - a gesture handed a new
+  // configuration on every render is a gesture that never activates.
+  const notePinch = useMemo(
+    () =>
+      Gesture.Pinch()
+        .enabled(phoneOverview && !overviewOpen)
+        .onUpdate((e) => {
+          pinchScale.value = Math.min(1, Math.max(0.6, e.scale));
+        })
+        .onEnd((e) => {
+          if (e.scale < 0.85) runOnJS(openOverviewFromGesture)();
+          else pinchScale.value = withTiming(1, { duration: 180 });
+        })
+        .onFinalize((_e, success) => {
+          if (!success) pinchScale.value = withTiming(1, { duration: 180 });
+        }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [phoneOverview, overviewOpen]
+  );
+  const OVERVIEW_PAGE_SCALE = 0.82;
+  const noteZoomStyle = useAnimatedStyle(() => {
+    const p = overviewSV.value;
+    return {
+      opacity: 1 - p,
+      transform: [{ scale: pinchScale.value + (OVERVIEW_PAGE_SCALE - pinchScale.value) * p }],
+    };
+  });
+  const overviewStyle = useAnimatedStyle(() => ({
+    opacity: overviewSV.value,
+    transform: [{ scale: 1.08 - 0.08 * overviewSV.value }],
+  }));
+  useEffect(() => {
+    if (!overviewOpen) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      closeOverview();
+      return true;
+    });
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overviewOpen]);
+  const overviewClear = useDockClearance();
   const historyDatesSorted = useMemo(() => Array.from(historyDates).sort(), [historyDates]);
   const activeDatesSorted = compactFilter === 'history' ? historyDatesSorted : filledDatesSorted;
   const [dueReminders, setDueReminders] = useState<
@@ -974,8 +1059,9 @@ export default function CalendarScreen() {
   // save dot and select-mode button drive, and the only one that needs the
   // ref.
   function renderDayNote(key: string, primary: boolean) {
-    return (
-      <View
+    const zooms = primary && phoneOverview;
+    const note = (
+      <Animated.View
         style={[
           styles.noteArea,
           isTwoPane && styles.notePane,
@@ -985,6 +1071,7 @@ export default function CalendarScreen() {
           // ground, over the page rather than on it. The frame carries
           // the same paper, and the date is on the sheet.
           pointerDensity && styles.notePaper,
+          zooms && noteZoomStyle,
         ]}
       >
         {/* The day IS the page's title, so on a pointer it stands ON the
@@ -1028,13 +1115,28 @@ export default function CalendarScreen() {
           extraFields={{ calendarDate: key }}
           onSelectModeChange={primary ? setNoteSelectMode : undefined}
           onSaveStatusChange={primary ? setNoteSaveStatus : undefined}
+          onPullPastEnd={zooms ? openOverview : undefined}
         />
-      </View>
+      </Animated.View>
     );
+    return zooms ? <GestureDetector gesture={notePinch}>{note}</GestureDetector> : note;
   }
 
   const selectedKey = dateKey(selectedDate);
   const dailyDocId = `day_${selectedKey}`;
+  // Another day picked - from a card here, or from the dock's own days -
+  // is that day's page, so the overview gives way to it.
+  const overviewDayRef = useRef(selectedKey);
+  useEffect(() => {
+    if (overviewDayRef.current === selectedKey) return;
+    overviewDayRef.current = selectedKey;
+    closeOverview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKey]);
+  // Where the overview opens: the day you were on, or the nearest filled
+  // one before it - the list is newest first, so the days after it are
+  // above and the ones before it below.
+  const overviewAnchor = dayFeed.find((d) => d.key <= selectedKey)?.key ?? null;
 
   // The month is NAVIGATION - it says which day to look at, it is not
   // the day - so on a pointer it stands in the rail, where this app
@@ -1582,6 +1684,66 @@ export default function CalendarScreen() {
 
       </View>
 
+      {phoneOverview && overviewOpen && (
+        <Animated.View style={[StyleSheet.absoluteFill, overviewStyle]}>
+          <ScreenBackdrop id="calendarOverviewBg" />
+          {dayFeedLoaded && dayFeed.length === 0 ? (
+            <Text style={[styles.feedEmpty, styles.overviewEmpty, { paddingTop: calendarInsets.top + 24 }]}>
+              Ще немає жодного заповненого дня
+            </Text>
+          ) : (
+            <ScrollView
+              ref={overviewScrollRef}
+              contentContainerStyle={[
+                styles.overviewContent,
+                { paddingTop: calendarInsets.top + 16, paddingBottom: overviewClear + calendarInsets.bottom },
+              ]}
+              showsVerticalScrollIndicator={false}
+            >
+              {dayFeed.map((day) => {
+                const date = parseDateKey(day.key);
+                const preview = extractPreview(day.blocks, day.coverImageUri, undefined, day.coverDriveFileId);
+                return (
+                  <View
+                    key={day.key}
+                    onLayout={
+                      day.key === overviewAnchor
+                        ? (e) => {
+                            if (overviewScrolledRef.current) return;
+                            overviewScrolledRef.current = true;
+                            const y = e.nativeEvent.layout.y;
+                            overviewScrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: false });
+                          }
+                        : undefined
+                    }
+                  >
+                    <DocumentCard
+                      id={`day_${day.key}`}
+                      title={`${WEEKDAY_SHORT[mondayIndex(date)]}, ${formatBigDate(date)}`}
+                      updatedAt={day.updatedAt}
+                      imageUri={preview.imageUri}
+                      coverGradient={day.coverGradient}
+                      imageDriveFileId={preview.imageDriveFileId}
+                      imageUris={preview.imageUris}
+                      imageDriveFileIds={preview.imageDriveFileIds}
+                      previewText={preview.previewText}
+                      previewTail={preview.previewTail}
+                      blocks={day.blocks}
+                      checklistItems={preview.checklistItems}
+                      layout="grid"
+                      gridWidth={windowWidth - 32}
+                      onPress={() => {
+                        if (day.key === selectedKey) closeOverview();
+                        else selectDay(date);
+                      }}
+                    />
+                  </View>
+                );
+              })}
+            </ScrollView>
+          )}
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -2089,6 +2251,14 @@ const makeStyles = (t: Theme) =>
     gap: 10,
     paddingRight: 20,
     paddingBottom: 24,
+  },
+  // The phone's overview: the cards run the width the page had.
+  overviewContent: {
+    gap: 12,
+    paddingHorizontal: 16,
+  },
+  overviewEmpty: {
+    paddingHorizontal: 20,
   },
   feedEmpty: {
     paddingRight: 20,
