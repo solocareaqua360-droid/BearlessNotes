@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import type { View as RNView } from 'react-native';
-import { useTheme } from '../theme/ThemeProvider';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import { makeStyles as makeEditorStyles } from './documentEditorStyles';
 import type { Block } from '../types';
 import BlockRow from './BlockRow';
 import { GlassPortal } from './GlassPortal';
@@ -184,6 +185,10 @@ function MorphSurface({
   windowH: number;
 }) {
   const theme = useTheme();
+  // The editor's OWN title style, not a copy of its numbers: the page
+  // this becomes draws the title with exactly these, and a hand-over
+  // where the title jumps a size is the one thing the eye would catch.
+  const editorStyles = useStyles(makeEditorStyles);
   const t = flight.open;
   const { rect } = flight;
   const x = rect.x * (1 - t);
@@ -227,6 +232,10 @@ function MorphSurface({
             },
           ]}
         >
+          {/* The page's own name, where the page puts it. */}
+          <Text style={[editorStyles.titleInput, styles.title]} numberOfLines={2}>
+            {flight.doc.title || 'Без назви'}
+          </Text>
           {/* The rows live in a scroll view that never scrolls, because
               that is the shape they were written against - laid straight
               into a box of fixed height they lose every row that fills
@@ -294,9 +303,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     overflow: 'hidden',
   },
+  title: {
+    // Clear of the status bar and the note's own floating capsule, which
+    // is roughly where the editor's title sits on arrival.
+    paddingTop: 72,
+  },
   rows: {
     paddingHorizontal: 12,
-    // Where the editor's own blocks start once its header is above them.
-    paddingTop: 96,
   },
 });
