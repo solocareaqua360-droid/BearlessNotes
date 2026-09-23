@@ -1729,20 +1729,31 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // trip, because Android has no "raise the keyboard" call and focusing
   // an already-focused field does nothing.
   const panelWasOpenRef = useRef(false);
+  // A blur WE caused, to be undone a frame later. Android's
+  // Keyboard.dismiss() blurs the focused field, and a blur here means
+  // "editing is over": the bar unmounted with the panel still open and
+  // the selection went with it - "слеш меню над клавіатурою зникає при
+  // ввімкненні панелі". Blurring and refocusing is the only way to make
+  // Android re-read showSoftInputOnFocus, so the round trip stays and
+  // the editor is told to ignore this one.
+  const selfBlurRef = useRef(false);
   useEffect(() => {
     const open = panelSection !== null;
     const was = panelWasOpenRef.current;
     panelWasOpenRef.current = open;
     if (open === was) return;
     const id = focusedBlockIdRef.current;
-    if (open) {
-      Keyboard.dismiss();
-      return;
-    }
-    if (id) {
-      inputRefs.current[id]?.blur();
-      requestAnimationFrame(() => inputRefs.current[id]?.focus());
-    }
+    if (!id) return;
+    // Opening, the field already re-rendered without its soft keyboard,
+    // so the focus comes back without raising it. Closing, the flag is
+    // back on and the same round trip is what raises it again - Android
+    // has no call that does.
+    selfBlurRef.current = true;
+    inputRefs.current[id]?.blur();
+    requestAnimationFrame(() => {
+      inputRefs.current[id]?.focus();
+      selfBlurRef.current = false;
+    });
   }, [panelSection]);
 
   function scheduleScrollAdjust(currentKeyboardHeight: number) {
@@ -2211,8 +2222,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // once there is nothing left open. Back walking straight out while
   // the reference drawer stood open is what left it with no way to
   // close at all.
+  // Gated on the panel as well as on `embedded`. The dock's capsule
+  // takes itself away when the keyboard is up, but these two beads are
+  // published separately and stayed - so the back arrow floated over
+  // the panel's own tiles. Nothing is lost by hiding it: the panel's
+  // own chevron closes it, and back is one tap further where it always
+  // was.
   useDockBeads(
-    !embedded
+    !embedded && panelSection === null
       ? {
           icon: canvasEditing ? 'checkmark-outline' : 'arrow-back-outline',
           onPress: () => {
@@ -2225,7 +2242,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // Only where there are two panes to collapse into one - the corner
     // capsule's own expand/contract button moved here rather than
     // disappearing, since it has no dock equivalent otherwise.
-    !embedded && onToggleFullscreen
+    !embedded && onToggleFullscreen && panelSection === null
       ? {
           icon: paneFullscreen ? 'contract-outline' : 'expand-outline',
           onPress: onToggleFullscreen,
@@ -2500,6 +2517,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // on the ref so a blur that lands after the NEXT block has already taken
   // over doesn't knock that block back out.
   function handleBlockBlur(id: string) {
+    // Ours, and already being undone - see selfBlurRef.
+    if (selfBlurRef.current) return;
     if (focusedBlockIdRef.current !== id) return;
     focusedBlockIdRef.current = null;
     setFocusedBlockId(null);
