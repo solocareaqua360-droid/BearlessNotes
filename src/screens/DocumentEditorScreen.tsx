@@ -2107,16 +2107,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         'worklet';
         if (appActiveSV.value === 0) return; // see onMove
         if (DIAG) runOnJS(traceScroll)('kbStart', `p=${e.progress.toFixed(2)} h=${Math.round(e.height)} shift=${Math.round(syncShift.value)}`, diagTag);
-        // A SECOND animation while the keyboard is already up - Android
-        // settles its height after the first one (the trace shows the
-        // event saying 323 while the frames reach 338) - must not throw
-        // away the scroll that is still in flight. This used to zero the
-        // shift unconditionally and then return for anything that was not
-        // an opening, so a settling animation arriving mid-scroll killed
-        // it: the page stopped at 251 of 281 and the safety net fetched
-        // the rest with a jerk. Only a real close (height going to 0)
-        // lets go now.
-        if (e.progress !== 1 && e.height > 0) return;
         syncShift.value = 0;
         // Opening: the full height is the target from this frame on.
         // Closing: let go at once, so the spacer follows the keyboard
@@ -2167,6 +2157,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           scrollTo(scrollViewRef, 0, syncBaseOffset.value + syncShift.value, false);
           syncShift.value = 0;
         }
+        // The safety net's proper moment: the keyboard has actually
+        // arrived and the synced scroll has landed. See
+        // scrollFocusedBlockIntoView for why the timer alone was wrong.
+        if (e.height > 0) runOnJS(scheduleScrollAdjust)(e.height);
       },
     },
     [windowHeight]
@@ -2598,6 +2592,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   });
 
   function scrollFocusedBlockIntoView(currentKeyboardHeight: number) {
+    // NEVER while the keyboard-synced scroll is still moving. Measured on
+    // the phone: this ran off a timer - keyboardDidShow plus 180ms - and
+    // on this device keyboardDidShow arrives BEFORE the keyboard's
+    // animation even starts (1445ms against 1491), while the animation
+    // itself takes 316ms. So the safety net fired in the MIDDLE of the
+    // synced scroll, measured the page halfway, called it 20 short and
+    // launched a second animated scroll on top of the first. Two scrolls
+    // at once is the jerk - several of them, too quick to count. It is a
+    // net for what the synced scroll misses, so it waits until that
+    // scroll is done; onEnd calls it again once it is.
+    if (syncShift.value > 0) return;
     const id = focusedBlockIdRef.current;
     const input = id ? inputRefs.current[id] : null;
     if (!input) return;
