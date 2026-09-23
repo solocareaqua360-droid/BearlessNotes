@@ -64,7 +64,7 @@ import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
 import DocumentCard from '../components/DocumentCard';
 import { useExplorer, nameOf } from '../hooks/useExplorer';
-import { useDockActions, useDockBeads, useDockLeave, useDockShowContext } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockLeave, useDockShowContext, useNavDockFace } from '../navigation/navDock';
 import UndoToast from '../components/UndoToast';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
@@ -214,6 +214,7 @@ export default function DocumentsScreen({
     selectedIds,
     toggleSelectMode,
     toggle: toggleSelected,
+    enterWith: enterSelectionWith,
     clear: clearSelection,
     sortPref,
     selectSortField,
@@ -323,23 +324,29 @@ export default function DocumentsScreen({
       await explorer.renameFolder(path, dest ? `${dest}/${nameOf(path)}` : nameOf(path));
     } else if (choice === 'delete') await explorer.deleteFolder(path);
   }
-  // Held down on a document card, anywhere in the list.
-  async function openDocumentMenu(item: DocumentItem) {
-    const choice = await ask({
-      title: item.title || 'Без назви',
-      actions: [
-        { id: 'move', label: 'Перемістити в…', icon: 'arrow-forward-outline' },
-        { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
-        { id: 'bin', label: 'У кошик', icon: 'trash-outline', tone: 'danger' },
-      ],
-    });
-    if (choice === 'rename') setDocRename(item);
-    else if (choice === 'bin') confirmDeleteDocument(item.id);
-    else if (choice === 'move') {
-      const dest = await explorer.pickDestination(`Перемістити «${item.title || 'Без назви'}» в…`);
-      if (dest === 'cancel') return;
-      await explorer.moveItem(item, dest);
+  // Held down and let go without moving: the card is SELECTED, the way a
+  // block is in the editor - "хочу повторити таку саму штуку й з
+  // картками документів". The dock turns to its actions card as it does
+  // there, so what can be done with the selection is already under the
+  // thumb. What the old hold menu offered stays reachable from that card:
+  // «Перемістити», «Перейменувати» (one card) and «Видалити».
+  function selectFromHold(item: DocumentItem) {
+    if (isSelectMode) {
+      toggleSelected(item.id);
+      return;
     }
+    enterSelectionWith(item.id);
+    setDockFace('actions');
+  }
+  async function moveSelected() {
+    const moving = selectedDocuments;
+    const dest = await explorer.pickDestination(
+      moving.length === 1 ? `Перемістити «${moving[0].title || 'Без назви'}» в…` : `Перемістити (${moving.length}) в…`
+    );
+    if (dest === 'cancel') return;
+    await Promise.all(moving.map((item) => explorer.moveItem(item, dest)));
+    showContext();
+    clearSelection();
   }
   // Up one level. On Android the system's back does it too while there is
   // a level to go up to - a file manager that closed on "back" would be
@@ -545,6 +552,7 @@ export default function DocumentsScreen({
   useDockLeave('document-text-outline', () => navigation.goBack(), !!standalone);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const showContext = useDockShowContext();
+  const [, setDockFace] = useNavDockFace();
   // Search on the left, creating a note on the right: the two things
   // that never change, standing beside the stack and not moving with it.
   // The user's own arrangement, and Samsung's own reasoning - a pile of
@@ -635,6 +643,22 @@ export default function DocumentsScreen({
             },
             ...(selectedIds.size > 0
               ? [
+                  { key: 'move', icon: 'arrow-forward-outline' as const, label: 'Перемістити', onPress: moveSelected },
+                  ...(selectedDocuments.length === 1
+                    ? [
+                        {
+                          key: 'rename',
+                          icon: 'pencil-outline' as const,
+                          label: 'Перейменувати',
+                          onPress: () => {
+                            const item = selectedDocuments[0];
+                            showContext();
+                            clearSelection();
+                            setDocRename(item);
+                          },
+                        },
+                      ]
+                    : []),
                   { key: 'tag', icon: 'pricetag-outline' as const, label: 'Теги', onPress: () => setBulkTagPickerVisible(true) },
                   { key: 'group', icon: 'folder-outline' as const, label: 'Проект', onPress: () => setBulkGroupPickerVisible(true) },
                   {
@@ -1636,7 +1660,7 @@ export default function DocumentsScreen({
                   checklistItems={checklistItems}
                   onPress={() => (trashOpen ? openTrashMenu(item) : openDocument(item.id))}
                   onLongPress={
-                    carried ? undefined : () => (trashOpen ? openTrashMenu(item) : isSelectMode ? undefined : openDocumentMenu(item))
+                    carried ? undefined : () => (trashOpen ? openTrashMenu(item) : selectFromHold(item))
                   }
                   isSelectMode={isSelectMode}
                   isSelected={selectedIds.has(item.id)}
@@ -1653,7 +1677,7 @@ export default function DocumentsScreen({
                   wide={drawnMode === 'wide' || !!item.wideCard}
                   project={groups.find((g) => g.id === item.groupId) ?? null}
                   onProjectPress={() => setSingleGroupTargetId(item.id)}
-                  {...(carried ? carrying.cardProps(item, () => openDocumentMenu(item)) : {})}
+                  {...(carried ? carrying.cardProps(item, () => selectFromHold(item)) : {})}
                 />
               );
               // In the wide column the card brings the side margin

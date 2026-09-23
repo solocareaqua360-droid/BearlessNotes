@@ -24,10 +24,19 @@ export function useMultiSelect() {
     });
   }
 
+  // Held down on a row that was not moving: selection starts WITH that
+  // row, the way a held block does in the editor. Already selecting, the
+  // hold is just one more tap.
+  function enterWith(id: string) {
+    hapticSelectMode();
+    setIsSelectMode(true);
+    setSelectedIds(new Set([id]));
+  }
+
   function clear() {
     setSelectedIds(new Set());
     setIsSelectMode(false);
   }
 
-  return { isSelectMode, selectedIds, toggleSelectMode, toggle, clear };
+  return { isSelectMode, selectedIds, toggleSelectMode, toggle, enterWith, clear };
 }
