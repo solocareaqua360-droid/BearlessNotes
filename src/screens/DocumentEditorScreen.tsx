@@ -1729,31 +1729,42 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // trip, because Android has no "raise the keyboard" call and focusing
   // an already-focused field does nothing.
   const panelWasOpenRef = useRef(false);
-  // A blur WE caused, to be undone a frame later. Android's
-  // Keyboard.dismiss() blurs the focused field, and a blur here means
-  // "editing is over": the bar unmounted with the panel still open and
-  // the selection went with it - "слеш меню над клавіатурою зникає при
-  // ввімкненні панелі". Blurring and refocusing is the only way to make
-  // Android re-read showSoftInputOnFocus, so the round trip stays and
-  // the editor is told to ignore this one.
-  const selfBlurRef = useRef(false);
+  // NOTHING is refocused while the panel is open, and that is the whole
+  // point.
+  //
+  // Two attempts at this bounced the keyboard - down a quarter and
+  // straight back - because both put the focus back on the field a frame
+  // after taking it away, and Android raises the keyboard on that focus
+  // whatever showSoftInputOnFocus says by then. So the field simply
+  // stays blurred while the panel stands, and the keyboard has no reason
+  // to come back at all.
+  //
+  // What the focus was carrying is kept instead: the editor holds the
+  // focused block and the text selection in its OWN state, and while the
+  // panel is open the blur handlers are told to leave both alone (see
+  // handleBlockBlur and deactivateActiveInput). So the bar still knows
+  // which block it acts on, bold still knows what to embolden, and
+  // closing the panel puts the caret back exactly where it was.
   useEffect(() => {
     const open = panelSection !== null;
     const was = panelWasOpenRef.current;
     panelWasOpenRef.current = open;
     if (open === was) return;
     const id = focusedBlockIdRef.current;
+    if (open) {
+      // Blurs the field, which is what takes the keyboard down - and
+      // the handlers ignore it while the panel is up.
+      Keyboard.dismiss();
+      return;
+    }
     if (!id) return;
-    // Opening, the field already re-rendered without its soft keyboard,
-    // so the focus comes back without raising it. Closing, the flag is
-    // back on and the same round trip is what raises it again - Android
-    // has no call that does.
-    selfBlurRef.current = true;
-    inputRefs.current[id]?.blur();
-    requestAnimationFrame(() => {
-      inputRefs.current[id]?.focus();
-      selfBlurRef.current = false;
-    });
+    const sel = activeSelection;
+    inputRefs.current[id]?.focus();
+    // The caret goes back where it was, not to the end of the text -
+    // focusing a field is not the same as returning to it.
+    if (sel && sel.blockId === id) {
+      requestAnimationFrame(() => setSelection(inputRefs.current[id], sel.start, sel.end));
+    }
   }, [panelSection]);
 
   function scheduleScrollAdjust(currentKeyboardHeight: number) {
@@ -2517,8 +2528,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // on the ref so a blur that lands after the NEXT block has already taken
   // over doesn't knock that block back out.
   function handleBlockBlur(id: string) {
-    // Ours, and already being undone - see selfBlurRef.
-    if (selfBlurRef.current) return;
+    // The panel took the keyboard down on purpose. The field is blurred
+    // and stays blurred, but the editing session is not over - the bar
+    // above the panel still acts on this block, and its selection is
+    // still what bold and colour apply to.
+    if (panelOpenRef.current) return;
     if (focusedBlockIdRef.current !== id) return;
     focusedBlockIdRef.current = null;
     setFocusedBlockId(null);
