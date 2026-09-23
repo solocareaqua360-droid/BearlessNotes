@@ -95,6 +95,7 @@ import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPic
 import { useTags } from '../hooks/useTags';
 import { measureNode } from '../utils/measureNode';
 import { setSelection } from '../utils/setSelection';
+import { traceScroll, useScrollTrace } from '../utils/scrollTrace';
 import { autoGrowInput } from '../utils/autoGrowInput';
 import { applyLiveRecord, recordIdFor, useLiveRecords } from '../hooks/useLiveRecords';
 import { attachmentInfoText } from '../utils/attachmentInfo';
@@ -303,6 +304,10 @@ export type DocumentEditorHandle = {
   // reaches the steps only the note knows about.
   requestBack: () => boolean;
 };
+
+// TEMPORARY: draws the scroll trace over the note (see utils/scrollTrace).
+// Set to false, and then remove, once the half-line jerk is found.
+const DIAG = true;
 
 function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHandle>) {
   const theme = useTheme();
@@ -1549,6 +1554,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // positioned by hand from this height.
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      if (DIAG) traceScroll('kbShow', `h=${Math.round(e.endCoordinates.height)}`);
       // Not on screen: nothing here means anything (see appActiveRef).
       // Scrolling a block into view behind a home screen is the clearest
       // case - by the time anyone looks, the measurement it scrolled to
@@ -2098,6 +2104,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         const visibleBottom = windowHeight - e.height - EDITOR_TOOLBAR_HEIGHT;
         syncBaseOffset.value = scrollOffsetSV.value;
         syncShift.value = Math.max(0, inputBottom - visibleBottom + 24);
+        if (DIAG) {
+          runOnJS(traceScroll)(
+            'sync',
+            `from=${Math.round(syncBaseOffset.value)} shift=${Math.round(syncShift.value)} kb=${Math.round(e.height)}`
+          );
+        }
       },
       onMove: (e) => {
         'worklet';
@@ -2548,6 +2560,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // A few px of slack: the pre-scroll at activation (see the focus
       // effect) and the post-keyboard pass land within a pixel or two of
       // each other, and a second scroll for that is a visible twitch.
+      if (DIAG) {
+        traceScroll(
+          'safety',
+          `over=${Math.round(overflow)} kbH=${Math.round(effectiveKeyboardHeight)} bar=${toolbarHeightRef.current}`
+        );
+      }
       if (overflow > 4) {
         scrollViewRef.current?.scrollTo({ y: scrollOffsetRef.current + overflow, animated: true });
       }
@@ -2584,6 +2602,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   function handleBlockFocus(id: string) {
+    if (DIAG) traceScroll('focus', `y=${Math.round(scrollOffsetRef.current)} kb=${keyboardHeight}`);
     focusedBlockIdRef.current = id;
     setFocusedBlockId(id);
     if (keyboardHeight > 0) {
@@ -4623,9 +4642,16 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         // built-in behaviour is switched off.
         scrollsChildToFocus={false}
         onScroll={(e) => {
-          scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
-          scrollOffsetSV.value = e.nativeEvent.contentOffset.y;
+          const y = e.nativeEvent.contentOffset.y;
+          if (DIAG && Math.abs(y - scrollOffsetRef.current) >= 1) traceScroll('scroll', `${Math.round(y)}`);
+          scrollOffsetRef.current = y;
+          scrollOffsetSV.value = y;
         }}
+        // A block changing height moves everything below it without any
+        // scroll at all - the one kind of jerk the lines above cannot see.
+        onContentSizeChange={
+          DIAG ? (_w: number, h: number) => traceScroll('size', `h=${Math.round(h)}`) : undefined
+        }
         scrollEventThrottle={16}
       >
         {!embedded && coverImageUri && (
@@ -5098,6 +5124,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         </View>
       )}
 
+      {DIAG && !embedded && <ScrollTraceOverlay />}
+
       <DocumentQuickLook
         file={quickLook}
         onClose={() => setQuickLook(null)}
@@ -5262,6 +5290,36 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         onPicked={pickCoverImageFromStock}
       />
       {flattenNode}
+    </View>
+  );
+}
+
+// What the trace recorded, drawn over the note so a phone screenshot
+// carries it. pointerEvents none: it must never be the thing a tap lands
+// on, or it would change what it is measuring.
+function ScrollTraceOverlay() {
+  const events = useScrollTrace();
+  if (events.length === 0) return null;
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        top: 60,
+        left: 8,
+        right: 8,
+        padding: 8,
+        borderRadius: 8,
+        backgroundColor: 'rgba(0,0,0,0.82)',
+        zIndex: 999,
+        elevation: 999,
+      }}
+    >
+      {events.map((e, i) => (
+        <Text key={i} style={{ color: '#9EF01A', fontSize: 11, fontFamily: 'monospace' }}>
+          {`+${String(e.t).padStart(4, ' ')}ms ${e.src.padEnd(7, ' ')} ${e.text}`}
+        </Text>
+      ))}
     </View>
   );
 }
