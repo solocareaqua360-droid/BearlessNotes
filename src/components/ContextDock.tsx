@@ -377,6 +377,39 @@ const DOCK_WRAP_PAD = 6;
 const PATH_PAD = 4;
 // How long ONE of the strip's two steps takes - see `pathStage`.
 const PATH_STEP_MS = 190;
+// A day cell in the lifted strip: the weekday and the number stand side
+// by side now, not stacked, so the strip can be as short as the path's.
+const STRIP_ROW_ITEM = 64;
+
+// THE TWO STEPS EVERY LIFTED STRIP TAKES, in this order: it rises from
+// behind the dock at the dock's own width, and only then widens out to
+// what its content needs; leaving, it narrows back to the dock's width
+// and only then drops behind it.
+//
+// One number carries both, so the steps cannot overlap or race: 0 is
+// away behind the dock, 1 is up at the dock's width, 2 is up and as wide
+// as it needs. Every move is one whole step, so one duration describes
+// the pace of both.
+function useLiftedStep(wanted: boolean) {
+  const [stage, setStage] = useState(wanted ? 2 : 0);
+  const wantedRef = useRef(wanted);
+  useEffect(() => {
+    // The first run is the mount, where the strip is already at rest in
+    // whichever state it belongs - there is nothing to play.
+    if (wantedRef.current === wanted) return;
+    wantedRef.current = wanted;
+    setStage(1);
+    const id = setTimeout(() => setStage(wanted ? 2 : 0), PATH_STEP_MS);
+    return () => clearTimeout(id);
+  }, [wanted]);
+  const step = useEaseTo(stage, PATH_STEP_MS);
+  return {
+    step,
+    up: Math.min(1, step),
+    // 0 at the dock's width, 1 at the content's own.
+    wide: Math.max(0, step - 1),
+  };
+}
 const DESK_HINT_H = 16;
 const DESK_HINT_BOTTOM = 3;
 const DESK_HINT_TRAVEL = 18;
@@ -482,7 +515,7 @@ export default function ContextDock() {
   // root - "пролистування на нього більше не впливає, він виїжджає за
   // дока при вході в папки". So the ring is built from what is left:
   // the calendar's strip, the actions, the desks.
-  const ringOwn = own && own.kind !== 'path' ? own : null;
+  const ringOwn = own && own.kind !== 'path' && own.kind !== 'strip' ? own : null;
   const dock = hidden ? desksCard : (own ?? desksCard);
   const ringDock = hidden ? desksCard : (ringOwn ?? desksCard);
   // The way out of the SCREEN, which is true even at a database's root,
@@ -544,13 +577,10 @@ export default function ContextDock() {
   // test and fall back to desks anyway - said here instead of left to
   // that fallback, because the actions row is simply always visible in
   // split mode regardless of which ring face fronts it.
-  const opensOn: DockFace = !ringOwn
-    ? prefersActions && !splitActive
-      ? 'actions'
-      : 'desks'
-    : ringOwn.kind === 'strip'
-      ? 'desks'
-      : 'context';
+  // Both the path and the days are lifted out of the ring now, so a
+  // screen's own context is never a card of it: what is left to open on
+  // is the desks, or the actions where a screen asks for them.
+  const opensOn: DockFace = ringOwn ? 'context' : prefersActions && !splitActive ? 'actions' : 'desks';
   // Whether the ring has anything ELSE for actions to be split FROM.
   //
   // `desksCard` is null on every screen pushed above the tab navigator -
@@ -632,32 +662,20 @@ export default function ContextDock() {
   // under way before the screen has visibly moved.
   const tabsDrifting = useNavDockTabsDrifting();
   const pathUpWanted = own?.kind === 'path' && !tabsDrifting;
-  // TWO STEPS, IN THIS ORDER: the strip narrows to the dock's own width,
-  // and only then drops behind it - "спочатку звужується а потім вже
-  // опускання". Coming back it is the same backwards: up first at the
-  // dock's width, then out to whatever its crumbs need.
-  //
-  // One number carries both, so the steps cannot overlap or race: 0 is
-  // away behind the dock, 1 is up at the dock's width, 2 is up and as
-  // wide as it needs. Every move is one whole step, so one duration
-  // describes the pace of both.
-  const [pathStage, setPathStage] = useState(pathUpWanted ? 2 : 0);
-  const pathWantedRef = useRef(pathUpWanted);
-  useEffect(() => {
-    // The first run is the mount, where the strip is already at rest in
-    // whichever state it belongs - there is nothing to play.
-    if (pathWantedRef.current === pathUpWanted) return;
-    pathWantedRef.current = pathUpWanted;
-    setPathStage(1);
-    const id = setTimeout(() => setPathStage(pathUpWanted ? 2 : 0), PATH_STEP_MS);
-    return () => clearTimeout(id);
-  }, [pathUpWanted]);
-  const pathStep = useEaseTo(pathStage, PATH_STEP_MS);
-  const pathUp = Math.min(1, pathStep);
-  // 0 at the dock's width, 1 at the crumbs' own.
-  const pathWide = Math.max(0, pathStep - 1);
+  const pathLift = useLiftedStep(pathUpWanted);
+  const pathStep = pathLift.step;
+  const pathUp = pathLift.up;
+  const pathWide = pathLift.wide;
+  // THE DAYS, lifted exactly as the path is - the user's own ask, down
+  // to the width it opens to. It waits for the path to be all the way
+  // down first: "календарна смужка з'являється не раніше ніж сховається
+  // смужка вкладень", which on a swipe from a folder to the calendar is
+  // the difference between two strips crossing and two taking turns.
+  const dayUpWanted = own?.kind === 'strip' && !tabsDrifting && pathStep <= 0.001;
+  const dayLift = useLiftedStep(dayUpWanted);
   const lastPathRef = useRef<Extract<NonNullable<typeof own>, { kind: 'path' }> | null>(null);
   if (own?.kind === 'path') lastPathRef.current = own;
+  const lastStripRef = useRef<Extract<NonNullable<typeof own>, { kind: 'strip' }> | null>(null);
 
   // The two numbers the whole stack is drawn from: how many cards it
   // holds, and which of them is in front.
@@ -862,6 +880,12 @@ export default function ContextDock() {
   const pathWidthNow =
     cardWidthNow +
     (Math.min(rowWidthNow, Math.max(cardWidthNow, pathContentW + PATH_PAD * 2)) - cardWidthNow) * pathWide;
+  // The days open to the whole row too - the outer edges of the search
+  // and today beads, which is what the row IS.
+  const dayWidthNow = cardWidthNow + (rowWidthNow - cardWidthNow) * dayLift.wide;
+  // Both strips stand in the same place; they are never up together.
+  const liftedBottom = DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD + CARD_H + BEHIND_EDGE * 2 + DOCK_PATH_GAP;
+  const liftedTravel = DOCK_PATH_H + DOCK_PATH_GAP + BEHIND_EDGE * 2;
   // HOW THE DOCK PARTS FROM THE SCREEN. In the black theme that is the
   // glow, and the glow is the whole reason this is here: the two pills
   // that still wore it were the editor's pre-dock chrome, the last two
@@ -1012,6 +1036,11 @@ export default function ContextDock() {
   const liftedPath = true;
   const shownPath = trail ?? lastPathRef.current;
   const strip = own?.kind === 'strip' ? own : null;
+  // Kept while the strip goes back down, so the days do not empty out
+  // from under it half way - the same reason lastPathRef exists.
+  if (strip) lastStripRef.current = strip;
+  const shownStrip = strip ?? lastStripRef.current;
+  const liftedStrip = true;
   const desks = desksCard?.kind === 'desks' ? desksCard : null;
   const trailRef = useRef<ScrollView>(null);
   const stripRef = useRef<ScrollView>(null);
@@ -1027,12 +1056,13 @@ export default function ContextDock() {
   // The day you are on sits under your thumb, in the middle - a scrubber
   // you have to hunt along is not a scrubber. It SLIDES there: the days
   // either side stay mounted just off the edge.
-  const stripIndex = strip ? strip.items.findIndex((item) => item.key === strip.selected) : -1;
+  const stripIndex = shownStrip ? shownStrip.items.findIndex((item) => item.key === shownStrip.selected) : -1;
   const stripSettled = useRef(false);
+  const stripIndexRef = useRef(-1);
   const [stripWidth, setStripWidth] = useState(STRIP_WIDTH);
   // Where the strip has to be so the day you are on is in the middle.
   const stripOffsetFor = (width: number) =>
-    Math.max(0, stripIndex * STRIP_ITEM + STRIP_ITEM / 2 - width / 2);
+    Math.max(0, stripIndex * STRIP_ROW_ITEM + STRIP_ROW_ITEM / 2 - width / 2);
   // Centred on every SHOWING, not only on every change of day. The days
   // card is unmounted while the desks or the actions are in front, and a
   // scroller that has just been mounted starts at zero - the first day of
@@ -1047,7 +1077,14 @@ export default function ContextDock() {
     const x = stripOffsetFor(stripWidth);
     // The first placement is not a journey - opening the calendar should
     // not show the strip travelling in from the first of the month.
-    const animated = stripSettled.current;
+    // Only a change of DAY is worth animating. The strip's width now
+    // moves every frame while it opens out from the dock's width, and an
+    // animated scroll started on each of those frames is dozens of
+    // animations racing each other - the re-centring that keeps the day
+    // in the middle as it widens has to be instant.
+    const indexChanged = stripIndexRef.current !== stripIndex;
+    stripIndexRef.current = stripIndex;
+    const animated = stripSettled.current && indexChanged;
     stripSettled.current = true;
     const id = setTimeout(() => stripRef.current?.scrollTo({ x, animated }), 0);
     return () => clearTimeout(id);
@@ -1273,7 +1310,7 @@ export default function ContextDock() {
             )
           )}
 
-          {f === 'context' && strip && (
+          {f === 'context' && strip && !liftedStrip && (
             <View style={[styles.shell, dims.card]}>
               <ScrollView
                 ref={stripRef}
@@ -1581,6 +1618,85 @@ export default function ContextDock() {
           </View>
         </View>
       )}
+      {/* THE DAYS, risen the same way and into the same place. On the
+          calendar this IS the dock's context - the week under the thumb -
+          and it was a card of the ring until the user asked for it here:
+          "смужка календаря також випливає з під дока як і стрічка
+          вкладень".
+
+          The weekday and the number stand SIDE BY SIDE, which is what
+          lets the strip be as short as the path's, and they are told
+          apart by colour rather than by the line they sit on - "щоб вони
+          не зливались в одне слово". The marks follow the number, after
+          the day rather than inside it: a dot between the letters and
+          the figures would split the one thing this cell says. */}
+      {shownStrip && dayLift.step > 0.001 && (
+        <View
+          pointerEvents={dayUpWanted ? 'box-none' : 'none'}
+          style={[
+            styles.pathWrap,
+            {
+              bottom: liftedBottom,
+              opacity: dayLift.up,
+              transform: [{ translateY: (1 - dayLift.up) * liftedTravel }],
+            },
+          ]}
+        >
+          <View style={[liftStyle(theme, theme.lift, 1), { borderRadius: DOCK_PATH_H / 2 }]}>
+            <DockFrost
+              style={[styles.pathShell, styles.cardEdge, { width: dayWidthNow }]}
+              radius={DOCK_PATH_H / 2}
+            >
+              <ScrollView
+                ref={stripRef}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.stripViewport}
+                onLayout={(e) => {
+                  const width = e.nativeEvent.layout.width;
+                  setStripWidth(width);
+                  stripRef.current?.scrollTo({ x: stripOffsetFor(width), animated: false });
+                }}
+              >
+                {shownStrip.items.map((item) => {
+                  const current = item.key === shownStrip.selected;
+                  return (
+                    <Pressable key={item.key} onPress={() => shownStrip.onPick(item.key)}>
+                      <View style={[styles.dayCell, current && styles.here]}>
+                        {!!item.sub && (
+                          <Text style={[styles.dayWeekday, { color: theme.glass.inkMuted }]}>{item.sub}</Text>
+                        )}
+                        <Text
+                          style={[
+                            styles.dayNumber,
+                            item.anchor && styles.stripLabelAnchor,
+                            { color: item.anchor ? theme.accent : theme.glass.ink },
+                          ]}
+                        >
+                          {item.label}
+                        </Text>
+                        {!!item.marks?.length && (
+                          <View style={styles.dayMarks}>
+                            {item.marks.map((mark, i) => (
+                              <View
+                                key={`${mark}-${i}`}
+                                style={[
+                                  styles.stripMark,
+                                  { backgroundColor: mark === 'accent' ? STRIP_MARK_ACCENT : theme.glass.ink },
+                                ]}
+                              />
+                            ))}
+                          </View>
+                        )}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </DockFrost>
+          </View>
+        </View>
+      )}
       {/* THE PATH, risen from behind the dock - drawn before it for the
           same reason as the desks below: it comes out from UNDER the
           dock. Its hidden place is exactly behind the front card, so
@@ -1591,9 +1707,9 @@ export default function ContextDock() {
           style={[
             styles.pathWrap,
             {
-              bottom: DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD + CARD_H + BEHIND_EDGE * 2 + DOCK_PATH_GAP,
+              bottom: liftedBottom,
               opacity: pathUp,
-              transform: [{ translateY: (1 - pathUp) * (DOCK_PATH_H + DOCK_PATH_GAP + BEHIND_EDGE * 2) }],
+              transform: [{ translateY: (1 - pathUp) * liftedTravel }],
             },
           ]}
         >
@@ -2130,6 +2246,29 @@ const styles = StyleSheet.create({
   },
   stripViewport: {
     flex: 1,
+  },
+  dayCell: {
+    width: STRIP_ROW_ITEM,
+    height: DOCK_PATH_H - 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    borderRadius: 999,
+  },
+  dayWeekday: {
+    fontSize: 11,
+    fontFamily: FONT_REGULAR,
+  },
+  dayNumber: {
+    fontSize: 15,
+    fontFamily: FONT_SEMIBOLD,
+    fontWeight: '600',
+  },
+  dayMarks: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2.5,
   },
   stripItem: {
     width: STRIP_ITEM,
