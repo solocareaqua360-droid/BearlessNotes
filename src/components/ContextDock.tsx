@@ -24,6 +24,7 @@ import {
   useNavDockDesks,
   useNavDockFace,
   useNavDockFlipRequest,
+  useNavDockTabsDrifting,
   useNavDockHidden,
   useNavDockLeave,
   useNavDockOwnContext,
@@ -374,6 +375,8 @@ const DOCK_WRAP_PAD = 6;
 // The path strip's own side padding - named because its width is worked
 // out from its content plus exactly this.
 const PATH_PAD = 4;
+// How long ONE of the strip's two steps takes - see `pathStage`.
+const PATH_STEP_MS = 190;
 const DESK_HINT_H = 16;
 const DESK_HINT_BOTTOM = 3;
 const DESK_HINT_TRAVEL = 18;
@@ -624,8 +627,35 @@ export default function ContextDock() {
   // The path above the dock - see `ringOwn`. Kept drawn from the last
   // path it had while it goes back under, so the root does not empty it
   // in the middle of its way down.
-  const pathUpWanted = own?.kind === 'path';
-  const pathUp = useEase01(pathUpWanted, 240);
+  // Gone from the first frame of a desk swipe, not from its halfway
+  // mark: the strip has two steps to get through and they have to be
+  // under way before the screen has visibly moved.
+  const tabsDrifting = useNavDockTabsDrifting();
+  const pathUpWanted = own?.kind === 'path' && !tabsDrifting;
+  // TWO STEPS, IN THIS ORDER: the strip narrows to the dock's own width,
+  // and only then drops behind it - "спочатку звужується а потім вже
+  // опускання". Coming back it is the same backwards: up first at the
+  // dock's width, then out to whatever its crumbs need.
+  //
+  // One number carries both, so the steps cannot overlap or race: 0 is
+  // away behind the dock, 1 is up at the dock's width, 2 is up and as
+  // wide as it needs. Every move is one whole step, so one duration
+  // describes the pace of both.
+  const [pathStage, setPathStage] = useState(pathUpWanted ? 2 : 0);
+  const pathWantedRef = useRef(pathUpWanted);
+  useEffect(() => {
+    // The first run is the mount, where the strip is already at rest in
+    // whichever state it belongs - there is nothing to play.
+    if (pathWantedRef.current === pathUpWanted) return;
+    pathWantedRef.current = pathUpWanted;
+    setPathStage(1);
+    const id = setTimeout(() => setPathStage(pathUpWanted ? 2 : 0), PATH_STEP_MS);
+    return () => clearTimeout(id);
+  }, [pathUpWanted]);
+  const pathStep = useEaseTo(pathStage, PATH_STEP_MS);
+  const pathUp = Math.min(1, pathStep);
+  // 0 at the dock's width, 1 at the crumbs' own.
+  const pathWide = Math.max(0, pathStep - 1);
   const lastPathRef = useRef<Extract<NonNullable<typeof own>, { kind: 'path' }> | null>(null);
   if (own?.kind === 'path') lastPathRef.current = own;
 
@@ -828,10 +858,10 @@ export default function ContextDock() {
   // width, and a measured number is the only one that can be right for
   // every name.
   const [pathContentW, setPathContentW] = useState(0);
-  const pathWidthNow = useEaseTo(
-    Math.min(rowWidthNow, Math.max(cardWidthNow, pathContentW + PATH_PAD * 2)),
-    220
-  );
+  // Not eased here: `pathWide` is what moves, and it is the step above.
+  const pathWidthNow =
+    cardWidthNow +
+    (Math.min(rowWidthNow, Math.max(cardWidthNow, pathContentW + PATH_PAD * 2)) - cardWidthNow) * pathWide;
   // HOW THE DOCK PARTS FROM THE SCREEN. In the black theme that is the
   // glow, and the glow is the whole reason this is here: the two pills
   // that still wore it were the editor's pre-dock chrome, the last two
@@ -1555,7 +1585,7 @@ export default function ContextDock() {
           same reason as the desks below: it comes out from UNDER the
           dock. Its hidden place is exactly behind the front card, so
           the way up and the way down are one short slide. */}
-      {shownPath && pathUp > 0.001 && (
+      {shownPath && pathStep > 0.001 && (
         <View
           pointerEvents={pathUpWanted ? 'box-none' : 'none'}
           style={[

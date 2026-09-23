@@ -188,6 +188,8 @@ type Value = {
   // it exactly where a real second card does. See FloatingIslandTabBar,
   // the one place that can see both the live page and the settled one.
   tabsInFlux: boolean;
+  tabsDrifting: boolean;
+  publishTabsDrifting: (drifting: boolean) => void;
   publishTabsInFlux: (inFlux: boolean) => void;
   // Whether the screen showing wants the stack to OPEN on its actions.
   //
@@ -390,6 +392,16 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
   const publishTabsInFlux = useCallback((inFlux: boolean) => {
     setTabsInFlux((prev) => (prev === inFlux ? prev : inFlux));
   }, []);
+  // The desks swipe having MOVED AT ALL, which is earlier than
+  // `tabsInFlux` (that one waits for the halfway mark, where the
+  // arriving desk becomes the one being arrived at). Anything that has
+  // to be under way before the eye notices the move reads this instead -
+  // the path strip's own exit does: "починається вона від початку
+  // зміщення в сторону сусіднього робочого столу".
+  const [tabsDrifting, setTabsDrifting] = useState(false);
+  const publishTabsDrifting = useCallback((drifting: boolean) => {
+    setTabsDrifting((prev) => (prev === drifting ? prev : drifting));
+  }, []);
   const [prefersActions, setPrefersActions] = useState(false);
   const publishPrefersActions = useCallback((next: boolean) => {
     setPrefersActions((prev) => (prev === next ? prev : next));
@@ -424,6 +436,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       setHidden,
       tabsInFlux,
       publishTabsInFlux,
+      tabsDrifting,
+      publishTabsDrifting,
       prefersActions,
       publishPrefersActions,
       wide,
@@ -448,6 +462,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       hidden,
       tabsInFlux,
       publishTabsInFlux,
+      tabsDrifting,
+      publishTabsDrifting,
       prefersActions,
       publishPrefersActions,
       wide,
@@ -615,6 +631,14 @@ export function useNavDockTabsInFlux(): boolean {
 
 export function useDockTabsInFluxPublisher() {
   return useContext(NavDockContext)?.publishTabsInFlux;
+}
+
+export function useDockTabsDriftPublisher() {
+  return useContext(NavDockContext)?.publishTabsDrifting;
+}
+
+export function useNavDockTabsDrifting(): boolean {
+  return useContext(NavDockContext)?.tabsDrifting ?? false;
 }
 
 // The desks, published by the tab bar - see DockDesk.

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { useIsFocused } from '@react-navigation/native';
-import { useDockBase, useDockTabsInFluxPublisher, useNavDockHidden } from '../navigation/navDock';
+import { useDockBase, useDockTabsDriftPublisher, useDockTabsInFluxPublisher, useNavDockHidden } from '../navigation/navDock';
 
 // Outline glyphs at 24, the same set and the same size as everything else
 // on this screen - what made these read as thinner and smaller before was
@@ -51,12 +51,18 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   const liveIndexRef = useRef(state.index);
   const [tabsInFlux, setLocalTabsInFlux] = useState(false);
   const publishTabsInFlux = useDockTabsInFluxPublisher();
+  // Moved off the settled page AT ALL - see navDock's tabsDrifting.
+  const [tabsDrifting, setLocalTabsDrifting] = useState(false);
+  const publishTabsDrifting = useDockTabsDriftPublisher();
   useEffect(() => {
     // The web build's bottom-tab navigator has no `position` - there is
     // no swipe there to lag behind, so the live index is simply the
     // settled one.
     if (!position || typeof (position as any).addListener !== 'function') return;
     const id = (position as any).addListener(({ value }: { value: number }) => {
+      // Same value every frame once it settles, so React bails out of
+      // all but the two renders that actually change it.
+      setLocalTabsDrifting(Math.abs(value - liveIndexRef.current) > 0.01);
       const rounded = Math.round(value);
       if (rounded === liveIndexRef.current) return;
       liveIndexRef.current = rounded;
@@ -72,11 +78,16 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   useEffect(() => {
     liveIndexRef.current = state.index;
     setLocalTabsInFlux(false);
+    setLocalTabsDrifting(false);
   }, [state.index]);
   useEffect(() => {
     publishTabsInFlux?.(tabsInFlux);
     return () => publishTabsInFlux?.(false);
   }, [publishTabsInFlux, tabsInFlux]);
+  useEffect(() => {
+    publishTabsDrifting?.(tabsDrifting);
+    return () => publishTabsDrifting?.(false);
+  }, [publishTabsDrifting, tabsDrifting]);
   const liveIndex = liveIndexRef.current;
 
   const desks = useMemo(
