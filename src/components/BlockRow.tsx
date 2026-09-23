@@ -14,7 +14,7 @@ import {
 // file on 2026-09-19).
 import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Path, Text as SvgText } from 'react-native-svg';
+import Svg, { Line, Path, Text as SvgText } from 'react-native-svg';
 import { Block, Tag } from '../types';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
@@ -273,7 +273,35 @@ export default function BlockRow({
 
   let content: ReactNode;
   if (type === 'divider') {
-    content = <View style={styles.dividerLine} />;
+    // Four looks, one block type - see Block.dividerStyle.
+    const style = item.dividerStyle ?? 'solid';
+    content =
+      style === 'break' ? (
+        // A cut through the page: the app's own ground showing between
+        // two sheets. Pulled out past the row's padding so it reaches
+        // both edges rather than floating as a stripe inside them.
+        <View style={styles.dividerBreak} />
+      ) : style === 'dotted' ? (
+        // Drawn, not bordered: a single-sided dotted border is
+        // unreliable on Android, a dashed SVG line is the same
+        // everywhere.
+        <View style={styles.dividerDottedWrap}>
+          <Svg height={3} width="100%">
+            <Line
+              x1="1"
+              y1="1.5"
+              x2="100%"
+              y2="1.5"
+              stroke={styles.dividerLine.backgroundColor as string}
+              strokeWidth={2}
+              strokeDasharray="1 7"
+              strokeLinecap="round"
+            />
+          </Svg>
+        </View>
+      ) : (
+        <View style={[styles.dividerLine, style === 'bold' && styles.dividerBold]} />
+      );
   } else if (type === 'image') {
     // 'contain' keeps the photo's real proportions, with any leftover space
     // in the fixed-height box showing the box's own pale gray background

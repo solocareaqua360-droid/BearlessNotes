@@ -1963,6 +1963,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const id = toolbarBlockId;
     if (id) handleBlockAction(key, id);
   };
+  const panelBlock = toolbarBlockId ? blocks.find((b) => b.id === toolbarBlockId) : undefined;
+  const panelType = panelBlock?.type ?? 'paragraph';
+  const panelLevel = panelType === 'heading' ? panelBlock?.headingLevel ?? 2 : 0;
+  const onBlock = (fn: (id: string) => void) => () => {
+    if (toolbarBlockId) fn(toolbarBlockId);
+  };
   const panelGroups: PanelGroup[] = [
     {
       section: 'lists',
@@ -2010,15 +2016,25 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     {
       section: 'text',
       title: 'Розмір тексту',
+      // The user's own names: the note's title is the first heading, so
+      // the body's run from 2. They are the block's levels 1, 2 and 3.
       items: [
-        { key: 'heading', label: 'Заголовок', family: 'material-community', icon: 'format-header-2', onPress: action('heading') },
+        { key: 'h2', label: 'Заголовок 2', family: 'material-community', icon: 'format-header-2', active: panelLevel === 1, onPress: onBlock((id) => setHeadingLevel(id, 1)) },
+        { key: 'h3', label: 'Заголовок 3', family: 'material-community', icon: 'format-header-3', active: panelLevel === 2, onPress: onBlock((id) => setHeadingLevel(id, 2)) },
+        { key: 'h4', label: 'Заголовок 4', family: 'material-community', icon: 'format-header-4', active: panelLevel === 3, onPress: onBlock((id) => setHeadingLevel(id, 3)) },
+        { key: 'text', label: 'Текст', family: 'material-community', icon: 'format-text', active: panelType === 'paragraph', onPress: onBlock((id) => setHeadingLevel(id, null)) },
       ],
     },
     {
       section: 'rules',
       title: 'Роздільні лінії',
+      // Three rules and the break in one menu, as the user asked - all of
+      // them only how the note looks.
       items: [
-        { key: 'divider', label: 'Лінія', family: 'ionicons', icon: 'remove-outline', onPress: action('divider') },
+        { key: 'dotted', label: 'Пунктирна', family: 'material-community', icon: 'dots-horizontal', onPress: onBlock((id) => insertDivider(id, 'dotted')) },
+        { key: 'solid', label: 'Суцільна', family: 'material-community', icon: 'minus', onPress: onBlock((id) => insertDivider(id, 'solid')) },
+        { key: 'bold', label: 'Жирна', family: 'material-community', icon: 'minus-thick', onPress: onBlock((id) => insertDivider(id, 'bold')) },
+        { key: 'break', label: 'Розрив сторінки', family: 'material-community', icon: 'format-page-break', onPress: onBlock((id) => insertDivider(id, 'break')) },
       ],
     },
     {
@@ -2032,6 +2048,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         { key: 'code', label: 'Код', family: 'ionicons', icon: 'code-slash-outline', onPress: action('code') },
         { key: 'file', label: 'Файл', family: 'ionicons', icon: 'document-outline', onPress: action('file') },
         { key: 'scan', label: 'Сканкопія', family: 'ionicons', icon: 'scan-outline', onPress: action('scan') },
+        { key: 'link', label: 'Посилання', family: 'ionicons', icon: 'link-outline', onPress: onBlock((id) => openLinkPrompt(id)) },
       ],
     },
   ];
@@ -3506,6 +3523,97 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // already follow) and gets focus, so the user can keep writing without an
   // extra tap. List/checkbox blocks keep editing the same block instead,
   // since their whole point is typing a label into them.
+  // A heading at a chosen level, or back to plain text (level null). The
+  // block keeps its text either way. The three levels were there all
+  // along - a pasted "##" became one - but nothing in the interface could
+  // choose between them: the old bar had one «Заголовок» button.
+  function setHeadingLevel(id: string, level: 1 | 2 | 3 | null) {
+    snapshotBeforeChange();
+    focusIdRef.current = id;
+    setBlocks((prev) =>
+      prev.map((b) => {
+        if (b.id !== id) return b;
+        if (level === null) return buildBlock(id, 'paragraph', b.text);
+        return { ...buildBlock(id, 'heading', b.text), headingLevel: level };
+      })
+    );
+  }
+
+  // A rule of a given kind. NOT a conversion of the block the caret is in
+  // when that block has text: convertBlockType('divider') replaces the
+  // block outright, which silently threw away whatever was written in it.
+  // An empty block becomes the rule; a block with words keeps them and the
+  // rule goes in after it. Either way the caret lands on a fresh line
+  // below, ready to go on writing.
+  function insertDivider(id: string, style: 'solid' | 'dotted' | 'bold' | 'break') {
+    snapshotBeforeChange();
+    setBlocks((prev) => {
+      const index = prev.findIndex((b) => b.id === id);
+      if (index === -1) return prev;
+      const next = [...prev];
+      const current = next[index];
+      const empty = !(current.text ?? '').trim() && (current.type ?? 'paragraph') === 'paragraph';
+      const divider: Block = { ...buildBlock(empty ? id : newBlock().id, 'divider', ''), dividerStyle: style };
+      const at = empty ? index : index + 1;
+      if (empty) next[index] = divider;
+      else next.splice(at, 0, divider);
+      const after = next[at + 1];
+      if (after && (after.type ?? 'paragraph') === 'paragraph' && !(after.text ?? '').trim()) {
+        focusIdRef.current = after.id;
+      } else {
+        const trailing = newBlock();
+        next.splice(at + 1, 0, trailing);
+        focusIdRef.current = trailing.id;
+      }
+      return next;
+    });
+  }
+
+  // An outside link, typed or pasted rather than picked from the links
+  // database. The rest is exactly what pasting a bare URL into a block
+  // already does - preview, title, and the ask-for-a-name prompt when the
+  // page gives none - so this only has to put the URL into a block and
+  // hand it to that path. Prefilled from the clipboard when the clipboard
+  // holds a link, since that is almost always where one comes from.
+  const [linkPrompt, setLinkPrompt] = useState<{ blockId: string; initial: string } | null>(null);
+  async function openLinkPrompt(blockId: string) {
+    let initial = '';
+    try {
+      const clip = (await Clipboard.getStringAsync()).trim();
+      if (/^https?:\/\/\S+$/i.test(clip)) initial = clip;
+    } catch {
+      // No clipboard, or no permission to read it - an empty field is fine.
+    }
+    setLinkPrompt({ blockId, initial });
+  }
+  function insertLink(blockId: string, raw: string) {
+    setLinkPrompt(null);
+    let url = raw.trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+    snapshotBeforeChange();
+    let targetId = blockId;
+    setBlocks((prev) => {
+      const index = prev.findIndex((b) => b.id === blockId);
+      if (index === -1) return prev;
+      const current = prev[index];
+      const empty = !(current.text ?? '').trim() && (current.type ?? 'paragraph') === 'paragraph';
+      const next = [...prev];
+      if (empty) {
+        next[index] = buildBlock(blockId, 'paragraph', url);
+      } else {
+        const fresh = buildBlock(newBlock().id, 'paragraph', url);
+        targetId = fresh.id;
+        next.splice(index + 1, 0, fresh);
+      }
+      blocksRef.current = next;
+      return next;
+    });
+    // After the state holds the URL, since the conversion checks that the
+    // block still reads exactly this.
+    requestAnimationFrame(() => convertUrlToLinkBlock(targetId, url));
+  }
+
   function convertBlockType(id: string, type: BlockType) {
     snapshotBeforeChange();
     if (type === 'divider') {
@@ -5279,6 +5387,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           />
         </View>
       )}
+
+      <RenamePrompt
+        visible={linkPrompt !== null}
+        title="Посилання"
+        initialValue={linkPrompt?.initial ?? ''}
+        placeholder="https://"
+        onCancel={() => setLinkPrompt(null)}
+        onSave={(value) => linkPrompt && insertLink(linkPrompt.blockId, value)}
+      />
 
       <DocumentQuickLook
         file={quickLook}

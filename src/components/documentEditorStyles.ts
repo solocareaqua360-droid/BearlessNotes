@@ -386,6 +386,30 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     marginVertical: 12,
     marginHorizontal: 4,
   },
+  // The same line, heavier - a section ends here, not just a thought.
+  dividerBold: {
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: t.paper.inkFaint,
+  },
+  dividerDottedWrap: {
+    flex: 1,
+    marginVertical: 11,
+    marginHorizontal: 4,
+  },
+  // Where one sheet ends and the next begins: the app's ground showing
+  // through a gap in the paper. Wider than the row on both sides, so it
+  // reaches the page's own edges instead of hanging inside the text
+  // column as a stripe - the user's own caution was that inside a
+  // full-screen sheet this could look out of place, and a gap that stops
+  // short would be exactly that.
+  dividerBreak: {
+    flex: 1,
+    height: 22,
+    marginVertical: 10,
+    marginHorizontal: -40,
+    backgroundColor: t.ground,
+  },
   // --- one grid, drawn the same way whether it is being read or edited ---
   //
   // The table had no outline of ITS OWN and every cell had one of its

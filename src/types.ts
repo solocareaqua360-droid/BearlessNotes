@@ -270,6 +270,11 @@ export interface Block {
   // бачити чи змінити ширину полів нехай навіть так щоб вони
   // прокручувались за межі". A fraction cannot say that.
   tableColumnWidths?: number[];
+  // 'divider' blocks only. Absent is the plain hairline every divider was
+  // before this. 'break' is not a line at all but a visual cut in the page
+  // - where one sheet ends and the next begins - and, like the rest, it
+  // is only how the note LOOKS: exports and cards ignore it.
+  dividerStyle?: 'solid' | 'dotted' | 'bold' | 'break';
   // 'table' blocks only. Whether the first row / first column is a
   // HEADER: drawn strong, and never counted as data. Two switches rather
   // than one convention, and off by default - a table in a note is free
