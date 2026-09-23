@@ -45,7 +45,14 @@ export default function RootNavigator() {
           entry animation played as a blink at startup. Pushes from
           here (Editor and the rest) keep their own animation. */}
       <Stack.Screen name="Tabs" component={Tabs} options={{ animation: 'none' }} />
-      <Stack.Screen name="Editor" component={DocumentEditorScreen} />
+      {/* See RootStackParamList's own `morph`: a push the card-to-page
+          overlay is drawing carries no animation of its own, and neither
+          does its pop, which the overlay plays in reverse. */}
+      <Stack.Screen
+        name="Editor"
+        component={DocumentEditorScreen}
+        options={({ route }) => (route.params?.morph ? { animation: 'none' } : {})}
+      />
       <Stack.Screen name="EditorModal" component={DocumentEditorScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="Tasks" component={TasksScreen} />
       <Stack.Screen name="Chat" component={ChatScreen} />
