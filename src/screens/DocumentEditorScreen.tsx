@@ -1714,9 +1714,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // the frame handler's number. Taking the panel's height from the
     // other one left it short by the gesture bar, so the panel and the
     // keyboard were not the same height and the bar moved between them.
-    const height = keyboardSV.value || lastKeyboardHeightRef.current;
-    panelHeightSV.value = height;
-    setPanelHeight(height);
+    // ONLY on the way in from a closed panel. Pressing another section
+    // button while the panel already stands must not re-measure: the
+    // keyboard is down by then, so the live height is 0 and this fell
+    // back to the shorter event value - the panel shrank on the second
+    // press. "Панель все одно опускається нижче при натисканні на
+    // кнопку B... ти їх вирівняв тільки по кнопці списку."
+    if (panelSection === null) {
+      const height = keyboardSV.value || lastKeyboardHeightRef.current;
+      panelHeightSV.value = height;
+      setPanelHeight(height);
+    }
     setPanelSection(section);
     setPanelJump({ section, at: Date.now() });
   }

@@ -619,7 +619,13 @@ export default function BlockRow({
         // selection goes with it, and bold/italic/colour have nothing to
         // act on. showSoftInputOnFocus does exactly that: the caret and
         // the selection stay, only the soft keyboard steps aside.
-        showSoftInputOnFocus={!softInputDisabled}
+        // `undefined`, not `true`, when the panel is closed. Setting
+        // this prop at all makes Android's TextInput call
+        // setShowSoftInputOnFocus on every update, and that nudged the
+        // IME - the page jerked twice on a plain tap into a field.
+        // Absent, RN does not touch it and the field behaves exactly as
+        // it did before the panel existed.
+        showSoftInputOnFocus={softInputDisabled ? false : undefined}
         // Android's TextInput doesn't reliably pick up a dynamic `editable`
         // change on an already-mounted view; keying on canEditText forces
         // a clean remount so the native EditText is created with the
