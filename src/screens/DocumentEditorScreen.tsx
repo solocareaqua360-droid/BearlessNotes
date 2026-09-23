@@ -1708,26 +1708,42 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     panelHeightSV.value = lastKeyboardHeightRef.current;
     setPanelSection(section);
     setPanelJump({ section, at: Date.now() });
-    const id = focusedBlockIdRef.current;
-    if (id) {
-      const input = inputRefs.current[id];
-      // A frame apart: the flag has to be on the field before the focus
-      // comes back, or Android raises the keyboard again on the way.
-      input?.blur();
-      requestAnimationFrame(() => inputRefs.current[id]?.focus());
-    }
   }
 
   function closePanel() {
     panelHeightSV.value = 0;
     setPanelSection(null);
+  }
+
+  // The keyboard is touched AFTER the render that changed the flag, never
+  // during it. Opening used to blur the field and refocus it a frame
+  // later, and that is exactly what the user saw: the keyboard started
+  // down, the refocus arrived while the field still said "yes, I want a
+  // keyboard", and it came straight back up - a quarter of the way down
+  // and back.
+  //
+  // Now: the panel opens, the field re-renders with
+  // showSoftInputOnFocus off, and only then is the keyboard dismissed -
+  // which leaves the focus, the caret and the selection where they were.
+  // Closing is the mirror, and there it DOES need the blur/focus round
+  // trip, because Android has no "raise the keyboard" call and focusing
+  // an already-focused field does nothing.
+  const panelWasOpenRef = useRef(false);
+  useEffect(() => {
+    const open = panelSection !== null;
+    const was = panelWasOpenRef.current;
+    panelWasOpenRef.current = open;
+    if (open === was) return;
     const id = focusedBlockIdRef.current;
+    if (open) {
+      Keyboard.dismiss();
+      return;
+    }
     if (id) {
-      const input = inputRefs.current[id];
-      input?.blur();
+      inputRefs.current[id]?.blur();
       requestAnimationFrame(() => inputRefs.current[id]?.focus());
     }
-  }
+  }, [panelSection]);
 
   function scheduleScrollAdjust(currentKeyboardHeight: number) {
     if (scrollAdjustTimeoutRef.current) clearTimeout(scrollAdjustTimeoutRef.current);
@@ -4644,6 +4660,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           documentIndex={documentIndex}
           onOpenDocument={openReferencedDocument}
           onOpenCustomView={openCustomViewBlock}
+          softInputDisabled={panelSection !== null}
           onInputRef={registerInputRef}
           paperColor={paperColor}
         />
