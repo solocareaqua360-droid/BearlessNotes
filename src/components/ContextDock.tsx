@@ -419,12 +419,15 @@ type LiftKind = 'path' | 'strip' | null;
 // carried one would blur it - these grew with the distance.
 const RISE_MS = 230;
 const FALL_MS = 190;
-// The spread outlives the landing by this much, so the impact has
-// somewhere to travel to rather than stopping with the circle. It is
-// most of what the spread's own pace is: the spread runs from the top of
-// the throw to the very end, which is FALL_MS + this.
-const SPREAD_TAIL_MS = 170;
-const LIFT_IN_MS = RISE_MS + FALL_MS + SPREAD_TAIL_MS;
+// THE SPREAD IS ENTIRELY AFTER THE LANDING, and this is its whole
+// duration. Started at the top of the throw instead, as it was, an
+// ease-out put nine tenths of the spreading into the fall itself, so the
+// strip was all but open before it touched down - the user caught the
+// cause and effect running backwards: "падіння це каталізатор
+// розширення". Nothing spreads in the air now; the impact is what
+// throws it open.
+const SPREAD_MS = 320;
+const LIFT_IN_MS = RISE_MS + FALL_MS + SPREAD_MS;
 // Leaving is the same in reverse and WITHOUT the throw: a strip that
 // bounced on its way out would read as hesitation.
 // Gathering back into a circle is the half worth watching, so it takes
@@ -496,9 +499,10 @@ function shapeIn(p: number) {
         // Falling, so it gathers speed rather than losing it.
         ? peak + (1 - peak) * easeInQuad((p - top) / (land - top))
         : 1;
-  // Nothing spreads on the way up: the throw has to read as one object
-  // before it can read as that object landing.
-  const spread = p <= top ? 0 : easeOutCubic((p - top) / (1 - top));
+  // Nothing spreads until it lands - not on the way up, and not on the
+  // way down either. The circle is one object for the whole flight, and
+  // what opens it is hitting the line.
+  const spread = p <= land ? 0 : easeOutCubic((p - land) / (1 - land));
   return { rise, spread };
 }
 
