@@ -2743,6 +2743,19 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   //
   // Web has no keyboard events to drive any of it, so it keeps the bar
   // plainly visible whenever a block is focused, exactly as before.
+  // HOW FAR THE SHEET STANDS OFF THE SCREEN'S BOTTOM, and why it is not
+  // a fixed number. At rest it ends above that edge so its rounded
+  // corner can be seen. But the sheet CLIPS what it holds, and the bar
+  // above the keyboard and the panel that stands where the keyboard
+  // stood are both held by it and both have to reach the screen's own
+  // bottom - lifted, the bar floated a finger's width above the keyboard
+  // ("слеш меню піднялось вище"). So the sheet gives that margin back,
+  // exactly as fast as the keyboard takes it: by the time anything is
+  // standing down there, the page reaches it.
+  const sheetBottomRest = editorInsets.bottom + PAGE_SHEET_INSET;
+  const sheetBottomStyle = useAnimatedStyle(() => ({
+    marginBottom: Math.max(0, sheetBottomRest - Math.max(keyboardSV.value, panelHeightSV.value)),
+  }));
   const pinnedToolbarStyle = useAnimatedStyle(() => {
     if (Platform.OS === 'web') return { bottom: Math.max(keyboardSV.value, panelHeightSV.value), opacity: 1, transform: [] };
     const floor = Math.max(keyboardSV.value, panelHeightSV.value);
@@ -4546,7 +4559,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // marks its top edge.
   const sheetPage = !embedded && !('pane' in props) && !pointerDensity;
   const page = (
-    <View
+    <Animated.View
       style={[
         styles.container,
         embedded && styles.containerEmbedded,
@@ -4558,12 +4571,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         sheetPage && liftStyle(theme, theme.lift, 1),
         sheetPage && {
           marginTop: editorInsets.top,
-          // Ends above the screen's own bottom edge, so the sheet shows
-          // the same rounded corner down there that it shows up top -
-          // scrolled to the end, a page that ran off the screen looked
-          // torn rather than finished.
-          marginBottom: editorInsets.bottom + PAGE_SHEET_INSET,
         },
+        // The bottom margin is ANIMATED - see sheetBottomStyle.
+        sheetPage && sheetBottomStyle,
         paperColor && { backgroundColor: paperColor.background },
       ]}
       onLayout={(e) => setEditorWidth(e.nativeEvent.layout.width)}
@@ -5637,7 +5647,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         onPicked={pickCoverImageFromStock}
       />
       {flattenNode}
-    </View>
+    </Animated.View>
   );
   if (!sheetPage) return page;
   return (
