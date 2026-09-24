@@ -1,7 +1,8 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
 import { Ionicons } from '@expo/vector-icons';
 import AttachmentImage from './AttachmentImage';
-import { GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { FONT_BOLD, FONT_MONO, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import type { Block } from '../types';
 
@@ -20,6 +21,11 @@ import type { Block } from '../types';
 // It renders in glass ink, since the panel it lives in stands on the
 // sheet's own dark ground rather than on the note's paper.
 export default function ReferenceBlockPreview({ block, index }: { block: Block; index?: number }) {
+  // The THEME'S ink, not the glass's white. This preview is read on the
+  // references panel, which is a surface of the app now rather than a
+  // dark sheet floating on glass - white on beige could not be read.
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   const type = block.type ?? 'paragraph';
   const text = block.text ?? '';
 
@@ -84,7 +90,7 @@ export default function ReferenceBlockPreview({ block, index }: { block: Block; 
         <Ionicons
           name={block.checked ? 'checkbox' : 'square-outline'}
           size={17}
-          color={block.checked ? GLASS_TEXT_MUTED : GLASS_TEXT_FAINT}
+          color={block.checked ? theme.ink.muted : theme.ink.faint}
         />
         <Text style={[styles.text, block.checked && styles.textDone]}>{text}</Text>
       </View>
@@ -95,24 +101,27 @@ export default function ReferenceBlockPreview({ block, index }: { block: Block; 
 }
 
 function IconLine({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
   return (
     <View style={styles.listRow}>
-      <Ionicons name={icon} size={17} color={GLASS_TEXT_MUTED} />
+      <Ionicons name={icon} size={17} color={theme.ink.muted} />
       <Text style={styles.text}>{label}</Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
   text: {
     flex: 1,
     fontSize: 14,
     lineHeight: 20,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   textDone: {
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
     textDecorationLine: 'line-through',
   },
   heading: {
@@ -120,7 +129,7 @@ const styles = StyleSheet.create({
     lineHeight: 25,
     fontFamily: FONT_BOLD,
     fontWeight: '700',
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   heading2: { fontSize: 17, lineHeight: 23 },
   heading3: { fontSize: 15, lineHeight: 21, fontFamily: FONT_SEMIBOLD, fontWeight: '600' },
@@ -134,24 +143,24 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     minWidth: 16,
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   divider: {
     height: 1,
     marginVertical: 6,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
   },
   imageWrap: { gap: 6 },
   image: {
     width: '100%',
     height: 150,
     borderRadius: 10,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
   },
   caption: {
     fontSize: 12,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   codeWrap: {
     borderRadius: 8,
@@ -162,6 +171,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     fontFamily: FONT_MONO,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
 });
