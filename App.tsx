@@ -27,7 +27,6 @@ import CaptureWindow from './src/components/CaptureWindow';
 import { ThemeProvider, ThemedStatusBar, useTheme } from './src/theme/ThemeProvider';
 import CrashBoundary from './src/components/CrashBoundary';
 import FatalErrorOverlay from './src/components/FatalErrorOverlay';
-import MetricsBanner from './src/components/MetricsBanner';
 import ContextDock from './src/components/ContextDock';
 import { NavDockProvider } from './src/navigation/navDock';
 import AlarmRingOverlay from './src/components/AlarmRingOverlay';
@@ -182,9 +181,6 @@ export default function App() {
               what it reports is the error class that leaves NOTHING
               on the screen - see src/utils/fatalErrors.ts. */}
           <FatalErrorOverlay />
-          {/* TEMPORARY - see MetricsBanner. Above everything, because the
-              screen it is for cannot be read well enough to navigate. */}
-          <MetricsBanner />
           </ThemedNavigationContainer>
           </KeyboardProvider>
         </SafeAreaProvider>
